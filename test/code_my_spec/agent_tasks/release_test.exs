@@ -40,7 +40,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   alias CodeMySpec.StoriesFixtures
 
   setup do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture() |> Map.put(:environment, Environment.new(:local, tmp_dir))
 
     File.mkdir_p!(Path.join(tmp_dir, Paths.releases_dir()))

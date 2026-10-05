@@ -26,7 +26,7 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
   @spex_path "test/spex/811_provisioning/criterion_6493_a_step_reports_its_provider_spex.exs"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     Configurations.get_or_create(scope)

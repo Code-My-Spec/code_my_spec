@@ -26,7 +26,7 @@ defmodule CodeMySpec.Validation.ASpexFindingWithNoLocationDoesNotBlockTest do
   @orphan "test/spex/nobody_owns_this/criterion_1_spex.exs"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     Configurations.get_or_create(scope)

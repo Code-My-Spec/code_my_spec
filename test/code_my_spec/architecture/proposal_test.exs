@@ -418,7 +418,7 @@ defmodule CodeMySpec.Architecture.ProposalTest do
   describe "execute/3" do
     setup do
       scope = full_scope_fixture()
-      {:ok, tmp_dir} = Briefly.create(directory: true)
+      tmp_dir = CodeMySpec.TempFile.owned_dir("test")
       {:ok, scope: scope, tmp_dir: tmp_dir}
     end
 

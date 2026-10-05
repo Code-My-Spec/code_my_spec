@@ -15,7 +15,7 @@ defmodule CmsHarness.WorkingCopies.AGateCopyIsPreparedBeforeItIsServedTest do
   alias CmsHarness.WorkingCopies.Create
 
   setup do
-    {:ok, root} = Briefly.create(directory: true)
+    root = CodeMySpec.TempFile.owned_dir("test")
     File.write!(Path.join(root, ".cms_harness_preparing"), "preparing\n")
     %{root: root}
   end

@@ -106,7 +106,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
   describe "problems" do
     setup ctx do
-      {:ok, tmp} = Briefly.create(directory: true)
+      tmp = CodeMySpec.TempFile.owned_dir("test")
       scope = %{ctx.scope | cwd: tmp, environment: Environment.new(:local, tmp)}
 
       Configurations.get_or_create(scope)

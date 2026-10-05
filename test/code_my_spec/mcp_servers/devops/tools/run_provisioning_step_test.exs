@@ -12,7 +12,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
   alias CodeMySpec.Provisioning.RunLock
 
   setup do
-    {:ok, working_dir} = Briefly.create(directory: true)
+    working_dir = CodeMySpec.TempFile.owned_dir("test")
     File.write!(Path.join(working_dir, "README.md"), "# hi\n")
 
     scope = full_scope_fixture()

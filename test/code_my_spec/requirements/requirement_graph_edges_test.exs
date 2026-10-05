@@ -628,7 +628,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   end
 
   defp setup_project do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 

@@ -89,7 +89,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2370Spex do
       end
 
       then_ "a copy with nothing recorded is refused rather than given one", context do
-        {:ok, bare} = Briefly.create(directory: true)
+        bare = CodeMySpec.TempFile.owned_dir("test")
 
         assert {:error, :not_onboarded} = Onboarding.resolve_partition(bare),
                "an un-onboarded copy was handed a partition anyway. A derive-on-miss " <>

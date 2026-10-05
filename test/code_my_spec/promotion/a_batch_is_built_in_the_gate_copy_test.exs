@@ -11,7 +11,7 @@ defmodule CodeMySpec.Promotion.ABatchIsBuiltInTheGateCopyTest do
   alias CodeMySpec.Promotion.Steps
 
   setup do
-    {:ok, root} = Briefly.create(directory: true)
+    root = CodeMySpec.TempFile.owned_dir("test")
     git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
     {_, 0} = git.(["init", "--initial-branch=main"])
     {_, 0} = git.(["config", "user.email", "t@example.com"])
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Promotion.ABatchIsBuiltInTheGateCopyTest do
     {_, 0} = git.(["add", "."])
     {_, 0} = git.(["commit", "-m", "base"])
 
-    {:ok, gate} = Briefly.create(directory: true)
+    gate = CodeMySpec.TempFile.owned_dir("test")
     File.rm_rf!(gate)
     {_, 0} = git.(["worktree", "add", "--detach", gate, "main"])
 

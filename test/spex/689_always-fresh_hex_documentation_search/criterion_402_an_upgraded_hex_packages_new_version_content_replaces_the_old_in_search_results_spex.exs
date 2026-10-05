@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5978Spex do
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     :ok = Fixtures.embed_on_pgvector(dir)
     # hex.pm is fetched inside the embed pool, not this process.
     Req.Test.set_req_test_to_shared()
