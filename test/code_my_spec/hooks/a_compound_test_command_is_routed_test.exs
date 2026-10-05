@@ -23,10 +23,10 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
     on_exit(fn -> Logger.configure(level: previous) end)
   end
 
-  defp decide(command) do
+  defp decide(command, cwd \\ "/w/copy") do
     PreToolUse.decide(
       @scope,
-      %{"tool_name" => "Bash", "tool_input" => %{"command" => command}},
+      %{"tool_name" => "Bash", "tool_input" => %{"command" => command}, "cwd" => cwd},
       4004,
       :harness
     )
@@ -49,10 +49,21 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
     assert log =~ "mix test/spex routed (shape: piped, redirected)"
   end
 
-  test "a test after cd is not routed yet, and says so" do
+  test "a test after cd into this copy is routed, and the cd is kept" do
+    command = routed(decide("cd /w/copy/apps/web && mix test test/a_test.exs", "/w/copy"))
+
+    assert String.starts_with?(command, "cd /w/copy/apps/web && sh -c ")
+  end
+
+  test "a relative cd stays inside the copy" do
+    assert routed(decide("cd apps/web && mix test", "/w/copy")) =~ "/analysis/run"
+    assert decide("cd ../other && mix test", "/w/copy") == %{}
+  end
+
+  test "a test after cd into another copy is not routed, and says so" do
     log =
       capture_log(fn ->
-        assert decide("cd /w && mix test test/a_test.exs") == %{}
+        assert decide("cd /w/other && mix test test/a_test.exs", "/w/copy") == %{}
       end)
 
     assert log =~ "mix test/spex not routed (shape: cd, compound)"
