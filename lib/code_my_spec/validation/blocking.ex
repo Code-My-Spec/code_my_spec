@@ -237,24 +237,38 @@ defmodule CodeMySpec.Validation.Blocking do
     |> MapSet.new()
   end
 
-  # Every latched, live criterion's own spec path, derived the same way the
-  # harness looks one up (`BddSpecs.spec_file_path/2`: a recorded `spec_path`
-  # first, a convention-derived path otherwise) rather than read off the
-  # `spec_path` column directly -- that column is often unset until a real
-  # sync binds it, and reading it bare would under-enforce every criterion a
-  # test (or an agent) latched before that happened.
-  defp latched_spec_paths(scope) do
+  # Every latched, live criterion's own spec path -- built two ways and
+  # unioned, not one replacing the other. `BddSpecs.spec_file_path/2` gives
+  # the recorded `spec_path` first, a convention-derived path otherwise;
+  # `Files.bdd_spec_path_by_criterion_number/1` gives whatever path the file
+  # itself names via its `spex` call, live as of the last sync.
+  #
+  # The recorded/derived side goes stale the moment a spex is renamed outside
+  # whatever writes `criteria.spec_path` back -- critical issue e3042a7c:
+  # 66530d93d renamed 1,417 spex against a *copy* of the dev database, so
+  # 1,319 of 1,550 recorded paths on one project named files that had already
+  # moved, and a red spex at the new name matched nothing in this set and
+  # went through as advisory. The live side on its own would under-enforce
+  # every criterion latched before a sync has run at all, which is why it
+  # adds rather than replaces.
+  def latched_spec_paths(scope) do
+    paths_by_criterion_number = Files.bdd_spec_path_by_criterion_number(scope)
+
     scope
     |> AcceptanceCriteria.list_latched_criteria()
     |> Enum.flat_map(fn criterion ->
       case criterion.story do
         %{number: number} = story when is_integer(number) ->
-          [BddSpecs.spec_file_path(story, criterion)]
+          [
+            BddSpecs.spec_file_path(story, criterion),
+            Map.get(paths_by_criterion_number, criterion.number)
+          ]
 
         _ ->
           []
       end
     end)
+    |> Enum.reject(&is_nil/1)
     |> MapSet.new()
   end
 end

@@ -497,6 +497,27 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  Every BDD spec file's path, keyed by the criterion number its own `spex`
+  call names (`criterion_number`, bound by `Files.SpecBinding` at sync time).
+
+  Live, not recorded: a rename is reflected the moment the renamed file is
+  synced, where a criterion's `spec_path` column only moves when something
+  writes it back. The other half of the join `latched_spec_paths/1` needs —
+  critical issue e3042a7c found 1,319 of a project's 1,550 recorded paths
+  naming files that had already moved.
+  """
+  @spec bdd_spec_path_by_criterion_number(Scope.t()) :: %{integer() => String.t()}
+  def bdd_spec_path_by_criterion_number(%Scope{active_project_id: project_id} = scope) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role == :bdd_spec)
+    |> where([f], not is_nil(f.criterion_number))
+    |> scope_to_harness(scope)
+    |> select([f], {f.criterion_number, f.path})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   Why each spex on this working copy covers nothing although it names a
   criterion — an unknown or retired number, or one another spex already
   covers — as `%{path => reason}`. Read from the numbers files name and the
