@@ -1744,6 +1744,17 @@ defmodule CmsHarness.Project.ChannelClient do
          )
 
   defp apply_promotion(
+         "promotion_contained",
+         %{"root" => root, "base" => base, "commits" => commits}
+       )
+       when is_list(commits),
+       do:
+         with_served_root(
+           root,
+           &Steps.contained(Environment.new(:local, &1), &1, base, commits)
+         )
+
+  defp apply_promotion(
          "promotion_changed_files",
          %{"root" => root, "base" => base, "commit" => commit}
        ),

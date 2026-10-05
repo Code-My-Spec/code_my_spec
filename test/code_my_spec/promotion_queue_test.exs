@@ -470,4 +470,19 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert result["already_on_main"] == true
     assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == ctx.gate.id)) == []
   end
+
+  # 966ee65a, 2026-10-05: an entry already on main, queued again, rode a batch
+  # with another candidate as a no-op merge — gated, and exposed to that
+  # candidate's findings. It lands the moment it is picked instead.
+  test "a candidate already on main lands at once, not in a batch with others", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    git!(ctx.main_root, ["merge", "--quiet", "--ff-only", a.commit])
+    b = candidate(ctx, "b", "main", "b.ex", "b\n")
+
+    [on_main, _other] = [queue(ctx, a), queue(ctx, b)]
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed, result: result}} = settle(on_main)
+    assert result["already_on_main"] == true, "it rode a batch: #{inspect(result)}"
+  end
 end

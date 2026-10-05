@@ -156,8 +156,37 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp build(state, entries) do
     case main_head(state.scope) do
-      {:ok, base} -> build(state, entries, base, level_with_main(state.scope, entries, base))
+      {:ok, base} -> build_on(state, entries, base)
       {:error, reason} -> could_not_build(state, reason)
+    end
+  end
+
+  defp build_on(state, entries, base) do
+    case on_main(state.scope, entries, base) do
+      [] -> build(state, entries, base, level_with_main(state.scope, entries, base))
+      on_main -> already_on_main(state, on_main, base)
+    end
+  end
+
+  # Candidates main already contains land the moment they are picked: they have
+  # nothing to gate, and batched with others they would ride a gate as no-ops
+  # and could be ejected over another candidate's findings (966ee65a, three
+  # entries, 2026-10-05). Asked in the gate copy, which shares the repository;
+  # one that cannot answer leaves them to the build, which handles them as
+  # before.
+  defp on_main(scope, entries, base) do
+    with %WorkingCopy{} = gate <- find_gate_copy(scope),
+         {:ok, %{contained: [_ | _] = contained}} <-
+           Runner.contained(
+             scope_for(scope, gate),
+             gate.root,
+             base,
+             Enum.map(entries, & &1.commit),
+             gate.id
+           ) do
+      Enum.filter(entries, &(&1.commit in contained))
+    else
+      _ -> []
     end
   end
 
