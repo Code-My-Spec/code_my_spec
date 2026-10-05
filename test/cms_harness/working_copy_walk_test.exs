@@ -194,4 +194,32 @@ defmodule CmsHarness.WorkingCopyWalkTest do
     assert {:error, :outside_a_working_copy} = WorkingCopyWalk.root_for(nil)
     assert {:error, :outside_a_working_copy} = WorkingCopyWalk.root_for("")
   end
+
+  # Capture E, cut down (2026-10-05): a subagent's worktree, which Claude Code
+  # puts inside the copy that spawned it, is answered for by that copy.
+  describe "a subagent's worktree" do
+    test "belongs to the copy that holds it" do
+      copy = tmp() |> repo() |> onboard()
+
+      agent =
+        worktree(Path.join(copy, ".claude/worktrees/agent-1"), "#{copy}/.git/worktrees/agent-1")
+
+      assert {:error, :not_onboarded, ^agent} = WorkingCopyWalk.root_for(Path.join(agent, "lib"))
+      assert {:ok, ^copy} = WorkingCopyWalk.parent_copy(agent)
+      assert WorkingCopyWalk.nested_checkout(Path.join(agent, "lib"), copy) == agent
+    end
+
+    test "a worktree anywhere else does not borrow a copy" do
+      outer = tmp() |> repo() |> onboard()
+      inner = worktree(Path.join(outer, "vendor/other"), "#{outer}/.git/worktrees/other")
+
+      assert :error = WorkingCopyWalk.parent_copy(inner)
+      assert WorkingCopyWalk.nested_checkout(inner, outer) == nil
+    end
+
+    test "the copy's own directory is not nested" do
+      copy = tmp() |> repo() |> onboard()
+      assert WorkingCopyWalk.nested_checkout(Path.join(copy, "lib"), copy) == nil
+    end
+  end
 end

@@ -22,7 +22,6 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
@@ -150,19 +149,15 @@ defmodule CodeMySpec.PromotionQueueTest do
     do:
       AnalysisFixtures.fresh_analysis_runs_fixture(gate_scope(ctx), Run.sources(), commit: commit)
 
-  test "a batch lands on main as its exact commit, every candidate in it landed", ctx do
+  test "a candidate lands on main as its exact commit", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    clean_runs_at(ctx, b.commit)
+    clean_runs_at(ctx, a.commit)
 
-    entries = [queue(ctx, a), queue(ctx, b)]
+    entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    for entry <- entries do
-      assert {:ok, %{status: :landed}} = settle(entry)
-    end
-
-    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == b.commit
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
     assert git!(ctx.main_root, ["describe", "--tags", "--exact-match", "HEAD"]) == "v0.1.1"
   end
 
@@ -199,9 +194,8 @@ defmodule CodeMySpec.PromotionQueueTest do
   # 87bc9721, 2026-10-05: the gate refused on exunit while spex was still running
   # at the head, and triage re-read the copy's problems for every source —
   # spex's included, from its run at the commit before. A finding red on main
-  # was blamed on the candidate, and with two findings the lone re-run never
-  # fired. Problems are kept per copy, not per commit: triage reads the ones the
-  # gate judged.
+  # was blamed on the candidate. Problems are kept per copy, not per commit:
+  # triage reads the ones the gate judged.
   test "a red batch is triaged on what the gate judged at its head, not older runs", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
     own = gate_scope(ctx)
@@ -215,16 +209,8 @@ defmodule CodeMySpec.PromotionQueueTest do
     problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
     problem_fixture(own, %{source: "credo", severity: :error, file_path: "lib/stale.ex"})
 
-    a_harness_for(ctx.gate.id, ctx.gate_root)
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
-
-    # Main is clean there; the batch commit is red again.
-    answers(ctx, ctx.gate, "exunit", fn -> clean(own, "test/a_test.exs") end)
-
-    answers(ctx, ctx.gate, "exunit", fn ->
-      problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
-    end)
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "test/a_test.exs"
@@ -233,114 +219,21 @@ defmodule CodeMySpec.PromotionQueueTest do
            "a finding from another commit's run was blamed on this candidate"
   end
 
-  # The gate copy is asked to re-run a red batch's failing tests — at main, then
-  # at the batch commit — and answers; `found` is what that run found, put on the
-  # copy as the reconciler would.
-  defp answers(ctx, copy, source, found) do
-    copy_id = copy.id
-    assert_receive {:run_analysis_on, ^copy_id, [%{"source" => ^source} = run]}, 15_000
-
-    found.()
-    %Run{} = row = RunsRepository.get_run_in_project(ctx.scope, run["run_id"])
-    {:ok, _} = RunsRepository.finish_run(row, :completed, %{exit_status: 0})
-
-    Phoenix.PubSub.broadcast(
-      CodeMySpec.PubSub,
-      "analysis:#{ctx.scope.active_project_id}",
-      {:analysis, %{source: source, status: :completed, run_id: row.id, working_copy_id: copy_id}}
-    )
-
-    run
-  end
-
-  defp red_on(scope, file, line),
-    do: problem_fixture(scope, %{source: "exunit", severity: :error, file_path: file, line: line})
-
-  defp clean(scope, file) do
-    scope
-    |> ProblemRepository.list_project_problems(sources: ["exunit"])
-    |> Enum.filter(&(&1.file_path == file))
-    |> Enum.each(&Repo.delete!/1)
-  end
-
-  # A lone candidate level with main, red at its head in the gate copy.
-  defp red_lone_candidate(ctx, findings) do
-    a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    gate = gate_scope(ctx)
-    clean_runs_at(ctx, a.commit)
-    for {file, line} <- findings, do: red_on(gate, file, line)
-    a_harness_for(ctx.gate.id, ctx.gate_root)
-    {a, gate}
-  end
-
-  # 87bc9721, 2026-10-05: story 1060's criteria were latched before its
-  # implementation landed, so main itself was red and every batch inherited it.
-  test "a finding main is red on too is not the batch's, and the batch lands", ctx do
-    main = git!(ctx.main_root, ["rev-parse", "HEAD"])
-    {a, _gate} = red_lone_candidate(ctx, [{"test/flaky_test.exs", 3}])
-    entry = queue(ctx, a)
-    :ok = PromotionQueue.ensure_worker(ctx.scope)
-
-    at_main =
-      answers(ctx, ctx.gate, "exunit", fn ->
-        assert git!(ctx.gate_root, ["rev-parse", "HEAD"]) == main, "not asked at main"
-      end)
-
-    assert at_main["args"] == ["test/flaky_test.exs"]
-    answers(ctx, ctx.gate, "exunit", fn -> :ok end)
-
-    assert {:ok, %{status: :landed}} = settle(entry)
-    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
-  end
-
-  test "a finding main is not red on is still the batch's", ctx do
-    {a, own} = red_lone_candidate(ctx, [{"test/a_test.exs", 3}, {"test/a_test.exs", 9}])
-    entry = queue(ctx, a)
-    :ok = PromotionQueue.ensure_worker(ctx.scope)
-
-    answers(ctx, ctx.gate, "exunit", fn -> clean(own, "test/a_test.exs") end)
-
-    answers(ctx, ctx.gate, "exunit", fn ->
-      red_on(own, "test/a_test.exs", 3)
-      red_on(own, "test/a_test.exs", 9)
-    end)
-
-    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
-    assert result["reason"] =~ "test/a_test.exs"
-
-    assert git!(ctx.gate_root, ["rev-parse", "HEAD"]) == a.commit,
-           "the gate copy was not put back"
-  end
-
-  test "a failure that does not come back at the batch commit was a flake, and lands", ctx do
-    {a, own} = red_lone_candidate(ctx, [{"test/a_test.exs", 3}])
-    entry = queue(ctx, a)
-    :ok = PromotionQueue.ensure_worker(ctx.scope)
-
-    answers(ctx, ctx.gate, "exunit", fn -> clean(own, "test/a_test.exs") end)
-    answers(ctx, ctx.gate, "exunit", fn -> :ok end)
-
-    assert {:ok, %{status: :landed}} = settle(entry)
-  end
-
   @tag gate: :later
   test "a gate copy coming up wakes the batch waiting for it", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    clean_runs_at(ctx, b.commit)
-    entries = [queue(ctx, a), queue(ctx, b)]
+    clean_runs_at(ctx, a.commit)
+    entry = queue(ctx, a)
 
     # The gate's checkout is not there yet: the batch cannot be built, and the
     # worker waits to retry.
     :ok = PromotionQueue.ensure_worker(ctx.scope)
-    assert {:error, :timeout} = PromotionQueue.await(hd(entries), 500)
+    assert {:error, :timeout} = PromotionQueue.await(entry, 500)
 
     gate_checkout(ctx.main_root, ctx.gate_root, :now)
     :ok = PromotionQueue.copy_joined(ctx.scope, ctx.gate)
 
-    for entry <- entries do
-      assert {:ok, %{status: :landed}} = settle(entry)
-    end
+    assert {:ok, %{status: :landed}} = settle(entry)
   end
 
   # Main moved under a green batch — something committed to it another way.
@@ -348,14 +241,13 @@ defmodule CodeMySpec.PromotionQueueTest do
   # at once, not after a retry period, and nothing is ejected.
   test "a batch main moved under is rebuilt on the new main at once, not ejected", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    clean_runs_at(ctx, b.commit)
+    clean_runs_at(ctx, a.commit)
 
     # A run in flight on another copy holds the green batch at its landing.
     main_scope = %{ctx.scope | active_working_copy_id: ctx.main.id}
     in_flight = AnalysisFixtures.analysis_run_fixture(main_scope, %{source: "compiler"})
 
-    [first | _] = entries = [queue(ctx, a), queue(ctx, b)]
+    first = queue(ctx, a)
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Repository.topic(ctx.scope.active_project_id))
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
@@ -389,60 +281,48 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.gate_root, ["merge-base", "--is-ancestor", moved, "HEAD"]) == ""
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == moved
 
-    for entry <- entries,
-        do: refute(Repository.get(entry.id).status in [:ejected, :landed])
+    refute Repository.get(first.id).status in [:ejected, :landed]
   end
 
-  # An analyzer that cannot run on the gate copy fails rather than answering;
-  # the gate would start it again every recheck, forever. Started a third time
-  # at the same commit, the batch is held and its requester told — nothing
-  # ejected, nothing landed. (The first live batch, 2026-10-05: a gate copy
-  # minted without its envs could not boot the test suite.)
-  test "a batch whose gate cannot run an analyzer is held, not looped", ctx do
+  # A run that fails at the batch commit is red like a finding, and not retried:
+  # the candidate's own change may be what stops the analyzer running. (The
+  # first live batch, 2026-10-05: a gate copy minted without its envs could not
+  # boot the test suite. That is the gate copy's to fix, and it ejects too.)
+  test "a candidate whose gate run fails is ejected, naming the analyzer", ctx do
     previous = Application.get_env(:code_my_spec, :agent_transport)
     Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
     on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
     RecordingAgentTransport.listen()
 
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    agent = an_agent(ctx, b.copy)
-
-    {:ok, _} =
-      Repository.enqueue(%{
-        project_id: ctx.scope.active_project_id,
-        working_copy_id: a.copy.id,
-        commit: a.commit,
-        restart: false
-      })
+    agent = an_agent(ctx, a.copy)
 
     {:ok, entry} =
       Repository.enqueue(%{
         project_id: ctx.scope.active_project_id,
-        working_copy_id: b.copy.id,
-        commit: b.commit,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
         restart: false,
         requested_by_agent_id: agent.id
       })
 
     :ok = PromotionQueue.ensure_worker(ctx.scope)
-    agent_id = agent.id
 
-    # Its recheck, without waiting out the interval: the first runs failed, the
-    # recheck starts them again, and with the second failure at that commit the
-    # batch is held. (Runs fail synchronously here; over a harness the second
-    # failure lands a recheck later.)
+    # Its recheck, without waiting out the interval. (Runs fail synchronously
+    # here, inside the gate that started them; over a harness each failure
+    # re-gates.)
     [{worker, _}] =
       Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
 
     :sys.get_state(worker)
-    refute_received {:agent_dispatch, ^agent_id, _, _}
     send(worker, :gate)
 
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
+    assert result["reason"] =~ "could not run at the batch commit"
+
+    agent_id = agent.id
     assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 10_000
-    assert told =~ "the gate copy cannot run"
-    assert told =~ "nothing was taken out"
-    assert %{status: :gating} = Repository.get(entry.id)
+    assert told =~ "was taken out of the queue"
   end
 
   defp an_agent(ctx, copy) do
@@ -523,7 +403,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # 3c59be47, 2026-10-05: a landing restarts the harness, which orphans the
   # next gate's first runs. Those say nothing about whether the gate copy can
   # run them, and counting them held a batch whose analyzers ran fine.
-  test "runs a harness going away orphaned do not hold the batch", ctx do
+  test "runs a harness going away orphaned are not failures of the batch", ctx do
     previous = Application.get_env(:code_my_spec, :agent_transport)
     Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
     on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
@@ -565,7 +445,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     agent_id = agent.id
 
     refute_received {:agent_dispatch, ^agent_id, _ref, _told},
-                    "the batch was held over runs its harness going away orphaned"
+                    "the batch was failed over runs its harness going away orphaned"
   end
 
   # 2026-10-05, 08:41: the gate copy's harness restarted while its batch was

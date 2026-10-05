@@ -28,12 +28,18 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
   use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Engine
+  alias CmsHarness.Agents.Liveness
   alias CmsHarnessTest.Machine
 
   @moduletag :tmp_dir
 
   setup %{tmp_dir: tmp_dir} do
     Machine.ensure_supervisor()
+    previous = Application.get_env(:code_my_spec, :agent_queue_receipts_dir)
+    Application.put_env(:code_my_spec, :agent_queue_receipts_dir, Path.join(tmp_dir, "receipts"))
+
+    on_exit(fn -> restore_receipts_dir(previous) end)
+
     %{root: tmp_dir}
   end
 
@@ -101,6 +107,68 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     after
       800 -> acc
     end
+  end
+
+  test "a queued message lost in a crash is not reported as delivered", %{root: root} do
+    :ok = Liveness.subscribe()
+    agent = start_agent(root, gated_plug(self()), self())
+    assert_receive {:agent_liveness, :up, ^agent, _, nil}, 2_000
+    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+    assert_receive {:holding_turn, _execution}, 5_000
+    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "take this back")
+    assert {:ok, pid} = Engine.State.whereis(agent)
+
+    Process.exit(pid, :kill)
+    assert_receive {:agent_liveness, :down, ^agent, _, :killed}, 2_000
+    assert_receive {:agent_liveness, :up, ^agent, _, nil}, 5_000
+
+    refute_received {:event, %{event: :message_delivered, ref: "waiting"}}
+    assert :ok = Machine.withdraw(agent, "waiting")
+    assert {:error, :already_delivered} = Machine.withdraw(agent, "running")
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+  end
+
+  test "an unconsumed message remains withdrawable after its Keeper is replaced", %{root: root} do
+    plug = gated_plug(self())
+    agent = start_agent(root, plug, self())
+    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+    assert_receive {:holding_turn, _execution}, 5_000
+    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "take this back")
+    assert :ok = Machine.stop_agent(agent)
+
+    assert {:ok, _} =
+             Machine.start_agent(agent, root,
+               provider: "anthropic",
+               api_key: "unused",
+               req_options: [plug: plug]
+             )
+
+    assert :ok = Machine.withdraw(agent, "waiting")
+    assert {:error, :already_delivered} = Machine.withdraw(agent, "running")
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+  end
+
+  test "a consumed queued message stays non-withdrawable after Keeper replacement", %{root: root} do
+    plug = gated_plug(self())
+    agent = start_agent(root, plug, self())
+    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+    assert_receive {:holding_turn, execution}, 5_000
+    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
+
+    send(execution, :release)
+    assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
+    assert :ok = Machine.stop_agent(agent)
+
+    assert {:ok, _} =
+             Machine.start_agent(agent, root,
+               provider: "anthropic",
+               api_key: "unused",
+               req_options: [plug: plug]
+             )
+
+    assert {:error, :already_delivered} = Machine.withdraw(agent, "waiting")
   end
 
   test "the settle that has work queued behind it stays quiet", %{root: root} do
@@ -284,6 +352,12 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     {:os_pid, os_pid} = Port.info(port, :os_pid)
     send(test_pid, {:owned_subprocess, os_pid})
   end
+
+  defp restore_receipts_dir(nil),
+    do: Application.delete_env(:code_my_spec, :agent_queue_receipts_dir)
+
+  defp restore_receipts_dir(dir),
+    do: Application.put_env(:code_my_spec, :agent_queue_receipts_dir, dir)
 
   defp start_owned_subprocess(test_pid, :supervised) do
     Task.Supervisor.async_nolink(Alloy.TaskSupervisor, fn ->

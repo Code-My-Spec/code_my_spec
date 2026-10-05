@@ -28,7 +28,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignModeTest do
   alias CodeMySpec.Environments.Environment
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     %{scope: scope, tmp: tmp}

@@ -29,7 +29,7 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
   end
 
   test "byte-identical impl rewrite + new failing test surfaces both blocking compiler and advisory exunit" do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 

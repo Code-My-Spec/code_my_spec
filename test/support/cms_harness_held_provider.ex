@@ -82,22 +82,27 @@ defmodule CmsHarnessTest.HeldProvider do
   """
   @spec start() :: String.t()
   def start do
-    Store.reset()
+    {:ok, store} = GenServer.start(Store, :ok)
+    Process.put(Store, store)
 
     {:ok, server} =
       Bandit.start_link(
-        plug: __MODULE__,
+        plug: {__MODULE__, store},
         scheme: :http,
         ip: {127, 0, 0, 1},
         port: 0,
         startup_log: false
       )
 
+    # Unlinked so it outlives the test process until on_exit stops it in
+    # order; linked, it died with the test and raced the stop below.
+    true = Process.unlink(server)
     {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
 
     ExUnit.Callbacks.on_exit(fn ->
-      Store.release()
-      Store.reset()
+      if Process.alive?(store), do: GenServer.call(store, :release)
+      if Process.alive?(server), do: GenServer.stop(server)
+      if Process.alive?(store), do: GenServer.stop(store)
     end)
 
     "http://127.0.0.1:#{port}"
@@ -154,7 +159,8 @@ defmodule CmsHarnessTest.HeldProvider do
   def init(opts), do: opts
 
   @impl Plug
-  def call(conn, _opts) do
+  def call(conn, store) do
+    Process.put(Store, store)
     {:ok, body, conn} = Plug.Conn.read_body(conn)
 
     # Blocks here while held, which is the whole point: the agent's turn is
@@ -227,85 +233,74 @@ defmodule CmsHarnessTest.HeldProvider do
     replying to it. That keeps the block and the bookkeeping in one place
     instead of a table plus a set of monitored pids.
 
-    Started unlinked and named, like the harness's registry and agent
-    supervisor, because criteria start and stop endpoints while it has to keep
-    answering. `reset/0` is what makes one run independent of the next.
+    Each endpoint owns an unnamed store. The scenario and its child tasks
+    address that store through the caller's process dictionary; HTTP handlers
+    receive it in their plug options. Teardown releases and stops only that
+    endpoint's resources, so another scenario cannot reset its requests.
+
     """
 
     use GenServer
 
     @spec reset() :: :ok
     def reset do
-      ensure_started()
-      GenServer.call(__MODULE__, :reset)
+      GenServer.call(store!(), :reset)
     end
 
     @spec hold() :: :ok
     def hold do
-      ensure_started()
-      GenServer.call(__MODULE__, :hold)
+      GenServer.call(store!(), :hold)
     end
 
     @spec hold_mid_reply() :: :ok
     def hold_mid_reply do
-      ensure_started()
-      GenServer.call(__MODULE__, :hold_mid_reply)
+      GenServer.call(store!(), :hold_mid_reply)
     end
 
     @spec drop() :: :ok
     def drop do
-      ensure_started()
-      GenServer.call(__MODULE__, :drop)
+      GenServer.call(store!(), :drop)
     end
 
     @spec park() :: :ok | :drop
     def park do
-      ensure_started()
-      GenServer.call(__MODULE__, :park, :infinity)
+      GenServer.call(store!(), :park, :infinity)
     end
 
     @spec refuse() :: :ok
     def refuse do
-      ensure_started()
-      GenServer.call(__MODULE__, :refuse)
+      GenServer.call(store!(), :refuse)
     end
 
     @spec release() :: :ok
     def release do
-      ensure_started()
-      GenServer.call(__MODULE__, :release)
+      GenServer.call(store!(), :release)
     end
 
     @spec seen() :: [String.t()]
     def seen do
-      ensure_started()
-      GenServer.call(__MODULE__, :seen)
+      GenServer.call(store!(), :seen)
     end
 
     @spec arrived(String.t()) :: :ok | :refuse | :midway
     def arrived(body) do
-      ensure_started()
-      GenServer.call(__MODULE__, {:arrived, body}, :infinity)
+      GenServer.call(store!(), {:arrived, body}, :infinity)
     end
 
     @spec await_request(timeout()) :: :ok
     def await_request(timeout) do
-      ensure_started()
-      GenServer.call(__MODULE__, :await_request, timeout)
+      GenServer.call(store!(), :await_request, timeout)
     end
 
-    defp ensure_started do
-      case Process.whereis(__MODULE__) do
-        nil ->
-          # Unlinked: it outlives the criterion that first needed it, the same
-          # way the harness registry does, so the next one does not race a
-          # dying process.
-          {:ok, _pid} = GenServer.start(__MODULE__, :ok, name: __MODULE__)
-          :ok
+    defp store! do
+      owners = [self() | Process.get(:"$callers", [])]
 
-        _pid ->
-          :ok
-      end
+      Enum.find_value(owners, fn owner ->
+        case Process.info(owner, :dictionary) do
+          {:dictionary, dictionary} -> Keyword.get(dictionary, __MODULE__)
+          nil -> nil
+        end
+      end) || raise "HeldProvider.start/0 must be called before using its store"
     end
 
     @impl true

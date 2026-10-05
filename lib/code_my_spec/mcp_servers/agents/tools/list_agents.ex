@@ -25,8 +25,15 @@ defmodule CodeMySpec.McpServers.Agents.Tools.ListAgents do
   @impl true
   def execute(params, frame) do
     case Validators.validate_local_scope(frame, params) do
-      {:ok, scope} -> {:reply, AgentsMapper.listing(Agents.list_running(scope)), frame}
+      {:ok, scope} -> {:reply, AgentsMapper.listing(listed(scope)), frame}
       {:error, reason} -> {:reply, AgentsMapper.error(reason, nil), frame}
     end
   end
+
+  # Every agent on duty, whether or not its process is up, and any still
+  # running though turned off. An agent asked for that never came up is listed,
+  # so it can be found and cancelled (criterion 975); listing only present ones
+  # (v2.0.372) hid exactly those.
+  defp listed(scope),
+    do: Enum.uniq_by(Agents.list_on_duty(scope) ++ Agents.list_running(scope), & &1.id)
 end

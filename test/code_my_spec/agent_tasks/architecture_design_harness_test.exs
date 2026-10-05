@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignHarnessTest do
   alias CodeMySpecWeb.HarnessProjectChannel
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     id = a_harness_serving(tmp)
 
     env = %Environment{type: :harness, cwd: tmp, ref: %{"harness_id" => id}}

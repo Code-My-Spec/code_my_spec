@@ -82,6 +82,13 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     what says why.
     """
 
+  defp headline(%Agent{}, :gave_up),
+    do: """
+    Its harness gave up on it: the process crashed three times in ten minutes and
+    is no longer restarted. Nothing will start it on its own — find the cause,
+    then `restart_agent` it.
+    """
+
   defp headline(%Agent{}, _lifecycle), do: "Agent started."
 
   # Derived, not stored: running while its process is present
@@ -156,7 +163,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     body = Enum.map_join(agents, "\n\n", &entry/1)
 
     Response.tool()
-    |> Response.text("#{length(agents)} agent(s) running.\n\n#{body}")
+    |> Response.text("#{length(agents)} agent(s), each with its status.\n\n#{body}")
   end
 
   defp entry(%Agent{} = agent) do

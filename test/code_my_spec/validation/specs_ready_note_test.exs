@@ -42,7 +42,7 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
     # BddSpecs.Parser.validate_structure/1.
     File.write!(full, """
     defmodule Story#{story.number}Spex do
-      spex "a feature" do
+      spex "a feature", criterion: #{criterion.number} do
         scenario "it works" do
         end
       end
@@ -53,7 +53,6 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
 
     # Enforcement is per-criterion now (story 983): the problem only blocks
     # once the criterion whose path it is has itself latched.
-    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
 
     problem_fixture(scope, %{
       source: "spex",
@@ -101,7 +100,9 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
            "expected the orientation note, got:\n#{reason}"
 
     assert reason =~ "2026-09-10", "expected the earned-at time in the message, got:\n#{reason}"
-    assert reason =~ "abc123de", "expected the (truncated) commit sha in the message, got:\n#{reason}"
+
+    assert reason =~ "abc123de",
+           "expected the (truncated) commit sha in the message, got:\n#{reason}"
 
     assert reason =~ "does not have the fix yet" or reason =~ "does not have this commit yet" or
              reason =~ "check whether your checkout already has the commit",

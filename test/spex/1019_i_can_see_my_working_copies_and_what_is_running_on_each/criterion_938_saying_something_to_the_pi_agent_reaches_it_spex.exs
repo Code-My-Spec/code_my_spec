@@ -62,7 +62,8 @@ defmodule CodeMySpecSpex.Story1019.Criterion2833Spex do
         {talkable, socket} =
           join_working_copy_socket(context, talkable_root, "talkable checkout")
 
-        other = join_working_copy(context, other_root, "the other checkout")
+        {other, other_socket} =
+          join_working_copy_socket(context, other_root, "the other checkout")
 
         report_agents(context, [
           pi_agent(talkable.working_copy_id, talkable_root),
@@ -78,6 +79,11 @@ defmodule CodeMySpecSpex.Story1019.Criterion2833Spex do
 
         start_agent_with_provider(talkable_agent.id, working_copy: talkable_root)
         start_agent_with_provider(other_agent.id, working_copy: other_root)
+
+        # Each copy's harness says its agent is up, as it does once the process
+        # starts: a message is delivered only to an agent that is present.
+        :ok = agent_up(socket, talkable_agent.id)
+        :ok = agent_up(other_socket, other_agent.id)
 
         # A line in each agent's own transcript, said the way a machine says it.
         # The transcript itself is the evidence, so a link that opened a

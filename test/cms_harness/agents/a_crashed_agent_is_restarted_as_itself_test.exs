@@ -18,7 +18,7 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
   alias CmsHarnessTest.Machine
 
   setup do
-    {:ok, root} = Briefly.create(directory: true)
+    root = CodeMySpec.TempFile.owned_dir("test")
     root = Path.expand(root)
     id = Ecto.UUID.generate()
     test = self()

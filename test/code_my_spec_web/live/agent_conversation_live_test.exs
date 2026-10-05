@@ -71,6 +71,71 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "rendering recorded turns" do
+    test "routine confirmations collapse while human messages and failures stay visible", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      legacy =
+        "The reload from your promotion is confirmed: the application at /tmp/app is up and serving abc."
+
+      {:ok, _} = Conversations.add_message(conversation, :operator, legacy, "operator")
+
+      {:ok, _} =
+        Conversations.add_message(
+          conversation,
+          :operator,
+          "Please check the deployment",
+          "operator"
+        )
+
+      {:ok, _} =
+        Conversations.add_message(
+          conversation,
+          :operator,
+          "Correction: deployment failed",
+          "operator"
+        )
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "details[data-test='routine-notice']:not([open])", legacy)
+      assert has_element?(view, "[data-test='message']", "Please check the deployment")
+      assert has_element?(view, "[data-test='message']", "Correction: deployment failed")
+      refute has_element?(view, "[data-test='message']", legacy)
+    end
+
+    test "a pending routine notice stays withdrawable and collapses after delivery", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      {:ok, message} =
+        Conversations.add_message(
+          conversation,
+          :operator,
+          "Deployment confirmation details",
+          "promotion-notice",
+          [], delivery: :pending, delivery_ref: Ecto.UUID.generate())
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "details[data-test='pending-routine-notice']:not([open])")
+      assert has_element?(view, "[data-test='agent-withdraw-message']")
+      assert {:ok, _} = Conversations.set_delivery(message, :delivered)
+      refute has_element?(view, "[data-test='agent-pending-message']")
+
+      assert has_element?(
+               view,
+               "details[data-test='routine-notice']:not([open])",
+               "Deployment confirmation details"
+             )
+    end
+
     test "a queued message enters the received transcript only on delivery", %{
       conn: conn,
       scope: scope,

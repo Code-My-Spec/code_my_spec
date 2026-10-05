@@ -31,7 +31,6 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   import Phoenix.ChannelTest, only: [push: 3, assert_reply: 4]
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
@@ -288,14 +287,14 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
   @doc "An agent on the coding agent's copy, which `promote/2` then promotes as."
   def an_agent_on_the_copy(context) do
-    {:ok, agent} =
-      AgentsRepository.create_agent(context.scope, %{
+    # Running, so present: the queue's outcome is delivered only to an agent
+    # whose process is up.
+    agent =
+      Fixtures.running_agent(
+        %{context.scope | active_working_copy_id: context.agent.working_copy_id},
         provider: "anthropic",
-        engine: :alloy,
-        role: "coding",
-        working_copy: context.agent_root,
-        working_copy_id: context.agent.working_copy_id
-      })
+        working_copy: context.agent_root
+      )
 
     Map.put(context, :agent_id, agent.id)
   end
@@ -328,14 +327,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     copy = join_working_copy(context, root, "#{key}'s copy")
     scope = %{context.scope | active_working_copy_id: copy.working_copy_id}
 
-    {:ok, agent} =
-      AgentsRepository.create_agent(scope, %{
-        provider: "anthropic",
-        engine: :alloy,
-        role: "coding",
-        working_copy: root,
-        working_copy_id: copy.working_copy_id
-      })
+    agent = Fixtures.running_agent(scope, provider: "anthropic", working_copy: root)
 
     Map.put(context, key, %{
       root: root,
@@ -352,6 +344,20 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_, 0} = git(context, root, ["commit", "-q", "-m", "work on #{path}"])
     context
   end
+
+  @doc """
+  The agent's copy with a commit of its own, as a copy promoting a story has.
+  A copy still at main's commit is already on main, and the queue lands it
+  without a gate (2583cc8b0), so nothing would certify or latch it.
+  """
+  def with_work_on_the_copy(context),
+    do:
+      commit_work(
+        context,
+        context.agent_root,
+        "lib/story_work.ex",
+        "defmodule StoryWork do\nend\n"
+      )
 
   @doc "A candidate's own analyzers current at its HEAD."
   def its_analyzers_are_current(context, %{scope: scope}) do

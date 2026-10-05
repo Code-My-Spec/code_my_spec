@@ -55,7 +55,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
 
   describe "an environment that can answer" do
     setup do
-      {:ok, tmp} = Briefly.create(directory: true)
+      tmp = CodeMySpec.TempFile.owned_dir("test")
       %{scope: %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}}
     end
 

@@ -16,12 +16,12 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.AgentTasks.ReadyForQa
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.WorkingCopies
 
@@ -81,14 +81,23 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
 
   # One spec file linked to the story — a story with none has nothing that says
   # its spex pass, and certification refuses it.
+  # A spex file per live criterion, each naming its criterion as a synced spex
+  # does (`Files.SpecBinding`). Answers the first one's path.
   defp spec(scope, story) do
-    path = "test/spex/#{story.id}_a_feature/criterion_1_spex.exs"
+    rows =
+      for criterion <- AcceptanceCriteria.list_story_criteria(scope, story.id) do
+        %{
+          path: "test/spex/#{story.number}_a_feature/criterion_#{criterion.number}_spex.exs",
+          role: :bdd_spec,
+          story_id: story.id,
+          criterion_number: criterion.number,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      end
 
-    CodeMySpec.Files.upsert_files(scope, [
-      %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
-    ])
-
-    path
+    CodeMySpec.Files.upsert_files(scope, rows)
+    hd(rows).path
   end
 
   defp dispatched_sources do
@@ -150,16 +159,10 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     assert dispatched_sources() == [], "a certified commit's runs are reused, not restarted"
   end
 
-  # Story 983, criterion 1896: a never-latched criterion's red spex is
-  # tolerated on a story's first certifying run, so this now needs a
-  # criterion already latched before a red spex refuses again.
-  test "the story's own red spex refuse it, once a criterion is already latched" do
+  test "the story's own red spex refuse it" do
     %{scope: scope, story: story} = a_copy()
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
     path = spec(scope, story)
-
-    [criterion | _] = AcceptanceCriteria.list_all_story_criteria(scope, story.id)
-    {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
 
     problem_fixture(scope, %{
       source: "spex",

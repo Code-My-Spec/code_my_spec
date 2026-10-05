@@ -32,7 +32,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   # entirely on a machine without the binaries, so reaching here means they are
   # there.
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
     {:ok, scope: scope, tmp: tmp}
   end

@@ -820,20 +820,6 @@ defmodule CodeMySpec.Promotion.Steps do
     do: {:ok, %{contained: Enum.filter(commits, &ancestor?(env, root, &1, base))}}
 
   @doc """
-  The paths `commit` changed relative to where it left `base` — what the queue
-  attributes a red batch's findings by. Three-dot, so a candidate behind main
-  is not blamed for main's own changes.
-  """
-  @spec changed_files(Environments.Environment.t(), String.t(), String.t(), String.t()) ::
-          result()
-  def changed_files(env, root, base, commit) do
-    case git(env, root, ["diff", "--name-only", "#{base}...#{commit}"]) do
-      {out, 0} -> {:ok, %{files: String.split(out, "\n", trim: true)}}
-      {out, _} -> {:error, %{reason: "could not diff #{base}...#{commit}: #{String.trim(out)}"}}
-    end
-  end
-
-  @doc """
   The checkout's HEAD and its version — the nearest `vX.Y.Z` tag, else the
   literal in `mix.exs` — moving nothing.
 

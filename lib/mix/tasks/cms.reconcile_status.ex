@@ -5,14 +5,12 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
   Bring a project's story graph current with what its checkout has shown.
 
       mix cms.reconcile_status --root <checkout>                     # dry run: prints the plan
-      mix cms.reconcile_status --root <checkout> --apply             # latches and stamps
+      mix cms.reconcile_status --root <checkout> --apply             # stamps
       mix cms.reconcile_status --root <checkout> --apply --unpark    # and releases parked stories
 
-  Latches criteria whose spex passed on the checkout's spex run at HEAD, stamps
-  stories whose latest QA attempt passed ready for QA, and with `--unpark`
-  releases parked stories that are fully latched and QA-passed. Never unlatches
-  a criterion or leaves a stamp or latch cleared: what a release clears is put
-  back. The project comes from the checkout's
+  Stamps stories whose latest QA attempt passed ready for QA, and with
+  `--unpark` releases parked stories that are QA-passed. Never leaves a stamp
+  cleared: what a release clears is put back. The project comes from the checkout's
   `.code_my_spec/config.yml`; see `CodeMySpec.StoryReconcile` for the rules.
   """
 
@@ -46,9 +44,9 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
     Mix.Task.run("app.start")
 
     with {:ok, scope} <- Projects.scope_from_local_config(root),
-         {:ok, head, head_paths} <- git_head(root) do
+         {:ok, head} <- git(root, ["rev-parse", "HEAD"]) do
       scope = bind(scope, root)
-      plan = StoryReconcile.plan(scope, head: head, head_paths: head_paths, unpark: unpark?)
+      plan = StoryReconcile.plan(scope, head: head, unpark: unpark?)
       report(plan)
       finish(scope, plan, apply?)
     else
@@ -74,13 +72,6 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
     end
   end
 
-  defp git_head(root) do
-    with {:ok, head} <- git(root, ["rev-parse", "HEAD"]),
-         {:ok, paths} <- git(root, ["ls-tree", "-r", "--name-only", "HEAD"]) do
-      {:ok, head, String.split(paths, "\n", trim: true)}
-    end
-  end
-
   defp git(root, args) do
     case System.cmd("git", ["-C", root | args], stderr_to_stdout: true) do
       {out, 0} -> {:ok, String.trim(out)}
@@ -95,7 +86,6 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
     Mix.shell().info("HEAD #{plan.head}\n")
     # In the order `StoryReconcile.carry_out/2` writes: a release clears the
     # ready-for-QA stamp, so stamping comes after it.
-    step("1. latch passing criteria", plan.latch, &latch_line/1, &latch_counts/1)
     step("3. un-park", plan.unpark, &unpark_line/1, fn _ -> "" end)
     step("2. ready-for-QA stamp", plan.qa_ready, &qa_line/1, &qa_counts/1)
   end
@@ -113,17 +103,7 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
     Enum.each(items, &Mix.shell().info("  " <> line.(&1)))
   end
 
-  defp latch_counts(counts) do
-    ", already latched #{counts[:already] || 0}, failing #{counts[:failing] || 0}, " <>
-      "no spex #{counts[:no_spex] || 0}, spex not at HEAD #{counts[:not_at_head] || 0} " <>
-      "(spex run #{counts.run_id})"
-  end
-
   defp qa_counts(counts), do: ", already stamped #{counts.already}"
-
-  defp latch_line(item),
-    do:
-      "story #{item.story.number} criterion #{item.criterion.number}: #{item.before} -> #{item.after}"
 
   defp qa_line(%{source: :head} = item),
     do:

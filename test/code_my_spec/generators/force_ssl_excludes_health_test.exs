@@ -21,7 +21,7 @@ defmodule CodeMySpec.Generators.ForceSslExcludesHealthTest do
     Application.put_env(:code_my_spec, :environment, Local)
     on_exit(fn -> Application.put_env(:code_my_spec, :environment, previous) end)
 
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     %{env: Environment.new(:local, dir), dir: dir}
   end
 

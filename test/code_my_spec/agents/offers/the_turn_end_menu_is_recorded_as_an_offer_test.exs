@@ -106,7 +106,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
   describe "problems" do
     setup ctx do
-      {:ok, tmp} = Briefly.create(directory: true)
+      tmp = CodeMySpec.TempFile.owned_dir("test")
       scope = %{ctx.scope | cwd: tmp, environment: Environment.new(:local, tmp)}
 
       Configurations.get_or_create(scope)
@@ -126,7 +126,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
           spec_path: @spex_path
         })
 
-      {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
       {:ok, _} = Stories.set_specs_ready(scope, Stories.get_story(scope, story.id), true)
       problem_fixture(scope, %{source: "spex", severity: :error, file_path: @spex_path})
       fresh_analysis_runs_fixture(scope)

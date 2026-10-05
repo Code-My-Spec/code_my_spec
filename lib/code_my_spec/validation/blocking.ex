@@ -20,14 +20,12 @@ defmodule CodeMySpec.Validation.Blocking do
     ],
     exports: :all
 
-  alias CodeMySpec.BddSpecs
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Stories
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
 
   # Spex enforcement is per-story, and it runs BEFORE the configured mode
@@ -123,8 +121,7 @@ defmodule CodeMySpec.Validation.Blocking do
   def enforceable(%Scope{} = scope, problems) do
     ctx = %{
       specs_ready_story_ids: specs_ready_story_ids(scope),
-      latched_spec_paths: latched_spec_paths(scope),
-      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      criterion_story_ids: Files.bdd_spec_story_id_by_path(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
@@ -137,28 +134,11 @@ defmodule CodeMySpec.Validation.Blocking do
     end)
   end
 
-  # Per-criterion (story 983, criteria 1898-1901, 1906): a red spex blocks
-  # when the criterion whose path it is has itself gone green on a
-  # certifying run before -- not when the *story* carries the whole-story
-  # `specs_ready` latch some sibling criterion earned. `story_id_for/4` still
-  # decides whether the path resolves to a story at all: unresolvable stays
-  # enforced, the same fail-closed `02796b61` fallback as before.
-  def split_by_story_enforcement("spex", problems, ctx) do
-    %{
-      latched_spec_paths: latched_paths,
-      criterion_story_ids: by_path,
-      spec_file_story_ids: by_spec_file,
-      story_ids_by_number: by_number
-    } = ctx
-
-    Enum.split_with(problems, fn problem ->
-      located?(problem) and
-        case story_id_for(problem.file_path, by_path, by_spec_file, by_number) do
-          nil -> true
-          _story_id -> MapSet.member?(latched_paths, problem.file_path)
-        end
-    end)
-  end
+  # Every red spex blocks (John, 2026-10-05): analysis runs only at certify and
+  # promote, so a red spex there is red, latched or not. Only a finding with no
+  # location is advisory (`located?/1`).
+  def split_by_story_enforcement("spex", problems, _ctx),
+    do: Enum.split_with(problems, &located?/1)
 
   def split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
 
@@ -234,27 +214,6 @@ defmodule CodeMySpec.Validation.Blocking do
   def specs_ready_story_ids(scope) do
     scope
     |> Stories.list_specs_ready_story_ids()
-    |> MapSet.new()
-  end
-
-  # Every latched, live criterion's own spec path, derived the same way the
-  # harness looks one up (`BddSpecs.spec_file_path/2`: a recorded `spec_path`
-  # first, a convention-derived path otherwise) rather than read off the
-  # `spec_path` column directly -- that column is often unset until a real
-  # sync binds it, and reading it bare would under-enforce every criterion a
-  # test (or an agent) latched before that happened.
-  defp latched_spec_paths(scope) do
-    scope
-    |> AcceptanceCriteria.list_latched_criteria()
-    |> Enum.flat_map(fn criterion ->
-      case criterion.story do
-        %{number: number} = story when is_integer(number) ->
-          [BddSpecs.spec_file_path(story, criterion)]
-
-        _ ->
-          []
-      end
-    end)
     |> MapSet.new()
   end
 end

@@ -548,18 +548,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         Agents.process_ended(scope, id, reason)
       end)
 
-    {:reply, :ok, untrack_agents(socket, [id])}
+    {:reply, :ok, ended(socket, id, reason)}
   end
 
   # The harness's whole set, on join: track what is new, untrack what is gone,
   # and sweep the copy for work — a harness that has just (re)connected is the
   # case with something to catch.
-  def handle_in("agents_present", %{"agent_ids" => ids}, socket) when is_list(ids) do
-    present = present_agents(socket)
+  #
+  # `gave_up` (a newer harness) names the agents its Keepers gave up on, which
+  # stay marked across a reconnect rather than reading as starting again.
+  def handle_in("agents_present", %{"agent_ids" => ids} = payload, socket) when is_list(ids) do
+    stuck = List.wrap(payload["gave_up"])
+    stuck_ids = Enum.map(stuck, & &1["agent_id"])
+    tracked = MapSet.union(present_agents(socket), gave_up_agents(socket))
     socket = track_agents(socket, ids)
-    gone = MapSet.to_list(MapSet.difference(present, MapSet.new(ids)))
+    gone = MapSet.to_list(MapSet.difference(tracked, MapSet.new(ids ++ stuck_ids)))
 
-    {:reply, :ok, socket |> untrack_agents(gone) |> consider_once(:present)}
+    socket =
+      Enum.reduce(stuck, untrack_agents(socket, gone), fn entry, socket ->
+        mark_gave_up(socket, entry["agent_id"], entry["reason"], entry["at"])
+      end)
+
+    {:reply, :ok, consider_once(socket, :present)}
   end
 
   # What the box is carrying, from the box.
@@ -1955,6 +1965,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # already tracked is skipped — a second `track` is `:already_tracked`, and a
   # repeated up must not take the channel, and every agent's presence, with it.
   defp track_agents(socket, ids) do
+    {recovered, ids} = Enum.split_with(ids, &MapSet.member?(gave_up_agents(socket), &1))
+    socket = Enum.reduce(recovered, socket, &recover(&2, &1))
+
     {own, foreign} =
       ids
       |> Enum.reject(&MapSet.member?(present_agents(socket), &1))
@@ -1980,15 +1993,75 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp untrack_agents(socket, ids) do
-    present =
-      for id <- ids, reduce: present_agents(socket) do
-        present ->
-          :ok = Agents.Presence.untrack(self(), presence_topic(socket), id)
-          MapSet.delete(present, id)
-      end
+    for id <- ids, reduce: socket do
+      socket ->
+        :ok = Agents.Presence.untrack(self(), presence_topic(socket), id)
 
-    assign(socket, :present_agents, present)
+        socket
+        |> assign(:present_agents, MapSet.delete(present_agents(socket), id))
+        |> assign(:gave_up_agents, MapSet.delete(gave_up_agents(socket), id))
+    end
   end
+
+  # Its Keeper gave up on a crash loop: kept, marked, so the agent reads as
+  # stuck rather than starting until main restarts it. Any other down is gone.
+  defp ended(socket, id, "gave_up: " <> reason), do: mark_gave_up(socket, id, reason, nil)
+  defp ended(socket, id, _reason), do: untrack_agents(socket, [id])
+
+  # Kept tracked, marked as given up on — `Agents.Presence.gave_up/2` reads it,
+  # and nothing counts it as running.
+  defp mark_gave_up(socket, id, reason, at) do
+    meta = %{
+      working_copy_id: copy_id(socket),
+      state: :gave_up,
+      reason: reason,
+      at: parse_at(at)
+    }
+
+    cond do
+      tracked?(socket, id) ->
+        {:ok, _} = Agents.Presence.update(self(), presence_topic(socket), id, meta)
+
+      own_agent?(socket, id) ->
+        {:ok, _} = Agents.Presence.track(self(), presence_topic(socket), id, meta)
+
+      true ->
+        :ok
+    end
+
+    Logger.info("[AgentPresence] #{id} given up on, on #{copy_id(socket)}: #{reason}")
+
+    socket
+    |> assign(:present_agents, MapSet.delete(present_agents(socket), id))
+    |> assign(:gave_up_agents, MapSet.put(gave_up_agents(socket), id))
+  end
+
+  # Back up after being given up on — main restarted it: running again.
+  defp recover(socket, id) do
+    {:ok, _ref} =
+      Agents.Presence.update(self(), presence_topic(socket), id, %{
+        working_copy_id: copy_id(socket),
+        since: DateTime.utc_now()
+      })
+
+    Logger.info("[AgentPresence] #{id} up on #{copy_id(socket)}, after being given up on")
+
+    socket
+    |> assign(:gave_up_agents, MapSet.delete(gave_up_agents(socket), id))
+    |> assign(:present_agents, MapSet.put(present_agents(socket), id))
+  end
+
+  defp tracked?(socket, id),
+    do: MapSet.member?(present_agents(socket), id) or MapSet.member?(gave_up_agents(socket), id)
+
+  defp parse_at(at) when is_binary(at) do
+    case DateTime.from_iso8601(at) do
+      {:ok, at, _offset} -> at
+      _ -> DateTime.utc_now()
+    end
+  end
+
+  defp parse_at(_at), do: DateTime.utc_now()
 
   defp own_agent?(socket, id) do
     match?(
@@ -1998,6 +2071,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp present_agents(socket), do: Map.get(socket.assigns, :present_agents, MapSet.new())
+  defp gave_up_agents(socket), do: Map.get(socket.assigns, :gave_up_agents, MapSet.new())
   defp presence_topic(socket), do: Agents.presence_topic(socket.assigns.scope.active_project_id)
   defp copy_id(socket), do: socket.assigns.scope.active_working_copy_id
 

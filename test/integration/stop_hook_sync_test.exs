@@ -154,7 +154,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
   describe "validation_type" do
     test "manual validation tasks are not evaluated — stop is allowed" do
-      {:ok, tmp_dir} = Briefly.create(directory: true)
+      tmp_dir = CodeMySpec.TempFile.owned_dir("test")
       scope = full_scope_fixture()
 
       {:ok, project} =
@@ -206,7 +206,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # ============================================================================
 
   defp setup_component_scenario do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 

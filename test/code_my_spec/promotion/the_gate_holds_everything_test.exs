@@ -1,11 +1,10 @@
-defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
+defmodule CodeMySpec.Promotion.TheGateHoldsEverythingTest do
   @moduledoc """
-  Zero problems on the promoting copy, except the red spex of stories that are
-  not latched (30fd997f, John 2026-09-30).
+  Zero problems on the promoting copy (John, 2026-10-05: every red spex refuses,
+  latched or not).
 
-  Compiler, credo and exunit findings refuse at :error or :warning; :info is advisory. A red spex of a
-  story whose `specs_ready` is false merges — spex are committed before their
-  code. A red spex of a latched story is a regression and refuses.
+  Compiler, credo and exunit findings refuse at :error or :warning; :info is
+  advisory. A red spex refuses whatever its story's state.
 
   Drives `Promotion.gate/3` directly: the gate reads the database and never
   touches git, so there is nothing to shell out to.
@@ -37,15 +36,20 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
     %{scope: scope}
   end
 
-  defp red_spec(scope, story, latched? \\ false) do
+  defp red_spec(scope, story) do
     [criterion | _] = story.criteria
     path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
 
     CodeMySpec.Files.upsert_files(scope, [
-      %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
+      %{
+        path: path,
+        role: :bdd_spec,
+        story_id: story.id,
+        criterion_number: criterion.number,
+        valid: true,
+        mtime: DateTime.utc_now()
+      }
     ])
-
-    maybe_latch(latched?, scope, criterion)
 
     problem_fixture(scope, %{
       source: "spex",
@@ -57,13 +61,6 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
     })
 
     path
-  end
-
-  defp maybe_latch(false, _scope, _criterion), do: :ok
-
-  defp maybe_latch(true, scope, criterion) do
-    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
-    :ok
   end
 
   test "an open exunit failure refuses, naming the count and the failure", %{scope: scope} do
@@ -80,7 +77,6 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
     assert {:error, %{reason: reason}} = Promotion.gate(scope, @head)
     assert reason =~ "1 exunit"
     assert reason =~ "test/my_app_web/live/settings_test.exs:12"
-    assert reason =~ "not latched", "the refusal has to say what may stay red. Got: #{reason}"
   end
 
   test "a credo :warning refuses", %{scope: scope} do
@@ -113,18 +109,9 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingButUnlatchedSpexTest do
     assert reason =~ "1 compiler"
   end
 
-  test "a red spex of a story that is not latched does not refuse", %{scope: scope} do
+  test "a red spex refuses, whatever its story's state", %{scope: scope} do
     story = story_fixture(scope, %{title: "Written Ahead Of Its Code"})
-    red_spec(scope, story)
-
-    assert {:ok, _certified} = Promotion.gate(scope, @head),
-           "spex are committed before their code; an unlatched story's red spex must merge"
-  end
-
-  test "a red spex of a latched story refuses", %{scope: scope} do
-    story = story_fixture(scope, %{title: "Proven Behaviour"})
-    {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
-    path = red_spec(scope, story, true)
+    path = red_spec(scope, story)
 
     assert {:error, %{reason: reason}} = Promotion.gate(scope, @head)
     assert reason =~ "1 spex"

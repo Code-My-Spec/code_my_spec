@@ -40,7 +40,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
       given_ "an agent's copy with the story's spex green and analyzers clean at HEAD",
              context do
         context =
-          context |> a_promotable_project() |> an_agent_on_the_copy() |> analyzers_are_current()
+          context
+          |> a_promotable_project()
+          |> an_agent_on_the_copy()
+          |> with_work_on_the_copy()
+          |> analyzers_are_current()
 
         {:ok, Map.put(context, :story, a_promotable_story(context))}
       end
