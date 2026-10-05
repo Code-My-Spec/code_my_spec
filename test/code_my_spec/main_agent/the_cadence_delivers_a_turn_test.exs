@@ -221,7 +221,9 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
       main_id = main.id
       refute_received {:work_turn_requested, _id, _ref, _prompt}
       assert_received {:wake, %{agent_id: ^main_id, event: :teammate_stalled, result: :ok}}
-      assert_receive {:agent_message, ^main_id, text}, 2_000
+      assert_receive {:agent_dispatch, ^main_id, ref, text}, 2_000
+      assert is_binary(ref)
+      refute_received {:agent_message, ^main_id, _}
       assert text =~ "a1b2c3d4"
     end
 

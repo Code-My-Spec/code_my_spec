@@ -316,10 +316,11 @@ defmodule CodeMySpec.Agents.Main do
   defp attempt(scope, agent, reason, _tried) do
     with {:ok, restarted} <- Agents.restart_agent(scope, agent.id),
          {:ok, _restart} <- RestartRepository.record(agent, reason) do
-      # Told to the agent, not written past it. A restarted agent has lost the
-      # turn it was in the middle of; why that happened is the one thing it
-      # cannot work out for itself, and an orchestrator row saying so was
-      # dropped from its context before it ever got there.
+      # The restart happened even if its notice cannot reach the agent. Keep
+      # that action in sequence on the thread, separately from notice delivery.
+      Conversations.record_restart(restarted, reason)
+
+      # The agent must also receive the reason through the measured queue.
       Agents.send_to_agent(restarted.id, "Restarted: #{reason}", :own_reply,
         offer: {:resume, {"restart", nil}}
       )

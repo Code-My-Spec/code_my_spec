@@ -103,8 +103,17 @@ defmodule CmsHarness.Agents.Engine.Server do
         {:DOWN, task_ref, :process, _pid, reason},
         %{turn: %{task: %Task{ref: task_ref}}} = state
       ) do
-    Impl.settle(state, {:error, reason})
+    Impl.abort_turn(state, {:turn_waiter_failed, reason})
   end
+
+  def handle_info({:turn_ceiling, task_ref}, %{turn: %{task: %Task{ref: task_ref}}} = state) do
+    Impl.abort_turn(state, :turn_ceiling_exceeded)
+  end
+
+  # Cancelled timers and completed tasks can already have messages in transit.
+  def handle_info({:turn_ceiling, _ref}, state), do: {:noreply, state}
+  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
 
   def handle_info({:EXIT, alloy, reason}, %{alloy: alloy} = state), do: {:stop, reason, state}
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
