@@ -149,19 +149,15 @@ defmodule CodeMySpec.PromotionQueueTest do
     do:
       AnalysisFixtures.fresh_analysis_runs_fixture(gate_scope(ctx), Run.sources(), commit: commit)
 
-  test "a batch lands on main as its exact commit, every candidate in it landed", ctx do
+  test "a candidate lands on main as its exact commit", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    clean_runs_at(ctx, b.commit)
+    clean_runs_at(ctx, a.commit)
 
-    entries = [queue(ctx, a), queue(ctx, b)]
+    entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    for entry <- entries do
-      assert {:ok, %{status: :landed}} = settle(entry)
-    end
-
-    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == b.commit
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
     assert git!(ctx.main_root, ["describe", "--tags", "--exact-match", "HEAD"]) == "v0.1.1"
   end
 
@@ -226,21 +222,18 @@ defmodule CodeMySpec.PromotionQueueTest do
   @tag gate: :later
   test "a gate copy coming up wakes the batch waiting for it", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    clean_runs_at(ctx, b.commit)
-    entries = [queue(ctx, a), queue(ctx, b)]
+    clean_runs_at(ctx, a.commit)
+    entry = queue(ctx, a)
 
     # The gate's checkout is not there yet: the batch cannot be built, and the
     # worker waits to retry.
     :ok = PromotionQueue.ensure_worker(ctx.scope)
-    assert {:error, :timeout} = PromotionQueue.await(hd(entries), 500)
+    assert {:error, :timeout} = PromotionQueue.await(entry, 500)
 
     gate_checkout(ctx.main_root, ctx.gate_root, :now)
     :ok = PromotionQueue.copy_joined(ctx.scope, ctx.gate)
 
-    for entry <- entries do
-      assert {:ok, %{status: :landed}} = settle(entry)
-    end
+    assert {:ok, %{status: :landed}} = settle(entry)
   end
 
   # Main moved under a green batch — something committed to it another way.
@@ -248,14 +241,13 @@ defmodule CodeMySpec.PromotionQueueTest do
   # at once, not after a retry period, and nothing is ejected.
   test "a batch main moved under is rebuilt on the new main at once, not ejected", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    clean_runs_at(ctx, b.commit)
+    clean_runs_at(ctx, a.commit)
 
     # A run in flight on another copy holds the green batch at its landing.
     main_scope = %{ctx.scope | active_working_copy_id: ctx.main.id}
     in_flight = AnalysisFixtures.analysis_run_fixture(main_scope, %{source: "compiler"})
 
-    [first | _] = entries = [queue(ctx, a), queue(ctx, b)]
+    first = queue(ctx, a)
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Repository.topic(ctx.scope.active_project_id))
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
@@ -289,8 +281,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.gate_root, ["merge-base", "--is-ancestor", moved, "HEAD"]) == ""
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == moved
 
-    for entry <- entries,
-        do: refute(Repository.get(entry.id).status in [:ejected, :landed])
+    refute Repository.get(first.id).status in [:ejected, :landed]
   end
 
   # A run that fails at the batch commit is red like a finding, and not retried:

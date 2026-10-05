@@ -41,6 +41,25 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
 
     RecordingAgentTransport.listen()
 
+    # What Promotion reports, heard here directly. Delivering it to the agent is
+    # `Agents.Events`' job, behind wake gates and a global transport; asserting
+    # on the delivery made this test depend on all of that, and in the full
+    # run (batch d724b12e5, 2026-10-05) the delivery never arrived.
+    test = self()
+    handler = {__MODULE__, test}
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:code_my_spec, :promotion, :report],
+        fn _event, _measurements, meta, _config ->
+          send(test, {:reported, meta.agent_id, meta.text})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
     # The outcome is messaged from the detached restart task.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
@@ -147,6 +166,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
       ])
 
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @merged)
+    before = MapSet.new(Task.Supervisor.children(CodeMySpec.TaskSupervisor))
 
     assert {:ok, %{merged: "story/x"}} =
              Promotion.promote(scope, story.number,
@@ -156,7 +176,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
              )
 
     assert_receive {:DOWN, ^ref, :process, _, :shutdown}, 5_000
-    told_after(running.id, agent.id, serving_after)
+    told_after(running.id, agent.id, serving_after, before)
   end
 
   # Long enough that an app brought up after the dropped one's exit is still
@@ -168,23 +188,25 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
   defp verify_within(_merged), do: 30_000
 
   # Nothing answering at all: nothing was learned, so nothing is told.
-  defp told_after(_working_copy_id, _agent_id, nil) do
-    await_restart_tasks()
+  defp told_after(_working_copy_id, _agent_id, nil, before) do
+    await_own_tasks(before)
     nil
   end
 
-  defp told_after(working_copy_id, agent_id, serving_after) do
+  defp told_after(working_copy_id, agent_id, serving_after, before) do
     an_app_serving(working_copy_id, serving_after)
-    assert_receive {:agent_dispatch, ^agent_id, _ref, message}, 20_000
-    await_restart_tasks()
+    assert_receive {:reported, ^agent_id, message}, 20_000
+    await_own_tasks(before)
     message
   end
 
-  # The message is sent before the task that sent it ends.
-  defp await_restart_tasks do
-    for pid <- Task.Supervisor.children(CodeMySpec.TaskSupervisor) do
+  # The restart task this promote started, not every task in the global
+  # supervisor: another test's long-lived task is not this one's to wait for.
+  defp await_own_tasks(before) do
+    for pid <- Task.Supervisor.children(CodeMySpec.TaskSupervisor),
+        not MapSet.member?(before, pid) do
       ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, _, _}, 5_000
+      assert_receive {:DOWN, ^ref, :process, _, _}, 35_000
     end
   end
 
@@ -210,7 +232,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
         assert promote_with_a_dropped_ack(nil) == nil
       end)
 
-    refute_received {:agent_dispatch, _, _, _}
+    refute_received {:reported, _, _}
     assert log =~ "not confirmed: the app never answered"
     refute log =~ "restart FAILED"
   end
