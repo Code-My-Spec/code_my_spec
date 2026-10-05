@@ -46,7 +46,7 @@ defmodule CodeMySpec.AgentTasks.IssuePromote do
 
       _issue ->
         scope
-        |> PromotionQueue.promote(nil, notify: agent_id(owner))
+        |> PromotionQueue.promote(nil, notify: agent_id(owner), issue_id: task.issue_id)
         |> verdict()
     end
   end

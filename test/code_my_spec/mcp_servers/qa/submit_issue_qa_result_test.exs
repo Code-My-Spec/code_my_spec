@@ -86,6 +86,24 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResultTest do
     assert text(response) =~ "'pass'|'partial'|'fail'"
   end
 
+  test "story submission rejects an issue task without crashing or recording an attempt", ctx do
+    params =
+      ctx.params
+      |> Map.delete(:issue_id)
+      |> Map.put(:status, "pass")
+      |> Map.put(:scenarios, [%{name: "Validation", status: "pass", observation: "Observed"}])
+
+    {:reply, response, _} =
+      CodeMySpec.McpServers.Qa.Tools.SubmitQaResult.execute(params, ctx.frame)
+
+    assert response.isError
+    assert text(response) =~ "submit_issue_qa_result"
+    assert text(response) =~ ctx.issue.id
+    assert_unsubmitted(ctx)
+
+    refute CodeMySpec.Repo.get_by(CodeMySpec.Qa.QaAttempt, task_id: ctx.task.id)
+  end
+
   defp submit(ctx, scenarios) do
     {:reply, response, _} =
       SubmitIssueQaResult.execute(Map.put(ctx.params, :scenarios, scenarios), ctx.frame)

@@ -2,6 +2,10 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   @moduledoc """
   Submit a per-story QA outcome.
 
+  For issue-scoped qa_complete tasks, use `submit_issue_qa_result` with
+  the issue_id and task_id instead. This tool rejects issue tasks without
+  recording an attempt or closing the task.
+
   Single tool call that ends a QA pass: validates the payload at the
   boundary, writes an immutable attempt row, and surfaces the new
   `attempt_id` for follow-up calls (e.g. `invalidate_qa_attempt`).
@@ -223,7 +227,9 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   defp evidence_line([]), do: "evidence: (none uploaded)"
 
   defp evidence_line(evidence),
-    do: "evidence: #{length(evidence)} file(s) uploaded — " <> Enum.map_join(evidence, ", ", & &1.name)
+    do:
+      "evidence: #{length(evidence)} file(s) uploaded — " <>
+        Enum.map_join(evidence, ", ", & &1.name)
 
   defp satisfaction_note(:pass),
     do: "Status pass — qa_complete is satisfied for the story."
@@ -292,6 +298,15 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
 
       If you genuinely found nothing wrong, submit with `status: "pass"` instead.
       """
+    )
+  end
+
+  defp error_response({:issue_task_requires_issue_submission, issue_id}) do
+    Response.error(
+      Response.tool(),
+      "Submission rejected: this task tests issue #{issue_id}, not a story. " <>
+        "Use submit_issue_qa_result with issue_id #{issue_id}, the same task_id, " <>
+        "status, scenarios, and issue_ids. No attempt was recorded and the task remains open."
     )
   end
 

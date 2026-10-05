@@ -71,6 +71,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @impl true
   def handle_cast({:scope, %Scope{} = scope}, state), do: {:noreply, %{state | scope: scope}}
 
+  # The gate copy's harness (re)joined. A batch gating there asks again: what
+  # it asked before may have gone with the connection that just went.
+  def handle_cast(:gate_copy_joined, %{phase: :gating, batch: batch} = state) do
+    Logger.info("[PromotionQueue] the gate copy rejoined; asking the gate again at #{batch.head}")
+    gate(state)
+  end
+
+  def handle_cast(:gate_copy_joined, state), do: handle_cast(:kick, state)
+
   def handle_cast(:kick, %{phase: :idle} = state), do: next(state)
   def handle_cast(:kick, %{phase: :held} = state), do: retry_held(state)
   def handle_cast(:kick, state), do: {:noreply, state}
@@ -84,7 +93,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def handle_info(:retry_held, state), do: {:noreply, state}
   def handle_info(:next, state), do: {:noreply, state}
 
-  def handle_info(:gate, %{phase: :gating} = state), do: gate(state)
+  def handle_info(:gate, %{phase: :gating, batch: batch} = state) do
+    Logger.info("[PromotionQueue] gating #{batch.head}: asking the gate")
+    gate(state)
+  end
+
   def handle_info(:gate, state), do: {:noreply, state}
 
   def handle_info(:land, %{phase: :landing} = state), do: land(state)
@@ -280,8 +293,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       "[PromotionQueue] gating #{length(in_batch)} candidate(s) at #{head} on #{base} in #{gate.root}"
     )
 
+    # Asked now, and again on the recheck timer whatever happens to this one:
+    # a batch built at 08:41:43 on 2026-10-05 never gated — its `:gate` went
+    # unanswered, nothing else was due to ask, and the queue sat for over an
+    # hour behind it.
     send(self(), :gate)
-    {:noreply, %{state | phase: :gating, batch: batch}}
+    {:noreply, recheck_later(%{state | phase: :gating, batch: batch})}
   end
 
   defp could_not_build(state, reason) do
