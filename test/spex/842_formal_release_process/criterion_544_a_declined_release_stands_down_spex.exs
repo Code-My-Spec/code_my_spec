@@ -7,15 +7,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
   GitHub Release, or a release record behind is worse than one that shipped —
   the user believes they stopped it and the record says otherwise.
 
-  Surface: HTTP `POST /api/agent-tasks/start` with the approval declined, then
-  the absence of each artifact. Absence is the whole claim, so it is checked
-  directly rather than inferred from what the task said it would do.
+  Surface: `CodeMySpec.AgentTasks.StartAgentTask.run/2`, called directly through
+  `Fixtures.start_agent_task/2` -- the HTTP action it backed was removed with
+  the retired CLI's LocalWeb router (issue f532f990) -- with the approval
+  declined, then the absence of each artifact. Absence is the whole claim, so
+  it is checked directly rather than inferred from what the task said it
+  would do.
   """
 
   use CodeMySpecSpex.Case
-  local_endpoint()
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
 
   @cassette "842_1975_release_declined"
   @release_type "release"
@@ -49,15 +52,11 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
       when_ "the release is started and the user declines", context do
         response =
           with_full_cassette @cassette do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post("/api/agent-tasks/start", %{
+            Fixtures.start_agent_task(context.scope, %{
               "session_type" => @release_type,
               "external_id" => "spex-#{System.unique_integer([:positive])}",
               "approval" => "declined"
             })
-            |> Phoenix.ConnTest.json_response(200)
           end
 
         {:ok, Map.put(context, :response, response)}

@@ -8,15 +8,17 @@ defmodule CodeMySpecSpex.Story842.Criterion1974Spex do
   wherever they are, so a release is never blocked on someone being at a
   terminal, and never proceeds because nobody was.
 
-  Surface: HTTP `POST /api/agent-tasks/start`, then the notification the
-  approval request produces. Asserting the prompt merely *mentions* approval
-  would pass on a task that asks the agent to imagine consent.
+  Surface: `CodeMySpec.AgentTasks.StartAgentTask.run/2`, called directly through
+  `Fixtures.start_agent_task/2` -- the HTTP action it backed was removed with
+  the retired CLI's LocalWeb router (issue f532f990) -- then the notification
+  the approval request produces. Asserting the prompt merely *mentions*
+  approval would pass on a task that asks the agent to imagine consent.
   """
 
   use CodeMySpecSpex.Case
-  local_endpoint()
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
 
   @release_type "release"
 
@@ -51,14 +53,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1974Spex do
 
       when_ "the agent starts the release", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/agent-tasks/start", %{
+          Fixtures.start_agent_task(context.scope, %{
             "session_type" => @release_type,
             "external_id" => "spex-#{System.unique_integer([:positive])}"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :prompt, response["prompt"] || response["error"] || "")}
       end

@@ -3406,6 +3406,30 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc """
+  Starts an agent task the way the removed `POST /api/agent-tasks/start`
+  controller used to, for a spex whose criterion is about the task's own
+  behaviour rather than about having an HTTP endpoint for it -- LocalWeb, and
+  that route with it, is gone (issue f532f990).
+
+  Mirrors the JSON response's string-keyed shape (`"prompt"`/`"error"`) so a
+  spex written against the HTTP call needs no change beyond how it gets the
+  response.
+  """
+  @spec start_agent_task(Scope.t(), map()) :: map()
+  def start_agent_task(%Scope{} = scope, params) do
+    args = %{
+      external_id: params["external_id"],
+      session_type: params["session_type"],
+      module_name: params["module_name"]
+    }
+
+    case AgentTasks.StartAgentTask.run(scope, args) do
+      {:ok, prompt, _sync_result} -> %{"prompt" => prompt}
+      {:error, reason} -> %{"error" => inspect(reason)}
+    end
+  end
+
   @spec install_workspace_runner(keyword(), keyword()) :: :ok
   @doc """
   Swap the workspace runner for the fake one and start it.

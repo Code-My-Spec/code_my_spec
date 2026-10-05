@@ -73,11 +73,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
       given_ "the agent has signalled session start", context do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
-        Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/session-start", %{"session_id" => session_id})
-        |> Phoenix.ConnTest.json_response(200)
+        post_hook(context, "/api/hooks/session-start", %{"session_id" => session_id})
 
         {:ok, Map.put(context, :session_id, session_id)}
       end

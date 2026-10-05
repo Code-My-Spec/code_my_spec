@@ -8,10 +8,12 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
   again and the tool should be asking for the next release. Without it, work
   accumulates on UAT and someone has to remember to ship it.
 
-  Surface: HTTP `POST /api/agent-tasks/start`. Recurrence is content-based —
-  satisfied only while every UAT deploy record's story is covered by some
-  release record's `## Stories` manifest — so a deploy that no release covers
-  should make the release askable again.
+  Surface: `CodeMySpec.AgentTasks.StartAgentTask.run/2`, called directly through
+  `Fixtures.start_agent_task/2` -- the HTTP action it backed was removed with
+  the retired CLI's LocalWeb router (issue f532f990). Recurrence is
+  content-based — satisfied only while every UAT deploy record's story is
+  covered by some release record's `## Stories` manifest — so a deploy that
+  no release covers should make the release askable again.
 
   ## Expected to fail, and this one is a decision rather than a bug
 
@@ -32,7 +34,6 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
   """
 
   use CodeMySpecSpex.Case
-  local_endpoint()
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
@@ -137,27 +138,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       end
 
       when_ "the agent asks what release work is outstanding", context do
-        # `Release.evaluate`'s tag/GitHub check runs inside this request —
+        # `Release.evaluate`'s tag/GitHub check runs inside this call —
         # `gh release view` is a real subprocess call, so it needs the same
         # command cassette criterion 1973 uses for `gh release create`.
         # Recorded once against the real release that 1973 published; replay
         # afterward needs neither network nor a GitHub account.
-        {response, status} =
+        response =
           with_full_cassette @cassette do
-            resp =
-              Phoenix.ConnTest.build_conn()
-              |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-              |> Plug.Conn.put_req_header("content-type", "application/json")
-              |> post("/api/agent-tasks/start", %{
-                "session_type" => @release_type,
-                "external_id" => "spex-#{System.unique_integer([:positive])}"
-              })
-              |> Phoenix.ConnTest.json_response(200)
-
-            {resp, :ok}
+            Fixtures.start_agent_task(context.scope, %{
+              "session_type" => @release_type,
+              "external_id" => "spex-#{System.unique_integer([:positive])}"
+            })
           end
-
-        _ = status
 
         {:ok, Map.put(context, :prompt, response["prompt"] || response["error"] || "")}
       end

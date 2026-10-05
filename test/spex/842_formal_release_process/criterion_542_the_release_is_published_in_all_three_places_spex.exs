@@ -9,7 +9,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
   tool believes it released — and any one of them alone leaves one of those
   unanswerable.
 
-  Surface: HTTP `POST /api/agent-tasks/start`, then the artifacts themselves.
+  Surface: `CodeMySpec.AgentTasks.StartAgentTask.run/2`, called directly through
+  `Fixtures.start_agent_task/2` -- the HTTP action it backed was removed with
+  the retired CLI's LocalWeb router (issue f532f990) -- then the artifacts
+  themselves.
 
   ## What is asserted, and what that costs
 
@@ -36,9 +39,9 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
   """
 
   use CodeMySpecSpex.Case
-  local_endpoint()
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fixtures
 
   @release_type "release"
 
@@ -101,14 +104,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
 
       when_ "the agent asks what release work is outstanding", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/agent-tasks/start", %{
+          Fixtures.start_agent_task(context.scope, %{
             "session_type" => @release_type,
             "external_id" => "spex-#{System.unique_integer([:positive])}"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}
       end
