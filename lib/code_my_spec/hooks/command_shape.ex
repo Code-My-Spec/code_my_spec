@@ -24,7 +24,7 @@ defmodule CodeMySpec.Hooks.CommandShape do
           task: String.t(),
           source: String.t(),
           args: [String.t()],
-          cd: String.t() | nil
+          cd: String.t() | :unknown | nil
         }
 
   @type class ::
@@ -105,25 +105,37 @@ defmodule CodeMySpec.Hooks.CommandShape do
 
   # -- Test segments -----------------------------------------------------------
 
-  # Each segment with its parsed test run, or nil. A `cd DIR &&` right before a
-  # test segment is carried on it as `cd`.
+  # Each segment with its parsed test run, or nil, carrying the directory every
+  # `cd` before it moved to, whatever operator joined them: `cd X && S=1; mix
+  # test` runs in X. A move it cannot follow (`cd $DIR`, `cd -`, `pushd`) is
+  # `:unknown`, and a test after it is not routed.
   defp with_mix(segments) do
     {paired, _cd} =
       Enum.map_reduce(segments, nil, fn {text, start, op}, cd ->
-        {{text, start, op, mix(text, cd)}, next_cd(text, op)}
+        {{text, start, op, mix(text, cd)}, next_cd(text, cd)}
       end)
 
     paired
   end
 
-  defp next_cd(text, "&&") do
+  defp next_cd(text, cd) do
     case tokens(text) do
-      [{"cd", _, _}, {dir, _, _}] -> unquote_word(dir)
-      _ -> nil
+      [{"cd", _, _}, {dir, _, _}] -> moved(cd, unquote_word(dir))
+      [{word, _, _} | _] when word in ["cd", "pushd", "popd"] -> :unknown
+      _ -> cd
     end
   end
 
-  defp next_cd(_text, _op), do: nil
+  defp moved(_cd, dir) when dir in ["-", ""], do: :unknown
+  defp moved(:unknown, _dir), do: :unknown
+
+  defp moved(cd, dir) do
+    cond do
+      String.contains?(dir, ["$", "`"]) -> :unknown
+      Path.type(dir) == :absolute or cd == nil -> dir
+      true -> Path.join(cd, dir)
+    end
+  end
 
   # `{:ok, mix, from, redirects}`: where the replacement starts in the segment
   # and the redirects to keep after it. `:env` for a test segment whose env
@@ -252,7 +264,7 @@ defmodule CodeMySpec.Hooks.CommandShape do
     ops = for {_, _, op, _} <- segments, op != nil, do: op
 
     [
-      cd: Enum.any?(segments, &match?({_, _, _, {:ok, %{cd: cd}, _, _}} when is_binary(cd), &1)),
+      cd: Enum.any?(segments, &match?({_, _, _, {:ok, %{cd: cd}, _, _}} when cd != nil, &1)),
       piped: "|" in ops,
       redirected: Enum.any?(segments, &match?({_, _, _, {:ok, _, _, [_ | _]}}, &1)),
       compound: Enum.any?(ops, &(&1 in ["&&", "||", ";", "\n"]))

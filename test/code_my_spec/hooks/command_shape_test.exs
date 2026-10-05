@@ -51,8 +51,7 @@ defmodule CodeMySpec.Hooks.CommandShapeTest do
     test "commands before it are kept" do
       assert {:routed,
               "lsof -ti:4002 | xargs -r kill -9 2>/dev/null; sleep 2; RUN(exunit test/a_test.exs) 2>&1 | tail -6",
-              _,
-              _} =
+              _, _} =
                route(
                  "lsof -ti:4002 | xargs -r kill -9 2>/dev/null; sleep 2; MIX_ENV=test mix test test/a_test.exs 2>&1 | tail -6"
                )
@@ -102,6 +101,24 @@ defmodule CodeMySpec.Hooks.CommandShapeTest do
 
     test "a segment the caller declines" do
       assert {:pass, [:simple]} = CommandShape.route("mix test", fn _ -> :pass end)
+    end
+  end
+
+  # 2026-10-05: `cd X && S=1; mix test` routed with no cd, because only a cd
+  # straight before the test was carried, and ran in the session's own copy.
+  describe "a cd earlier in the command" do
+    test "carries across any operator" do
+      assert {:routed, _, _, [%{cd: "/w/other"}]} =
+               route("cd /w/other && S=1; mix test test/a_test.exs")
+    end
+
+    test "relative moves compose" do
+      assert {:routed, _, _, [%{cd: "apps/web"}]} = route("cd apps && cd web && mix test")
+    end
+
+    test "a move it cannot follow is unknown" do
+      assert {:routed, _, _, [%{cd: :unknown}]} = route("cd $ROOT && mix test")
+      assert {:routed, _, _, [%{cd: :unknown}]} = route("pushd x; mix test")
     end
   end
 end
