@@ -41,6 +41,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @gate_label "promotion-gate"
   @recheck_ms 120_000
   @retry_ms 300_000
+  # Starts of one source at one batch commit before the batch is held: the
+  # first, and one retry of a run that failed rather than answered.
+  @max_starts 2
+  @hold_ms 900_000
   @inflight_limit_ms 30 * 60_000
 
   @doc false
@@ -67,10 +71,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def handle_cast({:scope, %Scope{} = scope}, state), do: {:noreply, %{state | scope: scope}}
 
   def handle_cast(:kick, %{phase: :idle} = state), do: next(state)
+  def handle_cast(:kick, %{phase: :held} = state), do: retry_held(state)
   def handle_cast(:kick, state), do: {:noreply, state}
 
   @impl true
   def handle_info(:next, %{phase: :idle} = state), do: next(state)
+
+  # A held batch is built again from scratch: the gate copy may have been set
+  # up since, and its counts start over.
+  def handle_info(:retry_held, %{phase: :held} = state), do: retry_held(state)
+  def handle_info(:retry_held, state), do: {:noreply, state}
   def handle_info(:next, state), do: {:noreply, state}
 
   def handle_info(:gate, %{phase: :gating} = state), do: gate(state)
@@ -181,7 +191,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       base: base,
       head: head,
       reran?: false,
-      green_since: nil
+      green_since: nil,
+      starts: %{}
     }
 
     Logger.info(
@@ -210,10 +221,64 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
     case Promotion.gate(batch.scope, batch.head) do
       {:ok, swept} -> stories_green(state, swept)
-      {:pending, _} -> {:noreply, recheck_later(state)}
+      {:pending, pending} -> pending(state, Map.get(pending, :started, []))
       {:error, reason} -> red(state, reason)
     end
   end
+
+  # The gate starts a source with no answer at the batch commit. Started again,
+  # its run there failed rather than answered — an analyzer that could not run
+  # on the gate copy (a missing env, a broken toolchain) — and starting it a
+  # third time would only fail the same way, every recheck, forever. The batch
+  # is held: not the candidates' fault, so nothing is ejected.
+  defp pending(%{batch: batch} = state, started) do
+    starts = Enum.reduce(started, batch.starts, &Map.update(&2, &1, 1, fn n -> n + 1 end))
+    state = %{state | batch: %{batch | starts: starts}}
+
+    case Enum.filter(started, &(starts[&1] > @max_starts)) do
+      [] -> {:noreply, recheck_later(state)}
+      failing -> hold(state, failing)
+    end
+  end
+
+  defp hold(%{batch: batch} = state, sources) do
+    why = Enum.map_join(sources, "\n\n", &cannot_run(batch.scope, &1))
+
+    Logger.error(
+      "[PromotionQueue] holding the batch at #{batch.head}: the gate copy " <>
+        "#{batch.gate.root} cannot run #{Enum.join(sources, ", ")}.\n#{why}"
+    )
+
+    for entry <- batch.entries do
+      tell(
+        state.scope,
+        entry,
+        "Your promotion of #{subject(entry)} is waiting: the gate copy cannot run " <>
+          "#{Enum.join(sources, ", ")}, so nothing can be certified. This is not a " <>
+          "finding against your work and nothing was taken out; it is retried " <>
+          "when the gate copy is fixed. Do not promote again."
+      )
+    end
+
+    {:noreply, cancel_timer(state) |> Map.put(:phase, :held) |> hold_later()}
+  end
+
+  defp cannot_run(scope, source) do
+    case Analysis.latest_run(scope, source) do
+      %{output: output} when is_binary(output) and output != "" ->
+        "#{source}: …#{String.slice(output, -800, 800)}"
+
+      _ ->
+        "#{source}: its runs fail with no output"
+    end
+  end
+
+  defp retry_held(%{batch: batch} = state) do
+    requeue(batch.entries)
+    next(%{cancel_timer(state) | phase: :idle, batch: nil})
+  end
+
+  defp hold_later(state), do: %{state | timer: Process.send_after(self(), :retry_held, @hold_ms)}
 
   # The certifying run must also show each story's own spex green, as a direct
   # promotion requires before it latches a story.

@@ -62,6 +62,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Epics
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.ScreenState
   alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
@@ -73,6 +74,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProjectTimeline
+  alias CodeMySpecWeb.StoryProgress
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -207,6 +209,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # the version that does not depend on the agent remembering.
       Epics.subscribe(scope)
       Stories.subscribe_stories(scope)
+
+      # Story progress pies, which change when the graph is recomputed.
+      GraphInputs.subscribe(scope.active_project_id)
 
       # Every message in the account, for the activity panel's read marks.
       Phoenix.PubSub.subscribe(
@@ -585,6 +590,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # Every pie on the page: the header's, and one per agent row holding a story.
+  defp story_progress_ids(assigns) do
+    header = if Enum.any?(assigns.assigned, &(&1.kind == :story)), do: ["story-progress-header"]
+
+    rows =
+      for copy <- assigns.copies,
+          a <- copy.agents,
+          Enum.any?(a.assigned, &(&1.kind == :story)),
+          do: "story-progress-#{a.agent.id}"
+
+    List.wrap(header) ++ rows
+  end
+
   defp assigned_story(_scope, %Agent{story_id: nil}), do: nil
 
   defp assigned_story(scope, %Agent{story_id: id}) do
@@ -595,6 +613,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       story ->
         %{
           kind: :story,
+          story_id: story.id,
+          working_copy_id: story.working_copy_id,
           ref: "##{story.number}",
           title: story.title,
           path: ~p"/app/projects/#{scope.active_project_id}/stories/#{story.number}"
@@ -1633,6 +1653,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> refresh_team_status()}
   end
 
+  def handle_info({:graph_updated, _project_id}, socket) do
+    for id <- story_progress_ids(socket.assigns),
+        do: send_update(StoryProgress, id: id, refresh: true)
+
+    {:noreply, socket}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp refresh_team_status(socket) do
@@ -1907,6 +1934,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             >
               {if item.kind == :issue, do: "Issue", else: "Story"} {item.ref} · {item.title}
             </.link>
+            <.live_component
+              :for={item <- @assigned}
+              :if={item.kind == :story}
+              module={StoryProgress}
+              id="story-progress-header"
+              story_id={item.story_id}
+              working_copy_id={item.working_copy_id}
+            />
           </div>
           <%!-- Where the project is, in the words somebody who does not read
           code would use. Deliberately not a status line assembled from row
