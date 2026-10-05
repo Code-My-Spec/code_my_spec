@@ -11,25 +11,6 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @doc """
-  Every claimed spec path in the project, mapped to the story that owns it.
-
-  Recorded paths predate criteria numbers in spex files; this reads them back. Anything deciding what a spex failure
-  belongs to should ask here rather than parse the filename — the leading number
-  in `test/spex/<n>_.../` is a directory name, not a story id, and the two have
-  drifted apart.
-  """
-  @spec spec_path_story_ids(Scope.t()) :: %{String.t() => integer()}
-  def spec_path_story_ids(%Scope{active_project_id: project_id}) do
-    from(c in Criterion,
-      where: c.project_id == ^project_id,
-      where: not is_nil(c.spec_path) and c.spec_path != "",
-      select: {c.spec_path, c.story_id}
-    )
-    |> Repo.all()
-    |> Map.new()
-  end
-
   @spec list_story_criteria(Scope.t(), integer()) :: [Criterion.t()]
   # `id` breaks the tie, and the tie is the common case rather than the rare one.
   #
