@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
@@ -39,6 +40,17 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
         reply = join_working_copy(context, "/tmp/spex-2003", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
+        frame = %Frame{assigns: %{current_scope: scope}}
+
+        {:reply, created, _frame} =
+          CreateComponent.execute(
+            %{name: "Example2003", type: "context", module_name: "CodeMySpecSpex.Example2003"},
+            frame
+          )
+
+        refute created.isError, inspect(created)
+        component = Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2003")
+
         story =
           StoryHelpers.create_and_link(scope, "CodeMySpecSpex.Example2003",
             title: "Build-stage timing",
@@ -46,14 +58,12 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
             acceptance_criteria: ["It works"]
           )
 
-        frame = %Frame{assigns: %{current_scope: scope}}
         {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
 
         :ok = Fixtures.age_story(scope, story.id, 7200)
 
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2003")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
-        component = Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2003")
 
         {:reply, started, _frame} =
           StartTask.execute(
@@ -66,9 +76,13 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
           )
 
         refute started.isError, inspect(started)
+        [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))
 
         {:reply, tapped, _frame} =
-          TapOut.execute(%{reason: "need a product decision before writing this"}, asking)
+          TapOut.execute(
+            %{task_id: task_id, reason: "need a product decision before writing this"},
+            asking
+          )
 
         refute tapped.isError, inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
@@ -82,15 +96,17 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
       end
 
       when_ "its cycle time is shown", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
-        {:ok, Map.put(context, :html, html)}
+        {:ok, index, html} = live(context.conn, index_path(context))
+        {:ok, context |> Map.put(:index, index) |> Map.put(:html, html)}
       end
 
       then_ "each stage's time is taken from when its tasks opened and closed", context do
         assert context.html =~ "build",
                "the story's performance has no build stage at all"
 
-        refute context.html =~ "2h",
+        build_stage = context.index |> element("[data-test='stage'][data-stage='build']") |> render()
+
+        refute build_stage =~ "2h",
                "the build stage's time matches the hours since release rather than the task's own, much shorter, open-to-close span"
 
         {:ok, context}

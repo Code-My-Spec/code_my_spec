@@ -21,7 +21,7 @@ defmodule CodeMySpec.AgentPerformance.Throughput do
   @spec by_team(Scope.t(), DateTime.t() | nil) :: %{Ecto.UUID.t() => non_neg_integer()}
   def by_team(%Scope{} = scope, since \\ nil) do
     scope
-    |> Stories.list_project_stories()
+    |> list_stories()
     |> Enum.filter(&promoted_in_period?(&1, since))
     |> Enum.group_by(& &1.working_copy_id)
     |> Map.new(fn {working_copy_id, stories} -> {working_copy_id, length(stories)} end)
@@ -32,4 +32,11 @@ defmodule CodeMySpec.AgentPerformance.Throughput do
 
   defp promoted_in_period?(%Story{updated_at: at}, since),
     do: DateTime.compare(at, since) != :lt
+
+  defp list_stories(scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} -> stories
+      stories when is_list(stories) -> stories
+    end
+  end
 end

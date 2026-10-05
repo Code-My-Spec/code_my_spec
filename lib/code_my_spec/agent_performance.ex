@@ -111,5 +111,10 @@ defmodule CodeMySpec.AgentPerformance do
 
   @doc "Every story this project holds, for building a performance report over all of them."
   @spec list_stories(Scope.t()) :: [Story.t()]
-  def list_stories(%Scope{} = scope), do: Stories.list_project_stories(scope)
+  def list_stories(%Scope{} = scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} -> stories
+      stories when is_list(stories) -> stories
+    end
+  end
 end

@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         {:reply, started, _frame} =
           StartTask.execute(
-            %{requirement_name: "qa_complete", entity_type: "story", entity_id: story.id},
+            %{requirement_name: "qa_complete", entity_type: "story", entity_id: to_string(story.number)},
             asking
           )
 

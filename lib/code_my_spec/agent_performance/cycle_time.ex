@@ -11,6 +11,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   """
 
   alias CodeMySpec.AgentPerformance.Stage
+  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -23,7 +24,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
         }
 
   @type t :: %{
-          status: :in_flight | :finished | :no_tasks,
+          status: :in_flight | :finished,
           released_at: DateTime.t() | nil,
           promoted_at: DateTime.t() | nil,
           total_seconds: non_neg_integer() | nil,
@@ -37,7 +38,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   """
   @spec story(Scope.t(), Story.t()) :: t()
   def story(%Scope{} = scope, %Story{} = story) do
-    tasks = Sessions.list_tasks_for_story(scope, story.id)
+    tasks = all_tasks(scope, story.id)
 
     %{
       status: status(story, tasks),
@@ -49,9 +50,15 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
     }
   end
 
-  defp status(_story, []), do: :no_tasks
   defp status(%Story{promoted_version: nil}, _tasks), do: :in_flight
   defp status(%Story{}, _tasks), do: :finished
+
+  # Tasks live on whichever owner ran them: a session-backed agent (Claude
+  # Code, hooks) or an agent run directly under Alloy, with no session at
+  # all. A story's build moves through both over its life.
+  defp all_tasks(scope, story_id) do
+    Sessions.list_tasks_for_story(scope, story_id) ++ Agents.list_tasks_for_story(scope, story_id)
+  end
 
   # The earliest task opened against the story, as a proxy for "released":
   # nothing on `Story` stamps the moment `ready_for_dev` flipped, and the

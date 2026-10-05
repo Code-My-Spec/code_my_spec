@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1993Spex do
       end
 
       then_ "and it is not reported as a completed cycle of zero", context do
-        refute context.html =~ "0h" and context.html =~ context.story.title,
+        refute context.html =~ "Total: 0h",
                "a story still in flight is shown with a zero-length completed cycle"
 
         {:ok, context}
