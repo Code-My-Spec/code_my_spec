@@ -17,8 +17,8 @@ defmodule CodeMySpec.PromotionQueueTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
