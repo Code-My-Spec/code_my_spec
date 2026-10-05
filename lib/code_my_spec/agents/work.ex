@@ -1114,9 +1114,26 @@ defmodule CodeMySpec.Agents.Work do
   # back on, bypasses the graph entirely — an issue is not in it
   # (`Agents.IssueWork`, story 1091). Checked ahead of everything else, the
   # same standing as `bound_story_id/1`: offered that and nothing else.
-  def work_for(%Scope{} = scope, _role, %Agent{issue_id: id} = owner, _opts)
+  def work_for(%Scope{} = scope, _role, %Agent{issue_id: id} = owner, opts)
       when is_binary(id) do
-    IssueWork.execution(at_copy(scope, owner), owner)
+    scope = at_copy(scope, owner)
+    execution = IssueWork.execution(scope, owner)
+    withheld? = withholding(scope, owner, opts)
+    actionable = Enum.reject(execution.actionable, withheld?)
+
+    if execution.actionable != [] and actionable == [] do
+      %{
+        execution
+        | status: :blocked,
+          actionable: [],
+          wave: [],
+          remaining: 0,
+          reason:
+            "The issue's current task is held by a teammate or blocked on an unresolved decision."
+      }
+    else
+      execution
+    end
   end
 
   def work_for(%Scope{} = scope, _role, %Agent{team_free_at: %DateTime{}} = owner, _opts) do
@@ -1260,6 +1277,7 @@ defmodule CodeMySpec.Agents.Work do
       entity_id(task, node.entity_type) == to_string(node.entity_id)
   end
 
+  defp entity_id(task, "issue"), do: to_string(task.issue_id)
   defp entity_id(task, "story"), do: to_string(task.story_id)
   defp entity_id(task, "component"), do: to_string(task.component_id)
   defp entity_id(task, "project"), do: to_string(task.project_id)
