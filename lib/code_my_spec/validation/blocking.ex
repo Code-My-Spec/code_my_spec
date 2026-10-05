@@ -262,10 +262,19 @@ defmodule CodeMySpec.Validation.Blocking do
   with no spex behind it guards nothing, and a binding that breaks has to be
   loud rather than let every red through.
   """
+  #
+  # A copy with no spex rows at all has not been synced, so nothing was observed
+  # missing there, and it answers nothing (story 1091's spex: its gate copy never
+  # syncs files, and every latched criterion read as unbound).
   @spec unbound_latched(Scope.t()) :: [Problems.Problem.t()]
   def unbound_latched(scope) do
-    bound = scope |> Files.bdd_spec_criterion_numbers() |> Map.values() |> MapSet.new()
+    case scope |> Files.bdd_spec_criterion_numbers() |> Map.values() do
+      [] -> []
+      numbers -> unbound_of(scope, MapSet.new(numbers))
+    end
+  end
 
+  defp unbound_of(scope, bound) do
     for criterion <- AcceptanceCriteria.list_latched_criteria(scope),
         not MapSet.member?(bound, criterion.number) do
       unbound(criterion)

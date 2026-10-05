@@ -85,6 +85,11 @@ defmodule CodeMySpec.Validation.ALatchedSpexBlocksByTheCriterionItNamesTest do
   end
 
   test "a latched criterion no spex file names is a blocking problem", ctx do
+    {:ok, other} =
+      AcceptanceCriteria.create_criterion(ctx.scope, ctx.story, %{description: "other"})
+
+    :ok = bound(ctx, other.number)
+
     assert [unbound] = Blocking.unbound_latched(ctx.scope)
     assert unbound.source == "spex"
     assert unbound.message =~ "criterion #{ctx.criterion.number}"
@@ -96,6 +101,12 @@ defmodule CodeMySpec.Validation.ALatchedSpexBlocksByTheCriterionItNamesTest do
   test "a latched criterion a spex file names is not", ctx do
     :ok = bound(ctx, ctx.criterion.number)
 
+    assert [] = Blocking.unbound_latched(ctx.scope)
+  end
+
+  # A copy with no spex rows at all has not been synced: nothing was observed
+  # missing (story 1091's spex, whose gate copy never syncs files, 2026-10-05).
+  test "a copy that has synced no spex says nothing about latched criteria", ctx do
     assert [] = Blocking.unbound_latched(ctx.scope)
   end
 end
