@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.HarnessHooks
 
   @impl_a "lib/alpha.ex"
   @impl_b "lib/bravo.ex"
@@ -32,12 +33,16 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
         :ok = Environments.write_file(context.environment, @impl_a, impl_a_v1())
         :ok = Environments.write_file(context.environment, @impl_b, impl_b())
 
-        {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/files")
-
-        files_live
-        |> element("[data-test='sync-button']")
-        |> render_click()
+        # Establish the live harness here, before anything snapshots a mtime.
+        # Joining already does the full sync this needs: the harness's own
+        # rescan-on-join reports every file at the real, whole-second mtime
+        # the OS gives it. Clicking the files page's own sync button on top of
+        # that would resync through the fixture's in-memory environment
+        # instead of the harness's real checkout, restamping bravo with a
+        # sub-second `DateTime.utc_now()` that the next real rescan would then
+        # have to "correct" back to whole seconds — which is what this
+        # criterion is asserting never happens.
+        context = HarnessHooks.ensure_live_harness(context)
 
         {:ok, context}
       end
@@ -58,15 +63,15 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
 
       when_ "the agent edits alpha and the stop hook fires (freestyle, no session)",
             context do
+        # mtime resolves to the whole second everywhere in this system
+        # (environments_behaviour.ex:83); without a gap, this edit and the
+        # baseline above can land in the same second and look unchanged.
+        Process.sleep(1_000)
         :ok = Environments.write_file(context.environment, @impl_a, impl_a_v2())
+        HarnessHooks.write_file(context, @impl_a, impl_a_v2())
 
         # A stop starts no analysis, so there is nothing to cassette.
-        response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{})
-          |> Phoenix.ConnTest.json_response(200)
+        response = post_hook(context, "/api/hooks/stop", %{})
 
         {:ok, Map.put(context, :response, response)}
       end
