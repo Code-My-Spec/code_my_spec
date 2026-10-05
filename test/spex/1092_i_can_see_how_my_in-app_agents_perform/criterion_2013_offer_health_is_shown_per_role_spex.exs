@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -106,7 +107,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
         refute resp2.isError, inspect(resp2)
 
         {:ok, _ref} =
-          CodeMySpec.Agents.Work.request_turn_if_runnable(scope, second, "a teammate's task freed up")
+          Work.request_turn_if_runnable(scope, second, "a teammate's task freed up")
 
         {:reply, claimed, _frame} =
           StartTask.execute(
