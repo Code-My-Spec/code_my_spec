@@ -286,14 +286,16 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   # Only the test segment of a compound command is routed (`CommandShape`):
   # `MIX_ENV=test mix test x 2>&1 | tail -20` keeps its redirect and pipe. A
-  # segment after `cd` is not routed yet. `mix compile`/`credo` still route only
-  # as a whole command.
+  # segment after `cd` routes when the directory is inside this copy; a `cd`
+  # anywhere else may be another copy, and passes through. `mix compile`/`credo`
+  # still route only as a whole command.
   defp maybe_rewrite_test_command(scope, params, port, served_by) do
     command = get_in(params, ["tool_input", "command"]) || ""
+    root = Map.get(scope || %{}, :cwd) || Map.get(params, "cwd")
 
     with %{active_project_id: project_id} when not is_nil(project_id) <- scope,
          {:ok, endpoint} <- analysis_endpoint(scope, served_by) do
-      case CommandShape.route(command, &route_segment(&1, port, endpoint)) do
+      case CommandShape.route(command, &route_segment(&1, root, port, endpoint)) do
         {:routed, replacement, classes, mixes} ->
           log_decision("routed", classes, mixes)
           rewrite(replacement, Enum.map_join(mixes, ", ", &"mix #{&1.task}"))
@@ -307,10 +309,21 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     end
   end
 
-  defp route_segment(%{cd: nil, source: source, args: args}, port, endpoint),
-    do: {:ok, build_curl(port, endpoint, source, args)}
+  defp route_segment(%{cd: cd, source: source, args: args}, root, port, endpoint) do
+    if cd == nil or inside?(cd, root),
+      do: {:ok, build_curl(port, endpoint, source, args)},
+      else: :pass
+  end
 
-  defp route_segment(_mix, _port, _endpoint), do: :pass
+  # Paths only: the server deciding for a proxied copy cannot see its disk. A
+  # relative `cd` is taken from the session's directory, which is in the copy.
+  defp inside?(_cd, root) when not is_binary(root), do: false
+
+  defp inside?(cd, root) do
+    root = Path.expand(root)
+    dir = Path.expand(cd, root)
+    dir == root or String.starts_with?(dir, root <> "/")
+  end
 
   defp rewrite_whole(command, port, endpoint) do
     case classify_test_command(command) do
