@@ -55,6 +55,9 @@ defmodule CmsHarness do
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Generators,
+      # `Hooks.PreToolUse.route_command/4`: an in-app agent's `mix test` is
+      # routed the way a Claude Code agent's is.
+      CodeMySpec.Hooks,
       # `CmsHarness.Application` installs the harness's log handler.
       CodeMySpec.Logging,
       # `ToolRegistry.registry/0`, what `ToolIndex.carried/1` reads.
