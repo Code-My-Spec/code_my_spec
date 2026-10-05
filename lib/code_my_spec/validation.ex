@@ -57,7 +57,6 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.BddSpecs
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.FileEdits
@@ -69,7 +68,6 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies
@@ -915,8 +913,7 @@ defmodule CodeMySpec.Validation do
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq(),
       specs_ready_story_ids: Blocking.specs_ready_story_ids(scope),
-      latched_spec_paths: latched_spec_paths(scope),
-      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      criterion_story_ids: Files.bdd_spec_story_id_by_path(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
@@ -1214,27 +1211,6 @@ defmodule CodeMySpec.Validation do
   defdelegate advisory_findings(scope_or_config), to: Blocking
   defdelegate blockable(scope, problems), to: Blocking
   defdelegate enforceable(scope, problems), to: Blocking
-
-  # Every latched, live criterion's own spec path, derived the same way the
-  # harness looks one up (`BddSpecs.spec_file_path/2`: a recorded `spec_path`
-  # first, a convention-derived path otherwise) rather than read off the
-  # `spec_path` column directly -- that column is often unset until a real
-  # sync binds it, and reading it bare would under-enforce every criterion a
-  # test (or an agent) latched before that happened.
-  defp latched_spec_paths(scope) do
-    scope
-    |> AcceptanceCriteria.list_latched_criteria()
-    |> Enum.flat_map(fn criterion ->
-      case criterion.story do
-        %{number: number} = story when is_integer(number) ->
-          [BddSpecs.spec_file_path(story, criterion)]
-
-        _ ->
-          []
-      end
-    end)
-    |> MapSet.new()
-  end
 
   # `%{file_path => :mine | :unassigned | {:elsewhere, label}}` for spex
   # findings whose story can be identified.

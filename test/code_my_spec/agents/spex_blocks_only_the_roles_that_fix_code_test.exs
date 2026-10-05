@@ -26,7 +26,7 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
   @spex_path "test/spex/811_provisioning/criterion_6493_a_step_reports_its_provider_spex.exs"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     Configurations.get_or_create(scope)
@@ -47,7 +47,6 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
         spec_path: @spex_path
       })
 
-    {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
     {:ok, _} = Stories.set_specs_ready(scope, Stories.get_story(scope, story.id), true)
 
     problem_fixture(scope, %{source: "spex", severity: :error, file_path: @spex_path})

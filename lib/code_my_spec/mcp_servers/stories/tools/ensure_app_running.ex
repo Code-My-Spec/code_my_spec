@@ -1,7 +1,10 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
   @moduledoc """
   Bring up the caller's own copy of the app, starting it if it isn't already
-  running.
+  running. A live process is health-checked, not automatically restarted when
+  HEAD moves. If it is unhealthy, the error reports the current checkout HEAD,
+  the last recorded app revision, and the app log to inspect before recovery.
+  A healthy app may still serve an older revision; the response identifies it.
 
   Story 1108's rule: an agent on a copy can start, restart and stop its own
   copy's app. Always the caller's own copy — resolved from the connection's
@@ -51,9 +54,20 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
             "Its first boot is still compiling; call ensure_app_running again to see it serving."
         )
 
-      {:ok, %{status: status, commit: commit}} ->
+      {:ok, %{status: status, commit: commit} = info} ->
+        last_commit = Map.get(info, :serving_commit) || commit
+        head = Map.get(info, :head) || "unknown"
+
+        reason =
+          Map.get(info, :action_reason) ||
+            "The harness supplied no startup diagnostics. Inspect this copy's app log before using restart_app."
+
         Response.tool()
-        |> Response.error("The app is #{status} (commit #{commit || "unknown"}). Not serving.")
+        |> Response.error(
+          "#{copy_name(id)} app is #{status}. Not serving. " <>
+            "Last recorded app revision: #{last_commit || "unknown"}; current checkout HEAD: #{head}. " <>
+            reason
+        )
 
       {:error, reason} ->
         Response.tool() |> Response.error("Could not start the app: #{inspect(reason)}")

@@ -25,7 +25,6 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
 
   alias CodeMySpec.Promotion
   alias CodeMySpec.Stories
-  alias CodeMySpec.Stories.AcceptanceCriteria
 
   # The step that makes the story's specs pass, not one that waits for them:
   # a story on an existing surface has no other implementation node, so an
@@ -86,21 +85,11 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   defp stamp_verdict(story),
     do: {:ok, :invalid, "Story #{story.number} is not certified for QA yet. " <> complete_again()}
 
-  # Story 983, criteria 1902/1905: `qa_ready_commit` is the aggregate over
-  # every live criterion's own latch, not a flag this sets outright the
-  # moment a certifying run comes back clean. A run can certify cleanly
-  # (`story_spex_pass/3` tolerates a never-latched red criterion on the
-  # story's first pass) while the aggregate is still false -- that run
-  # latched what it could, but something live is still unlatched, so the
-  # story is not yet stamped. Answered as a success, not a refusal: nothing
-  # about this run failed, there is just more to do before the stamp lands.
+  # A clean certifying run stamps the story: every red spex refuses it at
+  # certification, so clean means every criterion's spex is green.
   defp certified({:ok, %{head: head}}, scope, story) do
-    if all_live_criteria_latched?(scope, story) do
-      {:ok, stamped} = Stories.set_qa_ready(scope, story, head)
-      stamp_verdict(stamped)
-    else
-      {:ok, :pending, not_yet_aggregated_text(story, head)}
-    end
+    {:ok, stamped} = Stories.set_qa_ready(scope, story, head)
+    stamp_verdict(stamped)
   end
 
   defp certified({:pending, pending}, _scope, story),
@@ -124,24 +113,6 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   defp complete_again do
     "Fix it, commit, and complete this task again (evaluate_task). Completing it " <>
       "is the certification."
-  end
-
-  defp all_live_criteria_latched?(scope, story) do
-    scope
-    |> AcceptanceCriteria.list_all_story_criteria(story.id)
-    |> Enum.reject(& &1.retired_at)
-    |> case do
-      [] -> false
-      live -> Enum.all?(live, & &1.latched_at)
-    end
-  end
-
-  defp not_yet_aggregated_text(story, head) do
-    "Story #{story.number} certified cleanly at #{head}: every criterion whose spex " <>
-      "was green on this run is now latched. It is not yet stamped ready for QA, " <>
-      "though -- at least one live criterion has never gone green on a certifying " <>
-      "run. This task stays open. End your turn; once that criterion's spex is " <>
-      "green too, complete this task again and the story is stamped."
   end
 
   defp prompt(scope, story) do

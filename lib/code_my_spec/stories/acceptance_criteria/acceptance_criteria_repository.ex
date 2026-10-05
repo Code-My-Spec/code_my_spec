@@ -11,25 +11,6 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @doc """
-  Every claimed spec path in the project, mapped to the story that owns it.
-
-  Recorded paths predate criteria numbers in spex files; this reads them back. Anything deciding what a spex failure
-  belongs to should ask here rather than parse the filename — the leading number
-  in `test/spex/<n>_.../` is a directory name, not a story id, and the two have
-  drifted apart.
-  """
-  @spec spec_path_story_ids(Scope.t()) :: %{String.t() => integer()}
-  def spec_path_story_ids(%Scope{active_project_id: project_id}) do
-    from(c in Criterion,
-      where: c.project_id == ^project_id,
-      where: not is_nil(c.spec_path) and c.spec_path != "",
-      select: {c.spec_path, c.story_id}
-    )
-    |> Repo.all()
-    |> Map.new()
-  end
-
   @spec list_story_criteria(Scope.t(), integer()) :: [Criterion.t()]
   # `id` breaks the tie, and the tie is the common case rather than the rare one.
   #
@@ -179,7 +160,10 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository do
   # that stopped being true the moment this one left coverage latched or not.
   @spec retire_criterion(Scope.t(), Criterion.t()) ::
           {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def retire_criterion(%Scope{active_project: %{id: project_id}} = scope, %Criterion{project_id: project_id} = criterion) do
+  def retire_criterion(
+        %Scope{active_project: %{id: project_id}} = scope,
+        %Criterion{project_id: project_id} = criterion
+      ) do
     criterion
     |> Criterion.retire_changeset()
     |> Repo.update()
@@ -187,39 +171,6 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.AcceptanceCriteriaRepository do
   end
 
   def retire_criterion(_scope, _criterion), do: {:error, :cross_project}
-
-  @spec latch_criterion(Scope.t(), Criterion.t()) ::
-          {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def latch_criterion(%Scope{active_project: %{id: project_id}}, %Criterion{project_id: project_id} = criterion),
-    do: criterion |> Criterion.latch_changeset() |> Repo.update()
-
-  def latch_criterion(_scope, _criterion), do: {:error, :cross_project}
-
-  @spec unlatch_criterion(Scope.t(), Criterion.t()) ::
-          {:ok, Criterion.t()} | {:error, Ecto.Changeset.t() | :cross_project}
-  def unlatch_criterion(%Scope{active_project: %{id: project_id}}, %Criterion{project_id: project_id} = criterion),
-    do: criterion |> Criterion.unlatch_changeset() |> Repo.update()
-
-  def unlatch_criterion(_scope, _criterion), do: {:error, :cross_project}
-
-  @doc """
-  Every latched, live criterion, project-wide, with its story preloaded
-  (story 983, criteria 1898-1901, 1906). What the stop hook and the gate
-  read instead of a story-wide `specs_ready` latch: a red spex blocks only
-  where the criterion whose spec it is has itself gone green on a
-  certifying run before. The caller derives each one's path
-  (`BddSpecs.spec_file_path/2`) rather than reading `spec_path` directly --
-  that column is often unset until a real sync binds it.
-  """
-  @spec list_latched_criteria(Scope.t()) :: [Criterion.t()]
-  def list_latched_criteria(%Scope{active_project_id: project_id}) do
-    from(c in Criterion,
-      where: c.project_id == ^project_id,
-      where: not is_nil(c.latched_at) and is_nil(c.retired_at)
-    )
-    |> Repo.all()
-    |> Repo.preload(:story)
-  end
 
   # Coming back is a criterion arriving on its story, so the story restarts
   # the same way it does for a new one.

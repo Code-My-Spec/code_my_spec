@@ -19,7 +19,6 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.Criterion do
           id: integer() | nil,
           number: integer() | nil,
           retired_at: DateTime.t() | nil,
-          latched_at: DateTime.t() | nil,
           description: String.t(),
           body: String.t() | nil,
           kind: kind() | nil,
@@ -53,11 +52,6 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.Criterion do
     # Criteria are retired, never deleted, so a number is never freed.
     field :retired_at, :utc_datetime_usec
 
-    # This criterion's own counterpart to `stories.specs_ready_at`: when a
-    # certifying run last found it green. Set directly here; what sets it
-    # and what reads it back belongs to the callers that do so.
-    field :latched_at, :utc_datetime_usec
-
     belongs_to :story, CodeMySpec.Stories.Story
 
     timestamps(type: :utc_datetime_usec)
@@ -81,8 +75,7 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.Criterion do
       :rule_id,
       :spec_path,
       :number,
-      :retired_at,
-      :latched_at
+      :retired_at
     ])
     |> validate_required([
       :description,
@@ -94,18 +87,11 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.Criterion do
     |> mint_number()
   end
 
-  @doc "Retire a criterion. It keeps its row and its number, but not its latch -- a restored criterion starts over, the way a brand-new one does."
-  def retire_changeset(criterion),
-    do: change(criterion, retired_at: DateTime.utc_now(), latched_at: nil)
+  @doc "Retire a criterion. It keeps its row and its number."
+  def retire_changeset(criterion), do: change(criterion, retired_at: DateTime.utc_now())
 
   @doc "Bring a retired criterion back under its number."
   def restore_changeset(criterion), do: change(criterion, retired_at: nil)
-
-  @doc "Latch a criterion directly, as a certifying run would."
-  def latch_changeset(criterion), do: change(criterion, latched_at: DateTime.utc_now())
-
-  @doc "Unlatch a criterion directly, as a rewritten spex would."
-  def unlatch_changeset(criterion), do: change(criterion, latched_at: nil)
 
   # One above the highest in the project, retired included, so a number is
   # never handed out twice. Taken inside the insert's transaction; the unique

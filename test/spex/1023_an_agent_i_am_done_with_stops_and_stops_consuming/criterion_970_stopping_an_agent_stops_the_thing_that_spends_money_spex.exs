@@ -68,7 +68,9 @@ defmodule CodeMySpecSpex.Story1023.Criterion2873Spex do
         refute context.reply.isError,
                "stopping reported an error: #{response_text(context.reply)}"
 
-        assert response_text(context.reply) =~ ~r/stopped/i
+        # "Turned off" since v2.0.372: off is the intent, and the process going
+        # is what the then_ above checks.
+        assert response_text(context.reply) =~ ~r/turned off/i
 
         {:ok, context}
       end

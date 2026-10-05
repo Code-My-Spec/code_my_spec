@@ -874,7 +874,12 @@ defmodule CmsHarness.Project.ChannelClient do
       socket,
       socket.assigns.topic,
       "agents_present",
-      %{"agent_ids" => Liveness.present(socket.assigns.project.root)},
+      %{
+        "agent_ids" => Liveness.present(socket.assigns.project.root),
+        # The ones its Keepers gave up on, so they stay stuck across the
+        # reconnect rather than reading as starting again.
+        "gave_up" => Liveness.gave_up(socket.assigns.project.root)
+      },
       5_000
     )
 
@@ -1338,8 +1343,13 @@ defmodule CmsHarness.Project.ChannelClient do
     # distinction, and this is the one thing under this root that isn't the
     # user's. Best-effort and fire-and-forget, same as everything else this
     # event does: nothing here can hold up the offboard.
-    Task.start(fn -> CmsHarness.AppInstance.discard(root) end)
-    Task.start(fn -> CmsHarness.Projects.stop_serving(root) end)
+    #
+    # In that order, in one task: stopping the copy takes its app with it (phase
+    # 2b), and a discard that lost that race never dropped the database.
+    Task.start(fn ->
+      CmsHarness.AppInstance.discard(root)
+      CmsHarness.Projects.stop_serving(root)
+    end)
 
     {:ok, socket}
   end
@@ -1696,16 +1706,6 @@ defmodule CmsHarness.Project.ChannelClient do
          with_served_root(
            root,
            &Steps.contained(Environment.new(:local, &1), &1, base, commits)
-         )
-
-  defp apply_promotion(
-         "promotion_changed_files",
-         %{"root" => root, "base" => base, "commit" => commit}
-       ),
-       do:
-         with_served_root(
-           root,
-           &Steps.changed_files(Environment.new(:local, &1), &1, base, commit)
          )
 
   defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do

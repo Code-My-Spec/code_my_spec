@@ -95,7 +95,34 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
-  def turn(assigns), do: plain_turn(assigns)
+  def turn(assigns) do
+    if routine_notice?(assigns.message), do: routine_notice(assigns), else: plain_turn(assigns)
+  end
+
+  def routine_notice?(%{role: :operator, sender_id: "promotion-notice"}), do: true
+
+  # Older confirmations were recorded with the same sender as human messages.
+  def routine_notice?(%{role: :operator} = message) do
+    Regex.match?(
+      ~r/\AThe (reload|restart) from your promotion is confirmed:/,
+      Message.text(message)
+    )
+  end
+
+  def routine_notice?(_message), do: false
+
+  defp routine_notice(assigns) do
+    ~H"""
+    <details
+      id={@id}
+      data-test="routine-notice"
+      class="rounded border border-base-300 px-3 py-1 text-xs"
+    >
+      <summary class="cursor-pointer">Promotion confirmed</summary>
+      <div class="mt-2 whitespace-pre-wrap break-words">{Message.text(@message)}</div>
+    </details>
+    """
+  end
 
   # The tool's name rides on `sender_id` as `"agent:<name>"` — see
   # `Conversations.add_tool_result/5`.

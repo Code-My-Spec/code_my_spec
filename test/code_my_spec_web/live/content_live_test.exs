@@ -54,7 +54,7 @@ defmodule CodeMySpecWeb.ContentLiveTest do
     # returns `[]` unconditionally: Re-sync would always find nothing, no
     # matter what is really on disk.
     setup %{scope: scope, project: project} do
-      {:ok, tmp_dir} = Briefly.create(directory: true)
+      tmp_dir = CodeMySpec.TempFile.owned_dir("test")
 
       File.write!(Path.join(tmp_dir, "hello.md"), """
       ---

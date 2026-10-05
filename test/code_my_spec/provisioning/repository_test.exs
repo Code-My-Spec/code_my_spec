@@ -14,7 +14,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
   @repo %{"name" => "sams-thing", "clone_url" => "https://github.com/sam/sams-thing.git"}
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     # A connected GitHub App installation. The auth path is real — only HTTP
     # is stubbed — so a change to how the token is resolved surfaces here.

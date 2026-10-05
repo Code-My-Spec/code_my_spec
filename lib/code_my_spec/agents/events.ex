@@ -102,15 +102,8 @@ defmodule CodeMySpec.Agents.Events do
   # Logged rather than retried: the agent may already be acting on the first
   # message, and a delivery loop does not fix that.
   def handle_event(@promotion_report, _measurements, meta, _config) do
-    case Agents.dispatch_message(meta.scope, meta.agent_id, meta.text, :own_reply) do
-      {:ok, disposition, _message} ->
-        Logger.info("[Promotion] #{meta.what} #{disposition} to agent #{meta.agent_id}")
-
-      {:error, deliver_error} ->
-        Logger.warning(
-          "[Promotion] #{meta.what} could not be delivered to agent #{meta.agent_id}: " <>
-            inspect(deliver_error)
-        )
+    if meta.what != "restart confirmation" or awaiting_promotion?(meta.scope, meta.agent_id) do
+      dispatch_promotion_report(meta)
     end
   catch
     kind, reason -> log(:promotion_report, kind, reason)
@@ -187,6 +180,39 @@ defmodule CodeMySpec.Agents.Events do
 
   # `catch`, not `rescue`: an exit (a sandbox owner gone, a call timing out)
   # would otherwise detach this handler for every later event.
+  defp awaiting_promotion?(scope, agent_id) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, agent} ->
+        Enum.any?(CodeMySpec.TaskOwner.tasks(agent), fn task ->
+          task.requirement_name in ["story_promoted", "promote_issue"] and
+            task.status in [:active, :prepared, :blocked]
+        end)
+
+      _ ->
+        false
+    end
+  end
+
+  defp dispatch_promotion_report(meta) do
+    opts =
+      if meta.what == "restart confirmation",
+        do: [sender_id: "promotion-notice"],
+        else: []
+
+    case Agents.dispatch_message(meta.scope, meta.agent_id, meta.text, :own_reply, 15_000, opts) do
+      {:ok, disposition, _message} ->
+        Logger.info("[Promotion] #{meta.what} #{disposition} to agent #{meta.agent_id}")
+
+      {:error, deliver_error} ->
+        Logger.warning(
+          "[Promotion] #{meta.what} could not be delivered to agent #{meta.agent_id}: " <>
+            inspect(deliver_error)
+        )
+    end
+  catch
+    kind, reason -> log(:promotion_report, kind, reason)
+  end
+
   defp log(event, kind, reason) do
     Logger.warning("[Agents.Events] #{event} failed: #{Exception.format_banner(kind, reason)}")
     :ok

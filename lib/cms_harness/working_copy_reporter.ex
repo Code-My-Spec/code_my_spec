@@ -220,7 +220,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   # that is not there kills the reporter — so a machine that could still have
   # said which of its checkouts had gone silent stops saying anything.
   defp serve(from_server) do
-    case Process.whereis(CmsHarness.ProjectSupervisor) do
+    case Process.whereis(CmsHarness.CopiesSupervisor) do
       nil ->
         :ok
 
@@ -241,7 +241,7 @@ defmodule CmsHarness.WorkingCopyReporter do
 
   # A pending project the server offered, generated and onboarded onto this
   # machine — same guard as `serve/1` and for the same reason: a harness with
-  # no `ProjectSupervisor` (the light-harness/sprite path, or any process that
+  # no `CopiesSupervisor` (the light-harness/sprite path, or any process that
   # only embeds this reporter for its reporting) has nowhere to serve a
   # generated project into and must not attempt to become the thing serving
   # one. `DeviceController` already excludes `kind: :cloud` devices from ever
@@ -254,7 +254,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   # two — blocking here would mean a machine mid-generation stops answering
   # "which of my checkouts are still on disk" for as long as generation takes.
   defp generate(pending, state) do
-    case Process.whereis(CmsHarness.ProjectSupervisor) do
+    case Process.whereis(CmsHarness.CopiesSupervisor) do
       nil -> state
       _pid -> Enum.reduce(pending, state, &generate_one/2)
     end

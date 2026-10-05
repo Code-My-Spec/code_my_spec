@@ -139,7 +139,7 @@ defmodule CodeMySpec.ResourcesTest do
   describe "project_scope/2" do
     test "resolves a runnable environment from the project's own checkout, even when the caller's scope has none",
          %{scope: scope} do
-      {:ok, checkout} = Briefly.create(directory: true)
+      checkout = CodeMySpec.TempFile.owned_dir("test")
 
       {:ok, project} =
         Projects.update_project(scope, scope.active_project, %{local_path: checkout})
@@ -168,7 +168,7 @@ defmodule CodeMySpec.ResourcesTest do
 
     test "a harness-typed scope still re-derives :local from the project's checkout, unaffected by this fix",
          %{scope: scope} do
-      {:ok, checkout} = Briefly.create(directory: true)
+      checkout = CodeMySpec.TempFile.owned_dir("test")
 
       {:ok, project} =
         Projects.update_project(scope, scope.active_project, %{local_path: checkout})
@@ -198,7 +198,7 @@ defmodule CodeMySpec.ResourcesTest do
     # a project a real, active harness could answer for.
     test "a harness-typed scope finds a live-registered checkout even with no local_path column",
          %{scope: scope} do
-      {:ok, checkout} = Briefly.create(directory: true)
+      checkout = CodeMySpec.TempFile.owned_dir("test")
 
       {:ok, project} =
         Projects.update_project(scope, scope.active_project, %{local_path: nil})
@@ -224,7 +224,7 @@ defmodule CodeMySpec.ResourcesTest do
     # for a checkout that was live and connected the whole time.
     test "a harness-typed scope uses the caller's own connected working copy when local_path and the registry both have nothing",
          %{scope: scope} do
-      {:ok, checkout} = Briefly.create(directory: true)
+      checkout = CodeMySpec.TempFile.owned_dir("test")
 
       {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: nil})
 
@@ -253,8 +253,8 @@ defmodule CodeMySpec.ResourcesTest do
     # instead of a stale one.
     test "a harness-typed scope ignores the connected working copy when it belongs to a different project",
          %{scope: scope} do
-      {:ok, own_checkout} = Briefly.create(directory: true)
-      {:ok, other_checkout} = Briefly.create(directory: true)
+      own_checkout = CodeMySpec.TempFile.owned_dir("test")
+      other_checkout = CodeMySpec.TempFile.owned_dir("test")
 
       # The working copy belongs to the caller's own project (scope.active_project) —
       # the one it is genuinely connected for.

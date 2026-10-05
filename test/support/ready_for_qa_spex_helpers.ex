@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.Stories
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -87,17 +86,6 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
 
     response
   end
-
-  @doc """
-  The commit a criterion's own latch was earned at, or nil.
-
-  One level down from `qa_stamp/2`: story 983's criteria 1895-1906 give each
-  criterion its own latch (`latched_at`), with the story's aggregate derived
-  from "every live criterion latched" (criterion 1905) rather than set
-  directly.
-  """
-  def criterion_latch(context, criterion),
-    do: AcceptanceCriteria.get_criterion(context.scope, criterion.id).latched_at
 
   @doc "Bind the copy's team to `story` through `set_active_story`, as a team member would."
   def set_active_story(context, story) do

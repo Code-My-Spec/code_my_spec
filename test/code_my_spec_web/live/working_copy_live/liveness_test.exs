@@ -142,4 +142,37 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
       assert summary.label == "Running"
     end
   end
+
+  # Not "Starting": nothing is going to start it (Harness, 2026-10-05).
+  describe "an agent its harness gave up on" do
+    defp gave_up(minutes_ago) do
+      at = DateTime.add(@now, -minutes_ago * 60, :second)
+
+      %{
+        agent(:gave_up, :alloy, minutes_ago)
+        | updated_at: at
+      }
+      |> Map.put(:gave_up, %{reason: ":boom", at: at})
+    end
+
+    test "says so, with why and since when" do
+      summary = Liveness.agent(gave_up(4), @now)
+
+      assert summary.label == "Gave up — needs main"
+      assert summary.basis =~ ":boom"
+      assert summary.since == "4m ago"
+    end
+
+    test "is what the copy reads as when nothing is running on it" do
+      summary = Liveness.working_copy([gave_up(4), agent(:starting, :alloy, 1)], @now)
+
+      assert summary.label == "Gave up — needs main"
+    end
+
+    test "does not mask an agent that really is running beside it" do
+      summary = Liveness.working_copy([gave_up(4), agent(:running, :alloy, 0)], @now)
+
+      assert summary.label == "Running"
+    end
+  end
 end

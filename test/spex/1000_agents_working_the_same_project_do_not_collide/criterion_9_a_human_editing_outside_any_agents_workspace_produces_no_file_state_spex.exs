@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion740Spex do
       given_ "a working copy that no agent is serving", context do
         # Never joined the channel, so no id was ever issued for it. A real
         # directory on a real disk that the project has never heard of.
-        {:ok, unserved} = Briefly.create(directory: true)
+        unserved = CodeMySpec.TempFile.owned_dir("test")
 
         {:ok, Map.put(context, :unserved, unserved)}
       end

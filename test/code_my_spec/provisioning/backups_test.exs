@@ -41,7 +41,7 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
   defp build_context(false), do: {:ok, skip: true}
 
   defp build_context(true) do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     env = Environment.new(:local, tmp)
 
     {:ok, {pub, priv}} = Sops.generate_key()

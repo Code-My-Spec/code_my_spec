@@ -15,7 +15,7 @@ defmodule CodeMySpec.Environments.MixExsAppNameTest do
   alias CodeMySpec.Environments.Environment
 
   setup do
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     %{env: Environment.new(:local, dir)}
   end
 

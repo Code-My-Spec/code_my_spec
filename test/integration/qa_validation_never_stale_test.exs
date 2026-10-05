@@ -43,7 +43,7 @@ defmodule CodeMySpec.Integration.QaValidationNeverStaleTest do
   end
 
   test "a persisted qa_validation problem keeps blocking across stops without ever being labelled stale" do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 

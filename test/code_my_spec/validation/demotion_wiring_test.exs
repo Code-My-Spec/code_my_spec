@@ -37,7 +37,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
   @spex_path "test/spex/811_provisioning/criterion_6493_a_step_reports_its_provider_spex.exs"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     Configurations.get_or_create(scope)
@@ -79,9 +79,8 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       :ok = FileEdits.track_edit(ctx.session, @mine)
       {:ok, _} = Configurations.update(ctx.scope, %{spex: :block_all})
 
-      # Bound by a criterion's `spec_path`, which is how a spex path actually
-      # resolves to a story: `spec_path_story_ids/1` is consulted before the
-      # directory number, and the number in the directory is not a story id.
+      # A spex file with no `criterion:` stamp binds to no criterion; the
+      # directory number is not a story id, so the finding stays enforced.
       File.mkdir_p!(Path.join(ctx.tmp, Path.dirname(@spex_path)))
       File.write!(Path.join(ctx.tmp, @spex_path), "defmodule S do\nend\n")
       {:ok, _} = FileSync.sync(ctx.scope, base_dir: ctx.tmp)
@@ -100,8 +99,8 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
           spec_path: @spex_path
         })
 
-      {:ok, _criterion} = AcceptanceCriteria.latch_criterion(ctx.scope, criterion)
-      {:ok, story} = Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
+      {:ok, story} =
+        Stories.set_specs_ready(ctx.scope, Stories.get_story(ctx.scope, story.id), true)
 
       Map.put(ctx, :story, story)
     end

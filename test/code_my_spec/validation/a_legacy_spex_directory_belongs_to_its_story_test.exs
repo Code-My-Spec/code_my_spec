@@ -20,9 +20,20 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
 
   @dir "test/spex/agency-white-label-configuration-781a555e"
 
+  # A spex file the story's criterion names (`Files.SpecBinding`).
   defp recorded(scope, story, path) do
-    {:ok, _} =
-      AcceptanceCriteria.create_criterion(scope, story, %{description: "owned", spec_path: path})
+    {:ok, criterion} = AcceptanceCriteria.create_criterion(scope, story, %{description: "owned"})
+
+    CodeMySpec.Files.upsert_files(scope, [
+      %{
+        path: path,
+        role: :bdd_spec,
+        story_id: story.id,
+        criterion_number: criterion.number,
+        valid: true,
+        mtime: DateTime.utc_now()
+      }
+    ])
   end
 
   defp red(scope, path) do
@@ -38,15 +49,15 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
     CodeMySpec.Problems.list_project_problems(scope, severity: :error)
   end
 
-  test "an unrecorded file in a not-ready story's directory does not block" do
+  # Every red spex blocks (John, 2026-10-05), unbuilt story or not.
+  test "an unrecorded file in a not-ready story's directory blocks too" do
     scope = full_scope_fixture()
     story = story_fixture(scope)
     recorded(scope, story, "#{@dir}/criterion_3901_owned_spex.exs")
 
     problems = red(scope, "#{@dir}/criterion_4152_renumbered_spex.exs")
 
-    assert Validation.enforceable(scope, problems) == [],
-           "the directory is this unbuilt story's, and its latch says its spex may be red"
+    assert length(Validation.enforceable(scope, problems)) == 1
   end
 
   test "a directory two stories record into answers nothing, so it still blocks" do

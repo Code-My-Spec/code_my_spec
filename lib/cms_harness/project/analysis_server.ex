@@ -533,8 +533,13 @@ defmodule CmsHarness.Project.AnalysisServer do
   #
   # `completed` is the checkout's git state when the analyzer finished; nil
   # when it never returned (killed, crashed).
+  #
+  # `"args"` is what actually ran. A tie merges args, so a targeted entry a full
+  # request tied onto runs the whole suite, and the server decides what the
+  # result replaces from this rather than from the primary row's own request
+  # (batch 313e82812, 2026-10-05).
   defp deliver(state, running, result, completed \\ nil) do
-    tree = completed_tree(completed)
+    tree = completed |> completed_tree() |> Map.put("args", Map.get(running, :args))
     push_result(state.project.root, running.run_id, running.source, result, nil, tree)
 
     for run_id <- Map.get(running, :tied_run_ids, []) do

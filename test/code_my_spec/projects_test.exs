@@ -89,7 +89,7 @@ defmodule CodeMySpec.ProjectsTest do
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
 
-      {:ok, dir} = Briefly.create(directory: true)
+      dir = CodeMySpec.TempFile.owned_dir("test")
       project = project_fixture(scope, %{local_path: dir})
 
       assert {:ok, found} = Projects.resolve_local_project(dir)
@@ -397,7 +397,7 @@ defmodule CodeMySpec.ProjectsTest do
   # A project root carrying `.code_my_spec/config.yml`, the way a real checkout
   # does. Briefly cleans it up.
   defp write_config(config) do
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     File.mkdir_p!(Path.join(dir, ".code_my_spec"))
 
     yaml = Enum.map_join(config, "\n", fn {k, v} -> "#{k}: #{v}" end)

@@ -7,7 +7,7 @@ defmodule CodeMySpec.GeneratorsTest do
   @router "lib/my_app_web/router.ex"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     %{env: Environment.new(:local, tmp), dir: tmp}
   end
 

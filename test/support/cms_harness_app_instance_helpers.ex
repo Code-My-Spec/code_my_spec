@@ -241,8 +241,11 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   # on.
   defp stop_app_instance(root) do
     case Registry.lookup(CmsHarness.Registry, {:app_instance, root}) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(CmsHarness.AppInstanceSupervisor, pid)
-      [] -> :ok
+      [{pid, _}] ->
+        DynamicSupervisor.terminate_child(CmsHarness.Copy.Supervisor.apps(root), pid)
+
+      [] ->
+        :ok
     end
   end
 

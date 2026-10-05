@@ -416,7 +416,7 @@ defmodule CodeMySpec.Analysis do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
         result = note_analyzer_staleness(result, payload)
-        reconcile_or_finish_tied(scope, run, result, payload["tied_to"])
+        reconcile_or_finish_tied(scope, as_executed(run, payload), result, payload["tied_to"])
 
       {:error, reason} ->
         Reconciler.fail(run, reason, %{output: raw["output"], exit_status: raw["exit_status"]})
@@ -462,6 +462,13 @@ defmodule CodeMySpec.Analysis do
   # reconciles. A tied run still gets its own row closed — whoever is
   # waiting on that specific run_id needs a real, completed answer — just
   # without a second pass over data the primary already wrote.
+  # A targeted run that a full request tied onto ran the whole suite (the
+  # harness merges a tie's args), so its result is a full one. Read as partial,
+  # nothing reconciled it: the primary was output only, every tied run by design
+  # (batch 313e82812, 2026-10-05).
+  defp as_executed(%Run{kind: :partial} = run, %{"args" => []}), do: %{run | kind: :full}
+  defp as_executed(run, _payload), do: run
+
   defp reconcile_or_finish_tied(scope, run, result, nil),
     do: Reconciler.reconcile(scope, run, result, notify: true)
 

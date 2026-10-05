@@ -127,6 +127,32 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       assert text =~ "not restarted when HEAD moves"
     end
 
+    for health <- ["down", "erroring"] do
+      test "the tool explains an #{health} app and distinguishes its last commit from HEAD" do
+        scope = full_scope_fixture()
+        {:ok, _reply, socket} = join_as(scope)
+        frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
+        task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
+        assert %{"ref" => ref} = await_push("ensure_app_running")
+
+        answer(socket, "ensure_app_running_result", ref, %{
+          "status" => "ok",
+          "app_status" => unquote(health),
+          "app_commit" => "old111",
+          "app_head" => "new222",
+          "app_action_reason" => "The health probe failed; inspect log /tmp/candidate.log."
+        })
+
+        {:reply, response, _frame} = Task.await(task)
+        assert response.isError
+        text = response_text(response)
+        assert text =~ "old111"
+        assert text =~ "new222"
+        assert text =~ "/tmp/candidate.log"
+        assert text =~ "Not serving"
+      end
+    end
+
     # A first start that has not come up within its inline window answers
     # `starting`; the server read that as an unexpected reply and failed the call.
     test "a first start still booting comes back as starting, not an error", %{socket: socket} do

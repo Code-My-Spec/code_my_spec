@@ -75,7 +75,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
         {:ok, Map.put(context, :response, promote(context, context.story.number))}
       end
 
-      when_ "the compiler finds the merged tree broken, and again when it is re-run", context do
+      # Red is red: no re-run (John, 2026-10-05).
+      when_ "the compiler finds the merged tree broken", context do
         broken = %{
           "compiler" => [
             %{
@@ -87,9 +88,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
           ]
         }
 
-        context
-        |> the_gate_answers(broken)
-        |> the_gate_answers(broken, sources: ["compiler"])
+        the_gate_answers(context, broken)
 
         {:ok, Map.put(context, :told, what_the_agent_was_told(context))}
       end

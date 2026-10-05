@@ -2199,7 +2199,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
       >
         <%!-- Pending content appears here until delivery moves it into the transcript. --%>
-        <span class="min-w-0 whitespace-pre-wrap break-words">
+        <details
+          :if={ChatComponents.routine_notice?(message)}
+          data-test="pending-routine-notice"
+          class="min-w-0 flex-1"
+        >
+          <summary class="cursor-pointer">Promotion confirmed</summary>
+          <div class="mt-2 whitespace-pre-wrap break-words">{Message.text(message)}</div>
+        </details>
+        <span
+          :if={!ChatComponents.routine_notice?(message)}
+          class="min-w-0 whitespace-pre-wrap break-words"
+        >
           {Message.text(message)}
         </span>
         <span class="opacity-60">

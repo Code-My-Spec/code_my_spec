@@ -115,7 +115,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
         context = analyzers_are_current(context)
 
         response = promote(context, context.story.number)
-        answer_restart_app_ok(context.running_socket)
+
+        # Its commit is already on main, so the queue lands it at once with
+        # nothing to deploy (2583cc8b0): the running app is not restarted.
+        refute_push "restart_app", _payload, 1_000
         {:ok, Map.put(context, :second_promote_response, response)}
       end
 

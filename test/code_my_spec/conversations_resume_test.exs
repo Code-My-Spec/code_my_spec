@@ -48,6 +48,18 @@ defmodule CodeMySpec.ConversationsResumeTest do
     %{conversation: conversation, scope: scope, agent: agent}
   end
 
+  defp checkpoint_prefix(_conversation, false), do: []
+
+  defp checkpoint_prefix(conversation, true) do
+    anchor = said(conversation, "earlier")
+    summary = [%{"role" => "user", "content" => "summary"}]
+
+    {:ok, _} =
+      Conversations.record_checkpoint(conversation, summary, through_message_id: anchor.id)
+
+    summary
+  end
+
   defp said(conversation, text) do
     {:ok, message} = Conversations.add_message(conversation, :operator, text, "operator")
     message
@@ -209,6 +221,37 @@ defmodule CodeMySpec.ConversationsResumeTest do
   end
 
   describe "what is left out" do
+    for checkpoint? <- [false, true] do
+      @checkpoint? checkpoint?
+      test "undelivered messages are excluded with checkpoint=#{checkpoint?}", %{
+        conversation: conversation
+      } do
+        prefix = checkpoint_prefix(conversation, @checkpoint?)
+
+        for delivery <- [:pending, :withdrawn, :failed, :delivered] do
+          {:ok, _} =
+            Conversations.add_message(
+              conversation,
+              :operator,
+              Atom.to_string(delivery),
+              "operator",
+              [],
+              delivery: delivery,
+              delivery_ref: Ecto.UUID.generate()
+            )
+        end
+
+        said(conversation, "legacy message")
+
+        assert Conversations.resume_messages(conversation) ==
+                 prefix ++
+                   [
+                     %{"role" => "user", "content" => "delivered"},
+                     %{"role" => "user", "content" => "legacy message"}
+                   ]
+      end
+    end
+
     test "the agent's working is not replayed as things that were said",
          %{conversation: conversation} do
       said(conversation, "have a look at the pricing module")

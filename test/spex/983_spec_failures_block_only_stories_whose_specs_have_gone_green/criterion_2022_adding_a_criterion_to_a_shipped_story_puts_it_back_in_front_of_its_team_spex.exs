@@ -6,9 +6,11 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
   Rule: a story revised after it shipped is not finished — the revision
   goes through the same gates the rest of the story did.
 
-  A fresh criterion starts unlatched (criterion 1895), so "every live
-  criterion latched" (criterion 1905) flips false the instant one is added,
-  however settled the rest of the story already is. That alone reopens
+  A new criterion restarts the story's `specs_ready` chain the same way
+  retiring one does (criterion 1902):
+  `AcceptanceCriteriaRepository.create_criterion/3` calls
+  `Stories.set_specs_ready(scope, story, false)` on insert, however
+  settled the rest of the story already is. That alone reopens
   bdd_specs_exist — the new criterion has no spec file yet — so this
   criterion is really about what the team is shown next, not a new
   mechanism: `get_next_requirement` scoped to the story, before and after.
@@ -110,8 +112,8 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
 
         story = Stories.get_story(context.scope, story.id)
 
-        assert Enum.all?(story.criteria, &(criterion_latch(context, &1) != nil)),
-               "every one of the story's criteria must be latched before this scenario starts"
+        assert story.specs_ready,
+               "the story's specs_ready must be set before this scenario starts"
 
         {:ok, story} = Stories.set_qa_ready(context.scope, story, String.duplicate("a", 40), qa_ready_at)
 

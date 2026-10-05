@@ -95,20 +95,6 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.contained(env, root, base, commits) end
       )
 
-  @doc "The paths `commit` changed since it left `base` (`Steps.changed_files/4`)."
-  @spec changed_files(Scope.t(), String.t(), String.t(), String.t(), Ecto.UUID.t() | nil) ::
-          Steps.result()
-  def changed_files(scope, root, base, commit, copy_id),
-    do:
-      run(
-        scope,
-        copy_id,
-        "promotion_changed_files",
-        %{"root" => root, "base" => base, "commit" => commit},
-        @git_timeout,
-        fn env -> Steps.changed_files(env, root, base, commit) end
-      )
-
   @doc "Merge `branch` into the checkout at `root`."
   @spec merge(Scope.t(), String.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
   def merge(scope, root, branch, copy_id),
