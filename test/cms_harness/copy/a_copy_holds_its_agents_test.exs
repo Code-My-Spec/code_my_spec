@@ -44,6 +44,20 @@ defmodule CmsHarness.Copy.ACopyHoldsItsAgentsTest do
     refute Machine.running?(ctx.id)
   end
 
+  test "scenario teardown is idempotent and leaves another copy running", ctx do
+    {:ok, other} = Briefly.create(directory: true)
+    other_id = Ecto.UUID.generate()
+    {:ok, %{pid: other_pid}} = Machine.start_agent(other_id, other)
+    on_exit(fn -> Copy.stop(other) end)
+
+    assert :ok = Machine.stop_copy(ctx.root)
+    assert :ok = Machine.stop_copy(ctx.root)
+    assert {:error, :not_running} = Copy.whereis(ctx.root)
+    refute Machine.running?(ctx.id)
+    assert Process.alive?(other_pid)
+    assert Machine.running?(other_id)
+  end
+
   test "stopping one copy leaves another copy's agents alone", ctx do
     {:ok, other} = Briefly.create(directory: true)
     other = Path.expand(other)
