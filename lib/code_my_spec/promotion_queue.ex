@@ -109,7 +109,7 @@ defmodule CodeMySpec.PromotionQueue do
   def enqueue(%Scope{} = scope, story_number, opts \\ []) do
     with {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
-         subject = subject(scope, story, copy),
+         {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id)),
          :ok <- qa_passed(scope, subject),
          {:ok, head} <- clean_head(scope, copy),
          :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
@@ -286,13 +286,34 @@ defmodule CodeMySpec.PromotionQueue do
     end
   end
 
-  # The story named, or else the issue assigned to the copy's team, or nothing.
-  defp subject(_scope, %{} = story, _copy), do: {:story, story}
+  # The story named; or the issue named (`issue_id:`, the promote task's own),
+  # which has to be this copy's; or else the issue assigned to the copy that is
+  # waiting to be promoted (`Issues.assigned_to_copy/2`); or nothing.
+  #
+  # e4c9bfcd, 2026-10-05: a copy held four issues, and the one picked was not
+  # the one being promoted — it had not passed QA, so every promote from the
+  # copy was refused over it.
+  defp subject(_scope, %{} = story, _copy, _issue_id), do: {:ok, {:story, story}}
 
-  defp subject(scope, nil, copy) do
+  defp subject(scope, nil, copy, nil) do
     case Issues.assigned_to_copy(scope, copy.id) do
-      nil -> nil
-      issue -> {:issue, issue}
+      nil -> {:ok, nil}
+      issue -> {:ok, {:issue, issue}}
+    end
+  end
+
+  defp subject(scope, nil, copy, issue_id) do
+    case Issues.get_issue(scope, issue_id) do
+      %{status: :accepted, assigned_working_copy_id: id} = issue when id == copy.id ->
+        {:ok, {:issue, issue}}
+
+      _ ->
+        {:error,
+         %{
+           reason:
+             "issue #{issue_id} is not an accepted issue assigned to this copy, so its " <>
+               "fix is not promoted from here."
+         }}
     end
   end
 
