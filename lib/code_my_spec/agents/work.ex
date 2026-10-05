@@ -194,6 +194,17 @@ defmodule CodeMySpec.Agents.Work do
     :ok
   end
 
+  @doc "Resume only the agent whose process came up; reconnect sweeps remain copy-wide."
+  @spec resume_held_task(Scope.t(), Ecto.UUID.t()) :: :ok
+  def resume_held_task(%Scope{} = scope, agent_id) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         true <- stranded?(scope, agent) do
+      resume(scope, agent)
+    end
+
+    :ok
+  end
+
   # A held task with a turn ended to wait is not stranded: whatever it waits on
   # messages it (`Wake`, through `Waiting`).
   defp stranded?(scope, agent) do

@@ -2517,8 +2517,8 @@ defmodule CodeMySpec.Agents do
 
   Two bells, because an agent that came up is in one of two states and they
   need opposite things. One holding the task the restart interrupted is told to
-  carry on with it (`Work.resume_held_tasks/2`, scoped to the copy: one restart
-  usually stranded every agent on that checkout). One holding nothing is offered
+  carry on with it (`Work.resume_held_task/2`, scoped to the agent that came up).
+  A harness reconnect separately sweeps the whole copy. One holding nothing is offered
   work if it is admissible (`Work.request_turn_if_runnable/4`). Each decides
   admissibility itself, so neither starts a turn for an agent that should not
   have one.
@@ -2526,7 +2526,7 @@ defmodule CodeMySpec.Agents do
   @spec came_up(Scope.t(), Ecto.UUID.t()) :: :ok
   def came_up(%Scope{} = scope, agent_id) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id) do
-      Work.resume_held_tasks(scope, agent.working_copy_id)
+      Work.resume_held_task(scope, agent.id)
       Work.request_turn_if_runnable(scope, agent, :restarted)
     end
 
