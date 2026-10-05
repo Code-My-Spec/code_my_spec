@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,7 +27,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
   # tells the agent, so a scenario waits for that before reading the latch.
   setup do
     :ok = Fixtures.install_recording_agent_transport()
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
@@ -50,6 +51,8 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
 
         :ok = write(context.agent_root, second_path, passing_spex(second))
         :ok = Environments.write_file(context.environment, second_path, passing_spex(second))
+        {_, 0} = git(context, context.agent_root, ["add", "-A"])
+        {_, 0} = git(context, context.agent_root, ["commit", "-q", "-m", "second criterion spec"])
         :ok = Fixtures.sync_changed(context.scope)
 
         context = analyzers_are_current(context)

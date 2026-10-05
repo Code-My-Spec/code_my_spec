@@ -9,14 +9,15 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   """
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.AgentTasks.ReadyForQa
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
+  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -97,6 +98,16 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   """
   def criterion_latch(context, criterion),
     do: AcceptanceCriteria.get_criterion(context.scope, criterion.id).latched_at
+
+  @doc "Bind the copy's team to `story` through `set_active_story`, as a team member would."
+  def set_active_story(context, story) do
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      SetActiveStory.execute(%{story_number: story.number}, frame)
+
+    response
+  end
 
   @doc "Retire a criterion through `retire_criterion`, as product would."
   def retire_criterion(context, criterion) do

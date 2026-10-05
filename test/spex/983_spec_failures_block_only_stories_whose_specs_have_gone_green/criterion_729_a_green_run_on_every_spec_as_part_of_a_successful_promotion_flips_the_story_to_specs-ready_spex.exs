@@ -42,7 +42,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
         context =
           context |> a_promotable_project() |> an_agent_on_the_copy() |> analyzers_are_current()
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        story = a_promotable_story(context)
+        commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
+        context = analyzers_are_current(context)
+
+        {:ok, Map.put(context, :story, story)}
       end
 
       when_ "the story is promoted, and the queue lands it", context do

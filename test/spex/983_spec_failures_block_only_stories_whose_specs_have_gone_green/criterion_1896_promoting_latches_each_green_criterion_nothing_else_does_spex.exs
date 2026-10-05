@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1896Spex do
 
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,7 +27,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1896Spex do
   # tells the agent, so a scenario waits for that before reading the latch.
   setup do
     :ok = Fixtures.install_recording_agent_transport()
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
@@ -38,6 +39,8 @@ defmodule CodeMySpecSpex.Story983.Criterion1896Spex do
           context |> a_promotable_project() |> an_agent_on_the_copy() |> analyzers_are_current()
 
         story = a_promotable_story(context)
+        commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
+        context = analyzers_are_current(context)
 
         response = add_criterion(context, story, "It also works on Tuesdays")
         refute response.isError, inspect(response)
