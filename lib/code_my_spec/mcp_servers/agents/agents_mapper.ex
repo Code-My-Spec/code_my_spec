@@ -163,7 +163,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     body = Enum.map_join(agents, "\n\n", &entry/1)
 
     Response.tool()
-    |> Response.text("#{length(agents)} agent(s) running.\n\n#{body}")
+    |> Response.text("#{length(agents)} agent(s), each with its status.\n\n#{body}")
   end
 
   defp entry(%Agent{} = agent) do

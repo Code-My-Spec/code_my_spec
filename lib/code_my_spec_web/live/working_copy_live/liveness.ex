@@ -83,6 +83,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     }
   end
 
+  # A hooks agent's harness reports it while it lives (`Agents.record_reported/2`)
+  # and reaps it when the report stops naming it. That report is the harness's
+  # claim, so the agent reads as stopped rather than as recency.
+  def agent(%{status: :stopped} = agent, now),
+    do: %{
+      label: "Stopped",
+      basis: "its harness stopped reporting it",
+      since: since(agent.updated_at, now)
+    }
+
   def agent(agent, now) do
     %{
       label: "Last heard from",
@@ -103,7 +113,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   end
 
   def working_copy(agents, now) do
-    {stopped, on_duty} = Enum.split_with(agents, &(&1.lifecycle in [:off, :retired]))
+    {stopped, on_duty} = Enum.split_with(agents, &stopped?/1)
     {gave_up, on_duty} = Enum.split_with(on_duty, &(&1.lifecycle == :gave_up))
     {alloy, hooks} = Enum.split_with(on_duty, &(&1.engine == :alloy))
     {present, starting} = Enum.split_with(alloy, &(&1.lifecycle == :running))
@@ -129,6 +139,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   defp reason(nil), do: ""
   defp reason(text), do: " (" <> text <> ")"
 
+  # Turned off, retired, or a hooks agent its harness no longer reports.
+  defp stopped?(%{lifecycle: lifecycle}) when lifecycle in [:off, :retired], do: true
+  defp stopped?(%{engine: engine, status: :stopped}) when engine != :alloy, do: true
+  defp stopped?(_agent), do: false
+
   # A copy whose only agents are ones we asked for says so. Rolling them up as
   # "Running" is the same lie one row at a time, and this is the summary most
   # people read — it is what the list shows without opening anything.
@@ -152,7 +167,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
     %{
       label: "Stopped",
-      basis: label_for_count(length(stopped)) <> " turned off, not running",
+      basis: label_for_count(length(stopped)) <> " turned off or no longer reported",
       since: since(latest.updated_at, now)
     }
   end

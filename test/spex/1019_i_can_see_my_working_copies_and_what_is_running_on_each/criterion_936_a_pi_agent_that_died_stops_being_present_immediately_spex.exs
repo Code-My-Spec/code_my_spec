@@ -41,39 +41,48 @@ defmodule CodeMySpecSpex.Story1019.Criterion2831Spex do
   spex "Presence goes when the process does", criterion: 936 do
     scenario "A Pi agent that died stops being present immediately" do
       given_ "a Pi agent shown as present on a copy", context do
-        dying = join_working_copy(context, "/tmp/spex-1019-dying", "dying checkout")
-        report_agents(context, [pi_agent(dying.working_copy_id, "/tmp/spex-1019-dying")])
+        {dying, socket} =
+          join_working_copy_socket(context, "/tmp/spex-1019-dying", "dying checkout")
+
+        id =
+          context
+          |> report_agents([pi_agent(dying.working_copy_id, "/tmp/spex-1019-dying")])
+          |> reported_id("/tmp/spex-1019-dying")
+
+        :ok = agent_up(socket, id)
 
         {:ok, live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")
 
-        assert render(live) =~ ~r/present/i,
+        assert render(live) =~ ~r/running/i,
                "the agent has to be present before its going away means anything"
 
-        {:ok, Map.put(context, :live, live)}
+        {:ok, Map.merge(context, %{live: live, socket: socket, agent_id: id})}
       end
 
       when_ "its process goes away", context do
-        # The absence is the event. A harness reports the set it is running, and
-        # a lane whose process died is simply not in the next one.
-        report_agents(context, [])
+        # The copy's harness says so the moment its process exits.
+        :ok = agent_down(context.socket, context.agent_id)
 
         {:ok, context}
       end
 
-      then_ "it stops reading as present, without anyone refreshing anything",
+      then_ "it stops reading as running, without anyone refreshing anything",
             context do
-        row =
-          context.live
-          |> element("[data-test='working-copy'][data-root='/tmp/spex-1019-dying']")
-          |> render()
+        # Presence broadcasts the change; the page re-renders when it arrives.
+        eventually(fn ->
+          row =
+            context.live
+            |> element("[data-test='working-copy'][data-root='/tmp/spex-1019-dying']")
+            |> render()
 
-        refute row =~ ~r/\bpresent\b/i,
-               "the agent is gone and the page still says present. Nothing here " <>
-                 "should have to expire first: presence is the process being " <>
-                 "joined, so losing the process is losing the fact. A row that " <>
-                 "outlives its agent is how somebody assigns work to nothing. " <>
-                 "Got: #{row}"
+          refute row =~ ~r/\brunning\b/i,
+                 "the agent is gone and the page still says running. Nothing here " <>
+                   "should have to expire first: presence is the process being " <>
+                   "joined, so losing the process is losing the fact. A row that " <>
+                   "outlives its agent is how somebody assigns work to nothing. " <>
+                   "Got: #{row}"
+        end)
 
         {:ok, context}
       end

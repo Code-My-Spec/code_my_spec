@@ -208,6 +208,36 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
       "engine" => "alloy"
     }
 
+  @doc """
+  The copy's harness saying an agent's process is up, as it does when it starts
+  or restores one. An Alloy agent is running while it is present on its copy's
+  channel, not because a report names it.
+  """
+  @spec agent_up(Phoenix.Socket.t(), String.t()) :: :ok
+  def agent_up(socket, agent_id), do: push_ok(socket, "agent_up", %{"agent_id" => agent_id})
+
+  @doc "The copy's harness saying an agent's process went away."
+  @spec agent_down(Phoenix.Socket.t(), String.t(), String.t()) :: :ok
+  def agent_down(socket, agent_id, reason \\ "killed"),
+    do: push_ok(socket, "agent_down", %{"agent_id" => agent_id, "reason" => reason})
+
+  @doc "The id the server gave the agent reported on `root`, from `report_agents/2`'s reply."
+  @spec reported_id(map(), String.t()) :: String.t()
+  def reported_id(%{"running" => running}, root) do
+    %{"id" => id} = Enum.find(running, &(&1["working_copy"] == root))
+    id
+  end
+
+  defp push_ok(socket, event, payload) do
+    ref = Phoenix.ChannelTest.push(socket, event, payload)
+
+    receive do
+      %Phoenix.Socket.Reply{ref: ^ref, status: :ok} -> :ok
+    after
+      1_000 -> flunk("the copy's channel never acknowledged #{event}")
+    end
+  end
+
   @doc "One Claude Code agent on a copy, as a harness would report it."
   @spec claude_agent(String.t(), String.t()) :: map()
   def claude_agent(working_copy_id, root),
