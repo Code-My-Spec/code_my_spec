@@ -17,6 +17,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
@@ -426,13 +427,13 @@ defmodule CodeMySpec.PromotionQueueTest do
     :ok = PromotionQueue.ensure_worker(ctx.scope)
     agent_id = agent.id
 
-    # Its rechecks, without waiting out the interval: each one finds the runs
-    # failed and starts them again, until the third start holds the batch.
+    # Its recheck, without waiting out the interval: the first runs failed, the
+    # recheck starts them again, and with the second failure at that commit the
+    # batch is held. (Runs fail synchronously here; over a harness the second
+    # failure lands a recheck later.)
     [{worker, _}] =
       Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
 
-    :sys.get_state(worker)
-    send(worker, :gate)
     :sys.get_state(worker)
     refute_received {:agent_dispatch, ^agent_id, _, _}
     send(worker, :gate)
@@ -514,5 +515,53 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == a.copy.id)) == [],
            "a run was started in the requester's own copy"
+  end
+
+  # 3c59be47, 2026-10-05: a landing restarts the harness, which orphans the
+  # next gate's first runs. Those say nothing about whether the gate copy can
+  # run them, and counting them held a batch whose analyzers ran fine.
+  test "runs a harness going away orphaned do not hold the batch", ctx do
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
+    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+    RecordingAgentTransport.listen()
+
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    agent = an_agent(ctx, a.copy)
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    {:ok, _entry} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
+        restart: false,
+        requested_by_agent_id: agent.id
+      })
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    gate_id = ctx.gate.id
+
+    # Twice the gate copy's harness goes away mid-run, and twice the run is
+    # started again on the recheck.
+    for _restart <- 1..2 do
+      assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+      {:ok, 1} = Analysis.fail_in_flight(gate, :harness_disconnected)
+      send(worker, :gate)
+    end
+
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    :sys.get_state(worker)
+
+    agent_id = agent.id
+
+    refute_received {:agent_dispatch, ^agent_id, _ref, _told},
+                    "the batch was held over runs its harness going away orphaned"
   end
 end

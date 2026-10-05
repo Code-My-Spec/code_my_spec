@@ -141,6 +141,32 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
+  How many full runs of `source` on this working copy failed to run at
+  `commit`: started there, or opened since `since` and failed before they could
+  say where they started (an analyzer that would not boot). Runs its harness
+  going away orphaned (`stats.orphaned`) are not counted — they say nothing about
+  whether the analyzer can run there.
+  """
+  @spec failed_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: non_neg_integer()
+  def failed_at_commit(%Scope{active_project_id: project_id} = scope, source, commit, since) do
+    since = DateTime.to_naive(since)
+
+    Run
+    |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
+    |> where([r], r.status == :failed)
+    |> where(
+      [r],
+      r.start_commit == ^commit or (is_nil(r.start_commit) and r.inserted_at >= ^since)
+    )
+    |> where(
+      [r],
+      is_nil(r.stats) or fragment("(?->>'orphaned') IS DISTINCT FROM 'true'", r.stats)
+    )
+    |> scope_to_harness(scope)
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
   Whether `source` has a completed full run on this working copy — whether
   anything answers for it at all. An `exists` query: no row, no output column.
   """
