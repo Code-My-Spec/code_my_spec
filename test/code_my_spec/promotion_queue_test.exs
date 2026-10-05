@@ -16,6 +16,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
@@ -23,6 +24,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.RecordingAgentTransport
 
   @reloaded {:ok,
              %{
@@ -175,5 +177,70 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "a.ex"
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
+  end
+
+  # An analyzer that cannot run on the gate copy fails rather than answering;
+  # the gate would start it again every recheck, forever. Started a third time
+  # at the same commit, the batch is held and its requester told — nothing
+  # ejected, nothing landed. (The first live batch, 2026-10-05: a gate copy
+  # minted without its envs could not boot the test suite.)
+  test "a batch whose gate cannot run an analyzer is held, not looped", ctx do
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
+    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+    RecordingAgentTransport.listen()
+
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    b = candidate(ctx, "b", "a", "b.ex", "b\n")
+    agent = an_agent(ctx, b.copy)
+
+    {:ok, _} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
+        restart: false
+      })
+
+    {:ok, entry} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: b.copy.id,
+        commit: b.commit,
+        restart: false,
+        requested_by_agent_id: agent.id
+      })
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    agent_id = agent.id
+
+    # Its rechecks, without waiting out the interval: each one finds the runs
+    # failed and starts them again, until the third start holds the batch.
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    :sys.get_state(worker)
+    send(worker, :gate)
+    :sys.get_state(worker)
+    refute_received {:agent_dispatch, ^agent_id, _, _}
+    send(worker, :gate)
+
+    assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 10_000
+    assert told =~ "the gate copy cannot run"
+    assert told =~ "nothing was taken out"
+    assert %{status: :gating} = Repository.get(entry.id)
+  end
+
+  defp an_agent(ctx, copy) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: copy.root,
+        working_copy_id: copy.id
+      })
+
+    agent
   end
 end
