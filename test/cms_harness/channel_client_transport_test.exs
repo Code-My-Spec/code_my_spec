@@ -22,24 +22,17 @@ defmodule CmsHarness.ChannelClientTransportTest do
   alias CmsHarness.Project.ChannelClient
 
   setup do
-    previous = Application.get_env(:code_my_spec, :harness_transport)
-    Application.put_env(:code_my_spec, :harness_transport, CmsHarness.Project.Transport.Test)
-    Application.put_env(:code_my_spec, :harness_transport_owner, self())
-
-    on_exit(fn ->
-      restore_transport(previous)
-      Application.delete_env(:code_my_spec, :harness_transport_owner)
-    end)
-
+    Process.put({CmsHarness.Project.Transport, :impl}, CmsHarness.Project.Transport.Test)
+    Process.put({CmsHarness.Project.Transport.Test, :owner}, self())
     :ok
   end
 
-  # Multi-clause rather than an `if`: nothing was configured before this suite
-  # and something was are two cases, not a condition.
-  defp restore_transport(nil), do: Application.delete_env(:code_my_spec, :harness_transport)
+  test "a recorder selected here does not replace another process's real transport" do
+    other = Task.async(fn -> CmsHarness.Project.Transport.impl() end)
 
-  defp restore_transport(module),
-    do: Application.put_env(:code_my_spec, :harness_transport, module)
+    assert Task.await(other, :infinity) == CmsHarness.Project.Transport.Slipstream
+    assert CmsHarness.Project.Transport.impl() == CmsHarness.Project.Transport.Test
+  end
 
   defp socket(assigns) do
     %Slipstream.Socket{
@@ -489,14 +482,6 @@ defmodule CmsHarness.ChannelClientTransportTest do
                        "had been refused could not come back when the server did — two " <>
                        "subtrees in one harness met the same server restart and only the " <>
                        "one that had never been refused returned"
-    end
-
-    defp receive_all_reconnects do
-      receive do
-        :reconnect -> receive_all_reconnects()
-      after
-        50 -> :ok
-      end
     end
   end
 
