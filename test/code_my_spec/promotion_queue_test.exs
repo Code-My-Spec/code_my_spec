@@ -24,6 +24,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
+  alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
 
@@ -321,5 +322,21 @@ defmodule CodeMySpec.PromotionQueueTest do
       })
 
     agent
+  end
+
+  # A candidate main already contains has nothing to gate or land: it lands as
+  # it is, at once, and no analyzer runs against main on its behalf — main's
+  # own flake once ejected a candidate whose work had already landed
+  # (2026-10-05).
+  test "a candidate already on main lands as it is, without a gate", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    git!(ctx.main_root, ["merge", "--quiet", "--ff-only", a.commit])
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed, result: result}} = settle(entry)
+    assert result["already_on_main"] == true
+    assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == ctx.gate.id)) == []
   end
 end

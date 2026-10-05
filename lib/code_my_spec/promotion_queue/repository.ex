@@ -14,13 +14,22 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @open [:queued, :gating]
 
   @doc """
-  Queue `attrs` for its project. A copy with a candidate still waiting (not yet
-  in a batch) has that candidate moved to the new commit, keeping its place —
-  the copy moved on, and gating the old commit would land work its agent has
-  already replaced.
+  Queue `attrs` for its project. The same copy at the same commit already
+  queued or being gated is that entry, not a second one — a promote repeated
+  after a harness restart asks for what is already in hand. A copy with a
+  candidate still waiting (not yet in a batch) has that candidate moved to the
+  new commit, keeping its place — the copy moved on, and gating the old commit
+  would land work its agent has already replaced.
   """
   @spec enqueue(map()) :: {:ok, Entry.t()} | {:error, Ecto.Changeset.t()}
-  def enqueue(%{project_id: project_id, working_copy_id: copy_id} = attrs) do
+  def enqueue(%{project_id: project_id, working_copy_id: copy_id, commit: commit} = attrs) do
+    case open_at(project_id, copy_id, commit) do
+      %Entry{} = open -> {:ok, open}
+      nil -> enqueue_new(attrs)
+    end
+  end
+
+  defp enqueue_new(%{project_id: project_id, working_copy_id: copy_id} = attrs) do
     case waiting_for_copy(project_id, copy_id) do
       nil ->
         attrs |> Entry.enqueue_changeset() |> Repo.insert() |> broadcast()
@@ -37,6 +46,16 @@ defmodule CodeMySpec.PromotionQueue.Repository do
         |> Repo.update()
         |> broadcast()
     end
+  end
+
+  defp open_at(project_id, copy_id, commit) do
+    Repo.one(
+      from e in Entry,
+        where:
+          e.project_id == ^project_id and e.working_copy_id == ^copy_id and
+            e.commit == ^commit and e.status in ^@open,
+        limit: 1
+    )
   end
 
   defp waiting_for_copy(project_id, copy_id) do
