@@ -48,6 +48,18 @@ defmodule CodeMySpec.ConversationsResumeTest do
     %{conversation: conversation, scope: scope, agent: agent}
   end
 
+  defp checkpoint_prefix(_conversation, false), do: []
+
+  defp checkpoint_prefix(conversation, true) do
+    anchor = said(conversation, "earlier")
+    summary = [%{"role" => "user", "content" => "summary"}]
+
+    {:ok, _} =
+      Conversations.record_checkpoint(conversation, summary, through_message_id: anchor.id)
+
+    summary
+  end
+
   defp said(conversation, text) do
     {:ok, message} = Conversations.add_message(conversation, :operator, text, "operator")
     message
@@ -214,20 +226,7 @@ defmodule CodeMySpec.ConversationsResumeTest do
       test "undelivered messages are excluded with checkpoint=#{checkpoint?}", %{
         conversation: conversation
       } do
-        prefix =
-          if @checkpoint? do
-            anchor = said(conversation, "earlier")
-            summary = [%{"role" => "user", "content" => "summary"}]
-
-            {:ok, _} =
-              Conversations.record_checkpoint(conversation, summary,
-                through_message_id: anchor.id
-              )
-
-            summary
-          else
-            []
-          end
+        prefix = checkpoint_prefix(conversation, @checkpoint?)
 
         for delivery <- [:pending, :withdrawn, :failed, :delivered] do
           {:ok, _} =
@@ -236,7 +235,10 @@ defmodule CodeMySpec.ConversationsResumeTest do
               :operator,
               Atom.to_string(delivery),
               "operator",
-              [], delivery: delivery, delivery_ref: Ecto.UUID.generate())
+              [],
+              delivery: delivery,
+              delivery_ref: Ecto.UUID.generate()
+            )
         end
 
         said(conversation, "legacy message")

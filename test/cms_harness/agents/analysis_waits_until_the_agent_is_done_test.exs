@@ -28,6 +28,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
   use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Engine
+  alias CmsHarness.Agents.Liveness
   alias CmsHarnessTest.Machine
 
   @moduletag :tmp_dir
@@ -37,11 +38,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     previous = Application.get_env(:code_my_spec, :agent_queue_receipts_dir)
     Application.put_env(:code_my_spec, :agent_queue_receipts_dir, Path.join(tmp_dir, "receipts"))
 
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:code_my_spec, :agent_queue_receipts_dir, previous),
-        else: Application.delete_env(:code_my_spec, :agent_queue_receipts_dir)
-    end)
+    on_exit(fn -> restore_receipts_dir(previous) end)
 
     %{root: tmp_dir}
   end
@@ -113,13 +110,13 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
   end
 
   test "a queued message lost in a crash is not reported as delivered", %{root: root} do
-    :ok = CmsHarness.Agents.Liveness.subscribe()
+    :ok = Liveness.subscribe()
     agent = start_agent(root, gated_plug(self()), self())
     assert_receive {:agent_liveness, :up, ^agent, _, nil}, 2_000
     assert {:ok, :started} = Machine.send_message(agent, "running", "first")
     assert_receive {:holding_turn, _execution}, 5_000
     assert {:ok, :queued} = Machine.send_message(agent, "waiting", "take this back")
-    assert {:ok, pid} = CmsHarness.Agents.Engine.State.whereis(agent)
+    assert {:ok, pid} = Engine.State.whereis(agent)
 
     Process.exit(pid, :kill)
     assert_receive {:agent_liveness, :down, ^agent, _, :killed}, 2_000
@@ -355,6 +352,12 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     {:os_pid, os_pid} = Port.info(port, :os_pid)
     send(test_pid, {:owned_subprocess, os_pid})
   end
+
+  defp restore_receipts_dir(nil),
+    do: Application.delete_env(:code_my_spec, :agent_queue_receipts_dir)
+
+  defp restore_receipts_dir(dir),
+    do: Application.put_env(:code_my_spec, :agent_queue_receipts_dir, dir)
 
   defp start_owned_subprocess(test_pid, :supervised) do
     Task.Supervisor.async_nolink(Alloy.TaskSupervisor, fn ->
