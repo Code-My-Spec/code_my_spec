@@ -47,6 +47,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Devices
   alias CodeMySpec.Files
@@ -2613,7 +2614,35 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
       agent ->
         TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, payload["response"] || %{})
+        mirror_failed_tool_results(scope, agent, payload["request"] || %{})
     end
+  end
+
+  # A tool failure on this turn landed on the session conversation
+  # `ConversationRecorder.record_turn` just wrote to -- keyed by
+  # `session_external_id`, which has no agent of its own to point back to
+  # (`Conversations.find_or_create_agent_conversation/3`'s own moduledoc).
+  # Mirrored here, failures only, the same restraint `Agents.write_turn_event/3`
+  # already applies to the `agent_turn_event` lane ("a success has nothing to
+  # record that the call itself did not already say"), so
+  # `AgentPerformance.ToolFailures` has something to read for this lane too.
+  defp mirror_failed_tool_results(scope, agent, request) do
+    request
+    |> ConversationRecorder.tool_results()
+    |> Enum.filter(& &1.failed?)
+    |> Enum.each(fn result ->
+      with {:ok, conversation} <-
+             Conversations.find_or_create_agent_conversation(
+               scope.active_account_id,
+               scope.active_project_id,
+               agent.id
+             ) do
+        Conversations.add_tool_result(conversation, result.call_id, result.name, result.text,
+          failed?: true,
+          agent_role: to_string(agent.role)
+        )
+      end
+    end)
   end
 
   defp session_external_id(scope, payload) do
