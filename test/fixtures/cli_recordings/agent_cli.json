@@ -1,0 +1,12 @@
+{
+  "codex exec": {
+    "exit_code": 0,
+    "output": "Reading additional input from stdin...\n{\"type\":\"thread.started\",\"thread_id\":\"01a10bfe-917e-7870-ae63-c2c7a2560555\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"{\\\"text\\\":\\\"ready\\\",\\\"tool_calls\\\":[],\\\"stop_reason\\\":\\\"end_turn\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":22811,\"cached_input_tokens\":0,\"cache_write_input_tokens\":0,\"output_tokens\":25,\"reasoning_output_tokens\":0}}\n",
+    "recorded_at": "2026-10-05T12:16:40.429107Z"
+  },
+  "codex exec resume": {
+    "exit_code": 0,
+    "output": "{\"type\":\"thread.started\",\"thread_id\":\"01a10bfe-917e-7870-ae63-c2c7a2560555\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"{\\\"text\\\":\\\"again\\\",\\\"tool_calls\\\":[],\\\"stop_reason\\\":\\\"end_turn\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":49310,\"cached_input_tokens\":22656,\"cache_write_input_tokens\":0,\"output_tokens\":50,\"reasoning_output_tokens\":0}}\n",
+    "recorded_at": "2026-10-05T12:16:47.378978Z"
+  }
+}

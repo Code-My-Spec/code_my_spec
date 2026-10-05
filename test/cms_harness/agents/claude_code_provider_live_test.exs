@@ -27,6 +27,13 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
 
   setup %{tmp_dir: tmp_dir} do
     CmsHarnessTest.Machine.ensure_supervisor()
+
+    # Live means the real CLI, so the recording `config/test.exs` pins every
+    # other test to is set aside for this one.
+    pinned = Application.fetch_env!(:code_my_spec, CmsHarness.Agents.Provider)
+    Application.delete_env(:code_my_spec, CmsHarness.Agents.Provider)
+    on_exit(fn -> Application.put_env(:code_my_spec, CmsHarness.Agents.Provider, pinned) end)
+
     %{root: tmp_dir}
   end
 
