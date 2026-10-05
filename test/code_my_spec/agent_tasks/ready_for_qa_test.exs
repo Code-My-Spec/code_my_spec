@@ -81,14 +81,23 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
 
   # One spec file linked to the story — a story with none has nothing that says
   # its spex pass, and certification refuses it.
+  # A spex file per live criterion, each naming its criterion as a synced spex
+  # does (`Files.SpecBinding`). Answers the first one's path.
   defp spec(scope, story) do
-    path = "test/spex/#{story.id}_a_feature/criterion_1_spex.exs"
+    rows =
+      for criterion <- AcceptanceCriteria.list_story_criteria(scope, story.id) do
+        %{
+          path: "test/spex/#{story.number}_a_feature/criterion_#{criterion.number}_spex.exs",
+          role: :bdd_spec,
+          story_id: story.id,
+          criterion_number: criterion.number,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      end
 
-    CodeMySpec.Files.upsert_files(scope, [
-      %{path: path, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
-    ])
-
-    path
+    CodeMySpec.Files.upsert_files(scope, rows)
+    hd(rows).path
   end
 
   defp dispatched_sources do

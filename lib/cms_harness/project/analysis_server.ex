@@ -539,7 +539,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   # result replaces from this rather than from the primary row's own request
   # (batch 313e82812, 2026-10-05).
   defp deliver(state, running, result, completed \\ nil) do
-    tree = completed |> completed_tree() |> Map.put("args", running.args)
+    tree = completed |> completed_tree() |> Map.put("args", Map.get(running, :args))
     push_result(state.project.root, running.run_id, running.source, result, nil, tree)
 
     for run_id <- Map.get(running, :tied_run_ids, []) do
