@@ -52,7 +52,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
-  alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Mcp.Transport
@@ -963,7 +962,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   """
   @spec tools(keyword()) :: [module()]
   def tools(_opts) do
-    [Alloy.Tool.Core.Read, Alloy.Tool.Core.Write, Alloy.Tool.Core.Edit, Alloy.Tool.Core.Bash] ++
+    [
+      Alloy.Tool.Core.Read,
+      Alloy.Tool.Core.Write,
+      Alloy.Tool.Core.Edit,
+      CmsHarness.Agents.Tools.Bash
+    ] ++
       Enum.map(ToolIndex.carried(ToolRegistry.registry()), &direct_tool/1)
   end
 
@@ -1123,7 +1127,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
          working_directory: working_copy,
          allowed_paths: [working_copy, spill_dir(Keyword.fetch!(opts, :agent_id))],
          bash_restricted: true,
-         bash_executor: &Shell.run/2,
          # Which agent this is, and it has to be here rather than only in
          # `Agents.tool_context/1` — that function had no production caller at
          # all, so the shape it describes was one only the specs ever built.
