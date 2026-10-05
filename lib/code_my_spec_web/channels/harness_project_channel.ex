@@ -112,6 +112,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # lands in this channel's mailbox and is pushed once the join returns
       # (cc578c21).
       Analysis.resume_orphaned(scope, claimed_runs(payload))
+      PromotionQueue.copy_joined(scope, harness)
 
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and

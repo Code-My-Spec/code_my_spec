@@ -39,7 +39,10 @@ defmodule CodeMySpec.PromotionQueueTest do
   end
 
   # Main, a detached gate worktree, and one worktree per candidate branch.
-  setup do
+  # `@tag gate: :later` records the gate copy but leaves its checkout unmade,
+  # as a freshly minted copy is until its harness comes up: building a batch
+  # there fails until it does.
+  setup ctx do
     scope = full_scope_fixture()
     main_root = CodeMySpec.TempFile.dir("queue-main")
     File.mkdir_p!(main_root)
@@ -53,7 +56,7 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     gate_root = CodeMySpec.TempFile.dir("queue-gate")
     File.rm_rf!(gate_root)
-    git!(main_root, ["worktree", "add", "--detach", gate_root, "main"])
+    gate_checkout(main_root, gate_root, ctx[:gate])
 
     {:ok, main} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, main} = WorkingCopies.report_root(main, main_root)
@@ -71,8 +74,13 @@ defmodule CodeMySpec.PromotionQueueTest do
       File.rm_rf(main_root)
     end)
 
-    %{scope: scope, main_root: main_root, main: main, gate: gate}
+    %{scope: scope, main_root: main_root, main: main, gate: gate, gate_root: gate_root}
   end
+
+  defp gate_checkout(_main_root, _gate_root, :later), do: :ok
+
+  defp gate_checkout(main_root, gate_root, _now),
+    do: git!(main_root, ["worktree", "add", "--detach", gate_root, "main"])
 
   defp a_harness_for(working_copy_id, root) do
     test = self()
@@ -175,5 +183,25 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "a.ex"
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
+  end
+
+  @tag gate: :later
+  test "a gate copy coming up wakes the batch waiting for it", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    b = candidate(ctx, "b", "a", "b.ex", "b\n")
+    clean_runs_at(ctx, b.commit)
+    entries = [queue(ctx, a), queue(ctx, b)]
+
+    # The gate's checkout is not there yet: the batch cannot be built, and the
+    # worker waits to retry.
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:error, :timeout} = PromotionQueue.await(hd(entries), 500)
+
+    gate_checkout(ctx.main_root, ctx.gate_root, :now)
+    :ok = PromotionQueue.copy_joined(ctx.scope, ctx.gate)
+
+    for entry <- entries do
+      assert {:ok, %{status: :landed}} = settle(entry)
+    end
   end
 end
