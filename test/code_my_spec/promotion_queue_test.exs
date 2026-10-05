@@ -293,56 +293,45 @@ defmodule CodeMySpec.PromotionQueueTest do
         do: refute(Repository.get(entry.id).status in [:ejected, :landed])
   end
 
-  # An analyzer that cannot run on the gate copy fails rather than answering;
-  # the gate would start it again every recheck, forever. Started a third time
-  # at the same commit, the batch is held and its requester told — nothing
-  # ejected, nothing landed. (The first live batch, 2026-10-05: a gate copy
-  # minted without its envs could not boot the test suite.)
-  test "a batch whose gate cannot run an analyzer is held, not looped", ctx do
+  # A run that fails at the batch commit is red like a finding, and not retried:
+  # the candidate's own change may be what stops the analyzer running. (The
+  # first live batch, 2026-10-05: a gate copy minted without its envs could not
+  # boot the test suite. That is the gate copy's to fix, and it ejects too.)
+  test "a candidate whose gate run fails is ejected, naming the analyzer", ctx do
     previous = Application.get_env(:code_my_spec, :agent_transport)
     Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
     on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
     RecordingAgentTransport.listen()
 
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    b = candidate(ctx, "b", "a", "b.ex", "b\n")
-    agent = an_agent(ctx, b.copy)
-
-    {:ok, _} =
-      Repository.enqueue(%{
-        project_id: ctx.scope.active_project_id,
-        working_copy_id: a.copy.id,
-        commit: a.commit,
-        restart: false
-      })
+    agent = an_agent(ctx, a.copy)
 
     {:ok, entry} =
       Repository.enqueue(%{
         project_id: ctx.scope.active_project_id,
-        working_copy_id: b.copy.id,
-        commit: b.commit,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
         restart: false,
         requested_by_agent_id: agent.id
       })
 
     :ok = PromotionQueue.ensure_worker(ctx.scope)
-    agent_id = agent.id
 
-    # Its recheck, without waiting out the interval: the first runs failed, the
-    # recheck starts them again, and with the second failure at that commit the
-    # batch is held. (Runs fail synchronously here; over a harness the second
-    # failure lands a recheck later.)
+    # Its recheck, without waiting out the interval. (Runs fail synchronously
+    # here, inside the gate that started them; over a harness each failure
+    # re-gates.)
     [{worker, _}] =
       Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
 
     :sys.get_state(worker)
-    refute_received {:agent_dispatch, ^agent_id, _, _}
     send(worker, :gate)
 
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
+    assert result["reason"] =~ "could not run at the batch commit"
+
+    agent_id = agent.id
     assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 10_000
-    assert told =~ "the gate copy cannot run"
-    assert told =~ "nothing was taken out"
-    assert %{status: :gating} = Repository.get(entry.id)
+    assert told =~ "was taken out of the queue"
   end
 
   defp an_agent(ctx, copy) do
@@ -423,7 +412,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # 3c59be47, 2026-10-05: a landing restarts the harness, which orphans the
   # next gate's first runs. Those say nothing about whether the gate copy can
   # run them, and counting them held a batch whose analyzers ran fine.
-  test "runs a harness going away orphaned do not hold the batch", ctx do
+  test "runs a harness going away orphaned are not failures of the batch", ctx do
     previous = Application.get_env(:code_my_spec, :agent_transport)
     Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
     on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
@@ -465,7 +454,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     agent_id = agent.id
 
     refute_received {:agent_dispatch, ^agent_id, _ref, _told},
-                    "the batch was held over runs its harness going away orphaned"
+                    "the batch was failed over runs its harness going away orphaned"
   end
 
   # 2026-10-05, 08:41: the gate copy's harness restarted while its batch was
