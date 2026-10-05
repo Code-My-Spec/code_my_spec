@@ -296,14 +296,9 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     with %{active_project_id: project_id} when not is_nil(project_id) <- scope,
          nil <- nested_checkout(params, command),
          {:ok, endpoint} <- analysis_endpoint(scope, served_by) do
-      case CommandShape.route(command, &route_segment(&1, root, port, endpoint)) do
-        {:routed, replacement, classes, mixes} ->
-          log_decision("routed", classes, mixes)
-          rewrite(replacement, Enum.map_join(mixes, ", ", &"mix #{&1.task}"))
-
-        {:pass, classes} ->
-          if CommandShape.test?(command), do: log_decision("not routed", classes, [])
-          rewrite_whole(command, port, endpoint)
+      case route_command(command, root, port, endpoint) do
+        {:routed, replacement, what} -> rewrite(replacement, what)
+        :pass -> rewrite_whole(command, port, endpoint)
       end
     else
       :nested -> %{}
@@ -320,6 +315,34 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   end
 
   defp nested_checkout(_params, _command), do: nil
+
+  @doc """
+  `command` with its mix test/spex segments routed through the analysis service
+  for the copy at `root`, or `:pass`. Every test decision is logged with the
+  command's shape. The PreToolUse hook and an in-app agent's own bash tool
+  (`CmsHarness.Agents.Tools.Bash`) both route through this.
+  """
+  @spec route_command(
+          String.t(),
+          String.t() | nil,
+          pos_integer(),
+          {:local | :harness, String.t()}
+        ) ::
+          {:routed, String.t(), String.t()} | :pass
+  def route_command(command, root, port, endpoint) do
+    case CommandShape.route(command, &route_segment(&1, root, port, endpoint)) do
+      {:routed, replacement, classes, mixes} ->
+        log_decision("routed", classes, mixes)
+        {:routed, replacement, Enum.map_join(mixes, ", ", &"mix #{&1.task}")}
+
+      {:pass, classes} ->
+        if CommandShape.test?(command), do: log_decision("not routed", classes, [])
+        :pass
+    end
+  end
+
+  @doc "How long a routed run may take: a suite, not a shell one-liner."
+  def rewrite_timeout_ms, do: @rewrite_timeout_ms
 
   defp route_segment(%{cd: cd, source: source, args: args}, root, port, endpoint) do
     if cd == nil or inside?(cd, root),

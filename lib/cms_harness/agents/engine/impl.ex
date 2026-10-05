@@ -1139,6 +1139,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # 33d707a2. It is also why the analyzer alert never reached a running
          # agent — `AgentAlert` appends only for a caller that named itself.
          agent_id: Keyword.fetch!(opts, :agent_id),
+         # The copy whose harness runs its `mix test` (`Tools.Bash`).
+         working_copy_id: Keyword.get(opts, :working_copy_id),
          # The agent's own MCP session, so a script it runs acts with exactly
          # its authority. Nil when the machine could not authenticate, which
          # the tools report rather than crashing on — an agent that can still
