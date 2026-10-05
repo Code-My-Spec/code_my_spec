@@ -242,15 +242,28 @@ defmodule CodeMySpec.Requirements.Shadow do
     # since, and nothing asks again. Read before the upsert, so a row it
     # inserts is not already among the rows that were there.
     Repo.transaction(fn ->
-      before = existing_ids(target, covered, working_copy_id)
+      existing = existing_rows(target, covered, working_copy_id)
+      before = existing |> Enum.map(& &1.id) |> MapSet.new()
+      before_ids_by_key = Map.new(existing, &{{&1.entity_type, &1.owner_id, &1.name}, &1.id})
 
-      kept =
+      written =
         nodes
         |> Enum.group_by(& &1.entity_type)
         |> Enum.flat_map(fn {entity_type, group} ->
           upsert_group(target, entity_type, group, working_copy_id, now)
         end)
         |> MapSet.new()
+
+      # `written` only names rows the upsert actually touched -- a row
+      # `on_conflict/1`'s guard skipped is covered just the same, so it comes
+      # from the input rather than from RETURNING.
+      covered_ids =
+        for node <- nodes,
+            id = Map.get(before_ids_by_key, {node.entity_type, node.entity_id, node.name}),
+            not is_nil(id),
+            do: id
+
+      kept = MapSet.union(written, MapSet.new(covered_ids))
 
       departed = MapSet.difference(before, kept)
       delete_ids(MapSet.to_list(departed), target)
@@ -330,14 +343,34 @@ defmodule CodeMySpec.Requirements.Shadow do
               n.checked_at
             )
         ]
-      ]
+      ],
+      # 181f3469: a row EXCLUDED agrees with on every stored column is left
+      # alone rather than rewritten -- no new tuple, no WAL, no index churn,
+      # on a drain that is otherwise thousands of writes changing nothing.
+      # Postgres answers RETURNING only for rows this touches, so a skipped
+      # row is invisible to it -- `write/3` gets `kept` from the rows it was
+      # asked to write, not from this result, so a merely-unchanged row does
+      # not read as reaped.
+      where:
+        fragment(
+          "? IS DISTINCT FROM EXCLUDED.satisfied OR ? IS DISTINCT FROM EXCLUDED.details OR ? IS DISTINCT FROM EXCLUDED.description OR ? IS DISTINCT FROM EXCLUDED.inputs_fingerprint OR ? IS DISTINCT FROM EXCLUDED.owner_component_type OR ? IS DISTINCT FROM EXCLUDED.node_scope",
+          n.satisfied,
+          n.details,
+          n.description,
+          n.inputs_fingerprint,
+          n.owner_component_type,
+          n.node_scope
+        )
     )
   end
 
-  # Every row the covered owners hold at this vantage. What a write may reap
-  # is exactly this set minus what it just wrote — and never a row of an
-  # owner it did not cover.
-  defp existing_ids(target, covered, working_copy_id) do
+  # Every row the covered owners hold at this vantage, with the natural key
+  # (owner, name) that identifies it. What a write may reap is exactly this
+  # set minus what it still covers — and never a row of an owner it did not
+  # cover. Carries the key, not just the id, because `on_conflict/1` skips
+  # RETURNING a row it leaves unchanged, so `write/3` has to know what this
+  # write still covers from its own input rather than from that result.
+  defp existing_rows(target, covered, working_copy_id) do
     covered
     |> Enum.group_by(fn {type, _id} -> type end, fn {_type, id} -> id end)
     |> Enum.flat_map(fn {entity_type, owner_ids} ->
@@ -347,12 +380,20 @@ defmodule CodeMySpec.Requirements.Shadow do
         target
         |> where(^owners_filter(entity_type, ids))
         |> where(^copy_filter(working_copy_id))
-        |> select([n], n.id)
+        |> select_existing(entity_type)
         |> Repo.all()
       end)
     end)
-    |> MapSet.new()
   end
+
+  defp select_existing(query, "component" = entity_type),
+    do: select(query, [n], %{id: n.id, name: n.name, owner_id: n.component_id, entity_type: ^entity_type})
+
+  defp select_existing(query, "story" = entity_type),
+    do: select(query, [n], %{id: n.id, name: n.name, owner_id: n.story_id, entity_type: ^entity_type})
+
+  defp select_existing(query, "project" = entity_type),
+    do: select(query, [n], %{id: n.id, name: n.name, owner_id: n.project_id, entity_type: ^entity_type})
 
   defp delete_ids([], _target), do: :ok
 
