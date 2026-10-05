@@ -38,7 +38,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # One candidate per batch (John, 2026-10-05): a red batch is the candidate
   # that was in it, with nothing to work out.
-  # TODO: with a cap of 1, `bisect/2`'s split branch is unreachable; remove it.
+  # Still to do: with a cap of 1, `bisect/2`'s split branch is unreachable; remove it.
   @batch_cap 1
   @gate_label "promotion-gate"
   @recheck_ms 120_000
