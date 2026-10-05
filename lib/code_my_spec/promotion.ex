@@ -75,7 +75,6 @@ defmodule CodeMySpec.Promotion do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.BddSpecs
   alias CodeMySpec.BootVersion
   alias CodeMySpec.Files
   alias CodeMySpec.Problems.ProblemRepository
@@ -590,17 +589,20 @@ defmodule CodeMySpec.Promotion do
       |> AcceptanceCriteria.list_all_story_criteria(story.id)
       |> Enum.reject(& &1.retired_at)
 
-    # A criterion's own path counts even before any file naming it has been
-    # synced -- otherwise a brand-new criterion's red spex has nowhere to be
-    # "failing" and certifies by omission.
+    # Which files cover which criterion is the binding (`Files.SpecBinding`):
+    # each spex file's `criterion: N` stamp joined to `criteria.number`. Never a
+    # path the criterion recorded or one derived from its words: a rename left
+    # 1,319 latched criteria recording paths no file was at, and a criterion
+    # whose renamed file was red latched anyway (2026-10-05).
+    by_number = bound_paths((files_scope || scope), live_criteria)
+
     file_paths =
       (files_scope || scope)
       |> Files.list_story_files(story.id)
       |> Enum.filter(&(&1.role == :bdd_spec))
       |> MapSet.new(& &1.path)
 
-    paths =
-      MapSet.union(file_paths, MapSet.new(live_criteria, &BddSpecs.spec_file_path(story, &1)))
+    paths = by_number |> Map.values() |> Enum.reduce(file_paths, &MapSet.union/2)
 
     failing =
       scope
@@ -615,29 +617,43 @@ defmodule CodeMySpec.Promotion do
     unlatched_criterion_paths =
       live_criteria
       |> Enum.filter(&is_nil(&1.latched_at))
-      |> MapSet.new(&BddSpecs.spec_file_path(story, &1))
+      |> Enum.reduce(MapSet.new(), &MapSet.union(Map.fetch!(by_number, &1.number), &2))
 
     if failing != [] and
          Enum.all?(failing, &MapSet.member?(unlatched_criterion_paths, &1.file_path)) do
-      latch_green_criteria(scope, story, live_criteria, failing)
+      latch_green_criteria(scope, live_criteria, by_number, failing)
       :ok
     else
       with :ok <- spex_verdict(story, file_paths, failing, named) do
-        latch_green_criteria(scope, story, live_criteria, failing)
+        latch_green_criteria(scope, live_criteria, by_number, failing)
       end
     end
   end
 
-  defp latch_green_criteria(scope, story, live_criteria, failing) do
+  # Each live criterion's number and the spex files on the copy that name it.
+  defp bound_paths(files_scope, live_criteria) do
+    bound = Files.bdd_spec_criterion_numbers(files_scope)
+
+    Map.new(live_criteria, fn criterion ->
+      {criterion.number,
+       for({path, number} <- bound, number == criterion.number, into: MapSet.new(), do: path)}
+    end)
+  end
+
+  # A criterion latches when a spex file names it and none of its files is red.
+  # One no file names has nothing that went green, so it does not latch.
+  defp latch_green_criteria(scope, live_criteria, by_number, failing) do
     failing_paths = MapSet.new(failing, & &1.file_path)
 
-    live_criteria
-    |> Enum.each(fn criterion ->
-      if is_nil(criterion.latched_at) and
-           not MapSet.member?(failing_paths, BddSpecs.spec_file_path(story, criterion)) do
-        AcceptanceCriteria.latch_criterion(scope, criterion)
-      end
-    end)
+    for criterion <- live_criteria,
+        is_nil(criterion.latched_at),
+        own = Map.fetch!(by_number, criterion.number),
+        MapSet.size(own) > 0,
+        MapSet.disjoint?(own, failing_paths) do
+      AcceptanceCriteria.latch_criterion(scope, criterion)
+    end
+
+    :ok
   end
 
   # The running copy's HEAD, which its spex run has to answer for, and the
