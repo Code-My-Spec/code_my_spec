@@ -22,6 +22,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -54,6 +55,8 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
         working_copy: "/tmp/report-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

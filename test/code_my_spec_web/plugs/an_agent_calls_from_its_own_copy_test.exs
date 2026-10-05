@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCallsFromItsOwnCopyTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecWeb.Plugs.AgentScope
 
   defp call(scope, agent) do
@@ -36,6 +37,8 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCallsFromItsOwnCopyTest do
         account_id: scope.active_account_id,
         status: :running
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

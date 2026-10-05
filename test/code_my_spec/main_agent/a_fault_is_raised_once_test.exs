@@ -35,6 +35,7 @@ defmodule CodeMySpec.Agents.Main.AFaultIsRaisedOnceTest do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Issues
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   @fault "The machinery is serving no tools"
 
@@ -47,7 +48,7 @@ defmodule CodeMySpec.Agents.Main.AFaultIsRaisedOnceTest do
 
     :ok = WorkingCopies.record_machine_tools(copy, [])
 
-    {:ok, _agent} =
+    {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         engine: :alloy,
@@ -56,6 +57,8 @@ defmodule CodeMySpec.Agents.Main.AFaultIsRaisedOnceTest do
         working_copy: "/tmp/toolless-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope | active_working_copy_id: copy.id}
   end

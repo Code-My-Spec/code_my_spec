@@ -8,7 +8,9 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
   Also `agents_running`, the report of what the box is actually running. A copy
   runs one or more lanes and the reconcile keys on the lane's role — before it
   did, the second lane on a checkout overwrote the first and the page showed one
-  row flickering between two engines.
+  row flickering between two engines. A lane is an external process, not one
+  the copy's harness tracks in presence, so what it reports is read back as
+  reported.
   """
 
   # Sync, and this one has a reason: the channel runs in its own process, so an
@@ -22,7 +24,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.WorkingCopies
@@ -73,7 +75,8 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     assert_reply ref, :ok, %{"running" => running}, 5_000
     assert length(running) == 2
 
-    roles = scope |> Agents.list_running() |> Enum.map(& &1.role) |> Enum.sort()
+    roles =
+      scope |> AgentsRepository.list_reported_running() |> Enum.map(& &1.role) |> Enum.sort()
 
     assert roles == [:coding, :qa],
            "a checkout runs one or more agents. Keying the reconcile on the copy " <>
@@ -91,7 +94,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
 
     assert_reply ref, :ok, %{"running" => _}, 5_000
 
-    assert scope |> Agents.list_running() |> Enum.map(& &1.role) == [:coding],
+    assert scope |> AgentsRepository.list_reported_running() |> Enum.map(& &1.role) == [:coding],
            "the report is the whole set, so a lane it omits has stopped — but " <>
              "only that lane. Reaping by working copy would take the sibling " <>
              "that is still working with it."
@@ -126,7 +129,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
              "to whichever copy happened to match, and on this project five roots " <>
              "name more than one harness."
 
-    assert Agents.list_running(scope) == []
+    assert AgentsRepository.list_reported_running(scope) == []
   end
 
   test "join is rejected when the account doesn't match the socket scope", %{scope: scope} do

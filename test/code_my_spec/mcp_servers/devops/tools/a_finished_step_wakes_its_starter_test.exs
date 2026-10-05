@@ -14,6 +14,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep
   alias CodeMySpec.Projects
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -46,6 +47,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
         working_copy: working_dir,
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

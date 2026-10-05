@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -31,6 +32,8 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
         status: :running,
         working_copy_id: copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

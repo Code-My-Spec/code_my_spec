@@ -15,7 +15,9 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   """
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.WorkingCopies
@@ -69,7 +71,9 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   # owed is the retry — `34e03128`, "a :starting row is never retried" — and
   # until that lands this line is what stops an unconfirmed row reading as a
   # running agent.
-  defp headline(%Agent{status: :starting}),
+  defp headline(%Agent{} = agent), do: headline(agent, lifecycle(agent))
+
+  defp headline(%Agent{}, :starting),
     do: """
     Agent recorded, not yet confirmed by the machine.
 
@@ -78,7 +82,11 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     what says why.
     """
 
-  defp headline(%Agent{}), do: "Agent started."
+  defp headline(%Agent{}, _lifecycle), do: "Agent started."
+
+  # Derived, not stored: running while its process is present
+  # (`Agents.lifecycle/2`).
+  defp lifecycle(%Agent{} = agent), do: Agents.lifecycle(agent, Presence.ids(agent.project_id))
 
   def started(%Agent{} = agent) do
     Response.tool()
@@ -92,7 +100,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Model: #{agent.model || "the provider's default"}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
     Account: #{agent.account_id}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
 
     Its turns appear in the agent conversation view for this project, the same
     place a Claude Code agent's do.
@@ -157,7 +165,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Engine: #{agent.engine}
     Provider: #{agent.provider}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
     """
   end
 
@@ -169,7 +177,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
 
     Agent: #{agent.id}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
     State: #{Agent.describe_off(agent)}
 
     Nothing is delivered to it and nothing restarts it until `turn_on_agent`.
@@ -184,7 +192,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
 
     Agent: #{agent.id}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
     """)
   end
 
@@ -197,7 +205,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Agent: #{agent.id}
     Role: #{agent.role}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}#{unreachable(unreachable_machine)}
+    Status: #{lifecycle(agent)}#{unreachable(unreachable_machine)}
 
     It will never run again and its seat is free: `start_agent` can put a new \
     #{agent.role} agent there. Its conversation stays readable.

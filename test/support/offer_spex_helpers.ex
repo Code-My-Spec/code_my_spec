@@ -135,13 +135,13 @@ defmodule CodeMySpecSpex.OfferHelpers do
   running, on the channel it reports it on — a fresh connection, so the cloud's
   once-per-connection sweep runs.
   """
-  @spec report_agents_running(map(), [String.t()]) :: :ok
-  def report_agents_running(context, agent_ids) do
+  @spec report_agents_present(map(), [String.t()]) :: :ok
+  def report_agents_present(context, agent_ids) do
     socket = %Phoenix.Socket{assigns: %{scope: context.scope}}
 
     {:reply, :ok, _socket} =
       CodeMySpecWeb.HarnessProjectChannel.handle_in(
-        "agents_running",
+        "agents_present",
         %{"agent_ids" => agent_ids},
         socket
       )

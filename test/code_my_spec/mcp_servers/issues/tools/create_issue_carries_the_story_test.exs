@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssueCarriesTheStoryTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -32,6 +33,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssueCarriesTheStoryTest do
         working_copy: "/tmp/qa-files-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     story = CodeMySpec.StoriesFixtures.story_fixture(scope)
     other = CodeMySpec.StoriesFixtures.story_fixture(scope)

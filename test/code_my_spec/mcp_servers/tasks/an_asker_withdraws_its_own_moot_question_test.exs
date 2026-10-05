@@ -20,6 +20,7 @@ defmodule CodeMySpec.McpServers.Tasks.AnAskerWithdrawsItsOwnMootQuestionTest do
   alias CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion
   alias CodeMySpec.Notifications
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -70,6 +71,8 @@ defmodule CodeMySpec.McpServers.Tasks.AnAskerWithdrawsItsOwnMootQuestionTest do
         working_copy: "/tmp/withdraw-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

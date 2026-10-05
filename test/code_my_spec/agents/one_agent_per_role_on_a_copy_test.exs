@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.OneAgentPerRoleOnACopyTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.Agents.AgentsMapper
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -50,6 +51,8 @@ defmodule CodeMySpec.Agents.OneAgentPerRoleOnACopyTest do
         working_copy: copy.root,
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(coder)
 
     %{scope: scope, copy: copy, coder: coder}
   end

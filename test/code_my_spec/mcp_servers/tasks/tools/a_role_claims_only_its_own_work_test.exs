@@ -17,6 +17,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ARoleClaimsOnlyItsOwnWorkTest do
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Requirements
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -39,6 +40,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ARoleClaimsOnlyItsOwnWorkTest do
         working_copy: "/tmp/own-work-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: agent.id}}
 

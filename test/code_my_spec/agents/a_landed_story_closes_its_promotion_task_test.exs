@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.ALandedStoryClosesItsPromotionTaskTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -33,6 +34,8 @@ defmodule CodeMySpec.Agents.ALandedStoryClosesItsPromotionTaskTest do
         status: :running,
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(coder)
 
     %{scope: scope, copy: copy, coder: coder, story: story_fixture(scope)}
   end

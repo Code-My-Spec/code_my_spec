@@ -48,7 +48,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     |> then(fn q ->
       if Keyword.get(opts, :include_stopped, false),
         do: q,
-        else: where(q, [a], a.status != :stopped)
+        else: where(q, [a], is_nil(a.off_at) and is_nil(a.retired_at))
     end)
     |> order_by([a], asc: a.role)
     |> Repo.all()
@@ -62,9 +62,9 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   somebody performed. `updated_at` by hand because `update_all` does not touch
   timestamps.
 
-  Stopped agents are excluded. A mode on a process that is gone records an
-  intention nothing can act on, and the row would read as a running loop the
-  next time somebody looked.
+  Agents off or retired are excluded. A mode on an agent nobody means to run
+  records an intention nothing can act on, and the row would read as a running
+  loop the next time somebody looked.
   """
   @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
           {:ok, non_neg_integer()} | {:error, :no_project}
@@ -76,7 +76,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
       Agent
       |> where(
         [a],
-        a.working_copy_id == ^copy_id and a.project_id == ^project_id and a.status != :stopped
+        a.working_copy_id == ^copy_id and a.project_id == ^project_id and is_nil(a.off_at) and
+          is_nil(a.retired_at)
       )
       |> Repo.update_all(set: [continuous: continuous?, updated_at: now])
 
@@ -99,8 +100,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   `set_copy_continuous/3` above: every agent of one copy moves together, and
   `updated_at` is set by hand because `update_all` does not touch timestamps.
 
-  Stopped agents are excluded, same reasoning as `set_copy_continuous/3`: a
-  path corrected on a process that is gone is not a restore anybody will use.
+  Agents off or retired are excluded, same reasoning as `set_copy_continuous/3`:
+  a path corrected on an agent nobody will restore is not one anybody will use.
   """
   @spec sync_working_copy_root(Scope.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, non_neg_integer()} | {:error, :no_project}
@@ -113,7 +114,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
       |> where(
         [a],
         a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-          a.status != :stopped and a.working_copy != ^root
+          is_nil(a.off_at) and is_nil(a.retired_at) and a.working_copy != ^root
       )
       |> Repo.update_all(set: [working_copy: root, updated_at: now])
 
@@ -158,8 +159,9 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   failure worth catching is the one where an agent cannot report its own
   trouble, and that does not require it to have been looping.
 
-  `:starting` counts, on the same reasoning as `list_running/1`: an agent that
-  has not finished coming up is one the cadence should already be watching.
+  On duty counts, whether or not its process is up this moment: an agent that
+  has not finished coming up, or is being restored, is one the cadence should
+  already be watching.
   """
   @spec main_agent_project_scopes() :: [Scope.t()]
   def main_agent_project_scopes do
@@ -175,8 +177,10 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   The project's running `main` agents, newest first.
 
   Every lookup of "the main agent" starts here — on the main copy, anywhere,
-  or other than the asker — so they agree on what one is. `:starting` counts,
-  as in `list_running/1`.
+  or other than the asker — so they agree on what one is. By intent — on duty,
+  not whether its process is up this moment — so the window while a harness
+  restores its agents never reads as "no main" and starts a second one.
+  Delivery to it still waits for its process (`Wake`).
   """
   @spec list_running_main(Scope.t()) :: [Agent.t()]
   def list_running_main(%Scope{active_project_id: project_id}) when is_binary(project_id) do
@@ -187,7 +191,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def list_running_main(%Scope{}), do: []
 
   defp running_main,
-    do: from(a in Agent, where: a.role == :main and a.status in [:starting, :running])
+    do: from(a in Agent, where: a.role == :main and is_nil(a.off_at) and is_nil(a.retired_at))
 
   defp project_scopes(query) do
     query
@@ -227,36 +231,51 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   end
 
   @doc """
-  The agents this project believes are running.
-
-  Separate from `list_agents/1` because "what is running" and "what has ever
-  run" are different questions and the first is the one an operator asks.
-
-  A fact about processes, so an off or retired agent whose machine could not be
-  asked to end it is still here: reconcile has to see it to record it gone, and
-  a live process must stay findable. `list_on_duty/1` is the intent view.
+  The project's agents with these ids, in the order a listing shows them —
+  the rows for agents `Agents.Presence` says are alive.
   """
-  @spec list_running(Scope.t()) :: [Agent.t()]
-  def list_running(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+  @spec list_by_ids(Scope.t(), [Ecto.UUID.t()]) :: [Agent.t()]
+  def list_by_ids(%Scope{active_project_id: project_id}, ids)
+      when is_binary(project_id) and is_list(ids) do
+    Agent
+    |> where([a], a.project_id == ^project_id and a.id in ^ids)
+    |> order_by([a], asc: a.working_copy, asc: a.role)
+    |> Repo.all()
+  end
+
+  def list_by_ids(%Scope{}, _ids), do: []
+
+  @doc """
+  The agents whose rows say they are running — the external lane report's own
+  view (`Agents.record_reported/2`): an agent with no process on a harness,
+  only a report, is running while reported. Alloy agents are read from
+  `Agents.Presence`, not from here.
+  """
+  @spec list_reported_running(Scope.t()) :: [Agent.t()]
+  def list_reported_running(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
     |> order_by([a], asc: a.working_copy, asc: a.role)
     |> Repo.all()
   end
 
-  def list_running(%Scope{}), do: []
+  def list_reported_running(%Scope{}), do: []
 
   @doc """
-  Running agents that are also meant to be: neither off nor retired (39af5611).
+  The agents meant to be running: neither off nor retired (39af5611), whether
+  or not their processes are up this moment.
 
   What to restore on a harness join and what the main agent reports as working.
   """
   @spec list_on_duty(Scope.t()) :: [Agent.t()]
-  def list_on_duty(%Scope{} = scope) do
-    scope
-    |> list_running()
-    |> Enum.filter(&(is_nil(&1.off_at) and is_nil(&1.retired_at)))
+  def list_on_duty(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Agent
+    |> where([a], a.project_id == ^project_id and is_nil(a.off_at) and is_nil(a.retired_at))
+    |> order_by([a], asc: a.working_copy, asc: a.role)
+    |> Repo.all()
   end
+
+  def list_on_duty(%Scope{}), do: []
 
   @doc "The agent, fresh from the row, if it is off or retired; nil otherwise."
   @spec get_stood_down(Ecto.UUID.t()) :: Agent.t() | nil
@@ -269,13 +288,11 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Every agent a team-status display should show a row for.
 
-  Display only — `list_running/1` stays the one answer to "is this actually
-  running" (`main_agent/1`'s occupancy check, an orchestrator asking what it
-  can assign work to). This is a different question: "what belongs in this
-  slot right now", and a slot does not go empty the instant its agent stops.
+  Display only. This is "what belongs in this slot right now", and a slot does
+  not go empty the instant its agent is turned off.
 
-  Everything running or starting, plus — for a `(working_copy_id, role)` with
-  nothing running — its single most recently stopped agent. Bounded by
+  Every agent on duty, plus — for a `(working_copy_id, role)` with nobody on
+  duty — its single most recently turned-off agent. Bounded by
   construction to one row per slot: a slot's stopped agent is superseded the
   moment a new one starts there, so this never accumulates the way `stopping
   == deleting` would have to be false to answer John's report that the team
@@ -286,8 +303,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def list_for_team_status(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     running =
       Agent
-      |> where([a], a.project_id == ^project_id and a.status in [:starting, :running])
-      |> where([a], is_nil(a.retired_at))
+      |> where([a], a.project_id == ^project_id and is_nil(a.off_at) and is_nil(a.retired_at))
       |> Repo.all()
 
     filled_slots = MapSet.new(running, &{&1.working_copy_id, &1.role})
@@ -295,7 +311,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     # A retired agent gave up its seat, so its slot shows empty (39af5611).
     latest_stopped_per_empty_slot =
       from(a in Agent,
-        where: a.project_id == ^project_id and a.status == :stopped and is_nil(a.retired_at),
+        where: a.project_id == ^project_id and not is_nil(a.off_at) and is_nil(a.retired_at),
         distinct: [a.working_copy_id, a.role],
         order_by: [asc: a.working_copy_id, asc: a.role, desc: a.updated_at]
       )

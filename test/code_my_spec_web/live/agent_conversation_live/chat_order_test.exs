@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.ChatOrderTest do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -37,6 +38,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.ChatOrderTest do
         status: :running,
         working_copy_id: context.copy.working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(

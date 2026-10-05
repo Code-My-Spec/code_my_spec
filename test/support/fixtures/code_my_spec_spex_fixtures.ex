@@ -175,6 +175,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.Workspace
   alias CodeMySpec.Workspaces.WorkspacesRepository
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.FakeWorkspaceRunner
   alias CodeMySpecTest.WorkspaceWatchers
   alias Phoenix.ConnTest
@@ -904,7 +905,9 @@ defmodule CodeMySpecSpex.Fixtures do
         agent.id
       )
 
-    agent
+    # Running is presence now: the copy's channel tracks a live agent, so the
+    # row alone would read as off.
+    AgentPresence.present(agent)
   end
 
   defp tool_set(role) when is_binary(role),

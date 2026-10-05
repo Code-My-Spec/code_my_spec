@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
   @moduledoc """
-  Phase 1 of `.code_my_spec/plans/agent-liveness-from-presence.md`: the copy's
-  harness channel tracks an agent in Presence while the harness says its
+  `.code_my_spec/plans/agent-liveness-from-presence.md`: the copy's harness
+  channel tracks an agent in `Agents.Presence` while the harness says its
   process is up, and the channel dying untracks everything it tracked.
   """
 
@@ -15,9 +15,9 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
-  alias CodeMySpecWeb.Presence
   alias CodeMySpecWeb.UserSocket
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -83,6 +83,13 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
     assert present(ctx.topic) == []
   end
 
+  test "an up for an agent already tracked changes nothing", ctx do
+    say(ctx.channel, "agent_up", %{"agent_id" => ctx.agent.id})
+    say(ctx.channel, "agent_up", %{"agent_id" => ctx.agent.id})
+
+    assert present(ctx.topic) == [ctx.agent.id]
+  end
+
   test "another copy's agent is not this channel's to track", ctx do
     log = capture_log(fn -> say(ctx.channel, "agent_up", %{"agent_id" => ctx.foreign.id}) end)
 
@@ -97,6 +104,10 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
     assert present(ctx.topic) == [ctx.sibling.id]
   end
 
+  # Only a diff with leaves in it is the close's: a join diff for the tracks
+  # just made can still be in flight when the subscription starts, and under
+  # load it arrived first, with no leaves, and failed the assertion (the
+  # promotion gate, 2026-10-05). The channel's keys leave together, with it.
   test "the channel dying untracks everything it tracked", ctx do
     say(ctx.channel, "agents_present", %{"agent_ids" => [ctx.agent.id, ctx.sibling.id]})
     :ok = Phoenix.PubSub.subscribe(CodeMySpec.PubSub, ctx.topic)
@@ -104,22 +115,18 @@ defmodule CodeMySpecWeb.AgentPresenceIsTrackedOnTheCopysChannelTest do
     Process.unlink(ctx.channel.channel_pid)
     close(ctx.channel)
 
-    assert_receive %Phoenix.Socket.Broadcast{event: "presence_diff", payload: %{leaves: leaves}},
+    assert_receive %Phoenix.Socket.Broadcast{event: "presence_diff", payload: %{leaves: leaves}}
+                   when map_size(leaves) > 0,
                    5_000
 
     assert leaves |> Map.keys() |> Enum.sort() == Enum.sort([ctx.agent.id, ctx.sibling.id])
     assert present(ctx.topic) == []
   end
 
-  test "a 60-second report that disagrees with presence is logged", ctx do
+  test "a harness from before presence still has its 60-second report answered", ctx do
     say(ctx.channel, "agent_up", %{"agent_id" => ctx.agent.id})
+    say(ctx.channel, "agents_running", %{"agent_ids" => [ctx.sibling.id]})
 
-    log =
-      capture_log(fn ->
-        say(ctx.channel, "agents_running", %{"agent_ids" => [ctx.agent.id, ctx.sibling.id]})
-      end)
-
-    assert log =~ "disagrees with agents_running"
-    assert log =~ ctx.sibling.id
+    assert present(ctx.topic) == [ctx.agent.id]
   end
 end

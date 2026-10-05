@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Conversations
   alias CodeMySpec.Staffing
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias CodeMySpecTest.UnreachableMachine
   alias Ecto.Adapters.SQL.Sandbox
@@ -49,6 +50,8 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
           attrs
         )
       )
+
+    AgentPresence.present(main)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(

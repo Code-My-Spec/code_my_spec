@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   alias CodeMySpec.McpServers.Agents.Tools.TurnOnAgent
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @reason "held until the spec-binding fix lands"
@@ -61,6 +62,8 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
         working_copy: "/tmp/off-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, copy: copy, agent: agent, frame: %Frame{assigns: %{current_scope: scope}}}
   end
@@ -162,31 +165,6 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   end
 
   describe "nothing restarts an off agent" do
-    test "a reaped agent that is off is not restarted on reconnect", ctx do
-      off(ctx)
-
-      {:ok, _} =
-        AgentsRepository.update_agent(ctx.scope, Repo.get(Agent, ctx.agent.id), %{
-          stopped_reason: :reaped
-        })
-
-      :ok = Agents.restart_reaped_agents(ctx.scope, ctx.copy.id)
-
-      assert Repo.get(Agent, ctx.agent.id).status == :stopped
-    end
-
-    test "a reaped agent that is on still is", ctx do
-      {:ok, _} =
-        AgentsRepository.update_agent(ctx.scope, ctx.agent, %{
-          status: :stopped,
-          stopped_reason: :reaped
-        })
-
-      :ok = Agents.restart_reaped_agents(ctx.scope, ctx.copy.id)
-
-      refute Repo.get(Agent, ctx.agent.id).status == :stopped
-    end
-
     test "the main agent's restart_agent refuses it, naming who and why", ctx do
       off(ctx)
 
@@ -220,7 +198,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
       refute response.isError, text(response)
 
       agent = Repo.get(Agent, ctx.agent.id)
-      refute agent.status == :stopped
+      assert Agents.on_duty?(agent)
       assert is_nil(agent.off_at) and is_nil(agent.off_by) and is_nil(agent.off_reason)
     end
 
@@ -237,7 +215,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   end
 
   describe "an off agent whose machine could not end it" do
-    test "stays findable as running, and is not restored or reported as working", ctx do
+    test "stays findable as running while present, and is not reported as working", ctx do
       off_but_running(ctx)
 
       assert Enum.any?(Agents.list_running(ctx.scope), &(&1.id == ctx.agent.id))
@@ -245,14 +223,12 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
       assert MainAgent.list_agent_work(ctx.scope) == []
     end
 
-    test "is recorded stopped once its machine reports it gone", ctx do
-      off_but_running(ctx)
+    test "is no longer running once its machine reports it gone", ctx do
+      agent = off_but_running(ctx)
+      AgentPresence.absent(agent)
 
-      :ok = Agents.record_running_on_copy(ctx.scope, ctx.copy.id, [])
-
-      agent = Repo.get(Agent, ctx.agent.id)
-      assert agent.status == :stopped
-      assert Agent.off?(agent)
+      refute Enum.any?(Agents.list_running(ctx.scope), &(&1.id == ctx.agent.id))
+      assert Agents.lifecycle(agent, Agents.present_ids(ctx.scope)) == :off
     end
   end
 

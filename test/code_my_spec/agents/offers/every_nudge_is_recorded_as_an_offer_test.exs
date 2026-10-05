@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.TaskOwner
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -52,6 +53,8 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     {:ok, _conversation} =
       Conversations.find_or_create_agent_conversation(

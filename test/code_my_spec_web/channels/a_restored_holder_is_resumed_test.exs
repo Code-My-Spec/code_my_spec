@@ -4,7 +4,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
   to finish it, and the turn names the task (0d3b800d).
 
   Driven through the harness's own restart exchange: `agents_to_restore`, then
-  the first `agents_running` report, which is what sweeps the copy.
+  the `agents_present` report, which is what sweeps the copy.
   """
 
   use CodeMySpecSpex.Case, async: false
@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -62,6 +63,8 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
         working_copy_id: scope.active_working_copy_id
       })
 
+    AgentPresence.present(agent)
+
     {:ok, _conversation} =
       Conversations.find_or_create_agent_conversation(
         scope.active_account_id,
@@ -94,9 +97,9 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
     assert_reply ref, :ok, %{"agents" => _agents}, 2_000
   end
 
-  defp report_running(socket, agents) do
+  defp report_present(socket, agents) do
     ref =
-      Phoenix.ChannelTest.push(socket, "agents_running", %{
+      Phoenix.ChannelTest.push(socket, "agents_present", %{
         "agent_ids" => Enum.map(agents, & &1.id)
       })
 
@@ -105,7 +108,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
 
   defp restart(socket, agents) do
     restore(socket)
-    report_running(socket, agents)
+    report_present(socket, agents)
   end
 
   test "a restored continuous agent holding a task is woken to resume it, by name", ctx do
@@ -185,6 +188,8 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
           working_copy_id: scope.active_working_copy_id
         })
 
+      AgentPresence.present(agent)
+
       {:ok, conversation} =
         Conversations.find_or_create_agent_conversation(
           scope.active_account_id,
@@ -259,6 +264,8 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
           working_copy: "/tmp/idle-#{System.unique_integer([:positive])}",
           working_copy_id: ctx.scope.active_working_copy_id
         })
+
+      AgentPresence.present(agent)
 
       {:ok, conversation} =
         Conversations.find_or_create_agent_conversation(

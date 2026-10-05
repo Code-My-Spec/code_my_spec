@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Staffing
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @deploy_key :crypto.strong_rand_bytes(64) |> Base.encode16(case: :lower)
@@ -39,6 +40,8 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
         working_copy: "/tmp/widget-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(main)
 
     {:ok, _} =
       Conversations.find_or_create_agent_conversation(
