@@ -20,6 +20,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @mine "lib/my_app/mine.ex"
@@ -53,6 +54,8 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
         working_copy: "/tmp/menu-offer-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _} =
       Conversations.find_or_create_agent_conversation(

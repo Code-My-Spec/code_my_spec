@@ -49,6 +49,7 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
   @spec list_agent_work(Scope.t()) :: [AgentWork.t()]
   def list_agent_work(%Scope{} = scope) do
     agents = Agents.list_on_duty(scope)
+    present = Agents.present_ids(scope)
 
     copies = working_copies(agents)
     last_said = last_said_at(agents)
@@ -82,7 +83,7 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
       %AgentWork{
         agent_id: agent.id,
         role: agent.role,
-        agent_status: agent.status,
+        agent_status: Agents.lifecycle(agent, present),
         working_copy_id: agent.working_copy_id,
         working_copy_root: copy && copy.root,
         issue_id: agent.issue_id,

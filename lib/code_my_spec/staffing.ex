@@ -395,7 +395,7 @@ defmodule CodeMySpec.Staffing do
   defp stop_agents_on(scope, working_copy_id) do
     scope
     |> Agents.list_agents()
-    |> Enum.filter(&(&1.working_copy_id == working_copy_id and &1.status != :stopped))
+    |> Enum.filter(&(&1.working_copy_id == working_copy_id and is_nil(&1.retired_at)))
     |> Enum.reduce(%{agents_stopped: 0, agents_left_running: []}, fn agent, acc ->
       case Agents.retire_agent(scope, agent.id,
              by: Agents.actor(scope),

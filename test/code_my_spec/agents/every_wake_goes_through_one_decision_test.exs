@@ -21,6 +21,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Devops.Starter
   alias CodeMySpec.Notifications
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -69,6 +70,8 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     agent
   end

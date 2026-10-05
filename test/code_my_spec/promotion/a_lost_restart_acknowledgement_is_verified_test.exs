@@ -25,6 +25,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
   alias CodeMySpec.Promotion
   alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -126,6 +127,8 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
         working_copy: @agent,
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script())
     scope = %{scope | active_working_copy_id: copy.id, environment: env}

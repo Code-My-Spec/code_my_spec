@@ -15,7 +15,10 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   without the agent being wrong.
   """
 
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Main.OpenQuestion
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Utils.MapAccess
 
   @type t :: %__MODULE__{
@@ -69,7 +72,7 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
       asked_at: request.inserted_at,
       agent_id: request.agent_id,
       agent_role: field(agent, :role),
-      agent_status: field(agent, :status),
+      agent_status: lifecycle(agent),
       working_copy_id: field(agent, :working_copy_id),
       working_copy_root: field(working_copy, :root),
       working_copy_label: field(working_copy, :label)
@@ -111,7 +114,7 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
       asked_at: request.inserted_at,
       agent_id: request.agent_id,
       agent_role: field(agent, :role),
-      agent_status: field(agent, :status),
+      agent_status: lifecycle(agent),
       working_copy_id: field(agent, :working_copy_id),
       working_copy_root: field(working_copy, :root),
       working_copy_label: field(working_copy, :label)
@@ -147,6 +150,12 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   def texts(%OpenQuestion{questions: questions}) do
     Enum.map(questions, fn question -> MapAccess.get(question, :question) end)
   end
+
+  # Derived, as everywhere an agent's state is shown (`Agents.lifecycle/2`).
+  defp lifecycle(%Agent{} = agent),
+    do: Agents.lifecycle(agent, Presence.ids(agent.project_id))
+
+  defp lifecycle(_agent), do: nil
 
   defp field(nil, _key), do: nil
   defp field(struct, key), do: Map.get(struct, key)

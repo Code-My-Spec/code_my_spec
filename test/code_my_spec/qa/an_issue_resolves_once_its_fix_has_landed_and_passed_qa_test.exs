@@ -18,6 +18,7 @@ defmodule CodeMySpec.Qa.AnIssueResolvesOnceItsFixHasLandedAndPassedQaTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -43,6 +44,8 @@ defmodule CodeMySpec.Qa.AnIssueResolvesOnceItsFixHasLandedAndPassedQaTest do
         status: :running,
         working_copy_id: copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end
@@ -119,5 +122,16 @@ defmodule CodeMySpec.Qa.AnIssueResolvesOnceItsFixHasLandedAndPassedQaTest do
     :ok = qa_passes(ctx)
 
     assert %{status: :resolved} = issue(ctx)
+  end
+
+  # ea0ab1c8, 2026-10-05: the same fix was queued again after it had landed, and
+  # the second landing tried to resolve a resolved issue and logged an error.
+  test "a fix landing again for an issue already resolved changes nothing", ctx do
+    :ok = qa_passes(ctx)
+    :ok = Qa.issue_fix_landed(ctx.scope, ctx.issue.id, String.duplicate("a", 40))
+    assert %{status: :resolved, resolution: resolution} = issue(ctx)
+
+    assert :ok = Qa.issue_fix_landed(ctx.scope, ctx.issue.id, String.duplicate("b", 40))
+    assert %{status: :resolved, resolution: ^resolution} = issue(ctx)
   end
 end

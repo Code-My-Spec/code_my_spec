@@ -959,6 +959,34 @@ defmodule CodeMySpec.Promotion do
       [] -> certify(scope, answered, missing, head, named, opts)
       problems -> gate_result(problems, named)
     end
+    |> log_gate(working_copy_id, head)
+  end
+
+  # The gate's answer, beside the line that says it was asked: a gate that was
+  # asked and never answered is told apart from one that was never asked.
+  defp log_gate(result, working_copy_id, head) do
+    Logger.info(
+      "[Promotion] gate for #{working_copy_id} at #{head} answered #{gate_outcome(result)}"
+    )
+
+    result
+  end
+
+  defp gate_outcome({:ok, _certified}), do: "green"
+  defp gate_outcome({:pending, pending}), do: "pending, started #{inspect(pending[:started])}"
+  defp gate_outcome({:error, refusal}), do: "refused (#{inspect(refusal[:counts])})"
+
+  @doc """
+  Whether the scope's copy is already certified at `head`: every analyzer has a
+  run that answers for it there, and none of them found anything blocking. A
+  read — nothing is started.
+  """
+  @spec certified_at?(Scope.t(), String.t()) :: boolean()
+  def certified_at?(%Scope{} = scope, head) do
+    case answers_at(scope, Run.sources(), head) do
+      {answered, []} -> blocking_problems(scope, Map.keys(answered)) == []
+      {_answered, _missing} -> false
+    end
   end
 
   @doc """

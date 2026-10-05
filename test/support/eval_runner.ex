@@ -497,7 +497,9 @@ defmodule CodeMySpec.Support.EvalRunner do
     projects = from(p in "projects", where: p.account_id == ^account, select: p.id)
 
     steps = [
-      from(s in "sessions", where: s.account_id == ^account or s.project_id in subquery(projects)),
+      from(s in "sessions",
+        where: s.account_id == ^account or s.project_id in subquery(projects)
+      ),
       from(r in "rules", where: r.account_id == ^account),
       from(s in "stories", where: s.locked_by == ^user_id),
       from(p in "projects", where: p.account_id == ^account),
@@ -777,6 +779,10 @@ defmodule CodeMySpec.Support.EvalRunner do
         "on_event" => fn _agent_id, event -> record_event(collector, event) end
       })
 
+    # No channel here to turn the harness's ups and downs into presence, and
+    # nothing is delivered to an agent that is not present.
+    :ok = presence_relay().relay(agent)
+
     case machine().launch(request) do
       {:ok, _} -> {:ok, agent_id, prompt_of(request)}
       other -> {:error, {:start_agent, other}}
@@ -1049,6 +1055,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp machine, do: Module.concat([CmsHarnessTest, Machine])
+  defp presence_relay, do: Module.concat([CodeMySpecTest, PresenceRelay])
   defp launch_request, do: Module.concat([CodeMySpec, Agents, LaunchRequest])
   defp tool_sets, do: Module.concat([CodeMySpec, Agents, ToolSets])
 
@@ -1358,7 +1365,11 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   defp left_the_waiting_task?(%{trace: trace} = record) do
     ended? = Enum.any?(trace, &(&1[:event] == :turn_ended))
-    said = trace |> Enum.filter(&(&1[:event] in [:text, :message, :assistant_text])) |> Enum.map_join(" ", &(&1[:detail] || ""))
+
+    said =
+      trace
+      |> Enum.filter(&(&1[:event] in [:text, :message, :assistant_text]))
+      |> Enum.map_join(" ", &(&1[:detail] || ""))
 
     ended? and not resumed_the_released_task?(record) and said =~ ~r/wait|not ready|blocked/i
   end
@@ -1410,8 +1421,7 @@ defmodule CodeMySpec.Support.EvalRunner do
     params = %{
       questions: [
         %{
-          "question" =>
-            "Should a cancelled booking refund the deposit in full, or keep a fee?",
+          "question" => "Should a cancelled booking refund the deposit in full, or keep a fee?",
           "options" => [%{"label" => "Full refund"}, %{"label" => "Keep a fee"}]
         }
       ]
@@ -1489,10 +1499,10 @@ defmodule CodeMySpec.Support.EvalRunner do
     key = {__MODULE__, :stale_closed, world.root}
 
     :persistent_term.get(key, false) or
-      (world.scope
-       |> offers().list(kind: :work, status: :declined)
-       |> Enum.any?(&(&1.reason == "already satisfied"))
-       |> tap(&if(&1, do: :persistent_term.put(key, true))))
+      world.scope
+      |> offers().list(kind: :work, status: :declined)
+      |> Enum.any?(&(&1.reason == "already satisfied"))
+      |> tap(&if(&1, do: :persistent_term.put(key, true)))
   end
 
   # `start_task` on the released task itself — its requirement and entity —
@@ -1535,7 +1545,9 @@ defmodule CodeMySpec.Support.EvalRunner do
     end
   end
 
-  defp ask_user_question, do: Module.concat([CodeMySpec, McpServers, Tasks, Tools, AskUserQuestion])
+  defp ask_user_question,
+    do: Module.concat([CodeMySpec, McpServers, Tasks, Tools, AskUserQuestion])
+
   defp notifications, do: Module.concat([CodeMySpec, Notifications])
 
   # That the task actually landed on *this* agent's queue.

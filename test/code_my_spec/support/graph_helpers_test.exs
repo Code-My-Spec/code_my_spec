@@ -32,6 +32,7 @@ defmodule CodeMySpecTest.GraphHelpersTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -57,6 +58,8 @@ defmodule CodeMySpecTest.GraphHelpersTest do
         working_copy: scope.cwd,
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _} =
       CodeMySpec.Conversations.find_or_create_agent_conversation(

@@ -107,30 +107,6 @@ defmodule CmsHarness.ChannelClientTransportTest do
                      "holds an empty domain for the whole session"
   end
 
-  # `34e03128`. A report sent the instant a join completes always describes
-  # the one moment the answer is empty — nothing has been asked to start yet,
-  # including whatever `agents_to_restore` (pushed a few lines below this) is
-  # about to ask for. The server read that emptiness as "none of this copy's
-  # :starting agents are really running" and reaped them — `settle_against/3`
-  # has no grace period — before the restore reply had a chance to land, let
-  # alone launch anything. Measured live against a Docker boot: an agent
-  # created 600ms before the harness joined was marked :stopped forever,
-  # though nothing had ever tried, and failed, to start it.
-  test "agents_running is not reported synchronously on join" do
-    assert {:ok, _out} =
-             ChannelClient.handle_join(
-               "harness_project:p1",
-               %{},
-               socket(%{project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}})
-             )
-
-    refute_receive {:transport_push, _, "agents_running", _, _},
-                   100,
-                   "reporting immediately races the restore this same join just asked " <>
-                     "for — a freshly parked agent gets reaped before the request to " <>
-                     "start it can possibly have landed"
-  end
-
   test "join still asks what to restore, immediately" do
     assert {:ok, _out} =
              ChannelClient.handle_join(
@@ -749,22 +725,6 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
       assert_receive {:transport_push, _, "agent_stop_result", %{"ref" => "r1"}, _}, 1_000
     end
-
-    test "the agents_running report waits for the restore" do
-      sock = restoring(%{restore_queue: [], restoring: "a"})
-
-      {:noreply, sock} = ChannelClient.handle_info(:report_agents_running, sock)
-
-      refute_receive {:transport_push, _, "agents_running", _, _},
-                     100,
-                     "mid-restore the report names queued agents absent, and the server reaps them"
-
-      {:reply, :done, _} = ChannelClient.handle_call(:next_restore, {self(), make_ref()}, sock)
-
-      assert_receive {:transport_push, _, "agents_running", _, _},
-                     1_000,
-                     "the deferred report was never sent"
-    end
   end
 
   # Agent presence (`.code_my_spec/plans/agent-liveness-from-presence.md`).
@@ -797,6 +757,17 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
       assert_receive {:transport_push, _, "agent_down",
                       %{"agent_id" => "a1", "reason" => ":killed"}, _}
+    end
+
+    test "its harness giving up on it is the final agent_down, marked gave_up" do
+      {:noreply, _} =
+        ChannelClient.handle_info(
+          {:agent_liveness, :gave_up, "a1", "/tmp/x", {:badarg, []}},
+          socket(%{})
+        )
+
+      assert_receive {:transport_push, _, "agent_down",
+                      %{"agent_id" => "a1", "reason" => "gave_up: {:badarg, []}"}, _}
     end
 
     test "another copy's agent is its own channel's to report" do

@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @plain_not_found "No agent or conversation with that id exists here"
@@ -64,6 +65,8 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
         working_copy: "/tmp/conv-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(

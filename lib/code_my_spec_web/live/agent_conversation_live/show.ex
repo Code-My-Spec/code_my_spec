@@ -181,6 +181,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # project, same as `WorkingCopyLive.Index` — without this it only ever
       # reflects whatever was true at the last navigation.
       Agents.subscribe(scope)
+      Agents.subscribe_presence(scope)
 
       # What the analyzers are doing right now.
       #
@@ -335,11 +336,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp main_copy_id({:ok, agent, _conversation}), do: agent.working_copy_id
   defp main_copy_id(_error), do: nil
 
-  defp main_summary({:ok, %{status: :running}, _conversation}),
-    do: "Working on your project. Its steps appear below as it takes them."
-
-  defp main_summary({:ok, _agent, _conversation}),
-    do: "Getting ready. It will start work as soon as its machine picks it up."
+  # Working once its process is alive (`Agents.Presence`); until then, getting
+  # ready.
+  defp main_summary({:ok, agent, _conversation}) do
+    if Agents.present?(agent.project_id, agent),
+      do: "Working on your project. Its steps appear below as it takes them.",
+      else: "Getting ready. It will start work as soon as its machine picks it up."
+  end
 
   defp main_summary(_error), do: ""
 
@@ -670,7 +673,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp talkable?(_scope, nil), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
-    match?({:ok, %{status: status}} when status != :stopped, Agents.fetch_agent(scope, agent_id))
+    match?(
+      {:ok, agent} when agent.off_at == nil and agent.retired_at == nil,
+      Agents.fetch_agent(scope, agent_id)
+    )
   end
 
   defp talkable?(_scope, _conversation), do: false
@@ -1632,6 +1638,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # `:session_changed` is in the mix too: it is what fires when a task
   # activates or completes, which is the only way an agent's task line ever
   # moves without somebody reloading the page.
+  # An agent's process came up or went down (`Agents.Presence`): the same
+  # redraw as the agent news below.
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket),
+    do: handle_info({:agent_started, nil}, socket)
+
   def handle_info({event, _payload}, socket)
       when event in [
              :agents_reported,

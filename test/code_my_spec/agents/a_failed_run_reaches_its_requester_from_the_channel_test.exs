@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.AFailedRunReachesItsRequesterFromTheChannelTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpecTest.AgentPresence
 
   defmodule CallerReportingTransport do
     def dispatch_message(_copy_id, agent, _ref, message, _timeout) do
@@ -43,6 +44,8 @@ defmodule CodeMySpec.Agents.AFailedRunReachesItsRequesterFromTheChannelTest do
         working_copy: "/tmp/failed-run-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

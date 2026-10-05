@@ -43,6 +43,8 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
       |> Map.put_new("api_key", "unused-in-process")
       |> Map.put("on_event", CodeMySpecTest.TurnEventRelay.reporter())
 
+    # Presence is the channel's to keep, and there is no channel here.
+    :ok = CodeMySpecTest.PresenceRelay.relay(agent)
     Agents.launch(request)
   end
 

@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.AFailedTurnIsOfferedAgainTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @failure "Claude Code returned tool_use without any tool calls"
@@ -32,6 +33,8 @@ defmodule CodeMySpec.Agents.AFailedTurnIsOfferedAgainTest do
         working_copy: "/tmp/failed-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     Agents.record_turn_event(ctx.scope, agent.id, %{"kind" => "turn_started"})
     conversation = CodeMySpecSpex.Fixtures.agent_conversation(ctx.scope, agent)

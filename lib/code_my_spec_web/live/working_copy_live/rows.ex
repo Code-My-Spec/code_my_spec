@@ -83,8 +83,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       if Keyword.get(opts, :include_stopped?, false) do
         Agents.list_for_team_status(scope)
       else
-        Agents.list_running(scope)
+        Agents.list_on_duty(scope)
       end
+      |> Agents.with_lifecycle(Agents.present_ids(scope))
 
     transcripts = transcripts(scope, project)
 

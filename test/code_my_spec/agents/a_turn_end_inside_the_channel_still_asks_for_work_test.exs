@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.ATurnEndInsideTheChannelStillAsksForWorkTest do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
 
   # Stands in for the harness transport and says which process asked.
   defmodule CallerReportingTransport do
@@ -51,6 +52,8 @@ defmodule CodeMySpec.Agents.ATurnEndInsideTheChannelStillAsksForWorkTest do
         working_copy: "/tmp/turn-end-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     Map.put(ctx, :agent, agent)
   end

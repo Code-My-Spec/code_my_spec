@@ -11,6 +11,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -40,6 +41,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
         working_copy_id: copy.id,
         turn_started_at: DateTime.utc_now()
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -94,6 +97,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
         working_copy: "/tmp/instruction-main",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(main)
 
     id = ctx.agent.id
     main_id = main.id

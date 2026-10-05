@@ -171,7 +171,9 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
 
     from(q in QuestionRequest,
       where: q.user_id == ^user_id and q.status == "answered",
-      where: fragment("?::text ILIKE ?", q.questions, ^pattern),
+      where:
+        fragment("?::text ILIKE ?", q.questions, ^pattern) or
+          fragment("?::text ILIKE ?", q.answers, ^pattern),
       order_by: [desc: q.updated_at],
       limit: 20
     )

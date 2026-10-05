@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup :register_log_in_setup_account
@@ -55,6 +56,8 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
         working_copy: "/tmp/questions-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _conversation} =
       Conversations.find_or_create_agent_conversation(

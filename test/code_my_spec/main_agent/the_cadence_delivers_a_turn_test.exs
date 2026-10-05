@@ -24,6 +24,7 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Staffing
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -75,6 +76,8 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     agent
   end

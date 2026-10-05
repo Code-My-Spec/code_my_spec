@@ -42,10 +42,7 @@ defmodule CmsHarness.Agents.Engine do
     :exit, {:timeout, _} -> {:error, :busy}
   end
 
-  def stop(agent_id) do
-    with {:ok, pid} <- State.whereis(agent_id),
-         do: DynamicSupervisor.terminate_child(CmsHarness.AgentSupervisor, pid)
-  end
+  defdelegate stop(agent_id), to: Impl
 
   def running, do: State.running()
   def running?(agent_id), do: match?({:ok, _}, State.whereis(agent_id))

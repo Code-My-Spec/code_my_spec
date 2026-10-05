@@ -7,6 +7,7 @@ defmodule CodeMySpec.TaskOwnerTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
 
   for kind <- [:session, :agent] do
     describe "#{kind} task blockers" do
@@ -192,6 +193,8 @@ defmodule CodeMySpec.TaskOwnerTest do
         continuous: true,
         status: :running
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

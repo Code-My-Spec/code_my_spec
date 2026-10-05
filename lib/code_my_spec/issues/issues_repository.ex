@@ -684,6 +684,9 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     Issue
     |> by_project(project_id)
     |> where([i], i.assigned_working_copy_id == ^working_copy_id and i.status == :accepted)
+    # One waiting to be promoted first, then the oldest: a copy can hold
+    # several, and an arbitrary pick sent a promote after the wrong one.
+    |> order_by([i], desc: i.awaiting_role == :promote, asc: i.inserted_at, asc: i.id)
     |> limit(1)
     |> Repo.one()
   end

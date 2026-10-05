@@ -209,6 +209,9 @@ defmodule CodeMySpec.Agents.Agent do
     # running is the interesting part: five seconds is normal and fifty minutes
     # is not, and a flag cannot tell them apart.
     field :turn_started_at, :utc_datetime_usec
+    # Derived for display, never stored: `Agents.with_lifecycle/2` sets it from
+    # `Agents.Presence` (`:running | :starting | :off | :retired`).
+    field :lifecycle, :any, virtual: true
     field :work_request_id, :string
     field :work_requested_at, :utc_datetime_usec
 

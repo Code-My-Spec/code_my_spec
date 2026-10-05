@@ -109,7 +109,7 @@ defmodule CodeMySpec.PromotionQueue do
   def enqueue(%Scope{} = scope, story_number, opts \\ []) do
     with {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
-         subject = subject(scope, story, copy),
+         {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id)),
          :ok <- qa_passed(scope, subject),
          {:ok, head} <- clean_head(scope, copy),
          :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
@@ -247,17 +247,19 @@ defmodule CodeMySpec.PromotionQueue do
   A working copy's harness joined. When it is the project's gate copy, the
   worker builds now: a gate copy minted for the first batch comes up a minute
   or so after it is made, and the batch would otherwise wait out a whole retry
-  period for it (the queue's first live batch, 2026-10-05).
+  period for it (the queue's first live batch, 2026-10-05). A batch already
+  gating there asks the gate again: runs it asked for may have gone with the
+  connection that just went.
   """
   @spec copy_joined(Scope.t(), WorkingCopy.t()) :: :ok
   def copy_joined(%Scope{active_project_id: project_id}, %WorkingCopy{label: label}) do
-    if label == Worker.gate_label(), do: wake(project_id)
+    if label == Worker.gate_label(), do: tell_worker(project_id, :gate_copy_joined)
     :ok
   end
 
-  defp wake(project_id) do
+  defp tell_worker(project_id, message) do
     case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
-      [{pid, _}] -> GenServer.cast(pid, :kick)
+      [{pid, _}] -> GenServer.cast(pid, message)
       [] -> :ok
     end
   end
@@ -286,13 +288,34 @@ defmodule CodeMySpec.PromotionQueue do
     end
   end
 
-  # The story named, or else the issue assigned to the copy's team, or nothing.
-  defp subject(_scope, %{} = story, _copy), do: {:story, story}
+  # The story named; or the issue named (`issue_id:`, the promote task's own),
+  # which has to be this copy's; or else the issue assigned to the copy that is
+  # waiting to be promoted (`Issues.assigned_to_copy/2`); or nothing.
+  #
+  # e4c9bfcd, 2026-10-05: a copy held four issues, and the one picked was not
+  # the one being promoted — it had not passed QA, so every promote from the
+  # copy was refused over it.
+  defp subject(_scope, %{} = story, _copy, _issue_id), do: {:ok, {:story, story}}
 
-  defp subject(scope, nil, copy) do
+  defp subject(scope, nil, copy, nil) do
     case Issues.assigned_to_copy(scope, copy.id) do
-      nil -> nil
-      issue -> {:issue, issue}
+      nil -> {:ok, nil}
+      issue -> {:ok, {:issue, issue}}
+    end
+  end
+
+  defp subject(scope, nil, copy, issue_id) do
+    case Issues.get_issue(scope, issue_id) do
+      %{status: :accepted, assigned_working_copy_id: id} = issue when id == copy.id ->
+        {:ok, {:issue, issue}}
+
+      _ ->
+        {:error,
+         %{
+           reason:
+             "issue #{issue_id} is not an accepted issue assigned to this copy, so its " <>
+               "fix is not promoted from here."
+         }}
     end
   end
 

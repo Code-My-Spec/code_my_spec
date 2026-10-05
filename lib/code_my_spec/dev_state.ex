@@ -50,7 +50,9 @@ defmodule CodeMySpec.DevState do
 
   import Ecto.Query
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -112,7 +114,7 @@ defmodule CodeMySpec.DevState do
     agents =
       [project_id: project.id]
       |> AgentsRepository.list_every_agent()
-      |> Enum.reject(&(&1.status == :stopped))
+      |> Enum.filter(&Agents.on_duty?/1)
 
     %{
       project: project.name,
@@ -129,7 +131,7 @@ defmodule CodeMySpec.DevState do
     %{
       id: agent.id,
       role: agent.role,
-      status: agent.status,
+      status: lifecycle(agent),
       provider: agent.provider,
       model: agent.model,
       continuous: agent.continuous,
@@ -384,11 +386,15 @@ defmodule CodeMySpec.DevState do
     end
   end
 
+  # Derived, not stored (`Agents.lifecycle/2`): running while its process is
+  # present.
+  defp lifecycle(agent), do: Agents.lifecycle(agent, Presence.ids(agent.project_id))
+
   defp agent(agent) do
     %{
       id: agent.id,
       role: agent.role,
-      status: agent.status,
+      status: lifecycle(agent),
       continuous: agent.continuous,
       engine: agent.engine
     }

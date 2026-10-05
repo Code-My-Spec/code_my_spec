@@ -109,13 +109,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.UnconfirmedLaneOffersNoChatTest do
              "working agent. Delivery refuses honestly if the lane has gone."
   end
 
-  test "a copy whose agent was stopped is offered no chat, and the page says why", context do
+  test "a copy whose agent was turned off is offered no chat, and the page says why", context do
     {copy, agent} = requested_pi_lane(context, "/tmp/unconfirmed-lane-gone")
 
-    # The one status that is evidence rather than inference: somebody asked for
-    # this agent to stop and it did. There is nothing to say anything to, and
-    # unlike an unreachable machine it is not coming back on its own.
-    {:ok, _} = AgentsRepository.update_agent(context.scope, agent, %{status: :stopped})
+    # Evidence rather than inference: somebody turned this agent off. There is
+    # nothing to say anything to, and unlike an unreachable machine it is not
+    # coming back on its own.
+    {:ok, _} = turn_off(context, agent)
 
     live = show(context, copy)
 
@@ -129,7 +129,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.UnconfirmedLaneOffersNoChatTest do
 
   test "the reason names this copy rather than agents in general", context do
     {copy, agent} = requested_pi_lane(context, "/tmp/unconfirmed-lane-reason")
-    {:ok, _} = AgentsRepository.update_agent(context.scope, agent, %{status: :stopped})
+    {:ok, _} = turn_off(context, agent)
 
     html =
       context
@@ -147,4 +147,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.UnconfirmedLaneOffersNoChatTest do
     assert html =~ "lane" or html =~ "copy",
            "the reason says nothing about this checkout. Got: #{html}"
   end
+
+  defp turn_off(context, agent),
+    do:
+      AgentsRepository.update_agent(context.scope, agent, %{
+        off_at: DateTime.utc_now(),
+        off_by: "a test"
+      })
 end

@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @usage_limit """
@@ -45,6 +46,8 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
         working_copy: "/tmp/refused-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     Map.put(ctx, :agent, agent)
   end

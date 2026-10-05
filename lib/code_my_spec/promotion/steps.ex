@@ -707,6 +707,13 @@ defmodule CodeMySpec.Promotion.Steps do
   # before anything is known to be safe, and a checkout with no commits yet
   # (or a transient git failure) must not take the merge down over a value
   # that only ever feeds an optimization, never a correctness check.
+  # The repository sets `submodule.recurse`, so a reset would also check out
+  # the commit's `.code_my_spec` pointer, and refuses when the gate's submodule
+  # does not have that docs commit — 0dab340e, 2026-10-05, a pointer never
+  # pushed to the docs remote, and a batch reset over and over. The gate copy's
+  # submodule stays where it is, as it does when a batch is built by merges.
+  @leave_submodules ["-c", "submodule.recurse=false"]
+
   @doc """
   Build a promotion batch in the queue's gate checkout at `root`: reset it to
   `base` (main's HEAD) and merge `commits` onto it in order.
@@ -722,8 +729,13 @@ defmodule CodeMySpec.Promotion.Steps do
           result()
   def build_batch(env, root, base, commits) do
     with {_, 0} <- git(env, root, ["merge", "--abort"]) |> ok_or_not_merging(),
-         {_, 0} <- git(env, root, ["checkout", "--quiet", "--detach", "--force", base]),
-         {_, 0} <- git(env, root, ["reset", "--quiet", "--hard", base]) do
+         {_, 0} <-
+           git(
+             env,
+             root,
+             @leave_submodules ++ ["checkout", "--quiet", "--detach", "--force", base]
+           ),
+         {_, 0} <- git(env, root, @leave_submodules ++ ["reset", "--quiet", "--hard", base]) do
       {merged, conflicted} =
         Enum.reduce(commits, {[], []}, fn commit, {merged, conflicted} ->
           case add_to_batch(env, root, commit) do
@@ -795,6 +807,17 @@ defmodule CodeMySpec.Promotion.Steps do
   defp ancestor?(env, root, maybe_ancestor, descendant) do
     match?({_, 0}, git(env, root, ["merge-base", "--is-ancestor", maybe_ancestor, descendant]))
   end
+
+  @doc """
+  Which of `commits` `base` already contains — candidates on main already, with
+  nothing to gate or land. Reads only; moves nothing.
+
+  `{:ok, %{contained: [commit]}}`, in the order given.
+  """
+  @spec contained(Environments.Environment.t(), String.t(), String.t(), [String.t()]) ::
+          result()
+  def contained(env, root, base, commits),
+    do: {:ok, %{contained: Enum.filter(commits, &ancestor?(env, root, &1, base))}}
 
   @doc """
   The paths `commit` changed relative to where it left `base` — what the queue

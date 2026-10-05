@@ -28,6 +28,7 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
+  alias CodeMySpecTest.AgentPresence
 
   @product_work ~w(issues_triaged story_issues_triaged three_amigos_complete personas_complete
                    component_linked questions_answered)
@@ -248,6 +249,8 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
         working_copy: "/tmp/rp4c-#{role}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.Main.AnAgentTimingOutIsNotQuietTest do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.{AgentWork, CheckInReport, Digest, Machinery}
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
+  alias CodeMySpecTest.AgentPresence
 
   @timeout "claude exec timed out after 180000ms"
 
@@ -74,6 +75,8 @@ defmodule CodeMySpec.Agents.Main.AnAgentTimingOutIsNotQuietTest do
           working_copy: "/tmp/timing-out-#{System.unique_integer([:positive])}",
           working_copy_id: scope.active_working_copy_id
         })
+
+      AgentPresence.present(agent)
 
       %{scope: scope, agent: agent}
     end
