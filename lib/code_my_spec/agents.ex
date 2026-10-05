@@ -179,6 +179,26 @@ defmodule CodeMySpec.Agents do
   defdelegate providers(), to: Providers, as: :names
 
   @doc """
+  Every task embedded directly on an agent -- rather than on a session --
+  that was opened against a story.
+
+  An agent run under Alloy has no session and fires no hooks, so its tasks
+  live on its own `tasks` embed (`TaskOwner`); `Sessions.list_tasks_for_story/2`
+  only ever sees the other kind. `AgentPerformance.CycleTime` reads both.
+  """
+  @spec list_tasks_for_story(Scope.t(), integer()) :: [map()]
+  def list_tasks_for_story(%Scope{} = scope, story_id) when is_integer(story_id) do
+    scope
+    |> list_agents()
+    |> Enum.flat_map(fn agent ->
+      agent.tasks
+      |> List.wrap()
+      |> Enum.filter(&(&1.story_id == story_id))
+      |> Enum.map(&Map.from_struct/1)
+    end)
+  end
+
+  @doc """
   What an agent may call: its role's grants as the code states them now, plus
   what its machine reported.
 

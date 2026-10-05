@@ -172,6 +172,29 @@ defmodule CodeMySpec.Sessions do
 
   def list_active_tasks_for_agent(_scope, _agent_id), do: []
 
+  @doc """
+  Every task ever opened against a story, across every session, finished or
+  not.
+
+  A story's own cycle time is a property of the tasks that built it, not of
+  one session — a story moves through several session types (specs, build,
+  QA...) over its life, so this reads every session rather than one. Used by
+  `AgentPerformance` to derive stage times from each task's own
+  `started_at`/`completed_at` and blocked span, rather than a second,
+  separately-maintained clock.
+  """
+  @spec list_tasks_for_story(Scope.t(), integer()) :: [map()]
+  def list_tasks_for_story(%Scope{} = scope, story_id) when is_integer(story_id) do
+    scope
+    |> list_sessions()
+    |> Enum.flat_map(fn session ->
+      session.tasks
+      |> List.wrap()
+      |> Enum.filter(&(&1.story_id == story_id))
+      |> Enum.map(&Map.from_struct/1)
+    end)
+  end
+
   @doc "Find an active session by external conversation ID (Claude session ID)."
   def get_by_external_id(%Scope{} = scope, external_id) when is_binary(external_id) do
     Session
