@@ -392,7 +392,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         requeue(batch.entries)
         {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
 
-      batch.baseline == :unchecked and Triage.baseline_files(problems) != %{} ->
+      ask_main?(batch, problems) ->
         check_baseline(state, problems, reason)
 
       match?({:rerun, _}, Triage.lone_failure(problems)) and not batch.reran? ->
@@ -454,6 +454,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       _ -> unasked(state, reason)
     end
   end
+
+  # Once per batch, for test findings — and only in the queue's own gate copy.
+  # The baseline resets the copy it runs in, so never a requester's copy a lone
+  # batch was gated on, where someone may still be working (phx-new-generator,
+  # 2026-10-05).
+  defp ask_main?(batch, problems),
+    do:
+      batch.baseline == :unchecked and batch.gate.label == @gate_label and
+        Triage.baseline_files(problems) != %{}
 
   # Main could not be asked: back to the batch commit, and triaged as found.
   defp unasked(%{batch: batch} = state, reason) do
