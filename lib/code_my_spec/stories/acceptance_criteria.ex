@@ -159,10 +159,6 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria do
     Criterion.changeset(criterion, attrs)
   end
 
-  @doc "Every claimed spec path in the project, mapped to the story that owns it."
-  @spec spec_path_story_ids(Scope.t()) :: %{String.t() => integer()}
-  def spec_path_story_ids(%Scope{} = scope), do: impl().spec_path_story_ids(scope)
-
   @doc "Marks an acceptance criterion as verified."
   def mark_verified(%Scope{} = scope, %Criterion{} = criterion) do
     case impl().mark_verified(scope, criterion) do

@@ -79,9 +79,8 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       :ok = FileEdits.track_edit(ctx.session, @mine)
       {:ok, _} = Configurations.update(ctx.scope, %{spex: :block_all})
 
-      # Bound by a criterion's `spec_path`, which is how a spex path actually
-      # resolves to a story: `spec_path_story_ids/1` is consulted before the
-      # directory number, and the number in the directory is not a story id.
+      # A spex file with no `criterion:` stamp binds to no criterion; the
+      # directory number is not a story id, so the finding stays enforced.
       File.mkdir_p!(Path.join(ctx.tmp, Path.dirname(@spex_path)))
       File.write!(Path.join(ctx.tmp, @spex_path), "defmodule S do\nend\n")
       {:ok, _} = FileSync.sync(ctx.scope, base_dir: ctx.tmp)
