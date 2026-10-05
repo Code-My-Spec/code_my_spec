@@ -1414,6 +1414,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp decode_withdraw_result(%{"status" => "already_delivered"}),
     do: {:error, :already_delivered}
 
+  defp decode_withdraw_result(%{"status" => "never_received"}),
+    do: {:error, :never_received}
+
   defp decode_withdraw_result(%{"reason" => reason}) when is_binary(reason),
     do: {:error, decode_reason(reason)}
 

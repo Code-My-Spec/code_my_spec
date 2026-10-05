@@ -4,6 +4,7 @@ defmodule CmsHarness.Agents.Engine.Server do
   use GenServer, restart: :temporary
 
   alias CmsHarness.Agents.Engine.Impl
+  alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
 
   def start_link(opts) do
@@ -37,7 +38,7 @@ defmodule CmsHarness.Agents.Engine.Server do
 
     case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
       {:queued, state} ->
-        :ok = CmsHarness.Agents.Engine.Keeper.queued(state.agent_id, ref)
+        :ok = Keeper.queued(state.agent_id, ref)
         {:reply, {:ok, {:queued, ref}}, state}
     end
   end
@@ -55,7 +56,7 @@ defmodule CmsHarness.Agents.Engine.Server do
   def handle_call({:send, ref, message, timeout}, _from, state) do
     case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
       {:queued, state} ->
-        :ok = CmsHarness.Agents.Engine.Keeper.queued(state.agent_id, ref)
+        :ok = Keeper.queued(state.agent_id, ref)
         {:reply, {:ok, :queued}, state}
     end
   end
@@ -91,20 +92,13 @@ defmodule CmsHarness.Agents.Engine.Server do
   end
 
   def handle_call({:withdraw, ref}, _from, state) do
+    receipt = Keeper.withdraw(state.agent_id, ref)
+
     case State.withdraw(state, ref) do
-      :already_delivered ->
-        # A receipt survives an engine crash even when its queue does not.
-        # Only a known unconsumed ref can be safely withdrawn here.
-        result =
-          if CmsHarness.Agents.Engine.Keeper.take_queued(state.agent_id, ref),
-            do: :ok,
-            else: {:error, :already_delivered}
-
-        {:reply, result, state}
-
-      {:ok, state} ->
-        CmsHarness.Agents.Engine.Keeper.take_queued(state.agent_id, ref)
-        {:reply, :ok, state}
+      {:ok, state} -> {:reply, :ok, state}
+      # A receipt survives an engine crash or harness restart that its queue
+      # does not.
+      :already_delivered -> {:reply, receipt, state}
     end
   end
 

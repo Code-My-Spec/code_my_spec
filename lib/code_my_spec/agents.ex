@@ -2315,12 +2315,9 @@ defmodule CodeMySpec.Agents do
   def withdraw_message(%Scope{} = scope, id, ref) when is_binary(ref) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <-
-           Transport.impl().withdraw_message(
-             agent.working_copy_id,
-             agent,
-             ref,
-             @message_timeout_ms
-           ),
+           agent.working_copy_id
+           |> Transport.impl().withdraw_message(agent, ref, @message_timeout_ms)
+           |> taken_back(),
          %Conversations.Message{} = message <- Conversations.pending_message_by_ref(ref) do
       Conversations.set_delivery(message, :withdrawn)
     else
@@ -2330,6 +2327,11 @@ defmodule CodeMySpec.Agents do
       error -> error
     end
   end
+
+  # A ref the harness never queued, typically one a restart dropped, will
+  # never be delivered (5150cd98).
+  defp taken_back({:error, :never_received}), do: :ok
+  defp taken_back(result), do: result
 
   @doc """
   Write one step an agent took to the conversation it belongs to.

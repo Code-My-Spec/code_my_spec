@@ -109,6 +109,17 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     end
   end
 
+  # 5150cd98: a queue dropped by a harness restart left refs the engine never
+  # saw again, and each one answered "already delivered".
+  test "a ref this harness never had is not reported as delivered", %{root: root} do
+    agent = start_agent(root, gated_plug(self()), self())
+    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+    assert_receive {:holding_turn, _execution}, 5_000
+
+    assert {:error, :never_received} = Machine.withdraw(agent, "lost-in-a-restart")
+    assert {:error, :already_delivered} = Machine.withdraw(agent, "running")
+  end
+
   test "a queued message lost in a crash is not reported as delivered", %{root: root} do
     :ok = Liveness.subscribe()
     agent = start_agent(root, gated_plug(self()), self())
