@@ -247,17 +247,19 @@ defmodule CodeMySpec.PromotionQueue do
   A working copy's harness joined. When it is the project's gate copy, the
   worker builds now: a gate copy minted for the first batch comes up a minute
   or so after it is made, and the batch would otherwise wait out a whole retry
-  period for it (the queue's first live batch, 2026-10-05).
+  period for it (the queue's first live batch, 2026-10-05). A batch already
+  gating there asks the gate again: runs it asked for may have gone with the
+  connection that just went.
   """
   @spec copy_joined(Scope.t(), WorkingCopy.t()) :: :ok
   def copy_joined(%Scope{active_project_id: project_id}, %WorkingCopy{label: label}) do
-    if label == Worker.gate_label(), do: wake(project_id)
+    if label == Worker.gate_label(), do: tell_worker(project_id, :gate_copy_joined)
     :ok
   end
 
-  defp wake(project_id) do
+  defp tell_worker(project_id, message) do
     case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
-      [{pid, _}] -> GenServer.cast(pid, :kick)
+      [{pid, _}] -> GenServer.cast(pid, message)
       [] -> :ok
     end
   end

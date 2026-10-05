@@ -564,4 +564,27 @@ defmodule CodeMySpec.PromotionQueueTest do
     refute_received {:agent_dispatch, ^agent_id, _ref, _told},
                     "the batch was held over runs its harness going away orphaned"
   end
+
+  # 2026-10-05, 08:41: the gate copy's harness restarted while its batch was
+  # gating, and what it had been asked to run went with the connection. Its
+  # rejoin asks the gate again, now, rather than at the next recheck.
+  test "a batch gating asks the gate again when the gate copy rejoins", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    {:ok, 1} = Analysis.fail_in_flight(gate, :harness_disconnected)
+
+    :ok = PromotionQueue.copy_joined(ctx.scope, ctx.gate)
+
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]},
+                   5_000,
+                   "the rejoin did not ask again; the batch waits out the recheck"
+  end
 end
