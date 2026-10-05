@@ -179,12 +179,11 @@ defmodule CodeMySpec.PromotionQueueTest do
   end
 
   test "a red candidate is ejected with its findings, and nothing lands", ctx do
-    # A lone candidate level with main is gated on its own copy.
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
-    own = %{ctx.scope | active_working_copy_id: a.copy.id}
-    AnalysisFixtures.fresh_analysis_runs_fixture(own, Run.sources(), commit: a.commit)
-    problem_fixture(own, %{source: "compiler", severity: :error, file_path: "a.ex"})
-    problem_fixture(own, %{source: "compiler", severity: :error, file_path: "a.ex", line: 2})
+    gate = gate_scope(ctx)
+    clean_runs_at(ctx, a.commit)
+    problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex"})
+    problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex", line: 2})
 
     entry = queue(ctx, a)
     before = git!(ctx.main_root, ["rev-parse", "HEAD"])
@@ -203,7 +202,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # gate judged.
   test "a red batch is triaged on what the gate judged at its head, not older runs", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
-    own = %{ctx.scope | active_working_copy_id: a.copy.id}
+    own = gate_scope(ctx)
 
     AnalysisFixtures.fresh_analysis_runs_fixture(own, ~w(compiler exunit spex), commit: a.commit)
 
@@ -214,14 +213,14 @@ defmodule CodeMySpec.PromotionQueueTest do
     problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
     problem_fixture(own, %{source: "credo", severity: :error, file_path: "lib/stale.ex"})
 
-    a_harness_for(a.copy.id, a.copy.root)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     # Main is clean there; the batch commit is red again.
-    answers(ctx, a.copy, "exunit", fn -> clean(own, "test/a_test.exs") end)
+    answers(ctx, ctx.gate, "exunit", fn -> clean(own, "test/a_test.exs") end)
 
-    answers(ctx, a.copy, "exunit", fn ->
+    answers(ctx, ctx.gate, "exunit", fn ->
       problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
     end)
 
@@ -262,31 +261,31 @@ defmodule CodeMySpec.PromotionQueueTest do
     |> Enum.each(&Repo.delete!/1)
   end
 
-  # A lone candidate level with main, gated on its own copy, red at its head.
+  # A lone candidate level with main, red at its head in the gate copy.
   defp red_lone_candidate(ctx, findings) do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
-    own = %{ctx.scope | active_working_copy_id: a.copy.id}
-    AnalysisFixtures.fresh_analysis_runs_fixture(own, Run.sources(), commit: a.commit)
-    for {file, line} <- findings, do: red_on(own, file, line)
-    a_harness_for(a.copy.id, a.copy.root)
-    {a, own}
+    gate = gate_scope(ctx)
+    clean_runs_at(ctx, a.commit)
+    for {file, line} <- findings, do: red_on(gate, file, line)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+    {a, gate}
   end
 
   # 87bc9721, 2026-10-05: story 1060's criteria were latched before its
   # implementation landed, so main itself was red and every batch inherited it.
   test "a finding main is red on too is not the batch's, and the batch lands", ctx do
     main = git!(ctx.main_root, ["rev-parse", "HEAD"])
-    {a, _own} = red_lone_candidate(ctx, [{"test/flaky_test.exs", 3}])
+    {a, _gate} = red_lone_candidate(ctx, [{"test/flaky_test.exs", 3}])
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     at_main =
-      answers(ctx, a.copy, "exunit", fn ->
-        assert git!(a.copy.root, ["rev-parse", "HEAD"]) == main, "not asked at main"
+      answers(ctx, ctx.gate, "exunit", fn ->
+        assert git!(ctx.gate_root, ["rev-parse", "HEAD"]) == main, "not asked at main"
       end)
 
     assert at_main["args"] == ["test/flaky_test.exs"]
-    answers(ctx, a.copy, "exunit", fn -> :ok end)
+    answers(ctx, ctx.gate, "exunit", fn -> :ok end)
 
     assert {:ok, %{status: :landed}} = settle(entry)
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
@@ -297,16 +296,18 @@ defmodule CodeMySpec.PromotionQueueTest do
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    answers(ctx, a.copy, "exunit", fn -> clean(own, "test/a_test.exs") end)
+    answers(ctx, ctx.gate, "exunit", fn -> clean(own, "test/a_test.exs") end)
 
-    answers(ctx, a.copy, "exunit", fn ->
+    answers(ctx, ctx.gate, "exunit", fn ->
       red_on(own, "test/a_test.exs", 3)
       red_on(own, "test/a_test.exs", 9)
     end)
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "test/a_test.exs"
-    assert git!(a.copy.root, ["rev-parse", "HEAD"]) == a.commit, "the gate copy was not put back"
+
+    assert git!(ctx.gate_root, ["rev-parse", "HEAD"]) == a.commit,
+           "the gate copy was not put back"
   end
 
   test "a failure that does not come back at the batch commit was a flake, and lands", ctx do
@@ -314,8 +315,8 @@ defmodule CodeMySpec.PromotionQueueTest do
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    answers(ctx, a.copy, "exunit", fn -> clean(own, "test/a_test.exs") end)
-    answers(ctx, a.copy, "exunit", fn -> :ok end)
+    answers(ctx, ctx.gate, "exunit", fn -> clean(own, "test/a_test.exs") end)
+    answers(ctx, ctx.gate, "exunit", fn -> :ok end)
 
     assert {:ok, %{status: :landed}} = settle(entry)
   end
@@ -484,5 +485,34 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert {:ok, %{status: :landed, result: result}} = settle(on_main)
     assert result["already_on_main"] == true, "it rode a batch: #{inspect(result)}"
+  end
+
+  # A lone candidate's own copy is reused only for a certification it already
+  # holds; anything still to run goes to the gate copy, out of reach of whoever
+  # keeps editing the requester's copy.
+  test "a lone candidate certified on its own copy is gated there, and nothing runs", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    own = %{ctx.scope | active_working_copy_id: a.copy.id}
+    AnalysisFixtures.fresh_analysis_runs_fixture(own, Run.sources(), commit: a.commit)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == ctx.gate.id)) == []
+  end
+
+  test "a lone candidate its own copy has not certified is gated in the gate copy", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    clean_runs_at(ctx, a.commit)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert git!(ctx.gate_root, ["rev-parse", "HEAD"]) == a.commit
+
+    assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == a.copy.id)) == [],
+           "a run was started in the requester's own copy"
   end
 end
