@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6059Spex do
   """
 
   use CodeMySpecSpex.Case
+  local_endpoint()
 
   setup do
     # The ladder is the muster-connected (server-sync) onboarding path —

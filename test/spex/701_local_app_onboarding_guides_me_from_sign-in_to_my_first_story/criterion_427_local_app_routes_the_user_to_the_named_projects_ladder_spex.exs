@@ -11,6 +11,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6067Spex do
   """
 
   use CodeMySpecSpex.Case
+  local_endpoint()
 
   alias CodeMySpecSpex.Fixtures
 

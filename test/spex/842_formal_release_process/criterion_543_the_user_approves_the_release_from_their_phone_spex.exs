@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1974Spex do
   """
 
   use CodeMySpecSpex.Case
+  local_endpoint()
 
   alias CodeMySpec.Environments
 
