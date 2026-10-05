@@ -17,6 +17,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.PromotionQueue
@@ -203,5 +204,55 @@ defmodule CodeMySpec.PromotionQueueTest do
     for entry <- entries do
       assert {:ok, %{status: :landed}} = settle(entry)
     end
+  end
+
+  # Main moved under a green batch — something committed to it another way.
+  # It cannot land as certified: it is rebuilt on the new main and gated again
+  # at once, not after a retry period, and nothing is ejected.
+  test "a batch main moved under is rebuilt on the new main at once, not ejected", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    b = candidate(ctx, "b", "a", "b.ex", "b\n")
+    clean_runs_at(ctx, b.commit)
+
+    # A run in flight on another copy holds the green batch at its landing.
+    main_scope = %{ctx.scope | active_working_copy_id: ctx.main.id}
+    in_flight = AnalysisFixtures.analysis_run_fixture(main_scope, %{source: "compiler"})
+
+    [first | _] = entries = [queue(ctx, a), queue(ctx, b)]
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Repository.topic(ctx.scope.active_project_id))
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert_receive {:promotion_queue, %{id: id, status: :gating, batch_id: batch}}
+                   when id == first.id,
+                   5_000
+
+    File.write!(Path.join(ctx.main_root, "elsewhere.ex"), "elsewhere\n")
+    git!(ctx.main_root, ["add", "-A"])
+    git!(ctx.main_root, ["commit", "-q", "-m", "committed to main another way"])
+    moved = git!(ctx.main_root, ["rev-parse", "HEAD"])
+
+    {:ok, _} = RunsRepository.finish_run(in_flight, :completed, %{})
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "analysis:#{ctx.scope.active_project_id}",
+      {:analysis,
+       %{
+         source: "compiler",
+         status: :completed,
+         run_id: in_flight.id,
+         working_copy_id: ctx.main.id
+       }}
+    )
+
+    assert_receive {:promotion_queue, %{id: id, status: :gating, batch_id: rebuilt}}
+                   when id == first.id and rebuilt != batch,
+                   5_000
+
+    assert git!(ctx.gate_root, ["merge-base", "--is-ancestor", moved, "HEAD"]) == ""
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == moved
+
+    for entry <- entries,
+        do: refute(Repository.get(entry.id).status in [:ejected, :landed])
   end
 end

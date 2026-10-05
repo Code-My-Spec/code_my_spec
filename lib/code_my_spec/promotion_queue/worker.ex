@@ -342,7 +342,30 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
       {:noreply, recheck_later(%{state | batch: batch}, :land)}
     else
-      do_land(%{state | batch: batch})
+      on_current_main(%{state | batch: batch}, &do_land/1)
+    end
+  end
+
+  # The batch was certified on `base`. If main moved on while it gated —
+  # anything committed to main another way — it cannot land as certified: it
+  # is rebuilt on the new main and gated again, now rather than after a retry
+  # period. Not a failure of the candidates, so none is ejected.
+  defp on_current_main(%{batch: batch} = state, then) do
+    case main_head(state.scope) do
+      {:ok, head} when head == batch.base ->
+        then.(state)
+
+      {:ok, moved} ->
+        Logger.info(
+          "[PromotionQueue] main moved from #{batch.base} to #{moved} while #{batch.head} " <>
+            "gated; rebuilding the batch on it"
+        )
+
+        requeue(batch.entries)
+        next(%{state | phase: :idle, batch: nil})
+
+      {:error, _} ->
+        then.(state)
     end
   end
 
@@ -378,9 +401,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         # Main moved under the batch (a direct promotion landed) or the merge
         # was refused: nothing landed, so the candidates are gated again on
         # the new main.
-        Logger.error("[PromotionQueue] landing #{batch.head} failed: #{describe(reason)}")
-        requeue(batch.entries)
-        {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
+        # Main moving in the moment between the check above and the merge is
+        # the same race, and rebuilds at once; anything else waits to retry.
+        on_current_main(state, fn state ->
+          Logger.error("[PromotionQueue] landing #{batch.head} failed: #{describe(reason)}")
+          requeue(batch.entries)
+          {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
+        end)
     end
   end
 
