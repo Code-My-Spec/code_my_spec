@@ -21,6 +21,8 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   require Logger
 
+  alias CodeMySpec.Hooks.CommandShape
+
   # Every MCP server this plugin ships, not just the local one. The tools are
   # named `mcp__plugin_codemyspec_<server>__*`, and the cloud server
   # (`cms_cloud`) takes the same `session_id` the local one does — matching
@@ -282,33 +284,66 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   defp source_for("credo"), do: "credo"
   defp source_for("test"), do: "exunit"
 
+  # Only the test segment of a compound command is routed (`CommandShape`):
+  # `MIX_ENV=test mix test x 2>&1 | tail -20` keeps its redirect and pipe. A
+  # segment after `cd` is not routed yet. `mix compile`/`credo` still route only
+  # as a whole command.
   defp maybe_rewrite_test_command(scope, params, port, served_by) do
     command = get_in(params, ["tool_input", "command"]) || ""
 
     with %{active_project_id: project_id} when not is_nil(project_id) <- scope,
-         {:ok, endpoint} <- analysis_endpoint(scope, served_by),
-         {:ok, task, source, args} <- classify_test_command(command) do
-      replacement = build_curl(port, endpoint, source, args)
+         {:ok, endpoint} <- analysis_endpoint(scope, served_by) do
+      case CommandShape.route(command, &route_segment(&1, port, endpoint)) do
+        {:routed, replacement, classes, mixes} ->
+          log_decision("routed", classes, mixes)
+          rewrite(replacement, Enum.map_join(mixes, ", ", &"mix #{&1.task}"))
 
-      Logger.info(
-        "[PreToolUse] Rewriting mix #{task} → analysis API (#{source}, args: #{inspect(args)})"
-      )
-
-      %{
-        "hookSpecificOutput" => %{
-          "hookEventName" => "PreToolUse",
-          "permissionDecision" => "allow",
-          "permissionDecisionReason" =>
-            "Routed mix #{task} through the CodeMySpec analysis service (shared run record, single-flight)",
-          "updatedInput" => %{
-            "command" => replacement,
-            "timeout" => @rewrite_timeout_ms
-          }
-        }
-      }
+        {:pass, classes} ->
+          if CommandShape.test?(command), do: log_decision("not routed", classes, [])
+          rewrite_whole(command, port, endpoint)
+      end
     else
       _ -> no_rewrite(scope, command)
     end
+  end
+
+  defp route_segment(%{cd: nil, source: source, args: args}, port, endpoint),
+    do: {:ok, build_curl(port, endpoint, source, args)}
+
+  defp route_segment(_mix, _port, _endpoint), do: :pass
+
+  defp rewrite_whole(command, port, endpoint) do
+    case classify_test_command(command) do
+      {:ok, task, source, args} when task in ["compile", "credo"] ->
+        rewrite(build_curl(port, endpoint, source, args), "mix #{task}")
+
+      _ ->
+        %{}
+    end
+  end
+
+  # Every mix test/spex decision, with the command's shape, so a shape that is
+  # never routed shows up as one rather than as silence.
+  defp log_decision(decision, classes, mixes) do
+    Logger.info(
+      "[PreToolUse] mix test/spex #{decision} (shape: #{Enum.join(classes, ", ")})" <>
+        Enum.map_join(mixes, "", &" #{&1.source} #{inspect(&1.args)}")
+    )
+  end
+
+  defp rewrite(replacement, what) do
+    %{
+      "hookSpecificOutput" => %{
+        "hookEventName" => "PreToolUse",
+        "permissionDecision" => "allow",
+        "permissionDecisionReason" =>
+          "Routed #{what} through the CodeMySpec analysis service (shared run record, single-flight)",
+        "updatedInput" => %{
+          "command" => replacement,
+          "timeout" => @rewrite_timeout_ms
+        }
+      }
+    }
   end
 
   # `%{}` means "no opinion", and it was the answer to two different questions:
