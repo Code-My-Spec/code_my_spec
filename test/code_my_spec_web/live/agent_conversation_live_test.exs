@@ -679,6 +679,41 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  describe "a story's progress pie" do
+    test "shows satisfied of total and follows a graph update", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      alias CodeMySpec.Requirements.Node
+
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope)
+
+      [first, _second] =
+        for name <- ["spex_written", "qa_passed"] do
+          Repo.insert!(%Node{story_id: story.id, name: name, description: name, satisfied: false})
+        end
+
+      {agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      header = "header [data-test='story-progress']"
+      row = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='story-progress']"
+
+      assert has_element?(view, header <> "[data-done='0'][data-total='2']")
+      assert has_element?(view, row <> "[data-done='0'][data-total='2']")
+
+      Repo.update!(Ecto.Changeset.change(first, satisfied: true))
+      send(view.pid, {:graph_updated, project.id})
+
+      assert has_element?(view, header <> "[data-done='1'][data-total='2']")
+      assert has_element?(view, row <> "[data-done='1'][data-total='2']")
+    end
+  end
+
   describe "the team panel's turn indicator" do
     test "shows while a turn runs and goes when it ends", %{
       conn: conn,

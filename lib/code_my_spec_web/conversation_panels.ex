@@ -544,6 +544,14 @@ defmodule CodeMySpecWeb.ConversationPanels do
             >
               {item.ref}
             </.link>
+            <.live_component
+              :for={item <- a.assigned}
+              :if={item.kind == :story}
+              module={CodeMySpecWeb.StoryProgress}
+              id={"story-progress-#{a.agent.id}"}
+              story_id={item.story_id}
+              working_copy_id={item.working_copy_id}
+            />
 
             <%!-- f096eba2: every agent controllable from here, not only the one
             whose conversation happens to be open — siblings of the link/div
