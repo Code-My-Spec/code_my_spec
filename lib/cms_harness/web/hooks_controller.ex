@@ -21,6 +21,7 @@ defmodule CmsHarness.Web.HooksController do
   alias CmsHarness.HookDecision
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
+  alias CmsHarness.WorkingCopyWalk
 
   def handle(conn, params) do
     hook = hook_name(conn)
@@ -95,11 +96,21 @@ defmodule CmsHarness.Web.HooksController do
 
   defp decide(hook, working_dir, params) do
     case Projects.ensure_started(working_dir) do
-      {:ok, project} -> ask(hook, project, working_dir, params)
+      {:ok, project} -> ask(hook, project, working_dir, nested(params, working_dir))
       {:error, {:invalid_config, _}} -> refuse(hook, :invalid_config, working_dir, params)
       {:error, :unreadable_config} -> refuse(hook, :invalid_config, working_dir, params)
       {:error, :restarting} -> refuse(hook, :restarting, working_dir, params)
       {:error, _reason} -> refuse(hook, :no_project, working_dir, params)
+    end
+  end
+
+  # A hook from a subagent's worktree is decided for the copy that holds it,
+  # and says so: that worktree is a different tree, so a test run there must
+  # not be routed to the copy's harness, which would run it in the copy.
+  defp nested(params, root) do
+    case WorkingCopyWalk.nested_checkout(params["cwd"], root) do
+      nil -> params
+      dir -> Map.put(params, "nested_checkout", dir)
     end
   end
 

@@ -294,6 +294,7 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     root = Map.get(scope || %{}, :cwd) || Map.get(params, "cwd")
 
     with %{active_project_id: project_id} when not is_nil(project_id) <- scope,
+         nil <- nested_checkout(params, command),
          {:ok, endpoint} <- analysis_endpoint(scope, served_by) do
       case CommandShape.route(command, &route_segment(&1, root, port, endpoint)) do
         {:routed, replacement, classes, mixes} ->
@@ -305,9 +306,20 @@ defmodule CodeMySpec.Hooks.PreToolUse do
           rewrite_whole(command, port, endpoint)
       end
     else
+      :nested -> %{}
       _ -> no_rewrite(scope, command)
     end
   end
+
+  # A subagent's worktree is another tree; the copy's harness would run the test
+  # in the copy. Not routed (Harness, 2026-10-05: in-app agents rarely spawn
+  # subagents, so not worth the plumbing).
+  defp nested_checkout(%{"nested_checkout" => dir}, command) when is_binary(dir) do
+    if CommandShape.test?(command), do: log_decision("not routed", [:nested_checkout], [])
+    :nested
+  end
+
+  defp nested_checkout(_params, _command), do: nil
 
   defp route_segment(%{cd: cd, source: source, args: args}, root, port, endpoint) do
     if cd == nil or inside?(cd, root),
