@@ -2,11 +2,13 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   @moduledoc """
   Reading the cached requirement graph the way a client does.
 
-  `GET /api/projects/:project_name/requirements/graph` answers the **cached**
-  graph: the nodes with their verdicts, plus the watcher's state. The markdown
-  `/requirements` endpoint cannot be used for this — it calls `compute_all/1`
-  and so recomputes on every request by construction, which makes every cache
-  question unanswerable.
+  `GET /api/projects/:project_id/requirements/graph` answers the **cached**
+  graph: the nodes with their verdicts, plus the watcher's state. Dispatched
+  against the cloud route (`CodeMySpecWeb.RequirementsGraphController`) behind
+  the project's deploy key, now that the local-only route is retired. The
+  markdown `/requirements` endpoint cannot be used for this — it calls
+  `compute_all/1` and so recomputes on every request by construction, which
+  makes every cache question unanswerable.
 
   Every criterion on stories 1062 and 1063 observes the graph this way, so it
   lives here rather than being copied into each of them.
@@ -39,7 +41,10 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   criteria exist to catch.
   """
 
+  alias CodeMySpecSpex.Fixtures
   alias Phoenix.ConnTest
+
+  import Plug.Conn, only: [put_req_header: 3]
 
   @doc "Read the cached graph for the project in this context."
   def read_graph(context), do: dispatch(context, "")
@@ -235,11 +240,14 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   end
 
   defp dispatch(context, query) do
+    project = Fixtures.ensure_project_deploy_key(context.scope, context.project)
+
     ConnTest.build_conn()
+    |> put_req_header("authorization", "Bearer #{project.deploy_key}")
     |> ConnTest.dispatch(
-      CodeMySpecLocalWeb.Endpoint,
+      CodeMySpecWeb.Endpoint,
       :get,
-      "/api/projects/#{context.project.name}/requirements/graph" <> query
+      "/api/projects/#{project.id}/requirements/graph" <> query
     )
     |> ConnTest.json_response(200)
   end

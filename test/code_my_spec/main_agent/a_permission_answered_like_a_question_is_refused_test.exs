@@ -29,6 +29,7 @@ defmodule CodeMySpec.Agents.Main.APermissionAnsweredLikeAQuestionIsRefusedTest d
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Notifications
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -48,6 +49,8 @@ defmodule CodeMySpec.Agents.Main.APermissionAnsweredLikeAQuestionIsRefusedTest d
         working_copy: "/tmp/permission-#{System.unique_integer([:positive])}",
         status: :running
       })
+
+    AgentPresence.present(agent)
 
     {:ok, permission} =
       Notifications.create_permission_request(scope.user.id, %{

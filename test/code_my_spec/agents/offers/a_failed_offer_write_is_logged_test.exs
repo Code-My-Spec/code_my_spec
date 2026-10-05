@@ -11,6 +11,7 @@ defmodule CodeMySpec.Agents.Offers.AFailedOfferWriteIsLoggedTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpecTest.AgentPresence
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -44,6 +45,8 @@ defmodule CodeMySpec.Agents.Offers.AFailedOfferWriteIsLoggedTest do
         working_copy: "/tmp/offers-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     missing = Ecto.UUID.generate()
 

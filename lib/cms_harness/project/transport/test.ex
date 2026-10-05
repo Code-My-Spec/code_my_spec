@@ -42,5 +42,5 @@ defmodule CmsHarness.Project.Transport.Test do
 
   # The test process, set by the case. Falls back to self() so a stray call in
   # a non-test context is inert rather than a crash.
-  defp owner, do: Application.get_env(:code_my_spec, :harness_transport_owner, self())
+  defp owner, do: Process.get({__MODULE__, :owner}, self())
 end

@@ -17,6 +17,7 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.FileEdits
+  alias CodeMySpecTest.AgentPresence
 
   defp running_agent(scope) do
     {:ok, agent} =
@@ -30,11 +31,17 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
         tools: []
       })
 
+    AgentPresence.present(agent)
+
     agent
   end
 
   defp tool_event(name, path) do
-    %{"kind" => "tool_start", "text" => "#{name} #{path}", "tool" => %{"id" => "call_1", "name" => name, "path" => path}}
+    %{
+      "kind" => "tool_start",
+      "text" => "#{name} #{path}",
+      "tool" => %{"id" => "call_1", "name" => name, "path" => path}
+    }
   end
 
   test "a write call is recorded against the agent" do

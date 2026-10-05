@@ -43,9 +43,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
     live
   end
 
-  # A copy that has had agents and has none now — every row `:stopped`. This is
-  # the state that looked unrecoverable: the list is empty, so the toggle is
-  # hidden, and the toggle was the only control.
+  # A copy that has had agents and has none running now — every row
+  # `:stopped`, none of them present.
   defp copy_with_only_stopped_agents(context, root, extra \\ %{}) do
     copy = join_working_copy(context, root, "a copy whose agents all stopped")
 
@@ -107,17 +106,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AnUnstaffedCopyCanBeStaffedTest do
            "a copy with no agents had no way to get any"
   end
 
-  test "a copy whose agents all stopped offers it too", context do
+  # Liveness is presence and seats are intent: agents on duty whose processes
+  # are down hold their seats and show as starting — the roster is there, and
+  # the way back is restarting them, not staffing the copy a second time.
+  test "a copy whose agents are all down shows them starting, not unstaffed", context do
     copy = copy_with_only_stopped_agents(context, "/tmp/all-stopped")
 
     html = context |> show(copy) |> render()
 
-    assert html =~ ~s(data-test="staff-copy"),
-           """
-           Every agent on this copy is stopped, so nothing is live and the page
-           shows no roster. That is the state John hit, and it read as
-           unrecoverable.
-           """
+    refute html =~ ~s(data-test="staff-copy"), "an agent on duty holds its seat"
+    assert html =~ "Starting"
   end
 
   # The empty state used to say "Nothing is running on this copy." and stop

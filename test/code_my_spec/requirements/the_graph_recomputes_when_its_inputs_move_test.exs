@@ -31,6 +31,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   alias CodeMySpec.Issues
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -73,6 +74,8 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
         working_copy: "/tmp/watch-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _} =
       CodeMySpec.Conversations.find_or_create_agent_conversation(
@@ -168,6 +171,8 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
         working_copy_id: ctx.copy.id
       })
 
+    AgentPresence.present(stopped)
+
     {:ok, _pid} = GraphWatcher.ensure_watching(ctx.scope)
     GraphInputs.changed(ctx.scope)
     :ok = GraphWatcher.settle(ctx.scope)
@@ -186,6 +191,8 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
         working_copy: "/tmp/qa-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.copy.id
       })
+
+    AgentPresence.present(qa)
 
     {:ok, _} =
       CodeMySpec.Conversations.find_or_create_agent_conversation(

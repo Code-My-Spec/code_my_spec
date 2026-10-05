@@ -56,6 +56,7 @@ defmodule CodeMySpecTest do
     # installs it and drives it (listen, reset, pause/release, fail, model) on
     # a criterion's behalf — story 1087's embeddings-airtight work.
     exports: [
+      AgentPresence,
       FakeWorkspaceRunner,
       HexTarballFixtures,
       RecordingAgentTransport,

@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1669Spex do
 
       when_ "the harness reports the agents it is running", context do
         ref =
-          Phoenix.ChannelTest.push(context.socket, "agents_running", %{
+          Phoenix.ChannelTest.push(context.socket, "agents_present", %{
             "agent_ids" => [context.coder]
           })
 

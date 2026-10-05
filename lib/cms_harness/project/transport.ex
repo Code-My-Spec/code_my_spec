@@ -46,9 +46,13 @@ defmodule CmsHarness.Project.Transport do
   @doc """
   The configured transport.
 
-  Defaults to the real one; tests set `:transport` to a recorder. Read at call
-  time rather than compiled in, so a test can swap it per-case.
+  Defaults to the configured transport, or Slipstream. Tests invoking callbacks
+  directly can set `{__MODULE__, :impl}` in their process dictionary without
+  changing the transport used by concurrent channel clients.
   """
   @spec impl() :: module()
-  def impl, do: Application.get_env(:code_my_spec, :harness_transport, __MODULE__.Slipstream)
+  def impl do
+    configured = Application.get_env(:code_my_spec, :harness_transport, __MODULE__.Slipstream)
+    Process.get({__MODULE__, :impl}, configured)
+  end
 end

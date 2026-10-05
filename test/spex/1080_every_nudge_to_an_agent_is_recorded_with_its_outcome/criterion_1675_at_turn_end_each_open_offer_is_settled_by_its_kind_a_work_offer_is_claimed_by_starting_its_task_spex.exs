@@ -242,7 +242,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
         :ok = Fixtures.install_recording_agent_transport()
 
         context = coder_holding_a_task(context)
-        :ok = report_agents_running(context, [context.coder])
+        :ok = report_agents_present(context, [context.coder])
         id = context.coder
         assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)

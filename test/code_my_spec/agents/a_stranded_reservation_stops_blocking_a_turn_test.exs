@@ -12,10 +12,9 @@ defmodule CodeMySpec.Agents.AStrandedReservationStopsBlockingATurnTest do
   Every path that clears the stamp needs a live process, though: `release/3`
   when the dispatch errors, and the agent's own completion. So the one case
   that strands a reservation — the process going away *after* the transport
-  accepted it — is exactly the case nothing cleans up. `record_stopped/2`
-  clears it when a reap notices the agent is gone, but a harness restart
-  re-reports the agent as running, and `record_running_on_copy/3` leaves an
-  already-`:running` row alone. That row is the one holding the stale stamp.
+  accepted it — is exactly the case nothing cleans up. A harness restart
+  brings the agent back present without passing through anything that clears
+  it, so the row carries the stale stamp over.
 
   Measured on the math project, 2026-09-22: the coding agent stamped a
   reservation at 01:53, the harness restarted three times, and the row carried
@@ -34,6 +33,7 @@ defmodule CodeMySpec.Agents.AStrandedReservationStopsBlockingATurnTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -56,6 +56,8 @@ defmodule CodeMySpec.Agents.AStrandedReservationStopsBlockingATurnTest do
         working_copy: "/tmp/stranded-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     Map.put(ctx, :agent, agent)
   end

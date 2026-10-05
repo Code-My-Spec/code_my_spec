@@ -709,6 +709,11 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       Repo.update!(Ecto.Changeset.change(first, satisfied: true))
       send(view.pid, {:graph_updated, project.id})
 
+      # The graph handler enqueues send_update messages for the components.
+      # This render waits for that handler; the assertions then run after
+      # its queued component updates, matching the two-hop pattern above.
+      render(view)
+
       assert has_element?(view, header <> "[data-done='1'][data-total='2']")
       assert has_element?(view, row <> "[data-done='1'][data-total='2']")
     end

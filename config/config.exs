@@ -75,20 +75,6 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
   secret_key_base: String.duplicate("cms_harness_local_only", 4),
   server: false
 
-# Configures the local developer web endpoint (port 4003, localhost only)
-config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
-  url: [host: "localhost"],
-  adapter: Bandit.PhoenixAdapter,
-  http: [ip: {127, 0, 0, 1}, port: 4003],
-  server: true,
-  secret_key_base: String.duplicate("local_dev_secret", 4),
-  pubsub_server: CodeMySpec.PubSub,
-  live_view: [signing_salt: "local_live_salt"],
-  render_errors: [
-    formats: [html: CodeMySpecLocalWeb.ErrorHTML, json: CodeMySpecLocalWeb.ErrorJSON],
-    layout: false
-  ]
-
 # Configures the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

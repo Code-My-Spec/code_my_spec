@@ -84,6 +84,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.ProviderRefusal
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.RefusalWake
@@ -162,7 +163,17 @@ defmodule CodeMySpec.Agents do
   end
 
   defdelegate list_agents(scope), to: AgentsRepository
-  defdelegate list_running(scope), to: AgentsRepository
+
+  @doc """
+  The project's agents whose processes are alive now (`Agents.Presence`),
+  whatever anyone intends for them: an agent turned off whose machine has not
+  ended it yet is still here, findable and stoppable. `list_on_duty/1` is the
+  intent view.
+  """
+  @spec list_running(Scope.t()) :: [Agent.t()]
+  def list_running(%Scope{} = scope),
+    do: AgentsRepository.list_by_ids(scope, scope |> present_ids() |> MapSet.to_list())
+
   defdelegate list_on_duty(scope), to: AgentsRepository
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
@@ -321,10 +332,12 @@ defmodule CodeMySpec.Agents do
   end
 
   defp stopped_holder(%Scope{} = scope, copy_id, role) do
+    present = present_ids(scope)
+
     scope
     |> AgentsRepository.list_agents()
     |> Enum.filter(fn agent ->
-      agent.status == :stopped and not Agent.retired?(agent) and
+      not MapSet.member?(present, agent.id) and not Agent.retired?(agent) and
         agent.working_copy_id == copy_id and
         to_string(agent.role) == to_string(role) and unfinished(agent) != []
     end)
@@ -390,7 +403,45 @@ defmodule CodeMySpec.Agents do
   (`.code_my_spec/plans/agent-liveness-from-presence.md`).
   """
   @spec presence_topic(Ecto.UUID.t()) :: String.t()
-  def presence_topic(project_id), do: "agents_presence:#{project_id}"
+  defdelegate presence_topic(project_id), to: Presence, as: :topic
+
+  @doc "The ids of the project's agents whose processes are alive now."
+  @spec present_ids(Scope.t()) :: MapSet.t(Ecto.UUID.t())
+  def present_ids(%Scope{active_project_id: project_id}), do: Presence.ids(project_id)
+
+  @doc "Whether `agent`'s process is alive now."
+  @spec present?(Scope.t() | Ecto.UUID.t() | nil, Agent.t()) :: boolean()
+  def present?(%Scope{active_project_id: project_id}, %Agent{id: id}),
+    do: Presence.present?(project_id, id)
+
+  def present?(project_id, %Agent{id: id}), do: Presence.present?(project_id, id)
+
+  @doc """
+  An agent's lifecycle, derived rather than stored: retired, turned off,
+  running (its process is present), or starting — on duty and not present:
+  requested, being restored, or crashed and awaiting restore.
+  """
+  @spec lifecycle(Agent.t(), MapSet.t(Ecto.UUID.t())) :: :retired | :off | :running | :starting
+  def lifecycle(%Agent{retired_at: %DateTime{}}, _present), do: :retired
+  def lifecycle(%Agent{off_at: %DateTime{}}, _present), do: :off
+
+  def lifecycle(%Agent{id: id}, present),
+    do: if(MapSet.member?(present, id), do: :running, else: :starting)
+
+  @doc "`agents`, each with its derived `lifecycle` set, for display."
+  @spec with_lifecycle([Agent.t()], MapSet.t(Ecto.UUID.t())) :: [Agent.t()]
+  def with_lifecycle(agents, present),
+    do: Enum.map(agents, &%{&1 | lifecycle: lifecycle(&1, present)})
+
+  @doc "Whether `agent` is on duty: neither turned off nor retired."
+  @spec on_duty?(Agent.t()) :: boolean()
+  def on_duty?(%Agent{off_at: nil, retired_at: nil}), do: true
+  def on_duty?(%Agent{}), do: false
+
+  @doc "Follow changes to which of the project's agents are present (`presence_diff`)."
+  @spec subscribe_presence(Scope.t()) :: :ok | {:error, term()}
+  def subscribe_presence(%Scope{active_project_id: project_id}),
+    do: Phoenix.PubSub.subscribe(CodeMySpec.PubSub, presence_topic(project_id))
 
   @doc """
   Who is acting, as an off record names them: the calling agent when there is
@@ -456,11 +507,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  defp start_unless_running(_scope, %Agent{status: status} = agent)
-       when status in [:running, :starting],
-       do: {:ok, agent}
-
-  defp start_unless_running(scope, %Agent{} = agent), do: restart_agent(scope, agent.id)
+  defp start_unless_running(scope, %Agent{} = agent) do
+    if present?(scope, agent), do: {:ok, agent}, else: restart_agent(scope, agent.id)
+  end
 
   defp refuse_retired(%Agent{} = agent),
     do: if(Agent.retired?(agent), do: {:error, {:retired, agent}}, else: :ok)
@@ -544,9 +593,7 @@ defmodule CodeMySpec.Agents do
     live =
       scope
       |> AgentsRepository.list_agents()
-      |> Enum.filter(
-        &(&1.id != id and is_nil(&1.retired_at) and &1.status in [:starting, :running])
-      )
+      |> Enum.filter(&(&1.id != id and on_duty?(&1)))
 
     main_copy = WorkingCopies.main(scope)
     same_role = Enum.filter(live, &(&1.role == role))
@@ -821,45 +868,8 @@ defmodule CodeMySpec.Agents do
              launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential})) do
         broadcast(scope, {:agent_started, agent})
 
-        # A restarted agent is admissible again, and nothing else is going to
-        # say so. `Work.consider_project/2` is edge-triggered — a turn ending, a
-        # graph change, a harness joining — and a restart is none of those from
-        # its point of view: the row simply went from stopped to running with
-        # no observation attached. So an agent came back holding work and sat
-        # there, which reads exactly like the wake bug it is not.
-        #
-        # `set_agent_continuous/3` already does this and its own doc says why:
-        # "an agent is a supervised process that acts when messaged, and nothing
-        # polls. So this rings its bell too." A restart needs the same bell, and
-        # needs it more now that `start_agent/2` resumes a stopped holder —
-        # the whole point of resuming is that the agent continues, and a row
-        # marked running that never takes a turn has not continued.
-        #
-        # Measured 2026-09-23: coding b01a95bb was resumed at 02:34:29 holding
-        # `story_promoted` on story 950, with `get_next_requirement`
-        # answering "Status: ready — PromoteWork" the whole time. Eleven minutes,
-        # zero turns, nothing in flight, decline damper long expired.
-        #
-        # Two bells, because a restarted agent is in one of two states and they
-        # need opposite things.
-        #
-        # `runnable_state?/1` requires `is_nil(active_task)` — an agent already
-        # holding work is not a candidate for being offered more, which is
-        # right. But that is exactly the agent a resume produces: it comes back
-        # holding the task the restart interrupted, so the offer path skips it
-        # and nothing else speaks to it. `resume_held_tasks/2`'s `stranded?/1`
-        # is the predicate for precisely that shape — running, continuous, no
-        # turn open, no reservation, and holding an active task — and it tells
-        # the agent to carry on with what it has rather than offering it
-        # something new. Scoped to the copy rather than the agent on purpose:
-        # one restart usually stranded every agent on that checkout.
-        #
-        # An agent that came back holding nothing takes the second call
-        # instead, and `request_turn_if_runnable/3` decides admissibility
-        # itself, so neither can start a turn for an agent that should not have
-        # one.
-        Work.resume_held_tasks(scope, agent.working_copy_id)
-        Work.request_turn_if_runnable(scope, agent, :restarted)
+        # Whether it takes a turn is `came_up/2`'s, once its process is up and
+        # present: asked now, it is not present yet and would be held.
 
         {:ok, agent}
       end
@@ -1103,8 +1113,9 @@ defmodule CodeMySpec.Agents do
 
   defp refuse_if_role_taken(_scope, _attrs), do: :ok
 
-  defp seat_holders(scope),
-    do: scope |> AgentsRepository.list_running() |> Enum.reject(&Agent.retired?/1)
+  # On duty holds a seat, whether or not its process is up this moment — one
+  # being restored has not given it up.
+  defp seat_holders(scope), do: AgentsRepository.list_on_duty(scope)
 
   # Root as well as id: a root with no row of its own is recorded under the
   # caller's copy id (`id_for/2`), and is still a different tree.
@@ -1339,44 +1350,6 @@ defmodule CodeMySpec.Agents do
           agent.id
         )
     end
-  end
-
-  @doc """
-  Restart every continuous agent on this copy that a restart, not a
-  deliberate stop, left `:stopped` -- 73d0d505.
-
-  `consider_copy/4` and `resume_held_tasks/2` both require `status ==
-  :running`, by design: neither is in the business of bringing a dead
-  process back, only of admitting or resuming a live one. Nothing else on
-  the reconnect path does either, so a role a restart actually killed stayed
-  unstaffed until a person noticed and pressed play by hand.
-
-  Gated on `stopped_reason == :reaped`, not on `continuous` alone -- an
-  agent a person stopped on purpose is still `continuous: true` on its row
-  (`continuous` is "keep working when running", not "should be running"),
-  and restarting one of those would override a decision this sweep has no
-  business overriding. Only a row `record_stopped/2` itself marked `:reaped`
-  -- no report confirmed it, or the machine could not be asked -- is this
-  sweep's to touch. An agent that is off is refused by `restart_agent/2` itself.
-
-  `restart_agent/2` already rings both bells once the process is back
-  (`resume_held_tasks/2` if it comes back holding a task, otherwise
-  `request_turn_if_runnable/3`), so nothing further is needed here beyond
-  calling it.
-  """
-  @spec restart_reaped_agents(Scope.t(), Ecto.UUID.t()) :: :ok
-  def restart_reaped_agents(%Scope{} = scope, copy_id) do
-    scope
-    |> AgentsRepository.list_agents()
-    |> Enum.filter(&reaped_and_continuous?(&1, copy_id))
-    |> Enum.each(&restart_agent(scope, &1.id))
-
-    :ok
-  end
-
-  defp reaped_and_continuous?(agent, copy_id) do
-    agent.working_copy_id == copy_id and agent.status == :stopped and agent.continuous and
-      agent.stopped_reason == :reaped
   end
 
   # Operator delivery waits only for admission to the engine queue.
@@ -1719,11 +1692,12 @@ defmodule CodeMySpec.Agents do
     off = Enum.filter(agents, &(Agent.off?(&1) and &1.role in roles))
     off_roles = MapSet.new(off, & &1.role)
 
-    present =
-      agents |> Enum.filter(&(&1.status != :stopped)) |> MapSet.new(& &1.role)
+    # A role with an agent on duty is filled, whether or not its process is up
+    # this moment: one being restored is not a vacancy to start a second into.
+    filled = agents |> Enum.filter(&on_duty?/1) |> MapSet.new(& &1.role)
 
     roles
-    |> Enum.reject(&(MapSet.member?(present, &1) or MapSet.member?(off_roles, &1)))
+    |> Enum.reject(&(MapSet.member?(filled, &1) or MapSet.member?(off_roles, &1)))
     |> Enum.reduce(%{started: [], failed: []}, fn role, acc ->
       case start_copy_agent(scope, copy_id, root, role) do
         {:ok, agent} -> %{acc | started: [agent | acc.started]}
@@ -2551,12 +2525,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The reason `MainAgent.restart_agent/3` counts restarts by, so it is the same
-  # every time: the cause differs per crash (pids, refs) and a per-crash reason
-  # would never add up to the three that stop a crash loop. The cause itself is
-  # in the thread, written just before.
-  @death_reason "its process died; the cause is the last operator line in its thread"
-
+  # The cause, on the agent's own thread. Restarting it is its harness's
+  # `Engine.Keeper`; telling main, when the Keeper gives up, is
+  # `process_ended/3`'s.
   defp account_for_death(scope, agent, cause) do
     Logger.warning("[Agents] #{agent.role} agent #{agent.id} died: #{cause}")
 
@@ -2564,10 +2535,73 @@ defmodule CodeMySpec.Agents do
       Conversations.add_message(conversation, :operator, death_notice(cause), "operator")
     end
 
-    {:ok, stopped} = record_stopped(scope, agent, :reaped)
-    :ok = tell_main_teammate_died(scope, agent, "its process died: #{cause}")
-    restart_if_continuous(scope, stopped)
+    :ok
   end
+
+  @doc """
+  An agent's process came up (`agent_up`, from its copy's harness): a start, a
+  restore, or its Keeper restarting it after a crash.
+
+  A process that has just come up is admissible again, and nothing else is going
+  to say so. `Work.consider_project/2` is edge-triggered — a turn ending, a
+  graph change, a harness joining — and an agent coming up is none of those. So
+  an agent came back holding work and sat there: measured 2026-09-23, coding
+  b01a95bb was resumed at 02:34:29 holding `story_promoted` on story 950 and
+  took zero turns in eleven minutes.
+
+  Here rather than straight after the start, because a turn goes only to an
+  agent that is present, and at the start it is not yet.
+
+  Two bells, because an agent that came up is in one of two states and they
+  need opposite things. One holding the task the restart interrupted is told to
+  carry on with it (`Work.resume_held_tasks/2`, scoped to the copy: one restart
+  usually stranded every agent on that checkout). One holding nothing is offered
+  work if it is admissible (`Work.request_turn_if_runnable/4`). Each decides
+  admissibility itself, so neither starts a turn for an agent that should not
+  have one.
+  """
+  @spec came_up(Scope.t(), Ecto.UUID.t()) :: :ok
+  def came_up(%Scope{} = scope, agent_id) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id) do
+      Work.resume_held_tasks(scope, agent.working_copy_id)
+      Work.request_turn_if_runnable(scope, agent, :restarted)
+    end
+
+    :ok
+  end
+
+  @doc """
+  An agent's process ended (`agent_down`, from its copy's harness), with
+  `reason` as the harness saw it.
+
+  The harness supervises its agents: a crash is restarted there, by the agent's
+  `Engine.Keeper`, and reaches the server as a down and an up that move
+  presence and nothing else. The one down acted on here is the Keeper giving up
+  on a crash loop (`"gave_up: …"`) — the agent is gone for good, and main is
+  told, unless the agent was already off or retired. Mere absence — a harness
+  restarting, a channel dropping — sends no down and so triggers nothing.
+  """
+  @spec process_ended(Scope.t(), Ecto.UUID.t(), String.t() | nil) :: :ok
+  def process_ended(%Scope{} = scope, agent_id, "gave_up: " <> reason) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         true <- on_duty?(agent) do
+      Logger.warning(
+        "[Agents] #{agent.role} agent #{agent.id}'s harness gave up on it: #{reason}"
+      )
+
+      tell_main_teammate_died(
+        scope,
+        agent,
+        "its process kept crashing (last: #{reason}) and its harness stopped restarting " <>
+          "it after three restarts in ten minutes — a crash loop costs money on every lap. " <>
+          "Find the cause, then restart_agent it"
+      )
+    else
+      _ -> :ok
+    end
+  end
+
+  def process_ended(%Scope{}, _agent_id, _reason), do: :ok
 
   # Step 4b (a31f1cd6): main is told when a teammate dies or is reaped, and is
   # woken for it past its own open question (John). Main's own death has nobody
@@ -2606,20 +2640,6 @@ defmodule CodeMySpec.Agents do
     do:
       "the #{agent.role} agent #{agent.id} on working copy #{agent.working_copy_id} " <>
         "(#{agent.working_copy})"
-
-  # Off this process: the event arrives in the harness channel, and a restart
-  # stops the agent through that same channel — a call to itself, which kills
-  # it and every agent's turn on the copy.
-  defp restart_if_continuous(scope, %Agent{continuous: true} = agent) do
-    {:ok, _pid} =
-      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        MainAgent.restart_agent(scope, agent.id, @death_reason)
-      end)
-
-    :ok
-  end
-
-  defp restart_if_continuous(_scope, _agent), do: :ok
 
   @failed_turn "Your last turn failed: "
 
@@ -2915,7 +2935,7 @@ defmodule CodeMySpec.Agents do
     # apart, which is what the log table in CLAUDE.md exists for.
     Logger.info("[Agents] harness reported #{length(reported)} agent(s)")
 
-    listed = AgentsRepository.list_running(scope)
+    listed = AgentsRepository.list_reported_running(scope)
 
     running =
       listed
@@ -2933,68 +2953,6 @@ defmodule CodeMySpec.Agents do
     {:ok, running}
   end
 
-  @doc """
-  Reconcile one checkout's agents against the process table on its machine.
-
-  The in-BEAM half of `record_reported/2`, and it exists because that function
-  could never see these agents. `LaneReporter` composes its set from Presence on
-  *lane* topics — a Claude Code lane joins one and an Alloy agent does not — so
-  an agent running inside the harness was invisible to the only mechanism that
-  could contradict its row. `agents.status` was therefore a claim written at a
-  clean start and a clean stop, with nothing between.
-
-  Measured 2026-09-17: `f8fbe49e` and `93bdde5a` read `starting` for six hours
-  with nothing behind them, while `wakeable?/3` still accepted `:starting` and
-  kept routing work to processes that had never started. That is `0c912986`, and
-  the reason the fix is here rather than in `wakeable?/3` is that the predicate
-  was reading the column honestly — the column was wrong.
-
-  `ids` come from `Engine.running/0`, a registry select filtered by
-  `Process.alive?`. Machine-wide, reconciled per copy: this harness serves this
-  checkout, so one of its agents absent from the machine's set is genuinely
-  gone, and an agent on another box is never in the candidate set to begin with.
-
-  Two directions, and both matter. Absent means stopped — the reap this whole
-  mechanism is for. Present means running, which is what lets `:starting` stop
-  being wakeable: an agent that really did come up says so within a beat rather
-  than keeping a status nobody will ever revise.
-
-  A copy that reports nothing is not the same as a copy reporting an empty set,
-  and only the second reaches here — nothing calls this without a report.
-  """
-  @spec record_running_on_copy(Scope.t(), Ecto.UUID.t() | nil, [String.t()]) :: :ok
-  def record_running_on_copy(%Scope{}, nil, _ids), do: :ok
-
-  def record_running_on_copy(%Scope{} = scope, copy_id, ids) when is_list(ids) do
-    alive = MapSet.new(ids)
-
-    on_copy =
-      scope
-      |> AgentsRepository.list_running()
-      |> Enum.filter(&(&1.working_copy_id == copy_id))
-
-    Enum.each(on_copy, &settle_against(scope, &1, MapSet.member?(alive, &1.id)))
-    tell_main_reaped(scope, Enum.reject(on_copy, &MapSet.member?(alive, &1.id)))
-  end
-
-  # What a machine reporting itself as running has just told us.
-  #
-  # A fresh process has no turn in flight and holds no reservation, by
-  # definition — so `turn_started_at`, `work_request_id` and
-  # `work_requested_at` are cleared on the way *up* as well as on the way
-  # down. `record_stopped/2` already did it downward; three paths back to
-  # `:running` did not, and a row carrying a stale timestamp into its next life
-  # reports a turn "in flight" for an agent that is not mid-response, which is
-  # exactly the false positive story 1012's fact-based view exists to avoid.
-  #
-  # There is a real window for one to get there: `record_turn_event(...,
-  # "turn_started")` does not check the row's current status before writing, so
-  # a `turn_started` landing just after a reap leaves the timestamp on a
-  # `:stopped` row with no `turn_ended` ever coming to clear it. Found by QA on
-  # story 1012, `4ce6d903`.
-  #
-  # One map rather than three copies, because three copies is how this drifted
-  # apart in the first place.
   @running_afresh %{
     status: :running,
     turn_started_at: nil,
@@ -3002,23 +2960,6 @@ defmodule CodeMySpec.Agents do
     work_requested_at: nil,
     stopped_reason: nil
   }
-
-  defp settle_against(_scope, %Agent{status: :running}, true), do: :ok
-
-  defp settle_against(scope, %Agent{} = agent, true) do
-    {:ok, _running} = AgentsRepository.update_agent(scope, agent, @running_afresh)
-    :ok
-  end
-
-  defp settle_against(scope, %Agent{} = agent, false) do
-    Logger.info(
-      "[Agents] #{agent.role} agent #{agent.id} is not running on #{agent.working_copy}; " <>
-        "its row said #{agent.status}"
-    )
-
-    {:ok, _stopped} = record_stopped(scope, agent, :reaped)
-    :ok
-  end
 
   # A reported agent the server has no row for is adopted rather than refused.
   #
@@ -3225,20 +3166,19 @@ defmodule CodeMySpec.Agents do
   # permanently unreachable, by the stop. That is criterion 2828 caused by its
   # own remedy.
   #
-  # An agent still `:starting` never came up, so there is no process to end and
-  # nothing to ask. That is a real state, not an error: it is the row for an
-  # agent we asked for and no machine confirmed, and cancelling it has to work.
+  # The machine is always asked. An agent not present afterwards has no process
+  # to end — one we asked for and no machine confirmed, or one already gone — so
+  # a machine that could not be reached about it is not a failure: cancelling it
+  # has to work. Present means a process is still running, and that answer
+  # stands (`Agents.Presence`).
   #
   # This used to key on `os_pid` being nil. An agent is a supervised process now
   # and never has a group id, so that clause matched every stop: the row went to
   # `:stopped` and nothing was ever asked to end anything. The defect this story
   # exists for, reintroduced by deleting the field its guard happened to read.
-  defp end_process(_scope, %Agent{status: :starting}), do: :ok
-
   defp end_process(_scope, %Agent{} = agent) do
-    agent.working_copy_id
-    |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
-    |> stopped?(agent)
+    result = Transport.impl().stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
+    if present?(agent.project_id, agent), do: stopped?(result, agent), else: :ok
   end
 
   # An agent the machine is not running is stopped — asking again is how a

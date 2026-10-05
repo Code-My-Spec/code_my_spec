@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   alias CodeMySpec.McpServers.Agents.Tools.TurnOnAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Staffing
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -72,6 +73,8 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
         working_copy: root,
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, copy: copy, agent: agent, frame: %Frame{assigns: %{current_scope: scope}}}
   end

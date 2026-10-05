@@ -30,8 +30,6 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
 
   import Phoenix.LiveViewTest
 
-  @endpoint CodeMySpecLocalWeb.Endpoint
-
   alias CodeMySpec.Environments
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.RequirementGraph

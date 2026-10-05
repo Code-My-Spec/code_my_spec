@@ -172,19 +172,30 @@ defmodule CodeMySpec.Notifications.InboxTest do
     # a live asking agent — 35 stopped, 6 with no agent at all. Two that day
     # genuinely blocked the Broken Oaths fleet and both sat in that list.
     # John: "I cant get them they are hard to find."
-    defp agent!(scope, status) do
+    #
+    # Stopped is intent now: an agent turned off. One merely down is on duty and
+    # comes back, and answering its question resumes it.
+    defp agent!(scope, state) do
       {:ok, agent} =
-        AgentsRepository.create_agent(scope, %{
-          provider: "anthropic",
-          engine: :alloy,
-          role: "coding",
-          status: status,
-          working_copy: "/tmp/inbox-#{System.unique_integer([:positive])}",
-          working_copy_id: scope.active_working_copy_id
-        })
+        AgentsRepository.create_agent(
+          scope,
+          Map.merge(
+            %{
+              provider: "anthropic",
+              engine: :alloy,
+              role: "coding",
+              working_copy: "/tmp/inbox-#{System.unique_integer([:positive])}",
+              working_copy_id: scope.active_working_copy_id
+            },
+            attrs_for(state)
+          )
+        )
 
       agent
     end
+
+    defp attrs_for(:stopped), do: %{off_at: DateTime.utc_now(), off_by: "a test"}
+    defp attrs_for(:running), do: %{status: :running}
 
     defp question_from!(user_id, agent_id) do
       {:ok, req} =

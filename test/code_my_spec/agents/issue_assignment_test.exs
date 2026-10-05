@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -31,6 +32,8 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
         status: :running,
         working_copy_id: copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end
@@ -55,6 +58,77 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
     assert updated.assigned_working_copy_id == copy_id
     assert reload(coding).issue_id == ctx.issue.id
     assert reload(qa).issue_id == ctx.issue.id
+  end
+
+  test "an unresolved blocked issue task is not claimable or stalled", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+    {:ok, coding} =
+      TaskOwner.add_task(ctx.scope, reload(coding), %{
+        status: :blocked,
+        requirement_name: "fix_issue",
+        issue_id: ctx.issue.id,
+        blocked_at: DateTime.utc_now(),
+        blocker_type: :question,
+        blocker_id: Ecto.UUID.generate(),
+        blocked_reason: "Waiting for an escalated decision"
+      })
+
+    assert Agents.Work.claimable_work(ctx.scope, coding) == []
+    execution = Agents.Work.work_for(ctx.scope, :coding, coding)
+    assert execution.status == :blocked
+    assert execution.wave == []
+
+    entry = Enum.find(Agents.Main.list_agent_work(ctx.scope), &(&1.agent_id == coding.id))
+    assert entry.idle?
+    assert Agents.Main.Digest.stalled(%Agents.Main.Digest{work: [entry]}) == []
+  end
+
+  test "an answered blocker makes its issue task claimable again", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+    {:ok, coding} =
+      TaskOwner.add_task(ctx.scope, reload(coding), %{
+        status: :blocked,
+        requirement_name: "fix_issue",
+        issue_id: ctx.issue.id,
+        blocked_at: DateTime.utc_now(),
+        blocker_type: :question,
+        blocker_id: Ecto.UUID.generate(),
+        blocker_resolved_at: DateTime.utc_now()
+      })
+
+    assert [%{entity_id: issue_id, name: "fix_issue"}] =
+             Agents.Work.claimable_work(ctx.scope, coding)
+
+    assert issue_id == ctx.issue.id
+    assert Agents.Work.work_for(ctx.scope, :coding, coding).status == :ready
+  end
+
+  test "a blocked task for another issue does not withhold the assigned issue", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    other = issue_fixture(ctx.scope, %{status: :accepted})
+
+    {:ok, coding} =
+      TaskOwner.add_task(ctx.scope, reload(coding), %{
+        status: :blocked,
+        requirement_name: "fix_issue",
+        issue_id: other.id,
+        blocked_at: DateTime.utc_now(),
+        blocker_type: :question,
+        blocker_id: Ecto.UUID.generate()
+      })
+
+    assert [%{entity_id: issue_id, name: "fix_issue"}] =
+             Agents.Work.claimable_work(ctx.scope, coding)
+
+    assert issue_id == ctx.issue.id
   end
 
   test "a copy with no coding or qa agent has nobody to hold the issue", ctx do

@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.WakeTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
 
   # Who hears what nobody else does. Everything else is relevant to everyone:
   # a person's message and the answers to the agent's own requests.
@@ -83,6 +84,8 @@ defmodule CodeMySpec.Agents.WakeTest do
             working_copy_id: scope.active_working_copy_id
           })
 
+        AgentPresence.present(agent)
+
         {role, agent}
       end)
 
@@ -102,8 +105,13 @@ defmodule CodeMySpec.Agents.WakeTest do
     ]
 
     Repo.update_all(from(a in Agent, where: a.id == ^agent.id), set: attrs)
+    presence(agent, state.on)
     Repo.get!(Agent, agent.id)
   end
+
+  # Stopped is a process that is not alive: not present.
+  defp presence(agent, :stopped), do: AgentPresence.absent(agent)
+  defp presence(agent, _on), do: AgentPresence.present(agent)
 
   defp status(:stopped), do: :stopped
   defp status(_on), do: :running

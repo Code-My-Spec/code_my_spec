@@ -16,6 +16,7 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -42,6 +43,8 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
         working_copy: "/tmp/awaiting-runs-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     on_exit(fn -> :persistent_term.erase({StopDecision, :continuing, agent.id}) end)
 

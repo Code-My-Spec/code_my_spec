@@ -24,6 +24,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -50,6 +51,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
         working_copy: "/tmp/withheld-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
     %{scope: scope, agent: agent, frame: frame, node: node}

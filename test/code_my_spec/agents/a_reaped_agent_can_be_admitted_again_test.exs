@@ -11,6 +11,10 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
 
   Found by QA on story 1004 on 2026-09-20, chasing why a fixture agent could
   not be offered a turn.
+
+  There is no server-side reap any more: liveness is presence, and a crash
+  mid-turn is restarted by the harness, which ends the interrupted turn out
+  loud (`Engine.Keeper`). What is left here is the way back up.
   """
   use CodeMySpecTest.DataCase, async: false
 
@@ -21,6 +25,7 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -41,6 +46,8 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
         working_copy: "/tmp/reaped-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent, copy: copy}
   end
@@ -139,40 +146,5 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
     assert Repo.aggregate(Agent, :count) == before,
            "a harness report added an agent row; a checkout then accumulates " <>
              "one per report rather than one per lane"
-  end
-
-  test "stopping clears the turn and the reservation", ctx do
-    {:ok, mid_turn} =
-      AgentsRepository.update_agent(ctx.scope, ctx.agent, %{
-        turn_started_at: DateTime.utc_now(),
-        work_request_id: Ecto.UUID.generate(),
-        work_requested_at: DateTime.utc_now()
-      })
-
-    assert mid_turn.turn_started_at
-    assert mid_turn.work_request_id
-
-    # What the harness reports when it comes back holding nothing: this copy is
-    # running no agents, so the row claiming to be mid-turn is reaped.
-    :ok = Agents.record_running_on_copy(ctx.scope, ctx.copy.id, [])
-
-    reaped = Repo.get(Agent, ctx.agent.id)
-
-    assert reaped.status == :stopped
-
-    assert reaped.stopped_reason == :reaped,
-           "73d0d505: nothing confirmed this was on purpose, only that a report no " <>
-             "longer mentions it — the reconnect sweep needs this to tell it apart " <>
-             "from a deliberate stop"
-
-    assert is_nil(reaped.turn_started_at),
-           "a stopped agent is still holding a turn it cannot be running, so it " <>
-             "can never be offered another one"
-
-    assert is_nil(reaped.work_request_id),
-           "a stopped agent is still holding a turn reservation, so it can never " <>
-             "be offered another one"
-
-    assert is_nil(reaped.work_requested_at)
   end
 end

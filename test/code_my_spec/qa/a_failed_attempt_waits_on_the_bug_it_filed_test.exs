@@ -32,6 +32,7 @@ defmodule CodeMySpec.Qa.AFailedAttemptWaitsOnTheBugItFiledTest do
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.Qa
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -52,6 +53,8 @@ defmodule CodeMySpec.Qa.AFailedAttemptWaitsOnTheBugItFiledTest do
         working_copy: "/tmp/qa-waits-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     story = CodeMySpec.StoriesFixtures.story_fixture(scope)
 

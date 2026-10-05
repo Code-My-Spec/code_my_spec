@@ -387,7 +387,16 @@ defmodule CodeMySpec.Qa.QaAttempts do
         {:error, {:task_not_found, open_qa_tasks(sessions ++ Enum.map(agents, &elem(&1, 1)))}}
 
       task ->
-        {:ok, {task_field(task, :story_id), owner_of(task, task_id, agents)}}
+        cond do
+          issue_id = task_field(task, :issue_id) ->
+            {:error, {:issue_task_requires_issue_submission, issue_id}}
+
+          story_id = task_field(task, :story_id) ->
+            {:ok, {story_id, owner_of(task, task_id, agents)}}
+
+          true ->
+            {:error, :task_has_no_story}
+        end
     end
   end
 

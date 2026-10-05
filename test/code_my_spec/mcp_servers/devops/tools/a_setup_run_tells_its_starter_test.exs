@@ -13,6 +13,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ASetupRunTellsItsStarterTest do
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup
   alias CodeMySpec.Provisioning.RunLock
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -51,6 +52,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ASetupRunTellsItsStarterTest do
         working_copy: "/tmp/setup-starter-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

@@ -103,24 +103,6 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
     ]
   ]
 
-# Local developer web endpoint — runs on 4004 in dev so the in-repo
-# `mix phx.server` can coexist with the published `cms` binary on 4003.
-config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4004],
-  code_reloader: true,
-  debug_errors: true,
-  check_origin: false,
-  watchers: [
-    esbuild: {Esbuild, :install_and_run, [:code_my_spec_local, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:code_my_spec_local, ~w(--watch)]}
-  ],
-  live_reload: [
-    patterns: [
-      ~r"priv/static/local/.*(js|css)$",
-      ~r"lib/code_my_spec_local_web/(controllers|live|components)/.*(ex|heex)$"
-    ]
-  ]
-
 # Watch the source live reload actually reloads from, and nothing else.
 #
 # `:dirs` defaults to `[""]`, which `Path.absname/1` turns into the project
