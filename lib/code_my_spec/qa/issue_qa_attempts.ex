@@ -102,6 +102,11 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
     end
   end
 
+  # Already resolved — by hand, or by an earlier landing of the same fix queued
+  # again (ea0ab1c8, 2026-10-05): the landing is recorded, and there is nothing
+  # left to move it to.
+  defp after_landing(_scope, %{status: :resolved}, _passed?, _commit), do: :ok
+
   defp after_landing(scope, issue, true, commit),
     do: resolve(scope, issue, "Fix landed on main at #{String.slice(commit, 0, 12)}; QA passed.")
 

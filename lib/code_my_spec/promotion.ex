@@ -962,6 +962,19 @@ defmodule CodeMySpec.Promotion do
   end
 
   @doc """
+  Whether the scope's copy is already certified at `head`: every analyzer has a
+  run that answers for it there, and none of them found anything blocking. A
+  read — nothing is started.
+  """
+  @spec certified_at?(Scope.t(), String.t()) :: boolean()
+  def certified_at?(%Scope{} = scope, head) do
+    case answers_at(scope, Run.sources(), head) do
+      {answered, []} -> blocking_problems(scope, Map.keys(answered)) == []
+      {_answered, _missing} -> false
+    end
+  end
+
+  @doc """
   What identifies a finding across copies: its source, file and line. Not the
   message — a test failure's text carries run-specific detail.
   """
