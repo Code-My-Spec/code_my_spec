@@ -75,6 +75,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.AppRestart
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
@@ -210,6 +211,47 @@ defmodule CodeMySpec.Agents do
       |> Enum.filter(&(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id)))
       |> Enum.map(&Map.from_struct/1)
     end)
+  end
+
+  @doc """
+  Record that a working copy's whole app -- not one agent -- was restarted.
+
+  `RestartApp` has no agent to name, so this cannot go through
+  `Conversations.record_restart/2`.
+  """
+  @spec record_app_restart(Scope.t(), String.t()) ::
+          {:ok, AppRestart.t()} | {:error, Ecto.Changeset.t()}
+  def record_app_restart(
+        %Scope{active_working_copy_id: working_copy_id, active_project_id: project_id},
+        reason
+      )
+      when is_binary(working_copy_id) and is_binary(project_id) and is_binary(reason) do
+    %AppRestart{}
+    |> AppRestart.changeset(%{
+      working_copy_id: working_copy_id,
+      project_id: project_id,
+      reason: reason
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Every app restart on a working copy no agent currently holds a story on --
+  the project-level case criterion 1998 describes.
+  """
+  @spec list_app_restarts_without_story(Scope.t()) :: [AppRestart.t()]
+  def list_app_restarts_without_story(%Scope{} = scope) do
+    import Ecto.Query, only: [from: 2]
+
+    held =
+      scope
+      |> list_agents()
+      |> Enum.reject(&is_nil(&1.story_id))
+      |> MapSet.new(& &1.working_copy_id)
+
+    from(r in AppRestart, where: r.project_id == ^scope.active_project_id)
+    |> Repo.all()
+    |> Enum.reject(&MapSet.member?(held, &1.working_copy_id))
   end
 
   @doc """

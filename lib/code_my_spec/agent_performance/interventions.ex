@@ -75,9 +75,17 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
   """
   @spec project_level(Scope.t()) :: [intervention()]
   def project_level(%Scope{} = scope) do
-    scope
-    |> Agents.list_agents()
-    |> Enum.filter(&is_nil(&1.story_id))
-    |> Enum.flat_map(&for_agent(scope, &1.id))
+    agent_interventions =
+      scope
+      |> Agents.list_agents()
+      |> Enum.filter(&is_nil(&1.story_id))
+      |> Enum.flat_map(&for_agent(scope, &1.id))
+
+    app_restarts =
+      scope
+      |> Agents.list_app_restarts_without_story()
+      |> Enum.map(&%{at: &1.inserted_at, kind: :restart, reason: &1.reason})
+
+    Enum.sort_by(agent_interventions ++ app_restarts, & &1.at, DateTime)
   end
 end
