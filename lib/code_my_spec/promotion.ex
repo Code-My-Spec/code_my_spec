@@ -391,10 +391,7 @@ defmodule CodeMySpec.Promotion do
       # Not `version`. A no-op merge originates nothing and still has a story to
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
-      for {story, copy_id} <- stories do
-        stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
-        notify_team_free(scope, copy_id, story)
-      end
+      :ok = record_landed_stories(scope, stories, stamp_version, Map.get(merge_result, :after))
 
       # `head` and `after` are the same commit now that a promotion tags rather
       # than commits a version bump; both are read so a result from either
@@ -504,6 +501,27 @@ defmodule CodeMySpec.Promotion do
   # The story-side half of criterion 1892's team-free parity with
   # `IssueAssignment.free/2`: a story finishing by promotion sends main the
   # same offer kind an issue finishing through QA already does.
+  @doc """
+  What a landing does for the stories in it: each is stamped promoted at
+  `version` and `commit`, and its team's freedom is announced. Also for a
+  candidate main already contains (`PromotionQueue`), which has nothing to
+  merge and lands as it is.
+  """
+  @spec record_landed_stories(
+          Scope.t(),
+          [{Stories.Story.t() | nil, Ecto.UUID.t()}],
+          String.t() | nil,
+          String.t() | nil
+        ) :: :ok
+  def record_landed_stories(scope, stories, version, commit) do
+    for {story, copy_id} <- stories do
+      stamp_promoted_story(scope, story, version, commit)
+      notify_team_free(scope, copy_id, story)
+    end
+
+    :ok
+  end
+
   defp notify_team_free(_scope, _copy_id, nil), do: :ok
 
   defp notify_team_free(scope, copy_id, story),

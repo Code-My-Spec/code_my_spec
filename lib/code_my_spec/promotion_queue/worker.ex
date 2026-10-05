@@ -179,6 +179,14 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # `gate` is the copy the batch commit is checked out in and certified on:
   # the gate copy, or a lone level candidate's own copy.
+  # A batch whose commit is main's HEAD adds nothing: every candidate in it is
+  # already on main — landed before, or contained in what has landed since. It
+  # is not gated: whatever main's own analysis finds there is no finding against
+  # any of them, and blaming one for it sent an agent to "fix" work that had
+  # already landed (the queue's first live night, 2026-10-05). Each lands as it
+  # is, with what a landing does for its story or issue.
+  defp gating(state, entries, _gate, base, base), do: already_on_main(state, entries, base)
+
   defp gating(state, entries, gate, base, head) do
     batch_id = Ecto.UUID.generate()
     in_batch = Enum.map(entries, &moved(&1, :gating, %{batch_id: batch_id}))
@@ -389,6 +397,45 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     build(%{state | phase: :idle, batch: nil}, Enum.map(first, &Repository.get(&1.id)))
   end
 
+  defp already_on_main(state, entries, head) do
+    Logger.info(
+      "[PromotionQueue] #{length(entries)} candidate(s) already on main at #{head}; " <>
+        "landing them without a gate"
+    )
+
+    stories =
+      for entry <- entries,
+          story = story_of(state.scope, entry),
+          do: {story, entry.working_copy_id}
+
+    :ok = Promotion.record_landed_stories(state.scope, stories, main_version(state.scope), head)
+
+    for entry <- entries do
+      landed =
+        moved(entry, :landed, %{
+          batch_id: nil,
+          result: %{"head" => head, "already_on_main" => true}
+        })
+
+      issue_landed(state.scope, landed, head)
+
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        Repository.topic(state.project_id),
+        {:promotion_queue_landed, entry.id, {:ok, %{queue_outcome: landed}}}
+      )
+
+      tell(
+        state.scope,
+        entry,
+        "Your promotion of #{subject(entry)} is already on main " <>
+          "(#{String.slice(head, 0, 12)}): there was nothing to gate or land."
+      )
+    end
+
+    next(%{state | phase: :idle, batch: nil})
+  end
+
   # -- Land -------------------------------------------------------------------
 
   # Landing restarts the app every copy's harness serves, so it waits for runs
@@ -576,6 +623,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     scope
     |> WorkingCopies.list_harnesses()
     |> Enum.find(&(&1.label == @gate_label and is_binary(&1.root) and &1.root != ""))
+  end
+
+  defp main_version(scope) do
+    with %WorkingCopy{root: root} = main when is_binary(root) <- WorkingCopies.main(scope),
+         {:ok, %{version: version}} <- Runner.current(scope_for(scope, main), root, main.id) do
+      version
+    else
+      _ -> nil
+    end
   end
 
   # Main's HEAD, read through main's own copy.
