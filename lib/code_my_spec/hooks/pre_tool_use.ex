@@ -449,20 +449,20 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # from a real test run was the opposite of that.
   #
   # So the two are split at the transport instead of glued into the body:
-  # `-o`/`-w` send the response body to a file and the HTTP status to stdout
-  # on their own, the endpoint answers 200 for a clean run and something
-  # else for anything short of it (see both `AnalysisController`s), and this
-  # script re-emits the body untouched and exits 0 or 1 to match — the same
-  # two numbers a real `mix test`/`mix spex` would have given back.
+  # `-o`/`-w` send the response body to a file, and the HTTP status and the
+  # run's `x-exit-status` header to stdout. The script re-emits the body
+  # untouched and exits with the tool's own status, as `mix test` would have.
+  # A harness that sends no header is read by HTTP status: 0 on 200, else 1.
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
     url = "http://localhost:#{port}#{path(endpoint)}"
 
     script =
-      "t=$(mktemp); c=$(curl -sS -o \"$t\" -w '%{http_code}' -X POST '#{url}' " <>
-        "-H 'Content-Type: application/json' " <>
+      "t=$(mktemp); c=$(curl -sS -o \"$t\" -w '%{http_code} %header{x-exit-status}' " <>
+        "-X POST '#{url}' -H 'Content-Type: application/json' " <>
         header(endpoint) <>
-        "--data #{shell_quote(payload)}); cat \"$t\"; rm -f \"$t\"; [ \"$c\" = 200 ]"
+        "--data #{shell_quote(payload)}); " <>
+        ~S{cat "$t"; rm -f "$t"; set -- $c; [ -n "$2" ] && exit "$2"; [ "$1" = 200 ]}
 
     "sh -c " <> shell_quote(script)
   end
