@@ -302,8 +302,71 @@ defmodule CodeMySpec.Promotion do
          {:ok, main} <- main_head(scope, running, from),
          {:ok, %{head: head, certified_by: swept, precheck: %{branch: branch} = pre}} <-
            certify_copy(scope, from, story, main, opts),
-         :ok <- head_unmoved(scope, from, head, named),
-         {:ok, merge_result} <- Runner.merge(scope, running.root, head, from.id),
+         :ok <- head_unmoved(scope, from, head, named) do
+      candidate = %{
+        head: head,
+        branch: branch,
+        swept: swept,
+        untracked: Map.get(pre, :untracked, [])
+      }
+
+      land_into(scope, running, from, candidate, [{story, from.id}], opts)
+    else
+      {:pending, pending} ->
+        Logger.info(
+          "[Promotion] pending for #{pending.working_copy}: analysis at #{pending.commit} " <>
+            "(started #{inspect(pending.started)}, already running #{inspect(pending.running)})"
+        )
+
+        {:ok, %{pending: pending}}
+
+      {:error, reason} = error ->
+        refused(running, reason)
+        error
+    end
+  end
+
+  @doc """
+  Land a commit the promotion queue has already certified, from its gate copy.
+
+  The queue gates a batch of candidates in `from` (its gate checkout) at `head`
+  and calls this on green: the same merge, submodule sync, stamping and one
+  deployment a direct promotion runs after its gate, under the same lock, for
+  every story in the batch. `stories` pairs each story (or nil, for work that
+  is not a story's) with the working copy it came from.
+  """
+  @spec land(
+          Scope.t(),
+          WorkingCopy.t(),
+          String.t(),
+          [{Stories.Story.t() | nil, Ecto.UUID.t()}],
+          [map()],
+          keyword()
+        ) ::
+          {:ok, map()} | {:error, map()}
+  def land(%Scope{} = scope, %WorkingCopy{} = from, head, stories, swept, opts \\ []) do
+    result =
+      with {:ok, running} <- running_copy(scope) do
+        candidate = %{
+          head: head,
+          branch: "the promotion batch at #{head}",
+          swept: swept,
+          untracked: []
+        }
+
+        Lock.with_lock(running.project_id, fn ->
+          land_into(scope, running, from, candidate, stories, opts)
+        end)
+        |> unlocked()
+      end
+
+    log_outcome(result)
+  end
+
+  defp land_into(scope, running, from, candidate, stories, opts) do
+    %{head: head, branch: branch, swept: swept, untracked: untracked} = candidate
+
+    with {:ok, merge_result} <- Runner.merge(scope, running.root, head, from.id),
          # Before stamping or restarting: a refusal here has rolled the merge back.
          {:ok, _} <-
            Runner.sync_submodule(scope, running.root, from.root, merge_result, from.id) do
@@ -328,8 +391,10 @@ defmodule CodeMySpec.Promotion do
       # Not `version`. A no-op merge originates nothing and still has a story to
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
-      stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
-      notify_team_free(scope, from.id, story)
+      for {story, copy_id} <- stories do
+        stamp_promoted_story(scope, story, stamp_version, Map.get(merge_result, :after))
+        notify_team_free(scope, copy_id, story)
+      end
 
       # `head` and `after` are the same commit now that a promotion tags rather
       # than commits a version bump; both are read so a result from either
@@ -345,33 +410,28 @@ defmodule CodeMySpec.Promotion do
 
       scope
       |> deploy(running, plan, Keyword.put(opts, :expect, expect))
-      |> merged(branch, running, swept, Map.get(pre, :untracked, []), version)
+      |> merged(branch, running, swept, untracked, version)
       |> with_deployment(plan)
-      |> with_story(story, stamp_version)
+      |> with_stories(stories, stamp_version)
       |> with_version_error(version_error)
     else
-      {:pending, pending} ->
-        Logger.info(
-          "[Promotion] pending for #{pending.working_copy}: analysis at #{pending.commit} " <>
-            "(started #{inspect(pending.started)}, already running #{inspect(pending.running)})"
-        )
-
-        {:ok, %{pending: pending}}
-
       {:error, reason} = error ->
-        # `9afcbbdf`: this used to name `running.root` unconditionally — the
-        # merge target, never the copy a `gate/3` refusal is actually about.
-        # `gate/3`'s own reasons now carry `:working_copy`; fall back to the
-        # merge target only for refusals that happen before the gate runs
-        # (no working copy on the scope, an unreported checkout).
-        named = Map.get(reason, :working_copy, running.root)
-
-        Logger.warning(
-          "[Promotion] refused for #{named}: #{Map.get(reason, :reason, inspect(reason))}"
-        )
-
+        refused(running, reason)
         error
     end
+  end
+
+  # `9afcbbdf`: this used to name `running.root` unconditionally — the merge
+  # target, never the copy a `gate/3` refusal is actually about. `gate/3`'s own
+  # reasons now carry `:working_copy`; fall back to the merge target only for
+  # refusals that happen before the gate runs (no working copy on the scope, an
+  # unreported checkout).
+  defp refused(running, reason) do
+    named = Map.get(reason, :working_copy, running.root)
+
+    Logger.warning(
+      "[Promotion] refused for #{named}: #{Map.get(reason, :reason, inspect(reason))}"
+    )
   end
 
   # `restart/3` always answers `{:error, %{reason: ...}}` now — dispatched,
@@ -407,6 +467,17 @@ defmodule CodeMySpec.Promotion do
 
   defp with_deployment({:ok, report}, plan), do: {:ok, Map.put(report, :deployment, plan)}
   defp with_deployment(error, _plan), do: error
+
+  # One story keeps the shape a direct promotion has always answered with; a
+  # batch also lists every story it carried.
+  defp with_stories(result, [{story, _copy_id}], version), do: with_story(result, story, version)
+
+  defp with_stories({:ok, report}, stories, version) do
+    numbers = for {%{number: number}, _copy_id} <- stories, do: number
+    {:ok, Map.put(report, :stories, Enum.map(numbers, &%{number: &1, version: version}))}
+  end
+
+  defp with_stories(error, _stories, _version), do: error
 
   defp with_story(result, nil, _version), do: result
 
@@ -468,7 +539,24 @@ defmodule CodeMySpec.Promotion do
   # directory name — see `FixBddSpecs.story_spex_problems/2` for what parsing
   # names cost). A story with no linked spec files has nothing that passed, so
   # it refuses rather than latching on an empty list.
-  defp story_spex_pass(_scope, nil, _named), do: :ok
+  @doc """
+  Whether `story`'s own spex all pass on the scope's copy's certifying spex run
+  — the check a promotion makes before latching a story. `:ok`, or
+  `{:error, %{reason:, failing_spex:}}`. The promotion queue asks it of each
+  story in a batch: the findings are the gate copy's run, and `files_scope`
+  (the candidate's own copy) says which files are the story's spex — the gate
+  copy's file rows may not have caught up with the checkout a batch just made.
+  """
+  @spec story_spex_check(Scope.t(), Stories.Story.t() | nil, Scope.t() | nil) ::
+          :ok | {:error, map()}
+  def story_spex_check(%Scope{active_working_copy_id: id} = scope, story, files_scope \\ nil),
+    do: story_spex_pass(scope, story, named_copy(id), files_scope)
+
+  # `files_scope` is the copy whose file rows say which spex are the story's —
+  # the promotion queue's candidate, when the run being read is the gate copy's.
+  defp story_spex_pass(scope, story, named, files_scope \\ nil)
+
+  defp story_spex_pass(_scope, nil, _named, _files_scope), do: :ok
 
   # Story 983, criteria 1895/1896/1905: a story's own first-ever certifying
   # run tolerates a red, never-latched criterion -- it is unfinished work,
@@ -478,7 +566,7 @@ defmodule CodeMySpec.Promotion do
   # today. Either way, a clean run latches every criterion that just went
   # green (1896) -- the counterpart to the story-wide `specs_ready` latch,
   # now earned one criterion at a time.
-  defp story_spex_pass(scope, story, named) do
+  defp story_spex_pass(scope, story, named, files_scope) do
     live_criteria =
       scope
       |> AcceptanceCriteria.list_all_story_criteria(story.id)
@@ -488,12 +576,13 @@ defmodule CodeMySpec.Promotion do
     # synced -- otherwise a brand-new criterion's red spex has nowhere to be
     # "failing" and certifies by omission.
     file_paths =
-      scope
+      (files_scope || scope)
       |> Files.list_story_files(story.id)
       |> Enum.filter(&(&1.role == :bdd_spec))
       |> MapSet.new(& &1.path)
 
-    paths = MapSet.union(file_paths, MapSet.new(live_criteria, &BddSpecs.spec_file_path(story, &1)))
+    paths =
+      MapSet.union(file_paths, MapSet.new(live_criteria, &BddSpecs.spec_file_path(story, &1)))
 
     failing =
       scope
@@ -510,7 +599,8 @@ defmodule CodeMySpec.Promotion do
       |> Enum.filter(&is_nil(&1.latched_at))
       |> MapSet.new(&BddSpecs.spec_file_path(story, &1))
 
-    if failing != [] and Enum.all?(failing, &MapSet.member?(unlatched_criterion_paths, &1.file_path)) do
+    if failing != [] and
+         Enum.all?(failing, &MapSet.member?(unlatched_criterion_paths, &1.file_path)) do
       latch_green_criteria(scope, story, live_criteria, failing)
       :ok
     else
@@ -847,6 +937,21 @@ defmodule CodeMySpec.Promotion do
     case blocking_problems(scope, Map.keys(answered)) do
       [] -> certify(scope, answered, missing, head, named, opts)
       problems -> gate_result(problems, named)
+    end
+  end
+
+  @doc """
+  What the scope's copy's own analysis at `head` already says blocks it: `:ok`,
+  or the gate's refusal. A read — it starts nothing, and a source with no answer
+  at `head` is not a refusal.
+  """
+  @spec red_at(Scope.t(), String.t()) :: :ok | {:error, map()}
+  def red_at(%Scope{active_working_copy_id: id} = scope, head) do
+    {answered, _missing} = answers_at(scope, Run.sources(), head)
+
+    case blocking_problems(scope, Map.keys(answered)) do
+      [] -> :ok
+      problems -> gate_result(problems, named_copy(id))
     end
   end
 
@@ -1318,6 +1423,10 @@ defmodule CodeMySpec.Promotion do
   # which is why this is passed down rather than looked up — guessing the
   # recipient would mean messaging an agent that never saw the first one.
   defp tell_the_agent(outcome, _scope, _root, _done, nil), do: outcome
+
+  # A batch the promotion queue landed tells everyone whose work was in it.
+  defp tell_the_agent(outcome, scope, root, done, agent_ids) when is_list(agent_ids),
+    do: Enum.reduce(agent_ids, outcome, &tell_the_agent(&2, scope, root, done, &1))
 
   defp tell_the_agent({:confirmed, revision} = outcome, scope, root, done, agent_id) do
     text =

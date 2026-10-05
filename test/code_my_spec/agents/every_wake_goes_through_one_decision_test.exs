@@ -223,7 +223,9 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
 
       refute response.isError
       coding_id = coding.id
-      assert_received {:agent_message, ^coding_id, "use postgres"}
+      assert_received {:agent_dispatch, ^coding_id, ref, "use postgres"}
+      assert is_binary(ref)
+      refute_received {:agent_message, _, _}
 
       text =
         response |> Response.to_protocol() |> Map.fetch!("content") |> Enum.map_join(& &1["text"])

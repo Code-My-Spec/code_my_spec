@@ -106,6 +106,8 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       # -- it just was never reached (issue 011b1418, surfaced through
       # 92f5d6ee's own stuck QA task, 3f7138e5).
       CodeMySpec.AgentTasks.IssueQa,
+      # Same again: the fix's promotion, after QA passes it.
+      CodeMySpec.AgentTasks.IssuePromote,
       # And Three Amigos, for exactly the reason above. Its gate SETS
       # `three_amigos_sealed` as a side effect of passing, and the requirement
       # reads the seal — so without this the calculator evaluates the latch,

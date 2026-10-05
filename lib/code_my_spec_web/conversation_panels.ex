@@ -16,8 +16,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
-  alias CodeMySpecWeb.AgentLoopBadge
-
   @doc """
   The dynamic panel beside a conversation, with nothing to switch between.
 
@@ -508,7 +506,14 @@ defmodule CodeMySpecWeb.ConversationPanels do
               >
               </span>
               <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
-              <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
+              <span
+                :if={turn_running?(a)}
+                data-test="team-agent-turn"
+                title="Mid-turn"
+                class="flex shrink-0 text-primary motion-safe:animate-pulse"
+              >
+                <.icon name="hero-chat-bubble-oval-left-ellipsis" class="size-3.5" />
+              </span>
               <span class="shrink-0 opacity-60">{a.liveness.label}</span>
             </.link>
 
@@ -517,26 +522,36 @@ defmodule CodeMySpecWeb.ConversationPanels do
               class="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
             >
               <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
-              <AgentLoopBadge.loop_badge continuous?={a.agent.continuous == true} compact />
+              <span
+                :if={turn_running?(a)}
+                data-test="team-agent-turn"
+                title="Mid-turn"
+                class="flex shrink-0 text-primary motion-safe:animate-pulse"
+              >
+                <.icon name="hero-chat-bubble-oval-left-ellipsis" class="size-3.5" />
+              </span>
               <span class="shrink-0">{a.liveness.label}</span>
             </div>
 
-            <button
-              :if={a.chat}
-              type="button"
-              phx-click="set_read"
-              phx-value-id={a.chat.conversation.id}
-              phx-value-read={to_string(unread?(a))}
-              data-test="team-agent-read"
-              aria-label={if unread?(a), do: "Mark read", else: "Mark unread"}
-              title={if unread?(a), do: "Mark read", else: "Mark unread"}
-              class="btn btn-ghost btn-xs btn-square shrink-0"
+            <%!-- Siblings of the row link, not inside it: a link in an `<a>` is
+            invalid HTML and would fire the patch as well. --%>
+            <.link
+              :for={item <- a.assigned}
+              navigate={item.path}
+              data-test={"team-agent-#{item.kind}"}
+              title={item.title}
+              class="link link-hover shrink-0 font-mono text-[11px] opacity-70"
             >
-              <.icon
-                name={if unread?(a), do: "hero-envelope-open", else: "hero-envelope"}
-                class="size-3"
-              />
-            </button>
+              {item.ref}
+            </.link>
+            <.live_component
+              :for={item <- a.assigned}
+              :if={item.kind == :story}
+              module={CodeMySpecWeb.StoryProgress}
+              id={"story-progress-#{a.agent.id}"}
+              story_id={item.story_id}
+              working_copy_id={item.working_copy_id}
+            />
 
             <%!-- f096eba2: every agent controllable from here, not only the one
             whose conversation happens to be open — siblings of the link/div
@@ -549,7 +564,10 @@ defmodule CodeMySpecWeb.ConversationPanels do
               phx-value-agent-id={a.agent.id}
               data-test="team-agent-working"
               data-working={to_string(a.agent.continuous == true)}
-              class="btn btn-ghost btn-xs btn-square shrink-0"
+              class={[
+                "btn btn-ghost btn-xs btn-square shrink-0",
+                a.agent.continuous == true && "text-success"
+              ]}
               title={
                 if a.agent.continuous == true,
                   do: "Let this agent stop after its current turn",
@@ -619,6 +637,10 @@ defmodule CodeMySpecWeb.ConversationPanels do
   end
 
   defp unread?(agent), do: Map.get(agent, :unread?, false)
+
+  # A turn in flight, which is not a liveness state: a running agent is either
+  # mid-turn or waiting, and the row says which apart from the label.
+  defp turn_running?(%{agent: %{turn_started_at: at}}), do: not is_nil(at)
 
   defp noun(1, singular, _plural), do: singular
   defp noun(_n, _singular, plural), do: plural

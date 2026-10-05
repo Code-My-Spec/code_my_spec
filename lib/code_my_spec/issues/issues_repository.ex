@@ -678,6 +678,23 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.update()
   end
 
+  @doc "The accepted issue assigned to `working_copy_id`'s team, or nil."
+  def assigned_to_copy(%Scope{active_project_id: project_id}, working_copy_id)
+      when is_binary(working_copy_id) do
+    Issue
+    |> by_project(project_id)
+    |> where([i], i.assigned_working_copy_id == ^working_copy_id and i.status == :accepted)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  @doc "Record the commit an issue's fix landed at."
+  def update_landed_commit(%Issue{} = issue, commit) do
+    issue
+    |> Issue.landed_changeset(commit)
+    |> Repo.update()
+  end
+
   @doc "Flip whose turn it is on an already-assigned issue."
   def update_awaiting_role(%Issue{} = issue, role) do
     issue

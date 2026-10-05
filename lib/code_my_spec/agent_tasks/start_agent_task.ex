@@ -78,7 +78,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       # reason `issue_fix` is: `Evaluator.custom_evaluate_modules/0` requires
       # it, and the consistency test (`ConsistencyTest`) checks every such
       # module is reachable from here.
-      "issue_qa" => AgentTasks.IssueQa
+      "issue_qa" => AgentTasks.IssueQa,
+      # Created by `Agents.IssueWork` once QA passes the fix, like `issue_qa`.
+      "issue_promote" => AgentTasks.IssuePromote
     }
   end
 

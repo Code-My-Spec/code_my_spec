@@ -47,6 +47,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   alias Alloy.Agent.Server
   alias CmsHarness.Agents.Compaction
+  alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.Shell
@@ -96,6 +97,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # Thirty minutes because a browser QA pass is minutes of real waiting: pages
   # load, LiveViews settle, and 150 steps of that is not four minutes. It is a
   # ceiling on a runaway, not a budget.
+  #
+  # A ceiling on a runaway, not a budget. The engine owns this deadline:
+  # a GenServer call timeout alone does not stop Alloy's running turn.
+  # Queue advancement requires a result or confirmed execution shutdown.
   @turn_timeout :timer.minutes(30)
 
   @type start_opts :: [
@@ -387,6 +392,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
            on_event: Keyword.get(opts, :on_event),
            on_draft: Keyword.get(opts, :on_draft),
            alloy: alloy,
+           alloy_opts: alloy_opts,
            # The turn in flight, or nil. One at a time — an agent working two
            # turns at once in one checkout is two agents editing one tree.
            turn: nil,
@@ -467,20 +473,67 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # that caller waits, which `awaiting` settles; it is not how long the agent
   # may work. Threading it in made the two the same thing and cost a QA run.
   def start_turn(state, ref, message, _timeout, awaiting) do
+    checkpoint = state.alloy |> :sys.get_state() |> Alloy.Agent.State.materialize()
     announce_delivery(state, ref)
     announce_turn_start(state)
 
+    task = Task.async(fn -> run_turn(state, message, :infinity) end)
+    timer = Process.send_after(self(), {:turn_ceiling, task.ref}, @turn_timeout)
+
     %{
-      task: Task.async(fn -> run_turn(state, message, @turn_timeout) end),
+      task: task,
+      timer: timer,
+      checkpoint: checkpoint,
+      message: message,
       awaiting: awaiting,
       ref: ref
     }
+  end
+
+  # Losing the waiting task does not establish that execution stopped. The
+  # deadline and abnormal waiter exits both require confirmed Alloy shutdown
+  # before a replacement can receive anything from the queue.
+  def abort_turn(state, reason) do
+    Process.cancel_timer(state.turn.timer)
+    Process.unlink(state.alloy)
+
+    case Execution.stop(state.alloy) do
+      :ok ->
+        Task.shutdown(state.turn.task, :brutal_kill)
+        recover_turn(state, reason)
+
+      {:error, failure} ->
+        {:stop, {:turn_shutdown_unconfirmed, reason, failure}, state}
+    end
+  end
+
+  defp recover_turn(state, reason) do
+    recovered =
+      state.turn.checkpoint
+      |> Alloy.Agent.State.append_messages([
+        Alloy.Message.user(state.turn.message),
+        Alloy.Message.user(
+          "The preceding turn was interrupted (#{inspect(reason)}). " <>
+            "Its actions may have taken effect; inspect the current state before retrying."
+        )
+      ])
+      |> Alloy.Agent.State.materialize()
+
+    case Server.start_link(Keyword.put(state.alloy_opts, :messages, recovered.messages)) do
+      {:ok, alloy} ->
+        :sys.replace_state(alloy, fn _fresh -> recovered end)
+        settle(%{state | alloy: alloy}, {:error, reason})
+
+      {:error, failure} ->
+        {:stop, {:turn_recovery_failed, failure}, state}
+    end
   end
 
   # A turn ended: whoever was waiting hears about it, and whatever was waiting
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   def settle(state, result) do
+    Process.cancel_timer(state.turn.timer)
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
     announce_turn_end(state, result)

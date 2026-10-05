@@ -229,7 +229,10 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
       {:ok, _} = Agents.turn_on_agent(ctx.scope, ctx.agent.id)
 
       assert {:ok, _} = Agents.message_agent(ctx.scope, ctx.agent.id, "hi")
-      assert_received {:agent_message, _, "hi"}
+      id = ctx.agent.id
+      assert_received {:agent_dispatch, ^id, ref, "hi"}
+      assert is_binary(ref)
+      refute_received {:agent_message, _, _}
     end
   end
 

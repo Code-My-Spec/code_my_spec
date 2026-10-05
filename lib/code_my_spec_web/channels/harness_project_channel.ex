@@ -65,7 +65,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -1795,12 +1795,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The words come from `Responses`, which is where the other two doors get
   # theirs. A third rendering of "what happened to your promotion" is a third
   # thing to keep in step, and this module exists because two already were.
+  # Inside the harness's own 20-minute wait for this reply, so a candidate still
+  # queued is answered as queued rather than as a timeout.
+  @promotion_wait_ms :timer.minutes(18)
+
   defp promote_for_caller(scope, story_number) do
-    result = Promotion.promote(scope, story_number)
+    result = PromotionQueue.promote_and_wait(scope, story_number, [], @promotion_wait_ms)
 
     {:ok, %{"status" => promotion_status(result), "report" => PromotionResponses.text(result)}}
   end
 
+  defp promotion_status({:ok, %{queued: _}}), do: "queued"
+  defp promotion_status({:ok, %{queue_outcome: _}}), do: "promoted"
   defp promotion_status({:ok, %{pending: _}}), do: "pending"
   defp promotion_status({:ok, _report}), do: "promoted"
   defp promotion_status({:error, _refusal}), do: "refused"

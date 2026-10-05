@@ -3,9 +3,10 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   Put your finished work on the checkout the application runs from, so QA tests
   the code you wrote.
 
-  Answers when the merge is done, or says why it was refused. The restart runs
-  detached and the answer says so. Name the story: it is latched and stamped
-  promoted only if its spex pass, else refused.
+  Queues your HEAD and answers at once with its place. The queue gates it on
+  main with the candidates ahead of it and lands it when green; you are told
+  when it lands, or why it was taken out. Name the story: it is latched and
+  stamped promoted only if its spex pass.
   """
 
   # Kept short deliberately: `Anubis.Server.Component` advertises the moduledoc
@@ -47,7 +48,7 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Promotion.Responses
   alias CodeMySpec.McpServers.Validators
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.PromotionQueue
 
   schema do
     field :story_number, :integer,
@@ -65,7 +66,7 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
         # An in-app agent is told when the detached restart confirms or fails;
         # no agent id (a Claude Code session, an operator) tells nobody.
         result =
-          Promotion.promote(scope, params[:story_number],
+          PromotionQueue.promote(scope, params[:story_number],
             notify: frame.assigns[:agent_id],
             restart: params[:restart] == true
           )

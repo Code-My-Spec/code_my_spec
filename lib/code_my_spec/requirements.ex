@@ -357,6 +357,10 @@ defmodule CodeMySpec.Requirements do
     RequirementGraph.compute_all(scope)
   end
 
+  @doc "How many of a story's requirements are satisfied, at one working copy."
+  @spec story_progress(integer(), Ecto.UUID.t() | nil) :: {non_neg_integer(), non_neg_integer()}
+  defdelegate story_progress(story_id, working_copy_id), to: NodeRepository
+
   @doc """
   Every requirement node, read from the projection when it is still current.
 

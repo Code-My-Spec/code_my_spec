@@ -89,13 +89,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         # pipeline (`classify_restart |> log_restart_outcome |> tell_the_agent`),
         # and the correction is the later of the two. Waiting for it first
         # means the log has definitely already landed.
-        agent_id = context.agent.id
+        # The queue's "landed" message comes first; the correction follows it.
+        correction = correction(context.agent.id)
 
-        assert_receive {:agent_dispatch, ^agent_id, _ref, correction},
-                       5_000,
-                       "the restart failed outright and no correction reached the agent — " <>
-                         "it is still holding the earlier 'merged, QA can start' answer, " <>
-                         "which is now false."
+        assert correction,
+               "the restart failed outright and no correction reached the agent — " <>
+                 "it is still holding the earlier 'merged, QA can start' answer, " <>
+                 "which is now false."
 
         # A restart that genuinely fails logs at `:error` — this scenario
         # provokes that on purpose, not by surprise, so it has to inspect and
@@ -245,4 +245,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   defp disk(root), do: Environment.new(:local, root)
 
   defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
+
+  defp correction(agent_id) do
+    receive do
+      {:agent_dispatch, ^agent_id, _ref, message} ->
+        correction(message, message =~ "Correction", agent_id)
+    after
+      5_000 -> nil
+    end
+  end
+
+  defp correction(message, true, _agent_id), do: message
+  defp correction(_message, false, agent_id), do: correction(agent_id)
 end

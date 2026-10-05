@@ -81,7 +81,8 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
         main_id = context.main.id
         coder_id = context.coder.id
 
-        assert_receive {:agent_message, ^main_id, text}, 2_000
+        assert_receive {:agent_dispatch, ^main_id, ref, text}, 2_000
+        assert is_binary(ref)
 
         assert text =~ coder_id or text =~ String.slice(coder_id, 0, 8),
                "main was told something, but not which teammate died:\n#{text}"

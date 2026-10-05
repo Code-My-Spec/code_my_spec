@@ -1,8 +1,12 @@
-defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
+defmodule CodeMySpecSpex.Story1046.Criterion1959Spex do
   @moduledoc """
   Story 1046 — A story's code is on the running dev copy before QA tests it.
-  Criterion 1174 — Work on the running copy is QA'd there, then promoted to
-  record its version.
+  Criterion 1959 (replaces 1174) — Work on the running copy is QA'd there,
+  then promoted, and its version is the tag on the promoted commit.
+
+  Since promotion lands the certified commit exactly and tags it (v2.0.355),
+  the version a promotion records is that tag — read from git, not a bump
+  commit's `mix.exs`.
 
   Rule (story 1003, Three Amigos, phase 2 of story 1108): the two halves of
   this story joined into one causal chain. `code_on_running_copy` no longer
@@ -38,8 +42,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
     :ok
   end
 
-  spex "A story's own copy is QA'd, then promoted to record its version",
-    criterion: 1174 do
+  spex "A story's own copy is QA'd, then promoted, and its version is the tag on the promoted commit",
+    criterion: 1959 do
     scenario "a QA pass alone does not satisfy code_on_running_copy — promotion does" do
       given_ "a story ready for QA, with its work committed on the agent's own copy",
              context do
@@ -89,6 +93,20 @@ defmodule CodeMySpecSpex.Story1046.Criterion1174Spex do
                "once promoted, code_on_running_copy should read satisfied — the QA " <>
                  "pass and the promotion together are what this requirement means. " <>
                  "Got: #{text}"
+
+        {:ok, context}
+      end
+
+      then_ "its version is the tag on the commit that landed", context do
+        {tag, 0} =
+          git(context, context.running_root, ["describe", "--tags", "--exact-match", "HEAD"])
+
+        tag = String.trim(tag)
+        assert tag =~ ~r/^v\d+\.\d+\.\d+$/, "the promoted commit carries no version tag: #{tag}"
+
+        assert response_text(context.promote_response) =~ String.trim_leading(tag, "v"),
+               "the promotion did not report the version it tagged (#{tag}): " <>
+                 response_text(context.promote_response)
 
         {:ok, context}
       end

@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   end
 
   spex "A story that fails QA is retested on the same copy once fixed",
-       criterion: 1510 do
+    criterion: 1510 do
     scenario "the retry addresses the same copy the failure was recorded on" do
       given_ "a story ready for QA on its own copy", context do
         context = a_registered_copy(context)
@@ -85,8 +85,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
       end
 
       when_ "the issue is resolved", context do
-        {:ok,
-         Map.put(context, :resolve_response, resolve_issue(context, context.issue.id))}
+        {:ok, Map.put(context, :resolve_response, resolve_issue(context, context.issue.id))}
       end
 
       then_ "QA is offered again, on the same copy that recorded the failure", context do

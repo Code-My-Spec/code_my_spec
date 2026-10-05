@@ -22,11 +22,21 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  # Promotion is queued (2026-10-04): the queue's worker gates and lands it and
+  # tells the agent, so a scenario waits for that before reading the latch.
+  setup do
+    :ok = Fixtures.install_recording_agent_transport()
+    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
   spex "A rewrite unlatches only the criterion whose spex changed", criterion: 1897 do
     scenario "two latched criteria, one of them rewritten" do
       given_ "a story with two criteria, both latched by a certifying promotion",
              context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
+        context =
+          context |> a_promotable_project() |> an_agent_on_the_copy() |> analyzers_are_current()
+
         story = a_promotable_story(context)
 
         response = add_criterion(context, story, "It also works on Tuesdays")
@@ -46,6 +56,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1897Spex do
 
         response = promote(context, story.number)
         refute response.isError, inspect(response)
+        assert what_the_agent_was_told(context) =~ "landed on main"
 
         {:ok, Map.merge(context, %{story: story, first: first, second: second})}
       end

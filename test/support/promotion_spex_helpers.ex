@@ -28,11 +28,15 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   # `live/2` expands to `get/2`, which lives in ConnTest rather than LiveViewTest.
   import Phoenix.ConnTest, except: [delete: 2]
   import Phoenix.LiveViewTest
+  import Phoenix.ChannelTest, only: [push: 3, assert_reply: 4]
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
+  alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -52,6 +56,10 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   `red?: true` records a failing spex problem against the story's own
   first criterion's file instead, for a scenario proving the refusal
   rather than the happy path — same file `story_spex_pass/3` would name.
+
+  Promotable means QA has passed it: promotion comes after QA, and the queue
+  refuses a story without a passing attempt. `qa: :not_passed` leaves it
+  untested, for a scenario about that refusal.
   """
   @spec a_promotable_story(map(), keyword()) :: map()
   def a_promotable_story(context, opts \\ []) do
@@ -63,6 +71,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
       )
 
     :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
+    qa(context, story, Keyword.get(opts, :qa, :passed))
 
     if Keyword.get(opts, :red?, false) do
       [criterion | _] = story.criteria
@@ -79,6 +88,11 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     story
   end
 
+  defp qa(context, story, :passed),
+    do: {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
+
+  defp qa(_context, _story, :not_passed), do: :ok
+
   @doc """
   A running checkout on `main` and an agent's worktree on `story/war`.
 
@@ -87,6 +101,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   agent actually holds.
   """
   def a_promotable_project(context) do
+    stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1046-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
 
@@ -109,6 +124,8 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     {_, 0} = git(context, running_root, ["add", "-A"])
     {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
+    # Released once, as a real project has been: promotions count from its tag.
+    {_, 0} = git(context, running_root, ["tag", "-a", "v0.1.0", "-m", "v0.1.0"])
 
     # `worktree add` requires the path not to exist yet.
     agent_root = CodeMySpec.TempFile.dir("spex-1046-agent")
@@ -119,6 +136,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     running = join_working_copy(context, running_root, "the checkout the dev app runs in")
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    context = a_gate_copy(context, running_root)
 
     # The running checkout joined first and so holds the designation. Asserted,
     # because a promotion aimed at a copy that is not main is a promotion to
@@ -135,6 +153,218 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     |> Map.put(:running, running)
     |> Map.put(:agent, agent)
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
+  end
+
+  # The queue's worker outlives the scenario under the application's
+  # supervisor; stopped so a batch left gating does not reach for a sandbox
+  # that is gone.
+  defp stop_the_queue_on_exit(project_id) do
+    ExUnit.Callbacks.on_exit(fn ->
+      case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
+        [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)
+        [] -> :ok
+      end
+    end)
+  end
+
+  @doc """
+  The project's promotion gate: a detached worktree of main that the queue
+  builds and gates batches in. A real project's is minted on first need; here
+  it is joined beside the running checkout, because the suite's minting host is
+  a different repository.
+  """
+  def a_gate_copy(context, running_root) do
+    gate_root = CodeMySpec.TempFile.dir("spex-1046-gate")
+    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", gate_root])
+    {_, 0} = git(context, running_root, ["worktree", "add", "--detach", gate_root, "main"])
+
+    {gate, socket} =
+      join_working_copy_socket(context, gate_root, Worker.gate_label())
+
+    context
+    |> Map.put(:gate_root, gate_root)
+    |> Map.put(:gate, gate)
+    |> Map.put(:gate_socket, socket)
+  end
+
+  @doc """
+  The gate copy's harness, played by the scenario: each analyzer run the queue
+  dispatched to the gate is answered at the gate checkout's HEAD, the way a
+  harness reports one — clean, or with the diagnostics in `findings` for the
+  sources it names (`%{"compiler" => [%{"file" => ..., "line" => ...,
+  "severity" => "error", "message" => ...}]}`).
+
+  `sources:` is which runs to answer: every analyzer by default, one source for
+  a re-run. Runs for other sources stay pending, for a later call to answer.
+  """
+  def the_gate_answers(context, findings \\ %{}, opts \\ []) do
+    sources = Keyword.get(opts, :sources, Run.sources())
+    runs = gate_runs(context.gate_socket, sources)
+    # Read once the runs are here: the batch is built before they are sent.
+    head = head_of(context, context.gate_root)
+
+    for %{"run_id" => id, "source" => source} <- runs do
+      started = %{"run_id" => id, "start_commit" => head, "start_tree_dirty" => false}
+      push(context.gate_socket, "analysis_started", started)
+
+      ref =
+        push(context.gate_socket, "analysis_result", %{
+          "run_id" => id,
+          "source" => source,
+          "status" => "ok",
+          "completed_commit" => head,
+          "result" => raw_result(source, Map.get(findings, source, []))
+        })
+
+      assert_reply(ref, :ok, _, 10_000)
+    end
+
+    context
+  end
+
+  @doc """
+  The sources the gate has been asked to run and has not been answered on,
+  once it has been asked for `sources`. Leaves them pending.
+  """
+  def the_gate_is_running(context, sources \\ Run.sources()) do
+    runs = gate_runs(context.gate_socket, sources)
+    pending(context.gate_socket, runs)
+    runs |> Enum.map(& &1["source"]) |> Enum.sort()
+  end
+
+  # The runs pushed to the gate's own channel for `wanted`. Other copies'
+  # channels share the topic; the join ref tells them apart. Runs for other
+  # sources are put back for a later call.
+  defp gate_runs(socket, wanted), do: gate_runs(socket, wanted, [], [])
+
+  defp gate_runs(socket, [], runs, others) do
+    pending(socket, others)
+    runs
+  end
+
+  defp gate_runs(%Phoenix.Socket{join_ref: join_ref} = socket, wanted, runs, others) do
+    receive do
+      %Phoenix.Socket.Message{
+        event: "run_analysis",
+        join_ref: ^join_ref,
+        payload: %{"runs" => new}
+      } ->
+        {mine, theirs} = Enum.split_with(new, &(&1["source"] in wanted))
+
+        gate_runs(
+          socket,
+          wanted -- Enum.map(mine, & &1["source"]),
+          runs ++ mine,
+          others ++ theirs
+        )
+    after
+      30_000 -> flunk("the gate was never asked to run #{Enum.join(wanted, ", ")}")
+    end
+  end
+
+  defp pending(_socket, []), do: :ok
+
+  defp pending(%Phoenix.Socket{join_ref: join_ref, topic: topic}, runs) do
+    send(self(), %Phoenix.Socket.Message{
+      event: "run_analysis",
+      join_ref: join_ref,
+      topic: topic,
+      payload: %{"runs" => runs}
+    })
+
+    :ok
+  end
+
+  defp raw_result("exunit", diagnostics),
+    do: %{
+      "execution_status" => if(diagnostics == [], do: "success", else: "failure"),
+      "exit_status" => if(diagnostics == [], do: 0, else: 2),
+      "stats" => %{"tests" => 1 + length(diagnostics), "failures" => length(diagnostics)},
+      "diagnostics" => diagnostics
+    }
+
+  defp raw_result(_source, diagnostics),
+    do: %{"exit_status" => if(diagnostics == [], do: 0, else: 1), "diagnostics" => diagnostics}
+
+  @doc "An agent on the coding agent's copy, which `promote/2` then promotes as."
+  def an_agent_on_the_copy(context) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(context.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: context.agent_root,
+        working_copy_id: context.agent.working_copy_id
+      })
+
+    Map.put(context, :agent_id, agent.id)
+  end
+
+  @doc "What the queue told the promoting agent, once it had decided."
+  def what_the_agent_was_told(context, timeout \\ 30_000),
+    do: what_was_told(context.agent_id, timeout)
+
+  @doc "What the queue told `agent_id`, once it had decided."
+  def what_was_told(agent_id, timeout \\ 30_000) do
+    receive do
+      {:agent_dispatch, ^agent_id, _ref, message} -> message
+    after
+      timeout -> flunk("the promoting agent was never told what became of its promotion")
+    end
+  end
+
+  @doc """
+  Another agent's copy: a worktree of the running checkout on its own branch
+  from `from`, joined, with an agent on it. Put in `context` under `key` as
+  `%{root:, scope:, agent_id:, working_copy_id:}`.
+  """
+  def another_candidate(context, key, from \\ "main") do
+    root = CodeMySpec.TempFile.dir("spex-1046-#{key}")
+    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", root])
+
+    {_, 0} =
+      git(context, context.running_root, ["worktree", "add", "-b", "story/#{key}", root, from])
+
+    copy = join_working_copy(context, root, "#{key}'s copy")
+    scope = %{context.scope | active_working_copy_id: copy.working_copy_id}
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: root,
+        working_copy_id: copy.working_copy_id
+      })
+
+    Map.put(context, key, %{
+      root: root,
+      scope: scope,
+      agent_id: agent.id,
+      working_copy_id: copy.working_copy_id
+    })
+  end
+
+  @doc "Write `path` in the checkout at `root` and commit it."
+  def commit_work(context, root, path, content) do
+    write(root, path, content)
+    {_, 0} = git(context, root, ["add", "-A"])
+    {_, 0} = git(context, root, ["commit", "-q", "-m", "work on #{path}"])
+    context
+  end
+
+  @doc "A candidate's own analyzers current at its HEAD."
+  def its_analyzers_are_current(context, %{scope: scope}) do
+    CodeMySpecSpex.Fixtures.fresh_analysis_runs(scope, Run.sources(), at_head: true)
+
+    context
+  end
+
+  @doc "Promote from `candidate`'s copy, as its agent."
+  def promote_from(%{scope: scope, agent_id: agent_id}, story_number) do
+    frame = %Anubis.Server.Frame{assigns: %{current_scope: scope, agent_id: agent_id}}
+    {:reply, response, _frame} = Promote.execute(%{story_number: story_number}, frame)
+    response
   end
 
   @doc """
@@ -175,7 +405,10 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   detached — so it answers, and these criteria cover the door that is used.
   """
   def promote(context, story_number) do
-    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
+    frame = %Anubis.Server.Frame{
+      assigns: %{current_scope: context.scope, agent_id: Map.get(context, :agent_id)}
+    }
+
     {:reply, response, _frame} = Promote.execute(%{story_number: story_number}, frame)
     response
   end

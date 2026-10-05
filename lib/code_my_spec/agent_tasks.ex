@@ -6,6 +6,7 @@ defmodule CodeMySpec.AgentTasks do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.PromotionQueue,
       CodeMySpec.Stories,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,

@@ -94,10 +94,14 @@ defmodule CodeMySpec.Issues.Issue do
     # `working_copy_id`, which copy raised it). Set by `AssignIssueToWorkingCopy`.
     field :assigned_working_copy_id, :binary_id
     # Whose turn it is on an assigned issue (story 1091): the coder's until
-    # it submits a fix, QA's until it submits a non-passing attempt. Read by
+    # it submits a fix, QA's until it submits a non-passing attempt, and the
+    # coder's again to promote once QA passes it (`:promote`). Read by
     # `Agents.IssueWork` rather than `Agents` reaching into `Qa`'s attempts,
     # which would cycle back (`Qa` already depends on `Agents`).
-    field :awaiting_role, Ecto.Enum, values: [:coding, :qa]
+    field :awaiting_role, Ecto.Enum, values: [:coding, :qa, :promote]
+    # The commit the fix landed on main at, through the promotion queue. An
+    # issue resolves once this is set and its QA has passed.
+    field :landed_commit, :string
     field :synced_from_server, :boolean, default: false
     # A list of attachment maps, e.g. a widget-reported screenshot copied into
     # our S3 bucket: %{"type" => "screenshot", "s3_key" => ..., "content_type" => ...}.
@@ -132,6 +136,13 @@ defmodule CodeMySpec.Issues.Issue do
   @doc "Changeset for setting or clearing which copy's team this issue is assigned to."
   def assignment_changeset(issue, attrs) do
     cast(issue, attrs, [:assigned_working_copy_id, :awaiting_role])
+  end
+
+  @doc "Records the commit the issue's fix landed on main at."
+  def landed_changeset(issue, commit) do
+    issue
+    |> cast(%{landed_commit: commit}, [:landed_commit])
+    |> validate_required([:landed_commit])
   end
 
   @doc "Validates a status transition, requiring a resolution/story link where the new status needs one."

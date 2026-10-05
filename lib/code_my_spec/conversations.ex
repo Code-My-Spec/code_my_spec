@@ -442,6 +442,26 @@ defmodule CodeMySpec.Conversations do
 
   def record_sent_to_agent(_agent, _what), do: :ok
 
+  @doc "Record a completed restart independently of delivery of its notice."
+  @spec record_restart(Agent.t(), String.t()) ::
+          {:ok, Message.t()} | :ok | {:error, Ecto.Changeset.t()}
+  def record_restart(%{id: agent_id}, reason) do
+    case Repo.get_by(Conversation, agent_id: agent_id) do
+      nil ->
+        :ok
+
+      conversation ->
+        # An action record has no delivery state and is not an agent reply.
+        # It must survive a failed notice without making the agent look alive.
+        add_message(
+          conversation,
+          :operator,
+          "Restart performed. Reason: #{reason}",
+          "system:restart"
+        )
+    end
+  end
+
   @doc """
   The message a turn opened at `started_at` was answering: the last one sent to
   the agent — by a person or by the system — at or before that moment. Nil when
@@ -558,10 +578,10 @@ defmodule CodeMySpec.Conversations do
   back something the agent is already acting on is the failure the ref exists
   to prevent, and it cannot know without being told.
   """
-  @spec set_delivery(Message.t(), :delivered | :withdrawn) ::
+  @spec set_delivery(Message.t(), :delivered | :withdrawn | :failed) ::
           {:ok, Message.t()} | {:error, Ecto.Changeset.t()}
   def set_delivery(%Message{} = message, delivery)
-      when delivery in [:delivered, :withdrawn] do
+      when delivery in [:delivered, :withdrawn, :failed] do
     message
     |> Ecto.Changeset.change(delivery: delivery)
     |> Repo.update()

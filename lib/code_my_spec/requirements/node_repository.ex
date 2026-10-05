@@ -42,6 +42,24 @@ defmodule CodeMySpec.Requirements.NodeRepository do
             ]}
 
   @doc """
+  Satisfied and total requirement rows for one story, read at one working copy.
+
+  A placed story's rows exist only at the copy it is reserved for
+  (`Projection.placed/2`), so that copy is the one to name.
+  """
+  @spec story_progress(integer(), Ecto.UUID.t() | nil) :: {non_neg_integer(), non_neg_integer()}
+  def story_progress(story_id, working_copy_id) do
+    Node
+    |> where([n], n.story_id == ^story_id)
+    |> at_copy(working_copy_id)
+    |> select([n], {filter(count(n.id), n.satisfied), count(n.id)})
+    |> Repo.one()
+  end
+
+  defp at_copy(query, nil), do: where(query, [n], is_nil(n.working_copy_id))
+  defp at_copy(query, copy_id), do: where(query, [n], n.working_copy_id == ^copy_id)
+
+  @doc """
   One requirement's recorded `details`, read straight off the row.
 
   For the stop hook's nudge, which wants a single reason string and used to get

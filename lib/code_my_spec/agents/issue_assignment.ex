@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -126,6 +127,10 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   project-level work); one left with a story falls back to that normally.
   If anyone was, main is sent exactly one `:team_free` offer naming this
   copy and the issue that finished.
+
+  A task a member still holds on the issue — the coder's `promote_issue`,
+  open while its fix waited in the promotion queue — is completed: the issue
+  is done, and a held task would keep the member from waiting for main.
   """
   @spec free(Scope.t(), Issues.Issue.t()) :: :ok
   def free(%Scope{} = _scope, %{assigned_working_copy_id: nil}), do: :ok
@@ -143,11 +148,20 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     Enum.each(team, fn agent ->
       from(a in Agent, where: a.id == ^agent.id)
       |> Repo.update_all(set: [issue_id: nil, team_free_at: free_at(agent, now)])
+
+      complete_held_tasks(scope, agent, issue_id)
     end)
 
     if Enum.any?(team, &is_nil(&1.story_id)), do: notify_main(scope, copy_id, issue)
 
     :ok
+  end
+
+  defp complete_held_tasks(scope, agent, issue_id) do
+    for %{issue_id: ^issue_id, status: status, id: task_id} <- TaskOwner.tasks(agent),
+        status in [:active, :prepared, :blocked] do
+      {:ok, _} = TaskOwner.complete_task(scope, Repo.get!(Agent, agent.id), task_id, :completed)
+    end
   end
 
   defp free_at(%Agent{story_id: nil}, now), do: now
@@ -157,7 +171,11 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     case AgentsRepository.list_running_main(scope) do
       [main | _] ->
         text = team_free_message(copy_id, issue)
-        main |> Conversations.record_sent_to_agent(text) |> Offers.record(main, :team_free, {"copy", copy_id})
+
+        main
+        |> Conversations.record_sent_to_agent(text)
+        |> Offers.record(main, :team_free, {"copy", copy_id})
+
         :ok
 
       [] ->
