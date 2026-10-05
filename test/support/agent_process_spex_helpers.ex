@@ -52,20 +52,8 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
              "criterion asserts nothing about spending"
 
     ExUnit.Callbacks.on_exit(fn -> Machine.stop_agent(agent_id) end)
-    relay_presence(agent_id)
 
     agent_id
-  end
-
-  # An agent the server has a row for is running only while it is present, and
-  # presence is what its copy's channel tracks — which an agent started here has
-  # no channel to do. The relay does it, as for `InProcessAgentTransport`. An id
-  # with no row is a process-only criterion, and has nothing to be present as.
-  defp relay_presence(agent_id) do
-    case CodeMySpec.Repo.get(CodeMySpec.Agents.Agent, agent_id) do
-      nil -> :ok
-      agent -> CodeMySpecTest.PresenceRelay.relay(agent)
-    end
   end
 
   @doc """

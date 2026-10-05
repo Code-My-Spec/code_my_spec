@@ -34,7 +34,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
@@ -60,14 +59,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
              context do
         context = a_promotable_project(context)
 
-        {:ok, agent} =
-          AgentsRepository.create_agent(context.scope, %{
+        # Running, so present: the deployment outcome is told only to an agent
+        # whose process is up.
+        agent =
+          Fixtures.running_agent(
+            %{context.scope | active_working_copy_id: context.agent.working_copy_id},
             provider: "anthropic",
-            engine: :alloy,
-            role: "coding",
-            working_copy: context.agent_root,
-            working_copy_id: context.agent.working_copy_id
-          })
+            working_copy: context.agent_root
+          )
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
