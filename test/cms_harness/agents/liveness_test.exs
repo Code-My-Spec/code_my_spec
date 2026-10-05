@@ -117,4 +117,25 @@ defmodule CmsHarness.Agents.LivenessTest do
       assert Liveness.present(root) == ["a1"]
     end
   end
+
+  describe "an agent its Keeper gave up on" do
+    test "is remembered for the copy's join to report, until it comes up again", %{root: root} do
+      {pid, keeper} = {an_agent(), an_agent()}
+      :ok = Liveness.watch("a1", pid, root)
+      :ok = Liveness.watch_keeper("a1", keeper, root)
+      Liveness.present(root)
+
+      Process.exit(pid, :boom)
+      Process.exit(keeper, :kill)
+      assert_receive {:agent_liveness, :gave_up, "a1", ^root, :boom}
+
+      assert [%{"agent_id" => "a1", "reason" => ":boom", "at" => at}] = Liveness.gave_up(root)
+      assert {:ok, _at, 0} = DateTime.from_iso8601(at)
+      assert Liveness.gave_up(root <> "-another") == []
+
+      :ok = Liveness.watch("a1", an_agent(), root)
+      assert_receive {:agent_liveness, :up, "a1", ^root, nil}
+      assert Liveness.gave_up(root) == []
+    end
+  end
 end

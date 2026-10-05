@@ -371,20 +371,40 @@ defmodule CodeMySpec.Agents do
 
   @doc """
   An agent's lifecycle, derived rather than stored: retired, turned off,
-  running (its process is present), or starting — on duty and not present:
-  requested, being restored, or crashed and awaiting restore.
+  running (its process is present), gave up (its harness stopped restarting a
+  crash loop — `Presence.gave_up/2` — and it waits on main), or starting — on
+  duty and not present: requested, being restored, or restarting.
   """
-  @spec lifecycle(Agent.t(), MapSet.t(Ecto.UUID.t())) :: :retired | :off | :running | :starting
+  @spec lifecycle(Agent.t(), MapSet.t(Ecto.UUID.t())) ::
+          :retired | :off | :running | :gave_up | :starting
   def lifecycle(%Agent{retired_at: %DateTime{}}, _present), do: :retired
   def lifecycle(%Agent{off_at: %DateTime{}}, _present), do: :off
 
-  def lifecycle(%Agent{id: id}, present),
-    do: if(MapSet.member?(present, id), do: :running, else: :starting)
+  def lifecycle(%Agent{id: id} = agent, present) do
+    cond do
+      MapSet.member?(present, id) -> :running
+      Presence.gave_up(agent.project_id, id) -> :gave_up
+      true -> :starting
+    end
+  end
 
-  @doc "`agents`, each with its derived `lifecycle` set, for display."
+  @doc """
+  `agents`, each with its derived `lifecycle` set, for display — and, for one
+  its harness gave up on, what it said and when (`gave_up`).
+  """
   @spec with_lifecycle([Agent.t()], MapSet.t(Ecto.UUID.t())) :: [Agent.t()]
   def with_lifecycle(agents, present),
-    do: Enum.map(agents, &%{&1 | lifecycle: lifecycle(&1, present)})
+    do: Enum.map(agents, &with_lifecycle_of(&1, present))
+
+  defp with_lifecycle_of(agent, present) do
+    case lifecycle(agent, present) do
+      :gave_up ->
+        %{agent | lifecycle: :gave_up, gave_up: Presence.gave_up(agent.project_id, agent.id)}
+
+      lifecycle ->
+        %{agent | lifecycle: lifecycle}
+    end
+  end
 
   @doc "Whether `agent` is on duty: neither turned off nor retired."
   @spec on_duty?(Agent.t()) :: boolean()
