@@ -81,51 +81,22 @@ defmodule CmsHarness.Agents.Engine.Keeper do
   """
   @spec remember(String.t(), transcript()) :: :ok
   def remember(agent_id, transcript, consumed_ref \\ nil) do
+    if is_binary(consumed_ref), do: take_queued(agent_id, consumed_ref)
+
     case Registry.lookup(CmsHarness.Registry, {:transcript, agent_id}) do
       [{pid, _}] ->
-        Agent.update(pid, fn previous ->
-          updated = Map.merge(previous || %{}, transcript)
-
-          if is_binary(consumed_ref),
-            do: Map.update(updated, :queued_refs, MapSet.new(), &MapSet.delete(&1, consumed_ref)),
-            else: updated
-        end)
+        Agent.update(pid, fn _previous -> transcript end)
 
       [] ->
         :ok
     end
   end
 
-  @doc "Remember an accepted queue ref across engine crashes."
-  def queued(agent_id, ref) do
-    case Registry.lookup(CmsHarness.Registry, {:transcript, agent_id}) do
-      [{pid, _}] ->
-        Agent.update(pid, fn state ->
-          Map.update(state, :queued_refs, MapSet.new([ref]), &MapSet.put(&1, ref))
-        end)
+  @doc "Remember an accepted queue ref across harness restarts."
+  defdelegate queued(agent_id, ref), to: CmsHarness.Agents.Engine.QueueReceipts
 
-      [] ->
-        :ok
-    end
-  end
-
-  @doc "Remove a queued receipt when consumed or withdrawn; true means it was queued."
-  def take_queued(agent_id, ref) do
-    case Registry.lookup(CmsHarness.Registry, {:transcript, agent_id}) do
-      [{pid, _}] ->
-        Agent.get_and_update(pid, fn
-          nil ->
-            {false, nil}
-
-          state ->
-            refs = Map.get(state, :queued_refs, MapSet.new())
-            {MapSet.member?(refs, ref), Map.put(state, :queued_refs, MapSet.delete(refs, ref))}
-        end)
-
-      [] ->
-        false
-    end
-  end
+  @doc "Remove an unconsumed receipt when consumed or withdrawn."
+  defdelegate take_queued(agent_id, ref), to: CmsHarness.Agents.Engine.QueueReceipts, as: :take
 
   @doc "What the agent knew when it last wrote it down; `nil` on a first start."
   @spec recall(String.t()) :: transcript() | nil
