@@ -24,6 +24,14 @@ defmodule CodeMySpec.AgentPerformance.OfferHealth do
 
   @large_limit 100_000
 
+  # Never claimed/ignored/declined, by design -- `Offers.outcome/3` settles
+  # every one of these to `:n_a` regardless of what the agent does
+  # ("informational" and "compliance is not inferred", per that module's own
+  # moduledoc). Excluded by kind, not only by settled status, because an open
+  # one -- freshly queued, not yet judged -- would otherwise read as a claim
+  # rate's denominator before it ever could be one.
+  @uncounted_kinds [:resume, :check_in, :instruction]
+
   @doc "Every role's offer health over a period. `since` omitted for all time."
   @spec by_role(Scope.t(), DateTime.t() | nil) :: [role_health()]
   def by_role(%Scope{} = scope, since \\ nil) do
@@ -41,7 +49,9 @@ defmodule CodeMySpec.AgentPerformance.OfferHealth do
   defp role_of(_offer), do: nil
 
   defp role_health(role, offers) do
-    counted = Enum.reject(offers, &(&1.status == :superseded))
+    counted =
+      Enum.reject(offers, &(&1.status == :superseded or &1.kind in @uncounted_kinds))
+
     claimed = Enum.filter(counted, &(&1.status == :claimed))
 
     %{

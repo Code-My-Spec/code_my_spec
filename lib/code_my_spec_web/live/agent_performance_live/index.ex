@@ -81,7 +81,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Offer health</h2>
       <div :for={h <- @summary.offer_health} data-test="offer-health-role" data-role={h.role}>
         <span>{h.role}</span> -- claim rate {percent(h.claim_rate)}
-        <span :if={h.ignored > 0 or h.declined > 0}>, ignored {h.ignored}, declined {h.declined}</span>
+        <span :if={h.claim_rate != nil}>, ignored {h.ignored}, declined {h.declined}</span>
         <span :if={h.superseded > 0}>, superseded {h.superseded}</span>
       </div>
     </section>
