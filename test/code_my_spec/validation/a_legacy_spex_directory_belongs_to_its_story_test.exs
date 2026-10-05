@@ -49,15 +49,15 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
     CodeMySpec.Problems.list_project_problems(scope, severity: :error)
   end
 
-  test "an unrecorded file in a not-ready story's directory does not block" do
+  # Every red spex blocks (John, 2026-10-05), unbuilt story or not.
+  test "an unrecorded file in a not-ready story's directory blocks too" do
     scope = full_scope_fixture()
     story = story_fixture(scope)
     recorded(scope, story, "#{@dir}/criterion_3901_owned_spex.exs")
 
     problems = red(scope, "#{@dir}/criterion_4152_renumbered_spex.exs")
 
-    assert Validation.enforceable(scope, problems) == [],
-           "the directory is this unbuilt story's, and its latch says its spex may be red"
+    assert length(Validation.enforceable(scope, problems)) == 1
   end
 
   test "a directory two stories record into answers nothing, so it still blocks" do
