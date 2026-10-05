@@ -17,9 +17,12 @@ defmodule CmsHarness.Web.RejoinControllerTest do
 
   use CmsHarnessTest.ConnCase, async: false
 
+  alias CmsHarness.Agents.Liveness
+  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
+  alias CmsHarnessTest.Machine
 
   setup do
     project = project_dir()
@@ -58,6 +61,28 @@ defmodule CmsHarness.Web.RejoinControllerTest do
       The channel went down and did not come back, so this route is a way to
       stop serving a copy rather than a way to reconnect one.
       """
+    end
+
+    # Phase 2b: the copy's agents are siblings of its channel chain under
+    # `Copy.Supervisor`, not inside it — a channel blip restarts the chain and
+    # must not touch them. Tonight's restarts (2026-10-05) are what a tree
+    # that got this wrong costs: every agent's turn, on every blip.
+    test "the copy's agents keep running through its rejoin", %{conn: conn, project: project} do
+      root = Path.expand(project.root)
+      id = Ecto.UUID.generate()
+      :ok = Liveness.subscribe()
+      on_exit(fn -> Copy.stop(root) end)
+
+      {:ok, _} = Projects.ensure_started(project.root)
+      assert await_connected(project.root)
+      {:ok, %{pid: agent}} = Machine.start_agent(id, root)
+      assert_receive {:agent_liveness, :up, ^id, ^root, nil}
+
+      conn |> post_rejoin(project.root) |> response(200)
+      assert await_connected(project.root)
+
+      refute_received {:agent_liveness, :down, ^id, _, _}
+      assert Process.alive?(agent), "the rejoin took the copy's agent with it"
     end
 
     test "and the copy nobody named is untouched", %{conn: conn, project: project} do

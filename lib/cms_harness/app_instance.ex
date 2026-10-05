@@ -27,7 +27,7 @@ defmodule CmsHarness.AppInstance do
   analyzer queue and its watcher all restart together because they answer to
   one join. This app has nothing to do with any one join — it must survive a
   reconnect, a channel blip, a `mix test` run in the same copy — so it is a
-  sibling of `ProjectSupervisor`/`AgentSupervisor` in `CmsHarness.Supervisor`,
+  sibling of its copy's channel chain and agents under `CmsHarness.Copy.Supervisor`,
   found by `root` in the same `CmsHarness.Registry` everything else here uses.
 
   ## Idle timeout
@@ -51,6 +51,7 @@ defmodule CmsHarness.AppInstance do
   require Logger
 
   alias CmsHarness.AppInstance.Runner
+  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Project.ChannelClient
 
   # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
@@ -267,10 +268,14 @@ defmodule CmsHarness.AppInstance do
         {:ok, pid}
 
       [] ->
-        case DynamicSupervisor.start_child(CmsHarness.AppInstanceSupervisor, {__MODULE__, root}) do
-          {:ok, pid} -> {:ok, pid}
-          {:error, {:already_started, pid}} -> {:ok, pid}
-          {:error, reason} -> {:error, reason}
+        # Under its copy (`Copy.Supervisor`), beside the channel chain rather
+        # than in it: an app must survive a reconnect.
+        with {:ok, _copy} <- Copy.ensure(root) do
+          case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
+            {:ok, pid} -> {:ok, pid}
+            {:error, {:already_started, pid}} -> {:ok, pid}
+            {:error, reason} -> {:error, reason}
+          end
         end
     end
   end

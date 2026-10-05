@@ -874,7 +874,12 @@ defmodule CmsHarness.Project.ChannelClient do
       socket,
       socket.assigns.topic,
       "agents_present",
-      %{"agent_ids" => Liveness.present(socket.assigns.project.root)},
+      %{
+        "agent_ids" => Liveness.present(socket.assigns.project.root),
+        # The ones its Keepers gave up on, so they stay stuck across the
+        # reconnect rather than reading as starting again.
+        "gave_up" => Liveness.gave_up(socket.assigns.project.root)
+      },
       5_000
     )
 

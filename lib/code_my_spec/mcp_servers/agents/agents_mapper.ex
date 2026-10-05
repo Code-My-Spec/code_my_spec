@@ -82,6 +82,13 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     what says why.
     """
 
+  defp headline(%Agent{}, :gave_up),
+    do: """
+    Its harness gave up on it: the process crashed three times in ten minutes and
+    is no longer restarted. Nothing will start it on its own — find the cause,
+    then `restart_agent` it.
+    """
+
   defp headline(%Agent{}, _lifecycle), do: "Agent started."
 
   # Derived, not stored: running while its process is present

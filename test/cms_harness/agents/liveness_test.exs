@@ -13,7 +13,10 @@ defmodule CmsHarness.Agents.LivenessTest do
   setup do
     assert GenServer.whereis(Liveness), "the harness tree runs Liveness in the test env"
     :ok = Liveness.subscribe()
-    %{root: "/tmp/liveness-copy-#{System.unique_integer([:positive])}"}
+    # Its own id per test: Liveness remembers a giving-up by agent id, and
+    # tests sharing one hear each other's.
+    n = System.unique_integer([:positive])
+    %{root: "/tmp/liveness-copy-#{n}", id: "a#{n}"}
   end
 
   defp an_agent do
@@ -22,39 +25,39 @@ defmodule CmsHarness.Agents.LivenessTest do
     pid
   end
 
-  test "a watched agent is up in its copy", %{root: root} do
-    :ok = Liveness.watch("a1", an_agent(), root)
+  test "a watched agent is up in its copy", %{root: root, id: id} do
+    :ok = Liveness.watch(id, an_agent(), root)
 
-    assert_receive {:agent_liveness, :up, "a1", ^root, nil}
-    assert Liveness.present(root) == ["a1"]
+    assert_receive {:agent_liveness, :up, ^id, ^root, nil}
+    assert Liveness.present(root) == [id]
     assert Liveness.present(root <> "-another") == []
   end
 
-  test "its death is reported at once, with the reason", %{root: root} do
+  test "its death is reported at once, with the reason", %{root: root, id: id} do
     pid = an_agent()
-    :ok = Liveness.watch("a1", pid, root)
-    assert_receive {:agent_liveness, :up, "a1", ^root, _}
+    :ok = Liveness.watch(id, pid, root)
+    assert_receive {:agent_liveness, :up, ^id, ^root, _}
 
     Process.exit(pid, :kill)
 
-    assert_receive {:agent_liveness, :down, "a1", ^root, :killed}
+    assert_receive {:agent_liveness, :down, ^id, ^root, :killed}
     assert Liveness.present(root) == []
   end
 
-  test "watching the same process twice reports it up once", %{root: root} do
+  test "watching the same process twice reports it up once", %{root: root, id: id} do
     pid = an_agent()
-    :ok = Liveness.watch("a1", pid, root)
-    :ok = Liveness.watch("a1", pid, root)
+    :ok = Liveness.watch(id, pid, root)
+    :ok = Liveness.watch(id, pid, root)
 
-    assert_receive {:agent_liveness, :up, "a1", ^root, _}
-    refute_receive {:agent_liveness, :up, "a1", ^root, _}, 100
-    assert Liveness.present(root) == ["a1"]
+    assert_receive {:agent_liveness, :up, ^id, ^root, _}
+    refute_receive {:agent_liveness, :up, ^id, ^root, _}, 100
+    assert Liveness.present(root) == [id]
   end
 
-  test "a root is compared expanded", %{root: root} do
-    :ok = Liveness.watch("a1", an_agent(), root <> "/./")
-    assert_receive {:agent_liveness, :up, "a1", ^root, _}
-    assert Liveness.present(root) == ["a1"]
+  test "a root is compared expanded", %{root: root, id: id} do
+    :ok = Liveness.watch(id, an_agent(), root <> "/./")
+    assert_receive {:agent_liveness, :up, ^id, ^root, _}
+    assert Liveness.present(root) == [id]
   end
 
   describe "an agent's Keeper" do
@@ -62,59 +65,80 @@ defmodule CmsHarness.Agents.LivenessTest do
     # once both are handled, so a kill after this is one Liveness was watching.
     defp watched(root), do: Liveness.present(root)
 
-    test "gone after a crash is a giving-up, said once", %{root: root} do
+    test "gone after a crash is a giving-up, said once", %{root: root, id: id} do
       {pid, keeper} = {an_agent(), an_agent()}
-      :ok = Liveness.watch("a1", pid, root)
-      :ok = Liveness.watch_keeper("a1", keeper, root)
+      :ok = Liveness.watch(id, pid, root)
+      :ok = Liveness.watch_keeper(id, keeper, root)
       watched(root)
 
       Process.exit(pid, :boom)
-      assert_receive {:agent_liveness, :down, "a1", ^root, :boom}
+      assert_receive {:agent_liveness, :down, ^id, ^root, :boom}
       Process.exit(keeper, :kill)
 
-      assert_receive {:agent_liveness, :gave_up, "a1", ^root, :boom}
-      refute_receive {:agent_liveness, :gave_up, "a1", _, _}, 100
+      assert_receive {:agent_liveness, :gave_up, ^id, ^root, :boom}
+      refute_receive {:agent_liveness, :gave_up, ^id, _, _}, 100
     end
 
-    test "is a giving-up whichever of the two downs arrives first", %{root: root} do
+    test "is a giving-up whichever of the two downs arrives first", %{root: root, id: id} do
       {pid, keeper} = {an_agent(), an_agent()}
-      :ok = Liveness.watch("a1", pid, root)
-      :ok = Liveness.watch_keeper("a1", keeper, root)
+      :ok = Liveness.watch(id, pid, root)
+      :ok = Liveness.watch_keeper(id, keeper, root)
       watched(root)
 
       Process.exit(keeper, :kill)
-      refute_receive {:agent_liveness, :gave_up, "a1", _, _}, 100
+      refute_receive {:agent_liveness, :gave_up, ^id, _, _}, 100
       Process.exit(pid, :boom)
 
-      assert_receive {:agent_liveness, :gave_up, "a1", ^root, :boom}
+      assert_receive {:agent_liveness, :gave_up, ^id, ^root, :boom}
     end
 
-    test "gone after a stop says nothing more than the stop's down", %{root: root} do
+    test "gone after a stop says nothing more than the stop's down", %{root: root, id: id} do
       {pid, keeper} = {an_agent(), an_agent()}
-      :ok = Liveness.watch("a1", pid, root)
-      :ok = Liveness.watch_keeper("a1", keeper, root)
+      :ok = Liveness.watch(id, pid, root)
+      :ok = Liveness.watch_keeper(id, keeper, root)
       watched(root)
 
       Process.exit(pid, :shutdown)
-      assert_receive {:agent_liveness, :down, "a1", ^root, :shutdown}
+      assert_receive {:agent_liveness, :down, ^id, ^root, :shutdown}
       Process.exit(keeper, :kill)
 
-      refute_receive {:agent_liveness, :gave_up, "a1", _, _}, 100
+      refute_receive {:agent_liveness, :gave_up, ^id, _, _}, 100
     end
 
-    test "a restart is a down and an up, and no giving-up", %{root: root} do
+    test "a restart is a down and an up, and no giving-up", %{root: root, id: id} do
       {pid, keeper} = {an_agent(), an_agent()}
-      :ok = Liveness.watch("a1", pid, root)
-      :ok = Liveness.watch_keeper("a1", keeper, root)
+      :ok = Liveness.watch(id, pid, root)
+      :ok = Liveness.watch_keeper(id, keeper, root)
       watched(root)
 
       Process.exit(pid, :boom)
-      :ok = Liveness.watch("a1", an_agent(), root)
+      :ok = Liveness.watch(id, an_agent(), root)
 
-      assert_receive {:agent_liveness, :down, "a1", ^root, :boom}
-      assert_receive {:agent_liveness, :up, "a1", ^root, nil}
-      refute_receive {:agent_liveness, :gave_up, "a1", _, _}, 100
-      assert Liveness.present(root) == ["a1"]
+      assert_receive {:agent_liveness, :down, ^id, ^root, :boom}
+      assert_receive {:agent_liveness, :up, ^id, ^root, nil}
+      refute_receive {:agent_liveness, :gave_up, ^id, _, _}, 100
+      assert Liveness.present(root) == [id]
+    end
+  end
+
+  describe "an agent its Keeper gave up on" do
+    test "is remembered for the copy's join to report, until it comes up again", %{root: root, id: id} do
+      {pid, keeper} = {an_agent(), an_agent()}
+      :ok = Liveness.watch(id, pid, root)
+      :ok = Liveness.watch_keeper(id, keeper, root)
+      Liveness.present(root)
+
+      Process.exit(pid, :boom)
+      Process.exit(keeper, :kill)
+      assert_receive {:agent_liveness, :gave_up, ^id, ^root, :boom}
+
+      assert [%{"agent_id" => ^id, "reason" => ":boom", "at" => at}] = Liveness.gave_up(root)
+      assert {:ok, _at, 0} = DateTime.from_iso8601(at)
+      assert Liveness.gave_up(root <> "-another") == []
+
+      :ok = Liveness.watch(id, an_agent(), root)
+      assert_receive {:agent_liveness, :up, ^id, ^root, nil}
+      assert Liveness.gave_up(root) == []
     end
   end
 end

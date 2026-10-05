@@ -26,6 +26,7 @@ defmodule CmsHarness.Mcp.Transport.ALeakedClientTakesItsSupervisorWithItTest do
   use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Engine
+  alias CmsHarness.Mcp.Session
   alias CmsHarness.Mcp.Transport.Anubis
 
   defmodule Holder do
@@ -146,12 +147,13 @@ defmodule CmsHarness.Mcp.Transport.ALeakedClientTakesItsSupervisorWithItTest do
   end
 
   # The wiring, not the function. `disconnect/1` being correct and
-  # `Engine.terminate/2` calling it are two claims, and blinding the call site
-  # left every test above green — so without this the thing that actually has to
-  # happen is unasserted.
+  # `Mcp.Session.terminate/2` calling it are two claims, and blinding the call
+  # site left every test above green — so without this the thing that actually
+  # has to happen is unasserted.
   #
-  # `terminate/2` is a GenServer callback taking a plain map, so it can be driven
-  # with the three keys it reads rather than by standing up an agent.
+  # The session is the agent's Keeper's child (phase 2b), so an agent stopping
+  # stops it. `terminate/2` takes a plain map, so it is driven with the key it
+  # reads rather than by standing up an agent.
   describe "when the agent that opened it stops" do
     setup do
       previous = Application.get_env(:code_my_spec, :harness_mcp_transport)
@@ -163,7 +165,7 @@ defmodule CmsHarness.Mcp.Transport.ALeakedClientTakesItsSupervisorWithItTest do
     test "the session goes with it", %{name: name, client: client} do
       assert is_pid(client), "the premise failed: nothing holds the name"
 
-      :ok = Engine.terminate(:shutdown, %{mcp_client: name, on_stop: nil, agent_id: "a"})
+      :ok = Session.terminate(:shutdown, %{client: name, ref: nil})
 
       assert await_released(name) == nil, """
       Stopping the agent left its MCP session registered. The next launch under
@@ -172,11 +174,11 @@ defmodule CmsHarness.Mcp.Transport.ALeakedClientTakesItsSupervisorWithItTest do
       """
     end
 
-    test "and an agent that never opened one still stops", %{name: name} do
-      assert :ok = Engine.terminate(:shutdown, %{mcp_client: nil, on_stop: nil, agent_id: "a"})
+    test "an agent stopping takes down no other agent's session", %{name: name} do
+      assert :ok = Engine.terminate(:shutdown, %{mcp_client: name, on_stop: nil, agent_id: "a"})
 
       assert GenServer.whereis(name) != nil,
-             "a stop with no session of its own took down somebody else's"
+             "the engine closed a session; the session is its Keeper's to close"
     end
   end
 

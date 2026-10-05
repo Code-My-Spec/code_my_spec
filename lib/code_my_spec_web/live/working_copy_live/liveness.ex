@@ -58,6 +58,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   def agent(%{lifecycle: :off} = agent, now),
     do: %{label: "Off", basis: "turned off; not running", since: since(agent.off_at, now)}
 
+  # Not "Starting": nothing is going to start it. Its harness stopped
+  # restarting a crash loop and it waits on main — the stuck state an operator
+  # has to see, and the one "Starting" hid (8a873265).
+  def agent(%{lifecycle: :gave_up} = agent, now) do
+    gave_up = agent.gave_up || %{}
+
+    %{
+      label: "Gave up — needs main",
+      basis: "crashed repeatedly; its harness stopped restarting it" <> reason(gave_up[:reason]),
+      since: since(gave_up[:at], now)
+    }
+  end
+
   # Presence is a fact about now, not evidence with an age: no "since".
   def agent(%{engine: :alloy, lifecycle: :running}, _now),
     do: %{label: "Running", basis: "its process is alive on the harness", since: nil}
@@ -91,11 +104,30 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
   def working_copy(agents, now) do
     {stopped, on_duty} = Enum.split_with(agents, &(&1.lifecycle in [:off, :retired]))
+    {gave_up, on_duty} = Enum.split_with(on_duty, &(&1.lifecycle == :gave_up))
     {alloy, hooks} = Enum.split_with(on_duty, &(&1.engine == :alloy))
     {present, starting} = Enum.split_with(alloy, &(&1.lifecycle == :running))
 
-    summarize(present, present ++ hooks, starting, stopped, now)
+    case {present, gave_up} do
+      {[], [_ | _]} -> stuck(gave_up, now)
+      _ -> summarize(present, present ++ hooks, starting, stopped, now)
+    end
   end
+
+  # Nothing running and an agent stuck: the copy says so, whatever else is on
+  # it, because that is the thing someone has to act on.
+  defp stuck(gave_up, now) do
+    latest = Enum.max_by(gave_up, &((&1.gave_up || %{})[:at] || &1.updated_at), DateTime)
+
+    %{
+      label: "Gave up — needs main",
+      basis: label_for_count(length(gave_up)) <> " its harness stopped restarting",
+      since: since((latest.gave_up || %{})[:at] || latest.updated_at, now)
+    }
+  end
+
+  defp reason(nil), do: ""
+  defp reason(text), do: " (" <> text <> ")"
 
   # A copy whose only agents are ones we asked for says so. Rolling them up as
   # "Running" is the same lie one row at a time, and this is the summary most

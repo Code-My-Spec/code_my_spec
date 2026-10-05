@@ -210,8 +210,10 @@ defmodule CodeMySpec.Agents.Agent do
     # is not, and a flag cannot tell them apart.
     field :turn_started_at, :utc_datetime_usec
     # Derived for display, never stored: `Agents.with_lifecycle/2` sets it from
-    # `Agents.Presence` (`:running | :starting | :off | :retired`).
+    # `Agents.Presence` (`:running | :gave_up | :starting | :off | :retired`),
+    # and `gave_up` to what the harness said when it gave up on the agent.
     field :lifecycle, :any, virtual: true
+    field :gave_up, :map, virtual: true
     field :work_request_id, :string
     field :work_requested_at, :utc_datetime_usec
 
