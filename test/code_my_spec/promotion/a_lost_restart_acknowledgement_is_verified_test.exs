@@ -151,13 +151,21 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
     assert {:ok, %{merged: "story/x"}} =
              Promotion.promote(scope, story.number,
                notify: agent.id,
-               verify_within: 1_000,
+               verify_within: verify_within(serving_after),
                verify_every: 20
              )
 
     assert_receive {:DOWN, ^ref, :process, _, :shutdown}, 5_000
     told_after(running.id, agent.id, serving_after)
   end
+
+  # Long enough that an app brought up after the dropped one's exit is still
+  # asked on a loaded machine (a 1s window lost that race in the full run,
+  # 2026-10-05). Merged ends polling at the first answer; an old commit is
+  # reported failed when the window closes, so it stays well inside the wait.
+  defp verify_within(nil), do: 1_000
+  defp verify_within(@base), do: 5_000
+  defp verify_within(_merged), do: 30_000
 
   # Nothing answering at all: nothing was learned, so nothing is told.
   defp told_after(_working_copy_id, _agent_id, nil) do
@@ -167,7 +175,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
 
   defp told_after(working_copy_id, agent_id, serving_after) do
     an_app_serving(working_copy_id, serving_after)
-    assert_receive {:agent_dispatch, ^agent_id, _ref, message}, 10_000
+    assert_receive {:agent_dispatch, ^agent_id, _ref, message}, 20_000
     await_restart_tasks()
     message
   end
