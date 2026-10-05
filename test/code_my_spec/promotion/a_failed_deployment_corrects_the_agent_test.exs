@@ -34,6 +34,7 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -124,6 +125,8 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
         working_copy: agent_root,
         working_copy_id: agent_copy.id
       })
+
+    AgentPresence.present(agent)
 
     File.write!(
       Path.join(agent_root, "app.ex"),

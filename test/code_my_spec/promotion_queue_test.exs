@@ -25,6 +25,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @reloaded {:ok,
@@ -319,6 +320,8 @@ defmodule CodeMySpec.PromotionQueueTest do
         working_copy: copy.root,
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

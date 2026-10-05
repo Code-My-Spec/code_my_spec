@@ -21,6 +21,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -49,6 +50,8 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
         working_copy: "/tmp/restart-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -89,6 +92,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
       # check got wrong, not a disconnected machine.
       :ok = HarnessRegistry.register_executor(agent.working_copy_id)
       {:ok, stopped} = AgentsRepository.update_agent(scope, agent, %{status: :stopped})
+      :ok = AgentPresence.absent(agent)
       %{agent: stopped}
     end
 

@@ -101,7 +101,7 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
              "working copy just joined under the correct root"
   end
 
-  test "a stopped agent's recorded root is left alone", %{
+  test "a turned-off agent's recorded root is left alone", %{
     scope: scope,
     device: device,
     topic: topic
@@ -111,7 +111,8 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
     agent =
       create_agent(scope, scope.active_working_copy_id, %{
         working_copy: @stale_root,
-        status: :stopped
+        off_at: DateTime.utc_now(),
+        off_by: "a test"
       })
 
     Process.unlink(first.channel_pid)
@@ -120,7 +121,7 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
     assert {:ok, _reply, _socket} = join_as(scope, topic, payload(scope, device, @real_root))
 
     assert reloaded(agent.id).working_copy == @stale_root,
-           "a stopped agent is not restored, so correcting its path records an intent " <>
+           "a turned-off agent is not restored, so correcting its path records an intent " <>
              "nothing will ever act on"
   end
 

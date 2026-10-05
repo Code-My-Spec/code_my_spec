@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.AGoneWorkingCopyCanBeStoppedTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.UnreachableMachine
 
   setup do
@@ -40,6 +41,8 @@ defmodule CodeMySpec.Agents.AGoneWorkingCopyCanBeStoppedTest do
         working_copy: "/tmp/cms-qa-agents/agent-1",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     # What the working copy's own deletion leaves behind: `on_delete:
     # :nilify_all` on `agents_working_copy_id_fkey` sets this column directly
@@ -71,6 +74,8 @@ defmodule CodeMySpec.Agents.AGoneWorkingCopyCanBeStoppedTest do
         working_copy: "/tmp/still-a-real-copy",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     assert {:error, :harness_not_connected} = Agents.turn_off_agent(scope, agent.id), """
     A working copy that still exists may still be running the process this

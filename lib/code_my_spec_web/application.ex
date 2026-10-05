@@ -206,6 +206,8 @@ defmodule CodeMySpecWeb.Application do
         # endpoint, which is where the drafts arrive from.
         CodeMySpec.Conversations.Drafts,
         CodeMySpecWeb.Presence,
+        # Which agents' processes are alive, tracked by their copies' channels.
+        CodeMySpec.Agents.Presence,
         # The harness tools. Same server module the local process runs — the
         # only difference is where scope comes from, and the tools never had to
         # know. `session_idle_timeout` matches the local mount for the same

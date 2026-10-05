@@ -23,6 +23,7 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -201,6 +202,8 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
         working_copy: "/tmp/rp4d-#{role}-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

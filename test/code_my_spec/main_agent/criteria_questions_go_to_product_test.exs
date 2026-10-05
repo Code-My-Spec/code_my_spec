@@ -23,6 +23,7 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.Notifications
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -59,6 +60,8 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
         working_copy: "/tmp/criteria-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

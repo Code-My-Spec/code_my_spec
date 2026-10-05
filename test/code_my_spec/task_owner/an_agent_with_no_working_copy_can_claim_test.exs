@@ -23,6 +23,7 @@ defmodule CodeMySpec.TaskOwner.AnAgentWithNoWorkingCopyCanClaimTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
 
   # A row with no working copy, which is what the QA fixture project's
   # product agents actually are.
@@ -60,6 +61,8 @@ defmodule CodeMySpec.TaskOwner.AnAgentWithNoWorkingCopyCanClaimTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     agent
   end

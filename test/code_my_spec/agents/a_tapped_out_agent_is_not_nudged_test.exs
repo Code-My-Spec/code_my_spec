@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup :register_log_in_setup_account
@@ -46,6 +47,8 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
         working_copy: "/tmp/tapped-out-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     on_exit(fn -> :persistent_term.erase({StopDecision, :decision, agent.id}) end)
 

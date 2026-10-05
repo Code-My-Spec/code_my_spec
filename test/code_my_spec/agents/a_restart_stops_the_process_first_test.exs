@@ -27,6 +27,7 @@ defmodule CodeMySpec.Agents.ARestartStopsTheProcessFirstTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RestartWatchingTransport
 
   setup do
@@ -62,6 +63,8 @@ defmodule CodeMySpec.Agents.ARestartStopsTheProcessFirstTest do
         working_copy: "/tmp/restart-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

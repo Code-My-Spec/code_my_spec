@@ -30,6 +30,7 @@ defmodule CodeMySpec.Agents.AStuckLoopGoesQuietTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.StopDecision
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -56,6 +57,8 @@ defmodule CodeMySpec.Agents.AStuckLoopGoesQuietTest do
         working_copy: "/tmp/stuck-loop-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _conversation} =
       CodeMySpec.Conversations.find_or_create_agent_conversation(

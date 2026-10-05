@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
   alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Conversations
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -43,6 +44,8 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
         working_copy: "/tmp/settle-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(

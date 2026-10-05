@@ -227,8 +227,10 @@ defmodule CodeMySpec.Notifications do
     )
   end
 
+  # Off or retired: nobody means it to run. An agent on duty whose process is
+  # down — restoring, or crashed — is still meant to answer.
   defp stopped_agent_ids do
-    from(a in Agent, where: a.status == :stopped, select: a.id)
+    from(a in Agent, where: not is_nil(a.off_at) or not is_nil(a.retired_at), select: a.id)
   end
 
   defp resolved_query(schema, user_id) do

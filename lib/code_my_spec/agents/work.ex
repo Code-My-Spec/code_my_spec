@@ -9,6 +9,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
@@ -160,7 +161,7 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   defp takes_redelivery?(agent) do
-    agent.status == :running and is_nil(agent.turn_started_at) and
+    present?(agent) and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and not is_nil(agent.working_copy_id)
   end
 
@@ -196,7 +197,7 @@ defmodule CodeMySpec.Agents.Work do
   # A held task with a turn ended to wait is not stranded: whatever it waits on
   # messages it (`Wake`, through `Waiting`).
   defp stranded?(scope, agent) do
-    agent.status == :running and is_nil(agent.turn_started_at) and
+    present?(agent) and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and not is_nil(Agent.active_task(agent)) and
       not is_nil(agent.working_copy_id) and Wake.decide(scope, agent, :resume) == :wake
   end
@@ -745,10 +746,14 @@ defmodule CodeMySpec.Agents.Work do
   # Whether a turn could start now — nothing in flight, nothing held, a copy to
   # run on. Whether this agent should be woken for it at all is `Wake`'s.
   defp idle?(agent) do
-    agent.status == :running and is_nil(agent.turn_started_at) and
+    present?(agent) and is_nil(agent.turn_started_at) and
       not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
       not is_nil(agent.working_copy_id)
   end
+
+  # Its process alive now (`Agents.Presence`): nothing starts a turn in one that
+  # is not there.
+  defp present?(agent), do: Presence.present?(agent.project_id, agent.id)
 
   defp admit(scope, agent, event) do
     if idle?(agent), do: Wake.allow?(scope, agent, event), else: {:hold, :busy}
@@ -765,10 +770,8 @@ defmodule CodeMySpec.Agents.Work do
   # It has to expire because every path that clears it needs a live process:
   # `release/3` on a failed dispatch, and the agent's own completion. The case
   # that strands one is the process going away after the transport accepted it.
-  # `record_stopped/2` clears it when the reap notices — but a harness restart
-  # re-reports the agent as running without passing through there, and
-  # `record_running_on_copy/3` leaves an already-`:running` row alone. That row
-  # is exactly the one holding the stale reservation.
+  # A harness restart brings the agent back present without passing through
+  # anything that clears it, so the row carries the stale reservation over.
   #
   # Measured on the math project 2026-09-22: coding stamped a reservation at
   # 01:53, the harness restarted three times, and the row carried it through

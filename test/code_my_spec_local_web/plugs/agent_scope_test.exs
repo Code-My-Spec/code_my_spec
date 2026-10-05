@@ -23,6 +23,7 @@ defmodule CodeMySpecLocalWeb.Plugs.AgentScopeTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpecLocalWeb.Plugs.AgentScope
+  alias CodeMySpecTest.AgentPresence
 
   defp scoped_conn(scope) do
     :get
@@ -45,6 +46,8 @@ defmodule CodeMySpecLocalWeb.Plugs.AgentScopeTest do
         account_id: scope.active_account_id,
         status: :running
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

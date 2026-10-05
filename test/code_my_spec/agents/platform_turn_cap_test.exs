@@ -28,6 +28,7 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     prior = Application.get_env(:code_my_spec, Credential)
@@ -79,7 +80,8 @@ defmodule CodeMySpec.Agents.PlatformTurnCapTest do
         role: "main"
       })
 
-    agent
+    # Present: the cap is the question asked of an agent that could answer.
+    AgentPresence.present(agent)
   end
 
   defp visitor_said(scope, agent, n) do

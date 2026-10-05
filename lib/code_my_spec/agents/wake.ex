@@ -37,6 +37,7 @@ defmodule CodeMySpec.Agents.Wake do
   """
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Waiting
@@ -215,8 +216,12 @@ defmodule CodeMySpec.Agents.Wake do
     end
   end
 
-  defp running(%Agent{status: status}) when status in [:running, :starting], do: :ok
-  defp running(_agent), do: {:hold, :not_running}
+  # Its process alive now (`Agents.Presence`). One being started or restored is
+  # held until it comes up; nothing is delivered into a process that is not
+  # there (0c912986).
+  defp running(%Agent{project_id: project_id, id: id}) do
+    if Presence.present?(project_id, id), do: :ok, else: {:hold, :not_running}
+  end
 
   defp relevant(_agent, event) when event in @always_relevant, do: :ok
 

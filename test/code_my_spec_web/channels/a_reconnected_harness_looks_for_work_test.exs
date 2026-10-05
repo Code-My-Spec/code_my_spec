@@ -1,7 +1,9 @@
 defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
   @moduledoc """
-  A harness reporting what it is running is the moment to ask whether any of it
-  should be working.
+  A harness saying which agents are alive, on join, is the moment to ask whether
+  any of them should be working — and again when the first of them comes up
+  after it, because a harness that has just restarted reports none until its
+  restore brings them back.
 
   `Work.consider_*` is edge-triggered — a graph change, a finished task,
   continuous being switched on — and a restart is none of those. So a promote
@@ -20,16 +22,16 @@ defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
   nothing — coding was eligible the whole time and took a turn the instant it
   was nudged by hand.
 
-  `agents_running` *is* the re-registration, so by the time it returns there is
+  `agents_present` *is* the re-registration, so by the time it returns there is
   something to ask about. The lesson is the one this session kept relearning: a
   fix aimed at the right condition at the wrong instant reads as covered and is
   not.
 
   ## Once per join
 
-  `agents_running` arrives with every manifest. Admission is guarded but not
-  free — `graph_work?/2` is a graph read per idle agent — and a join is the
-  event with something to catch.
+  Twice at most: the join's `agents_present`, and the first `agent_up` after it.
+  Admission is guarded but not free — `graph_work?/2` is a graph read per idle
+  agent — and a join is the event with something to catch.
   """
 
   use CodeMySpecSpex.Case, async: false
@@ -43,6 +45,7 @@ defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
   alias Ecto.Adapters.SQL.Sandbox
@@ -65,6 +68,8 @@ defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
         working_copy: "/tmp/reconnect-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -95,11 +100,14 @@ defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
   # `{:new_message, _}` on the conversation topic — rather than polling the
   # supervisor, which reports an empty child list both before the Task is
   # registered and after it has finished.
-  defp report_running(socket, agent) do
-    ref = Phoenix.ChannelTest.push(socket, "agents_running", %{"agent_ids" => [agent.id]})
+  defp say(socket, event, payload) do
+    ref = Phoenix.ChannelTest.push(socket, event, payload)
     assert_reply ref, :ok, %{}, 2_000
     :ok
   end
+
+  defp report_present(socket, ids), do: say(socket, "agents_present", %{"agent_ids" => ids})
+  defp up(socket, agent), do: say(socket, "agent_up", %{"agent_id" => agent.id})
 
   defp prompts(conversation) do
     conversation
@@ -109,7 +117,7 @@ defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
 
   test "a harness reporting its agents wakes one that has work", ctx do
     :ok = Conversations.subscribe_conversation(ctx.conversation.id)
-    report_running(ctx.socket, ctx.agent)
+    report_present(ctx.socket, [ctx.agent.id])
 
     assert_receive {:new_message, _}, 5_000
 
@@ -124,24 +132,37 @@ defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
            """
   end
 
+  test "the first agent up after a join that reported none wakes it", ctx do
+    :ok = Conversations.subscribe_conversation(ctx.conversation.id)
+    report_present(ctx.socket, [])
+    up(ctx.socket, ctx.agent)
+
+    assert_receive {:new_message, _}, 5_000
+    assert prompts(ctx.conversation) >= 1
+  end
+
   test "later reports do not ask again", ctx do
     :ok = Conversations.subscribe_conversation(ctx.conversation.id)
-    report_running(ctx.socket, ctx.agent)
+    report_present(ctx.socket, [ctx.agent.id])
     assert_receive {:new_message, _}, 5_000
+    up(ctx.socket, ctx.agent)
+    refute_receive {:new_message, _}, 1_000
     after_first = prompts(ctx.conversation)
 
-    report_running(ctx.socket, ctx.agent)
-    report_running(ctx.socket, ctx.agent)
+    # Reports that repeat what is already known. An agent going down and coming
+    # back is not one of them: it came up, and `Agents.came_up/2` asks it.
+    up(ctx.socket, ctx.agent)
+    report_present(ctx.socket, [ctx.agent.id])
 
     refute_receive {:new_message, _}, 1_000
 
     assert prompts(ctx.conversation) == after_first,
            """
-           Every manifest asked again.
+           A later report asked again.
 
-           `agents_running` arrives with each one, and admission is guarded but
-           not free: `graph_work?/2` is a graph read per idle agent. The join is
-           the event worth catching.
+           Admission is guarded but not free: `graph_work?/2` is a graph read
+           per idle agent. The join, and the first agent up after it, are the
+           events worth catching.
            """
   end
 end

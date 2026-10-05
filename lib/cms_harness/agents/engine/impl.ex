@@ -48,6 +48,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias Alloy.Agent.Server
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Engine.Execution
+  alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
@@ -140,21 +141,28 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # harness serves. Sessions are opened in `init/1` now, where the agent
          # is the thing at risk.
          {:ok, _alloy_opts} <- alloy_options(opts, nil) do
-      case DynamicSupervisor.start_child(@supervisor, {CmsHarness.Agents.Engine.Server, opts}) do
-        {:ok, pid} ->
+      # Under its own `Keeper`, which restarts it on a crash and gives up on a
+      # crash loop. The engine watches itself into `Liveness` from `init/1`, so
+      # every restart is an up; the Keeper is watched here, once, so its giving
+      # up is a single final down.
+      case DynamicSupervisor.start_child(@supervisor, {Keeper, opts}) do
+        {:ok, keeper} ->
           Logger.info("[CmsHarness] agent #{agent_id} running in #{working_copy}")
-          :ok = Liveness.watch(agent_id, pid, working_copy)
-          {:ok, %{agent_id: agent_id, pid: pid}}
+          :ok = Liveness.watch_keeper(agent_id, keeper, working_copy)
+          started(agent_id)
 
-        {:error, {:already_started, pid}} ->
-          :ok = Liveness.watch(agent_id, pid, working_copy)
-          {:ok, %{agent_id: agent_id, pid: pid}}
+        {:error, {:already_started, _keeper}} ->
+          started(agent_id)
 
         {:error, reason} ->
           Logger.warning(describe_start_failure(agent_id, working_copy, reason))
           {:error, reason}
       end
     end
+  end
+
+  defp started(agent_id) do
+    with {:ok, pid} <- whereis(agent_id), do: {:ok, %{agent_id: agent_id, pid: pid}}
   end
 
   @doc """
@@ -326,8 +334,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
   """
   @spec stop(String.t()) :: :ok | {:error, :not_running}
   def stop(agent_id) do
-    case whereis(agent_id) do
-      {:ok, pid} -> DynamicSupervisor.terminate_child(@supervisor, pid)
+    case Keeper.whereis(agent_id) do
+      {:ok, keeper} -> DynamicSupervisor.terminate_child(@supervisor, keeper)
       {:error, _} = error -> error
     end
   end
@@ -371,16 +379,19 @@ defmodule CmsHarness.Agents.Engine.Impl do
   def init(opts) do
     # Opened here rather than during validation, and unlinked: this process is
     # the right thing for a session's failure to reach, and nothing above it is.
+    agent_id = Keyword.fetch!(opts, :agent_id)
     {:ok, alloy_opts} = alloy_options(opts, mcp_session(opts))
-    prune_spilled(spill_dir(Keyword.fetch!(opts, :agent_id)))
+    {alloy_opts, interrupted} = restored(alloy_opts, Keeper.recall(agent_id))
+    prune_spilled(spill_dir(agent_id))
 
     case Server.start_link(alloy_opts) do
       {:ok, alloy} ->
         Process.flag(:trap_exit, true)
+        :ok = Liveness.watch(agent_id, self(), Keyword.fetch!(opts, :working_copy))
 
         {:ok,
          %{
-           agent_id: Keyword.fetch!(opts, :agent_id),
+           agent_id: agent_id,
            working_copy: Keyword.fetch!(opts, :working_copy),
            # Kept so `agent_tools/1` answers about this agent rather than
            # recomputing what a fresh one would be given.
@@ -401,11 +412,52 @@ defmodule CmsHarness.Agents.Engine.Impl do
            turn: nil,
            # What is waiting for it, oldest first.
            queue: []
-         }}
+         }
+         |> settle_interrupted(interrupted)}
 
       {:error, reason} ->
         {:stop, reason}
     end
+  end
+
+  # A restart, after a crash: the history the agent had when it last wrote it
+  # down (`Keeper`), not the one the server sent at its first start — that is a
+  # fresh agent with a stale memory. A turn that was in flight is told to it
+  # the way `recover_turn/2` tells one an abort interrupted.
+  defp restored(alloy_opts, nil), do: {alloy_opts, nil}
+
+  defp restored(alloy_opts, %{messages: messages, in_flight: nil}),
+    do: {Keyword.put(alloy_opts, :messages, messages), nil}
+
+  defp restored(alloy_opts, %{messages: messages, in_flight: message}) do
+    interrupted =
+      messages ++
+        [
+          Alloy.Message.user(message),
+          Alloy.Message.user(
+            "The preceding turn was interrupted: this agent's process crashed and was " <>
+              "restarted. Its actions may have taken effect; inspect the current state " <>
+              "before retrying."
+          )
+        ]
+
+    {Keyword.put(alloy_opts, :messages, interrupted), message}
+  end
+
+  # The crashed turn is over, said out loud, so the server does not show the
+  # agent mid-turn forever; and written down as settled, so a second crash
+  # before the next turn does not tell it twice.
+  defp settle_interrupted(state, nil), do: state
+
+  defp settle_interrupted(state, _message) do
+    :ok =
+      Keeper.remember(state.agent_id, %{
+        messages: Keyword.fetch!(state.alloy_opts, :messages),
+        in_flight: nil
+      })
+
+    announce_turn_end(state, {:error, :crashed})
+    state
   end
 
   # Asked, not killed.
@@ -436,11 +488,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   # A process that goes for any reason but a stop, said out loud on its way.
   #
-  # The agent is `:temporary` under its supervisor, and its transcript is the
-  # server's: a fresh process here would come back with no memory. So this
-  # reports and the server restarts it with its history. Before this a crash
-  # was a `stopped` line in `harness.log` and the agent was simply absent —
-  # list_agent_work dropped it, and nobody noticed for fifteen minutes
+  # Its `Keeper` restarts it; this is the cause, on the agent's own thread.
+  # Before this a crash was a `stopped` line in `harness.log` and nothing else
   # (2999a0cb).
   #
   # Last, after the MCP session is closed: a relaunch must not find this
@@ -477,6 +526,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # may work. Threading it in made the two the same thing and cost a QA run.
   def start_turn(state, ref, message, _timeout, awaiting) do
     checkpoint = state.alloy |> :sys.get_state() |> Alloy.Agent.State.materialize()
+    :ok = Keeper.remember(state.agent_id, %{messages: checkpoint.messages, in_flight: message})
     announce_delivery(state, ref)
     announce_turn_start(state)
 
@@ -537,6 +587,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # says usually assumes the first.
   def settle(state, result) do
     Process.cancel_timer(state.turn.timer)
+
+    :ok =
+      Keeper.remember(state.agent_id, %{messages: Server.messages(state.alloy), in_flight: nil})
+
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
     announce_turn_end(state, result)

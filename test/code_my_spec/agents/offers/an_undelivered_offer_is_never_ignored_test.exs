@@ -16,6 +16,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.UnreachableMachine
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -47,6 +48,8 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     {:ok, _} =
       Conversations.find_or_create_agent_conversation(

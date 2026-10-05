@@ -18,6 +18,7 @@ defmodule CodeMySpec.ConversationsResumeTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = CodeMySpec.UsersFixtures.full_scope_fixture()
@@ -34,6 +35,8 @@ defmodule CodeMySpec.ConversationsResumeTest do
         account_id: scope.active_account_id,
         status: :running
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(

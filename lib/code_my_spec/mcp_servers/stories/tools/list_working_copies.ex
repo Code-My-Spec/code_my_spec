@@ -65,8 +65,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
     }
   end
 
-  defp agent_row(agent) do
-    %{"role" => to_string(agent.role), "status" => to_string(agent.status)}
+  defp agent_row({agent, lifecycle}) do
+    %{"role" => to_string(agent.role), "status" => to_string(lifecycle)}
   end
 
   defp render(scope) do
@@ -100,12 +100,17 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
   defp describe_agents([]), do: "nothing running"
 
   defp describe_agents(agents) do
-    Enum.map_join(agents, ", ", &"#{&1.role} (#{&1.status})")
+    Enum.map_join(agents, ", ", fn {agent, lifecycle} -> "#{agent.role} (#{lifecycle})" end)
   end
 
+  # Every agent on duty, with its derived state: one still starting is shown as
+  # starting rather than left off the list.
   defp running_by_copy(scope) do
+    present = Agents.present_ids(scope)
+
     scope
-    |> Agents.list_running()
-    |> Enum.group_by(& &1.working_copy_id)
+    |> Agents.list_on_duty()
+    |> Enum.map(&{&1, Agents.lifecycle(&1, present)})
+    |> Enum.group_by(fn {agent, _} -> agent.working_copy_id end)
   end
 end

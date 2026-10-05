@@ -16,26 +16,22 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
   ## The three signals
 
-  An **Alloy lane** is tracked in Presence on the harness channel and joined
-  for exactly as long as its process lives, so its liveness is a fact about now.
-  `record_reported/2` is a projection of that Presence, and it touches the row —
-  which makes `updated_at` the moment the harness last confirmed the lane, and
-  the honest thing to print next to "Running".
+  An **Alloy agent** is tracked in `Agents.Presence` by its copy's harness
+  channel for exactly as long as its process lives, so "Running" is a fact about
+  now, not evidence with an age: there is no "since" to print beside it. The
+  agent's `lifecycle` (`Agents.with_lifecycle/2`) carries it.
 
   A **Claude Code agent** has no channel to be present on. It reports over HTTP
   hooks, so what is known is when it last did something. An agent that died five
   minutes ago and one mid-thought produce the same timestamp, and the label says
   so rather than calling either of them present.
 
-  An agent we **asked for** is neither. `start_agent/2` writes a row at
-  `:starting` and only `record_reported/2` moves it to `:running`, so a
-  `:starting` row is a request no device has confirmed — the config was minted,
-  and whether anything came up is exactly what is not known. That is why status
-  is checked before engine here: reading engine alone made an agent that never
-  became a lane claim "Running · present on the harness channel", forever,
-  which is the server reporting its own intention back to itself as though it
-  were evidence. Rule 5 exists to stop precisely that, and this was the one case
-  where the page said everything was fine.
+  An Alloy agent on duty and **not present** is starting: asked for, being
+  restored after a harness restart, or crashed and awaiting its restart —
+  whether anything is running is exactly what is not known. Reading engine alone
+  made an agent that never came up claim "Running", forever, which is the server
+  reporting its own intention back to itself as though it were evidence. Rule 5
+  exists to stop precisely that.
 
   ## Elapsed, not absolute
 
@@ -50,30 +46,26 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   What one agent's liveness is, and on what evidence.
   """
   @spec agent(map(), DateTime.t()) :: summary()
-  def agent(%{status: :starting} = agent, now) do
-    %{
-      label: "Starting",
-      basis: "we asked for this one; no harness has confirmed it",
-      since: since(agent.updated_at, now)
+  def agent(%{lifecycle: :retired} = agent, now),
+    do: %{
+      label: "Retired",
+      basis: "retired; its seat is empty",
+      since: since(agent.retired_at, now)
     }
-  end
 
-  # Checked before engine, same reasoning as `:starting` above: reading
-  # engine alone on a stopped alloy agent claims "Running · present on the
-  # harness channel" for a process that was asked to end. `list_for_team_status/1`
-  # is the first caller that can hand this function a stopped agent at all.
-  def agent(%{status: :stopped} = agent, now) do
-    %{
-      label: "Stopped",
-      basis: "asked to stop; not running",
-      since: since(agent.updated_at, now)
-    }
-  end
+  # Before engine, so an alloy agent that was turned off never reads as
+  # "Running". `list_for_team_status/1` is the caller that hands one in.
+  def agent(%{lifecycle: :off} = agent, now),
+    do: %{label: "Off", basis: "turned off; not running", since: since(agent.off_at, now)}
+
+  # Presence is a fact about now, not evidence with an age: no "since".
+  def agent(%{engine: :alloy, lifecycle: :running}, _now),
+    do: %{label: "Running", basis: "its process is alive on the harness", since: nil}
 
   def agent(%{engine: :alloy} = agent, now) do
     %{
-      label: "Running",
-      basis: "present on the harness channel",
+      label: "Starting",
+      basis: "on duty; its process is not up — being started or restored",
       since: since(agent.updated_at, now)
     }
   end
@@ -98,11 +90,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   end
 
   def working_copy(agents, now) do
-    starting = Enum.filter(agents, &(&1.status == :starting))
-    stopped = Enum.filter(agents, &(&1.status == :stopped))
-    confirmed = Enum.filter(agents, &(&1.status not in [:starting, :stopped]))
+    {stopped, on_duty} = Enum.split_with(agents, &(&1.lifecycle in [:off, :retired]))
+    {alloy, hooks} = Enum.split_with(on_duty, &(&1.engine == :alloy))
+    {present, starting} = Enum.split_with(alloy, &(&1.lifecycle == :running))
 
-    summarize(Enum.filter(confirmed, &(&1.engine == :alloy)), confirmed, starting, stopped, now)
+    summarize(present, present ++ hooks, starting, stopped, now)
   end
 
   # A copy whose only agents are ones we asked for says so. Rolling them up as
@@ -113,13 +105,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
     %{
       label: "Starting",
-      basis: label_for_count(length(starting)) <> " asked for, none confirmed yet",
+      basis: label_for_count(length(starting)) <> " on duty, none of their processes up yet",
       since: since(latest.updated_at, now)
     }
   end
 
   # Nothing starting, nothing confirmed, and `list_for_team_status/1` still
-  # handed this copy an agent: the slot's most recently stopped one, with
+  # handed this copy an agent: the slot's most recently turned-off one, with
   # nothing having replaced it. Distinct from "Idle" — that is no agent ever
   # having reported here at all, which `working_copy([], _now)` above already
   # answers; this is a slot that has one and it is not running.
@@ -128,7 +120,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
     %{
       label: "Stopped",
-      basis: label_for_count(length(stopped)) <> ", not running",
+      basis: label_for_count(length(stopped)) <> " turned off, not running",
       since: since(latest.updated_at, now)
     }
   end
@@ -143,13 +135,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     }
   end
 
-  defp summarize(present, _confirmed, _starting, _stopped, now) do
-    latest = Enum.max_by(present, & &1.updated_at, DateTime)
-
+  defp summarize(present, _confirmed, _starting, _stopped, _now) do
     %{
       label: "Running",
-      basis: label_for_count(length(present)) <> " present on the harness channel",
-      since: since(latest.updated_at, now)
+      basis: label_for_count(length(present)) <> " alive on the harness",
+      since: nil
     }
   end
 

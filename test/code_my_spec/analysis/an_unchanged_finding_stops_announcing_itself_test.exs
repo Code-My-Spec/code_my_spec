@@ -36,6 +36,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -55,7 +56,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
 
     scope = %{scope | active_working_copy_id: copy.id}
 
-    {:ok, _agent} =
+    {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         continuous: true,
@@ -64,6 +65,8 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
         working_copy: "/tmp/unchanged-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, copy: copy}
   end
@@ -158,6 +161,8 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
         working_copy_id: ctx.copy.id
       })
 
+    AgentPresence.present(agent)
+
     sweep(ctx.scope, [problem("lib/a.ex")])
     assert_receive {:agent_dispatch, _id, _ref, _message}, 2_000
     # `deliver/3` tells every report-role agent on the copy, and this test adds
@@ -197,6 +202,8 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
         working_copy: "/tmp/asker-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.copy.id
       })
+
+    AgentPresence.present(agent)
 
     sweep(ctx.scope, [], requested_by: agent.id)
 
