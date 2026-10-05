@@ -9,6 +9,7 @@ defmodule CodeMySpec.AgentPerformance.QaRounds do
   a pass.
   """
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Qa
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Stories.Story
@@ -57,15 +58,24 @@ defmodule CodeMySpec.AgentPerformance.QaRounds do
   A team's first-pass rate over a period: the share of its stories whose
   first QA attempt passed.
 
+  Attributed by the *submitting agent's* own `working_copy_id`, not the
+  story's: a story's own `working_copy_id` is released the moment the team
+  moves on to its next one (`Assignment.fan_out/3`), so by the time this
+  reads, a finished story may no longer point back at the team that QA'd it.
+  An agent's `working_copy_id` carries no such history and is read regardless
+  of whether it is still running, so a retired agent's attempts still count.
+
   `since` (a `DateTime`) restricts to stories whose first attempt landed
   at or after it; omit for all time.
   """
   @spec team_first_pass_rate(Scope.t(), Ecto.UUID.t(), DateTime.t() | nil) :: float() | nil
   def team_first_pass_rate(%Scope{} = scope, working_copy_id, since \\ nil) do
+    agent_copies = scope |> Agents.list_agents() |> Map.new(&{&1.id, &1.working_copy_id})
+
     first_attempts =
       scope
       |> Qa.list_project_attempts(include_older: true, include_invalidated: true)
-      |> Enum.filter(&(&1.story && &1.story.working_copy_id == working_copy_id))
+      |> Enum.filter(&(Map.get(agent_copies, &1.agent_id) == working_copy_id))
       |> Enum.group_by(& &1.story_id)
       |> Enum.map(fn {_story_id, attempts} -> Enum.min_by(attempts, & &1.submitted_at, DateTime) end)
       |> Enum.filter(&since_cutoff(&1, since))
