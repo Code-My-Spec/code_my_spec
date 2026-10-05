@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1984Spex do
           AnswerNotification.execute(
             %{
               notification_id: context.question_id,
-              answer: "Your copy's app is serving the current HEAD commit.",
+              answer: "Your copy /tmp/spex-1984's app is serving the current HEAD commit.",
               basis: "record"
             },
             frame

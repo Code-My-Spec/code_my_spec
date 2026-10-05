@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
           AnswerNotification.execute(
             %{
               notification_id: context.question_id,
-              answer: "Restarted your copy's app — it is serving your copy's current commit.",
+              answer: "Restarted /tmp/spex-1985's app — it is serving your copy's current commit.",
               basis: "record"
             },
             frame

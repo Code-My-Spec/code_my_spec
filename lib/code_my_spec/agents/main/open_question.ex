@@ -92,19 +92,22 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   every surface reported it running, continuous and idle with 17 actionable
   requirements (`8cb3f626`).
 
-  `holder` is the user: a permission request has no main-agent half to answer
-  first, which is the honest rendering rather than one that invites an answer
-  that cannot be given.
+  `holder` starts as the user: a permission request has no main-agent half to
+  answer first, which is the honest rendering for one nobody has looked at
+  yet. `aged?` is true once the project's own recovery interval has passed
+  with nobody deciding it (criterion 1980) — at that point it becomes the
+  main agent's, unless it has already been escalated with a reason
+  (criterion 1981), which stays the user's regardless of age.
   """
-  @spec from_permission(map(), map() | nil, map() | nil) :: t()
-  def from_permission(request, agent, working_copy) do
+  @spec from_permission(map(), map() | nil, map() | nil, boolean()) :: t()
+  def from_permission(request, agent, working_copy, aged? \\ false) do
     %OpenQuestion{
       id: request.id,
       kind: :permission,
       title: permission_title(request.tool_name),
-      questions: [%{"question" => permission_text(request)}],
-      holder: "user",
-      escalation_reason: nil,
+      questions: [%{"question" => permission_question(request)}],
+      holder: permission_holder(request, aged?),
+      escalation_reason: request.escalation_reason,
       asked_at: request.inserted_at,
       agent_id: request.agent_id,
       agent_role: field(agent, :role),
@@ -117,6 +120,16 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
 
   defp permission_title("tap_out"), do: "Asked to leave the loop (tap_out)"
   defp permission_title(tool_name), do: "Permission requested: #{tool_name}"
+
+  # Escalated stays the user's at any age — only the main agent decides to
+  # send one up, and that decision does not get overridden by the clock
+  # that exists to catch the ones nobody decided at all.
+  defp permission_holder(%{escalation_reason: reason}, _aged?) when is_binary(reason), do: "user"
+  defp permission_holder(_request, true), do: "main_agent"
+  defp permission_holder(_request, false), do: "user"
+
+  defp permission_question(%{escalated_as: as}) when is_binary(as), do: as
+  defp permission_question(request), do: permission_text(request)
 
   defp permission_text(%{tool_name: "tap_out"}) do
     "This agent asked to leave the autonomous loop and is waiting on a decision. " <>
