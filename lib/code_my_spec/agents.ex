@@ -51,6 +51,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
+      CodeMySpec.PromotionQueue,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,

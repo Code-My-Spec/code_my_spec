@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -766,22 +767,9 @@ defmodule CodeMySpec.Agents.Work do
       not is_nil(agent.working_copy_id)
   end
 
-  # `Agent.active_task/1` counts a task whose work is already in the queue's
-  # hands, which is not work the agent can do (criterion 2021, story 1046).
-  #
-  # A `promote_issue` or `story_promoted` task stays open until its candidate
-  # lands or is ejected (criterion 2017) and the queue messages the agent then.
-  # Nothing the agent does shortens that wait, so holding only it is waiting,
-  # not busy. Treating it as busy is what issue bf57fc93 measured: agent
-  # 6d915491 held `promote_issue` on a candidate already re-queued (b8dc441d),
-  # `admit/3` answered `:busy`, and the agent was offered that same requirement
-  # three times in twenty seconds — each offer settling `ignored` in the second
-  # the turn ended — then had the work held back and escalated to main as
-  # "offered 3 times and not taken".
-  #
-  # Read as rows rather than through `PromotionQueue`: the queue depends on
-  # `Agents`, so asking it here would be a cycle. They are the rows `Entry`
-  # writes.
+  # A `promote_issue`/`story_promoted` task stays open until its candidate
+  # lands or is ejected, and the queue messages the agent then. Holding only
+  # such a task is waiting, not busy.
   defp busy_on?(agent) do
     case Agent.active_task(agent) do
       %{requirement_name: name} = task when name in @promotion_tasks ->
@@ -795,26 +783,18 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # `:queued` and `:gating` both mean the candidate is the queue's to finish;
-  # `:landed`, `:ejected` and `:cancelled` are entries the landing already
-  # resolved, and the agent has a turn to take about those (settling the task,
-  # or fixing what an ejection named). What is left is an open candidate this
-  # agent asked for.
+  # An open candidate for this task's own subject is the queue's to finish;
+  # a resolved one is the agent's turn.
   defp awaiting_landing?(agent, task) do
-    from(e in "promotion_queue_entries",
-      where:
-        e.requested_by_agent_id == type(^agent.id, :binary_id) and
-          e.status in ["queued", "gating"] and
-          ((e.subject_type == "issue" and e.subject_id == type(^task.issue_id, :string)) or
-             (e.subject_type == "story" and e.subject_id == type(^subject(task), :string))),
-      select: 1,
-      limit: 1
-    )
-    |> Repo.exists?()
+    case subject(task) do
+      nil -> false
+      {type, id} -> PromotionQueue.open_for(agent.id, type, id)
+    end
   end
 
-  defp subject(%{story_id: nil}), do: nil
-  defp subject(%{story_id: story_id}), do: to_string(story_id)
+  defp subject(%{issue_id: issue_id}) when is_binary(issue_id), do: {"issue", issue_id}
+  defp subject(%{story_id: story_id}) when is_binary(story_id), do: {"story", to_string(story_id)}
+  defp subject(_task), do: nil
 
   # Its process alive now (`Agents.Presence`): nothing starts a turn in one that
   # is not there.
