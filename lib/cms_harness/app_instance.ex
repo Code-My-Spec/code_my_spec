@@ -1141,6 +1141,44 @@ defmodule CmsHarness.AppInstance do
     }
   end
 
+  @doc """
+  What this copy's app is, read from the harness's own `state.json` (00bd7d4a).
+
+  The durable answer to "which commit is running here". A restart's result
+  reaches the server as a channel reply or push, and a harness that restarted
+  mid-reply leaves the server holding a commit the app is not running â
+  metric_flow's main copy reported `app_commit` c3eb20b at HEAD 59dc451. This is
+  the value the harness itself wrote down, so a join can converge the server on
+  it.
+
+  Read from disk rather than from a running process, deliberately: an
+  `AppInstance` is started lazily by an app verb, and the moment this is needed
+  is a join, which may be the first thing a restarted harness does. `nil` when
+  nothing was ever written â "we have not been told" is a real state, and
+  different from a commit.
+  """
+  @spec reported(String.t()) :: map() | nil
+  def reported(root) when is_binary(root) do
+    case File.read(state_path(root)) do
+      {:ok, contents} ->
+        case Jason.decode(contents) do
+          {:ok, %{} = decoded} ->
+            %{
+              "status" => decoded["status"] || "down",
+              "commit" => decoded["commit"],
+              "serving_commit" => decoded["serving_commit"],
+              "url" => url(decoded["port"], decoded["status"])
+            }
+
+          _ ->
+            nil
+        end
+
+      {:error, _} ->
+        nil
+    end
+  end
+
   defp state_path(root) do
     Path.join([instances_root(), instance_key(root), "state.json"])
   end
