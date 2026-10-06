@@ -46,4 +46,29 @@ defmodule CodeMySpec.Utils.Utf8Test do
       assert Utf8.valid_prefix("anything", 0) == ""
     end
   end
+
+  describe "scrub/1" do
+    test "leaves already-valid text unchanged" do
+      assert Utf8.scrub("hello world") == "hello world"
+    end
+
+    test "replaces invalid bytes without dropping the surrounding text" do
+      bad = <<"before ", 0xFF, 0xFE, " after">>
+      refute String.valid?(bad)
+
+      scrubbed = Utf8.scrub(bad)
+
+      assert String.valid?(scrubbed)
+      assert scrubbed =~ "before" and scrubbed =~ "after"
+    end
+
+    test "strips null bytes and control characters, keeps newlines and tabs" do
+      assert Utf8.scrub(<<"a", 0, "b\nc\td", 0x01, "e">>) == "ab\nc\td" <> "e"
+    end
+
+    test "the result is always JSON-encodable" do
+      bad = <<"x", 0xFF, "y", 0, "z">>
+      assert {:ok, _} = Jason.encode(Utf8.scrub(bad))
+    end
+  end
 end
