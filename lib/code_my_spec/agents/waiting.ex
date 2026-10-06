@@ -28,7 +28,7 @@ defmodule CodeMySpec.Agents.Waiting do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
-  alias CodeMySpec.PromotionQueue.Repository
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -114,7 +114,7 @@ defmodule CodeMySpec.Agents.Waiting do
   # agent requested counts; an entry the landing already resolved is the agent's
   # to act on, and it is nudged for that.
   defp check(:promotion, _scope, agent) do
-    case Repository.awaited_by(agent.id) do
+    case PromotionQueue.awaited_by(agent.id) do
       nil -> nil
       entry -> {:promotion, entry.id}
     end
