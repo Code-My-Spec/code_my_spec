@@ -296,6 +296,10 @@ defmodule CodeMySpecSpex.PromotionHelpers do
         working_copy: context.agent_root
       )
 
+    # Running is presence now (e3042a7c's sibling gap): the queue's outcome
+    # delivery checks `Presence.present?/2`, and this row alone reads as off.
+    Fixtures.mark_present(agent)
+
     Map.put(context, :agent_id, agent.id)
   end
 
@@ -328,6 +332,9 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     scope = %{context.scope | active_working_copy_id: copy.working_copy_id}
 
     agent = Fixtures.running_agent(scope, provider: "anthropic", working_copy: root)
+
+    # Running is presence now (e3042a7c's sibling gap), same as above.
+    Fixtures.mark_present(agent)
 
     Map.put(context, key, %{
       root: root,

@@ -13,6 +13,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import Ecto.Query
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -40,6 +41,13 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       satisfied: satisfied,
       details: %{}
     }
+  end
+
+  defp xmin(id) do
+    Node
+    |> where([n], n.id == ^id)
+    |> select([n], fragment("xmin::text"))
+    |> Repo.one!()
   end
 
   describe "a component that was visited and produced nothing" do
@@ -200,6 +208,23 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
       assert Repo.get(Node, id).satisfied
       assert Repo.aggregate(Node, :count) == 1
+    end
+
+    # 181f3469 / a69525bd: a row EXCLUDED agrees with on every stored column
+    # is left alone, not rewritten -- proved on the real tuple via `xmin`
+    # rather than on `satisfied`/`details` staying equal, which is true either
+    # way and would not catch a write that happens anyway.
+    test "a repeat write with nothing changed does not touch the row", %{scope: scope} do
+      project_id = scope.active_project_id
+      nodes = [node("project", project_id, "stories_exist")]
+
+      %{{"project", ^project_id, "stories_exist"} => id} = NodeRepository.upsert_all(scope, nodes)
+      before_xmin = xmin(id)
+
+      NodeRepository.upsert_all(scope, nodes)
+
+      assert xmin(id) == before_xmin,
+             "xmin moving means a new tuple was written even though nothing changed"
     end
 
     test "two names on one project are two rows", %{scope: scope} do

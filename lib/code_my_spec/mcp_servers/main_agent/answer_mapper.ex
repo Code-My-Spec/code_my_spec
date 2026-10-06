@@ -139,6 +139,13 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
           "routed to it, and the rest are main's or the user's."
       )
 
+  def error(:with_user),
+    do:
+      refuse(
+        "That question is the user's: it was routed straight to them, not through main, " <>
+          "so only they can settle it."
+      )
+
   def error(reason), do: refuse("Could not do that: #{inspect(reason)}")
 
   defp refuse(text), do: Response.tool() |> Response.error(text)
