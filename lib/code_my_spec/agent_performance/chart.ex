@@ -27,7 +27,11 @@ defmodule CodeMySpec.AgentPerformance.Chart do
   @bucket_seconds 3600
   @bucket_count @range_days * 24
 
-  @type filter :: %{optional(:working_copy_id) => Ecto.UUID.t(), optional(:story_id) => integer()}
+  @type filter :: %{
+          optional(:working_copy_id) => Ecto.UUID.t(),
+          optional(:story_id) => integer(),
+          optional(:agent_id) => Ecto.UUID.t()
+        }
   @type detail :: %{tokens_total: non_neg_integer() | :unknown, nudges: non_neg_integer()}
 
   @doc "The chart option this page hands its EChart hook, as a plain map ready for `Jason.encode!/1`."
@@ -98,17 +102,27 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     |> Repo.all()
   end
 
-  defp apply_turn_filter(query, %{story_id: id}) when not is_nil(id) do
-    where(query, [t], t.story_id == ^id)
-  end
-
-  defp apply_turn_filter(query, %{working_copy_id: id}) when not is_nil(id) do
+  # Each narrowing key is applied in turn, so a filter naming more than one
+  # narrows by all of them rather than whichever clause matched first. The page
+  # offers agent alongside working copy and story, and picking an agent after
+  # picking a copy must not silently drop the copy.
+  defp apply_turn_filter(query, filter) do
     query
-    |> join(:inner, [t], a in Agent, on: a.id == t.agent_id)
-    |> where([t, a], a.working_copy_id == ^id)
+    |> filter_turns_by(:story_id, filter, fn q, id -> where(q, [t], t.story_id == ^id) end)
+    |> filter_turns_by(:agent_id, filter, fn q, id -> where(q, [t], t.agent_id == ^id) end)
+    |> filter_turns_by(:working_copy_id, filter, fn q, id ->
+      q
+      |> join(:inner, [t], a in Agent, on: a.id == t.agent_id)
+      |> where([t, a], a.working_copy_id == ^id)
+    end)
   end
 
-  defp apply_turn_filter(query, _filter), do: query
+  defp filter_turns_by(query, key, filter, fun) do
+    case Map.get(filter, key) do
+      nil -> query
+      value -> fun.(query, value)
+    end
+  end
 
   defp token_total(%AgentTurn{input_tokens: i, output_tokens: o}), do: (i || 0) + (o || 0)
 
@@ -127,12 +141,19 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     |> Enum.filter(&in_window?(&1.at, since, until))
   end
 
-  defp filter_agents(agents, %{story_id: id}) when not is_nil(id), do: Enum.filter(agents, &(&1.story_id == id))
+  defp filter_agents(agents, filter) do
+    agents
+    |> narrow(&(&1.story_id == &2), :story_id, filter)
+    |> narrow(&(&1.id == &2), :agent_id, filter)
+    |> narrow(&(&1.working_copy_id == &2), :working_copy_id, filter)
+  end
 
-  defp filter_agents(agents, %{working_copy_id: id}) when not is_nil(id),
-    do: Enum.filter(agents, &(&1.working_copy_id == id))
-
-  defp filter_agents(agents, _filter), do: agents
+  defp narrow(items, match?, key, filter) do
+    case Map.get(filter, key) do
+      nil -> items
+      value -> Enum.filter(items, &match?.(&1, value))
+    end
+  end
 
   # One QA attempt per story -- its first, win or lose -- the same "first
   # attempt" QaRounds.team_first_pass_rate/3 counts a team's rate from.
@@ -148,12 +169,23 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     )
   end
 
-  defp matches_attempt?(attempt, %{story_id: id}, _copies) when not is_nil(id), do: attempt.story_id == id
+  # The QA attempt is attributed by the agent that submitted it, so an agent
+  # filter matches the attempt's own `agent_id`; a working-copy filter matches
+  # the copy that agent is (or was) on.
+  defp matches_attempt?(attempt, filter, copies) do
+    matches_attempt_field?(attempt, :story_id, filter, &(&1.story_id == &2)) and
+      matches_attempt_field?(attempt, :agent_id, filter, &(&1.agent_id == &2)) and
+      matches_attempt_field?(attempt, :working_copy_id, filter, fn a, id ->
+        Map.get(copies, a.agent_id) == id
+      end)
+  end
 
-  defp matches_attempt?(attempt, %{working_copy_id: id}, copies) when not is_nil(id),
-    do: Map.get(copies, attempt.agent_id) == id
-
-  defp matches_attempt?(_attempt, _filter, _copies), do: true
+  defp matches_attempt_field?(attempt, key, filter, match?) do
+    case Map.get(filter, key) do
+      nil -> true
+      value -> match?.(attempt, value)
+    end
+  end
 
   defp events_for(scope, filter, since, until) do
     scope
@@ -169,13 +201,31 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     |> Enum.sort_by(& &1["at"])
   end
 
-  defp filter_stories(stories, %{story_id: id}) when not is_nil(id), do: Enum.filter(stories, &(&1.id == id))
+  # Events belong to stories, so an agent filter narrows them to the story that
+  # agent holds. An agent between stories holds none, and then no event is the
+  # honest answer -- its own turns and failures still chart.
+  defp filter_stories(stories, filter) do
+    stories
+    |> narrow(&(&1.id == &2), :story_id, filter)
+    |> narrow(&(&1.working_copy_id == &2), :working_copy_id, filter)
+    |> narrow_stories_by_agent(filter)
+  end
 
-  defp filter_stories(stories, %{working_copy_id: id}) when not is_nil(id),
-    do: Enum.filter(stories, &(&1.working_copy_id == id))
+  # The agent's own story, read from its row -- the story an agent holds is the
+  # one its start/promotion events belong to. An agent holding none contributes
+  # no events rather than every event.
+  defp narrow_stories_by_agent(stories, %{agent_id: agent_id}) when not is_nil(agent_id) do
+    case story_held_by(agent_id) do
+      nil -> []
+      story_id -> Enum.filter(stories, &(&1.id == story_id))
+    end
+  end
 
-  defp filter_stories(stories, _filter), do: stories
+  defp narrow_stories_by_agent(stories, _filter), do: stories
 
+  defp story_held_by(agent_id) do
+    Agent |> where([a], a.id == ^agent_id) |> select([a], a.story_id) |> Repo.one()
+  end
   defp maybe_event(acc, _type, nil, _story, _since, _until), do: acc
 
   defp maybe_event(acc, type, at, story, since, until) do
