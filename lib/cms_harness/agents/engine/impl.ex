@@ -241,13 +241,16 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   Take back a message the agent has not picked up yet.
 
+  `{:error, :never_received}` when this harness never queued it, which is
+  what a queue dropped by a restart leaves behind.
+
   `{:error, :already_delivered}` when it has. That refusal is the point: a turn
   ends while somebody is reaching for the control, and reporting success there
   leaves them believing the agent was stopped while it acts on the thing they
   thought they took back.
   """
   @spec withdraw(String.t(), String.t()) ::
-          :ok | {:error, :already_delivered | :not_running}
+          :ok | {:error, :already_delivered | :never_received | :not_running}
   def withdraw(agent_id, ref) do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, {:withdraw, ref})

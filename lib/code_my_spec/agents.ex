@@ -208,7 +208,10 @@ defmodule CodeMySpec.Agents do
     |> Enum.flat_map(fn agent ->
       agent.tasks
       |> List.wrap()
-      |> Enum.filter(&(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id)))
+      |> Enum.filter(
+        &(&1.story_id == story_id or
+            (not is_nil(component_id) and &1.component_id == component_id))
+      )
       |> Enum.map(&Map.from_struct/1)
     end)
   end
@@ -2157,7 +2160,7 @@ defmodule CodeMySpec.Agents do
   # Until that exists, an explicit setting wins (see `main_choice/1`) and the
   # unset case keeps behaving as it always has, so nobody's bill moves because
   # of a refactor.
-  @provider_preference ["openai-codex", "zai", "anthropic"]
+  @provider_preference ["openai-codex", "zai", "anthropic", "deepinfra"]
 
   defp connected_provider(scope) do
     Enum.find_value(@provider_preference, {:error, :not_connected}, fn provider ->
@@ -2405,12 +2408,9 @@ defmodule CodeMySpec.Agents do
   def withdraw_message(%Scope{} = scope, id, ref) when is_binary(ref) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <-
-           Transport.impl().withdraw_message(
-             agent.working_copy_id,
-             agent,
-             ref,
-             @message_timeout_ms
-           ),
+           agent.working_copy_id
+           |> Transport.impl().withdraw_message(agent, ref, @message_timeout_ms)
+           |> taken_back(),
          %Conversations.Message{} = message <- Conversations.pending_message_by_ref(ref) do
       Conversations.set_delivery(message, :withdrawn)
     else
@@ -2420,6 +2420,11 @@ defmodule CodeMySpec.Agents do
       error -> error
     end
   end
+
+  # A ref the harness never queued, typically one a restart dropped, will
+  # never be delivered (5150cd98).
+  defp taken_back({:error, :never_received}), do: :ok
+  defp taken_back(result), do: result
 
   @doc """
   Write one step an agent took to the conversation it belongs to.

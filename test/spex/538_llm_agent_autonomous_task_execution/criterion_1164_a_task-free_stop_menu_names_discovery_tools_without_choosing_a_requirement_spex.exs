@@ -62,18 +62,20 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
+        :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
+        base_url = HeldProvider.start()
+        HeldProvider.hold()
+        # Started before any work is queued: an agent coming up is offered
+        # whatever is eligible, and that offer would race the idle check.
+        assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
+        on_exit(fn -> Machine.stop_agent(agent.id) end)
+        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
         {:reply, available, _} = GetNextRequirement.execute(%{}, agent_frame)
         refute available.isError, response_text(available)
         assert Fixtures.role_queue_size(context.scope, agent.id) > 0
         {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == "No tasks."
-        :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
-        base_url = HeldProvider.start()
-        HeldProvider.hold()
-        assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
-        on_exit(fn -> Machine.stop_agent(agent.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
         {:ok, Map.merge(context, %{agent_id: agent.id, agent_frame: agent_frame, story: story})}
       end
 

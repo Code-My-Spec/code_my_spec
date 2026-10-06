@@ -35,10 +35,8 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
     CodeMySpec.WorkingCopies.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
 
     main = agent(ctx.scope, "main")
-    # Coding's questions go to main; the incident this guards against (b7a705ee)
-    # measured it with whatever role happened to be asking, and the damper under
-    # test has nothing to do with which role that was (criterion 1990, story
-    # 1053, since narrowed product's own questions to go straight to the user).
+    # A coding agent's questions go to main, as on the project where this was
+    # measured (product's own now go straight to the user, criterion 1987).
     asker = agent(ctx.scope, "coding")
     question = question(ctx.scope, asker, "Which way?")
 

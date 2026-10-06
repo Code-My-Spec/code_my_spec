@@ -424,6 +424,13 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         note: "An API key from z.ai, the cheap one — worth having for the QA agent.",
         api_key: true,
         disconnect_warning: "Agent types set to Z.ai will fall back to another provider."
+      },
+      %{
+        provider: :deepinfra,
+        label: "DeepInfra",
+        note: "An API key from deepinfra.com, for open models such as DeepSeek.",
+        api_key: true,
+        disconnect_warning: "Agent types set to DeepInfra will fall back to another provider."
       }
     ]
     |> Enum.map(fn provider ->

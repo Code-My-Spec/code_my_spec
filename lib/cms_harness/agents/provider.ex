@@ -41,6 +41,11 @@ defmodule CmsHarness.Agents.Provider do
   # errors.
   @zai_model "glm-5.3"
 
+  # DeepInfra's OpenAI-compatible endpoint. The model is a default only; an
+  # agent's own model setting overrides it.
+  @deepinfra_base "https://api.deepinfra.com/v1/openai"
+  @deepinfra_model "deepseek-ai/DeepSeek-V3.1"
+
   @claude_exec_timeout_ms :timer.minutes(10)
 
   @type credential :: map()
@@ -151,6 +156,23 @@ defmodule CmsHarness.Agents.Provider do
     end
   end
 
+  def options("deepinfra", credential, opts) do
+    with {:ok, api_key} <- fetch(credential, :api_key) do
+      {:ok,
+       [
+         provider:
+           {Alloy.Provider.OpenAICompat,
+            %{
+              api_url: Keyword.get(opts, :base_url) || @deepinfra_base,
+              chat_path: "/chat/completions",
+              api_key: api_key,
+              model: Keyword.get(opts, :model) || @deepinfra_model,
+              req_options: Keyword.get(opts, :req_options) || []
+            }}
+       ]}
+    end
+  end
+
   def options("anthropic", credential, opts) do
     with {:ok, api_key} <- fetch(credential, :api_key) do
       {:ok,
@@ -219,7 +241,7 @@ defmodule CmsHarness.Agents.Provider do
 
   @doc "Every provider this harness can run an agent on."
   @spec names() :: [String.t()]
-  def names, do: ["anthropic", "openai-codex", "zai", "claude-code"]
+  def names, do: ["anthropic", "openai-codex", "zai", "deepinfra", "claude-code"]
 
   # This machine's Codex home, which the CLI already owns.
   #

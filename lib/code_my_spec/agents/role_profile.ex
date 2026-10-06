@@ -259,7 +259,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_dependency remove_dependency
     validate_dependency_graph execute_proposal show_architecture_overview get_component
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
-    list_notifications answer_notification escalate_question withdraw_question
+    list_notifications answer_notification escalate_question withdraw_question search_answers
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
     query_logs get_trace slow_spans error_summary
@@ -280,13 +280,15 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @strong [
     {"anthropic", "claude-sonnet-5"},
     {"openai-codex", "gpt-6-astra"},
-    {"zai", "glm-5.3"}
+    {"zai", "glm-5.3"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
   ]
 
   @cheap [
     {"zai", "glm-5.3"},
     {"openai-codex", "gpt-6-astra"},
-    {"anthropic", "claude-haiku-4-5"}
+    {"anthropic", "claude-haiku-4-5"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
   ]
 
   # In role order: `roles/0` is this list's order, and so is every enum built
