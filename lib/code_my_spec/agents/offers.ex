@@ -69,8 +69,22 @@ defmodule CodeMySpec.Agents.Offers do
   # What main can do to re-assign a team-free copy: a story, or an issue.
   @reassignment_tools ~w(set_active_story assign_issue_to_working_copy)
 
-  # Three ignored offers of the same work and it is held back from that agent.
-  @held_after 3
+  # The escalation ladder for every kind of offer that asks an agent to act, as
+  # data (criterion 2057). Keyed by `{kind, subject_type}`; after n ignored
+  # offers the next rung is `Enum.at(ladder, n)`, and `:held_back` -- always
+  # last -- is the rung that stops the offer reaching that agent at all.
+  #
+  # One map rather than a rule per kind, so a kind's own length is its
+  # threshold: requirement work takes three ignored offers to be held back, a
+  # released task two, a declined tap-out notice one. A kind not in this map
+  # never escalates (resume, check-in, instruction), which is what replaced the
+  # hard-coded `kind: :work` match and keeps criterion 1742.
+  @ladders %{
+    {:work, "requirement"} => [:detail, :alternatives, :held_back],
+    {:work, "questions"} => [:held_back],
+    {:unblocked, "task"} => [:remind, :held_back],
+    {:denial, "tap_out"} => [:held_back]
+  }
 
   @type subject :: {String.t(), term()}
 
@@ -341,29 +355,56 @@ defmodule CodeMySpec.Agents.Offers do
           String.t() => %{ignored: non_neg_integer(), held?: boolean()}
         }
   def standing(agent_id) when is_binary(agent_id) do
+    laddered = Enum.map(Map.keys(@ladders), fn {kind, type} -> {kind, type} end)
+
     Offer
     |> where(
       [o],
       o.agent_id == ^agent_id and
-        ((o.kind == :work and o.subject_type == "requirement") or
-           (o.kind == :unblocked and o.subject_type == "task")) and
         o.status in [:claimed, :declined, :ignored]
     )
     |> order_by([o], desc: o.inserted_at)
-    |> select([o], {o.subject_key, o.status})
+    |> select([o], {o.subject_key, o.kind, o.subject_type, o.status})
     |> Repo.all()
-    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-    |> Map.new(fn {key, statuses} -> {key, streak(statuses)} end)
+    |> Enum.filter(&laddered?(&1, laddered))
+    |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2), elem(&1, 3)})
+    |> Map.new(fn {key, settled} -> {key, streak(settled)} end)
   end
 
   def standing(_agent_id), do: %{}
 
-  # Newest first, up to the last claim.
-  defp streak(statuses) do
-    recent = Enum.take_while(statuses, &(&1 != :claimed))
-    ignored = Enum.count(recent, &(&1 == :ignored))
-    %{ignored: ignored, held?: ignored >= @held_after or :declined in recent}
+  defp laddered?({_key, kind, type, _status}, laddered),
+    do: Enum.any?(laddered, &(&1 == {kind, type}))
+
+  # Newest first, up to the last claim. `ignored` is how many settled ignored
+  # offers stand since then; `held?` is that count reaching the subject's own
+  # ladder length, or a decline since (criterion 2057). Each offer is read by
+  # the ladder for its own kind, so two kinds can share a subject key.
+  defp streak(settled) do
+    recent = Enum.take_while(settled, fn {_kind, _type, status} -> status != :claimed end)
+
+    ignored = Enum.count(recent, fn {_kind, _type, status} -> status == :ignored end)
+
+    held? =
+      Enum.any?(recent, fn {kind, type, status} ->
+        case {status, ladder({kind, type})} do
+          {:declined, _ladder} -> true
+          {:ignored, nil} -> false
+          {:ignored, steps} -> ignored >= length(steps)
+          _other -> false
+        end
+      end)
+
+    %{ignored: ignored, held?: held?}
   end
+
+  @doc "Every escalation ladder, keyed by `{kind, subject_type}` (criterion 2057)."
+  @spec ladders() :: %{{atom(), String.t()} => [atom()]}
+  def ladders, do: @ladders
+
+  @doc "The ladder for one offer kind, or nil when that kind never escalates."
+  @spec ladder({atom(), String.t()}) :: [atom()] | nil
+  def ladder(key), do: Map.get(@ladders, key)
 
   @doc "Record one escalation for a repeated operator instruction; never withhold delivery."
   def take_instruction_attention(%Offer{kind: :instruction} = offer) do
@@ -388,8 +429,11 @@ defmodule CodeMySpec.Agents.Offers do
 
   def take_instruction_attention(_offer), do: false
 
-  @doc "How many ignored offers hold work back from an agent (criterion 1741)."
-  def held_after, do: @held_after
+  @doc """
+  How many ignored offers hold requirement work back from an agent: the length
+  of its ladder (criteria 1741, 2057).
+  """
+  def held_after, do: length(@ladders[{:work, "requirement"}])
 
   @doc """
   Decline an open offer with a reason (criterion 1738): `offer_id`, or the
@@ -409,10 +453,23 @@ defmodule CodeMySpec.Agents.Offers do
         |> Ecto.Changeset.change(
           status: :declined,
           reason: reason,
-          next_step: "told_main",
+          next_step: declined_step(offer),
           outcome_at: now
         )
         |> Repo.update()
+    end
+  end
+
+  # A refusal ends it (criterion 2055): declining a kind that has a ladder
+  # holds its subject back from this agent alone, so the refusal is written on
+  # the ladder's terminal rung. `tell_main_held_back/3` reports that rung once,
+  # with the reason (criterion 2056) -- which is why a refusal does not also
+  # send a notice of its own. A kind with no ladder never escalates, so it is
+  # recorded as told, the way it always was.
+  defp declined_step(offer) do
+    case ladder({offer.kind, offer.subject_type}) do
+      nil -> "told_main"
+      _steps -> "held_back"
     end
   end
 
@@ -486,23 +543,26 @@ defmodule CodeMySpec.Agents.Offers do
     end)
   end
 
-  # The ladder's next rung, written on the offer it follows (criteria
-  # 1739–1741). Work offers only; nothing else escalates (criterion 1742).
+  # The ladder's next rung, written on the offer it follows (criteria 2055-2057).
+  # Every kind in @ladders escalates on its own ladder, read from the offer's
+  # own attempt: a kind not in the map -- resume, check-in, instruction -- never
+  # does (criterion 1742).
   defp next_step(
          %{status: :ignored} = settled,
-         %Offer{kind: :work, subject_type: "requirement"} = offer
+         %Offer{kind: kind, subject_type: type, attempt: attempt}
        ) do
-    step =
-      case standing(offer.agent_id)[offer.subject_key] do
-        %{ignored: n} when n + 1 >= @held_after -> "held_back"
-        %{ignored: 1} -> "alternatives"
-        _ -> "detail"
-      end
-
-    Map.put(settled, :next_step, step)
+    case ladder({kind, type}) do
+      nil -> settled
+      steps -> Map.put(settled, :next_step, step_name(Enum.at(steps, attempt - 1)))
+    end
   end
 
   defp next_step(settled, _offer), do: settled
+
+  # The rung's name, as the tests and `tell_main_held_back` read it. Past the
+  # last rung the offer is already held back and gets no further one.
+  defp step_name(nil), do: nil
+  defp step_name(step), do: to_string(step)
 
   defp outcome(%Offer{kind: :resume}, _agent, _calls), do: %{status: :n_a}
 
