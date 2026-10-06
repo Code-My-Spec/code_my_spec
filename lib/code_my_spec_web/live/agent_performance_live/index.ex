@@ -235,6 +235,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <span :if={@qa_rounds.findings != []} data-test="qa-findings-count">
         {length(@qa_rounds.findings)} finding(s)
       </span>
+      <ul>
+        <li :for={finding <- @qa_rounds.findings}>{finding}</li>
+      </ul>
     </div>
     """
   end
@@ -267,6 +270,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     ~H"""
     <div data-test="story-interventions">
       <span>{length(@interventions)}</span> intervention(s) ({intervention_kind_counts(@interventions)})
+      <div :for={i <- @interventions} data-test="intervention">
+        {kind_label(i.kind)} ({i.reason})
+      </div>
     </div>
     """
   end
