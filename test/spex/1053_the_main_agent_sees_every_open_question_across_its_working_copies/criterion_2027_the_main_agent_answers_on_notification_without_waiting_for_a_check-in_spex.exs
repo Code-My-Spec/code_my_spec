@@ -52,8 +52,8 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
             %{
               questions: [
                 %{
-                  "question" => "Is this working copy currently main?",
-                  "options" => [%{"label" => "Yes"}, %{"label" => "No"}]
+                  "question" => "Which working copy is this agent running on?",
+                  "options" => [%{"label" => "/tmp/spex-2027"}, %{"label" => "somewhere else"}]
                 }
               ]
             },
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
           AnswerNotification.execute(
             %{
               notification_id: context.question_id,
-              answer: "yes",
+              answer: "/tmp/spex-2027",
               basis: "record"
             },
             frame
@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
         asking = %Frame{assigns: %{current_scope: context.scope, agent_id: context.coding.id}}
         {:reply, response, _} = CheckAnswer.execute(%{question_id: context.question_id}, asking)
 
-        assert response_text(response) =~ "yes",
+        assert response_text(response) =~ "/tmp/spex-2027",
                """
                The asking agent was never told the answer.
 
