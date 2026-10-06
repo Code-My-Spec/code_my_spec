@@ -259,7 +259,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_dependency remove_dependency
     validate_dependency_graph execute_proposal show_architecture_overview get_component
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
-    list_notifications answer_notification escalate_question withdraw_question
+    list_notifications answer_notification escalate_question withdraw_question search_answers
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
     query_logs get_trace slow_spans error_summary

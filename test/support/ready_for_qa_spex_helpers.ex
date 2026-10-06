@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
+  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
@@ -82,6 +83,16 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
 
     {:reply, response, _frame} =
       AddCriterion.execute(%{story_number: story.number, description: text}, frame)
+
+    response
+  end
+
+  @doc "Bind the copy's team to `story` through `set_active_story`, as a team member would."
+  def set_active_story(context, story) do
+    frame = %Frame{assigns: %{current_scope: context.scope}}
+
+    {:reply, response, _frame} =
+      SetActiveStory.execute(%{story_number: story.number}, frame)
 
     response
   end

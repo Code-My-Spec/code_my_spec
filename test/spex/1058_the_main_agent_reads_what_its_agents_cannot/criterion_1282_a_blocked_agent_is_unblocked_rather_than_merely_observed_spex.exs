@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3314Spex do
 
   spex "The main agent answers instead of forwarding", criterion: 1282 do
     scenario "an agent stopped for want of something the project records" do
-      given_ "a product agent blocked on which ready story has no epic", context do
+      given_ "a coding agent blocked on which ready story has no epic", context do
         reply = join_working_copy(context, "/tmp/spex-3314", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3314Spex do
         orphan = Fixtures.authored_story(scope, "Dunning emails go out")
         :ok = Fixtures.mark_story_ready(scope, orphan)
 
-        agent = Fixtures.running_agent(scope, role: "product", working_copy: "/tmp/spex-3314")
+        agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3314")
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 

@@ -29,17 +29,36 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   alias CodeMySpec.Requirements.{Node, Projection, Requirement, Shadow}
   alias CodeMySpec.Users.Scope
 
-  @replace {:replace,
-            [
-              :satisfied,
-              :details,
-              :description,
-              :checked_at,
-              :inputs_fingerprint,
-              :owner_component_type,
-              :node_scope,
-              :updated_at
-            ]}
+  # a69525bd / 181f3469: a row EXCLUDED agrees with on every stored column is
+  # left alone rather than rewritten -- reaping here is already independent
+  # of what this upsert touches (`delete_departed/4` re-queries `ids_by_key`
+  # rather than trusting RETURNING), so the guard is safe to add outright.
+  defp on_conflict({_table, _schema} = target) do
+    from(n in target,
+      update: [
+        set: [
+          satisfied: fragment("EXCLUDED.satisfied"),
+          details: fragment("EXCLUDED.details"),
+          description: fragment("EXCLUDED.description"),
+          checked_at: fragment("EXCLUDED.checked_at"),
+          inputs_fingerprint: fragment("EXCLUDED.inputs_fingerprint"),
+          owner_component_type: fragment("EXCLUDED.owner_component_type"),
+          node_scope: fragment("EXCLUDED.node_scope"),
+          updated_at: fragment("EXCLUDED.updated_at")
+        ]
+      ],
+      where:
+        fragment(
+          "? IS DISTINCT FROM EXCLUDED.satisfied OR ? IS DISTINCT FROM EXCLUDED.details OR ? IS DISTINCT FROM EXCLUDED.description OR ? IS DISTINCT FROM EXCLUDED.inputs_fingerprint OR ? IS DISTINCT FROM EXCLUDED.owner_component_type OR ? IS DISTINCT FROM EXCLUDED.node_scope",
+          n.satisfied,
+          n.details,
+          n.description,
+          n.inputs_fingerprint,
+          n.owner_component_type,
+          n.node_scope
+        )
+    )
+  end
 
   @doc """
   Satisfied and total requirement rows for one story, read at one working copy.
@@ -436,8 +455,10 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     # Ten columns a row, so this one refuses at 6,553 nodes rather than the
     # edge table's 21,845 — the narrower limit of the two, and the one nothing
     # would have found first because edges outnumber nodes.
-    insert_every(Shadow.pass_target(), entries,
-      on_conflict: @replace,
+    target = Shadow.pass_target()
+
+    insert_every(target, entries,
+      on_conflict: on_conflict(target),
       conflict_target: conflict_target
     )
   end

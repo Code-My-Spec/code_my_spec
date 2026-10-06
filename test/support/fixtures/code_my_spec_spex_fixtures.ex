@@ -911,6 +911,10 @@ defmodule CodeMySpecSpex.Fixtures do
     AgentPresence.present(agent)
   end
 
+  @doc "Track an already-created agent present, the way `running_agent/2` does."
+  @spec mark_present(map()) :: map()
+  def mark_present(agent), do: AgentPresence.present(agent)
+
   defp tool_set(role) when is_binary(role),
     do: role |> String.to_existing_atom() |> tool_set()
 

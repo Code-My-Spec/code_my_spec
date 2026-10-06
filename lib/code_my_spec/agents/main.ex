@@ -597,6 +597,14 @@ defmodule CodeMySpec.Agents.Main do
 
   defp answer_as(:product, _scope, _question, _answer, _opts), do: {:error, :not_yours}
 
+  # Routed straight to the user from the start (criterion 1988), not escalated
+  # there by main: nothing short of the user answering it settles it, however
+  # well main's own answer would stand up. One main escalated itself carries
+  # an `escalation_reason` and stays answerable (8c91d5bc, "main may answer a
+  # question already with the user").
+  defp answer_as(_role, _scope, %{holder: "user", escalation_reason: nil}, _answer, _opts),
+    do: {:error, :with_user}
+
   defp answer_as(_main, scope, question, answer, opts) do
     case within_scope(question, opts) do
       :ok -> weigh(scope, question, answer, opts)
@@ -1432,6 +1440,12 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
+  # A product agent's own question is nobody's above it to settle (criterion
+  # 1987): main does not design the epic, so it has no basis main itself
+  # lacks, and routing it there first would be a wake for a turn main can
+  # never actually take.
+  defp routed(_scope, %Agent{role: :product}, _about), do: "user"
+
   defp routed(_scope, %Agent{role: role}, _about), do: holder(RoleProfile.questions_to(role))
 
   defp holder(:user), do: "user"
@@ -1466,6 +1480,10 @@ defmodule CodeMySpec.Agents.Main do
 
     :ok
   end
+
+  # Routed straight to the user (criterion 1987): nothing about it is main's
+  # to act on, so nothing about it should wake main either.
+  def question_raised(%Scope{}, %{holder: "user"}), do: :ok
 
   def question_raised(%Scope{} = scope, %{agent_id: agent_id})
       when is_binary(agent_id) do
