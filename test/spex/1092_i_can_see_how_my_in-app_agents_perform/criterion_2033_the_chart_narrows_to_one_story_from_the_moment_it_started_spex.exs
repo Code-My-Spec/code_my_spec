@@ -102,8 +102,13 @@ defmodule CodeMySpecSpex.Story1092.Criterion2033Spex do
       end
 
       when_ "I narrow the chart to the story that started second", context do
-        path = index_path(context) <> "?story_id=#{context.target.id}"
-        {:ok, _index, html} = live(context.conn, path)
+        {:ok, index, _html} = live(context.conn, index_path(context))
+
+        html =
+          index
+          |> element("form[data-test='performance-filter']")
+          |> render_change(%{"working_copy_id" => "", "story_id" => to_string(context.target.id)})
+
         {:ok, Map.put(context, :html, html)}
       end
 
