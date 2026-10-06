@@ -75,6 +75,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Accounts.MembersRepository
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.AppRestart
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
@@ -188,6 +189,94 @@ defmodule CodeMySpec.Agents do
 
   defdelegate free_issue_team(scope, issue), to: IssueAssignment, as: :free
   defdelegate providers(), to: Providers, as: :names
+
+  @doc """
+  Every task embedded directly on an agent -- rather than on a session --
+  that was opened against a story, including tasks opened against the
+  story's own linked component (see `Sessions.list_tasks_for_story/3` for
+  why `component_id` is matched too).
+
+  An agent run under Alloy has no session and fires no hooks, so its tasks
+  live on its own `tasks` embed (`TaskOwner`); `Sessions.list_tasks_for_story/3`
+  only ever sees the other kind. `AgentPerformance.CycleTime` reads both.
+  """
+  @spec list_tasks_for_story(Scope.t(), integer(), Ecto.UUID.t() | nil) :: [map()]
+  def list_tasks_for_story(%Scope{} = scope, story_id, component_id \\ nil)
+      when is_integer(story_id) do
+    scope
+    |> list_agents()
+    |> Enum.flat_map(fn agent ->
+      agent.tasks
+      |> List.wrap()
+      |> Enum.filter(&(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id)))
+      |> Enum.map(&Map.from_struct/1)
+    end)
+  end
+
+  @doc """
+  Record that a working copy's whole app -- not one agent -- was restarted.
+
+  `RestartApp` has no agent to name, so this cannot go through
+  `Conversations.record_restart/2`.
+  """
+  @spec record_app_restart(Scope.t(), String.t()) ::
+          {:ok, AppRestart.t()} | {:error, Ecto.Changeset.t()}
+  def record_app_restart(
+        %Scope{active_working_copy_id: working_copy_id, active_project_id: project_id},
+        reason
+      )
+      when is_binary(working_copy_id) and is_binary(project_id) and is_binary(reason) do
+    %AppRestart{}
+    |> AppRestart.changeset(%{
+      working_copy_id: working_copy_id,
+      project_id: project_id,
+      reason: reason
+    })
+    |> Repo.insert()
+  end
+
+  @doc """
+  Every app restart on a working copy no agent currently holds a story on --
+  the project-level case criterion 1998 describes.
+  """
+  @spec list_app_restarts_without_story(Scope.t()) :: [AppRestart.t()]
+  def list_app_restarts_without_story(%Scope{} = scope) do
+    import Ecto.Query, only: [from: 2]
+
+    held =
+      scope
+      |> list_agents()
+      |> Enum.reject(&is_nil(&1.story_id))
+      |> MapSet.new(& &1.working_copy_id)
+
+    from(r in AppRestart, where: r.project_id == ^scope.active_project_id)
+    |> Repo.all()
+    |> Enum.reject(&MapSet.member?(held, &1.working_copy_id))
+  end
+
+  @doc """
+  The agent of this role currently on this working copy, if any.
+
+  A turn arrives on the wire naming a working copy and a role, never an
+  agent id (`HarnessProjectChannel`'s `record_turn`) -- one running agent
+  per `{working_copy, role}` is the standing assumption the rest of this
+  module already makes (`adopt/2`'s own lookup matches the same pair).
+  """
+  @spec find_by_working_copy_and_role(Scope.t(), Ecto.UUID.t() | nil, String.t() | atom()) ::
+          Agent.t() | nil
+  def find_by_working_copy_and_role(scope, working_copy_id, role)
+  def find_by_working_copy_and_role(_scope, nil, _role), do: nil
+
+  def find_by_working_copy_and_role(%Scope{} = scope, working_copy_id, role) do
+    role = to_string(role)
+
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.find(
+      &(&1.working_copy_id == working_copy_id and to_string(&1.role) == role and
+          is_nil(&1.retired_at))
+    )
+  end
 
   @doc """
   What an agent may call: its role's grants as the code states them now, plus
@@ -818,6 +907,7 @@ defmodule CodeMySpec.Agents do
          :ok <- refuse_unless_on(agent),
          {:ok, credential} <- Credential.fetch(scope, agent.provider),
          :ok <- halt_for_restart(agent),
+         :ok <- Offers.supersede_queued(agent.id),
          {:ok, starting} <-
            AgentsRepository.update_agent(scope, agent, %{
              status: :starting,

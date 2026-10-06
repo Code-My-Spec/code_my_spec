@@ -172,6 +172,36 @@ defmodule CodeMySpec.Sessions do
 
   def list_active_tasks_for_agent(_scope, _agent_id), do: []
 
+  @doc """
+  Every task ever opened against a story, across every session, finished or
+  not.
+
+  A story's own cycle time is a property of the tasks that built it, not of
+  one session — a story moves through several session types (specs, build,
+  QA...) over its life, so this reads every session rather than one. Used by
+  `AgentPerformance` to derive stage times from each task's own
+  `started_at`/`completed_at` and blocked span, rather than a second,
+  separately-maintained clock.
+  """
+  # A component-scoped task (entity_type "component" on start_task) never
+  # carries story_id -- component_id is the only ref it has -- so
+  # component_id is matched too, or a story's build-stage work (almost
+  # always component-scoped) would never be found at all.
+  @spec list_tasks_for_story(Scope.t(), integer(), Ecto.UUID.t() | nil) :: [map()]
+  def list_tasks_for_story(%Scope{} = scope, story_id, component_id \\ nil)
+      when is_integer(story_id) do
+    scope
+    |> list_sessions()
+    |> Enum.flat_map(fn session ->
+      session.tasks
+      |> List.wrap()
+      |> Enum.filter(
+        &(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id))
+      )
+      |> Enum.map(&Map.from_struct/1)
+    end)
+  end
+
   @doc "Find an active session by external conversation ID (Claude session ID)."
   def get_by_external_id(%Scope{} = scope, external_id) when is_binary(external_id) do
     Session
