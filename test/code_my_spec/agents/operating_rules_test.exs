@@ -105,6 +105,28 @@ defmodule CodeMySpec.Agents.OperatingRulesTest do
       assert rules =~ "origin/main"
     end
 
+    # A QA agent asked main before restarting its own copy's app, because the
+    # by-hand rule read as covering `restart_app` too (c1d6b0b4). The grant was
+    # never missing — `@qa_tools` lists `ensure_app_running restart_app
+    # stop_app` — so the fix is the sentence that tells the tool from the
+    # recipe, inside the same rule rather than appended after it.
+    test "the sanctioned restart tool is told apart from the by-hand recipe", %{rules: rules} do
+      assert rules =~ "restart_app"
+      assert rules =~ "sanctioned", "`restart_app` is named but not as the allowed path"
+
+      # Named as forbidden, so the distinction is the recipe's own name rather
+      # than a reader's judgement between two similar-sounding commands.
+      # Whitespace is normalised because the page wraps.
+      flat = String.replace(rules, ~r/\s+/, " ")
+
+      assert flat =~ "running the recipe yourself",
+             "the forbidden thing is not named, so the two still have to be told " <>
+               "apart by inference — which is what cost a QA pass its own app"
+
+      assert :binary.match(rules, "restart_app") < :binary.match(rules, "origin/main"),
+             "the distinction belongs inside the by-hand rule it resolves, not after it"
+    end
+
     # The most expensive hour of the night: a config file for CodeMySpec's own
     # harness env written into a game, because that env appears in CodeMySpec's
     # own justfile.
