@@ -91,6 +91,25 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     )
   end
 
+  @doc """
+  The task-scoped `awaited_by/1`: is this agent waiting on the queue for
+  `subject`?
+
+  A `promote_issue`/`story_promoted` task names its issue or story, and only an
+  open entry for that same subject means the task's wait is the queue's.
+  """
+  @spec open_for(Ecto.UUID.t(), String.t(), String.t()) :: boolean()
+  def open_for(agent_id, subject_type, subject_id) do
+    Repo.exists?(
+      from e in Entry,
+        where:
+          e.requested_by_agent_id == type(^agent_id, :binary_id) and
+            e.status in ^@open and e.subject_type == ^subject_type and
+            e.subject_id == ^subject_id,
+        limit: 1
+    )
+  end
+
   @doc "The candidates waiting for a batch, oldest first, at most `limit`."
   @spec queued(Ecto.UUID.t(), pos_integer()) :: [Entry.t()]
   def queued(project_id, limit) do

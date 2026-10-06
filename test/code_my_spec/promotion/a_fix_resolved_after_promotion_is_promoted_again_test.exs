@@ -14,6 +14,7 @@ defmodule CodeMySpec.Promotion.AFixResolvedAfterPromotionIsPromotedAgainTest do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Promotion.RunningCopy
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Staffing
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
@@ -68,5 +69,27 @@ defmodule CodeMySpec.Promotion.AFixResolvedAfterPromotionIsPromotedAgainTest do
     story = promote(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), 1))
 
     assert {{true, _}, {true, _}} = verdicts(ctx.scope, story)
+  end
+
+  # The verdict above is the mechanism; this is the issue's own claim, that
+  # nobody is offered the promote. It asks the graph, which is what an offer
+  # reads, rather than `RunningCopy` directly.
+  test "the graph reads story_promoted unsatisfied once the fix is resolved", ctx do
+    story = promote(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), -3600))
+    assert {true, _} = story_promoted(ctx.scope, story), "a stamped story with no fix is satisfied"
+
+    issue = resolve(ctx.scope, story)
+
+    assert {false, details} = story_promoted(ctx.scope, story)
+    assert details["reason"] =~ issue.id
+  end
+
+  defp story_promoted(scope, story) do
+    {nodes, _edges} = RequirementGraph.compute_graph(scope)
+
+    case Enum.find(nodes, &(&1.name == "story_promoted" and &1.entity_id == story.id)) do
+      nil -> {true, %{status: "settled satisfied by default; named as no exception"}}
+      node -> {node.satisfied, node.details}
+    end
   end
 end
