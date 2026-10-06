@@ -1080,6 +1080,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
+       # Alloy bounds the whole loop by this and gives each request what is left
+       # of it as its receive timeout; its two-minute default starved an HTTP
+       # agent's request to a second once its tools had spent the rest.
+       |> Keyword.put(:timeout_ms, @turn_timeout)
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).

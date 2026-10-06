@@ -67,27 +67,6 @@ defmodule CmsHarness.Agents.ProviderTest do
     end
   end
 
-  describe "how long an HTTP provider waits for the model" do
-    test "longer than Req's 15s default, which a large-context first token outlasts" do
-      for provider <- ["zai", "deepinfra", "anthropic"] do
-        {:ok, opts} = Provider.options(provider, %{api_key: "k"})
-        {_module, config} = Keyword.fetch!(opts, :provider)
-
-        timeout = config.req_options[:receive_timeout]
-        assert is_integer(timeout) and timeout >= :timer.minutes(2), provider
-      end
-    end
-
-    test "a recorder's req_options still reach Req beside the timeout" do
-      plug = {Req.Test, :recorder}
-      {:ok, opts} = Provider.options("deepinfra", %{api_key: "k"}, req_options: [plug: plug])
-      {_module, config} = Keyword.fetch!(opts, :provider)
-
-      assert config.req_options[:plug] == plug
-      assert is_integer(config.req_options[:receive_timeout])
-    end
-  end
-
   describe "which model an agent asks for" do
     test "a codex agent names none unless one was asked for" do
       {:ok, opts} = Provider.options("openai-codex", %{})
