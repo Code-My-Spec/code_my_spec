@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2030Spex do
        criterion: 2030 do
     scenario "the performance page is opened with no filters" do
       given_ "a project with the performance page available", context do
+        # given: already true — `setup :setup_active_project` creates it.
         {:ok, context}
       end
 
