@@ -26,6 +26,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       %{}
       |> maybe_put_param("working_copy_id", present(params["working_copy_id"]))
       |> maybe_put_param("story_id", present(params["story_id"]))
+      |> maybe_put_param("agent_id", present(params["agent_id"]))
 
     {:noreply,
      push_patch(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/agent-performance?#{query}")}
@@ -54,6 +55,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     |> assign(:summary, AgentPerformance.summary(scope))
     |> assign(:filter, filter)
     |> assign(:working_copies, WorkingCopies.list_harnesses(scope))
+    |> assign(:agents, AgentPerformance.list_agents(scope))
     |> assign(:chart_option, AgentPerformance.chart_option(scope, filter))
     |> assign(:chart_detail, AgentPerformance.chart_detail(scope, filter))
   end
@@ -62,6 +64,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     %{}
     |> maybe_put_filter(:working_copy_id, present(params["working_copy_id"]))
     |> maybe_put_filter(:story_id, parse_int(params["story_id"]))
+    |> maybe_put_filter(:agent_id, present(params["agent_id"]))
   end
 
   defp present(nil), do: nil
@@ -105,6 +108,15 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
           <option value="">All</option>
           <option :for={story <- @stories} value={story.id} selected={story.id == @filter[:story_id]}>
             {story.title}
+          </option>
+        </select>
+      </div>
+      <div>
+        <label class="label" for="filter-agent">Agent</label>
+        <select id="filter-agent" name="agent_id" class="select select-bordered select-sm">
+          <option value="">All</option>
+          <option :for={agent <- @agents} value={agent.id} selected={agent.id == @filter[:agent_id]}>
+            {agent_label(agent)}
           </option>
         </select>
       </div>
@@ -276,6 +288,8 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     </div>
     """
   end
+
+  defp agent_label(agent), do: "#{agent.role} (#{agent.provider})"
 
   defp kind_label(:nudge), do: "nudge"
   defp kind_label(:restart), do: "restart"
