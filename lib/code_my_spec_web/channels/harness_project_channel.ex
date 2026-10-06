@@ -96,6 +96,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          :ok <-
            record_machine_tools(harness, payload["machine_tools"], payload["machine_tool_docs"]),
          :ok <- record_browser_status(harness, payload["browser_status"]),
+         # What this harness says it is running, from its own `state.json`
+         # (00bd7d4a). A restart's result arrives as a reply or a push, and a
+         # harness that restarted mid-reply â or whose socket dropped and
+         # reconnected â leaves the last write here naming a commit the app is
+         # not serving, which promotion now keys on. A join is the one moment
+         # the harness is provably talking to us, so this is where the two
+         # converge. An older harness sends nothing and the row is left alone.
+         :ok <- report_app_state(harness, payload["app"]),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
          scope = put_harness_scope(scope, harness),
@@ -191,6 +199,31 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # says "this machine reported nothing", the other "this machine has no
   # browser". Both end with an agent that has no browser tools, and only the
   # second is a thing the operator can act on.
+  # The app the joining harness says it is running. Absent from an older
+  # harness, which is not "the app is down": one says "not reported", the other
+  # "reported down", and only the second is a fact about the app. So an absent
+  # field writes nothing rather than clearing the row.
+  defp report_app_state(_harness, nil), do: :ok
+
+  defp report_app_state(harness, %{} = reported) do
+    case reported["status"] do
+      status when status in ~w(serving erroring down starting) ->
+        WorkingCopies.record_app_status(harness, %{
+          status: status,
+          url: reported["url"],
+          commit: reported["commit"],
+          serving_commit: reported["serving_commit"]
+        })
+
+        :ok
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp report_app_state(_harness, _other), do: :ok
+
   defp record_machine_tools(_harness, nil, _docs), do: :ok
 
   defp record_machine_tools(harness, names, docs) when is_list(names) do
