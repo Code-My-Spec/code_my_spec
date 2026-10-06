@@ -241,13 +241,16 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   Take back a message the agent has not picked up yet.
 
+  `{:error, :never_received}` when this harness never queued it, which is
+  what a queue dropped by a restart leaves behind.
+
   `{:error, :already_delivered}` when it has. That refusal is the point: a turn
   ends while somebody is reaching for the control, and reporting success there
   leaves them believing the agent was stopped while it acts on the thing they
   thought they took back.
   """
   @spec withdraw(String.t(), String.t()) ::
-          :ok | {:error, :already_delivered | :not_running}
+          :ok | {:error, :already_delivered | :never_received | :not_running}
   def withdraw(agent_id, ref) do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, {:withdraw, ref})
@@ -1077,6 +1080,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
+       # Alloy bounds the whole loop by this and gives each request what is left
+       # of it as its receive timeout; its two-minute default starved an HTTP
+       # agent's request to a second once its tools had spent the rest.
+       |> Keyword.put(:timeout_ms, @turn_timeout)
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).

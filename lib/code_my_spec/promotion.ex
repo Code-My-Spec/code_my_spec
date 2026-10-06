@@ -575,85 +575,30 @@ defmodule CodeMySpec.Promotion do
 
   defp story_spex_pass(_scope, nil, _named, _files_scope), do: :ok
 
-  # Story 983, criteria 1895/1896/1905: a story's own first-ever certifying
-  # run tolerates a red, never-latched criterion -- it is unfinished work,
-  # not a regression, and there is nothing yet to protect. The moment any
-  # criterion on the story HAS been latched by an earlier certifying run,
-  # that tolerance is gone: a red criterion, new or regressed, refuses like
-  # today. Either way, a clean run latches every criterion that just went
-  # green (1896) -- the counterpart to the story-wide `specs_ready` latch,
-  # now earned one criterion at a time.
+  # Every red spex on the story refuses it (John, 2026-10-05): the story's spex
+  # files on the copy, by its own rows and by the criteria they name.
   defp story_spex_pass(scope, story, named, files_scope) do
-    live_criteria =
-      scope
-      |> AcceptanceCriteria.list_all_story_criteria(story.id)
-      |> Enum.reject(& &1.retired_at)
-
-    # Which files cover which criterion is the binding (`Files.SpecBinding`):
-    # each spex file's `criterion: N` stamp joined to `criteria.number`. Never a
-    # path the criterion recorded or one derived from its words: a rename left
-    # 1,319 latched criteria recording paths no file was at, and a criterion
-    # whose renamed file was red latched anyway (2026-10-05).
-    by_number = bound_paths((files_scope || scope), live_criteria)
+    files_scope = files_scope || scope
+    numbers = scope |> AcceptanceCriteria.list_story_criteria(story.id) |> MapSet.new(& &1.number)
 
     file_paths =
-      (files_scope || scope)
+      files_scope
       |> Files.list_story_files(story.id)
       |> Enum.filter(&(&1.role == :bdd_spec))
       |> MapSet.new(& &1.path)
 
-    paths = by_number |> Map.values() |> Enum.reduce(file_paths, &MapSet.union/2)
+    paths =
+      for {path, number} <- Files.bdd_spec_criterion_numbers(files_scope),
+          MapSet.member?(numbers, number),
+          into: file_paths,
+          do: path
 
     failing =
       scope
       |> ProblemRepository.list_project_problems(source: "spex")
       |> Enum.filter(&MapSet.member?(paths, &1.file_path))
 
-    # Tolerance is per finding, not per story: a failing path only earns it
-    # when that path is itself a live criterion's own, never-yet-latched
-    # path -- a red finding with no criterion to its name, or on a criterion
-    # that already proved itself once, is a real regression and refuses like
-    # today (`a_promote_latches_only_the_story_it_names_test.exs`).
-    unlatched_criterion_paths =
-      live_criteria
-      |> Enum.filter(&is_nil(&1.latched_at))
-      |> Enum.reduce(MapSet.new(), &MapSet.union(Map.fetch!(by_number, &1.number), &2))
-
-    if failing != [] and
-         Enum.all?(failing, &MapSet.member?(unlatched_criterion_paths, &1.file_path)) do
-      latch_green_criteria(scope, live_criteria, by_number, failing)
-      :ok
-    else
-      with :ok <- spex_verdict(story, file_paths, failing, named) do
-        latch_green_criteria(scope, live_criteria, by_number, failing)
-      end
-    end
-  end
-
-  # Each live criterion's number and the spex files on the copy that name it.
-  defp bound_paths(files_scope, live_criteria) do
-    bound = Files.bdd_spec_criterion_numbers(files_scope)
-
-    Map.new(live_criteria, fn criterion ->
-      {criterion.number,
-       for({path, number} <- bound, number == criterion.number, into: MapSet.new(), do: path)}
-    end)
-  end
-
-  # A criterion latches when a spex file names it and none of its files is red.
-  # One no file names has nothing that went green, so it does not latch.
-  defp latch_green_criteria(scope, live_criteria, by_number, failing) do
-    failing_paths = MapSet.new(failing, & &1.file_path)
-
-    for criterion <- live_criteria,
-        is_nil(criterion.latched_at),
-        own = Map.fetch!(by_number, criterion.number),
-        MapSet.size(own) > 0,
-        MapSet.disjoint?(own, failing_paths) do
-      AcceptanceCriteria.latch_criterion(scope, criterion)
-    end
-
-    :ok
+    spex_verdict(story, file_paths, failing, named)
   end
 
   # The running copy's HEAD, which its spex run has to answer for, and the
@@ -936,11 +881,10 @@ defmodule CodeMySpec.Promotion do
   Whether the promoting copy (`scope.active_working_copy_id`) may merge `head`.
 
   Every analyzer needs a run at `head` (`Analysis.answer_at_commit/3`). The
-  problems those runs recorded follow the rule of 30fd997f, John 2026-09-30:
-  **zero problems, except the red spex of stories that are not latched.**
-  Compiler, credo and exunit findings refuse at `:error` or `:warning`; `:info`
-  (low-priority credo) is advisory. A red spex refuses only when its story is
-  latched (`specs_ready`), through `Blocking.enforceable/2`.
+  problems those runs recorded must be zero (John, 2026-10-05: every red spex
+  refuses, latched or not). Compiler, credo and exunit findings refuse at
+  `:error` or `:warning`; `:info` (low-priority credo) is advisory. A spex
+  finding with no location is advisory (`Blocking.enforceable/2`).
 
   A source with no run at `head` has one started (`requested_by` the agent in
   `opts[:notify]`) unless one is already running there, and the answer is
@@ -1155,9 +1099,8 @@ defmodule CodeMySpec.Promotion do
            "promotes nothing.\n\n" <>
            describe_problems(problems) <>
            "\n\nA promotion needs zero compiler, credo and exunit errors and " <>
-           "warnings, and no red spex on a latched (specs_ready) story. Fix these on " <>
-           "#{named}, commit, and promote again. Red spex of stories " <>
-           "not latched yet are allowed through." <>
+           "warnings, and no red spex. Fix these on " <>
+           "#{named}, commit, and promote again." <>
            "\n\nIf #{named} is not this session's own working copy, the gate " <>
            "resolved to a different checkout than the one calling it — fix on " <>
            "that copy, or say so if this looks wrong; a sweep run from here " <>
@@ -1174,8 +1117,8 @@ defmodule CodeMySpec.Promotion do
   # Credo and compiler findings block whatever the stop hook's mode says: a
   # warning let through here lands on main and blocks every other copy's
   # promote until someone cleans it up (v2.0.162's two AliasUsage findings).
-  # Exunit and spex go through `Blocking.enforceable/2`, which drops the red
-  # spex of unlatched stories — the same latch the stop hook uses.
+  # Exunit and spex go through `Blocking.enforceable/2`, which drops only spex
+  # findings with no location — the same rule the stop hook uses.
   #
   # Whether an advisory finding can block at all is `Validation.blockable/2`'s
   # answer, shared with task evaluation and the analysis digest.
@@ -1188,13 +1131,8 @@ defmodule CodeMySpec.Promotion do
     |> problems_of(Enum.reject(sources, &(&1 in @always_block)))
     |> then(&Blocking.enforceable(scope, &1))
     |> Kernel.++(strict)
-    |> Kernel.++(unbound_latched(scope, sources))
     |> then(&Blocking.blockable(scope, &1))
   end
-
-  # Judged with spex: a latched criterion no spex file names guards nothing.
-  defp unbound_latched(scope, sources),
-    do: if("spex" in sources, do: Blocking.unbound_latched(scope), else: [])
 
   defp problems_of(_scope, []), do: []
 

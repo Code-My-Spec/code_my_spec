@@ -913,7 +913,6 @@ defmodule CodeMySpec.Validation do
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq(),
       specs_ready_story_ids: Blocking.specs_ready_story_ids(scope),
-      latched_spec_paths: Blocking.latched_spec_paths(scope),
       criterion_story_ids: Files.bdd_spec_story_id_by_path(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)

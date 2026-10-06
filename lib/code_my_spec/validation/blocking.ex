@@ -26,7 +26,6 @@ defmodule CodeMySpec.Validation.Blocking do
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Stories
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
 
   # Spex enforcement is per-story, and it runs BEFORE the configured mode
@@ -122,7 +121,6 @@ defmodule CodeMySpec.Validation.Blocking do
   def enforceable(%Scope{} = scope, problems) do
     ctx = %{
       specs_ready_story_ids: specs_ready_story_ids(scope),
-      latched_spec_paths: latched_spec_paths(scope),
       criterion_story_ids: Files.bdd_spec_story_id_by_path(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
@@ -136,28 +134,11 @@ defmodule CodeMySpec.Validation.Blocking do
     end)
   end
 
-  # Per-criterion (story 983, criteria 1898-1901, 1906): a red spex blocks
-  # when the criterion whose path it is has itself gone green on a
-  # certifying run before -- not when the *story* carries the whole-story
-  # `specs_ready` latch some sibling criterion earned. `story_id_for/4` still
-  # decides whether the path resolves to a story at all: unresolvable stays
-  # enforced, the same fail-closed `02796b61` fallback as before.
-  def split_by_story_enforcement("spex", problems, ctx) do
-    %{
-      latched_spec_paths: latched_paths,
-      criterion_story_ids: by_path,
-      spec_file_story_ids: by_spec_file,
-      story_ids_by_number: by_number
-    } = ctx
-
-    Enum.split_with(problems, fn problem ->
-      located?(problem) and
-        case story_id_for(problem.file_path, by_path, by_spec_file, by_number) do
-          nil -> true
-          _story_id -> MapSet.member?(latched_paths, problem.file_path)
-        end
-    end)
-  end
+  # Every red spex blocks (John, 2026-10-05): analysis runs only at certify and
+  # promote, so a red spex there is red, latched or not. Only a finding with no
+  # location is advisory (`located?/1`).
+  def split_by_story_enforcement("spex", problems, _ctx),
+    do: Enum.split_with(problems, &located?/1)
 
   def split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
 
@@ -234,57 +215,5 @@ defmodule CodeMySpec.Validation.Blocking do
     scope
     |> Stories.list_specs_ready_story_ids()
     |> MapSet.new()
-  end
-
-  @doc """
-  The spex files on the scope's copy that name a latched, live criterion: the
-  binding (`Files.SpecBinding`, the file's `spex "…", criterion: N` stamp joined
-  to `criteria.number`), never a path the criterion recorded or one derived from
-  its words.
-
-  2026-10-05: a rename (`mix cms.stamp_spex`, 66530d93d) left 1,319 of 1,550
-  latched criteria recording a `spec_path` no file was at, so their red spex
-  matched nothing latched, read as advisory, and 22 went red on main.
-  """
-  @spec latched_spec_paths(Scope.t()) :: MapSet.t(String.t())
-  def latched_spec_paths(scope) do
-    latched = scope |> AcceptanceCriteria.list_latched_criteria() |> MapSet.new(& &1.number)
-
-    for {path, number} <- Files.bdd_spec_criterion_numbers(scope),
-        MapSet.member?(latched, number),
-        into: MapSet.new(),
-        do: path
-  end
-
-  @doc """
-  A blocking spex problem for each latched, live criterion no spex file on the
-  scope's copy names. The latch says the criterion's spex went green; a latch
-  with no spex behind it guards nothing, and a binding that breaks has to be
-  loud rather than let every red through.
-  """
-  @spec unbound_latched(Scope.t()) :: [Problems.Problem.t()]
-  def unbound_latched(scope) do
-    bound = scope |> Files.bdd_spec_criterion_numbers() |> Map.values() |> MapSet.new()
-
-    for criterion <- AcceptanceCriteria.list_latched_criteria(scope),
-        not MapSet.member?(bound, criterion.number) do
-      unbound(criterion)
-    end
-  end
-
-  defp unbound(criterion) do
-    story = criterion.story
-
-    %Problems.Problem{
-      source: "spex",
-      source_type: :test,
-      severity: :error,
-      category: "unbound_latched_criterion",
-      file_path: "test/spex/#{story && story.number}_*",
-      message:
-        "criterion #{criterion.number} (story #{story && story.number}) is latched, and no " <>
-          "spex file on this copy names it (`spex \"…\", criterion: #{criterion.number}`). " <>
-          "Restore its spex, or retire the criterion."
-    }
   end
 end

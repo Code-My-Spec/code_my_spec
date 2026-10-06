@@ -296,6 +296,10 @@ defmodule CodeMySpecSpex.PromotionHelpers do
         working_copy: context.agent_root
       )
 
+    # Running is presence now (e3042a7c's sibling gap): the queue's outcome
+    # delivery checks `Presence.present?/2`, and this row alone reads as off.
+    Fixtures.mark_present(agent)
+
     Map.put(context, :agent_id, agent.id)
   end
 
@@ -329,6 +333,9 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     agent = Fixtures.running_agent(scope, provider: "anthropic", working_copy: root)
 
+    # Running is presence now (e3042a7c's sibling gap), same as above.
+    Fixtures.mark_present(agent)
+
     Map.put(context, key, %{
       root: root,
       scope: scope,
@@ -344,6 +351,20 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_, 0} = git(context, root, ["commit", "-q", "-m", "work on #{path}"])
     context
   end
+
+  @doc """
+  The agent's copy with a commit of its own, as a copy promoting a story has.
+  A copy still at main's commit is already on main, and the queue lands it
+  without a gate (2583cc8b0), so nothing would certify or latch it.
+  """
+  def with_work_on_the_copy(context),
+    do:
+      commit_work(
+        context,
+        context.agent_root,
+        "lib/story_work.ex",
+        "defmodule StoryWork do\nend\n"
+      )
 
   @doc "A candidate's own analyzers current at its HEAD."
   def its_analyzers_are_current(context, %{scope: scope}) do

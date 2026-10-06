@@ -49,8 +49,10 @@ defmodule CodeMySpec.Integrations.Integration do
         # and `fetch_access_token/2` takes the fresh path for both.
         :openai,
         :anthropic,
-        :zai
+        :zai,
+        :deepinfra
       ]
+
     field :access_token, CodeMySpec.Encrypted.Binary
     field :refresh_token, CodeMySpec.Encrypted.Binary
     field :expires_at, :utc_datetime_usec

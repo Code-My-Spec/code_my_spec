@@ -290,10 +290,14 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   # The results in this turn's request, one entry each, with the id of the call
   # every one of them answers.
+  #
+  # Public because the channel's own `record_turn` handler reads it too, to
+  # mirror a failure onto the resolved agent's own conversation -- the session
+  # conversation this writes to has no agent of its own to point back to.
   @spec tool_results(map()) :: [
           %{call_id: String.t(), name: String.t(), text: String.t(), failed?: boolean()}
         ]
-  defp tool_results(%{"messages" => messages}) when is_list(messages) do
+  def tool_results(%{"messages" => messages}) when is_list(messages) do
     case List.last(messages) do
       %{"content" => content} when is_list(content) ->
         for %{"type" => "tool_result"} = block <- content do
@@ -310,7 +314,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     end
   end
 
-  defp tool_results(_request), do: []
+  def tool_results(_request), do: []
 
   defp normalize({:ok, _record}), do: :ok
   defp normalize({:error, reason}), do: {:error, reason}

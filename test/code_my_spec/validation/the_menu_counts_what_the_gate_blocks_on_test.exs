@@ -66,33 +66,14 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
     |> Keyword.get(:problems, 0)
   end
 
-  test "a red spec on a story that has not reached specs-ready is not advertised", %{scope: scope} do
+  # Every red spex blocks (John, 2026-10-05), so the menu advertises it.
+  test "a red spec is advertised, whatever its story's state", %{scope: scope} do
     story = story_fixture(scope, %{title: "Not Built Yet"})
     red_spec_for(scope, story)
 
     problems = Problems.list_project_problems(scope, severity: :error)
 
-    assert length(problems) == 1, "the problem is recorded either way"
-
-    assert Validation.enforceable(scope, problems) == [],
-           "an unwritten feature's red spec is the red bar, not a defect"
-
-    assert problem_count(scope) == 0,
-           "the menu must not open with a directive the gate would not block on"
-  end
-
-  test "a red spec on a story the project believes is done is advertised", %{scope: scope} do
-    story = story_fixture(scope, %{title: "Was Green Once"})
-    red_spec_for(scope, story)
-    {:ok, _} = Stories.set_specs_ready(scope, story, true)
-    [criterion | _] = story.criteria
-    {:ok, _} = CodeMySpec.Stories.AcceptanceCriteria.latch_criterion(scope, criterion)
-
-    problems = Problems.list_project_problems(scope, severity: :error)
-
-    assert length(Validation.enforceable(scope, problems)) == 1,
-           "a story that passed and went red again is a regression and must block"
-
+    assert length(Validation.enforceable(scope, problems)) == 1
     assert problem_count(scope) == 1
   end
 end

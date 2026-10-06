@@ -40,12 +40,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.AgentPerformance.TokenUsage
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Devices
   alias CodeMySpec.Files
@@ -342,6 +344,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         payload["response"] || %{},
         payload["agent_role"] || "main"
       )
+
+    record_turn_tokens(scope, payload)
 
     {:noreply, socket}
   end
@@ -1413,6 +1417,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp decode_withdraw_result(%{"status" => "already_delivered"}),
     do: {:error, :already_delivered}
+
+  defp decode_withdraw_result(%{"status" => "never_received"}),
+    do: {:error, :never_received}
 
   defp decode_withdraw_result(%{"reason" => reason}) when is_binary(reason),
     do: {:error, decode_reason(reason)}
@@ -2671,6 +2678,50 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # "sprite" stays as the last resort rather than the default it used to be.
   # Reached now only when a harness names no working copy and sends no id, it is
   # a real fallback instead of the label every Claude Code session got.
+  # A turn's own tokens, kept whether or not the proxy can also place it in a
+  # conversation -- `payload["agent_role"]` plus the copy already running on
+  # this socket is how `record_turn` finds "which agent", since the wire
+  # never names one directly.
+  defp record_turn_tokens(scope, payload) do
+    role = payload["agent_role"] || "main"
+
+    case Agents.find_by_working_copy_and_role(scope, scope.active_working_copy_id, role) do
+      nil ->
+        :ok
+
+      agent ->
+        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, payload["response"] || %{})
+        mirror_failed_tool_results(scope, agent, payload["request"] || %{})
+    end
+  end
+
+  # A tool failure on this turn landed on the session conversation
+  # `ConversationRecorder.record_turn` just wrote to -- keyed by
+  # `session_external_id`, which has no agent of its own to point back to
+  # (`Conversations.find_or_create_agent_conversation/3`'s own moduledoc).
+  # Mirrored here, failures only, the same restraint `Agents.write_turn_event/3`
+  # already applies to the `agent_turn_event` lane ("a success has nothing to
+  # record that the call itself did not already say"), so
+  # `AgentPerformance.ToolFailures` has something to read for this lane too.
+  defp mirror_failed_tool_results(scope, agent, request) do
+    request
+    |> ConversationRecorder.tool_results()
+    |> Enum.filter(& &1.failed?)
+    |> Enum.each(fn result ->
+      with {:ok, conversation} <-
+             Conversations.find_or_create_agent_conversation(
+               scope.active_account_id,
+               scope.active_project_id,
+               agent.id
+             ) do
+        Conversations.add_tool_result(conversation, result.call_id, result.name, result.text,
+          failed?: true,
+          agent_role: to_string(agent.role)
+        )
+      end
+    end)
+  end
+
   defp session_external_id(scope, payload) do
     case payload["session_id"] do
       id when is_binary(id) and id != "" -> id

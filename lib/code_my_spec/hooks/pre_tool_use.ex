@@ -352,6 +352,7 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   # Paths only: the server deciding for a proxied copy cannot see its disk. A
   # relative `cd` is taken from the session's directory, which is in the copy.
+  defp inside?(:unknown, _root), do: false
   defp inside?(_cd, root) when not is_binary(root), do: false
 
   defp inside?(cd, root) do

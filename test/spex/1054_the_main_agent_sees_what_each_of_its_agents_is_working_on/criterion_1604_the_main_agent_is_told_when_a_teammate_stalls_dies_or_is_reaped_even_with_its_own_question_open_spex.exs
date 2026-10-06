@@ -86,6 +86,10 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
         main_id = context.main.id
         coder_id = context.coder.id
 
+        # `notify_main` always dispatches (`Transport.dispatch_message`),
+        # whether or not main currently holds a turn open; a separate,
+        # unrelated work-offer sweep may also wake main with the generic
+        # prompt since it is idle, but that is not this criterion's message.
         assert_receive {:agent_dispatch, ^main_id, ref, text}, 2_000
         assert is_binary(ref)
 

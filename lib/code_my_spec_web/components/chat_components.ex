@@ -101,10 +101,10 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   def routine_notice?(%{role: :operator, sender_id: "promotion-notice"}), do: true
 
-  # Older confirmations were recorded with the same sender as human messages.
+  # Older confirmations, and every landing, carry the sender human messages do.
   def routine_notice?(%{role: :operator} = message) do
     Regex.match?(
-      ~r/\AThe (reload|restart) from your promotion is confirmed:/,
+      ~r/\A(The (reload|restart) from your promotion is confirmed:|Your promotion of .* landed on main)/,
       Message.text(message)
     )
   end
@@ -675,20 +675,35 @@ defmodule CodeMySpecWeb.ChatComponents do
     items =
       messages
       |> Enum.reject(&nested?(&1, called))
-      |> Enum.chunk_by(&call?/1)
+      |> Enum.chunk_by(&run_kind/1)
       |> Enum.flat_map(fn run ->
-        # Calls, not messages. A turn can make three calls at once — the model
-        # answers with three `tool_use` blocks in one response — and chunking by
-        # message saw that as a single item and left it unfolded, which is the
-        # exact case the fold exists for.
-        if call?(hd(run)) and call_count(run) > 1 do
-          run |> split_after(break_after) |> Enum.flat_map(&fold/1)
-        else
-          singles(run)
+        cond do
+          # Calls, not messages. A turn can make three calls at once — the
+          # model answers with three `tool_use` blocks in one response — and
+          # chunking by message saw that as a single item and left it
+          # unfolded, which is the exact case the fold exists for.
+          call?(hd(run)) and call_count(run) > 1 ->
+            run |> split_after(break_after) |> Enum.flat_map(&fold/1)
+
+          # A landing and its reload arrive back to back, and a line apiece
+          # still buried the feed (5150cd98).
+          routine_notice?(hd(run)) and length(run) > 1 ->
+            [Map.put(group(run), :notices, true)]
+
+          true ->
+            singles(run)
         end
       end)
 
     {items, results}
+  end
+
+  defp run_kind(message) do
+    cond do
+      call?(message) -> :call
+      routine_notice?(message) -> :notice
+      true -> :turn
+    end
   end
 
   # Where a run must not be folded across.
@@ -830,6 +845,28 @@ defmodule CodeMySpecWeb.ChatComponents do
   attr :item, :any, required: true
   attr :own_role, :atom, default: :assistant
   attr :results, :map, default: %{}
+
+  def turn_item(%{item: %{notices: true}} = assigns) do
+    ~H"""
+    <details
+      id={@id}
+      data-test="routine-notice-run"
+      data-count={length(@item.messages)}
+      class="rounded border border-base-300 px-3 py-1 text-xs"
+    >
+      <summary class="cursor-pointer">Promotion confirmed ×{length(@item.messages)}</summary>
+      <div class="mt-2 space-y-1">
+        <.turn
+          :for={message <- @item.messages}
+          id={"#{@id}-#{message.id}"}
+          message={message}
+          own_role={@own_role}
+          results={@results}
+        />
+      </div>
+    </details>
+    """
+  end
 
   def turn_item(%{item: %{grouped: false, messages: [message]}} = assigns) do
     assigns = assign(assigns, :message, message)

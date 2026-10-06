@@ -94,6 +94,9 @@ defmodule CmsHarnessTest.HeldProvider do
         startup_log: false
       )
 
+    # Unlinked so it outlives the test process until on_exit stops it in
+    # order; linked, it died with the test and raced the stop below.
+    true = Process.unlink(server)
     {:ok, {_ip, port}} = ThousandIsland.listener_info(server)
 
     ExUnit.Callbacks.on_exit(fn ->

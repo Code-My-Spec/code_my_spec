@@ -180,11 +180,9 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     red = with_spex(scope, story, true)
     certified(project)
 
-    assert {:error, %{reason: reason, failing_spex: [^red]}} =
-             Promotion.promote(scope, story.number)
-
+    # Refused at the gate: every red spex blocks there (John, 2026-10-05).
+    assert {:error, %{reason: reason}} = Promotion.promote(scope, story.number)
     assert reason =~ red
-    assert reason =~ "story #{story.number}"
     refute_received {:git, @main, ["merge" | _]}
 
     story = Stories.get_story!(scope, story.id)

@@ -24,9 +24,11 @@ defmodule CmsHarness.Mcp.Session do
 
   @doc "The agent's session client, or nil when it has none (an engine started bare)."
   @spec client(String.t()) :: term() | nil
+  # Checked alive: the registry drops an exited owner's entry asynchronously,
+  # so a lookup straight after a session dies still finds it (adb0a8530).
   def client(agent_id) do
     case Registry.lookup(CmsHarness.Registry, {:mcp_session, agent_id}) do
-      [{_pid, client}] -> client
+      [{pid, client}] -> if Process.alive?(pid), do: client
       [] -> nil
     end
   end

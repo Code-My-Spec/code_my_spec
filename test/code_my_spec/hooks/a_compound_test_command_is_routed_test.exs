@@ -94,4 +94,9 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
 
     assert log =~ "not routed (shape: nested_checkout)"
   end
+
+  test "a test after a cd it cannot follow is not routed" do
+    assert decide("cd $R && mix test test/a_test.exs", "/w/copy") == %{}
+    assert decide("cd /w/other && S=1; mix test test/a_test.exs", "/w/copy") == %{}
+  end
 end

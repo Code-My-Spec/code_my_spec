@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
         orphan = Fixtures.authored_story(scope, "Dunning emails go out")
         :ok = Fixtures.mark_story_ready(scope, orphan)
 
-        agent = Fixtures.running_agent(scope, role: "product", working_copy: "/tmp/spex-3330")
+        agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3330")
 
         work_around(scope, agent)
 

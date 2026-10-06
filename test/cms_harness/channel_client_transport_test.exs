@@ -577,7 +577,9 @@ defmodule CmsHarness.ChannelClientTransportTest do
       assert first =~ "[error]"
 
       {_, again} = with_log(fn -> ChannelClient.handle_reply(ref, refusal, out) end)
-      refute again =~ "[error]"
+      # with_log sees every process's logs and this file runs async, so check
+      # only this refusal's own line, not any [error] another test logged.
+      refute again =~ "would not hand over the read model"
     end
   end
 

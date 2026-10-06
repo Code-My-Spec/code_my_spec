@@ -15,6 +15,10 @@ defmodule CodeMySpecSpex do
       # `Promotion` below.
       CodeMySpec.Activity,
       CodeMySpec.Agents,
+      # Its own boundary by design (see its moduledoc), precisely so a caller
+      # can read a role's tool list without depending on all of Agents.
+      # Criterion 2025 asserts product's own tool list carries `search_answers`.
+      CodeMySpec.Agents.RoleProfile,
       # Story 1108, criterion 4657 calls `QaStory.command/2` directly — it is
       # the module under test (the prompt `start_task` hands a QA agent), the
       # same reason `CodeMySpec.McpServers` is a dep for spex that call a tool

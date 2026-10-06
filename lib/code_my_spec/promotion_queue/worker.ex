@@ -36,7 +36,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
-  @batch_cap 6
+  # One candidate per batch (John, 2026-10-05): a red batch is the candidate
+  # that was in it, with nothing to work out.
+  # Still to do: with a cap of 1, `bisect/2`'s split branch is unreachable; remove it.
+  @batch_cap 1
   @gate_label "promotion-gate"
   @recheck_ms 120_000
   @retry_ms 300_000
@@ -197,14 +200,23 @@ defmodule CodeMySpec.PromotionQueue.Worker do
              gate.id
            ) do
       merged = MapSet.new(built.merged)
+      conflicted = MapSet.new(built.conflicted, & &1.commit)
 
       for %{commit: commit, files: files} <- built.conflicted,
           entry <- Enum.filter(entries, &(&1.commit == commit)),
           do: eject(state.scope, entry, conflict_reason(files))
 
-      case Enum.filter(entries, &MapSet.member?(merged, &1.commit)) do
-        [] -> next(state)
-        in_batch -> gating(state, in_batch, gate, base, built.head)
+      case Enum.split_with(entries, &MapSet.member?(merged, &1.commit)) do
+        {[], unaccounted} ->
+          # One the build neither merged nor ejected is still queued, so
+          # building again at once rebuilds the same batch, silently, forever.
+          case Enum.reject(unaccounted, &MapSet.member?(conflicted, &1.commit)) do
+            [] -> next(state)
+            left -> could_not_build(state, %{reason: unaccounted_reason(left, built)})
+          end
+
+        {in_batch, _out} ->
+          gating(state, in_batch, gate, base, built.head)
       end
     else
       {:error, reason} -> could_not_build(state, reason)
@@ -253,6 +265,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp could_not_build(state, reason) do
     Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
     {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
+  end
+
+  defp unaccounted_reason(entries, built) do
+    "the batch build neither merged nor refused " <>
+      Enum.map_join(entries, ", ", &String.slice(&1.commit, 0, 12)) <>
+      ": #{inspect(Map.take(built, [:merged, :conflicted]))}"
   end
 
   defp conflict_reason(files) do

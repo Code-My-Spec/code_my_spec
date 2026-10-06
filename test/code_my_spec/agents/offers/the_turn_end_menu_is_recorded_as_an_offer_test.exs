@@ -126,7 +126,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
           spec_path: @spex_path
         })
 
-      {:ok, _} = AcceptanceCriteria.latch_criterion(scope, criterion)
       {:ok, _} = Stories.set_specs_ready(scope, Stories.get_story(scope, story.id), true)
       problem_fixture(scope, %{source: "spex", severity: :error, file_path: @spex_path})
       fresh_analysis_runs_fixture(scope)

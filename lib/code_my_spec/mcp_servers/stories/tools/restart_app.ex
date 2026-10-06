@@ -9,6 +9,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestartApp do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.WorkingCopies.AppTransport
 
@@ -25,9 +26,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestartApp do
     end
   end
 
-  defp restart(%{active_working_copy_id: id}) when is_binary(id) do
+  defp restart(%{active_working_copy_id: id} = scope) when is_binary(id) do
     case AppTransport.restart_app(id, @timeout) do
       {:ok, %{status: "serving", url: url, commit: commit}} ->
+        Agents.record_app_restart(scope, "Restarted via RestartApp")
         Response.tool() |> Response.text("Restarted — serving #{commit || "unknown commit"} at #{url}.")
 
       {:ok, %{status: status, commit: commit}} ->

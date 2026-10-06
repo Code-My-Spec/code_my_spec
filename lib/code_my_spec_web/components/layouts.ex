@@ -237,6 +237,9 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
               <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
               <li><a href={~p"/app/projects/#{project.id}/sessions"}>Sessions</a></li>
+              <li>
+                <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
+              </li>
               <li><a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a></li>
               <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
               <%!-- "Agent chat" opens whichever session the cockpit defaults to.

@@ -533,6 +533,77 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     end
   end
 
+  describe "qa_complete freshness" do
+    # Issue 2e7ed919, confirmed on story 1060: a revision that clears and
+    # re-stamps qa_ready_at must not leave qa_complete satisfied by a QA
+    # pass that predates the current stamp -- that pass answered a question
+    # the story is no longer asking.
+    test "a QA pass that predates the story's current qa_ready_at does not satisfy qa_complete" do
+      {scope, tmp_dir} = setup_project()
+
+      kickoff_context =
+        ProjectStateFixtures.apply_project_kickoff(%{
+          scope: scope,
+          environment: scope.environment
+        })
+
+      scope = kickoff_context.scope
+      persona_id = kickoff_context.persona_id
+
+      {:ok, _component} =
+        Components.create_component(scope, %{
+          name: "Widget",
+          type: "schema",
+          module_name: "MyApp.Widget"
+        })
+
+      story =
+        StoryHelpers.create_and_link(scope, "MyApp.Widget",
+          title: "Build the widget",
+          description: "As an engineer, I want a Widget so that I can store things.",
+          acceptance_criteria: ["widget exists"],
+          priority: 5
+        )
+
+      story = Stories.get_story(scope, story.id)
+
+      {:ok, story} =
+        Stories.set_qa_ready(
+          scope,
+          story,
+          String.duplicate("a", 40),
+          DateTime.add(DateTime.utc_now(), -3600, :second)
+        )
+
+      # The pass below lands after that stamp -- the ordinary, un-revised case.
+      seed_story_chain_complete(scope, tmp_dir, story, persona_id)
+      sync!(scope, tmp_dir)
+
+      assert qa_complete_node(scope, story).satisfied,
+             "a pass made after the story's current qa_ready_at should satisfy it"
+
+      # A revision re-stamps qa_ready_at later, without a fresh QA pass.
+      {:ok, story} =
+        Stories.set_qa_ready(
+          scope,
+          story,
+          String.duplicate("b", 40),
+          DateTime.add(DateTime.utc_now(), 60, :second)
+        )
+
+      sync!(scope, tmp_dir)
+
+      refute qa_complete_node(scope, story).satisfied,
+             "the only QA pass predates the story's current qa_ready_at and must not count"
+    end
+  end
+
+  defp qa_complete_node(scope, story) do
+    scope
+    |> RequirementGraph.compute_all()
+    |> Enum.find(&(&1.entity_type == "story" and &1.entity_id == story.id and &1.name == "qa_complete"))
+  end
+
   # -- Helpers --
 
   defp setup_project do

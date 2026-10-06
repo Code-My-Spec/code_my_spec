@@ -1,28 +1,40 @@
 defmodule CmsHarness.Agents.Engine.QueueReceipts do
-  @moduledoc "Unconsumed message refs that survive a harness restart."
+  @moduledoc """
+  Message refs and what became of them, surviving a harness restart.
 
-  def queued(agent_id, ref) do
+  A queued receipt permits withdrawal and a delivered one refuses it. A ref
+  with neither never reached this harness's queue, or the queue holding it was
+  dropped before receipts were kept (5150cd98); nothing will deliver it.
+  """
+
+  def queued(agent_id, ref), do: write(agent_id, ref, "")
+
+  # Written before execution starts, so a consumed message refuses withdrawal.
+  def delivered(agent_id, ref), do: write(agent_id, ref, "delivered")
+
+  @spec withdraw(String.t(), String.t()) :: :ok | {:error, :already_delivered | :never_received}
+  def withdraw(agent_id, ref) do
     path = path(agent_id, ref)
-    File.mkdir_p!(Path.dirname(path))
-    File.write!(path, "")
-  end
 
-  # Remove before execution starts. A missing receipt never proves that a
-  # message was not consumed; only a surviving receipt permits withdrawal.
-  def take(agent_id, ref) do
-    case File.rm(path(agent_id, ref)) do
-      :ok ->
-        true
+    case File.read(path) do
+      {:ok, "delivered"} ->
+        {:error, :already_delivered}
+
+      {:ok, _queued} ->
+        File.rm!(path)
 
       {:error, :enoent} ->
-        false
+        {:error, :never_received}
 
       {:error, reason} ->
-        raise File.Error,
-          reason: reason,
-          action: "remove queue receipt",
-          path: path(agent_id, ref)
+        raise File.Error, reason: reason, action: "read queue receipt", path: path
     end
+  end
+
+  defp write(agent_id, ref, contents) do
+    path = path(agent_id, ref)
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, contents)
   end
 
   defp path(agent_id, ref) do
