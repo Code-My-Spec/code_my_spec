@@ -119,6 +119,14 @@ defmodule CodeMySpec.AgentPerformance do
     QaRounds.team_first_pass_rate(scope, working_copy_id, since)
   end
 
+  @doc """
+  Every agent this project has, for the page's agent filter (criteria 2051,
+  2053). The page reaches agents through this context rather than `Agents`
+  directly, the same way it reaches stories through `list_stories/1`.
+  """
+  @spec list_agents(Scope.t()) :: [CodeMySpec.Agents.Agent.t()]
+  def list_agents(%Scope{} = scope), do: Agents.list_agents(scope)
+
   @doc "Every story this project holds, for building a performance report over all of them."
   @spec list_stories(Scope.t()) :: [Story.t()]
   def list_stories(%Scope{} = scope) do
