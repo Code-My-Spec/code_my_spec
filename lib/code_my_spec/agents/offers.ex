@@ -333,8 +333,9 @@ defmodule CodeMySpec.Agents.Offers do
   @doc """
   Where each piece of work stands with this agent, for the escalation ladder
   (criteria 1739–1741): `%{subject_key => %{ignored: n, held?: boolean}}`,
-  for requirement work offers only. `ignored` counts ignored offers since the
-  last claim; `held?` is three of them, or a decline since.
+  for requirement work offers and released-task offers (keyed by task id).
+  `ignored` counts ignored offers since the last claim; `held?` is three of
+  them, or a decline since.
   """
   @spec standing(Ecto.UUID.t()) :: %{
           String.t() => %{ignored: non_neg_integer(), held?: boolean()}
@@ -343,7 +344,9 @@ defmodule CodeMySpec.Agents.Offers do
     Offer
     |> where(
       [o],
-      o.agent_id == ^agent_id and o.kind == :work and o.subject_type == "requirement" and
+      o.agent_id == ^agent_id and
+        ((o.kind == :work and o.subject_type == "requirement") or
+           (o.kind == :unblocked and o.subject_type == "task")) and
         o.status in [:claimed, :declined, :ignored]
     )
     |> order_by([o], desc: o.inserted_at)

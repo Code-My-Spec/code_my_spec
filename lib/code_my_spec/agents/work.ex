@@ -893,9 +893,17 @@ defmodule CodeMySpec.Agents.Work do
 
   # Released and still claimable: one the graph no longer offers would be
   # refused by `start_task`, and offering it first would hide the rest.
-  defp released_tasks(%Agent{tasks: tasks}, nodes) do
+  #
+  # And not held back: a released task offered and ignored three times, or
+  # declined, is not offered again, as requirement work is not. Without that, an
+  # agent that would not resume it was re-offered it after every turn — 570
+  # times in half an hour on 2026-10-06.
+  defp released_tasks(%Agent{tasks: tasks} = agent, nodes) do
+    standing = Offers.standing(agent.id)
+
     Enum.filter(tasks || [], fn task ->
       task.status == :blocked and not is_nil(task.blocker_resolved_at) and
+        not match?(%{held?: true}, standing[task.id]) and
         Enum.any?(nodes, fn {type, id, name} ->
           task_on_node?(task, %{entity_type: type, entity_id: id, name: name})
         end)
