@@ -161,7 +161,7 @@ defmodule CmsHarness.Agents.Provider do
       {:ok,
        [
          provider:
-           {CmsHarness.Agents.Providers.DeepInfra,
+           {Alloy.Provider.OpenAICompat,
             %{
               api_url: Keyword.get(opts, :base_url) || @deepinfra_base,
               chat_path: "/chat/completions",
