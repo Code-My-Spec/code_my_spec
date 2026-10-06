@@ -284,6 +284,8 @@ defmodule CodeMySpec.Promotion.Runner do
   # The far side answers in JSON, so a map that left as atoms comes back with
   # string keys. Converted here rather than at each call site, because a caller
   # that has to remember which side answered is a caller that will forget.
+  # Nested too: a batch's `conflicted` entries left as string keys, the queue
+  # matched none of them, and rebuilt the same batch for hours (2026-10-06).
   defp decode({:ok, %{} = result}), do: {:ok, atomize(result)}
   defp decode({:error, %{} = reason}), do: {:error, atomize(reason)}
 
@@ -294,10 +296,13 @@ defmodule CodeMySpec.Promotion.Runner do
   defp decode(other),
     do: {:error, %{reason: "unexpected reply from the harness: #{inspect(other)}"}}
 
-  defp atomize(map) do
+  defp atomize(%{} = map) do
     Map.new(map, fn
-      {k, v} when is_binary(k) -> {Utils.safe_to_existing_atom(k, k), v}
-      {k, v} -> {k, v}
+      {k, v} when is_binary(k) -> {Utils.safe_to_existing_atom(k, k), atomize(v)}
+      {k, v} -> {k, atomize(v)}
     end)
   end
+
+  defp atomize(list) when is_list(list), do: Enum.map(list, &atomize/1)
+  defp atomize(value), do: value
 end
