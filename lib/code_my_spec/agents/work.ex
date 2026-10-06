@@ -754,13 +754,67 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # Whether a turn could start now — nothing in flight, nothing held, a copy to
-  # run on. Whether this agent should be woken for it at all is `Wake`'s.
+  # The tasks whose open state is the queue's, not the agent's (criterion 2021).
+  @promotion_tasks ~w(promote_issue story_promoted)
+
+  # Whether a turn could start now — nothing in flight, nothing held that the
+  # agent could act on, a copy to run on. Whether this agent should be woken for
+  # it at all is `Wake`'s.
   defp idle?(agent) do
     present?(agent) and is_nil(agent.turn_started_at) and
-      not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
+      not reservation_open?(agent) and not busy_on?(agent) and
       not is_nil(agent.working_copy_id)
   end
+
+  # `Agent.active_task/1` counts a task whose work is already in the queue's
+  # hands, which is not work the agent can do (criterion 2021, story 1046).
+  #
+  # A `promote_issue` or `story_promoted` task stays open until its candidate
+  # lands or is ejected (criterion 2017) and the queue messages the agent then.
+  # Nothing the agent does shortens that wait, so holding only it is waiting,
+  # not busy. Treating it as busy is what issue bf57fc93 measured: agent
+  # 6d915491 held `promote_issue` on a candidate already re-queued (b8dc441d),
+  # `admit/3` answered `:busy`, and the agent was offered that same requirement
+  # three times in twenty seconds — each offer settling `ignored` in the second
+  # the turn ended — then had the work held back and escalated to main as
+  # "offered 3 times and not taken".
+  #
+  # Read as rows rather than through `PromotionQueue`: the queue depends on
+  # `Agents`, so asking it here would be a cycle. They are the rows `Entry`
+  # writes.
+  defp busy_on?(agent) do
+    case Agent.active_task(agent) do
+      %{requirement_name: name} = task when name in @promotion_tasks ->
+        not awaiting_landing?(agent, task)
+
+      nil ->
+        false
+
+      _other ->
+        true
+    end
+  end
+
+  # `:queued` and `:gating` both mean the candidate is the queue's to finish;
+  # `:landed`, `:ejected` and `:cancelled` are entries the landing already
+  # resolved, and the agent has a turn to take about those (settling the task,
+  # or fixing what an ejection named). What is left is an open candidate this
+  # agent asked for.
+  defp awaiting_landing?(agent, task) do
+    from(e in "promotion_queue_entries",
+      where:
+        e.requested_by_agent_id == type(^agent.id, :binary_id) and
+          e.status in ["queued", "gating"] and
+          ((e.subject_type == "issue" and e.subject_id == type(^task.issue_id, :string)) or
+             (e.subject_type == "story" and e.subject_id == type(^subject(task), :string))),
+      select: 1,
+      limit: 1
+    )
+    |> Repo.exists?()
+  end
+
+  defp subject(%{story_id: nil}), do: nil
+  defp subject(%{story_id: story_id}), do: to_string(story_id)
 
   # Its process alive now (`Agents.Presence`): nothing starts a turn in one that
   # is not there.
@@ -769,6 +823,16 @@ defmodule CodeMySpec.Agents.Work do
   defp admit(scope, agent, event) do
     if idle?(agent), do: Wake.allow?(scope, agent, event), else: {:hold, :busy}
   end
+
+  @doc """
+  `admit/3`'s answer, for a caller that has to tell `:busy` from a hold.
+
+  `request_turn_if_runnable/4` answers `{:ok, :not_runnable}` for every hold,
+  so a test asking "is this agent busy?" cannot ask through it. This is the same
+  decision, named.
+  """
+  @spec admission(Scope.t(), Agent.t(), :work_offer | :resume | :nudge) :: :ok | {:hold, term()}
+  def admission(scope, agent, event), do: admit(scope, agent, event)
 
   # Under the row lock: the same answer, without announcing it twice.
   defp runnable_state?(scope, agent, event),
