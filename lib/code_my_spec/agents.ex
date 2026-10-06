@@ -208,7 +208,10 @@ defmodule CodeMySpec.Agents do
     |> Enum.flat_map(fn agent ->
       agent.tasks
       |> List.wrap()
-      |> Enum.filter(&(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id)))
+      |> Enum.filter(
+        &(&1.story_id == story_id or
+            (not is_nil(component_id) and &1.component_id == component_id))
+      )
       |> Enum.map(&Map.from_struct/1)
     end)
   end
@@ -2157,7 +2160,7 @@ defmodule CodeMySpec.Agents do
   # Until that exists, an explicit setting wins (see `main_choice/1`) and the
   # unset case keeps behaving as it always has, so nobody's bill moves because
   # of a refactor.
-  @provider_preference ["openai-codex", "zai", "anthropic"]
+  @provider_preference ["openai-codex", "zai", "anthropic", "deepinfra"]
 
   defp connected_provider(scope) do
     Enum.find_value(@provider_preference, {:error, :not_connected}, fn provider ->
