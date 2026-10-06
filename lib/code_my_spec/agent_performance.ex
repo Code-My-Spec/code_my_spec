@@ -13,6 +13,7 @@ defmodule CodeMySpec.AgentPerformance do
   """
 
   alias CodeMySpec.AgentPerformance.BlockedTime
+  alias CodeMySpec.AgentPerformance.Chart
   alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.AgentPerformance.Interventions
   alias CodeMySpec.AgentPerformance.OfferHealth
@@ -126,4 +127,18 @@ defmodule CodeMySpec.AgentPerformance do
       stories when is_list(stories) -> stories
     end
   end
+
+  @doc """
+  The performance page's chart option, ready for `Jason.encode!/1` and the
+  page's EChart hook: token spend, nudges, QA first-pass rate and failed
+  turns bucketed hourly over the last 7 days, with story starts and
+  promotions as events (criteria 2029-2031). `filter` narrows to one
+  working copy or one story (criteria 2032-2033); omit for the project.
+  """
+  @spec chart_option(Scope.t(), Chart.filter()) :: map()
+  def chart_option(%Scope{} = scope, filter \\ %{}), do: Chart.option(scope, filter)
+
+  @doc "Tokens spent and nudges served under the chart, summarized rather than listed row by row (criterion 2034)."
+  @spec chart_detail(Scope.t(), Chart.filter()) :: Chart.detail()
+  def chart_detail(%Scope{} = scope, filter \\ %{}), do: Chart.detail(scope, filter)
 end

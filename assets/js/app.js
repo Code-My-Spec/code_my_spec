@@ -25,6 +25,7 @@ import { LiveSocket } from "phoenix_live_view"
 import { hooks as colocatedHooks } from "phoenix-colocated/code_my_spec"
 import { StripePaymentElement } from "./stripe_payment"
 import { SigmaGraph } from "./sigma_graph"
+import { EChart } from "./echart"
 import { createLivePaneHooks } from "live_pane"
 import topbar from "../vendor/topbar"
 import Sortable from "../vendor/Sortable.min.js"
@@ -38,6 +39,7 @@ const { groupHook: live_pane_group, paneHook: live_pane, resizerHook: live_pane_
 let Hooks = {
   StripePaymentElement,
   SigmaGraph,
+  EChart,
   live_pane_group,
   live_pane,
   live_pane_resizer,

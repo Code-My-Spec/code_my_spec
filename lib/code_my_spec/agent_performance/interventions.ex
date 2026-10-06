@@ -69,6 +69,29 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
   end
 
   @doc """
+  Interventions across every agent matching `filter` -- every agent in the
+  project when `filter` is empty. The chart's narrowing (story 1092
+  criteria 2032-2034): a `story_id` or `working_copy_id` picks out the
+  agents that count, the same way `story/2` and `project_level/1` each
+  pick out their own slice.
+  """
+  @spec for_scope(Scope.t(), %{optional(:story_id) => integer(), optional(:working_copy_id) => Ecto.UUID.t()}) ::
+          [intervention()]
+  def for_scope(%Scope{} = scope, filter \\ %{}) do
+    scope
+    |> Agents.list_agents()
+    |> filter_agents(filter)
+    |> Enum.flat_map(&for_agent(scope, &1.id))
+  end
+
+  defp filter_agents(agents, %{story_id: id}) when not is_nil(id), do: Enum.filter(agents, &(&1.story_id == id))
+
+  defp filter_agents(agents, %{working_copy_id: id}) when not is_nil(id),
+    do: Enum.filter(agents, &(&1.working_copy_id == id))
+
+  defp filter_agents(agents, _filter), do: agents
+
+  @doc """
   Interventions on agents holding no story right now -- the project-level
   case criterion 1998 describes, for a restart made while no team was
   holding anything.

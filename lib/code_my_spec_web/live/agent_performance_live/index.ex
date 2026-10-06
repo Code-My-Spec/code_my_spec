@@ -13,14 +13,15 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{}}} = socket) do
-    {:noreply, load(socket)}
+  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket) do
+    {:noreply, load(socket, params)}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
-  defp load(socket) do
+  defp load(socket, params) do
     scope = socket.assigns.current_scope
+    filter = chart_filter(params)
     stories = AgentPerformance.list_stories(scope)
     reports = Map.new(stories, &{&1.id, AgentPerformance.story_report(scope, &1)})
 
@@ -36,12 +37,54 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     |> assign(:reports, reports)
     |> assign(:teams, teams)
     |> assign(:summary, AgentPerformance.summary(scope))
+    |> assign(:chart_option, AgentPerformance.chart_option(scope, filter))
+    |> assign(:chart_detail, AgentPerformance.chart_detail(scope, filter))
   end
+
+  defp chart_filter(params) do
+    %{}
+    |> maybe_put_filter(:working_copy_id, present(params["working_copy_id"]))
+    |> maybe_put_filter(:story_id, parse_int(params["story_id"]))
+  end
+
+  defp present(nil), do: nil
+  defp present(""), do: nil
+  defp present(value), do: value
+
+  defp parse_int(nil), do: nil
+
+  defp parse_int(str) do
+    case Integer.parse(str) do
+      {int, _} -> int
+      :error -> nil
+    end
+  end
+
+  defp maybe_put_filter(map, _key, nil), do: map
+  defp maybe_put_filter(map, key, value), do: Map.put(map, key, value)
 
   @impl true
   def render(assigns) do
     ~H"""
     <.header>Agent Performance</.header>
+
+    <section data-test="performance-chart" class="mt-6">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
+        Activity over time
+      </h2>
+      <div
+        id="performance-chart"
+        phx-hook="EChart"
+        phx-update="ignore"
+        data-option={Jason.encode!(@chart_option)}
+        style="width: 100%; height: 360px;"
+      >
+      </div>
+      <div data-test="chart-detail" class="mt-2 flex gap-4 text-sm text-base-content/70">
+        <span data-test="chart-detail-tokens">{chart_tokens_label(@chart_detail.tokens_total)}</span>
+        <span data-test="chart-detail-nudges">Nudges: {@chart_detail.nudges}</span>
+      </div>
+    </section>
 
     <section data-test="project-interventions" class="mt-6">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
@@ -208,6 +251,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     </div>
     """
   end
+
+  defp chart_tokens_label(:unknown), do: "unknown"
+  defp chart_tokens_label(total), do: "#{total} tokens"
 
   defp hours(nil), do: "unknown"
   defp hours(seconds), do: "#{div(seconds, 3600)}h"
