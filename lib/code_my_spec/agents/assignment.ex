@@ -125,6 +125,10 @@ defmodule CodeMySpec.Agents.Assignment do
   rows are locked first, so the first moves the team and the rest find it no
   longer on `from_id` and do nothing. `{:ok, :moved}` either way, or the
   assignment's own refusal.
+
+  A story that has not landed does not move its team: complete for the coding
+  role is not finished while QA is still owed it. Landing is the promotion
+  stamp (`stories.promoted_version`), and only a landed story moves the team.
   """
   @spec advance(Scope.t(), Ecto.UUID.t(), integer(), integer()) ::
           {:ok, :moved} | {:error, term()}
@@ -133,8 +137,19 @@ defmodule CodeMySpec.Agents.Assignment do
       Repo.transaction(fn ->
         team = lock_team(scope, copy_id)
         still_on? = team != [] and Enum.all?(team, &(&1.story_id == from_id))
-        move(scope, copy_id, to_id, still_on?)
+        move(scope, copy_id, to_id, landed?(scope, from_id) and still_on?)
       end)
+    end
+  end
+
+  # Read under the same lock as the team's rows, so a promotion cannot land
+  # between the check and the move.
+  defp landed?(_scope, nil), do: false
+
+  defp landed?(scope, from_id) do
+    case Stories.get_story(scope, from_id) do
+      %{promoted_version: version} when is_binary(version) -> true
+      _unlanded_or_missing -> false
     end
   end
 
