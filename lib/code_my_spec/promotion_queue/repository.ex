@@ -67,6 +67,30 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     )
   end
 
+  @doc """
+  The open candidate this agent asked for, or nil (criterion 2017).
+
+  `:queued` and `:gating` both mean the landing or the ejection is the queue's
+  to deliver, and the requester is told when it is. An entry the landing already
+  resolved is not this: the agent has a turn to take about it.
+
+  Read by `Agents.Waiting` so an agent waiting on a queued landing is not
+  treated as idle and nudged. It is here rather than in that module because the
+  queue owns its rows; `PromotionQueue` does not depend on `Agents`, so this
+  direction is not a cycle.
+  """
+  @spec awaited_by(Ecto.UUID.t()) :: Entry.t() | nil
+  def awaited_by(agent_id) do
+    Repo.one(
+      from e in Entry,
+        where:
+          e.requested_by_agent_id == type(^agent_id, :binary_id) and
+            e.status in ^@open,
+        order_by: [asc: e.inserted_at],
+        limit: 1
+    )
+  end
+
   @doc "The candidates waiting for a batch, oldest first, at most `limit`."
   @spec queued(Ecto.UUID.t(), pos_integer()) :: [Entry.t()]
   def queued(project_id, limit) do

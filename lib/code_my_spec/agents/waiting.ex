@@ -28,6 +28,7 @@ defmodule CodeMySpec.Agents.Waiting do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
+  alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -37,6 +38,7 @@ defmodule CodeMySpec.Agents.Waiting do
           | {:provisioning, String.t() | nil}
           | :tap_out
           | :analysis_runs
+          | :promotion
           | :question_pending
 
   @type path :: :turn_end | :offer | :wake | :resume | :cadence
@@ -52,6 +54,7 @@ defmodule CodeMySpec.Agents.Waiting do
     provisioning: @all,
     tap_out: @all,
     analysis_runs: [:turn_end, :cadence],
+    promotion: @all,
     question_pending: @all
   ]
 
@@ -93,6 +96,28 @@ defmodule CodeMySpec.Agents.Waiting do
   # it (070d1bab, fad1a314). An agent still holding a task is not idle on it.
   defp check(:tap_out, _scope, agent) do
     if is_nil(Agent.active_task(agent)) and awaiting_tap_out?(agent), do: :tap_out
+  end
+
+  # The promotion it asked for is in the queue; the queue messages it when the
+  # batch lands or the candidate is ejected (criterion 2017, story 1046). The
+  # analyzer queue's identical wait is `analysis_runs` above and issue 8f72b192
+  # is why it exists; this is the same shape on the promote queue.
+  #
+  # bf57fc93: an agent whose promotion was already queued and re-queued was
+  # nudged for at least five turns, each only buying a "still waiting" turn,
+  # and 2026-10-05 escalated that to pushing an agent toward an action it is
+  # forbidden to repeat â `promote` queues and returns, and re-running it adds a
+  # duplicate entry for work already gating.
+  #
+  # `@all`, like `provisioning`: the task stays open until the landing, so no
+  # path here has anything useful to say about it. Only an open candidate this
+  # agent requested counts; an entry the landing already resolved is the agent's
+  # to act on, and it is nudged for that.
+  defp check(:promotion, _scope, agent) do
+    case Repository.awaited_by(agent.id) do
+      nil -> nil
+      entry -> {:promotion, entry.id}
+    end
   end
 
   # Analyzer runs it requested or waits on; `AnalysisReport` messages it when
