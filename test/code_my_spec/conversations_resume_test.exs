@@ -208,26 +208,25 @@ defmodule CodeMySpec.ConversationsResumeTest do
     end
   end
 
+  defp checkpoint_prefix(_conversation, false), do: []
+
+  defp checkpoint_prefix(conversation, true) do
+    anchor = said(conversation, "earlier")
+    summary = [%{"role" => "user", "content" => "summary"}]
+
+    {:ok, _} =
+      Conversations.record_checkpoint(conversation, summary, through_message_id: anchor.id)
+
+    summary
+  end
+
   describe "what is left out" do
     for checkpoint? <- [false, true] do
       @checkpoint? checkpoint?
       test "undelivered messages are excluded with checkpoint=#{checkpoint?}", %{
         conversation: conversation
       } do
-        prefix =
-          if @checkpoint? do
-            anchor = said(conversation, "earlier")
-            summary = [%{"role" => "user", "content" => "summary"}]
-
-            {:ok, _} =
-              Conversations.record_checkpoint(conversation, summary,
-                through_message_id: anchor.id
-              )
-
-            summary
-          else
-            []
-          end
+        prefix = checkpoint_prefix(conversation, @checkpoint?)
 
         for delivery <- [:pending, :withdrawn, :failed, :delivered] do
           {:ok, _} =
