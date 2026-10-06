@@ -6,6 +6,15 @@ defmodule CodeMySpecSpex.Story1016.Criterion1600Spex do
   The team on a working copy (its coding and QA agents) works one story
   together and moves on together; the main copy is promoted to, never worked
   on (a31f1cd6 step 3, John 2026-10-01).
+
+  "Complete", for the move, means *landed*: the story is finished and has been
+  promoted. John, 2026-10-06 (issue f0c18598): "a team's active story stays
+  until it lands (promoted). The epic pull may only bind the team to the next
+  story when the active one has landed, never because it reads
+  certified/complete before QA." Story 1052 was certified and QA-pending when
+  its team was pulled off it, so `Slice.complete/1` leaving the story unlanded
+  is the state this criterion must not pass on: the promotion stamp is what
+  lands it, and this scenario's story is the whole story, complete.
   """
   use CodeMySpecSpex.Case
 
@@ -18,6 +27,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion1600Spex do
     scenario "The team moves to its next story when the whole story is complete" do
       given_ "a team whose story is complete, and another story ready for development", context do
         context = context |> Slice.staff() |> Slice.complete() |> Slice.waiting()
+        context = Slice.land(context)
         {:ok, context}
       end
 

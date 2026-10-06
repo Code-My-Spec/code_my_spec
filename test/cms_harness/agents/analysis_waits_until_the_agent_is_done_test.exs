@@ -45,6 +45,12 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
   # A plain assistant message with no tool calls, so a turn is one round trip
   # and ends as soon as the plug returns.
+  defp restore_receipts_dir(previous) when previous in [nil, false],
+    do: Application.delete_env(:code_my_spec, :agent_queue_receipts_dir)
+
+  defp restore_receipts_dir(previous),
+    do: Application.put_env(:code_my_spec, :agent_queue_receipts_dir, previous)
+
   defp reply_body do
     Jason.encode!(%{
       "id" => "msg_1",
