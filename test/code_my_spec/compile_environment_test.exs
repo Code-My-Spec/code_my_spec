@@ -55,4 +55,27 @@ defmodule CodeMySpec.CompileEnvironmentTest do
     assert File.read!(Path.join(cwd, "child-env")) == "test\n#{build_path}"
     assert result.data.diagnostics_available
   end
+
+  test "force: true recompiles everything, so nothing is skipped as unchanged", %{cwd: cwd} do
+    File.write!(Path.join(cwd, "mix.exs"), """
+    defmodule CompilerForceProbe.MixProject do
+      use Mix.Project
+
+      def project do
+        File.write!("argv", Enum.join(System.argv(), " "))
+        File.write!(System.fetch_env!("DIAGNOSTICS_OUTPUT"), "")
+        [app: :compiler_force_probe, version: "0.1.0", compilers: []]
+      end
+    end
+    """)
+
+    env = Environment.new(:local, cwd)
+    output_file = Path.join(cwd, "diagnostics.jsonl")
+
+    Compile.execute(environment: env, output_file: output_file, force: true)
+    assert File.read!(Path.join(cwd, "argv")) =~ "--force"
+
+    Compile.execute(environment: env, output_file: output_file)
+    refute File.read!(Path.join(cwd, "argv")) =~ "--force"
+  end
 end
