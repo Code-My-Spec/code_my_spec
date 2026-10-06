@@ -280,13 +280,15 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @strong [
     {"anthropic", "claude-sonnet-5"},
     {"openai-codex", "gpt-6-astra"},
-    {"zai", "glm-5.3"}
+    {"zai", "glm-5.3"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
   ]
 
   @cheap [
     {"zai", "glm-5.3"},
     {"openai-codex", "gpt-6-astra"},
-    {"anthropic", "claude-haiku-4-5"}
+    {"anthropic", "claude-haiku-4-5"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
   ]
 
   # In role order: `roles/0` is this list's order, and so is every enum built
@@ -351,7 +353,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
       # clears them (`questions_answered`), so blocking it on them left the
       # block naming no actor (56cf5697).
       questions_block?: false,
-      questions_to: :main,
+      # Nobody is above it either: a question main could settle is the kind
+      # product would have answered itself already, and anything left is the
+      # user's call same as main's own (criterion 1990, story 1053).
+      questions_to: :user,
       tools: @product_tools,
       browses?: false,
       holds_problems?: false,

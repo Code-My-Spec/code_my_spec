@@ -177,6 +177,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Workspaces.WorkspacesRepository
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.FakeWorkspaceRunner
+  alias CodeMySpecTest.RecordingAgentTransport
   alias CodeMySpecTest.WorkspaceWatchers
   alias Phoenix.ConnTest
   alias Plug.Conn
@@ -918,6 +919,29 @@ defmodule CodeMySpecSpex.Fixtures do
     do: role |> String.to_existing_atom() |> tool_set()
 
   defp tool_set(role) when is_atom(role), do: ToolSets.for_role(role)
+
+  @doc """
+  Swap in `RecordingAgentTransport` for a scenario that restarts or messages
+  a `running_agent/2` fixture.
+
+  `running_agent/2` creates only the row, with no live harness process behind
+  it, so the default `InProcessAgentTransport` refuses delivery to a machine
+  that was never actually started -- this is the same swap
+  `OperatorMessagesWaitForDeliveryTest` and its siblings use to exercise
+  `message_agent`/`restart_agent` without one.
+  """
+  @spec use_recording_transport() :: :ok
+  def use_recording_transport do
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :agent_transport, previous)
+    end)
+
+    RecordingAgentTransport.listen()
+    :ok
+  end
 
   @doc """
   Put an agent mid-turn, the way a turn actually starts.
@@ -1916,6 +1940,31 @@ defmodule CodeMySpecSpex.Fixtures do
       rest ->
         :ok =
           CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, rest)
+    end
+  end
+
+  @doc """
+  An agent's turn failing, as it arrives on the channel.
+
+  Same reasoning as `end_turn/3`: the proxy that reports a failed turn lives
+  in `cms_harness`, so a spec drives the channel's own `agent_turn_event`
+  entry on a `turn_failed` kind rather than a second version of it. `text`
+  is read by `Agents.record_turn_event/4` through `ProviderRefusal.read/2`
+  and `TurnTimeout.exec/1` to classify the failure's cause.
+  """
+  @spec fail_turn(Scope.t(), String.t(), String.t()) :: :ok
+  def fail_turn(%Scope{} = scope, agent_id, text) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    event = ChannelClient.encode_turn_event(%{event: :turn_failed, text: text})
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "agent_turn_event",
+           %{"agent_id" => agent_id, "event" => event},
+           socket
+         ) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
     end
   end
 

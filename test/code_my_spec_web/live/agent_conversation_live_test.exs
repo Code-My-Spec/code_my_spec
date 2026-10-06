@@ -107,6 +107,84 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       refute has_element?(view, "[data-test='message']", legacy)
     end
 
+    # 5150cd98: each confirmation was one line, but a landing and its reload
+    # still stacked a line apiece and buried the feed.
+    test "a run of promotion notices folds into one line", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      landed =
+        "Your promotion of story 1060 (270fe9b484b2) landed on main in a batch with 3 other candidate(s)."
+
+      reload =
+        "The reload from your promotion is confirmed: the application at /tmp/app is up and serving abc."
+
+      for text <- [landed, reload, reload] do
+        {:ok, _} = Conversations.add_message(conversation, :operator, text, "operator")
+      end
+
+      {:ok, _} = Conversations.add_message(conversation, :operator, "Carry on", "operator")
+      {:ok, _} = Conversations.add_message(conversation, :operator, reload, "operator")
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "details[data-test='routine-notice-run'][data-count='3']:not([open])",
+               "Promotion confirmed ×3"
+             )
+
+      assert view
+             |> render()
+             |> Floki.parse_document!()
+             |> Floki.find("[data-test='routine-notice-run']")
+             |> length() == 1
+
+      assert has_element?(view, "[data-test='message']", "Carry on")
+
+      assert has_element?(
+               view,
+               "#agent-turns > div > details[data-test='routine-notice']",
+               reload
+             )
+    end
+
+    test "a run of pending promotion notices is one row, each still withdrawable", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      for _ <- 1..2 do
+        {:ok, _} =
+          Conversations.add_message(
+            conversation,
+            :operator,
+            "The reload from your promotion is confirmed: serving abc.",
+            "promotion-notice",
+            [],
+            delivery: :pending,
+            delivery_ref: Ecto.UUID.generate()
+          )
+      end
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "[data-test='agent-pending-message'] details[data-test='pending-routine-notice'][data-count='2']",
+               "Promotion confirmed ×2"
+             )
+
+      doc = view |> render() |> Floki.parse_document!()
+      assert doc |> Floki.find("[data-test='agent-pending-message']") |> length() == 1
+      assert doc |> Floki.find("[data-test='agent-withdraw-message']") |> length() == 2
+    end
+
     test "a pending routine notice stays withdrawable and collapses after delivery", %{
       conn: conn,
       scope: scope,
@@ -120,7 +198,10 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           :operator,
           "Deployment confirmation details",
           "promotion-notice",
-          [], delivery: :pending, delivery_ref: Ecto.UUID.generate())
+          [],
+          delivery: :pending,
+          delivery_ref: Ecto.UUID.generate()
+        )
 
       {:ok, view, _} = live(conn, show_path(project, conversation))
 

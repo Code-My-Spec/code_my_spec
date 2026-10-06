@@ -52,6 +52,7 @@ defmodule CodeMySpec.Agents.Main do
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
+  alias CodeMySpec.Utils.Utf8
   alias CodeMySpec.WorkingCopies
 
   @doc """
@@ -864,10 +865,31 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   defp calls?(%{tool_calls: calls}, tool) when is_list(calls) do
-    Enum.any?(calls, &(MapAccess.get(&1, :name) == tool))
+    Enum.any?(calls, &call_matches?(&1, tool))
   end
 
   defp calls?(_turn, _tool), do: false
+
+  # Most of this project's tools are reachable only from inside a run_script
+  # body (issue e832dff8): a Lua script calling `submit_issue_qa_result({...})`
+  # never appears as its own `tool_calls` entry, only as a string argument on
+  # `run_script`'s. Matched as that tool's name immediately followed by `(` --
+  # how every tool is documented as callable, Lua function syntax, rather than
+  # a bare mention in a comment or a string literal.
+  defp call_matches?(call, tool) do
+    MapAccess.get(call, :name) == tool or
+      (MapAccess.get(call, :name) == "run_script" and script_calls?(call, tool))
+  end
+
+  defp script_calls?(call, tool) do
+    call
+    |> MapAccess.get(:arguments, %{})
+    |> script_text()
+    |> String.contains?(tool <> "(")
+  end
+
+  defp script_text(args) when is_map(args), do: MapAccess.get(args, :script, "") || ""
+  defp script_text(_args), do: ""
 
   # The results of *this* tool's calls, not of everything the turn happened to do.
   #
@@ -887,7 +909,7 @@ defmodule CodeMySpec.Agents.Main do
   defp results_for(turns, call, tool) do
     ids =
       call.tool_calls
-      |> Enum.filter(&(MapAccess.get(&1, :name) == tool))
+      |> Enum.filter(&call_matches?(&1, tool))
       |> Enum.map(&MapAccess.get(&1, :id))
 
     Enum.filter(turns, &(&1.tool_call_id in ids))
@@ -991,10 +1013,18 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   defp rendered_turn(%{tool_call_id: call_id} = turn) when is_binary(call_id) do
-    "  [#{turn.agent_id}] #{outcome(turn)} id=#{call_id}\n#{turn.text}"
+    "  [#{turn.agent_id}] #{outcome(turn)} id=#{call_id}\n#{text(turn)}"
   end
 
-  defp rendered_turn(turn), do: "  [#{turn.agent_id}] #{turn.role}: #{turn.text}"
+  defp rendered_turn(turn), do: "  [#{turn.agent_id}] #{turn.role}: #{text(turn)}"
+
+  # Stored content is not guaranteed valid UTF-8 — a crash faithfully
+  # recorded verbatim can carry raw bytes a strict decode never produced
+  # (issue 5df56711). Scrubbed here, the one place every turn's text reaches
+  # the response, rather than on write: this must not change what is stored,
+  # only what an invalid byte looks like once it is read back.
+  defp text(%{text: text}) when is_binary(text), do: Utf8.scrub(text)
+  defp text(_turn), do: ""
 
   defp outcome(%{tool_failed: true}), do: "tool failed"
   defp outcome(_turn), do: "tool returned"

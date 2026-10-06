@@ -2159,6 +2159,9 @@ defmodule CmsHarness.Project.ChannelClient do
   defp encode_withdraw_result({:error, :already_delivered}),
     do: %{"status" => "already_delivered"}
 
+  defp encode_withdraw_result({:error, :never_received}),
+    do: %{"status" => "never_received"}
+
   defp encode_withdraw_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 

@@ -161,6 +161,19 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["describe", "--tags", "--exact-match", "HEAD"]) == "v0.1.1"
   end
 
+  # 2026-10-06: the gate held a candidate's new files untracked, its merge was
+  # refused, and the queue rebuilt the same batch for hours.
+  test "a candidate whose new file is left untracked in the gate lands", ctx do
+    a = candidate(ctx, "a", "main", "new.ex", "a\n")
+    File.write!(Path.join(ctx.gate_root, "new.ex"), "left over\n")
+    clean_runs_at(ctx, a.commit)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+  end
+
   test "a candidate that conflicts is ejected and the rest land", ctx do
     a = candidate(ctx, "a", "main", "app.ex", "a's App\n")
     b = candidate(ctx, "b", "main", "app.ex", "b's App\n")

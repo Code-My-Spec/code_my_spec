@@ -14,6 +14,7 @@ defmodule CodeMySpec.Epics do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
@@ -23,6 +24,7 @@ defmodule CodeMySpec.Epics do
 
   import Ecto.Query, only: [from: 2, where: 3]
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Epics.EpicsRepository
   alias CodeMySpec.Repo
@@ -133,9 +135,10 @@ defmodule CodeMySpec.Epics do
 
   def dispatch_state(%Scope{}), do: {:nothing_to_assign, :all_assigned}
 
-  # Anything dispatched and not finished. A failed epic is not in progress —
-  # that is the distinction `record_failure/3` exists to make, and counting it
-  # as busy would leave a project that fell over reporting itself as working.
+  # Anything dispatched and not finished, or any agent holding a claimed task.
+  # A failed epic is not in progress — that is the distinction
+  # `record_failure/3` exists to make, and counting it as busy would leave a
+  # project that fell over reporting itself as working.
   @doc """
   Whether anything dispatched is still being built.
 
@@ -143,6 +146,13 @@ defmodule CodeMySpec.Epics do
   and the graph sits below dispatch: it reads epics, it does not call the code
   that acts on them. (It went through `EpicDispatch` from 2026-09-16 only
   because `Epics` was not yet a declared dependency of `Requirements`.)
+
+  Checked alongside a dispatched epic rather than instead of one: an agent can
+  hold a claimed task on a story that was never grouped into an epic (QA's own
+  follow-up work, an issue fix), and that is still work in progress, not an
+  invitation to propose another epic on top of it. Reads `Agent` directly — a
+  declared schema leaf for exactly this (John, 2026-10-04) — rather than
+  `Agents` itself, which depends on `Requirements` and would cycle back here.
   """
   @spec in_progress?(Scope.t()) :: boolean()
   def in_progress?(%Scope{active_project_id: project_id}) when is_binary(project_id),
@@ -151,15 +161,32 @@ defmodule CodeMySpec.Epics do
   def in_progress?(%Scope{}), do: false
 
   def in_progress?(project_id) when is_binary(project_id) do
-    Repo.exists?(from e in Epic, where: e.project_id == ^project_id and e.status == :dispatched)
+    Repo.exists?(from e in Epic, where: e.project_id == ^project_id and e.status == :dispatched) or
+      any_claimed_task?(project_id)
   end
 
-  # Stories that are ready and belong to no epic. Ready matters: an unshaped
-  # story is not work waiting to be assigned, it is work waiting to be shaped,
-  # and proposing it would put the wrong thing in front of somebody.
+  defp any_claimed_task?(project_id) do
+    Agent
+    |> where([a], a.project_id == ^project_id)
+    |> Repo.all()
+    |> Enum.any?(fn agent -> Enum.any?(agent.tasks || [], &(&1.status == :active)) end)
+  end
+
+  # Stories that are ready, delivered nowhere yet, and belong to no epic.
+  # Ready matters: an unshaped story is not work waiting to be assigned, it is
+  # work waiting to be shaped, and proposing it would put the wrong thing in
+  # front of somebody. Promoted matters too, and separately: `ready_for_dev`
+  # is product's approval and stays set after delivery (clearing it on
+  # promotion would un-project the story's own requirement graph — issue
+  # b6462c09), so a shipped story is excluded here, in what still needs
+  # dispatch, rather than by changing what "ready" means.
   defp unassigned(%Scope{active_project_id: project_id}) do
     Story
-    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id))
+    |> where(
+      [s],
+      s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id) and
+        is_nil(s.promoted_version)
+    )
     |> Repo.all()
   end
 end

@@ -703,6 +703,34 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp pending_for(nil), do: []
   defp pending_for(conversation), do: Conversations.pending_messages(conversation)
 
+  # Each pending row, with the run of promotion notices it folds (empty when it
+  # is not one). A run is one row; each notice in it can still be taken back.
+  defp pending_runs(pending) do
+    pending
+    |> Enum.chunk_by(&ChatComponents.routine_notice?/1)
+    |> Enum.flat_map(fn [first | _] = run ->
+      if ChatComponents.routine_notice?(first),
+        do: [{first, run}],
+        else: Enum.map(run, &{&1, []})
+    end)
+  end
+
+  attr :message, :any, required: true
+
+  defp withdraw_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="withdraw_message"
+      phx-value-ref={@message.delivery_ref}
+      data-test="agent-withdraw-message"
+      class="btn btn-xs btn-ghost"
+    >
+      Take it back
+    </button>
+    """
+  end
+
   defp page_title(project, nil), do: "#{project.name} · Agent conversation"
 
   defp page_title(project, conversation),
@@ -1450,6 +1478,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:results, results)
   end
 
+  # A message already on screen is replaced where it stands, never appended
+  # again: one loaded at mount can still arrive as a broadcast, and a queued one
+  # arrives again when it is delivered. Appending rendered it twice.
+  defp upsert(messages, %{id: id} = message) do
+    if Enum.any?(messages, &(&1.id == id)),
+      do: Enum.map(messages, &if(&1.id == id, do: message, else: &1)),
+      else: messages ++ [message]
+  end
+
   # A full page back means there is probably more; a short one means we reached
   # the beginning. Assumed true before the first fetch so the binding is armed
   # on a conversation that is exactly one page long — the check costs one query
@@ -1546,7 +1583,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply,
      socket
      |> assign(:pending, pending_for(socket.assigns.conversation))
-     |> assign_turns(socket.assigns.messages ++ [message])}
+     |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
   # What the agent is writing, before it is a message: the whole draft so far,
@@ -1563,12 +1600,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Either way it is no longer something the operator can change, and a control
   # still offering to change it is the failure the ref exists to prevent.
   def handle_info({:message_updated, message}, socket) do
-    messages = Enum.reject(socket.assigns.messages, &(&1.id == message.id)) ++ [message]
-
     {:noreply,
      socket
      |> assign(:pending, drop_ref(socket, message.delivery_ref))
-     |> assign_turns(messages)}
+     |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
   # Above the catch-all deliberately. A clause added below it is dead code that
@@ -2194,37 +2229,34 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       </div>
 
       <div
-        :for={message <- @pending}
+        :for={{message, run} <- pending_runs(@pending)}
         data-test="agent-pending-message"
         class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
       >
         <%!-- Pending content appears here until delivery moves it into the transcript. --%>
         <details
-          :if={ChatComponents.routine_notice?(message)}
+          :if={run != []}
           data-test="pending-routine-notice"
+          data-count={length(run)}
           class="min-w-0 flex-1"
         >
-          <summary class="cursor-pointer">Promotion confirmed</summary>
-          <div class="mt-2 whitespace-pre-wrap break-words">{Message.text(message)}</div>
+          <summary class="cursor-pointer">
+            Promotion confirmed{if length(run) > 1, do: " ×#{length(run)}"}
+          </summary>
+          <div :for={notice <- run} class="mt-2 flex items-start gap-2">
+            <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">
+              {Message.text(notice)}
+            </span>
+            <.withdraw_button :if={length(run) > 1} message={notice} />
+          </div>
         </details>
-        <span
-          :if={!ChatComponents.routine_notice?(message)}
-          class="min-w-0 whitespace-pre-wrap break-words"
-        >
+        <span :if={run == []} class="min-w-0 whitespace-pre-wrap break-words">
           {Message.text(message)}
         </span>
         <span class="opacity-60">
           waiting for the agent to finish its turn
         </span>
-        <button
-          type="button"
-          phx-click="withdraw_message"
-          phx-value-ref={message.delivery_ref}
-          data-test="agent-withdraw-message"
-          class="btn btn-xs btn-ghost"
-        >
-          Take it back
-        </button>
+        <.withdraw_button :if={length(run) < 2} message={message} />
       </div>
 
       <form
