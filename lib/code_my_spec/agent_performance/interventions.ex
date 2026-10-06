@@ -75,8 +75,11 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
   agents that count, the same way `story/2` and `project_level/1` each
   pick out their own slice.
   """
-  @spec for_scope(Scope.t(), %{optional(:story_id) => integer(), optional(:working_copy_id) => Ecto.UUID.t()}) ::
-          [intervention()]
+  @spec for_scope(Scope.t(), %{
+          optional(:story_id) => integer(),
+          optional(:working_copy_id) => Ecto.UUID.t(),
+          optional(:agent_id) => Ecto.UUID.t()
+        }) :: [intervention()]
   def for_scope(%Scope{} = scope, filter \\ %{}) do
     scope
     |> Agents.list_agents()
@@ -84,12 +87,23 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
     |> Enum.flat_map(&for_agent(scope, &1.id))
   end
 
-  defp filter_agents(agents, %{story_id: id}) when not is_nil(id), do: Enum.filter(agents, &(&1.story_id == id))
+  # Every narrowing key applies, not just the first whose clause matches: the
+  # page offers working copy, story and agent together, and picking an agent
+  # after a copy must count the nudges of that agent on that copy, not all of
+  # the agent's or all of the copy's.
+  defp filter_agents(agents, filter) do
+    agents
+    |> narrow(&(&1.story_id == &2), :story_id, filter)
+    |> narrow(&(&1.id == &2), :agent_id, filter)
+    |> narrow(&(&1.working_copy_id == &2), :working_copy_id, filter)
+  end
 
-  defp filter_agents(agents, %{working_copy_id: id}) when not is_nil(id),
-    do: Enum.filter(agents, &(&1.working_copy_id == id))
-
-  defp filter_agents(agents, _filter), do: agents
+  defp narrow(agents, match?, key, filter) do
+    case Map.get(filter, key) do
+      nil -> agents
+      value -> Enum.filter(agents, &match?.(&1, value))
+    end
+  end
 
   @doc """
   Interventions on agents holding no story right now -- the project-level
