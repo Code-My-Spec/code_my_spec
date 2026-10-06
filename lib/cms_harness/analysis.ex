@@ -252,8 +252,13 @@ defmodule CmsHarness.Analysis do
 
   defp stamp_partition(result, _env, _source), do: result
 
-  defp execute("compiler", env, _args) do
-    result = Compile.execute(environment: env, extra_env: AnalyzerEnv.extra_env(env, "compiler"))
+  defp execute("compiler", env, args) do
+    result =
+      Compile.execute(
+        environment: env,
+        extra_env: AnalyzerEnv.extra_env(env, "compiler"),
+        force: "--force" in args
+      )
 
     {:ok,
      %{
