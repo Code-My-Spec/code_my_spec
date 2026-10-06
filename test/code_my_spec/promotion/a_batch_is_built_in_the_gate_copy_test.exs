@@ -68,4 +68,14 @@ defmodule CodeMySpec.Promotion.ABatchIsBuiltInTheGateCopyTest do
 
     assert {"", 0} = System.cmd("git", ["status", "--porcelain"], cd: ctx.gate)
   end
+
+  # 2026-10-06: files a candidate adds sat untracked in the gate, its merge
+  # refused to overwrite them, and it read as a conflict with no files.
+  test "untracked leftovers in the gate do not refuse a candidate", ctx do
+    a = ctx.branch.("a", "main", "new_test.exs", "a\n")
+    File.write!(Path.join(ctx.gate, "new_test.exs"), "left over\n")
+
+    assert {:ok, %{head: ^a, merged: [^a], conflicted: []}} =
+             Steps.build_batch(ctx.env, ctx.gate, ctx.main, [a])
+  end
 end
