@@ -1478,6 +1478,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:results, results)
   end
 
+  # A message already on screen is replaced where it stands, never appended
+  # again: one loaded at mount can still arrive as a broadcast, and a queued one
+  # arrives again when it is delivered. Appending rendered it twice.
+  defp upsert(messages, %{id: id} = message) do
+    if Enum.any?(messages, &(&1.id == id)),
+      do: Enum.map(messages, &if(&1.id == id, do: message, else: &1)),
+      else: messages ++ [message]
+  end
+
   # A full page back means there is probably more; a short one means we reached
   # the beginning. Assumed true before the first fetch so the binding is armed
   # on a conversation that is exactly one page long — the check costs one query
@@ -1574,7 +1583,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply,
      socket
      |> assign(:pending, pending_for(socket.assigns.conversation))
-     |> assign_turns(socket.assigns.messages ++ [message])}
+     |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
   # What the agent is writing, before it is a message: the whole draft so far,
@@ -1591,12 +1600,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Either way it is no longer something the operator can change, and a control
   # still offering to change it is the failure the ref exists to prevent.
   def handle_info({:message_updated, message}, socket) do
-    messages = Enum.reject(socket.assigns.messages, &(&1.id == message.id)) ++ [message]
-
     {:noreply,
      socket
      |> assign(:pending, drop_ref(socket, message.delivery_ref))
-     |> assign_turns(messages)}
+     |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
   # Above the catch-all deliberately. A clause added below it is dead code that
