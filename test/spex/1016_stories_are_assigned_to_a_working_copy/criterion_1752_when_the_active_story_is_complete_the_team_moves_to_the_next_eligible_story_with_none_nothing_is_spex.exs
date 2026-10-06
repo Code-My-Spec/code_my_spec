@@ -9,6 +9,11 @@ defmodule CodeMySpecSpex.Story1016.Criterion1752Spex do
   It is offered only what it is responsible for — the story's own
   requirements, issues filed against the story, the story's components —
   and project-level work goes to main and product.
+
+  "Complete" here means *landed*: the story is finished and promoted. John,
+  2026-10-06 (issue f0c18598): a team's story stays until it lands, so the
+  scenario lands it (`Slice.land/1`) before asking what comes next. A story
+  that is finished but unpromoted keeps its team instead — see criterion 1600.
   """
 
   use CodeMySpecSpex.Case
@@ -28,7 +33,11 @@ defmodule CodeMySpecSpex.Story1016.Criterion1752Spex do
   spex "A finished story with nothing after it leaves the team idle", criterion: 1752 do
     scenario "the team's story is done and no other story is eligible" do
       given_ "a team whose story is complete, and an accepted project issue", context do
-        context = context |> CodeMySpecSpex.StorySliceHelpers.complete() |> issue_accepted()
+        context =
+          context
+          |> CodeMySpecSpex.StorySliceHelpers.complete()
+          |> CodeMySpecSpex.StorySliceHelpers.land()
+          |> issue_accepted()
         [coding | _] = context.team
         {:ok, Map.put(context, :coding, coding)}
       end

@@ -39,7 +39,7 @@ defmodule CodeMySpec.Agents.TheTeamFinishesAStoryTogetherTest do
   end
 
   test "a finished story moves the whole team onto the next eligible story", ctx do
-    ctx = ctx |> Slice.complete() |> Slice.waiting()
+    ctx = ctx |> Slice.complete() |> Slice.land() |> Slice.waiting()
 
     answer = Slice.next(ctx, %{agent_id: ctx.coding.id})
 
@@ -50,14 +50,14 @@ defmodule CodeMySpec.Agents.TheTeamFinishesAStoryTogetherTest do
   end
 
   test "with nothing eligible the team stays on its finished story", ctx do
-    ctx = Slice.complete(ctx)
+    ctx = ctx |> Slice.complete() |> Slice.land()
 
     Slice.assert_active(Slice.next(ctx, %{agent_id: ctx.coding.id}), ctx, "complete")
     assert held(ctx.qa) == ctx.story.id
   end
 
   test "a session reading a finished story does not move the team", ctx do
-    ctx = ctx |> Slice.complete() |> Slice.waiting()
+    ctx = ctx |> Slice.complete() |> Slice.land() |> Slice.waiting()
 
     Slice.assert_active(Slice.next(ctx), ctx, "complete")
     assert held(ctx.coding) == ctx.story.id

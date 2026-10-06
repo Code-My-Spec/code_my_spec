@@ -1177,6 +1177,25 @@ defmodule CodeMySpec.Agents.Work do
   #
   # Only a team member's own read moves the team. A session, product or the
   # main agent looking at the copy sees the finished story as finished.
+  #
+  # And only when the story has *landed*. John, 2026-10-06: "a team's active
+  # story stays until it lands (promoted). The epic pull may only bind the team
+  # to the next story when the active one has landed, never because it reads
+  # certified/complete before QA."
+  #
+  # This is issue f0c18598. A certified story is complete for coding while QA
+  # is still owed: `ready_for_qa` is satisfied, `qa_complete` and
+  # `story_promoted` are not, and `from_graph/5` reads the story `:complete`
+  # for the coding role the moment no work is actionable for it. Moving the
+  # team on that reading took it off story 1052 with QA pending, and it is
+  # what stopped `set_active_story` sticking: main set the story, the next
+  # member's own read found it complete for its role and pulled the whole team
+  # onto 988, then 1017. QA never got the story it was owed.
+  #
+  # `story_promoted` is the "has it landed" fact, and `Assignment.advance/4`
+  # owns the rule: it refuses to move a team whose current story still has
+  # requirements outstanding for any member. The check there rather than here
+  # because it holds for every caller, not only this read.
   defp advance(
          %{status: :complete, story: %{id: from}, next_story: %{id: to}} = execution,
          scope,

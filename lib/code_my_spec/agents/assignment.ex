@@ -125,6 +125,21 @@ defmodule CodeMySpec.Agents.Assignment do
   rows are locked first, so the first moves the team and the rest find it no
   longer on `from_id` and do nothing. `{:ok, :moved}` either way, or the
   assignment's own refusal.
+
+  A story that has not landed does not move its team (issue f0c18598). John,
+  2026-10-06: *"a team's active story stays until it lands (promoted). The epic
+  pull may only bind the team to the next story when the active one has
+  landed, never because it reads certified/complete before QA."*
+
+  A certified story reads `:complete` for the coding role while QA is still
+  owed it — `ready_for_qa` satisfied, `qa_complete` and `story_promoted` not —
+  and moving on that reading took the team off a story QA had not tested,
+  parked its reservation, and made `set_active_story` look like it had not
+  stuck. So a story is finished for the team when it is complete *and* it
+  carries a promotion stamp: `stories.promoted_version`, written only by a
+  promotion naming this story (`Stories.mark_story_promoted/3`).
+
+  `{:error, :story_not_landed}` when it is complete but unstamped.
   """
   @spec advance(Scope.t(), Ecto.UUID.t(), integer(), integer()) ::
           {:ok, :moved} | {:error, term()}
@@ -133,8 +148,21 @@ defmodule CodeMySpec.Agents.Assignment do
       Repo.transaction(fn ->
         team = lock_team(scope, copy_id)
         still_on? = team != [] and Enum.all?(team, &(&1.story_id == from_id))
-        move(scope, copy_id, to_id, still_on?)
+        move(scope, copy_id, to_id, still_on?(scope, from_id) and still_on?)
       end)
+    end
+  end
+
+  # The story in front of the team has to have landed. Read under the same lock
+  # as the team's own rows, so a promotion stamping the story while a teammate
+  # is asking cannot lose the move: either the stamp is there and the team
+  # moves, or it is not and nothing has happened yet.
+  defp still_on?(_scope, nil), do: false
+
+  defp still_on?(scope, from_id) do
+    case Stories.get_story(scope, from_id) do
+      %{promoted_version: version} when is_binary(version) -> true
+      _unlanded_or_missing -> false
     end
   end
 
