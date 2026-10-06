@@ -183,23 +183,16 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     if context[:waiting], do: refute(offered?(text, context.waiting.id))
   end
 
-  # Complete for the team, and *not* landed: certified, QA passed, no promotion
-  # stamp. A promotion is what lands a story (`Stories.mark_story_promoted/3`
-  # is its only writer), and the team moves on a *landed* story, not one that
-  # merely reads complete (issue f0c18598). So a scenario that wants the move
-  # stamps the story itself; this fixture deliberately leaves the stamp off.
+  # Complete for the team and not landed: certified, QA passed, no promotion
+  # stamp. A scenario that asserts the move lands the story with `land/1`.
   def complete(context) do
     context |> FullSatisfactionFixtures.apply_without_deploy() |> activate()
   end
 
   @doc """
-  Land the team's story: stamp it promoted, which is the only fact that says a
-  story is finished for its team (issue f0c18598).
-
-  `complete/1` leaves the story unlanded on purpose — certified, QA passed, no
-  `promoted_version` — which is the state team 1 was pulled off story 1052
-  from. A scenario that asserts the move calls this; a scenario about a story
-  that keeps its team does not.
+  Land the team's story: stamp it promoted, the only fact that says a story is
+  finished for its team. A scenario about a story that keeps its team does not
+  call this.
   """
   def land(context) do
     story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
