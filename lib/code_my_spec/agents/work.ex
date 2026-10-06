@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -754,13 +755,46 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # Whether a turn could start now — nothing in flight, nothing held, a copy to
-  # run on. Whether this agent should be woken for it at all is `Wake`'s.
+  # The tasks whose open state is the queue's, not the agent's (criterion 2021).
+  @promotion_tasks ~w(promote_issue story_promoted)
+
+  # Whether a turn could start now — nothing in flight, nothing held that the
+  # agent could act on, a copy to run on. Whether this agent should be woken for
+  # it at all is `Wake`'s.
   defp idle?(agent) do
     present?(agent) and is_nil(agent.turn_started_at) and
-      not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
+      not reservation_open?(agent) and not busy_on?(agent) and
       not is_nil(agent.working_copy_id)
   end
+
+  # A `promote_issue`/`story_promoted` task stays open until its candidate
+  # lands or is ejected, and the queue messages the agent then. Holding only
+  # such a task is waiting, not busy.
+  defp busy_on?(agent) do
+    case Agent.active_task(agent) do
+      %{requirement_name: name} = task when name in @promotion_tasks ->
+        not awaiting_landing?(agent, task)
+
+      nil ->
+        false
+
+      _other ->
+        true
+    end
+  end
+
+  # An open candidate for this task's own subject is the queue's to finish;
+  # a resolved one is the agent's turn.
+  defp awaiting_landing?(agent, task) do
+    case subject(task) do
+      nil -> false
+      {type, id} -> PromotionQueue.open_for(agent.id, type, id)
+    end
+  end
+
+  defp subject(%{issue_id: issue_id}) when is_binary(issue_id), do: {"issue", issue_id}
+  defp subject(%{story_id: story_id}) when is_binary(story_id), do: {"story", to_string(story_id)}
+  defp subject(_task), do: nil
 
   # Its process alive now (`Agents.Presence`): nothing starts a turn in one that
   # is not there.
@@ -769,6 +803,16 @@ defmodule CodeMySpec.Agents.Work do
   defp admit(scope, agent, event) do
     if idle?(agent), do: Wake.allow?(scope, agent, event), else: {:hold, :busy}
   end
+
+  @doc """
+  `admit/3`'s answer, for a caller that has to tell `:busy` from a hold.
+
+  `request_turn_if_runnable/4` answers `{:ok, :not_runnable}` for every hold,
+  so a test asking "is this agent busy?" cannot ask through it. This is the same
+  decision, named.
+  """
+  @spec admission(Scope.t(), Agent.t(), :work_offer | :resume | :nudge) :: :ok | {:hold, term()}
+  def admission(scope, agent, event), do: admit(scope, agent, event)
 
   # Under the row lock: the same answer, without announcing it twice.
   defp runnable_state?(scope, agent, event),
@@ -849,9 +893,17 @@ defmodule CodeMySpec.Agents.Work do
 
   # Released and still claimable: one the graph no longer offers would be
   # refused by `start_task`, and offering it first would hide the rest.
-  defp released_tasks(%Agent{tasks: tasks}, nodes) do
+  #
+  # And not held back: a released task offered and ignored three times, or
+  # declined, is not offered again, as requirement work is not. Without that, an
+  # agent that would not resume it was re-offered it after every turn — 570
+  # times in half an hour on 2026-10-06.
+  defp released_tasks(%Agent{tasks: tasks} = agent, nodes) do
+    standing = Offers.standing(agent.id)
+
     Enum.filter(tasks || [], fn task ->
       task.status == :blocked and not is_nil(task.blocker_resolved_at) and
+        not match?(%{held?: true}, standing[task.id]) and
         Enum.any?(nodes, fn {type, id, name} ->
           task_on_node?(task, %{entity_type: type, entity_id: id, name: name})
         end)

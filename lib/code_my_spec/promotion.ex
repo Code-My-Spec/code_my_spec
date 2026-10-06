@@ -987,7 +987,7 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp answers_at(scope, sources, head) do
-    runs = Map.new(sources, &{&1, Analysis.answer_at_commit(scope, &1, head)})
+    runs = Map.new(sources, &{&1, gate_answer(&1, Analysis.answer_at_commit(scope, &1, head))})
     {answered, missing} = Enum.split_with(runs, fn {_source, run} -> run end)
     {Map.new(answered), Enum.map(missing, &elem(&1, 0))}
   end
@@ -1005,7 +1005,7 @@ defmodule CodeMySpec.Promotion do
 
     {started, failed} =
       to_start
-      |> Enum.map(&{&1, Analysis.start_run(scope, &1, [], requested_by: requested_by)})
+      |> Enum.map(&{&1, Analysis.start_run(scope, &1, gate_args(&1), requested_by: requested_by)})
       |> Enum.split_with(&match?({_source, {:ok, _, _}}, &1))
 
     for {source, {:ok, :joined, _id}} <- started, do: running_at?(scope, source, head, agent_id)
@@ -1017,6 +1017,18 @@ defmodule CodeMySpec.Promotion do
 
   defp running_at?(scope, source, head, agent_id),
     do: Analysis.wait_on_running_at_commit(scope, source, head, agent_id)
+
+  # The gate's compiler run is forced: an incremental compile reports only what
+  # it recompiled, and another analyzer holding the build lock had already
+  # compiled a boundary violation, so the compiler saw nothing and passed it.
+  defp gate_args("compiler"), do: ["--force"]
+  defp gate_args(_source), do: []
+
+  defp gate_answer("compiler", %Run{args: %{"args" => args}} = run) when is_list(args),
+    do: if("--force" in args, do: run)
+
+  defp gate_answer("compiler", _run), do: nil
+  defp gate_answer(_source, run), do: run
 
   defp requested_by(nil), do: %{kind: "promotion"}
   defp requested_by(agent_id), do: %{kind: "promotion", agent_id: agent_id}

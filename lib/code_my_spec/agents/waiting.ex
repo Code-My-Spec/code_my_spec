@@ -28,6 +28,7 @@ defmodule CodeMySpec.Agents.Waiting do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -37,6 +38,7 @@ defmodule CodeMySpec.Agents.Waiting do
           | {:provisioning, String.t() | nil}
           | :tap_out
           | :analysis_runs
+          | :promotion
           | :question_pending
 
   @type path :: :turn_end | :offer | :wake | :resume | :cadence
@@ -52,6 +54,7 @@ defmodule CodeMySpec.Agents.Waiting do
     provisioning: @all,
     tap_out: @all,
     analysis_runs: [:turn_end, :cadence],
+    promotion: @all,
     question_pending: @all
   ]
 
@@ -93,6 +96,19 @@ defmodule CodeMySpec.Agents.Waiting do
   # it (070d1bab, fad1a314). An agent still holding a task is not idle on it.
   defp check(:tap_out, _scope, agent) do
     if is_nil(Agent.active_task(agent)) and awaiting_tap_out?(agent), do: :tap_out
+  end
+
+  # The promotion it asked for is in the queue; the queue messages it when the
+  # batch lands or the candidate is ejected. An entry already resolved is the
+  # agent's own turn to take.
+  #
+  # `@all`, like `provisioning`: the task stays open until the landing, so no
+  # path here has anything useful to say about it.
+  defp check(:promotion, _scope, agent) do
+    case PromotionQueue.awaited_by(agent.id) do
+      nil -> nil
+      entry -> {:promotion, entry.id}
+    end
   end
 
   # Analyzer runs it requested or waits on; `AnalysisReport` messages it when
