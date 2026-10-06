@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   alias CodeMySpec.AgentPerformance
   alias CodeMySpec.AgentPerformance.Stage
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def mount(_params, _session, socket) do
@@ -18,6 +19,20 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("filter", params, socket) do
+    query =
+      %{}
+      |> maybe_put_param("working_copy_id", present(params["working_copy_id"]))
+      |> maybe_put_param("story_id", present(params["story_id"]))
+
+    {:noreply,
+     push_patch(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/agent-performance?#{query}")}
+  end
+
+  defp maybe_put_param(map, _key, nil), do: map
+  defp maybe_put_param(map, key, value), do: Map.put(map, key, value)
 
   defp load(socket, params) do
     scope = socket.assigns.current_scope
@@ -37,6 +52,8 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     |> assign(:reports, reports)
     |> assign(:teams, teams)
     |> assign(:summary, AgentPerformance.summary(scope))
+    |> assign(:filter, filter)
+    |> assign(:working_copies, WorkingCopies.list_harnesses(scope))
     |> assign(:chart_option, AgentPerformance.chart_option(scope, filter))
     |> assign(:chart_detail, AgentPerformance.chart_detail(scope, filter))
   end
@@ -68,6 +85,31 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     ~H"""
     <.header>Agent Performance</.header>
 
+    <form phx-change="filter" data-test="performance-filter" class="mt-4 flex flex-wrap gap-4 items-end">
+      <div>
+        <label class="label" for="filter-working-copy">Working copy</label>
+        <select id="filter-working-copy" name="working_copy_id" class="select select-bordered select-sm">
+          <option value="">All</option>
+          <option
+            :for={wc <- @working_copies}
+            value={wc.id}
+            selected={wc.id == @filter[:working_copy_id]}
+          >
+            {WorkingCopies.display_name(wc)}
+          </option>
+        </select>
+      </div>
+      <div>
+        <label class="label" for="filter-story">Story</label>
+        <select id="filter-story" name="story_id" class="select select-bordered select-sm">
+          <option value="">All</option>
+          <option :for={story <- @stories} value={story.id} selected={story.id == @filter[:story_id]}>
+            {story.title}
+          </option>
+        </select>
+      </div>
+    </form>
+
     <section data-test="performance-chart" class="mt-6">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
         Activity over time
@@ -93,11 +135,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <p :if={@summary.project_level_interventions == []} class="text-base-content/60">
         None -- every intervention served a story.
       </p>
-      <ul :for={i <- @summary.project_level_interventions}>
-        <li data-test="project-intervention">
-          {kind_label(i.kind)} ({i.reason})
-        </li>
-      </ul>
+      <p :if={@summary.project_level_interventions != []} data-test="project-interventions-summary">
+        {length(@summary.project_level_interventions)} total ({intervention_kind_counts(@summary.project_level_interventions)})
+      </p>
     </section>
 
     <section data-test="project-blocked" class="mt-6">
@@ -192,9 +232,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <span>Rounds: {@qa_rounds.rounds}</span>
       <span :if={@qa_rounds.first_time_pass?}>first-time pass</span>
       <span :if={not @qa_rounds.first_time_pass?}>no first-time pass</span>
-      <ul>
-        <li :for={finding <- @qa_rounds.findings}>{finding}</li>
-      </ul>
+      <span :if={@qa_rounds.findings != []} data-test="qa-findings-count">
+        {length(@qa_rounds.findings)} finding(s)
+      </span>
     </div>
     """
   end
@@ -226,16 +266,21 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
     ~H"""
     <div data-test="story-interventions">
-      <span>{length(@interventions)}</span> intervention(s)
-      <div :for={i <- @interventions} data-test="intervention">
-        {kind_label(i.kind)} ({i.reason})
-      </div>
+      <span>{length(@interventions)}</span> intervention(s) ({intervention_kind_counts(@interventions)})
     </div>
     """
   end
 
   defp kind_label(:nudge), do: "nudge"
   defp kind_label(:restart), do: "restart"
+
+  defp intervention_kind_counts(interventions) do
+    interventions
+    |> Enum.group_by(& &1.kind)
+    |> Enum.map(fn {kind, items} -> "#{length(items)} #{kind_label(kind)}" end)
+    |> Enum.sort()
+    |> Enum.join(", ")
+  end
 
   defp tokens_block(%{total: :unknown}), do: nil
 
