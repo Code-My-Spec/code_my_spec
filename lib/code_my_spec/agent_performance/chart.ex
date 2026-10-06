@@ -115,8 +115,7 @@ defmodule CodeMySpec.AgentPerformance.Chart do
   defp nudges_for(scope, filter, since, until) do
     scope
     |> Interventions.for_scope(filter)
-    |> Enum.filter(&(&1.kind == :nudge))
-    |> Enum.filter(&in_window?(&1.at, since, until))
+    |> Enum.filter(&(&1.kind == :nudge and in_window?(&1.at, since, until)))
   end
 
   defp failures_for(scope, filter, since, until) do
@@ -144,8 +143,9 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     |> Qa.list_project_attempts(include_older: true, include_invalidated: true)
     |> Enum.group_by(& &1.story_id)
     |> Enum.map(fn {_story_id, attempts} -> Enum.min_by(attempts, & &1.submitted_at, DateTime) end)
-    |> Enum.filter(&matches_attempt?(&1, filter, agent_copies))
-    |> Enum.filter(&in_window?(&1.submitted_at, since, until))
+    |> Enum.filter(
+      &(matches_attempt?(&1, filter, agent_copies) and in_window?(&1.submitted_at, since, until))
+    )
   end
 
   defp matches_attempt?(attempt, %{story_id: id}, _copies) when not is_nil(id), do: attempt.story_id == id
