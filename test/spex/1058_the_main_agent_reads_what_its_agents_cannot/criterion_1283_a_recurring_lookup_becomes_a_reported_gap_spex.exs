@@ -68,8 +68,8 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
   end
 
   spex "A lookup the main agent keeps doing is written down as a gap", criterion: 1283 do
-    scenario "a product agent needs the same lookup three times" do
-      given_ "a product agent that has needed it twice already", context do
+    scenario "a coding agent needs the same lookup three times" do
+      given_ "a coding agent that has needed it twice already", context do
         reply = join_working_copy(context, "/tmp/spex-3315", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
         orphan = Fixtures.authored_story(scope, "Dunning emails go out")
         :ok = Fixtures.mark_story_ready(scope, orphan)
 
-        agent = Fixtures.running_agent(scope, role: "product", working_copy: "/tmp/spex-3315")
+        agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3315")
 
         for _occasion <- 1..2 do
           answer_one(scope, agent)
@@ -98,9 +98,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
 
       then_ "the missing capability is reported as a gap in that role's tools",
             context do
-        assert context.issues =~ ~r/product/i,
+        assert context.issues =~ ~r/coding/i,
                """
-               The main agent has now done the same lookup for the product role
+               The main agent has now done the same lookup for the coding role
                three times and nothing says so.
 
                This is the comfortable failure: the agent asks, the main agent
@@ -121,7 +121,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
                """
                A gap is reported without saying what is missing.
 
-               "The product role keeps needing help" tells somebody a pattern
+               "The coding role keeps needing help" tells somebody a pattern
                exists and nothing about what to build. The criterion asks for
                the missing *capability*, which is what makes the issue work
                somebody can pick up.

@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2025Spex do
         {:ok, Map.put(context, :search_reply, reply)}
       end
 
-      then_ "it has the tool to look, not only main", _context do
+      then_ "it has the tool to look, not only main", context do
         assert "search_answers" in RoleProfile.tools(:product),
                """
                Product cannot reach `search_answers` yet — it is not in
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2025Spex do
                look before asking the user something already settled.
                """
 
-        :ok
+        {:ok, context}
       end
 
       then_ "it finds the user's earlier decision rather than coming up empty", context do
