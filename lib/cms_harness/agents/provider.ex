@@ -150,7 +150,7 @@ defmodule CmsHarness.Agents.Provider do
               chat_path: "/chat/completions",
               api_key: api_key,
               model: Keyword.get(opts, :model) || @zai_model,
-              req_options: Keyword.get(opts, :req_options) || []
+              req_options: req_options(opts)
             }}
        ]}
     end
@@ -167,7 +167,7 @@ defmodule CmsHarness.Agents.Provider do
               chat_path: "/chat/completions",
               api_key: api_key,
               model: Keyword.get(opts, :model) || @deepinfra_model,
-              req_options: Keyword.get(opts, :req_options) || []
+              req_options: req_options(opts)
             }}
        ]}
     end
@@ -182,7 +182,7 @@ defmodule CmsHarness.Agents.Provider do
             %{
               api_key: api_key,
               model: Keyword.get(opts, :model) || "claude-sonnet-5",
-              req_options: Keyword.get(opts, :req_options) || []
+              req_options: req_options(opts)
             }}
        ]}
     end
@@ -224,6 +224,12 @@ defmodule CmsHarness.Agents.Provider do
   end
 
   def options(_provider, _credential, _opts), do: {:error, :unknown_provider}
+
+  # Req's 15s receive timeout is shorter than a large-context first token:
+  # DeepSeek on DeepInfra failed whole turns on it, retry included.
+  defp req_options(opts) do
+    Keyword.merge([receive_timeout: :timer.minutes(5)], Keyword.get(opts, :req_options) || [])
+  end
 
   # What runs `codex` and `claude` in place of the real CLI, from config. Unset
   # everywhere but test, where it is pinned to a recording the way HTTP clients
