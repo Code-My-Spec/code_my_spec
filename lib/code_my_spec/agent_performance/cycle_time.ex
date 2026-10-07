@@ -38,7 +38,22 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   """
   @spec story(Scope.t(), Story.t()) :: t()
   def story(%Scope{} = scope, %Story{} = story) do
-    tasks = all_tasks(scope, story.id, story.component_id)
+    story(scope, story, nil)
+  end
+
+  @doc """
+  A story's cycle time, from tasks already in hand.
+
+  `story/2` asks `Sessions` and `Agents` for this story's tasks, and each of
+  those reads the project's sessions and agents and filters in memory. That is
+  fine for one story and is why the performance page's chart re-read them once
+  per story -- 166 stories over 180 agents is the shape that kept the join past
+  the websocket timeout (issue 5d359bb3). A caller with the whole project's
+  tasks (`all_tasks/2`) passes them here instead.
+  """
+  @spec story(Scope.t(), Story.t(), [map()] | nil) :: t()
+  def story(%Scope{} = scope, %Story{} = story, tasks) do
+    tasks = tasks || all_tasks(scope, story.id, story.component_id)
 
     %{
       status: status(story, tasks),
@@ -49,6 +64,34 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
       blocked: Enum.flat_map(tasks, &blocked_spans/1)
     }
   end
+
+  @doc """
+  Every task of every agent and session in the project, in two reads rather
+  than two per story.
+
+  The same rows `all_tasks/3` answers for one story, and the same
+  `story_id`/`component_id` matching -- just not re-read per story. Pair it
+  with `tasks_for/3` to ask `story/3` about any number of stories.
+  """
+  @spec all_tasks(Scope.t()) :: [map()]
+  def all_tasks(%Scope{} = scope) do
+    session_tasks = scope |> Sessions.list_sessions() |> Enum.flat_map(&tasks_of/1)
+    agent_tasks = scope |> Agents.list_agents() |> Enum.flat_map(&tasks_of/1)
+
+    session_tasks ++ agent_tasks
+  end
+
+  @doc "The slice of `all_tasks/1` that belongs to one story."
+  @spec tasks_for([map()], integer(), Ecto.UUID.t() | nil) :: [map()]
+  def tasks_for(tasks, story_id, component_id \\ nil) do
+    Enum.filter(tasks, fn task ->
+      task.story_id == story_id or
+        (not is_nil(component_id) and task.component_id == component_id)
+    end)
+  end
+
+  defp tasks_of(owner), do: owner.tasks |> List.wrap() |> Enum.map(&Map.from_struct/1)
+
 
   defp status(%Story{promoted_version: nil}, _tasks), do: :in_flight
   defp status(%Story{}, _tasks), do: :finished
