@@ -192,6 +192,22 @@ defmodule CodeMySpec.Agents do
   defdelegate providers(), to: Providers, as: :names
 
   @doc """
+  Mark the agent's open promotion task as awaiting the queue.
+
+  Called by the MCP `promote` tool once `PromotionQueue` has answered `:queued`
+  (issue e515bff3, story 1091). Resolves the agent here so the tool needs no
+  getter of its own.
+  """
+  @spec await_promotion(Ecto.UUID.t(), String.t(), String.t()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def await_promotion(agent_id, subject_type, subject_id) when is_binary(agent_id) do
+    case Repo.get(Agent, agent_id) do
+      %Agent{} = agent -> CodeMySpec.TaskOwner.await_promotion(agent, subject_type, subject_id)
+      nil -> {:error, :agent_not_found}
+    end
+  end
+
+  @doc """
   Every task embedded directly on an agent -- rather than on a session --
   that was opened against a story, including tasks opened against the
   story's own linked component (see `Sessions.list_tasks_for_story/3` for

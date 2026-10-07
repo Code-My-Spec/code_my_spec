@@ -82,6 +82,50 @@ defmodule CodeMySpec.TaskOwner do
   @spec find_task(t(), String.t()) :: Task.t() | nil
   def find_task(owner, task_id), do: Enum.find(tasks(owner), &(&1.id == task_id))
 
+  @doc """
+  Record that the owner's open promotion task waits on the queue.
+
+  Called by the MCP `promote` tool *after* `PromotionQueue` answers `:queued`,
+  naming the subject the candidate was queued for. This is the push half of
+  issue e515bff3 (story 1091): the wait is written onto the task's own row here,
+  so `allow_activation/2` can read it without asking the queue anything.
+
+  It has to be called from above both boundaries — the MCP layer depends on
+  `Agents` and on `PromotionQueue`, where every enqueuer sits below `Agents` and
+  could only close a cycle (see issue e23a5547 for the four dep lists).
+
+  A no-op when the owner holds no open promotion task: an operator promoting
+  from a script has no task to mark, and the queue messages nobody.
+  """
+  @spec await_promotion(t(), String.t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def await_promotion(%Session{} = owner, _type, _id), do: {:ok, owner}
+
+  def await_promotion(%Agent{} = owner, subject_type, subject_id)
+      when is_binary(subject_type) and is_binary(subject_id) do
+    case Enum.find(tasks(owner), &promotion_task?/1) do
+      nil ->
+        {:ok, owner}
+
+      %Task{id: id} ->
+        owner
+        |> Agent.update_task(id, %{
+          awaiting_subject_type: subject_type,
+          awaiting_subject_id: subject_id
+        })
+        |> Repo.update()
+    end
+  end
+
+  # The tasks whose open state is the queue's, not the agent's (criterion 2021).
+  # Kept here rather than read from `Agents.Work`, which holds the same list:
+  # `TaskOwner` sits below `Agents`, so the read would close the cycle.
+  @promotion_tasks ~w(promote_issue story_promoted)
+
+  defp promotion_task?(%Task{status: :active, requirement_name: name}),
+    do: name in @promotion_tasks
+
+  defp promotion_task?(_task), do: false
+
   @doc "Blocked attempts, including resolved blockers awaiting explicit resumption."
   @spec blocked_tasks(t()) :: [Task.t()]
   def blocked_tasks(owner), do: Enum.filter(tasks(owner), &(&1.status == :blocked))
@@ -591,11 +635,21 @@ defmodule CodeMySpec.TaskOwner do
     case active_task(owner) do
       nil -> :ok
       %Task{id: ^task_id} -> :ok
-      task -> {:error, {:active_task_exists, task.id}}
+      task -> if awaiting_landing?(task), do: :ok, else: {:error, {:active_task_exists, task.id}}
     end
   end
 
   defp allow_activation(%Session{}, _task_id), do: :ok
+
+  # A promotion task that waits on the queue does not hold the one-task slot:
+  # `promote` only enqueues, and the task stays open until its batch lands.
+  #
+  # Criterion 2017 keeps it open until the landing or the ejection, so the fix is
+  # not to close it early — it keeps its place in the list and stops parking the
+  # agent. The signal is the task's own row, written by `await_promotion/3`; see
+  # `Task.awaiting_subject_id` for why it is not a read of the queue.
+  defp awaiting_landing?(%Task{awaiting_subject_id: id}) when is_binary(id), do: true
+  defp awaiting_landing?(_task), do: false
 
   defp add_embedded_task(%Session{} = session, attrs) do
     session |> Session.add_task(attrs) |> Repo.update()
