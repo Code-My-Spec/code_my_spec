@@ -156,9 +156,12 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
       main = agent(ctx.scope, "main")
       offer = Work.offer_fingerprint(ctx.scope, main, Work.claimable_work(ctx.scope, main))
 
-      for _ <- 1..5 do
-        {:ok, _} = Work.suppress_offer(ctx.scope, fetch!(ctx.scope, main.id), offer)
-      end
+      {:ok, _} =
+        AgentsRepository.update_agent(ctx.scope, fetch!(ctx.scope, main.id), %{
+          declined_offer: offer,
+          declined_offer_count: 5,
+          declined_offer_at: DateTime.utc_now()
+        })
 
       settled(ctx.scope)
 

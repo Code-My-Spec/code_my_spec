@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1050.Criterion3200Spex do
       end
 
       given_ "a main agent and a coding agent, and no devops agent", context do
-        main = Fixtures.running_agent(context.scope, role: "main")
+        main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         coding = Fixtures.running_agent(context.scope, role: "coding")
         context = context |> start_session() |> put_to_work()
         :ok = Fixtures.watch_graph(context.scope)

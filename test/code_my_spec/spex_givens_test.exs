@@ -261,6 +261,7 @@ defmodule CodeMySpec.SpexGivensTest do
     qa_passes_it the_coder_promotes_it two_queued_together
     ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( design!( design_coded!(
     Slice.
+    teamless_copy( queue_context(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
     .execute(
