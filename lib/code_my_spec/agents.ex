@@ -2491,7 +2491,28 @@ defmodule CodeMySpec.Agents do
       # The machine took it back and the row is already gone or already
       # settled. Nothing to correct, and nothing worth failing over.
       nil -> {:error, :not_pending}
+
+      {:error, :already_delivered} ->
+        with :ok <- reconcile_consumed_message(ref) do
+          {:error, :already_delivered}
+        end
+
       error -> error
+    end
+  end
+
+  # The harness confirmed consumption even if its delivery event was lost.
+  # Keep refusing withdrawal, but stop presenting the message as pending.
+  defp reconcile_consumed_message(ref) do
+    case Conversations.pending_message_by_ref(ref) do
+      nil ->
+        :ok
+
+      message ->
+        case Conversations.set_delivery(message, :delivered) do
+          {:ok, _updated} -> :ok
+          error -> error
+        end
     end
   end
 
