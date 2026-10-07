@@ -30,7 +30,7 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
       )
 
     on_exit(fn -> Machine.stop_agent(id) end)
-    assert_receive {:agent_liveness, :up, ^id, ^root, nil}
+    assert_receive {:agent_liveness, :up, ^id, ^root, nil}, 2_000
 
     %{id: id, root: root, pid: pid}
   end
@@ -39,7 +39,7 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
   # handles, not a crash.
   defp crash(id, root, pid) do
     Process.exit(pid, :kill)
-    assert_receive {:agent_liveness, :down, ^id, ^root, :killed}
+    assert_receive {:agent_liveness, :down, ^id, ^root, :killed}, 2_000
   end
 
   defp restarted(id, root) do
@@ -89,7 +89,7 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
 
     id = ctx.id
     root = ctx.root
-    assert_receive {:agent_liveness, :down, ^id, ^root, :shutdown}
+    assert_receive {:agent_liveness, :down, ^id, ^root, :shutdown}, 2_000
     refute_receive {:agent_liveness, :up, ^id, _, _}, 200
     refute_receive {:agent_liveness, :gave_up, ^id, _, _}
     refute Machine.running?(ctx.id)
