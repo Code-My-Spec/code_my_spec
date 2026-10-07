@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.AgentPerformance
+  alias CodeMySpec.AgentPerformance.Page
   alias CodeMySpec.AgentPerformance.Stage
   alias CodeMySpec.WorkingCopies
 
@@ -38,24 +39,16 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
   defp load(socket, params) do
     scope = socket.assigns.current_scope
     filter = chart_filter(params)
-    stories = AgentPerformance.list_stories(scope)
-    reports = Map.new(stories, &{&1.id, AgentPerformance.story_report(scope, &1)})
-
-    teams =
-      stories
-      |> Enum.map(& &1.working_copy_id)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
-      |> Map.new(&{&1, AgentPerformance.team_first_pass_rate(scope, &1)})
+    page = Page.load(scope)
 
     socket
-    |> assign(:stories, stories)
-    |> assign(:reports, reports)
-    |> assign(:teams, teams)
-    |> assign(:summary, AgentPerformance.summary(scope))
+    |> assign(:stories, page.stories)
+    |> assign(:reports, page.reports)
+    |> assign(:teams, page.teams)
+    |> assign(:summary, page.summary)
     |> assign(:filter, filter)
     |> assign(:working_copies, WorkingCopies.list_harnesses(scope))
-    |> assign(:agents, AgentPerformance.list_agents(scope))
+    |> assign(:agents, page.agents)
     |> assign(:chart_option, AgentPerformance.chart_option(scope, filter))
     |> assign(:chart_detail, AgentPerformance.chart_detail(scope, filter))
   end
