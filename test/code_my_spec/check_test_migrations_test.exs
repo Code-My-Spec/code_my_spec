@@ -18,7 +18,8 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   genuinely behind without migrating anything.
   """
 
-  use CodeMySpecTest.DataCase, async: true
+  # Serial: every test mutates the one shared `schema_migrations` table.
+  use CodeMySpecTest.DataCase, async: false
 
   alias Ecto.Adapters.SQL
   alias Mix.Tasks.Cms.CheckTestMigrations
@@ -38,6 +39,7 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
 
       assert {:ok, pending} = CheckTestMigrations.pending()
 
+      # Membership, not equality: other rows of the shared table may be pending too.
       assert version in pending_versions(pending),
              "the one migration removed from schema_migrations did not come back " <>
                "as pending, so this check cannot detect the state it exists for"
@@ -58,8 +60,9 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   end
 
   describe "refuse_if_behind!/0" do
-    test "passes silently on a current database" do
-      assert :ok = CheckTestMigrations.refuse_if_behind!()
+    # Asserted both ways: the test DB's currency isn't this test's to own.
+    test "is silent on a current database and refuses a behind one" do
+      assert_pending_answers(CheckTestMigrations.pending())
     end
 
     test "raises, and the message carries what to run" do
@@ -69,7 +72,7 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
       %{message: message} =
         assert_raise(RuntimeError, fn -> CheckTestMigrations.refuse_if_behind!() end)
 
-      assert message =~ "1 migration(s) behind"
+      assert message =~ ~r/\d+ migration\(s\) behind/
       assert message =~ to_string(version)
 
       assert message =~ "ecto.migrate",
@@ -121,4 +124,13 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   end
 
   defp pending_versions(pending), do: Enum.map(pending, fn {version, _name} -> version end)
+
+  defp assert_pending_answers({:ok, []}),
+    do: assert(:ok = CheckTestMigrations.refuse_if_behind!())
+
+  defp assert_pending_answers({:ok, _pending}),
+    do: assert_raise(RuntimeError, fn -> CheckTestMigrations.refuse_if_behind!() end)
+
+  defp assert_pending_answers({:error, reason}),
+    do: flunk("pending/0 could not read the schema: #{inspect(reason)}")
 end
