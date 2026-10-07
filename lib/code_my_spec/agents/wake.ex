@@ -76,6 +76,7 @@ defmodule CodeMySpec.Agents.Wake do
           | :teammate_stalled
           | :teammate_died
           | :team_free
+          | :offer_held_back
 
   @type hold ::
           {:off, Agent.t()}
@@ -99,7 +100,8 @@ defmodule CodeMySpec.Agents.Wake do
     :cadence,
     :teammate_stalled,
     :teammate_died,
-    :team_free
+    :team_free,
+    :offer_held_back
   ]
 
   # Relevant to whoever it is addressed to: a person speaking to it, or the
@@ -107,12 +109,17 @@ defmodule CodeMySpec.Agents.Wake do
   # A team becoming free of its issue is main's own administrative notice —
   # story 1091 — the same standing as `:own_reply`: told regardless of role
   # (there is only ever one main) and never held by `Agents.Waiting`.
+  # An offer held back from an agent is main's own administrative notice too
+  # (criterion 2063): it is main that must reassign or cancel what it would not
+  # take, so it is told whatever its role, and told now — `:teammate_stalled`
+  # was held for a non-continuous main and the notice went unread.
   @always_relevant [
     :operator_message,
     :own_reply,
     :question_answered,
     :blocker_resolved,
-    :team_free
+    :team_free,
+    :offer_held_back
   ]
 
   # The `Agents.Waiting` path each event would start a turn through. A
@@ -151,7 +158,10 @@ defmodule CodeMySpec.Agents.Wake do
     teammate_question: :hold,
     teammate_stalled: :hold,
     teammate_died: :hold,
-    team_free: :wake
+    team_free: :wake,
+    # Main is roused for a held-back offer even when it is not continuous: the
+    # work is stuck on a teammate and only main can move it (criterion 2063).
+    offer_held_back: :wake
   }
 
   @telemetry [:code_my_spec, :agents, :wake]

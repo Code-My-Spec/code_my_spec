@@ -1579,27 +1579,79 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Work an agent ignored three times is held back from it, and main is told
-  # (criterion 1741), so a person or main can route it elsewhere.
-  defp tell_main_held_back(scope, agent, settled_at) do
+  # Work an agent ignored to the end of its ladder is held back from it, and
+  # main is told once (criteria 1741, 2056), so a person or main can reassign,
+  # cancel or answer it. The count is the kind's own ladder length, not
+  # requirement work's three (2057): a released task is held back after two, a
+  # declined tap-out notice after one.
+  #
+  # Announced as `:offer_held_back`, not `:teammate_stalled`: `Wake` holds the
+  # latter for a non-continuous main, so the notice was recorded undelivered and
+  # main never heard it (criterion 2063). This one wakes main whatever its role.
+  #
+  # Read as "reached the terminal rung and not yet reported" rather than by a
+  # time window, so a *refused* offer -- settled earlier in this same turn, by
+  # `Agents.reject_offer/4` -- is escalated too, and each is stamped so a later
+  # turn does not repeat it.
+  defp tell_main_held_back(scope, agent) do
     agent.id
-    |> Offers.settled_since(settled_at)
-    |> Enum.filter(&(&1.next_step == "held_back"))
+    |> Offers.unreported_held_back()
+    |> Enum.sort_by(& &1.id)
     |> Enum.each(fn offer ->
       notify_main(
         scope,
-        :teammate_stalled,
-        "Held back from the #{agent.role} agent #{agent.id}: `#{offer.subject_key}`, offered " <>
-          "#{Offers.held_after()} times and not taken. It is still offered to its teammates.",
+        :offer_held_back,
+        "Held back from the #{agent.role} agent #{agent.id}: " <>
+          "#{held_back_subject(agent, offer)}, #{held_back_reason(offer)}. " <>
+          "It is still offered to its teammates.",
         offer: {:stalled, {"agent", agent.id}}
       )
+
+      :ok = Offers.mark_reported(offer)
     end)
+  end
+
+  # A released task is named as this agent's task, so main can cancel or
+  # reassign it rather than only reading its id.
+  defp held_back_subject(_agent, %CodeMySpec.Agents.Offer{kind: :unblocked, subject_key: id}),
+    do: "task `#{id}` on this agent"
+
+  defp held_back_subject(_agent, %CodeMySpec.Agents.Offer{subject_key: key}), do: "`#{key}`"
+
+  # A refusal says why; an ignore says how many times, read from the ladder
+  # this kind escalates on.
+  defp held_back_reason(%CodeMySpec.Agents.Offer{status: :declined, reason: reason})
+       when is_binary(reason),
+    do: "refused: #{reason}"
+
+  defp held_back_reason(%CodeMySpec.Agents.Offer{kind: kind, subject_type: type} = offer),
+    do: "offered #{held_back_count(kind, type, offer)} times and not taken"
+
+  defp held_back_count(kind, type, offer) do
+    case Offers.ladder({kind, type}) do
+      nil -> offer.attempt
+      steps -> length(steps)
+    end
   end
 
   @doc """
   An agent declining an offer, with its reason (criterion 1738): `offer_id`,
-  or its newest open offer when nil. The offer settles as declined, the work
-  is held back from this agent, and main is told.
+  or its newest open offer when nil. The offer settles as declined and the work
+  is held back from this agent (criterion 2055); main hears about it once,
+  naming the reason (criterion 2056).
+
+  Told here as well as from `tell_main_held_back/2` at the turn end that follows
+  it, and the two are not the same notice. This one is immediate: rejection is
+  a thing the agent decided, and main should not have to wait for a turn to end
+  to hear it -- the same turn may be a long one. The escalation is the one that
+  stamps the offer reported, so the pair still reaches main exactly once
+  (1738 asks for the refusal to be told; 2056 asks for it once).
+
+  Announced as `:offer_held_back`, not the `:teammate_stalled` this used to
+  send: `Wake` holds that event for a non-continuous main, so the refusal of a
+  main that is not continuous was recorded undelivered and never read
+  (criterion 2063). It is main's own administrative notice, told whatever the
+  role and told now.
   """
   @spec reject_offer(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, CodeMySpec.Agents.Offer.t()} | {:error, :not_found}
@@ -1607,11 +1659,16 @@ defmodule CodeMySpec.Agents do
     with {:ok, offer} <- Offers.reject(agent_id, offer_id, reason) do
       notify_main(
         scope,
-        :teammate_stalled,
+        :offer_held_back,
         "Offer declined by agent #{agent_id}: #{offer.kind} `#{offer.subject_type}:" <>
           "#{offer.subject_key}`. Reason: #{reason}",
         offer: {:stalled, {"agent", agent_id}}
       )
+
+      # Stamped here, so the turn-end escalation does not say the refusal again:
+      # `tell_main_held_back/2` reads the terminal rung and reports what has not
+      # been reported, and this is that report (criterion 2056 -- once).
+      :ok = Offers.mark_reported(offer)
 
       {:ok, offer}
     end
@@ -2478,9 +2535,8 @@ defmodule CodeMySpec.Agents do
         {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
 
         # Settled before the stop menu, which may make new offers of its own.
-        settled_at = DateTime.utc_now()
         :ok = Offers.settle_turn(agent)
-        tell_main_held_back(scope, agent, settled_at)
+        tell_main_held_back(scope, agent)
 
         StopDecision.deliver(scope, agent, opts)
 
