@@ -15,7 +15,7 @@ For each issue in the prompt:
    work. Group related issues into one subagent if they share a root
    cause. Each subagent should: read the relevant source, make the fix,
    verify it works.
-3. **Resolve** — call `resolve_issue` with the issue `id` and a
+3. **Resolve** — call `resolve_issue` with the issue `issue_id` and a
    `resolution` summary covering: what was fixed, files changed, how
    the fix was verified.
 4. **Run tests** at the end — `mix test` — to verify nothing else broke.

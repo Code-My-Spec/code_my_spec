@@ -46,7 +46,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
         names = Enum.map_join(issues, "\n", &"- `#{&1.id}` — #{&1.title}")
 
         {:ok, :invalid,
-         "#{length(issues)} unresolved accepted issue(s) at #{threshold}+ severity:\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `id` and `resolution` for each fixed issue."}
+         "#{length(issues)} unresolved accepted issue(s) at #{threshold}+ severity:\n\n#{names}\n\nUse the `resolve_issue` MCP tool with the issue `issue_id` and `resolution` for each fixed issue."}
     end
   end
 
@@ -95,7 +95,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     - `list_issues` — discover the accepted backlog (status: "accepted").
     - `get_issue` — read full issue details by id, one at a time.
-    - `resolve_issue` — mark resolved with `id` + `resolution` (required
+    - `resolve_issue` — mark resolved with `issue_id` + `resolution` (required
       after every fix).
 
     Fix each issue, call `resolve_issue`, run `mix test` to verify nothing
