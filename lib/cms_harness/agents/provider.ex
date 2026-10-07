@@ -46,7 +46,8 @@ defmodule CmsHarness.Agents.Provider do
   @deepinfra_base "https://api.deepinfra.com/v1/openai"
   @deepinfra_model "deepseek-ai/DeepSeek-V3.1"
 
-  @claude_exec_timeout_ms :timer.minutes(10)
+  # One budget for both CLI providers: a turn runs whole test files and spex.
+  @cli_exec_timeout_ms :timer.minutes(10)
 
   @type credential :: map()
 
@@ -125,7 +126,7 @@ defmodule CmsHarness.Agents.Provider do
             workdir: Keyword.get(opts, :working_copy),
             codex_home: codex_home(credential),
             ignore_user_config: true,
-            timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
+            timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
           }
           |> with_command_runner()}
      ]}
@@ -217,7 +218,7 @@ defmodule CmsHarness.Agents.Provider do
           %{
             model: Keyword.get(opts, :model) || "claude-sonnet-5",
             workdir: Keyword.get(opts, :working_copy),
-            timeout_ms: Keyword.get(opts, :timeout_ms) || @claude_exec_timeout_ms
+            timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
           }
           |> with_command_runner()}
      ]}

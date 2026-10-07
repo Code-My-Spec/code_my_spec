@@ -51,6 +51,17 @@ defmodule CmsHarness.Agents.ProviderTest do
   # eb09b076: `claude -p` compacting a ~1M-token resumed session took about
   # 180s, the old wall clock was 180s, and every retry re-ran the same
   # compaction into the same kill.
+  describe "how long one codex call may run" do
+    test "as long as a claude-code call: a turn runs whole test files and spex" do
+      {:ok, codex} = Provider.options("openai-codex", %{}, timeout_ms: nil)
+      {:ok, claude} = Provider.options("claude-code", %{}, timeout_ms: nil)
+      {Alloy.Provider.Codex, codex_config} = Keyword.fetch!(codex, :provider)
+      {Alloy.Provider.ClaudeCode, claude_config} = Keyword.fetch!(claude, :provider)
+
+      assert codex_config.timeout_ms == claude_config.timeout_ms
+    end
+  end
+
   describe "how long one claude-code call may run" do
     test "long enough for the CLI to compact a full session" do
       {:ok, opts} = Provider.options("claude-code", %{}, timeout_ms: nil)
