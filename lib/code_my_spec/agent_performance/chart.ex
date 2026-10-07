@@ -188,11 +188,18 @@ defmodule CodeMySpec.AgentPerformance.Chart do
   end
 
   defp events_for(scope, filter, since, until) do
+    # The project's tasks once, rather than `CycleTime.story/2`'s two listings
+    # per story: that was the read that grew with the project and kept the
+    # page's join past the socket timeout (issue 5d359bb3). The events are the
+    # only thing on the chart that needs per-story work, so it is the only
+    # place the tasks are worth reading up front.
+    tasks = CycleTime.all_tasks(scope)
+
     scope
     |> list_stories()
     |> filter_stories(filter)
     |> Enum.flat_map(fn story ->
-      cycle = CycleTime.story(scope, story)
+      cycle = CycleTime.story(scope, story, CycleTime.tasks_for(tasks, story.id, story.component_id))
 
       []
       |> maybe_event("story_start", cycle.released_at, story, since, until)
