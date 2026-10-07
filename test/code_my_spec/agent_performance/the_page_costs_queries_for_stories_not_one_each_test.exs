@@ -20,6 +20,12 @@ defmodule CodeMySpec.AgentPerformance.ThePageCostsQueriesForStoriesNotOneEachTes
   same read over four times as many stories must not cost anywhere near four
   times as many queries. A per-story read -- the shape that broke -- lands near
   4x; the batched read stays flat.
+
+  The fixtures include agents with operator and tool messages, because the
+  first version of this test did not: it matched no messages at all, so the
+  read's `select` was never exercised and the page raised `KeyError
+  :agent_id` on every real project (issue 74bf255e) while this test stayed
+  green. A read of zero rows proves nothing about the rows that do come back.
   """
 
   use CodeMySpecSpex.Case, async: false
@@ -27,7 +33,12 @@ defmodule CodeMySpec.AgentPerformance.ThePageCostsQueriesForStoriesNotOneEachTes
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias CodeMySpec.AgentPerformance
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Conversations
+  alias CodeMySpec.Repo
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.Story
+  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -45,6 +56,7 @@ defmodule CodeMySpec.AgentPerformance.ThePageCostsQueriesForStoriesNotOneEachTes
 
   test "the page's read cost does not grow with the number of stories", context do
     with_stories(context, @small, 0)
+    agents(context)
     small = count_page_load(context)
 
     with_stories(context, @large - @small, @small)
@@ -66,6 +78,7 @@ defmodule CodeMySpec.AgentPerformance.ThePageCostsQueriesForStoriesNotOneEachTes
 
   test "the page still reports every story", context do
     with_stories(context, @large, 0)
+    agents(context)
 
     page = AgentPerformance.page(context.scope)
 
@@ -79,10 +92,39 @@ defmodule CodeMySpec.AgentPerformance.ThePageCostsQueriesForStoriesNotOneEachTes
            "the page's read dropped the agents its filter needs"
   end
 
+  # The read that raised on real data (`KeyError :agent_id`, issue 74bf255e)
+  # did so only when a message matched. This drives `load/1` with agents
+  # holding operator and tool messages in their transcripts, through the same
+  # private read the page mounts on, and asserts the report they feed comes
+  # back populated -- zero matched rows is what let the crash through.
+  test "the page's read survives agents with messages in their transcripts", context do
+    with_stories(context, @small, 0)
+    {agent, restart} = agents(context)
+
+    page = AgentPerformance.page(context.scope)
+
+    row = Enum.find(page.summary.agents, &(&1.agent_id == agent.id))
+
+    assert row, "the agent with messages has no row on the page"
+    assert row.tool_failures.total_calls == 2, "the agent's tool messages were not read"
+    assert row.tool_failures.failed_calls == 1, "a failed tool call was not counted as failed"
+
+    # The restart is an operator message at the agent holding a story, so it
+    # has to show up as an intervention against that story rather than nowhere.
+    story_id = agent.story_id
+
+    assert Enum.any?(page.reports[story_id].interventions, &(&1.kind == :restart)),
+           "the operator message was read but did not reach the story it served"
+
+    assert Enum.any?(page.reports[story_id].interventions, &(&1.reason =~ restart)),
+           "the intervention does not name why the agent was restarted"
+  end
+
   # The index is still reachable -- a batched read that answers in fewer queries
   # but takes the page's route down with it is not a fix.
   test "the index still renders and both filters are reachable", context do
     with_stories(context, @small, 0)
+    agents(context)
 
     {:ok, index, html} = live(context.conn, index_path(context))
 
@@ -91,15 +133,60 @@ defmodule CodeMySpec.AgentPerformance.ThePageCostsQueriesForStoriesNotOneEachTes
     assert render(index) =~ "Performance story #{@small}", "the page dropped a story"
   end
 
+  # The fixtures the first version of this test lacked: agents holding a story,
+  # each with a transcript the page's `agent_messages/1` actually returns.
+  # The agent takes its story the way the app does -- `Assignment`'s own claim
+  # -- rather than by writing `story_id` behind its back.
+  defp agents(context) do
+    agent = Fixtures.running_agent(context.scope, role: "coding", working_copy: "/tmp/perf-page")
+    story_id = hd(page(context).stories).id
+
+    :ok = Agents.claim_story(context.scope, agent, story_id)
+
+    conversation = conversation_for(context, agent)
+    reason = "the copy stopped answering"
+
+    {:ok, _} = Conversations.add_message(conversation, :operator, reason, "system:restart")
+
+    {:ok, _} =
+      Conversations.add_tool_result(conversation, "call-1", "read_file", "read_file -> ok")
+
+    {:ok, _} =
+      Conversations.add_tool_result(conversation, "call-2", "compile", "compile -> failed",
+        failed?: true
+      )
+
+    {:ok, held} = Agents.fetch_agent(context.scope, agent.id)
+    {held, reason}
+  end
+
+  defp page(context), do: AgentPerformance.page(context.scope)
+
+  defp conversation_for(context, agent) do
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        context.scope.active_account_id,
+        context.scope.active_project_id,
+        agent.id
+      )
+
+    conversation
+  end
+
   defp with_stories(context, count, offset) do
     Enum.each(1..count, fn i ->
       n = offset + i
 
-      {:ok, _story} =
+      {:ok, story} =
         Stories.create_story(context.scope, %{
           title: "Performance story #{n}",
           description: "A story the performance page must report on (#{n})."
         })
+
+      # Ready for development, so an agent can take it the way the app takes a
+      # story rather than by writing the column behind the claim's back.
+      {:ok, _story} =
+        story |> Story.changeset(%{ready_for_dev: true}) |> Repo.update()
     end)
 
     context
