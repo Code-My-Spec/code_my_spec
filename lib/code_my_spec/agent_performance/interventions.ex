@@ -18,11 +18,13 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
   nothing durable records which story an agent held in the past.
   """
 
+  alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -84,9 +86,7 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
     |> Map.keys()
     |> Message.interventions(limit_per_agent: @large_limit)
     |> Repo.all()
-    |> Enum.map(
-      &Map.put(&1, :agent_id, Map.fetch!(conversations, &1.conversation_id))
-    )
+    |> Enum.map(&Map.put(&1, :agent_id, Map.fetch!(conversations, &1.conversation_id)))
     |> Enum.group_by(& &1.agent_id)
     |> Map.new(fn {agent_id, messages} -> {agent_id, Enum.flat_map(messages, &classify/1)} end)
   end
@@ -134,18 +134,42 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
 
     messages = for_agents(scope, Enum.map(agents, & &1.id))
 
-    Enum.flat_map(agents, fn agent ->
+    agents
+    |> Enum.flat_map(fn agent ->
       messages
       |> Map.get(agent.id, [])
       |> attach(agent)
     end)
+    |> since_story_start(scope, filter)
+  end
+
+  # Use the same boundary as the chart's story_start event. An agent's
+  # conversation can contain messages from before it began this story.
+  defp since_story_start(interventions, scope, %{story_id: story_id})
+       when not is_nil(story_id) do
+    case Stories.get_story(scope, story_id) do
+      %Story{} = story ->
+        filter_since(interventions, CycleTime.story(scope, story).released_at)
+
+      nil ->
+        []
+    end
+  end
+
+  defp since_story_start(interventions, _scope, _filter), do: interventions
+
+  defp filter_since(_interventions, nil), do: []
+
+  defp filter_since(interventions, started_at) do
+    Enum.filter(interventions, &(DateTime.compare(&1.at, started_at) != :lt))
   end
 
   # `for_agent/2` answers the interventions of one agent without saying which
   # agent they belong to -- the caller knew, because it asked for one. The
   # batch above asks once for every agent at a time, so the answer has to carry
   # it, and `for_scope/2` is where the two fields are put back on.
-  defp attach(interventions, agent), do: Enum.map(interventions, &Map.put(&1, :agent_id, agent.id))
+  defp attach(interventions, agent),
+    do: Enum.map(interventions, &Map.put(&1, :agent_id, agent.id))
 
   # Every narrowing key applies, not just the first whose clause matches: the
   # page offers working copy, story and agent together, and picking an agent

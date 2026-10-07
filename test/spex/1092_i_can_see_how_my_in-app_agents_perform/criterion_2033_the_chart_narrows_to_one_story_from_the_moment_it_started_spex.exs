@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2033Spex do
   end
 
   spex "Narrowing the chart to a story shows only its own activity, from the moment it started",
-       criterion: 2033 do
+    criterion: 2033 do
     scenario "an earlier story's activity, then a second story that starts and records its own turn" do
       given_ "an earlier story's own turn, then a second story that starts and records its own turn",
              context do
@@ -104,15 +104,16 @@ defmodule CodeMySpecSpex.Story1092.Criterion2033Spex do
       when_ "I narrow the chart to the story that started second", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
 
-        html =
-          index
-          |> element("form[data-test='performance-filter']")
-          |> render_change(%{"working_copy_id" => "", "story_id" => to_string(context.target.id)})
+        index
+        |> element("form[data-test='performance-filter']")
+        |> render_change(%{"working_copy_id" => "", "story_id" => to_string(context.target.id)})
 
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "the chart shows only that story's own activity, from the moment it started", context do
+      then_ "the chart shows only that story's own activity, from the moment it started",
+            context do
         assert context.html =~ "90 tokens",
                "the narrowed story's own token total (90) is not shown once the chart is narrowed to it"
 
