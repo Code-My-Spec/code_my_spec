@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.IssueWork
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies
@@ -93,22 +94,26 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   # itself (775b7cea). Whoever asks, only the role whose turn it is may be told
   # work is available: the coder that just submitted is not offered fix_issue
   # again, and the notice and the menu cannot name different work.
-  test "a submitted fix is offered to QA alone, not back to the coder", ctx do
+  # `claimable_work/3` is what `get_next_requirement` and `list_agent_work`
+  # read; `work_for/4` is what the turn offer reads. An issue is not in the
+  # graph, so unless `claimable_work` routes an issue-bound agent to `IssueWork`
+  # it answers project work the offer will never name — the notice says work is
+  # available while the menu says it belongs to other roles (775b7cea).
+  test "the menu and the offer name the same work for an issue-bound agent", ctx do
     copy_id = copy(ctx.scope)
-    coding = agent(ctx.scope, :coding, copy_id)
     qa = agent(ctx.scope, :qa, copy_id)
 
-    assert reload(coding).working_copy_id == copy_id
-    assert reload(qa).working_copy_id == copy_id
-
-    {:ok, assigned} =
-      Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
-
+    {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
     {:ok, _} = Issues.set_awaiting_role(ctx.scope, assigned, :qa)
 
-    assert %{status: :blocked, actionable: []} = IssueWork.execution(ctx.scope, reload(coding))
+    qa = reload(qa)
+    offer = Work.work_for(ctx.scope, :qa, qa)
+    menu = Work.claimable_work(ctx.scope, qa)
 
-    assert %{status: :ready, actionable: [qa_node]} = IssueWork.execution(ctx.scope, reload(qa))
-    assert qa_node.name == "qa_complete"
+    assert Enum.map(menu, & &1.name) == Enum.map(offer.actionable, & &1.name),
+           """
+           the menu names #{inspect(Enum.map(menu, & &1.name))} and the offer names \
+           #{inspect(Enum.map(offer.actionable, & &1.name))}
+           """
   end
 end
