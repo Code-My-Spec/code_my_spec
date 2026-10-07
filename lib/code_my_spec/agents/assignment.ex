@@ -18,8 +18,11 @@ defmodule CodeMySpec.Agents.Assignment do
 
     * `assign_team/3` — `set_active_story`, from any caller on the copy, or
       from the main agent naming a feature copy.
-    * `advance/4` — a team member's read finding the team's story complete
-      moves the whole team onto the next eligible story.
+    * `advance/4` — an explicit assignment's *move*. It locks the team's rows
+      so two teammates arriving at once move the team once. No read calls it:
+      a team keeps one story until it lands, and landing tells main the team is
+      free (criterion 2064) so main assigns the next with `set_active_story`
+      (criterion 2065).
     * `claim/3` — a team member starting a story's work when its team holds no
       story assigns that story to the whole team. Starting another story's work
       while the team holds one is refused.
@@ -121,10 +124,11 @@ defmodule CodeMySpec.Agents.Assignment do
   @doc """
   Move the team from its finished story `from_id` onto `to_id`, once.
 
-  Teammates reading the finished story at the same moment all ask; the team's
-  rows are locked first, so the first moves the team and the rest find it no
-  longer on `from_id` and do nothing. `{:ok, :moved}` either way, or the
-  assignment's own refusal.
+  Called by an explicit assignment, never by a read (criterion 2064). Teammates
+  reading the finished story at the same moment all ask; the team's rows are
+  locked first, so the first moves the team and the rest find it no longer on
+  `from_id` and do nothing. `{:ok, :moved}` either way, or the assignment's own
+  refusal.
 
   A story that has not landed does not move its team: complete for the coding
   role is not finished while QA is still owed it. Landing is the promotion
@@ -226,9 +230,11 @@ defmodule CodeMySpec.Agents.Assignment do
 
   The story-side half of the team-free notice `IssueAssignment.free/2` sends
   for an issue, so main learns of both kinds of finish through the one offer
-  kind. `story_id` is left untouched — a team with another eligible story
-  still moves onto it through `advance/4` exactly as before — so this notifies
-  only when nothing else (an issue) is already holding a member of the team.
+  kind. This is the whole of what a landing does to the team: nothing moves it
+  (criterion 2064), and main assigns the next story with `set_active_story`
+  (criterion 2065). `story_id` is left untouched for that reason, and this
+  notifies only when nothing else (an issue) is already holding a member of the
+  team.
   """
   @spec notify_team_free(Scope.t(), Ecto.UUID.t(), Stories.Story.t()) :: :ok
   def notify_team_free(%Scope{} = scope, copy_id, story) do
@@ -281,10 +287,14 @@ defmodule CodeMySpec.Agents.Assignment do
     end
   end
 
+  # The notice tells main what to do next, so it must name tools main can
+  # actually call. `assign_team/3` is an internal function; the agent-facing
+  # route to it is `set_active_story`, which is what `assignment.ex:19`
+  # documented all along (issue e21ab16c).
   defp team_free_message(copy_id, story) do
     "Working copy #{copy_id}'s team is free: story #{story.number} (\"#{story.title}\") is " <>
       "promoted and nothing else is assigned to it. Assign it another issue with " <>
-      "assign_issue_to_working_copy, or a story with assign_team."
+      "assign_issue_to_working_copy, or a story with set_active_story."
   end
 
   @doc """

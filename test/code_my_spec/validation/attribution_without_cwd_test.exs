@@ -93,9 +93,7 @@ defmodule CodeMySpec.Validation.AttributionWithoutCwdTest do
     test "paths that match no File row block when project files did change", ctx do
       record_edit("/Users/someone/code_my_spec/lib/mine.ex")
 
-      assert is_nil(
-               Validation.session_paths_for_test(ctx.scope, [session_id: @session], true)
-             ),
+      assert is_nil(Validation.session_paths_for_test(ctx.scope, [session_id: @session], true)),
              "the recording names nothing joinable while the project demonstrably " <>
                "changed — attribution is broken and must not demote"
     end
@@ -117,7 +115,16 @@ defmodule CodeMySpec.Validation.AttributionWithoutCwdTest do
   end
 
   describe "splitting on that set" do
-    test "a finding on an untouched file is separated from one on a touched file" do
+    # The split survives as a function with its old shape so the call site and
+    # this property stay readable, and it no longer decides anything:
+    # `split_unattributed/2` returns every problem as blocking and an empty
+    # second list, whatever the touched set says (John, 2026-10-04; 48f4eada —
+    # task evaluation judges the whole copy, like promotion).
+    #
+    # These cases are kept rather than deleted because they are the exact
+    # assertion that had to stop being true, and a future change that quietly
+    # reintroduces a non-empty second list should fail here first.
+    test "a finding on an untouched file is not separated from one on a touched file" do
       touched = MapSet.new(["lib/mine.ex"])
 
       blocking = [
@@ -125,21 +132,24 @@ defmodule CodeMySpec.Validation.AttributionWithoutCwdTest do
         %Problems.Problem{file_path: "lib/theirs.ex", source: "credo"}
       ]
 
-      {mine, theirs} = Validation.split_unattributed(blocking, touched)
+      {mine, demoted} = Validation.split_unattributed(blocking, touched)
 
-      assert Enum.map(mine, & &1.file_path) == ["lib/mine.ex"]
-      assert Enum.map(theirs, & &1.file_path) == ["lib/theirs.ex"]
+      assert Enum.map(mine, & &1.file_path) == ["lib/mine.ex", "lib/theirs.ex"],
+             "a finding in a file this session never opened was demoted. The file a " <>
+               "finding is in is not what decides whether it blocks — the mode is."
+
+      assert demoted == []
     end
 
-    test "an empty set demotes everything attributable, not nothing" do
-      # Inverted deliberately. A session that recorded no edits cannot own a
-      # finding in a file, and this used to block on all of them — which cost a
-      # QA agent every stop it made, since QA writes no project files at all
-      # (76008385). The broken case still blocks: it arrives as `nil`, not as
-      # an empty set.
+    test "an empty set demotes nothing either" do
+      # Inverted from what this asserted before 8ccd19097. A session that
+      # recorded no edits used to own none of the red, which cost a QA agent
+      # every stop it made since QA writes no project files at all (76008385).
+      # Under the whole-copy rule that is no longer a distinction: the same
+      # one-element list comes back, and nothing is excused.
       blocking = [%Problems.Problem{file_path: "lib/theirs.ex", source: "credo"}]
 
-      assert {[], ^blocking} = Validation.split_unattributed(blocking, MapSet.new())
+      assert {^blocking, []} = Validation.split_unattributed(blocking, MapSet.new())
     end
   end
 end

@@ -120,6 +120,20 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     context =
       if module == "Waiting", do: topology(context, [{module, :context, []}]), else: context
 
+    # The persona three-amigos links below must exist before it is linked, and
+    # only the chains (`base/1`, `complete/1`, through
+    # `apply_project_kickoff/2`) ever made one. Every caller used to run a chain
+    # first, so this read `context.persona_id` and always found it — until
+    # criterion 2064/2065, whose premises are a free team and a waiting story
+    # and which therefore have no reason to settle a story chain. On those the
+    # key was simply absent and `waiting/2` raised `KeyError`, three frames
+    # down and naming neither the persona nor this fixture.
+    #
+    # A persona that already exists is the same persona: this guarantees one is
+    # there, and `apply_persona/2` is idempotent for exactly that reason.
+    context =
+      if context[:persona_id], do: context, else: ProjectStateFixtures.apply_persona(context)
+
     story =
       StoryHelpers.create_and_link(context.scope, module,
         title: "Waiting story B",
