@@ -88,4 +88,27 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     assert %{status: :blocked, reason: reason} = IssueWork.execution(ctx.scope, reload(qa))
     assert reason =~ "Waiting for main assignment"
   end
+
+  # The submitted fix hands the turn to QA and the issue records that on
+  # itself (775b7cea). Whoever asks, only the role whose turn it is may be told
+  # work is available: the coder that just submitted is not offered fix_issue
+  # again, and the notice and the menu cannot name different work.
+  test "a submitted fix is offered to QA alone, not back to the coder", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    qa = agent(ctx.scope, :qa, copy_id)
+
+    assert reload(coding).working_copy_id == copy_id
+    assert reload(qa).working_copy_id == copy_id
+
+    {:ok, assigned} =
+      Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, assigned, :qa)
+
+    assert %{status: :blocked, actionable: []} = IssueWork.execution(ctx.scope, reload(coding))
+
+    assert %{status: :ready, actionable: [qa_node]} = IssueWork.execution(ctx.scope, reload(qa))
+    assert qa_node.name == "qa_complete"
+  end
 end
