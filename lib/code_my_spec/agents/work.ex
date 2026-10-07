@@ -439,7 +439,13 @@ defmodule CodeMySpec.Agents.Work do
   defp resume_instruction(scope, tasks) do
     "resume " <>
       Enum.map_join(tasks, "; ", fn task ->
-        "task #{task.id} with `start_task(#{start_args(scope, task)})`"
+        case start_args(scope, task) do
+          nil ->
+            "task #{task.id} only after inspecting its recorded requirement; entity identity is unavailable"
+
+          args ->
+            "task #{task.id} with `start_task(#{args})`"
+        end
       end) <> "."
   end
 
@@ -469,9 +475,7 @@ defmodule CodeMySpec.Agents.Work do
     do:
       ~s(requirement_name: "#{task.requirement_name}", entity_type: "project", entity_id: "#{id}")
 
-  defp start_args(_scope, task),
-    do:
-      "task identity unavailable for #{task.id}; inspect its recorded requirement before resuming"
+  defp start_args(_scope, _task), do: nil
 
   defp task_list(tasks),
     do: Enum.map_join(tasks, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
