@@ -478,7 +478,6 @@ defmodule CodeMySpec.Agents.Work do
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
          false <- delivery_just_failed?(current, offer),
-         false <- delivery_just_failed?(current, offer),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event),
          :ok <- still_offered(scope, reserved, ref, subject) do
       turn_prompt = offer_prompt(scope, reserved, subject)
