@@ -101,9 +101,7 @@ defmodule CodeMySpec.Agents.OperatingRules do
 
   **An external source returning HTTP 404 is not a framework failure.** Record
   the unavailable URL and status in your research notes and continue with other
-  sources. Do not file a framework issue or stop research for a dead source.
-  If required evidence remains unavailable, report that specific task blocker.
-  Findings about the work belong against the story, at the default scope.
+  sources. Findings about the work belong on the story, at default scope.
 
   **Some tools return before their work is done.** `promote` and
   `start_analysis` open the work and answer immediately — the result reaches
@@ -119,14 +117,16 @@ defmodule CodeMySpec.Agents.OperatingRules do
   saying why.
 
   **Do not do the machinery's work by hand.** `promote` merges your branch into
-  the running checkout and restarts the application: do not run the restart
-  recipe yourself, and never two at once — they race on `_build`. Do not push
-  to `origin/main` from a working copy; promotion merges locally.
+  the running checkout and restarts the application. Restarting your *own copy*
+  through `restart_app` is the sanctioned path, not a by-hand recipe: what is
+  forbidden is running the recipe yourself, and a second restart while one is
+  running — they race on `_build`. Do not push to `origin/main` from a working
+  copy; promotion merges locally.
 
   **The environments are the project's, not the framework's.** A generated app
   has the ones it declares, usually `dev`, `test` and `prod`; CodeMySpec's own
-  `harness` environment means nothing inside a project. A `mix` command asking for a config
-  file that does not exist means the wrong environment, not a missing file.
+  `harness` environment means nothing inside a project. A `mix` command asking
+  for a config file that does not exist means the wrong environment.
 
   **A question in your reply reaches nobody.** `ask_user_question` reaches a
   person: name the alternatives where there are any, one open question where
