@@ -44,7 +44,8 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
 
   defp reachable do
     previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.InProcessAgentTransport)
+    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
+    CodeMySpecTest.RecordingAgentTransport.listen()
     on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
     :ok
   end
@@ -102,6 +103,7 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
     reachable()
 
     assert {:ok, :not_runnable} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
+    refute_receive {:work_turn_requested, _, _, _}
 
     assert {:ok, _} =
              AgentsRepository.update_agent(ctx.scope, after_failure, %{
@@ -110,6 +112,8 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
 
     assert {:ok, ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
     assert is_binary(ref)
+    agent_id = agent.id
+    assert_receive {:work_turn_requested, ^agent_id, ^ref, _prompt}
   end
 
   test "an undelivered offer is settled undelivered, not ignored", ctx do

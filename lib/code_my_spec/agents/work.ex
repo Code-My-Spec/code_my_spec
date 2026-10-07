@@ -477,7 +477,7 @@ defmodule CodeMySpec.Agents.Work do
          :ok <- admit(scope, current, event),
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
-         false <- delivery_just_failed?(current, offer),
+         {:delivery_retry, false} <- {:delivery_retry, delivery_just_failed?(current, offer)},
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event),
          :ok <- still_offered(scope, reserved, ref, subject) do
       turn_prompt = offer_prompt(scope, reserved, subject)
@@ -517,6 +517,7 @@ defmodule CodeMySpec.Agents.Work do
     else
       :none -> {:ok, :not_runnable}
       :stale -> {:ok, :not_runnable}
+      {:delivery_retry, true} -> {:ok, :not_runnable}
       true -> {:ok, :offer_declined}
       hold -> not_admitted(hold)
     end
