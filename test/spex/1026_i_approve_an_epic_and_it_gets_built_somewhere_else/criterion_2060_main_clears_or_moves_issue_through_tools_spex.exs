@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
   spex "Main clears and moves issue assignments through tools", criterion: 2060 do
     scenario "Main clears the copy without resolving the issue" do
       given_ "main and an accepted issue assigned to team A", context do
+        context = context |> Slice.main_copy() |> Slice.staff()
         {:ok, assigned_issue(context)}
       end
 
@@ -59,7 +60,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
 
     scenario "Main moves the issue from team A to team B" do
       given_ "main, team A holding an accepted issue, and idle team B", context do
-        context = assigned_issue(context)
+        context = context |> Slice.main_copy() |> Slice.staff() |> assigned_issue()
         scope_b = Fixtures.live_agent_scope(context.scope, label: "Issue tool destination")
         team_b = Slice.staff(%{scope: scope_b})
         {:ok, Map.merge(context, %{scope_b: scope_b, team_b: team_b.team})}
@@ -98,7 +99,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
   end
 
   defp assigned_issue(context) do
-    context = context |> Slice.main_copy() |> Slice.staff()
     frame = %Frame{assigns: %{current_scope: context.main_scope, agent_id: context.main.id}}
 
     {:reply, created, _} =

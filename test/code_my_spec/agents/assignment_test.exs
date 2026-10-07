@@ -265,6 +265,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
       product = agent(ctx.scope, :product)
 
       {:ok, 2} = EpicDispatch.place(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
+      :ok = Agents.assign_epic(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
 
       assert reload(ctx.coding).epic_id == ctx.epic.id
       assert reload(ctx.qa).epic_id == ctx.epic.id
@@ -274,6 +275,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
 
     test "an agent joining later inherits the epic", ctx do
       {:ok, _} = EpicDispatch.place(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
+      :ok = Agents.assign_epic(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
 
       assert agent(ctx.scope, :coding).epic_id == ctx.epic.id
     end
@@ -288,6 +290,12 @@ defmodule CodeMySpec.Agents.AssignmentTest do
         )
 
       {:ok, _} = EpicDispatch.place(ctx.scope, ctx.epic.id, other.id)
+
+      assert reload(ctx.coding).story_id == ctx.first.id
+      assert placement(ctx.first) == ctx.scope.active_working_copy_id
+      assert placement(ctx.second) == other.id
+
+      :ok = Agents.assign_epic(ctx.scope, ctx.epic.id, other.id)
 
       coding = reload(ctx.coding)
       assert coding.epic_id == nil

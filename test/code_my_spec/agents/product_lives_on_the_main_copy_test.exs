@@ -190,6 +190,7 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
       assert Repo.get!(Agent, product.id).story_id == nil
 
       {:ok, _} = EpicDispatch.place(ctx.scope, ctx.epic.id, ctx.feature.id)
+      :ok = Agents.assign_epic(ctx.scope, ctx.epic.id, ctx.feature.id)
 
       assert Repo.get!(Agent, product.id).epic_id == nil,
              "product is not sent with the epic; it stays on the main copy"
