@@ -130,6 +130,13 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # complained.
   # The copy's own app runs the branch under test; QA starts it to test there
   # rather than through its own connection, which is the shared harness on main.
+  # `list_problems` is granted and `clear_problems` is not (`930d9c47`). They are
+  # two different things and one grant used to carry both. A QA agent directed
+  # at Spex failures needs to *see* them -- to report what failed and to tell a
+  # real defect from a broken tree -- and that is a read. What it must not have
+  # is a move to clear them, and what must not happen is it being *held open* by
+  # them; that is `holds_problems?` below, and it stays false: a qa agent once sat
+  # unable to read, clear or stop over 47 findings it had no move for.
   @qa_tools ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
@@ -142,6 +149,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
+    list_problems
     web_search web_fetch
     browser
     query_logs get_trace slow_spans error_summary
