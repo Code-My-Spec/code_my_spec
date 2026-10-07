@@ -165,10 +165,15 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   # `kept` is what the analyzer said — its output and exit status — kept on the
   # failed run so the reason can be read past its one-line excerpt.
+  defp failure_stats(:skipped_compile_errors = reason),
+    do: %{"error" => error_text(reason), "execution_terminal" => true}
+
+  defp failure_stats(reason), do: %{"error" => error_text(reason)}
+
   defp finish_failed(run, reason, kept) do
     attrs =
       Map.merge(Map.take(kept, [:output, :exit_status]), %{
-        stats: %{"error" => error_text(reason)}
+        stats: failure_stats(reason)
       })
 
     with {:ok, failed} <- RunsRepository.finish_run(run, :failed, attrs) do

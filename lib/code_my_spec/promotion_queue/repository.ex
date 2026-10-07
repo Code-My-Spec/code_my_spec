@@ -50,20 +50,22 @@ defmodule CodeMySpec.PromotionQueue.Repository do
 
   defp open_at(project_id, copy_id, commit) do
     Repo.one(
-      from e in Entry,
+      from(e in Entry,
         where:
           e.project_id == ^project_id and e.working_copy_id == ^copy_id and
             e.commit == ^commit and e.status in ^@open,
         limit: 1
+      )
     )
   end
 
   defp waiting_for_copy(project_id, copy_id) do
     Repo.one(
-      from e in Entry,
+      from(e in Entry,
         where:
           e.project_id == ^project_id and e.working_copy_id == ^copy_id and e.status == :queued,
         limit: 1
+      )
     )
   end
 
@@ -82,12 +84,13 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @spec awaited_by(Ecto.UUID.t()) :: Entry.t() | nil
   def awaited_by(agent_id) do
     Repo.one(
-      from e in Entry,
+      from(e in Entry,
         where:
           e.requested_by_agent_id == type(^agent_id, :binary_id) and
             e.status in ^@open,
         order_by: [asc: e.inserted_at],
         limit: 1
+      )
     )
   end
 
@@ -101,12 +104,13 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @spec open_for(Ecto.UUID.t(), String.t(), String.t()) :: boolean()
   def open_for(agent_id, subject_type, subject_id) do
     Repo.exists?(
-      from e in Entry,
+      from(e in Entry,
         where:
           e.requested_by_agent_id == type(^agent_id, :binary_id) and
             e.status in ^@open and e.subject_type == ^subject_type and
             e.subject_id == ^subject_id,
         limit: 1
+      )
     )
   end
 
@@ -114,10 +118,11 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @spec queued(Ecto.UUID.t(), pos_integer()) :: [Entry.t()]
   def queued(project_id, limit) do
     Repo.all(
-      from e in Entry,
+      from(e in Entry,
         where: e.project_id == ^project_id and e.status == :queued,
         order_by: [asc: e.inserted_at, asc: e.id],
         limit: ^limit
+      )
     )
   end
 
@@ -139,7 +144,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @doc "Projects with candidates not yet landed or ejected."
   @spec open_projects() :: [Ecto.UUID.t()]
   def open_projects do
-    Repo.all(from e in Entry, where: e.status in ^@open, distinct: true, select: e.project_id)
+    Repo.all(from(e in Entry, where: e.status in ^@open, distinct: true, select: e.project_id))
   end
 
   @doc """
@@ -159,10 +164,21 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @doc "Move one entry to `status`, with any of `:batch_id` and `:result`."
   @spec move(Entry.t(), atom(), map()) :: {:ok, Entry.t()} | {:error, Ecto.Changeset.t()}
   def move(%Entry{} = entry, status, attrs \\ %{}) do
-    entry
-    |> Entry.status_changeset(Map.put(attrs, :status, status))
-    |> Repo.update()
-    |> broadcast()
+    result =
+      Repo.transaction(fn ->
+        CodeMySpec.Analysis.ValidationHolds.lock(entry.project_id)
+
+        if status == :gating and entry.status != :gating and
+             not CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(entry.project_id),
+           do: Repo.rollback(:validation_held)
+
+        case entry |> Entry.status_changeset(Map.put(attrs, :status, status)) |> Repo.update() do
+          {:ok, updated} -> updated
+          {:error, error} -> Repo.rollback(error)
+        end
+      end)
+
+    broadcast(result)
   end
 
   @spec topic(Ecto.UUID.t()) :: String.t()

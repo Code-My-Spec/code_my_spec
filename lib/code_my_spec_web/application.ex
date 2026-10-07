@@ -254,6 +254,7 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
+        CodeMySpec.Agents.ValidationHoldReport.attach()
         Events.attach()
         RunReconciled.attach()
         AnalysisPush.attach()

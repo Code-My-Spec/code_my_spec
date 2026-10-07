@@ -59,6 +59,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @impl true
   def init({project_id, scope}) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
     Repository.requeue_gating(project_id)
     send(self(), :next)
 
@@ -111,6 +112,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def handle_info({:analysis, _run}, %{phase: :landing} = state), do: land(state)
   def handle_info({:analysis, _run}, state), do: {:noreply, state}
 
+  def handle_info({:validation_hold, %{status: :released}}, %{phase: :idle} = state),
+    do: next(state)
+
   def handle_info(_message, state), do: {:noreply, state}
 
   # -- Build ------------------------------------------------------------------
@@ -118,9 +122,22 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp next(state) do
     state = cancel_timer(state)
 
-    case Repository.queued(state.project_id, @batch_cap) do
-      [] -> {:noreply, %{state | phase: :idle, batch: nil}}
-      entries -> build(state, entries)
+    case CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(state.project_id) do
+      false ->
+        {:noreply, %{state | phase: :idle, batch: nil}}
+
+      true ->
+        case Repository.queued(state.project_id, @batch_cap) do
+          [] ->
+            {:noreply, %{state | phase: :idle, batch: nil}}
+
+          [entry] ->
+            case Repository.move(entry, :gating, %{}) do
+              {:ok, reserved} -> build(%{state | reserved_entries: [reserved]}, [reserved])
+              {:error, :validation_held} -> {:noreply, state}
+              {:error, reason} -> could_not_build(state, reason)
+            end
+        end
     end
   end
 
@@ -263,6 +280,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp could_not_build(state, reason) do
+    requeue(Map.get(state, :reserved_entries, []))
     Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
     {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
   end
