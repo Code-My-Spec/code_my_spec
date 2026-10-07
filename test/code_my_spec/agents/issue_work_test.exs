@@ -11,12 +11,17 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Issues
+  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
+  alias CodeMySpec.Sessions.Task
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.AgentPresence
 
@@ -50,6 +55,43 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   end
 
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
+
+  test "evaluating a fix hands it to QA and refuses a second coding task", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    qa = agent(ctx.scope, :qa, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
+    params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
+
+    {:reply, started, _} = StartTask.execute(params, frame)
+    refute started.isError
+    [task] = reload(coding).tasks
+
+    {:reply, evaluated, _} =
+      EvaluateTask.execute(%{task_id: task.id}, frame)
+
+    refute evaluated.isError
+    assert [%{id: task_id, status: :completed}] = reload(coding).tasks
+    assert task_id == task.id
+    assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :qa
+    assert %{status: :blocked, actionable: []} = IssueWork.execution(ctx.scope, reload(coding))
+
+    assert [%{name: "qa_complete", entity_id: issue_id}] =
+             IssueWork.execution(ctx.scope, reload(qa)).actionable
+
+    assert issue_id == ctx.issue.id
+
+    {:reply, duplicate, _} = StartTask.execute(params, frame)
+    assert duplicate.isError
+    assert [%{id: ^task_id, status: :completed}] = reload(coding).tasks
+  end
+
+  test "a missing issue cannot produce a passing fix evaluation", ctx do
+    task = %Task{issue_id: Ecto.UUID.generate()}
+    assert {:error, message} = IssueFix.evaluate(ctx.scope, task)
+    assert message =~ "no longer exists"
+  end
 
   test "a direct resolve_issue frees the team instead of re-offering qa_complete", ctx do
     copy_id = copy(ctx.scope)
