@@ -1632,6 +1632,12 @@ defmodule CodeMySpec.Agents do
   defp held_back_subject(_agent, %CodeMySpec.Agents.Offer{kind: :unblocked, subject_key: id}),
     do: "task `#{id}` on this agent"
 
+  defp held_back_subject(_agent, %CodeMySpec.Agents.Offer{subject_type: "questions"}),
+    do: "pending questions offered to this agent"
+
+  defp held_back_subject(_agent, %CodeMySpec.Agents.Offer{subject_type: type, subject_key: nil}),
+    do: "#{type} offered to this agent"
+
   defp held_back_subject(_agent, %CodeMySpec.Agents.Offer{subject_key: key}), do: "`#{key}`"
 
   # A refusal says why; an ignore says how many times, read from the ladder
@@ -1702,17 +1708,24 @@ defmodule CodeMySpec.Agents do
   @spec notify_main(Scope.t(), Wake.event(), String.t(), keyword()) :: :ok
   def notify_main(%Scope{} = scope, event, text, opts \\ []) when is_binary(text) do
     case main_agent(scope) do
-      %Agent{} = main -> notify(scope, main, event, text, opts[:offer])
-      nil -> :ok
+      %Agent{} = main ->
+        notify(scope, main, event, text, opts[:offer], opts[:instruction_offer])
+
+      nil ->
+        if opts[:instruction_offer],
+          do: Offers.instruction_notice(opts[:instruction_offer], {:error, :main_unavailable})
+
+        :ok
     end
   end
 
-  defp notify(scope, main, event, text, offer) do
+  defp notify(scope, main, event, text, offer, instruction_offer) do
     ref = Ecto.UUID.generate()
 
     with {:ok, conversation} <- open_conversation(scope, main),
          {:ok, message} <- record_sent(conversation, text, ref, :queued) do
       offered = record_offer({:ok, message}, main, offer)
+      if instruction_offer, do: Offers.instruction_notice(instruction_offer, {:ok, message})
 
       case Wake.allow?(scope, main, event) do
         :ok ->
@@ -1726,6 +1739,10 @@ defmodule CodeMySpec.Agents do
         hold ->
           record_dispatch_result(Wake.to_error(hold), message, offered)
       end
+    else
+      error ->
+        if instruction_offer,
+          do: Offers.instruction_notice(instruction_offer, {:error, error})
     end
 
     :ok
@@ -2352,18 +2369,19 @@ defmodule CodeMySpec.Agents do
   end
 
   defp report_repeated_instruction(scope, agent, offered) do
-    if Offers.take_instruction_attention(offered) do
+    Offers.take_instruction_attention(offered, fn ->
       notify_main(
         scope,
         :teammate_stalled,
         "An operator repeated an instruction to agent #{agent.id}. " <>
           "Review Offer #{offered.id} and its delivery history. The message was submitted " <>
           "unchanged; it was not withheld. Pending delivery is not evidence of refusal.",
-        offer: {:stalled, {"agent", agent.id}}
+        offer: {:stalled, {"agent", agent.id}},
+        instruction_offer: offered
       )
-    else
-      :ok
-    end
+    end)
+
+    :ok
   end
 
   # The row and offer exist before the engine can announce delivery. A late

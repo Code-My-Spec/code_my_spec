@@ -224,6 +224,68 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
     end
   end
 
+  test "released issue task names complete resume arguments", ctx do
+    issue_id = Ecto.UUID.generate()
+
+    agent =
+      ctx.product
+      |> Agent.add_task(%{
+        status: :blocked,
+        requirement_name: "fix_issue",
+        issue_id: issue_id,
+        blocker_type: :question,
+        blocker_id: Ecto.UUID.generate(),
+        blocked_at: now(),
+        blocker_resolved_at: now()
+      })
+      |> Repo.update!()
+
+    [task] = agent.tasks
+    Work.wake_released(ctx.scope, agent, [task], "Resolved")
+    :ok = Fixtures.drain_background_work()
+    messages = Fixtures.messages_to_agent(ctx.scope, agent.id)
+
+    assert Enum.any?(messages, fn text ->
+             text =~ "requirement_name: \"fix_issue\"" and
+               text =~ "entity_type: \"issue\"" and text =~ issue_id
+           end)
+  end
+
+  test "a delayed release does not announce an obsolete blocker cycle", ctx do
+    agent =
+      ctx.product
+      |> Agent.add_task(%{
+        status: :blocked,
+        requirement_name: "fix_issue",
+        issue_id: Ecto.UUID.generate(),
+        blocker_type: :question,
+        blocker_id: Ecto.UUID.generate(),
+        blocked_at: now(),
+        blocker_resolved_at: now()
+      })
+      |> Repo.update!()
+
+    [previous] = agent.tasks
+
+    current =
+      agent
+      |> Agent.update_task(previous.id, %{
+        blocker_id: Ecto.UUID.generate(),
+        blocked_at: DateTime.add(now(), 1, :second),
+        blocker_resolved_at: nil
+      })
+      |> Repo.update!()
+
+    before = Fixtures.messages_to_agent(ctx.scope, agent.id)
+    Work.wake_released(ctx.scope, agent, [previous], "OBSOLETE_RELEASE")
+    :ok = Fixtures.drain_background_work()
+    messages = Fixtures.messages_to_agent(ctx.scope, agent.id) -- before
+    refute Enum.any?(messages, &(&1 =~ "OBSOLETE_RELEASE"))
+
+    assert TaskOwner.find_task(Repo.get!(Agent, current.id), previous.id).blocker_id ==
+             TaskOwner.find_task(current, previous.id).blocker_id
+  end
+
   describe "pending tap-outs on two tasks (1759)" do
     setup ctx do
       product =

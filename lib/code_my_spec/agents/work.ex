@@ -150,11 +150,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && takes_redelivery?(agent), do: reserve(agent), else: :not_runnable
@@ -262,11 +263,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && stranded?(scope, agent), do: reserve(agent), else: :not_stranded
@@ -370,6 +372,20 @@ defmodule CodeMySpec.Agents.Work do
   @spec wake_released(Scope.t(), Agent.t(), [map()], String.t(), String.t() | nil, keyword()) ::
           :ok
   def wake_released(scope, %Agent{} = agent, released, header, detail \\ nil, opts \\ []) do
+    {:ok, agent} = AgentsRepository.fetch_agent(scope, agent.id)
+
+    released =
+      Enum.filter(released, fn previous ->
+        Enum.any?(agent.tasks || [], fn current ->
+          current.id == previous.id and current.status == :blocked and
+            not is_nil(current.blocker_resolved_at) and
+            current.blocker_id == previous.blocker_id and
+            current.blocker_type == previous.blocker_type and
+            current.blocked_at == previous.blocked_at and
+            current.blocker_resolved_at == previous.blocker_resolved_at
+        end)
+      end)
+
     execution = work_for(scope, agent.role, agent)
 
     {waiting, ready} = Enum.split_with(released, &still_waiting?(&1, execution))
@@ -427,6 +443,10 @@ defmodule CodeMySpec.Agents.Work do
       end) <> "."
   end
 
+  defp start_args(_scope, %{issue_id: issue_id} = task) when is_binary(issue_id) do
+    ~s(requirement_name: "#{task.requirement_name}", entity_type: "issue", entity_id: "#{issue_id}")
+  end
+
   defp start_args(scope, %{story_id: story_id} = task) when not is_nil(story_id) do
     number =
       case CodeMySpec.Stories.get_story(scope, story_id) do
@@ -441,7 +461,17 @@ defmodule CodeMySpec.Agents.Work do
     do:
       ~s(requirement_name: "#{task.requirement_name}", entity_type: "component", module_name: "#{module}")
 
-  defp start_args(_scope, task), do: ~s(requirement_name: "#{task.requirement_name}")
+  defp start_args(_scope, %{component_id: id} = task) when is_binary(id),
+    do:
+      ~s(requirement_name: "#{task.requirement_name}", entity_type: "component", entity_id: "#{id}")
+
+  defp start_args(_scope, %{project_id: id} = task) when is_binary(id),
+    do:
+      ~s(requirement_name: "#{task.requirement_name}", entity_type: "project", entity_id: "#{id}")
+
+  defp start_args(_scope, task),
+    do:
+      "task identity unavailable for #{task.id}; inspect its recorded requirement before resuming"
 
   defp task_list(tasks),
     do: Enum.map_join(tasks, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
@@ -751,11 +781,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && runnable_state?(scope, agent, event),

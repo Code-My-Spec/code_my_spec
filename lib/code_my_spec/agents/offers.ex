@@ -55,10 +55,10 @@ defmodule CodeMySpec.Agents.Offers do
     resume: "resume/1",
     retry: "retry/1",
     answer: "answer/1",
-    unblocked: "unblocked/2",
-    denial: "denial/1",
+    unblocked: "unblocked/3",
+    denial: "denial/2",
     check_in: "check_in/1",
-    stalled: "stalled/1",
+    stalled: "stalled/2",
     team_free: "team_free/1",
     instruction: "instruction/1"
   }
@@ -427,18 +427,20 @@ defmodule CodeMySpec.Agents.Offers do
   def ladder(key), do: Map.get(@ladders, key)
 
   @doc "Record one escalation for a repeated operator instruction; never withhold delivery."
-  def take_instruction_attention(%Offer{kind: :instruction} = offer) do
+  def take_instruction_attention(%Offer{kind: :instruction} = offer, record_notice)
+      when is_function(record_notice, 0) do
     serialized(offer.agent_id, fn ->
       same = same_subject(offer.agent_id, :instruction, offer.subject_type, offer.subject_key)
       repeated? = Repo.aggregate(same, :count) > 1
-      reported? = Repo.exists?(where(same, [o], o.next_step == "told_main"))
+
+      reported? =
+        same
+        |> Repo.all()
+        |> Enum.any?(&instruction_notice_pending_or_delivered?/1)
 
       case {repeated?, reported?} do
         {true, false} ->
-          Repo.update_all(where(Offer, [o], o.id == ^offer.id),
-            set: [next_step: "told_main", updated_at: DateTime.utc_now()]
-          )
-
+          record_notice.()
           true
 
         _ ->
@@ -447,7 +449,42 @@ defmodule CodeMySpec.Agents.Offers do
     end)
   end
 
-  def take_instruction_attention(_offer), do: false
+  def take_instruction_attention(_offer, _record_notice), do: false
+
+  @doc "Bind an escalation to its recorded notice; submission is not confirmed delivery."
+  def instruction_notice(%Offer{} = offer, result) do
+    step =
+      case result do
+        {:ok, %Message{id: id}} -> "main_notice:" <> id
+        {:error, _} -> "main_notice_failed"
+      end
+
+    Repo.update_all(where(Offer, [o], o.id == ^offer.id),
+      set: [next_step: step, updated_at: DateTime.utc_now()]
+    )
+
+    :ok
+  end
+
+  defp instruction_notice_pending_or_delivered?(%Offer{next_step: "main_notice:" <> id} = offer) do
+    case Repo.get(Message, id) do
+      %Message{delivery: :delivered} ->
+        Repo.update_all(where(Offer, [o], o.id == ^offer.id),
+          set: [next_step: "told_main", updated_at: DateTime.utc_now()]
+        )
+
+        true
+
+      %Message{delivery: :pending} ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp instruction_notice_pending_or_delivered?(%Offer{next_step: "told_main"}), do: true
+  defp instruction_notice_pending_or_delivered?(_offer), do: false
 
   @doc """
   How many ignored offers hold requirement work back from an agent: the length
@@ -803,7 +840,7 @@ defmodule CodeMySpec.Agents.Offers do
   # An undelivered offer was never made, so it does not count.
   defp attempt(same) do
     last_claimed =
-      Repo.one(from o in same, where: o.status == :claimed, select: max(o.inserted_at))
+      Repo.one(from(o in same, where: o.status == :claimed, select: max(o.inserted_at)))
 
     since =
       if last_claimed, do: where(same, [o], o.inserted_at > ^last_claimed), else: same

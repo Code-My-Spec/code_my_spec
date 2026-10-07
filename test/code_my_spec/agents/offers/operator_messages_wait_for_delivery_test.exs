@@ -119,7 +119,9 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert [first, second, third] = Offers.list_for_agent(id)
     assert first.status == :superseded
     assert second.status == :superseded
-    assert second.next_step == "told_main"
+    assert String.starts_with?(second.next_step, "main_notice:")
+    notice_id = String.replace_prefix(second.next_step, "main_notice:", "")
+    assert Repo.get!(Message, notice_id).delivery == :pending
     assert third.status == :open
     assert third.attempt == 3
     assert Offers.standing(id) == %{}
@@ -130,6 +132,54 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     |> Enum.each(fn ref -> assert_receive {:DOWN, ^ref, _, _, _}, 5_000 end)
 
     refute_received {:agent_dispatch, ^main_id, _, _}
+  end
+
+  test "failed main escalation recovers on a repeat and pending or delivered notice prevents duplicates",
+       ctx do
+    Sandbox.mode(Repo, {:shared, self()})
+    {:ok, _} = CodeMySpec.Staffing.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
+
+    {:ok, main} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: :main,
+        status: :running,
+        continuous: true,
+        working_copy: "/tmp/escalation-recovery-main",
+        working_copy_id: ctx.scope.active_working_copy_id
+      })
+
+    text = "Recover this exact instruction."
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    [_, second] = Offers.list_for_agent(ctx.agent.id)
+    notice_id = String.replace_prefix(second.next_step, "main_notice:", "")
+    assert Repo.get!(Message, notice_id).delivery == :failed
+    refute second.next_step == "told_main"
+
+    AgentPresence.present(main)
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    main_id = main.id
+    assert_receive {:agent_dispatch, ^main_id, ref, notice}, 5000
+    assert notice =~ "repeated an instruction"
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    refute_receive {:agent_dispatch, ^main_id, _, _}, 100
+
+    assert :ok =
+             Agents.record_turn_event(ctx.scope, main.id, %{
+               "kind" => "message_delivered",
+               "ref" => ref
+             })
+
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    refute_receive {:agent_dispatch, ^main_id, _, _}, 100
+    assert Enum.any?(Offers.list_for_agent(ctx.agent.id), &(&1.next_step == "told_main"))
+
+    CodeMySpec.TaskSupervisor
+    |> Task.Supervisor.children()
+    |> Enum.map(&Process.monitor/1)
+    |> Enum.each(fn monitor -> assert_receive {:DOWN, ^monitor, _, _, _}, 5000 end)
   end
 
   test "a delivery event arriving before the transport reply is retained", ctx do
