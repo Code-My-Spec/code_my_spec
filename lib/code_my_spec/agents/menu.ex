@@ -119,6 +119,23 @@ defmodule CodeMySpec.Agents.Menu do
   is not running is worse than saying nothing: it reads as an instruction and
   the tool would refuse it.
 
+  ## Not offered on an empty queue (`227d1595`)
+
+  `tap_out` exits continuous mode, so an agent that taps out with nothing to do
+  has to be put back by hand before any later work can reach it â `61c87cd5` is
+  the recorded cost, re-staffed after a granted tap-out, re-checking, finding
+  nothing changed, and tapping out again within one turn. Three agents were
+  observed finding nothing actionable and saying so in prose instead of tapping
+  out, and story 1039's criterion 3542 asserts the opposite. John settled it on
+  2026-10-05: *"when there's no work the graph shouldn't offer the agent"*.
+
+  So the empty queue's answer is `render/4`'s `""` above: nothing live for the
+  role, nothing said, the agent stops. This offer is for the case it was
+  written for â work in front of the agent and the judgement "continuing is not
+  worth the tokens" to make about it â which is why `Hooks.Stop`'s
+  block-with-feedback path renders with the offer off: a refusal is already
+  holding the agent in the loop and must not then invite it to leave.
+
   Public so the continuous-mode refusal in `Hooks.Stop` can carry it too. That
   refusal builds its own reason — the next assignment — rather than a menu, and
   it is the one an agent sees most while burning tokens in a loop, so it is the

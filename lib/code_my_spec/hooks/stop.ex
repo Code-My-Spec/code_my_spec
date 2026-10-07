@@ -298,7 +298,7 @@ defmodule CodeMySpec.Hooks.Stop do
             allow_stuck(session, req_id)
 
           true ->
-            block_with_reason(scope, reason, req_id, continuous_mode?(session), session)
+            block_with_reason(scope, reason, req_id, session)
         end
     end
   end
@@ -337,14 +337,27 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  defp block_with_reason(scope, reason, req_id, continuous? \\ false, owner \\ nil) do
+  # `continuous?` used to be a parameter here and no longer is: the only thing
+  # it decided was whether the menu appended the tap-out offer, and that is now
+  # always off on this path (`227d1595`, and the comment at the menu below).
+  defp block_with_reason(scope, reason, req_id, owner \\ nil) do
     Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
       cms_decision: "block",
       cms_blocking: blocking_summary(reason)
     )
 
     hint = harness_hint_footer()
-    menu = Menu.render(scope, continuous?, nil, owner)
+    # The tap-out offer is off here, and that is `227d1595` rather than an
+    # oversight. This path *is* a refusal: the agent is being held in the loop
+    # by this very response, and appending "if continuing is not worth the
+    # tokens, `tap_out` asks to leave it" to it offers an exit from the loop it
+    # is in the middle of being kept in. John settled the direction on
+    # 2026-10-05: an empty queue is a stop, not an exit, and `tap_out` exits
+    # continuous mode, so the agent would have to be re-staffed by hand before
+    # any later work could reach it. The offer still goes to an agent with work
+    # in front of it, on the paths where leaving the loop is a real judgement
+    # (`Menu.tap_out_offer/1`).
+    menu = Menu.render(scope, false, nil, owner)
 
     # The menu's bytes come off the budget before the findings, not after, so a
     # flood of problems cannot truncate away the one part of the response that
