@@ -18,6 +18,8 @@ defmodule CodeMySpec.Agents.IssueAssignment do
 
   import Ecto.Query
 
+  require Logger
+
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
@@ -31,23 +33,52 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   alias CodeMySpec.WorkingCopies
 
   @doc """
-  Bind `issue_id` to the coding and QA team on `working_copy_id`.
+  Bind `issue_id` to the coding and QA team on `working_copy_id`, or clear the
+  binding by passing `nil`.
 
   `{:error, :not_found}` for an issue or a working copy outside the scope's
   project. `{:error, :no_team}` when the destination copy has no coding or
   QA agent — there is nobody to hold the issue.
+
+  `nil` (91863fd2) is "clear the binding" — the inverse this had none of. A
+  bind was one-way: `assign_issue_to_working_copy` refused a nil copy, and no
+  other reachable tool named unbinding, so a mistaken or stale binding could
+  not be reversed by anyone. Reversing a routing decision is ordinary, and
+  every other routing step here is reversible.
+
+  Clearing releases whichever team holds the issue and sets the field to nil.
+  It is a no-op, not an error, on an issue that is already unbound.
   """
-  @spec assign(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t(), keyword()) ::
+  @spec assign(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, keyword()) ::
           {:ok, Issues.Issue.t()} | {:error, term()}
   def assign(%Scope{} = scope, issue_id, working_copy_id, _opts \\ []) do
     with issue when not is_nil(issue) <- Issues.get_issue(scope, issue_id),
          :ok <- in_project(scope, working_copy_id) do
-      Repo.transaction(fn -> fan_out(scope, issue, working_copy_id) end)
+      case working_copy_id do
+        nil -> Repo.transaction(fn -> clear_binding(scope, issue) end)
+        copy_id -> Repo.transaction(fn -> fan_out(scope, issue, copy_id) end)
+      end
     else
       nil -> {:error, :not_found}
       error -> error
     end
   end
+
+  # Frees the team the issue was bound to and unsets the field. A no-op on an
+  # unbound issue, so a caller can clear without first checking.
+  defp clear_binding(_scope, %{assigned_working_copy_id: nil} = issue), do: issue
+
+  defp clear_binding(scope, issue) do
+    old_team = lock_team(scope, issue.assigned_working_copy_id)
+    release(old_team)
+
+    case Issues.set_assigned_working_copy(scope, issue, nil) do
+      {:ok, cleared} -> cleared
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp in_project(_scope, nil), do: :ok
 
   defp in_project(%Scope{active_project_id: project_id}, copy_id) do
     case WorkingCopies.fetch(copy_id) do
@@ -153,6 +184,28 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     end)
 
     if Enum.any?(team, &is_nil(&1.story_id)), do: notify_main(scope, copy_id, issue)
+
+    # 91863fd2: the binding is cleared here too. It used to outlive the issue —
+    # the team was freed but `assigned_working_copy_id` stayed set, so the field
+    # stopped meaning "the copy working this" and became "the last copy that
+    # ever did", which a later reader cannot tell from an active binding.
+    #
+    # `free/2` returns :ok by contract and its caller (a passing QA submission)
+    # has already resolved the issue, so a failure here cannot undo that. It is
+    # logged rather than swallowed: a stale binding is a smaller problem than a
+    # silent one.
+    case Issues.set_assigned_working_copy(scope, issue, nil) do
+      {:ok, _cleared} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[IssueAssignment.free] issue #{issue_id} resolved but its " <>
+            "#{copy_id} binding could not be cleared: #{inspect(reason)}"
+        )
+
+        :ok
+    end
 
     :ok
   end
