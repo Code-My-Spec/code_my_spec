@@ -206,12 +206,24 @@ defmodule CodeMySpec.Agents.RoleProfile do
   #
   # The same shape as the `triage_issues` case below: a task prompt naming a
   # tool the role that receives it cannot call.
+  #
+  # `list_working_copies` (37ba3a69): a coding agent runs in one checkout of a
+  # project that may have several, and it was asked to name its own with no way
+  # to look it up -- the refusal said the tool "belongs to another role", which
+  # is true of staffing and false of this. It is a read of rows the caller is
+  # already scoped to, and the caller is one of them: `active_working_copy_id`
+  # is on the scope `AgentScope` and `DeployKeyOrOAuth` already resolved. So a
+  # coder answers where it is rather than guessing, and the guess is what lands
+  # in a brief or a promotion. Read-only; `create_working_copy`,
+  # `offboard_working_copy` and `set_working_copy_loop` stay off this list --
+  # making and looping copies is main's (John, step 4c).
   @coding_tools ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview get_component
     create_component update_component validate_dependency_graph set_story_component
     add_dependency remove_dependency
     list_requirements show_requirement
+    list_working_copies
     list_rules list_questions withdraw_question
     list_issues get_issue create_issue resolve_issue update_issue
     list_knowledge read_knowledge semantic_search
