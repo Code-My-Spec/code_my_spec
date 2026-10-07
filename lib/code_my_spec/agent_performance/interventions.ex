@@ -20,6 +20,8 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -43,6 +45,35 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
     else
       _ -> []
     end
+  end
+
+  @doc """
+  The same interventions `for_agent/2` answers, for every one of `agent_ids`,
+  in one query rather than one per agent.
+
+  The `for_scope/2` read below asks this: one `find_or_create` plus one
+  `list_messages` per agent is what made the performance page cost a query per
+  agent on top of a query per story (issue 844907e0 -- 13k queries against 166
+  stories, several seconds of the join before issue 5d359bb3's `assign_async`).
+  A conversation belongs to an agent, so the messages of all of them are one
+  `conversation_messages` read grouped by `agent_id`, which is what
+  `conversation_messages` already carries -- no join back through
+  `conversations` needed.
+
+  Reading rather than creating: `for_scope/2` narrows over agents that already
+  exist, and an agent with no conversation has no interventions to report, so
+  the `find_or_create` half of `for_agent/2` was writing rows only to find
+  nothing in them.
+  """
+  @spec for_agents(Scope.t(), [String.t()]) :: %{String.t() => [intervention()]}
+  def for_agents(%Scope{} = _scope, []), do: %{}
+
+  def for_agents(%Scope{} = _scope, agent_ids) do
+    agent_ids
+    |> Message.by_agents(limit_per_agent: @large_limit)
+    |> Repo.all()
+    |> Enum.group_by(& &1.agent_id)
+    |> Map.new(fn {agent_id, messages} -> {agent_id, Enum.flat_map(messages, &classify/1)} end)
   end
 
   defp classify(%{role: :operator, sender_id: "operator"} = message),
@@ -81,11 +112,25 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
           optional(:agent_id) => Ecto.UUID.t()
         }) :: [intervention()]
   def for_scope(%Scope{} = scope, filter \\ %{}) do
-    scope
-    |> Agents.list_agents()
-    |> filter_agents(filter)
-    |> Enum.flat_map(&for_agent(scope, &1.id))
+    agents =
+      scope
+      |> Agents.list_agents()
+      |> filter_agents(filter)
+
+    messages = for_agents(scope, Enum.map(agents, & &1.id))
+
+    Enum.flat_map(agents, fn agent ->
+      messages
+      |> Map.get(agent.id, [])
+      |> attach(agent)
+    end)
   end
+
+  # `for_agent/2` answers the interventions of one agent without saying which
+  # agent they belong to -- the caller knew, because it asked for one. The
+  # batch above asks once for every agent at a time, so the answer has to carry
+  # it, and `for_scope/2` is where the two fields are put back on.
+  defp attach(interventions, agent), do: Enum.map(interventions, &Map.put(&1, :agent_id, agent.id))
 
   # Every narrowing key applies, not just the first whose clause matches: the
   # page offers working copy, story and agent together, and picking an agent
