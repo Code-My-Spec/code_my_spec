@@ -203,17 +203,19 @@ defmodule CodeMySpec.AgentPerformance.ThePageCostsQueriesForStoriesNotOneEachTes
     :telemetry.attach(
       handler,
       [:code_my_spec, :repo, :query],
-      fn _event, _measurements, _meta, _config ->
-        if self() == owner, do: :counters.add(counter, 1, 1)
+      fn
+        _event, _measurements, _meta, _config when self() == owner ->
+          :counters.add(counter, 1, 1)
+
+        _event, _measurements, _meta, _config ->
+          :ok
       end,
       nil
     )
 
-    try do
-      AgentPerformance.page(context.scope)
-    after
-      :telemetry.detach(handler)
-    end
+    on_exit(fn -> :telemetry.detach(handler) end)
+    AgentPerformance.page(context.scope)
+    :telemetry.detach(handler)
 
     :counters.get(counter, 1)
   end

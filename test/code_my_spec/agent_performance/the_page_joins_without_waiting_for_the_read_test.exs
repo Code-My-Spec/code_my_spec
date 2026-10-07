@@ -136,28 +136,19 @@ defmodule CodeMySpec.AgentPerformance.ThePageJoinsWithoutWaitingForTheReadTest d
     :telemetry.attach(
       handler,
       [:code_my_spec, :repo, :query],
-      fn _event, _measurements, meta, _config ->
-        if self() == owner do
+      fn
+        _event, _measurements, _meta, _config when self() == owner ->
           :counters.add(counter, 1, 1)
-          if System.get_env("PERF_DEBUG") == "count" do
-            IO.puts("#{meta[:source]} #{meta[:query] |> to_string() |> String.slice(0, 50)}")
-          end
 
-          if System.get_env("PERF_DEBUG") == "stack" do
-            {:current_stacktrace, st} = Process.info(self(), :current_stacktrace)
-            IO.puts("\n=== #{meta[:source]}")
-            st |> Enum.take(16) |> Enum.each(&IO.puts("    " <> inspect(&1)))
-          end
-        end
+        _event, _measurements, _meta, _config ->
+          :ok
       end,
       nil
     )
 
-    try do
-      {:ok, _index, _html} = live(context.conn, index_path(context))
-    after
-      :telemetry.detach(handler)
-    end
+    on_exit(fn -> :telemetry.detach(handler) end)
+    {:ok, _index, _html} = live(context.conn, index_path(context))
+    :telemetry.detach(handler)
 
     :counters.get(counter, 1)
   end
@@ -221,17 +212,17 @@ defmodule CodeMySpec.AgentPerformance.ThePageJoinsWithoutWaitingForTheReadTest d
   # One agent per copy, not per story: a second one joins the same team and
   # inherits the story it is holding.
   defp agent_on(context, copy_id, i) do
-    case Agents.list_agents(context.scope) do
-      [agent | _] ->
-        agent
+    existing_or_running_agent(Agents.list_agents(context.scope), context, copy_id, i)
+  end
 
-      [] ->
-        Fixtures.running_agent(context.scope,
-          role: "coding",
-          working_copy: "/tmp/perf-join-#{i}",
-          working_copy_id: copy_id
-        )
-    end
+  defp existing_or_running_agent([agent | _], _context, _copy_id, _i), do: agent
+
+  defp existing_or_running_agent([], context, copy_id, i) do
+    Fixtures.running_agent(context.scope,
+      role: "coding",
+      working_copy: "/tmp/perf-join-#{i}",
+      working_copy_id: copy_id
+    )
   end
 
   # Move the team from the story it finished to the next one. `assign_team/3`
@@ -239,10 +230,8 @@ defmodule CodeMySpec.AgentPerformance.ThePageJoinsWithoutWaitingForTheReadTest d
   # story and fans both out to every member -- and it is the only path that
   # does not trip `claim/3`'s refusal of a story outside the one now held.
   defp take_next(scope, copy_id, story_id) do
-    case Agents.assign_team(scope, copy_id, story_id) do
-      {:ok, _id} -> :ok
-      {:error, reason} -> raise "assign_team/3 refused #{story_id}: #{inspect(reason)}"
-    end
+    {:ok, _id} = Agents.assign_team(scope, copy_id, story_id)
+    :ok
   end
 
   defp conversation_for(context, agent) do
