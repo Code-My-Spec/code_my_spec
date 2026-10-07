@@ -140,6 +140,34 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
     |> Enum.max(fn -> 0 end)
   end
 
+  # Why an unreleased story reads 0/0, said in words.
+  #
+  # Only a story released for development projects into the graph — `Preloader`
+  # filters every story read on `ready_for_dev == true`
+  # (`requirements/preloader.ex:269, 445, 465`), and that is working as
+  # designed: an unreleased story is a draft, and a draft is not yet anybody's
+  # work. What is not designed is the answer an agent gets when it asks.
+  #
+  # The rows are filtered before this tool sees them, so an unreleased story
+  # renders the same "**Requirements:** 0/0 satisfied" a story with a genuinely
+  # missing subgraph would produce. `e13b8ccc` is two agents (1086, 1087)
+  # reading that as a framework bug: they linked components, re-ran the call
+  # minutes apart, traced `settle_owner/1` and `Shadow.inverted?/0`, and
+  # concluded the new per-story projector was broken. The answer was that the
+  # stories had never been released, and nothing in the response said so.
+  #
+  # Said here rather than fixed here, for the same reason as the reconciling
+  # note below: the filter is the design, and the gap is that a reader cannot
+  # tell an empty answer from an absent one.
+  defp unreleased_note(%{ready_for_dev: false}) do
+    "\n\n> **This story has not been released for development.** Only a released " <>
+      "story projects into the requirements graph, so the list below is empty " <>
+      "because none was computed — not because the work is done or missing. " <>
+      "Set `ready_for_dev` (mark the story ready) to compute them."
+  end
+
+  defp unreleased_note(_story), do: ""
+
   defp story_response(story, reqs, scope) do
     satisfied = Enum.count(reqs, & &1.satisfied)
     total = length(reqs)
@@ -155,7 +183,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
     text = """
     # #{story.title}
 
-    **Requirements:** #{satisfied}/#{total} satisfied#{reconciling_note(scope)}
+    **Requirements:** #{satisfied}/#{total} satisfied#{unreleased_note(story)}#{reconciling_note(scope)}
 
     #{lines}
     """
