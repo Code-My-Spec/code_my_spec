@@ -91,6 +91,8 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
     assert same.id == completed.id
     assert [pending] = CompletionHandoffs.pending(ctx.scope)
     assert pending.artifact_sha == ctx.evidence.artifact_sha
+    assert pending.delivery_state == :queued
+    assert is_nil(pending.delivery_error)
     refute Digest.quiet?(%Digest{completions: [pending]})
 
     assert {:error, :conflicting_completion} =
@@ -166,7 +168,9 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
                ctx.evidence
              )
 
-    assert [_] = CompletionHandoffs.pending(ctx.scope)
+    assert [undelivered] = CompletionHandoffs.pending(ctx.scope)
+    assert undelivered.delivery_state == :failed
+    assert undelivered.delivery_error == ":main_unavailable"
     refute_receive {:agent_dispatch, _, _, _}, 100
     AgentPresence.present(ctx.main)
     CompletionHandoffs.recover(ctx.scope, ctx.main.working_copy_id)
@@ -175,6 +179,8 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
     assert message =~ ctx.handoff.id
     assert [pending] = CompletionHandoffs.pending(ctx.scope)
     assert pending.status == :completed
+    assert pending.delivery_state == :queued
+    assert is_nil(pending.delivery_error)
     assert is_nil(pending.acknowledged_at)
   end
 

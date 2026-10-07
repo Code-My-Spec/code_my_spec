@@ -156,20 +156,21 @@ defmodule CodeMySpec.Agents.CompletionHandoffs do
   end
 
   defp dispatch(scope, handoff) do
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      result =
-        case Agents.main_agent(scope) do
-          nil ->
-            {:error, :main_unavailable}
+    # Completion is already durable. Keep transport and delivery bookkeeping
+    # owned by this caller rather than leaving a database task behind it.
+    # An interrupted caller leaves the record pending for reconnect recovery.
+    result =
+      case Agents.main_agent(scope) do
+        nil ->
+          {:error, :main_unavailable}
 
-          main ->
-            Agents.send_to_agent(main.id, message(handoff), :own_reply,
-              offer: {:instruction, {"completion_handoff", handoff.id}}
-            )
-        end
+        main ->
+          Agents.send_to_agent(main.id, message(handoff), :own_reply,
+            offer: {:instruction, {"completion_handoff", handoff.id}}
+          )
+      end
 
-      record_delivery(scope, handoff.id, result)
-    end)
+    record_delivery(scope, handoff.id, result)
   end
 
   defp record_delivery(scope, id, result) do
