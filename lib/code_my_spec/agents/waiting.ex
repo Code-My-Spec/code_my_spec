@@ -57,7 +57,6 @@ defmodule CodeMySpec.Agents.Waiting do
     promotion: @all,
     question_pending: @all
   ]
-
   @spec reason(Scope.t(), Agent.t(), path()) :: reason() | nil
   def reason(%Scope{} = scope, %Agent{} = agent, path) when path in @all do
     Enum.find_value(@checks, fn {name, paths} ->
@@ -97,6 +96,18 @@ defmodule CodeMySpec.Agents.Waiting do
   defp check(:tap_out, _scope, agent) do
     if is_nil(Agent.active_task(agent)) and awaiting_tap_out?(agent), do: :tap_out
   end
+
+  # An open `:resume` is not a wait, and no check here holds it -- see the note
+  # on `Wake.@waiting_path`, which stopped routing `:resume` through `Waiting`
+  # for exactly this reason. It is written down here too, because a missing
+  # entry is the kind of thing a later reader restores by accident: a resume
+  # left open across a restart (its delivery never came back, so nothing
+  # superseded it) held every path including `:offer`, and the continuous idle
+  # QA of team 2 was offered no `qa_complete` for 12+ minutes after
+  # `ready_for_qa` passed on 2026-10-06, as was team 3's on 1016.
+  #
+  # A held task is what `:resume` is about, and `Work.stranded?/2` reads that
+  # off the task itself, so the open offer adds nothing.
 
   # The promotion it asked for is in the queue; the queue messages it when the
   # batch lands or the candidate is ejected. An entry already resolved is the

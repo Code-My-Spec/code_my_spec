@@ -127,6 +127,20 @@ defmodule CodeMySpec.Agents.Wake do
   # main's own does not hold (only `:turn_end` does): John, step 4b, "main is
   # woken despite an open question" on these. A work offer has a path of its
   # own, which product's open question holds (step 4c).
+  # Which `Waiting` path an event is answered by, or none when the event is not
+  # a wait at all: a stalled teammate and an offer that was held back are
+  # announcements, and being *told* something is not something to wait on.
+  #
+  # `resume` deliberately has no path here. It had `:resume`, and `Waiting`'s
+  # checks that hold `@all` (including `:resume`) then held *every* event --
+  # `:work_offer` among them -- while a resume offer sat open. Since
+  # `account_for_interrupted_turn/2` leaves one open for each agent a restart
+  # touched and nothing supersedes a stale one, a continuous idle agent was
+  # held out of the graph's work for as long as that row stayed open: the QA of
+  # team 2 got no `qa_complete` for 12+ minutes after `ready_for_qa` passed on
+  # 2026-10-06, and team 3's the same on 1016. A resume is dispatched by
+  # `resume_held_task/2` and redelivery, which call `Wake` directly; no path is
+  # needed to admit it.
   @waiting_path %{
     work_offer: :offer,
     teammate_question: :wake,
@@ -134,7 +148,6 @@ defmodule CodeMySpec.Agents.Wake do
     teammate_died: :wake,
     question_answered: :wake,
     blocker_resolved: :wake,
-    resume: :resume,
     nudge: :turn_end,
     cadence: :cadence
   }

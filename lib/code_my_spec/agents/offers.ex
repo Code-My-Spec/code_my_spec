@@ -124,6 +124,16 @@ defmodule CodeMySpec.Agents.Offers do
 
   def record(_recorded, _agent, _kind, _subject), do: nil
 
+  @doc "Whether this agent has an open offer of `kind` right now."
+  @spec open_of_kind?(String.t(), Offer.kind()) :: boolean()
+  def open_of_kind?(agent_id, kind) when is_binary(agent_id) and is_atom(kind) do
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.kind == ^kind and o.status == :open)
+    |> Repo.exists?()
+  end
+
+  def open_of_kind?(_agent_id, _kind), do: false
+
   @doc """
   Every open offer on this agent is superseded, not just one of a given kind
   and subject -- a restart discards the in-flight turn those offers were

@@ -477,6 +477,7 @@ defmodule CodeMySpec.Agents.Work do
          :ok <- admit(scope, current, event),
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
+         false <- delivery_just_failed?(current, offer),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event),
          :ok <- still_offered(scope, reserved, ref, subject) do
       turn_prompt = offer_prompt(scope, reserved, subject)
@@ -624,7 +625,7 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   @doc """
-  Hold off on re-offering work whose dispatch did not land.
+  Pace the retry of work whose dispatch did not land.
 
   A turn that cannot be delivered never becomes a turn, so the agent never ends
   one and `record_decline/3` — which fires on the turn-ended path — never runs.
@@ -638,13 +639,35 @@ defmodule CodeMySpec.Agents.Work do
   minute for nine minutes, each one logging "nothing registered for working
   copy", while the transcript filled with turns that never happened.
 
-  Same window as a refusal, for the same reason: retrying an unreachable
-  machine six times an hour is diagnosis, twice a second is a denial of
-  service against our own database.
+  Retrying an unreachable machine six times an hour is diagnosis, twice a second
+  is a denial of service against our own database — so the retry is paced.
+
+  But a failure is *not a refusal*, and pacing it through the refusal streak was
+  a bug: `already_declined?/3` read the stamp as "the agent said no", so the
+  work went quiet for the whole decline window and the agent was never offered
+  it again once its machine *was* reachable. Continuous agents sat idle after
+  restarts for exactly this reason. This records the failure in its own fields,
+  so the refusal path and the ladder never see it, and the window is short
+  because a machine coming up is a matter of minutes, not a decision to reverse.
   """
   def suppress_offer(scope, %Agent{} = agent, fingerprint) do
-    AgentsRepository.update_agent(scope, agent, streak(agent, fingerprint))
+    AgentsRepository.update_agent(scope, agent, %{
+      delivery_failed_offer: fingerprint,
+      delivery_failed_at: DateTime.utc_now()
+    })
   end
+
+  # A dispatch that did not land, to the same offer, moments ago. Paced rather
+  # than permanent: the moment the window passes the work is offered again.
+  @delivery_retry_after_seconds 60
+
+  defp delivery_just_failed?(%{delivery_failed_offer: failed, delivery_failed_at: at}, offer)
+       when not is_nil(failed) and failed == offer do
+    not is_nil(at) and
+      DateTime.diff(DateTime.utc_now(), at) < @delivery_retry_after_seconds
+  end
+
+  defp delivery_just_failed?(_agent, _offer), do: false
 
   # One more repeat of the same offer, or the start of a new streak.
   defp streak(%{declined_offer: same, declined_offer_count: n}, same) when is_integer(n),
