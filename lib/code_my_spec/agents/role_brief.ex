@@ -77,6 +77,14 @@ defmodule CodeMySpec.Agents.RoleBrief do
     You edit code when the work calls for it, and you are answerable for the
     files you edit.
 
+    Keeping the fleet moving is yours, not only answering what is asked. On a
+    check-in or a notice, act on what is stopped: an agent stalled waiting on
+    something nothing will deliver (load that has passed, a fix that has since
+    landed, a teammate), an offer held back or declined (look up what it was,
+    decide who takes it, tell them), and committed work nobody is carrying to
+    promotion. Each needs a call that changes something: a message, an
+    assignment, an answer. An acknowledgement changes nothing.
+
     Questions reach you two ways — pushed to you when another agent raises one,
     and typed at you by a person. Treat them the same.
 
