@@ -20,6 +20,7 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
@@ -70,8 +71,22 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
 
   def for_agents(%Scope{} = _scope, agent_ids) do
     agent_ids
-    |> Message.by_agents(limit_per_agent: @large_limit)
+    |> Conversation.ids_for_agents()
+    |> intervention_messages()
+  end
+
+  # The conversations of these agents, then those conversations' interventions:
+  # two reads that do not join back through `conversations` to reach an id this
+  # already has, and the second carries the text of only the few messages this
+  # module counts rather than every message of every agent (issue b118c546).
+  defp intervention_messages(conversations) do
+    conversations
+    |> Map.keys()
+    |> Message.interventions(limit_per_agent: @large_limit)
     |> Repo.all()
+    |> Enum.map(
+      &Map.put(&1, :agent_id, Map.fetch!(conversations, &1.conversation_id))
+    )
     |> Enum.group_by(& &1.agent_id)
     |> Map.new(fn {agent_id, messages} -> {agent_id, Enum.flat_map(messages, &classify/1)} end)
   end
