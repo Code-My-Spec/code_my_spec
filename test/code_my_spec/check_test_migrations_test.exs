@@ -45,6 +45,20 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
                "as pending, so this check cannot detect the state it exists for"
     end
 
+    test "names it beside a migration applied from a branch that never landed" do
+      SQL.query!(
+        Repo,
+        "INSERT INTO schema_migrations (version, inserted_at) VALUES (29991231000000, now())",
+        []
+      )
+
+      version = newest_applied()
+      SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = $1", [version])
+
+      assert {:ok, pending} = CheckTestMigrations.pending()
+      assert version in pending_versions(pending)
+    end
+
     test "reports every unapplied migration, not just the newest" do
       [first, second] = Enum.take(applied_descending(), 2)
 
@@ -105,22 +119,16 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
 
   defp newest_applied, do: applied_descending() |> hd()
 
-  # Straight off `schema_migrations`, newest first.
-  #
-  # A first version paired each one back to its filename on disk so the
-  # assertions could match `pending/0`'s `{version, name}` shape. That meant
-  # re-parsing migration filenames here — a `case` in a test file, which the
-  # project forbids, and a second copy of the logic under test, which is worse:
-  # a test that reimplements what it checks agrees with itself rather than with
-  # the code.
-  #
-  # The name was never needed. Versions are what identify a migration, and they
-  # come out of the table with nothing to parse and nothing to branch on.
+  # Applied and on disk, newest first. The analyzer's shared database also
+  # carries migrations from branches that never landed; deleting one of those
+  # makes nothing pending, because pending/0 only knows the files on disk.
   defp applied_descending do
     %{rows: rows} =
       SQL.query!(Repo, "SELECT version FROM schema_migrations ORDER BY version DESC", [])
 
-    Enum.map(rows, fn [version] -> version end)
+    rows
+    |> Enum.map(fn [version] -> version end)
+    |> Enum.filter(&(Path.wildcard("priv/repo/migrations/#{&1}_*.exs") != []))
   end
 
   defp pending_versions(pending), do: Enum.map(pending, fn {version, _name} -> version end)
