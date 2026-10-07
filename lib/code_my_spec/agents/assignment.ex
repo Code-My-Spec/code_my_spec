@@ -281,10 +281,14 @@ defmodule CodeMySpec.Agents.Assignment do
     end
   end
 
+  # The notice tells main what to do next, so it must name tools main can
+  # actually call. `assign_team/3` is an internal function; the agent-facing
+  # route to it is `set_active_story`, which is what `assignment.ex:19`
+  # documented all along (issue e21ab16c).
   defp team_free_message(copy_id, story) do
     "Working copy #{copy_id}'s team is free: story #{story.number} (\"#{story.title}\") is " <>
       "promoted and nothing else is assigned to it. Assign it another issue with " <>
-      "assign_issue_to_working_copy, or a story with assign_team."
+      "assign_issue_to_working_copy, or a story with set_active_story."
   end
 
   @doc """

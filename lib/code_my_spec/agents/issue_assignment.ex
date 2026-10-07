@@ -183,9 +183,11 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     end
   end
 
+  # Same notice, issue half of the choice — see the comment on
+  # `Agents.Assignment.team_free_message/2` (issue e21ab16c).
   defp team_free_message(copy_id, issue) do
     "Working copy #{copy_id}'s team is free: issue #{issue.id} (\"#{issue.title}\") is " <>
       "resolved and nothing else is assigned to it. Assign it another issue with " <>
-      "assign_issue_to_working_copy, or a story with assign_team."
+      "assign_issue_to_working_copy, or a story with set_active_story."
   end
 end
