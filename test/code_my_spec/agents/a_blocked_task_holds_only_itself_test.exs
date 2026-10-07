@@ -180,6 +180,36 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
       assert resumes == [], "a released task ignored three times was offered again"
     end
 
+    test "a released task offered back a second time says why again", ctx do
+      product_id = ctx.product.id
+      {:ok, _} = Notifications.answer_question_request(ctx.question.id, %{"Which?" => "A"})
+
+      active = Agent.active_task(ctx.product)
+      {:ok, product} = TaskOwner.complete_task(ctx.scope, ctx.product, active.id)
+
+      # The offer the last turn took nothing of: `unblocked`'s first rung is
+      # `:remind`, so the next offer of this task carries it (criterion 2057).
+      %Offer{}
+      |> Offer.changeset(%{
+        agent_id: product_id,
+        kind: :unblocked,
+        subject_type: "task",
+        subject_key: ctx.blocked.id,
+        attempt: 1,
+        status: :ignored,
+        template_version: "unblocked/2"
+      })
+      |> Repo.insert!()
+
+      assert {:ok, _ref} = Work.request_turn_if_runnable(ctx.scope, product, :test)
+      :ok = Fixtures.drain_background_work()
+
+      assert [prompt] = turn_prompts(product_id)
+      assert prompt =~ "resume task #{ctx.blocked.id}"
+      assert prompt =~ "You were told this last turn and did not take it"
+      assert prompt =~ "`reject_offer` with your reason so main can reassign it"
+    end
+
     test "mid-turn, the answer is the one message, naming what to do with the task", ctx do
       product_id = ctx.product.id
       before = Fixtures.messages_to_agent(ctx.scope, product_id)
