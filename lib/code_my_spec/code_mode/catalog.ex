@@ -189,6 +189,33 @@ defmodule CodeMySpec.CodeMode.Catalog do
   defp in_scope?(_name, nil), do: true
   defp in_scope?(name, allowed), do: name in allowed
 
+  @doc """
+  Registered tools that are not scriptable and not this caller's to call.
+
+  The third group, and the one that used to fall through to the diagnostic for a
+  misspelling. `out_of_scope/2` is the scriptable tools the role withholds;
+  `excluded/0` is the scriptable ones no script may call. A tool that is neither
+  scriptable nor granted â a spine tool of another role â was in no list, so
+  `run_script` answered "No tool is bound under that name... it may be a similar
+  name, or on this project's machine" (`27fb2de3`).
+
+  Computed from the registered list rather than named, because the set of tools
+  on the spine and the set each role is granted both change without this module
+  being edited.
+  """
+  @spec direct_only(Enumerable.t(), [String.t()] | nil) :: [String.t()]
+  def direct_only(registered, allowed \\ nil)
+
+  def direct_only(_registered, nil), do: []
+
+  def direct_only(registered, allowed) do
+    registered
+    |> Enum.map(&to_string(Map.fetch!(&1, :name)))
+    |> Enum.uniq()
+    |> Enum.reject(&(Map.has_key?(@excluded, &1) or &1 in allowed))
+    |> Enum.sort()
+  end
+
   @doc "One tool by name."
   @spec fetch(t(), String.t()) :: {:ok, tool()} | :error
   def fetch(catalog, name) when is_binary(name), do: Map.fetch(catalog, name)
