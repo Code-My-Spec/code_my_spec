@@ -21,7 +21,21 @@ defmodule CodeMySpec.AgentTasks.IssueQa do
         {:error, "Issue #{task.issue_id} no longer exists."}
 
       issue ->
-        {:ok, build_prompt(issue, task)}
+        resume = CodeMySpec.Qa.IssueQaResumes.latest(scope, issue.id)
+        attempt = CodeMySpec.Qa.IssueQaAttempts.latest(scope, issue.id)
+
+        evidence =
+          if resume && attempt && resume.attempt_id == attempt.id &&
+               resume.working_copy_id == issue.assigned_working_copy_id do
+            "\nOperational QA resume audit #{resume.id} preserves partial attempt #{resume.attempt_id}. " <>
+              "Verify HEAD is candidate #{resume.candidate_sha} on copy #{resume.working_copy_id} before testing. " <>
+              "Stop and report a mismatch without rewinding or substituting another candidate. " <>
+              "Authorization reason: #{resume.reason}. This is routing authorization, not a QA verdict or execution-slot release.\n"
+          else
+            ""
+          end
+
+        {:ok, build_prompt(issue, task) <> evidence}
     end
   end
 
