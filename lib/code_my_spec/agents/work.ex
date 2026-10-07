@@ -928,15 +928,36 @@ defmodule CodeMySpec.Agents.Work do
     "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
   end
 
+  # The extra text is chosen by the offer's rung on its own ladder (criteria
+  # 1739, 1740, 2057), not by the subject being a requirement: a rung is what a
+  # kind's ladder says it is. `:remind` is the one rung of a released task's
+  # ladder; `:detail` and `:alternatives` are requirement work's.
   defp offer_prompt(scope, agent, {"requirement", key}) do
-    case Offers.standing(agent.id)[key] do
-      %{ignored: 1} -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
-      %{ignored: n} when n > 1 -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
+    case rung(agent, :work, "requirement", key) do
+      :detail -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
+      :alternatives -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
       _first -> prompt(agent)
     end
   end
 
   defp offer_prompt(_scope, agent, _subject), do: prompt(agent)
+
+  # The rung the offer being rendered now carries: the rung the last ignored
+  # offer wrote (1739, 1740). None on a first offer, whose ladder has no text.
+  defp rung(agent, kind, type, key) do
+    case {Offers.ladder({kind, type}), ignored(agent, key)} do
+      {nil, _ignored} -> nil
+      {_steps, 0} -> nil
+      {steps, ignored} -> Enum.at(steps, ignored - 1)
+    end
+  end
+
+  defp ignored(agent, key) do
+    case Offers.standing(agent.id)[key] do
+      %{ignored: n} -> n
+      _none -> 0
+    end
+  end
 
   # The second offer of the same work says more about it (criterion 1739).
   defp detail(scope, agent, key) do

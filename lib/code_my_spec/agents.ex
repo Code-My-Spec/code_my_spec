@@ -1585,6 +1585,10 @@ defmodule CodeMySpec.Agents do
   # requirement work's three (2057): a released task is held back after two, a
   # declined tap-out notice after one.
   #
+  # Announced as `:offer_held_back`, not `:teammate_stalled`: `Wake` holds the
+  # latter for a non-continuous main, so the notice was recorded undelivered and
+  # main never heard it (criterion 2063). This one wakes main whatever its role.
+  #
   # Read as "reached the terminal rung and not yet reported" rather than by a
   # time window, so a *refused* offer -- settled earlier in this same turn, by
   # `Agents.reject_offer/4` -- is escalated too, and each is stamped so a later
@@ -1596,7 +1600,7 @@ defmodule CodeMySpec.Agents do
     |> Enum.each(fn offer ->
       notify_main(
         scope,
-        :teammate_stalled,
+        :offer_held_back,
         "Held back from the #{agent.role} agent #{agent.id}: " <>
           "#{held_back_subject(agent, offer)}, #{held_back_reason(offer)}. " <>
           "It is still offered to its teammates.",
