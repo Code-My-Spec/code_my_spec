@@ -24,17 +24,13 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   alias Mix.Tasks.Cms.CheckTestMigrations
 
   describe "pending/0" do
-    # The analyzer runs its own partition (`h<sha8>` / `h<sha8>s`), which
-    # `mix ecto.migrate` never reaches, so that database can be behind while
-    # this one is current (d86b09cd, `mix cms.migrate_test_partitions`). None
-    # of these may depend on *which* database they landed on, or the gate's
-    # own partitioned run reports a stale schema and reads as broken code â
-    # the exact failure this file exists to name (f58acb37).
-    #
-    # So the deletion tests assert the *relative* property they check: a
-    # version that was applied and then removed comes back as pending, whatever
-    # else is or is not pending beside it. Comparing against an empty list
-    # would test the database rather than the check.
+    test "is empty when the database has applied every migration on disk" do
+      assert {:ok, []} = CheckTestMigrations.pending(),
+             "this worktree's test database is behind, which is the condition " <>
+               "under test elsewhere in this file — run " <>
+               "`MIX_ENV=test mix ecto.migrate` and re-run"
+    end
+
     test "names a migration the database has not applied" do
       version = newest_applied()
 
@@ -62,14 +58,8 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   end
 
   describe "refuse_if_behind!/0" do
-    # Currency is this test's subject, so it cannot be made to own a behind
-    # database by deleting a row â the guard's whole job is to answer this
-    # question about whatever database it is given. Asserted as the two-way
-    # property instead: silent when there is nothing pending, and refusing when
-    # there is. A partitioned analyzer run whose database lagged would otherwise
-    # report the guard as broken when it is doing exactly what it should.
-    test "is silent on a current database and refuses a behind one" do
-      assert_pending_answers(CheckTestMigrations.pending())
+    test "passes silently on a current database" do
+      assert :ok = CheckTestMigrations.refuse_if_behind!()
     end
 
     test "raises, and the message carries what to run" do
@@ -131,16 +121,4 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   end
 
   defp pending_versions(pending), do: Enum.map(pending, fn {version, _name} -> version end)
-
-  # Function heads rather than a `case`, which this project forbids in a test
-  # file — including in a helper, as `a_queued_promotion_does_not_hold_the_only_
-  # task_slot_test.exs` records.
-  defp assert_pending_answers({:ok, []}),
-    do: assert(:ok = CheckTestMigrations.refuse_if_behind!())
-
-  defp assert_pending_answers({:ok, _pending}),
-    do: assert_raise(RuntimeError, fn -> CheckTestMigrations.refuse_if_behind!() end)
-
-  defp assert_pending_answers({:error, reason}),
-    do: flunk("pending/0 could not read the schema: #{inspect(reason)}")
 end
