@@ -202,6 +202,29 @@ defmodule CodeMySpec.Promotion.PromotionIsTheAnalysisGateTest do
     refute_received {:git, @main, ["merge" | _]}
   end
 
+  test "an incremental compiler run does not qualify; the gate starts a forced one" do
+    %{scope: scope} = a_project()
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, ["credo", "exunit", "spex"],
+      commit: @head
+    )
+
+    # Clean at HEAD, but incremental: it reports only what it recompiled, and a
+    # boundary violation another analyzer had compiled went through unseen.
+    {:ok, compiler} =
+      RunsRepository.start_run(scope, %{source: "compiler", kind: :full, args: %{"args" => []}})
+
+    {:ok, compiler} = RunsRepository.finish_run(compiler, :completed, %{exit_status: 0})
+    RunsRepository.record_tree(compiler, %{start_commit: @head, start_tree_dirty: false})
+
+    assert {:ok, %{pending: %{started: ["compiler"]}}} = promote(scope)
+
+    assert [%{args: %{"args" => ["--force"]}}] =
+             RunsRepository.running_full_runs(scope, "compiler")
+
+    refute_received {:git, @main, ["merge" | _]}
+  end
+
   test "a run that started on a dirty tree does not qualify" do
     %{scope: scope} = a_project()
 

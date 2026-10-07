@@ -1,24 +1,31 @@
 defmodule CodeMySpec.Validation.DemotionWiringTest do
   @moduledoc """
-  The demotion works through `validate_stop/3`, not just as a pure split.
+  The stop judges the whole copy: a finding in a file this session never
+  opened blocks as it would any other.
 
-  `split_unattributed/2` is unit-tested and the renderer is unit-tested, and
-  neither touches the part that can actually be wrong: `session_paths/2` reads
-  what PostToolUse recorded, relativizes it against `scope.cwd`, and compares
-  it to `Problem.file_path`. Three representations have to line up, and the
-  ways they fail to are all silent.
+  John, 2026-10-04 and issue 48f4eada: task evaluation judges the whole copy,
+  like promotion. `split_unattributed/2` used to demote any finding in a file
+  the session or agent had not edited whenever edits were recorded, so the gate
+  was changed-files-only for any agent that edited something and whole-copy
+  only when there was no attribution at all — the wrong way round, and silent.
 
-  Both recorded shapes are exercised here because both occur. Measured on the
-  live database: this session recorded 368 paths, 259 project-relative and 109
-  absolute — the harness normalizes repo paths before forwarding, and anything
-  outside the working copy (a scratchpad) stays absolute. A guard that only
-  handled one shape would look correct against half the traffic.
+  `8ccd19097` removed the attribution excuse. `split_unattributed/2` survives as
+  a function with its old shape, returning `{blocking, []}` unconditionally, so
+  the call site and the property this file asserts stay readable; the list is
+  still computed because the caller's log line wants it, but it no longer
+  decides anything.
 
-  What makes this worth an end-to-end test rather than more unit tests: a
-  mismatch does not raise. It produces an empty attribution set, which
-  `verify_against_ledger/3` reads as "unusable" and answers `nil` to — so the
-  gate silently reverts to blocking on everything, which is the old behaviour
-  and looks like nothing is wrong.
+  What this file now pins is the consequence: where attribution *was* the
+  answer, the finding blocks. Each case below is one of the shapes that used to
+  demote, kept because the recording they exercise — project-relative,
+  absolute, naming nothing that resolves — is still read for the log line, and
+  a recording that breaks loudly is easier to notice than one that quietly
+  changes the verdict.
+
+  The spex describe is separate because spex never reached attribution the same
+  way: `split_by_story_enforcement/3` runs first and answers from the finding's
+  location, so enabling spex project-wide is survivable without attribution's
+  help.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -53,27 +60,20 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
   defp stop(scope, session), do: Validation.validate_stop(scope, nil, session_id: session)
 
-  # Spex is the source `d3fa4dc1` is about, and it does not reach the demotion
-  # the way credo does. `split_by_story_enforcement/3` runs first and answers
-  # from the owning story's `specs_ready` latch, so a spex failure is already
-  # advisory while its story is mid-build — which is what makes enabling spex
-  # project-wide survivable, and also what hides the demotion from every test
-  # above: with the latch unset nothing reaches `split_unattributed/2` at all.
+  # Why spex never reached attribution's verdict, and no longer has to.
   #
-  # The reported case was the other one — two LiveView spex last touched eight
-  # days before the session, on released stories, blocking a stop twice — and
-  # attribution was extended to spex to answer it. That was wrong, and the cost
-  # was that `spex: :block_all` did nothing at all: the latch already demotes
-  # every story mid-build, so the only findings reaching attribution were
-  # regressions on green stories, and attribution demoted those too. Measured
-  # across one evening: every agent, every stop, findings demoted, mode reading
-  # `:block_all` for months.
+  # `split_by_story_enforcement/3` runs before it and answers from the finding's
+  # own location (`f8d823f7e`: every located red spex is enforced; only a
+  # finding with no location is advisory). So a spex failure was already decided
+  # before attribution was consulted, and the describe below pins that the
+  # decision does not depend on whether this session opened the file.
   #
-  # The latch is the mandate test. A story that went green and is now red is a
-  # regression in this working copy, and "I did not open that file this turn" is
-  # not a reason to pass it — the escape is to fix the regression or unlatch the
-  # story, both of which are honest. Attribution still governs every other
-  # source, which is where the inherited-rebase case actually lives.
+  # The case that mattered was the other one — two LiveView spex last touched
+  # eight days before the session, on released stories, blocking a stop twice —
+  # and attribution was briefly extended to spex to answer it. That was wrong:
+  # `spex: :block_all` then did nothing at all for months, which is the failure
+  # `ae0a8537` records and `split_unattributed/2`'s own comment calls worse than
+  # blocking too much, because a gate that quietly stops blocking cannot be seen.
   describe "a spex failure on a story whose specs are ready" do
     setup ctx do
       :ok = FileEdits.track_edit(ctx.session, @mine)
@@ -93,7 +93,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       # story unlatched and this whole describe block testing nothing.
       story = story_fixture(ctx.scope)
 
-      {:ok, criterion} =
+      {:ok, _criterion} =
         AcceptanceCriteria.create_criterion(ctx.scope, story, %{
           description: "a step reports its provider",
           spec_path: @spex_path
@@ -138,12 +138,17 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       ctx
     end
 
-    test "a finding in a file it never edited does not block", ctx do
+    test "a finding in a file it never edited blocks too", ctx do
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
       fresh_analysis_runs_fixture(ctx.scope)
 
-      assert {:ok, _} = stop(ctx.scope, ctx.session),
-             "block_all would block on this; the session did not write it"
+      assert {:error, reason, _key} = stop(ctx.scope, ctx.session),
+             "a finding in a file this session never opened was demoted. Task " <>
+               "evaluation judges the whole copy (John, 2026-10-04; 48f4eada), so " <>
+               "the file it is in is not what decides — the mode is."
+
+      assert reason =~ @theirs,
+             "the agent is stopped over a finding the reason does not name. Got:\n#{reason}"
     end
 
     test "a finding in a file it did edit still blocks", ctx do
@@ -153,23 +158,19 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       assert {:error, _reason, _key} = stop(ctx.scope, ctx.session)
     end
 
-    test "with both, it blocks and the reason names only its own", ctx do
+    test "with both, it blocks and the reason names both", ctx do
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @mine})
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
       fresh_analysis_runs_fixture(ctx.scope)
 
       assert {:error, reason, _key} = stop(ctx.scope, ctx.session)
       assert reason =~ @mine
-      refute reason =~ "#{@theirs}:", "the other file's finding is advisory, not blocking"
+      assert reason =~ @theirs, "the other file's finding is blocking too, so it must be named"
     end
   end
 
   describe "with the session's edits recorded absolute" do
     test "the path still resolves, so its own finding blocks", ctx do
-      # The shape that needs `relativize/2` to do something. If it were a no-op
-      # here the set would match nothing, `verify_against_ledger/3` would answer
-      # nil, and the gate would block on everything — passing the test above for
-      # the wrong reason while demoting nothing.
       :ok = FileEdits.track_edit(ctx.session, Path.join(ctx.tmp, @mine))
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @mine})
@@ -178,45 +179,36 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       assert {:error, _reason, _key} = stop(ctx.scope, ctx.session)
     end
 
-    test "and a file it never edited is still demoted", ctx do
+    test "and a file it never edited blocks as well", ctx do
       :ok = FileEdits.track_edit(ctx.session, Path.join(ctx.tmp, @mine))
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
       fresh_analysis_runs_fixture(ctx.scope)
 
-      assert {:ok, _} = stop(ctx.scope, ctx.session)
+      assert {:error, _reason, _key} = stop(ctx.scope, ctx.session),
+             "the absolute-recording shape still demoted. Neither representation " <>
+               "decides the verdict any more — 8ccd19097 retired the excuse, and " <>
+               "both shapes are kept here only because both occur in the ledger."
     end
   end
 
   describe "when attribution names nothing in this project" do
-    # The guard from 5d361fb7 held that a recorded path corresponding to no file
-    # here means the comparison is not usable, so the gate must fail closed —
-    # demoting on it would switch the gate off while looking like it worked.
-    #
-    # That is right about a mangled recording and wrong about a session whose
-    # work genuinely lives outside the tracked tree, and the two were
-    # indistinguishable at the point the guard ran. They are distinguishable one
-    # step later: a mangled recording is mangled about files that changed, so
-    # the project moved underneath it. Both halves are pinned here because the
-    # gate silently reverting to block-everything is precisely what this module
-    # exists to catch.
-    test "and the project did change, the gate blocks — the recording is unusable", ctx do
+    # The recording is still read — for the caller's log line — so a recording
+    # that breaks loudly is worth pinning. What changed on 2026-10-04 is that
+    # none of the three shapes changes the verdict: an unusable recording, a
+    # session whose work lives in another repo, and a session that touched
+    # nothing tracked all block on the same finding.
+    test "the gate blocks on the project's red", ctx do
       # A path inside this working copy that names no file row. That is what a
       # failed recording looks like when there is a cwd to normalize against —
       # not `/somewhere/else/entirely.ex`, which is a session working in another
-      # repo and is now read as one (042e343b), and which this test used before
-      # the two were told apart.
+      # repo (042e343b).
       :ok = FileEdits.track_edit(ctx.session, Path.join(ctx.tmp, "lib/my_app/never_synced.ex"))
 
-      # What a mangled recording looks like from outside: a file it never
-      # managed to name is different than it was when the task started.
-      #
       # Stamped rather than merely written. `FileSync.sync_changed/2` pre-filters
-      # on mtime against the row it holds, and the row was written by this
-      # test's own setup a few milliseconds ago — at second resolution the edit
-      # is not newer than the record of it, and the scan sees nothing. Real
-      # edits arrive seconds after a sync; a test that wrote and stopped inside
-      # one second would silently assert against an empty changed set.
+      # on mtime against the row it holds, and the row was written by this test's
+      # own setup a few milliseconds ago — at second resolution the edit is not
+      # newer than the record of it, and the scan sees nothing.
       path = Path.join(ctx.tmp, @theirs)
       File.write!(path, "defmodule MyApp.Theirs do\n  # edited\nend\n")
       File.touch!(path, System.os_time(:second) + 5)
@@ -224,18 +216,16 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
       fresh_analysis_runs_fixture(ctx.scope)
 
-      assert {:error, _reason, _key} = stop(ctx.scope, ctx.session),
-             "unusable attribution must fail closed, not demote everything"
+      assert {:error, _reason, _key} = stop(ctx.scope, ctx.session)
     end
 
-    test "and every recorded edit landed in another repo, it owns none of the red", ctx do
+    test "and every recorded edit landed in another repo, it still blocks", ctx do
       # 042e343b: a task scoped to two other repositories, finished and
-      # reported, refused a stop over 26 spex it never touched — because a
-      # concurrent agent's uncommitted edit in the same shared worktree kept
-      # answering "the project changed". Its own edits are absolute paths under
-      # neither this cwd nor any file row here, and it had separately been
-      # refused `git commit`, so it could not have acted on the findings even if
-      # they had been its own.
+      # reported, refused a stop over 26 spex it never touched. Under the
+      # whole-copy rule that refusal is correct and stays — what the report
+      # actually named was that the agent could not act on findings in another
+      # repo, which is what filing them as issues is for, not what demoting
+      # them is for.
       :ok = FileEdits.track_edit(ctx.session, "/Users/someone/devops_drill/lib/webhooks.ex")
 
       path = Path.join(ctx.tmp, @theirs)
@@ -245,24 +235,27 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
       fresh_analysis_runs_fixture(ctx.scope)
 
-      assert {:ok, _} = stop(ctx.scope, ctx.session),
-             "the project moved, but not by this session's hand — every edit it made " <>
-               "is in another repo, and no amount of movement here makes them its own"
+      assert {:error, reason, _key} = stop(ctx.scope, ctx.session)
+      assert reason =~ @theirs
     end
 
-    test "and nothing in the project changed, it owns none of the red", ctx do
+    test "and nothing in the project changed, it still blocks", ctx do
       # The QA session of a9e9caca, in miniature: its only write went somewhere
-      # `Files` does not row — there, `.code_my_spec/qa/884/brief.md`, which git
-      # ignores by design. Nothing in the project moved, so there is nothing it
-      # could have broken, and no action it could take that would change the
-      # answer. It was handed 26 failing spex in three unrelated stories.
+      # `Files` does not row — `.code_my_spec/qa/884/brief.md`, git-ignored by
+      # design. It was handed 26 failing spex in three unrelated stories and
+      # demoted them all. Under the whole-copy rule the findings are real and
+      # reported; the way out is to fix them or file them, not to have the gate
+      # quietly look the other way.
       :ok = FileEdits.track_edit(ctx.session, ".code_my_spec/qa/884/brief.md")
 
       problem_fixture(ctx.scope, %{source: "credo", severity: :error, file_path: @theirs})
       fresh_analysis_runs_fixture(ctx.scope)
 
-      assert {:ok, _} = stop(ctx.scope, ctx.session),
-             "an agent that changed no project file is blocked by nothing (story 894)"
+      assert {:error, reason, _key} = stop(ctx.scope, ctx.session),
+             "an agent that changed no project file was excused from the project's red " <>
+               "(story 894's rule, retired by 48f4eada)"
+
+      assert reason =~ @theirs
     end
   end
 end

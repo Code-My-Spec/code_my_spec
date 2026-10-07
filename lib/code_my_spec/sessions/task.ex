@@ -69,6 +69,19 @@ defmodule CodeMySpec.Sessions.Task do
     field :issue_id, :string
     field :project_id, :string
     field :agent_id, :string
+    # Story 1091, issue e515bff3: a `promote_issue`/`story_promoted` task waits on
+    # the queue, not on the agent, so it must not hold the one-task slot. While
+    # main was red a batch could not land, the task could not close, and the
+    # agent stayed parked on work it could take no action on.
+    #
+    # The wait is recorded here, on the task itself, by `TaskOwner.await_promotion/3`
+    # when the MCP `promote` tool hears `:queued` — deliberately, and not read
+    # back off the queue. `Agents.Work` does read `PromotionQueue.open_for/3` for
+    # the same question, but it sits above the queue; `TaskOwner` sits below it,
+    # so a read from there would close `Qa -> TaskOwner -> PromotionQueue -> Qa`
+    # (issue e23a5547). One writer above both, one reader on its own row.
+    field :awaiting_subject_id, :string
+    field :awaiting_subject_type, :string
     field :expected_files, {:array, :string}, default: []
     # Microsecond resolution so a task's started_at lands strictly past
     # any file's mtime that was synced moments earlier in the same

@@ -33,6 +33,13 @@ defmodule CodeMySpecSpex.Story1030.Criterion1587Spex do
   @harness_config ".cms_harness.json"
   @tunnel_id "a11ce000-0000-4000-8000-000000001587"
 
+  # `refute_receive` waits its whole window by construction, so this is a cost
+  # and not a race to win. It is sound to keep it short: the refusal it asserts
+  # the absence of was reached synchronously, so there is nothing still in
+  # flight by the time this runs. Pinned explicitly because 100 is short enough
+  # to be a coin flip under a loaded gate (`3c8ab289`).
+  @absence_timeout 250
+
   spex "A copy on a different device never shares another device's tunnel",
        criterion: 1587 do
     scenario "a copy on a machine of its own asks for a preview" do
@@ -109,7 +116,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion1587Spex do
         assert saved.preview_tunnel_id == nil,
                "the copy holds a tunnel id despite being refused one"
 
-        refute_receive {:cloudflare, _}, 100,
+        refute_receive {:cloudflare, _}, @absence_timeout,
                        "Cloudflare was reached for a copy this criterion says should " <>
                          "never share — nothing should have been asked of it at all"
 

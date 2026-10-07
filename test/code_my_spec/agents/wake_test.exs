@@ -34,7 +34,18 @@ defmodule CodeMySpec.Agents.WakeTest do
     coding: [:work_offer, :nudge, :resume, :findings],
     qa: [:work_offer, :nudge, :resume]
   }
-  @always [:operator_message, :own_reply, :question_answered, :blocker_resolved, :team_free]
+  # A held-back offer is main's own administrative notice, like :team_free: told
+  # whatever the role, and told now rather than held for a non-continuous main
+  # (criterion 2063). It is deliberately not in @puts_to_work -- the point is
+  # that it wakes an agent that is not continuous.
+  @always [
+    :operator_message,
+    :own_reply,
+    :question_answered,
+    :blocker_resolved,
+    :team_free,
+    :offer_held_back
+  ]
 
   # A non-continuous agent is woken only by a person and its own replies
   # (step 4b, John: "hold them"); what it asked for is handed it inside a turn.

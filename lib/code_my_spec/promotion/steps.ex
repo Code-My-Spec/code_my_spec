@@ -735,7 +735,11 @@ defmodule CodeMySpec.Promotion.Steps do
              root,
              @leave_submodules ++ ["checkout", "--quiet", "--detach", "--force", base]
            ),
-         {_, 0} <- git(env, root, @leave_submodules ++ ["reset", "--quiet", "--hard", base]) do
+         {_, 0} <- git(env, root, @leave_submodules ++ ["reset", "--quiet", "--hard", base]),
+         # Nobody works in the gate, so an untracked file there is a leftover,
+         # and one a candidate adds refused its merge as a conflict naming no
+         # file (2026-10-06). Ignored files (`_build`, `deps`) stay.
+         {_, 0} <- git(env, root, ["clean", "--quiet", "-d", "--force"]) do
       {merged, conflicted} =
         Enum.reduce(commits, {[], []}, fn commit, {merged, conflicted} ->
           case add_to_batch(env, root, commit) do

@@ -167,18 +167,18 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     ## Tools
 
     - `list_issues` — list issues (pass `status: "incoming"` to filter)
-    - `get_issue` — read full issue details (pass the issue `id`)
-    - `accept_issue` — accept a real issue (pass the issue `id`)
-    - `dismiss_issue` — dismiss with a reason (pass `id` and `reason`)
+    - `get_issue` — read full issue details (pass the issue `issue_id`)
+    - `accept_issue` — accept a real issue (pass the issue `issue_id`)
+    - `dismiss_issue` — dismiss with a reason (pass `issue_id` and `reason`)
 
     ## Goal
 
     1. **Discover issues** using `list_issues` with #{list_filter}
-    2. **Read each issue** using `get_issue` with the issue `id`
+    2. **Read each issue** using `get_issue` with the issue `issue_id`
     3. **Identify duplicates** — issues describing the same underlying problem
     4. **Decide a disposition** for each issue:
-       - **Accept** — real issue, call `accept_issue` with the issue `id` **and a `story_number`**
-       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), call `dismiss_issue` with the issue `id` and `reason`
+       - **Accept** — real issue, call `accept_issue` with the issue `issue_id` **and a `story_number`**
+       - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), call `dismiss_issue` with the issue `issue_id` and `reason`
        - **Merge** — accept the best issue, dismiss the others with a reason noting the duplicate
     5. **Execute** each disposition using the tools above\
     """

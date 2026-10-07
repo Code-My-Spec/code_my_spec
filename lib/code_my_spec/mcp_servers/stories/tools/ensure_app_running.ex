@@ -17,11 +17,26 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.CodeMode.Sandbox
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.AppTransport
 
-  @timeout to_timeout(minute: 3)
+  # A first boot compiles, which is why this was once three minutes. But a
+  # script calling this tool runs under `Sandbox`'s wall clock and is handed
+  # that budget less `@machine_call_margin_ms`, so a three-minute wait
+  # outlasted its caller, the sandbox killed the script, and the caller never
+  # saw `AppTransport`'s `:start_timed_out` (0b1ae6fc). Derived from the
+  # sandbox rather than declared, so the wait always fits inside the script.
+  @machine_call_margin_ms 2_000
+
+  @doc "How long this tool waits — never longer than the script that calls it."
+  @spec declared_timeout() :: pos_integer()
+  def declared_timeout do
+    max(Sandbox.timeout([]) - @machine_call_margin_ms, 1_000)
+  end
+
+  defp timeout, do: declared_timeout()
 
   schema do
   end
@@ -35,7 +50,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
   end
 
   defp ensure_running(%{active_working_copy_id: id}) when is_binary(id) do
-    case AppTransport.ensure_app_running(id, @timeout) do
+    case AppTransport.ensure_app_running(id, timeout()) do
       {:ok, %{status: "serving", url: url, commit: commit} = info} ->
         # What it serves, which a promote's reload moves past the launch commit.
         serving = Map.get(info, :serving_commit) || commit

@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -754,13 +755,46 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # Whether a turn could start now — nothing in flight, nothing held, a copy to
-  # run on. Whether this agent should be woken for it at all is `Wake`'s.
+  # The tasks whose open state is the queue's, not the agent's (criterion 2021).
+  @promotion_tasks ~w(promote_issue story_promoted)
+
+  # Whether a turn could start now — nothing in flight, nothing held that the
+  # agent could act on, a copy to run on. Whether this agent should be woken for
+  # it at all is `Wake`'s.
   defp idle?(agent) do
     present?(agent) and is_nil(agent.turn_started_at) and
-      not reservation_open?(agent) and is_nil(Agent.active_task(agent)) and
+      not reservation_open?(agent) and not busy_on?(agent) and
       not is_nil(agent.working_copy_id)
   end
+
+  # A `promote_issue`/`story_promoted` task stays open until its candidate
+  # lands or is ejected, and the queue messages the agent then. Holding only
+  # such a task is waiting, not busy.
+  defp busy_on?(agent) do
+    case Agent.active_task(agent) do
+      %{requirement_name: name} = task when name in @promotion_tasks ->
+        not awaiting_landing?(agent, task)
+
+      nil ->
+        false
+
+      _other ->
+        true
+    end
+  end
+
+  # An open candidate for this task's own subject is the queue's to finish;
+  # a resolved one is the agent's turn.
+  defp awaiting_landing?(agent, task) do
+    case subject(task) do
+      nil -> false
+      {type, id} -> PromotionQueue.open_for(agent.id, type, id)
+    end
+  end
+
+  defp subject(%{issue_id: issue_id}) when is_binary(issue_id), do: {"issue", issue_id}
+  defp subject(%{story_id: story_id}) when is_binary(story_id), do: {"story", to_string(story_id)}
+  defp subject(_task), do: nil
 
   # Its process alive now (`Agents.Presence`): nothing starts a turn in one that
   # is not there.
@@ -769,6 +803,16 @@ defmodule CodeMySpec.Agents.Work do
   defp admit(scope, agent, event) do
     if idle?(agent), do: Wake.allow?(scope, agent, event), else: {:hold, :busy}
   end
+
+  @doc """
+  `admit/3`'s answer, for a caller that has to tell `:busy` from a hold.
+
+  `request_turn_if_runnable/4` answers `{:ok, :not_runnable}` for every hold,
+  so a test asking "is this agent busy?" cannot ask through it. This is the same
+  decision, named.
+  """
+  @spec admission(Scope.t(), Agent.t(), :work_offer | :resume | :nudge) :: :ok | {:hold, term()}
+  def admission(scope, agent, event), do: admit(scope, agent, event)
 
   # Under the row lock: the same answer, without announcing it twice.
   defp runnable_state?(scope, agent, event),
@@ -849,9 +893,17 @@ defmodule CodeMySpec.Agents.Work do
 
   # Released and still claimable: one the graph no longer offers would be
   # refused by `start_task`, and offering it first would hide the rest.
-  defp released_tasks(%Agent{tasks: tasks}, nodes) do
+  #
+  # And not held back: a released task offered and ignored three times, or
+  # declined, is not offered again, as requirement work is not. Without that, an
+  # agent that would not resume it was re-offered it after every turn — 570
+  # times in half an hour on 2026-10-06.
+  defp released_tasks(%Agent{tasks: tasks} = agent, nodes) do
+    standing = Offers.standing(agent.id)
+
     Enum.filter(tasks || [], fn task ->
       task.status == :blocked and not is_nil(task.blocker_resolved_at) and
+        not match?(%{held?: true}, standing[task.id]) and
         Enum.any?(nodes, fn {type, id, name} ->
           task_on_node?(task, %{entity_type: type, entity_id: id, name: name})
         end)
@@ -866,9 +918,17 @@ defmodule CodeMySpec.Agents.Work do
   defp offer_kind({"task", _id}), do: :unblocked
   defp offer_kind(_subject), do: :work
 
+  # A second offer of a released task carries its own rung's text: `:remind`,
+  # the one rung of this kind's ladder (2057). Without it the reminder was the
+  # same sentence said again, which is what the ladder exists to avoid.
   defp offer_prompt(scope, agent, {"task", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.id == id))
-    "Your blocker was released; #{resume_instruction(scope, tasks)}"
+    base = "Your blocker was released; #{resume_instruction(scope, tasks)}"
+
+    case rung(agent, :unblocked, "task", id) do
+      :remind -> base <> "\n\n" <> remind()
+      _first -> base
+    end
   end
 
   defp offer_prompt(scope, agent, {"tap_out", id}) do
@@ -876,15 +936,44 @@ defmodule CodeMySpec.Agents.Work do
     "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
   end
 
+  # The extra text is chosen by the offer's rung on its own ladder (criteria
+  # 1739, 1740, 2057), not by the subject being a requirement: a rung is what a
+  # kind's ladder says it is. `:remind` is the one rung of a released task's
+  # ladder; `:detail` and `:alternatives` are requirement work's.
   defp offer_prompt(scope, agent, {"requirement", key}) do
-    case Offers.standing(agent.id)[key] do
-      %{ignored: 1} -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
-      %{ignored: n} when n > 1 -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
+    case rung(agent, :work, "requirement", key) do
+      :detail -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
+      :alternatives -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
       _first -> prompt(agent)
     end
   end
 
   defp offer_prompt(_scope, agent, _subject), do: prompt(agent)
+
+  # The way out of a second notice, for a task this agent was already told it
+  # could resume. The line above already names it and the call that takes it, so
+  # this says why it is being said again and what the alternative is.
+  defp remind do
+    "You were told this last turn and did not take it. Take it now, or " <>
+      "`reject_offer` with your reason so main can reassign it."
+  end
+
+  # The rung the offer being rendered now carries: the rung the last ignored
+  # offer wrote (1739, 1740). None on a first offer, whose ladder has no text.
+  defp rung(agent, kind, type, key) do
+    case {Offers.ladder({kind, type}), ignored(agent, key)} do
+      {nil, _ignored} -> nil
+      {_steps, 0} -> nil
+      {steps, ignored} -> Enum.at(steps, ignored - 1)
+    end
+  end
+
+  defp ignored(agent, key) do
+    case Offers.standing(agent.id)[key] do
+      %{ignored: n} -> n
+      _none -> 0
+    end
+  end
 
   # The second offer of the same work says more about it (criterion 1739).
   defp detail(scope, agent, key) do
@@ -1160,39 +1249,25 @@ defmodule CodeMySpec.Agents.Work do
     withheld? = withholding(scope, owner, opts)
     assignment = assignment(scope, owner)
 
-    scope
-    |> Requirements.story_execution(role, number, withheld?, assignment)
-    |> advance(scope, team_member?(owner), fn assignment ->
-      Requirements.story_execution(scope, role, number, withheld?, assignment)
-    end)
+    Requirements.story_execution(scope, role, number, withheld?, assignment)
   end
 
-  # The team takes its next story when its story is complete for all of it
-  # (a31f1cd6). John: "fine for the team to take a new story from the working
-  # copy when the team collectively finishes a story." The whole team moves,
-  # through `Assignment.advance/4`, which locks the team's rows so two
-  # teammates arriving at once move it once; then the answer is read again for
-  # the story the team is on now. Never on the main copy: `advance/4` refuses
-  # it, and the main agent reads `:project`, which has no story to finish.
+  # The team is no longer moved to its next story on its own (John, 2026-10-07,
+  # retiring the rebinding; issue f0c18598). This used to call
+  # `Assignment.advance/4` whenever a team member's read found the story
+  # `:complete`, taking the epic's next story for the whole team — which meant a
+  # team reading its own story could walk itself off a story that was certified
+  # and awaiting QA, and the main agent's `set_active_story` could not hold it
+  # there.
   #
-  # Only a team member's own read moves the team. A session, product or the
-  # main agent looking at the copy sees the finished story as finished.
-  defp advance(
-         %{status: :complete, story: %{id: from}, next_story: %{id: to}} = execution,
-         scope,
-         true,
-         read
-       ) do
-    case Assignment.advance(scope, scope.active_working_copy_id, from, to) do
-      {:ok, :moved} -> read.(bind(team(scope.active_working_copy_id)))
-      {:error, _reason} -> execution
-    end
-  end
-
-  defp advance(execution, _scope, _team_member?, _read), do: execution
-
-  defp team_member?(%Agent{role: role}), do: RoleProfile.scope(role) == :story
-  defp team_member?(_owner), do: false
+  # What happens instead: a team keeps one story until it lands, and when the
+  # story lands main is told the team is free (the `:team_free` offer, raised by
+  # a landing). Main then assigns the next story with `set_active_story`. So the
+  # move is always an agent's act, never a side effect of somebody reading.
+  #
+  # `Assignment.advance/4` stays: it is where the team's rows are locked so two
+  # teammates arriving at once move the team once, and an explicit assignment
+  # still reaches it.
 
   # Whose story the answer is about (a31f1cd6). The main agent reads none —
   # story work happens on feature copies, never on main. Everyone else reads

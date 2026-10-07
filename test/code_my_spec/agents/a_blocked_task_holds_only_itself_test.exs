@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
@@ -143,6 +144,70 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
       refute resumed.isError, response_text(resumed)
       assert [%{id: id}] = active_tasks(product_id)
       assert id == ctx.blocked.id
+    end
+
+    test "a released task ignored three times is not offered again", ctx do
+      product_id = ctx.product.id
+      {:ok, _} = Notifications.answer_question_request(ctx.question.id, %{"Which?" => "A"})
+
+      active = Agent.active_task(ctx.product)
+      {:ok, product} = TaskOwner.complete_task(ctx.scope, ctx.product, active.id)
+
+      # What a coder that would not resume it left behind on 2026-10-06: the
+      # offer ignored after every turn, 570 times in half an hour.
+      for attempt <- 1..Offers.held_after() do
+        %Offer{}
+        |> Offer.changeset(%{
+          agent_id: product_id,
+          kind: :unblocked,
+          subject_type: "task",
+          subject_key: ctx.blocked.id,
+          attempt: attempt,
+          status: :ignored,
+          template_version: "unblocked/2"
+        })
+        |> Repo.insert!()
+      end
+
+      _ = Work.request_turn_if_runnable(ctx.scope, product, :test)
+      :ok = Fixtures.drain_background_work()
+
+      resumes =
+        for prompt <- turn_prompts(product_id),
+            prompt =~ "resume task #{ctx.blocked.id}",
+            do: prompt
+
+      assert resumes == [], "a released task ignored three times was offered again"
+    end
+
+    test "a released task offered back a second time says why again", ctx do
+      product_id = ctx.product.id
+      {:ok, _} = Notifications.answer_question_request(ctx.question.id, %{"Which?" => "A"})
+
+      active = Agent.active_task(ctx.product)
+      {:ok, product} = TaskOwner.complete_task(ctx.scope, ctx.product, active.id)
+
+      # The offer the last turn took nothing of: `unblocked`'s first rung is
+      # `:remind`, so the next offer of this task carries it (criterion 2057).
+      %Offer{}
+      |> Offer.changeset(%{
+        agent_id: product_id,
+        kind: :unblocked,
+        subject_type: "task",
+        subject_key: ctx.blocked.id,
+        attempt: 1,
+        status: :ignored,
+        template_version: "unblocked/2"
+      })
+      |> Repo.insert!()
+
+      assert {:ok, _ref} = Work.request_turn_if_runnable(ctx.scope, product, :test)
+      :ok = Fixtures.drain_background_work()
+
+      assert [prompt] = turn_prompts(product_id)
+      assert prompt =~ "resume task #{ctx.blocked.id}"
+      assert prompt =~ "You were told this last turn and did not take it"
+      assert prompt =~ "`reject_offer` with your reason so main can reassign it"
     end
 
     test "mid-turn, the answer is the one message, naming what to do with the task", ctx do
@@ -289,4 +354,12 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
 
   defp active_tasks(agent_id),
     do: Agent |> Repo.get!(agent_id) |> Map.get(:tasks) |> Enum.filter(&(&1.status == :active))
+
+  defp turn_prompts(agent_id) do
+    receive do
+      {:work_turn_requested, ^agent_id, _ref, prompt} -> [prompt | turn_prompts(agent_id)]
+    after
+      0 -> []
+    end
+  end
 end

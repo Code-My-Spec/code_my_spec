@@ -14,6 +14,8 @@ defmodule CmsHarness.Application do
   """
   use Application
 
+  alias CmsHarness.Agents.ProviderTelemetry
+
   # Burrito.Util.Args is Burrito-release-only — a plain `mix release` doesn't
   # include it. Resolving the module through an atom at runtime keeps both
   # builds clean.
@@ -49,6 +51,7 @@ defmodule CmsHarness.Application do
     harness_log = prepare_host()
 
     warn_if_no_credential()
+    ProviderTelemetry.attach()
 
     # The endpoint is configured `server: false` so that every *other* way this
     # application boots compiles the harness modules without opening its port.

@@ -905,18 +905,48 @@ defmodule CodeMySpec.Promotion do
         "at #{head}"
     )
 
-    named = named_copy(working_copy_id)
+    with {:ok, scope, named} <- gate_copy(scope, working_copy_id) do
+      # Every source, whatever the project's config (c6f54b90): config decides
+      # what the stop hook sweeps, never what promote demands. Narrowing this
+      # would let a project promote a commit `exunit` had never once run against.
+      {answered, missing} = answers_at(scope, Run.sources(), head)
 
-    # Every source, whatever the project's config (c6f54b90): config decides
-    # what the stop hook sweeps, never what promote demands. Narrowing this
-    # would let a project promote a commit `exunit` had never once run against.
-    {answered, missing} = answers_at(scope, Run.sources(), head)
-
-    case blocking_problems(scope, Map.keys(answered)) do
-      [] -> certify(scope, answered, missing, head, named, opts)
-      problems -> gate_result(problems, named)
+      case blocking_problems(scope, Map.keys(answered)) do
+        [] -> certify(scope, answered, missing, head, named, opts)
+        problems -> gate_result(problems, named)
+      end
+      |> log_gate(working_copy_id, head)
     end
-    |> log_gate(working_copy_id, head)
+  end
+
+  # The copy the gate judges, resolved here rather than left to the read.
+  #
+  # `blocking_problems/2` reads problems through
+  # `ProblemRepository.scope_to_harness/2`, which treats a scope with no
+  # `active_working_copy_id` as "the default copy" (`WorkingCopies.default_id/1`)
+  # because a plain project-wide read has no copy to narrow to. That is right for
+  # a page showing a project-wide count, and wrong here: the gate is judging one
+  # checkout's commit, and with none named there is nothing to judge. Left
+  # unresolved it quietly judged the default copy's problems instead, so a caller
+  # with no working copy was refused over findings on a checkout it had never
+  # named and could not fix (`02796b61`).
+  #
+  # Refused, not narrowed to a copy nobody asked for. `gate/3`'s callers resolve a
+  # copy before they get here (`promoting_copy/2`), so this is the case where
+  # nobody did.
+  defp gate_copy(scope, working_copy_id) when is_binary(working_copy_id) do
+    {:ok, scope, named_copy(working_copy_id)}
+  end
+
+  defp gate_copy(_scope, nil) do
+    {:error,
+     %{
+       reason:
+         "no working copy on this scope, so there is nothing to gate. A promotion " <>
+           "judges one checkout's commit; name the working copy it is yours to " <>
+           "promote from.",
+       working_copy: nil
+     }}
   end
 
   # The gate's answer, beside the line that says it was asked: a gate that was
@@ -987,7 +1017,7 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp answers_at(scope, sources, head) do
-    runs = Map.new(sources, &{&1, Analysis.answer_at_commit(scope, &1, head)})
+    runs = Map.new(sources, &{&1, gate_answer(&1, Analysis.answer_at_commit(scope, &1, head))})
     {answered, missing} = Enum.split_with(runs, fn {_source, run} -> run end)
     {Map.new(answered), Enum.map(missing, &elem(&1, 0))}
   end
@@ -1005,7 +1035,7 @@ defmodule CodeMySpec.Promotion do
 
     {started, failed} =
       to_start
-      |> Enum.map(&{&1, Analysis.start_run(scope, &1, [], requested_by: requested_by)})
+      |> Enum.map(&{&1, Analysis.start_run(scope, &1, gate_args(&1), requested_by: requested_by)})
       |> Enum.split_with(&match?({_source, {:ok, _, _}}, &1))
 
     for {source, {:ok, :joined, _id}} <- started, do: running_at?(scope, source, head, agent_id)
@@ -1017,6 +1047,18 @@ defmodule CodeMySpec.Promotion do
 
   defp running_at?(scope, source, head, agent_id),
     do: Analysis.wait_on_running_at_commit(scope, source, head, agent_id)
+
+  # The gate's compiler run is forced: an incremental compile reports only what
+  # it recompiled, and another analyzer holding the build lock had already
+  # compiled a boundary violation, so the compiler saw nothing and passed it.
+  defp gate_args("compiler"), do: ["--force"]
+  defp gate_args(_source), do: []
+
+  defp gate_answer("compiler", %Run{args: %{"args" => args}} = run) when is_list(args),
+    do: if("--force" in args, do: run)
+
+  defp gate_answer("compiler", _run), do: nil
+  defp gate_answer(_source, run), do: run
 
   defp requested_by(nil), do: %{kind: "promotion"}
   defp requested_by(agent_id), do: %{kind: "promotion", agent_id: agent_id}

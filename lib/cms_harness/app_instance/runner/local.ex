@@ -78,18 +78,52 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   def main_ports(root) do
     with main when is_binary(main) <- main_checkout_path(root),
          {:ok, content} <- Environments.read_file(local(main), "config/dev.exs"),
-         http when is_integer(http) <- port_fallback(content, "PORT") do
-      {http, port_fallback(content, "HTTPS_PORT")}
+         http when is_integer(http) <- declared_port(content, "PORT") do
+      {http, declared_port(content, "HTTPS_PORT")}
     else
       _ -> nil
     end
   end
 
-  defp port_fallback(content, env_var) do
+  # Reads the port an endpoint declares in `config/dev.exs` (9320d5c7).
+  #
+  # This used to match one exact shape —
+  # `port: String.to_integer(System.get_env("PORT") || "4000")` — so any other
+  # ordinary way of setting a port failed to resolve, and the caller refused
+  # with `:cannot_resolve_main_address`: safely, but reading as "this checkout
+  # declares no address" when in fact it declares one this could not read. The
+  # shapes below are the ones the issue names.
+  #
+  # Reads `config/dev.exs`, so a `runtime.exs` override is deliberately out of
+  # scope: `main_ports/1` is asked what main's *checkout* declares, and the
+  # started process reports its own real address elsewhere.
+  #
+  # An env read with no literal default at all (`System.get_env("PORT")`, no
+  # `|| "4000"`) is *also* out of scope, and honestly so: there is no number in
+  # the file to read, so no integer can be returned, and inventing one would be
+  # worse than the opaque refusal. Closing that case needs the issue's option
+  # (1) — read the port off the listening socket, or have it recorded at
+  # onboarding — which is the deliberate pass it asks for, not this.
+  def declared_port(content, env_var) do
+    env_port(content, env_var) || literal_port(content)
+  end
+
+  # The original shape, and any env-var name: the variable must be the one
+  # asked for, and the default is the port.
+  defp env_port(content, env_var) do
     case Regex.run(
-           ~r/port:\s*String\.to_integer\(System\.get_env\("#{env_var}"\)\s*\|\|\s*"(\d+)"\)/,
+           ~r/port:\s*String\.to_integer\(System\.get_env\("#{Regex.escape(env_var)}"\)\s*\|\|\s*"(\d+)"\)/,
            content
          ) do
+      [_, port] -> String.to_integer(port)
+      nil -> nil
+    end
+  end
+
+  # A literal: `port: 4567`. Bounded so it cannot pick up a number from a URL
+  # or from an option that merely ends in a digit.
+  defp literal_port(content) do
+    case Regex.run(~r/port:\s*(\d{2,5})\s*[,}\]]/, content) do
       [_, port] -> String.to_integer(port)
       nil -> nil
     end

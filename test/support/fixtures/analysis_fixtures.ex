@@ -19,12 +19,17 @@ defmodule CodeMySpec.AnalysisFixtures do
   """
   def fresh_analysis_runs_fixture(scope, sources \\ Run.sources(), opts \\ []) do
     for source <- sources do
-      {:ok, run} = RunsRepository.start_run(scope, %{source: source, kind: :full})
+      {:ok, run} =
+        RunsRepository.start_run(scope, %{source: source, kind: :full, args: gate_args(source)})
 
       {:ok, run} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
       at_commit(run, Keyword.get(opts, :commit), opts)
     end
   end
+
+  # As the promotion gate starts them: its compiler run is forced.
+  defp gate_args("compiler"), do: %{"args" => ["--force"]}
+  defp gate_args(_source), do: %{"args" => []}
 
   defp at_commit(run, nil, _opts), do: run
 

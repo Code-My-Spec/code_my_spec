@@ -632,6 +632,19 @@ defmodule CmsHarness.Project.ChannelClient do
        # server ignores the field and sweeps everything, which is what it does
        # today.
        "active_runs" => AnalysisServer.in_flight(project.root),
+       # The app this copy is actually running, from the harness's own
+       # `state.json` (00bd7d4a). A restart's result reaches the server as a
+       # reply or a push, and a harness that restarted mid-reply, or whose
+       # socket dropped and reconnected, leaves the server holding a commit the
+       # app is not running â metric_flow's main copy reported `app_commit`
+       # c3eb20b against HEAD 59dc451. This is the one moment a harness is
+       # guaranteed to be talking to the server, so it is where the server's
+       # answer converges on the harness's.
+       #
+       # `nil` when this copy never ran an app; an older server ignores the
+       # field, so the rollout order does not matter â the same reasoning
+       # `active_runs` above is built on.
+       "app" => CmsHarness.AppInstance.reported(project.root),
        # App verbs newer than the contract version. The server pushes one only
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.

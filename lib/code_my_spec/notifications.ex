@@ -998,9 +998,26 @@ defmodule CodeMySpec.Notifications do
   defp question_task(_owner, nil), do: {:ok, nil}
   defp question_task(owner, :active), do: {:ok, TaskOwner.active_task(owner)}
 
+  # A task an agent may name to `tap_out` or `ask_user_question`.
+  #
+  # `:active` is the ordinary case. `:blocked` is accepted too, and that is the
+  # whole of ce070442: it used to fall through to `{:error, :task_not_active}`,
+  # which left a blocked task unreachable by `tap_out` — and `tap_out` is what
+  # the loop's own refusal text tells an agent to reach for ("block it with
+  # `ask_user_question` or `tap_out`, or `cancel_task`"). The report is that
+  # sequence exactly: a `qa_complete` task blocked on a question, the question
+  # answered, `start_task` refusing to resume it (`:requirement_not_eligible` on
+  # the entity_id bug ab111a52), `tap_out` refusing it as inactive, and nothing
+  # left but `cancel_task`, which discards the attempt rather than asking a
+  # person.
+  #
+  # Re-blocking is not a contradiction. The agent is asking for a person to
+  # decide, and the task is demonstrably not active *because* nobody has decided
+  # the old blocker yet. `TaskOwner.block_task/6` names the new blocker, so
+  # approving it frees exactly this task.
   defp question_task(owner, id) do
     case TaskOwner.find_task(owner, id) do
-      %{status: :active} = task -> {:ok, task}
+      %{status: status} = task when status in [:active, :blocked] -> {:ok, task}
       nil -> {:error, :task_not_found}
       _ -> {:error, :task_not_active}
     end
