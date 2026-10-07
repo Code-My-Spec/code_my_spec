@@ -81,14 +81,16 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
         story_id: story.id
       })
 
-    case Keyword.get(opts, :awaiting) do
-      nil ->
-        owner
+    mark_awaiting(owner, Keyword.get(opts, :awaiting))
+  end
 
-      {type, id} ->
-        {:ok, marked} = TaskOwner.await_promotion(owner, type, id)
-        marked
-    end
+  # No `case` in a test file (the project forbids it in helpers too), so the two
+  # shapes are separate clauses.
+  defp mark_awaiting(owner, nil), do: owner
+
+  defp mark_awaiting(owner, {type, id}) do
+    {:ok, marked} = TaskOwner.await_promotion(owner, type, id)
+    marked
   end
 
   test "the agent claims assigned work while its queued promotion waits", ctx do
