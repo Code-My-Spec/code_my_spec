@@ -36,6 +36,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
@@ -61,7 +62,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
     agents = list_agents(scope)
     attempts = project_attempts(scope)
     turns = project_turns(scope)
-    messages = agent_messages(scope)
+    messages = agent_messages(scope, agents)
     tasks = project_tasks(scope, stories, agents)
 
     %{
@@ -145,32 +146,79 @@ defmodule CodeMySpec.AgentPerformance.Page do
   # is the nudges and restarts interventions are counted from; `:tool` is the
   # tool results `ToolFailures` counts.
   #
+  # Three raw columns and the id of the agent whose conversation they are --
+  # not the rows themselves, and not every kind of message. What the counts
+  # below read is `:role`, `:sender_id` and `:tool_failed`; `reason_text/1`
+  # reads a message's `:content` only for the ones that are actually
+  # interventions, and those come from their own read.
+  #
+  # Narrowing to those roles is the difference between reading the project's
+  # transcript and reading what this page reports on. On the 188-agent project
+  # this page is measured on there are 126,990 messages, 33,695 of them
+  # `:operator` and 2,546 `:tool`; the rest is assistant prose nothing here
+  # counts, and pulling it across was most of the async read (issue b118c546).
+  #
   # The select is a plain map rather than a struct update: `Message` carries no
   # `agent_id` field -- the id lives on the conversation -- so `%{m | agent_id:
   # c.agent_id}` raises `KeyError` the moment a row matches. It never fired in
   # the test that bounded this read, whose fixtures matched no messages at all;
-  # that test now builds messages these filters return. `agent_rows/2`,
-  # `interventions_by_story/2` and `project_interventions/3` read `:agent_id`,
-  # `:role`, `:sender_id`, `:content`, `:inserted_at` and `:tool_failed` off
-  # these maps, so those five are what the select carries.
-  defp agent_messages(%Scope{active_project_id: nil}), do: []
+  # that test now builds messages these filters return.
+  defp agent_messages(%Scope{active_project_id: nil}, _agents), do: []
 
-  defp agent_messages(%Scope{} = scope) do
-    from(m in Message,
-      join: c in assoc(m, :conversation),
-      where: c.project_id == ^scope.active_project_id,
-      where: m.role in [:operator, :tool] and not is_nil(c.agent_id),
-      select: %{
-        agent_id: c.agent_id,
+  defp agent_messages(%Scope{} = scope, agents) do
+    agent_ids = Enum.map(agents, & &1.id)
+
+    if agent_ids == [] do
+      []
+    else
+      conversation_ids(scope, agent_ids)
+      |> counted_messages()
+    end
+  end
+
+  # The conversations of the agents in hand, by id. Read rather than joined:
+  # the ids are what the messages are filtered by, and a join back through
+  # `conversations` to find them is the query this avoids.
+  defp conversation_ids(%Scope{} = scope, agent_ids) do
+    Conversation
+    |> where([c], c.project_id == ^scope.active_project_id and c.agent_id in ^agent_ids)
+    |> select([c], {c.id, c.agent_id})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  defp counted_messages(conversations) do
+    conversation_ids = Map.keys(conversations)
+
+    counted =
+      Message
+      |> where([m], m.conversation_id in ^conversation_ids)
+      |> where([m], m.role in [:operator, :tool])
+      |> select([m], %{
+        id: m.id,
+        conversation_id: m.conversation_id,
         role: m.role,
         sender_id: m.sender_id,
-        content: m.content,
         tool_failed: m.tool_failed,
         inserted_at: m.inserted_at
-      },
-      limit: @large_limit
-    )
-    |> Repo.all()
+      })
+      |> limit(@large_limit)
+      |> Repo.all()
+
+    interventions =
+      Message
+      |> where([m], m.conversation_id in ^conversation_ids)
+      |> where([m], m.role == :operator and m.sender_id in ["operator", "system:restart"])
+      |> select([m], {m.id, m.content})
+      |> limit(@large_limit)
+      |> Repo.all()
+      |> Map.new()
+
+    Enum.map(counted, fn message ->
+      message
+      |> Map.put(:content, Map.get(interventions, message.id, []))
+      |> Map.put(:agent_id, Map.fetch!(conversations, message.conversation_id))
+    end)
   end
 
   # -- per-story reports, off those reads ---------------------------------
