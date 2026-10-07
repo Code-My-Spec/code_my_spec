@@ -144,6 +144,15 @@ defmodule CodeMySpec.AgentPerformance.Page do
   # conversation so nothing downstream needs to look one up again. `:operator`
   # is the nudges and restarts interventions are counted from; `:tool` is the
   # tool results `ToolFailures` counts.
+  #
+  # The select is a plain map rather than a struct update: `Message` carries no
+  # `agent_id` field -- the id lives on the conversation -- so `%{m | agent_id:
+  # c.agent_id}` raises `KeyError` the moment a row matches. It never fired in
+  # the test that bounded this read, whose fixtures matched no messages at all;
+  # that test now builds messages these filters return. `agent_rows/2`,
+  # `interventions_by_story/2` and `project_interventions/3` read `:agent_id`,
+  # `:role`, `:sender_id`, `:content`, `:inserted_at` and `:tool_failed` off
+  # these maps, so those five are what the select carries.
   defp agent_messages(%Scope{active_project_id: nil}), do: []
 
   defp agent_messages(%Scope{} = scope) do
@@ -151,7 +160,14 @@ defmodule CodeMySpec.AgentPerformance.Page do
       join: c in assoc(m, :conversation),
       where: c.project_id == ^scope.active_project_id,
       where: m.role in [:operator, :tool] and not is_nil(c.agent_id),
-      select: %{m | agent_id: c.agent_id},
+      select: %{
+        agent_id: c.agent_id,
+        role: m.role,
+        sender_id: m.sender_id,
+        content: m.content,
+        tool_failed: m.tool_failed,
+        inserted_at: m.inserted_at
+      },
       limit: @large_limit
     )
     |> Repo.all()
