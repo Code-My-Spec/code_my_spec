@@ -38,6 +38,30 @@ defmodule CodeMySpec.BootVersion do
   end
 
   @doc """
+  Read-only identity of this serving VM and its boot checkout.
+
+  The boot revision is evidence recorded at startup, not a claim that every
+  module still has that revision after hot reload. Checkout HEAD is reported
+  separately and never substituted for an unknown boot revision.
+  """
+  @spec runtime_snapshot() :: map()
+  def runtime_snapshot do
+    {root, revision} = :persistent_term.get(@key, {nil, nil})
+    {uptime_ms, _} = :erlang.statistics(:wall_clock)
+
+    %{
+      os_pid: System.pid(),
+      node: to_string(node()),
+      vm_started_at:
+        DateTime.to_iso8601(DateTime.add(DateTime.utc_now(), -uptime_ms, :millisecond)),
+      boot_revision: revision,
+      checkout_head: if(is_binary(root), do: head(root)),
+      revision_basis: "captured_at_boot; hot-reloaded modules may differ",
+      application_version: to_string(Application.spec(:code_my_spec, :vsn))
+    }
+  end
+
+  @doc """
   What to call this build, in one string.
 
   The commit where there is one, the release version otherwise. A packaged
