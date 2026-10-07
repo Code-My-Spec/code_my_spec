@@ -767,8 +767,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
     if leaked_tool_call?(text), do: report_failure(state, @leaked_tool_call)
   end
 
-  defp leaked_tool_call?(text), do: String.contains?(text, "｜DSML｜")
-
   # A turn that finished and said nothing.
   #
   # This fell into the catch-all below and announced nothing at all, which is
@@ -805,6 +803,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
   end
 
   defp announce_outcome(_state, _result), do: :ok
+
+  defp leaked_tool_call?(text), do: String.contains?(text, "｜DSML｜")
 
   defp report_failure(state, reason) do
     state.on_event.(state.agent_id, %{event: :turn_failed, text: failure_text(reason)})
