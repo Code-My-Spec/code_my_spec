@@ -51,16 +51,57 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   """
   @spec assign(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, keyword()) ::
           {:ok, Issues.Issue.t()} | {:error, term()}
-  def assign(%Scope{} = scope, issue_id, working_copy_id, _opts \\ []) do
+  def assign(%Scope{} = scope, issue_id, working_copy_id, opts \\ []) do
     with issue when not is_nil(issue) <- Issues.get_issue(scope, issue_id),
          :ok <- in_project(scope, working_copy_id) do
-      case working_copy_id do
-        nil -> Repo.transaction(fn -> clear_binding(scope, issue) end)
-        copy_id -> Repo.transaction(fn -> fan_out(scope, issue, copy_id) end)
+      case {working_copy_id, Keyword.get(opts, :rework, false)} do
+        {nil, true} ->
+          {:error, "Corrections require an assigned working copy."}
+
+        {nil, false} ->
+          Repo.transaction(fn -> clear_binding(scope, issue) end)
+
+        {copy_id, true} ->
+          Repo.transaction(fn -> request_corrections(scope, issue, copy_id, opts) end)
+
+        {copy_id, false} ->
+          Repo.transaction(fn -> fan_out(scope, issue, copy_id) end)
       end
     else
       nil -> {:error, :not_found}
       error -> error
+    end
+  end
+
+  defp request_corrections(scope, issue, copy_id, opts) do
+    team = lock_team(scope, copy_id)
+    if team == [], do: Repo.rollback(:no_team)
+
+    issue = Repo.one!(from(i in Issues.Issue, where: i.id == ^issue.id, lock: "FOR UPDATE"))
+    reason = Keyword.get(opts, :reason)
+
+    unless is_binary(reason) and String.trim(reason) != "",
+      do: Repo.rollback("A correction request requires a reason.")
+
+    unless issue.status == :accepted and issue.awaiting_role == :qa and
+             issue.assigned_working_copy_id == copy_id,
+           do:
+             Repo.rollback("Corrections require an accepted issue awaiting QA on the same copy.")
+
+    if Enum.any?(team, &(not is_nil(open_issue_task(&1, issue.id)))),
+      do:
+        Repo.rollback(
+          "Finish or disposition the issue's open task before requesting corrections."
+        )
+
+    description =
+      issue.description <> "\n\nCorrection requested by main:\n" <> String.trim(reason)
+
+    with {:ok, noted} <- Issues.update_issue(scope, issue, %{description: description}),
+         {:ok, updated} <- Issues.set_awaiting_role(scope, noted, :coding) do
+      updated
+    else
+      {:error, error} -> Repo.rollback(error)
     end
   end
 
