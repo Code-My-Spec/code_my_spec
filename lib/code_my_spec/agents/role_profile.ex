@@ -134,7 +134,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
     list_requirements show_requirement list_personas get_persona
-    list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue
+    list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue update_issue
     list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
     withdraw_question
     call_mcp_server
@@ -205,7 +205,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_dependency remove_dependency
     list_requirements show_requirement
     list_rules list_questions withdraw_question
-    list_issues get_issue create_issue resolve_issue
+    list_issues get_issue create_issue resolve_issue update_issue
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks clear_problems list_problems
