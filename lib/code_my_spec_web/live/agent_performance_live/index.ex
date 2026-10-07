@@ -17,7 +17,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       values, the working copies and the agents for the selects (four queries,
       or one fewer with nothing to filter by) -- and assigns
       `:page_loading?`/`:loading?` true.
-    * The report itself is loaded behind `assign_async/3`, which runs each
+    * The report itself is loaded behind `start_async/3`, which runs each
       loader in its own task and sends the result to the LiveView when it is
       done. The join replies as soon as the frame is assigned; the numbers
       arrive a moment later, and `handle_async :report` puts them in the
@@ -70,7 +70,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
-  # The report's own read, in its own task. `assign_async/3` starts it and
+  # The report's own read, in its own task. `start_async/3` starts it and
   # replies to the join immediately; the result lands in `handle_async/3`
   # below. `async_page/2` is what would run if this page were ever inlined
   # into a bigger page's `assign_async` group.
@@ -142,11 +142,11 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   defp start_async_report(socket, scope, filter) do
     if connected?(socket) do
-      assign_async(socket, :report, fn -> {:ok, %{report: report(scope, filter)}} end,
+      start_async(socket, :report, fn -> %{report: report(scope, filter)} end,
         timeout: @report_timeout
       )
     else
-      # The first (HTTP) render has no task to deliver into -- `assign_async`
+      # The first (HTTP) render has no task to deliver into -- `start_async`
       # would leave it loading forever. It reads synchronously, which is the
       # old cost, and the connected mount replaces it before anyone can click.
       assign_report(socket, report(scope, filter))
