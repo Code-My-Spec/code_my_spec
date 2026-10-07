@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
 
   use CodeMySpecSpex.Case, async: false
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Repo
@@ -55,7 +56,7 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
   describe "the threshold is the ladder's length" do
     setup ctx do
       {:ok, agent} =
-        CodeMySpec.Agents.AgentsRepository.create_agent(ctx.scope, %{
+        AgentsRepository.create_agent(ctx.scope, %{
           provider: "anthropic",
           engine: :alloy,
           role: "coding",
@@ -105,6 +106,23 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
       assert %{held?: true} = Offers.standing(ctx.agent.id)[key],
              "a denial offer's standing is not read: standing/1 filters to work offers"
     end
+
+    test "two kinds under one subject key count on their own ladders", ctx do
+      key = "t-#{System.unique_integer([:positive])}"
+
+      # One ignored notification of a released task: its ladder is two, so it is
+      # not held back yet. The tap-out notice sharing the key is ignored once and
+      # its ladder is one, so it is. The shorter ladder must not be borrowed by
+      # the longer subject, nor the longer by the shorter.
+      ignored(ctx, :unblocked, "task", key, 1)
+
+      assert %{ignored: 1, held?: false} = Offers.standing(ctx.agent.id)[key]
+
+      ignored(ctx, :denial, "tap_out", key, 1)
+
+      assert %{held?: true} = Offers.standing(ctx.agent.id)[key],
+             "the denial notice's one rung did not hold its own subject back"
+    end
   end
 
   # An offer already settled as ignored, at the attempt the rung implies.
@@ -125,5 +143,4 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
     })
     |> Repo.insert!()
   end
-
 end

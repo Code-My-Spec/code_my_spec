@@ -78,7 +78,7 @@ defmodule CodeMySpec.Agents.Offers do
   # threshold: requirement work takes three ignored offers to be held back, a
   # released task two, a declined tap-out notice one. A kind not in this map
   # never escalates (resume, check-in, instruction), which is what replaced the
-  # hard-coded `kind: :work` match and keeps criterion 1742.
+  # hard-coded `kind: :work` match and keeps criterion 1821.
   @ladders %{
     {:work, "requirement"} => [:detail, :alternatives, :held_back],
     {:work, "questions"} => [:held_back],
@@ -348,33 +348,43 @@ defmodule CodeMySpec.Agents.Offers do
   Where each piece of work stands with this agent, for the escalation ladder
   (criteria 1739–1741): `%{subject_key => %{ignored: n, held?: boolean}}`,
   for requirement work offers and released-task offers (keyed by task id).
-  `ignored` counts ignored offers since the last claim; `held?` is three of
-  them, or a decline since.
+  `ignored` counts ignored offers since the last claim; `held?` is the kind's
+  own ladder length, or a decline since.
+
+  Only laddered kinds are read: the filter is in SQL, because an agent that has
+  been offered the same thing hundreds of times has hundreds of rows and this
+  runs on every offer decision. Which ladder a row belongs to is decided in
+  Elixir, per row, so two kinds sharing a subject key do not borrow each
+  other's length.
   """
   @spec standing(Ecto.UUID.t()) :: %{
           String.t() => %{ignored: non_neg_integer(), held?: boolean()}
         }
   def standing(agent_id) when is_binary(agent_id) do
-    laddered = Enum.map(Map.keys(@ladders), fn {kind, type} -> {kind, type} end)
+    kinds = Map.keys(@ladders) |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
+    types = Map.keys(@ladders) |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
 
     Offer
     |> where(
       [o],
       o.agent_id == ^agent_id and
+        o.kind in ^kinds and o.subject_type in ^types and
         o.status in [:claimed, :declined, :ignored]
     )
     |> order_by([o], desc: o.inserted_at)
     |> select([o], {o.subject_key, o.kind, o.subject_type, o.status})
     |> Repo.all()
-    |> Enum.filter(&laddered?(&1, laddered))
+    |> Enum.filter(&laddered?/1)
     |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2), elem(&1, 3)})
     |> Map.new(fn {key, settled} -> {key, streak(settled)} end)
   end
 
   def standing(_agent_id), do: %{}
 
-  defp laddered?({_key, kind, type, _status}, laddered),
-    do: Enum.any?(laddered, &(&1 == {kind, type}))
+  # The row's own kind is what decides whether it escalates: a kind not in
+  # `@ladders` never does (criterion 1821 — a restart or resume notice is not
+  # an escalation ladder), and a row is only laddered when its whole key is.
+  defp laddered?({_key, kind, type, _status}), do: Map.has_key?(@ladders, {kind, type})
 
   # Newest first, up to the last claim. `ignored` is how many settled ignored
   # offers stand since then; `held?` is that count reaching the subject's own
@@ -571,7 +581,7 @@ defmodule CodeMySpec.Agents.Offers do
   # The ladder's next rung, written on the offer it follows (criteria 2055-2057).
   # Every kind in @ladders escalates on its own ladder, read from the offer's
   # own attempt: a kind not in the map -- resume, check-in, instruction -- never
-  # does (criterion 1742).
+  # does (criterion 1821: a restart or resume notice never escalates).
   defp next_step(
          %{status: :ignored} = settled,
          %Offer{kind: kind, subject_type: type, attempt: attempt}
