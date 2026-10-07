@@ -1082,6 +1082,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # just created, and it is the one case this sweep used to walk straight
       # past.
       Agents.Work.resume_held_tasks(scope, copy_id)
+      Agents.CompletionHandoffs.recover(scope, copy_id)
 
       # The retry-time wakes of agents refused until later, which lived in the
       # process a restart took down.

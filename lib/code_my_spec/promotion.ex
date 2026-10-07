@@ -63,6 +63,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Files,
       CodeMySpec.Problems,
       CodeMySpec.Promotion.RunningCopy,
+      CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
@@ -147,7 +148,12 @@ defmodule CodeMySpec.Promotion do
           {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope, story_number, opts \\ []) do
     result =
-      with {:ok, story} <- story_to_promote(scope, story_number),
+      with :ok <-
+             CodeMySpec.Promotion.HandoffGate.check(
+               scope.active_project_id,
+               scope.active_working_copy_id
+             ),
+           {:ok, story} <- story_to_promote(scope, story_number),
            {:ok, running} <- running_copy(scope) do
         Lock.with_lock(running.project_id, fn -> promote_into(scope, running, story, opts) end)
         |> unlocked()

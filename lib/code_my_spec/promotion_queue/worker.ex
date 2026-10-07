@@ -60,6 +60,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def init({project_id, scope}) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "completion_handoffs:#{project_id}")
     Repository.requeue_gating(project_id)
     send(self(), :next)
 
@@ -115,6 +116,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def handle_info({:validation_hold, %{status: :released}}, %{phase: :idle} = state),
     do: next(state)
 
+  def handle_info({:completion_handoff, %{status: :acknowledged}}, %{phase: :idle} = state),
+    do: next(state)
+
   def handle_info(_message, state), do: {:noreply, state}
 
   # -- Build ------------------------------------------------------------------
@@ -135,6 +139,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
             case Repository.move(entry, :gating, %{}) do
               {:ok, reserved} -> build(%{state | reserved_entries: [reserved]}, [reserved])
               {:error, :validation_held} -> {:noreply, state}
+              {:error, :completion_handoff_pending} -> {:noreply, state}
               {:error, reason} -> could_not_build(state, reason)
             end
         end

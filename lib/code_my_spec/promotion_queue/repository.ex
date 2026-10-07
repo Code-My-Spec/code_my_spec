@@ -172,6 +172,13 @@ defmodule CodeMySpec.PromotionQueue.Repository do
              not CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(entry.project_id),
            do: Repo.rollback(:validation_held)
 
+        if status == :gating do
+          case CodeMySpec.Promotion.HandoffGate.check(entry.project_id, entry.working_copy_id) do
+            :ok -> :ok
+            {:error, _} -> Repo.rollback(:completion_handoff_pending)
+          end
+        end
+
         case entry |> Entry.status_changeset(Map.put(attrs, :status, status)) |> Repo.update() do
           {:ok, updated} -> updated
           {:error, error} -> Repo.rollback(error)

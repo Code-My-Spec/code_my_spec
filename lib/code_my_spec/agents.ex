@@ -635,7 +635,7 @@ defmodule CodeMySpec.Agents do
     import Ecto.Query, only: [from: 2]
 
     Repo.transaction(fn ->
-      agent = Repo.one!(from a in Agent, where: a.id == ^id, lock: "FOR UPDATE")
+      agent = Repo.one!(from(a in Agent, where: a.id == ^id, lock: "FOR UPDATE"))
       tasks = Enum.map(agent.tasks || [], &release_task(&1, DateTime.utc_now()))
 
       agent
@@ -1638,7 +1638,7 @@ defmodule CodeMySpec.Agents do
   # this kind escalates on.
   defp held_back_reason(%CodeMySpec.Agents.Offer{status: :declined, reason: reason})
        when is_binary(reason),
-    do: "refused: #{reason}"
+       do: "refused: #{reason}"
 
   defp held_back_reason(%CodeMySpec.Agents.Offer{kind: kind, subject_type: type} = offer),
     do: "offered #{held_back_count(kind, type, offer)} times and not taken"
@@ -2907,11 +2907,16 @@ defmodule CodeMySpec.Agents do
   # A message the agent has just picked up is not a step of a turn — it is the
   # end of the operator's ability to take it back, and the only thing to record
   # is that.
-  defp write_turn_event(_conversation, _agent, %{"kind" => "message_delivered", "ref" => ref})
+  defp write_turn_event(conversation, agent, %{"kind" => "message_delivered", "ref" => ref})
        when is_binary(ref) do
     case Conversations.pending_message_by_ref(ref) do
-      nil -> :ok
-      message -> with {:ok, _} <- Conversations.set_delivery(message, :delivered), do: :ok
+      %{conversation_id: conversation_id} = message when conversation_id == conversation.id ->
+        with {:ok, _} <- Conversations.set_delivery(message, :delivered) do
+          CodeMySpec.Agents.CompletionHandoffs.delivered(message.id, agent)
+        end
+
+      _ ->
+        :ok
     end
   end
 

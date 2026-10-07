@@ -179,6 +179,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
   component(CodeMySpec.McpServers.MainAgent.Tools.ValidationHold)
+  component(CodeMySpec.McpServers.MainAgent.Tools.CompletionHandoff)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListOffers)
   component(CodeMySpec.McpServers.MainAgent.Tools.ResetDocPackages)

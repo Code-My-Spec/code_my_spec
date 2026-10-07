@@ -56,6 +56,14 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     [
       "Check-in. " <> verdict(digest, needs),
       needs_block(needs, mine),
+      case digest.completions do
+        [] ->
+          nil
+
+        rows ->
+          "Completions awaiting your acknowledgement:\n" <>
+            Enum.map_join(rows, "\n", &CodeMySpec.Agents.CompletionHandoffs.message/1)
+      end,
       work(Keyword.get(opts, :work?, false)),
       agents(digest.work, Keyword.get(opts, :self), MapSet.new(stalled, & &1.agent_id)) <>
         off(digest.off),
