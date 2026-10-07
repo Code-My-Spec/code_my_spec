@@ -1,0 +1,441 @@
+defmodule CodeMySpec.AgentPerformance.Page do
+  @moduledoc """
+  The performance page's whole read, in a fixed number of queries.
+
+  `Index.load/1` used to ask `AgentPerformance.story_report/2` once per story
+  and `team_first_pass_rate/3` once per team, and each of those re-read the
+  project's sessions, agents, attempts and turns from scratch. On a real
+  project (166 stories, 180 agents) that was ~13,000 queries and ~21s, and the
+  LiveView join never completed: the chart and the filter form were
+  unreachable behind it (issue 844907e0).
+
+  Nothing here is a different answer to the same question. The per-story and
+  per-team functions still exist, still mean what they meant, and are still
+  what the show page and the criteria use. This reads the same tables once
+  each, groups them in memory, and hands back the shape `Index` renders:
+
+    * `stories` -- the project's active stories,
+    * `reports` -- `%{story_id => story_report}`,
+    * `teams` -- `%{working_copy_id => first_pass_rate}`,
+    * `summary` -- the project-wide summary, off the same reads,
+    * `agents` -- every agent, for the page's agent filter.
+
+  The cost is a constant number of queries whatever the project's size: the
+  stories, the sessions, the agents, the QA attempts, the turns, the agent
+  messages and the app restarts, plus `OfferHealth`'s and the open questions'
+  own reads. What is *not* here is a read per story or per agent -- that shape
+  is the regression, and a test bounds the count so it cannot come back
+  (`the_page_costs_queries_for_stories_not_one_each_test.exs`).
+  """
+
+  import Ecto.Query
+
+  alias CodeMySpec.AgentPerformance.AgentTurn
+  alias CodeMySpec.AgentPerformance.OfferHealth
+  alias CodeMySpec.AgentPerformance.Stage
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.Story
+  alias CodeMySpec.Users.Scope
+
+  @large_limit 100_000
+
+  @type page :: %{
+          stories: [Story.t()],
+          reports: %{integer() => map()},
+          teams: %{Ecto.UUID.t() => float() | nil},
+          summary: map(),
+          agents: [Agent.t()]
+        }
+
+  @doc "Everything the performance page renders, read in a fixed number of queries."
+  @spec load(Scope.t()) :: page()
+  def load(%Scope{} = scope) do
+    stories = list_stories(scope)
+    agents = list_agents(scope)
+    attempts = project_attempts(scope)
+    turns = project_turns(scope)
+    messages = agent_messages(scope)
+    tasks = project_tasks(scope, stories, agents)
+
+    %{
+      stories: stories,
+      agents: agents,
+      reports: reports(stories, tasks, agents, attempts, messages, turns),
+      teams: teams(agents, attempts),
+      summary: summary(scope, agents, stories, messages)
+    }
+  end
+
+  @doc """
+  Every agent this project has, for the page's agent filter (criteria 2051,
+  2053) and for the summary's own rows. Scoped to the project the same way
+  `Agents.list_agents/1` is.
+  """
+  @spec list_agents(Scope.t()) :: [Agent.t()]
+  def list_agents(%Scope{active_project_id: nil}), do: []
+
+  def list_agents(%Scope{} = scope) do
+    Agent
+    |> where([a], a.project_id == ^scope.active_project_id)
+    |> order_by([a], desc: a.inserted_at)
+    |> Repo.all()
+  end
+
+  @doc "Every story this project holds, for building a performance report over all of them."
+  @spec list_stories(Scope.t()) :: [Story.t()]
+  def list_stories(%Scope{} = scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} -> stories
+      stories when is_list(stories) -> stories
+    end
+  end
+
+  # -- the page's own reads, one query apiece ------------------------------
+
+  # `CycleTime.story/2` reads a story's tasks off its sessions and, separately,
+  # off its agents -- two whole listings per story. Both are project-wide reads
+  # underneath, so they are read once here and grouped by story.
+  defp project_tasks(scope, stories, agents) do
+    story_ids = MapSet.new(stories, & &1.id)
+    component_ids = stories |> Enum.map(& &1.component_id) |> Enum.reject(&is_nil/1) |> MapSet.new()
+
+    session_tasks =
+      from(s in Session, where: s.project_id == ^scope.active_project_id)
+      |> Repo.all()
+      |> Enum.flat_map(& &1.tasks)
+
+    (session_tasks ++ Enum.flat_map(agents, & &1.tasks))
+    |> Enum.filter(&relevant_task?(&1, story_ids, component_ids))
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp relevant_task?(task, story_ids, component_ids) do
+    (not is_nil(task.story_id) and MapSet.member?(story_ids, task.story_id)) or
+      (not is_nil(task.component_id) and MapSet.member?(component_ids, task.component_id))
+  end
+
+  defp project_attempts(%Scope{active_project_id: nil}), do: []
+
+  defp project_attempts(%Scope{} = scope) do
+    QaAttempt
+    |> join(:inner, [a], s in Story, on: s.id == a.story_id)
+    |> where([a, s], s.project_id == ^scope.active_project_id)
+    |> order_by([a], desc: a.submitted_at, desc: a.id)
+    |> preload(:invalidations)
+    |> Repo.all()
+    |> Enum.reject(&match?([_ | _], &1.invalidations))
+  end
+
+  defp project_turns(%Scope{active_account_id: nil}), do: []
+
+  defp project_turns(%Scope{} = scope) do
+    from(t in AgentTurn, where: t.account_id == ^scope.active_account_id)
+    |> Repo.all()
+  end
+
+  # One read of every agent's own transcript, carrying the agent id from the
+  # conversation so nothing downstream needs to look one up again. `:operator`
+  # is the nudges and restarts interventions are counted from; `:tool` is the
+  # tool results `ToolFailures` counts.
+  defp agent_messages(%Scope{active_project_id: nil}), do: []
+
+  defp agent_messages(%Scope{} = scope) do
+    from(m in Message,
+      join: c in assoc(m, :conversation),
+      where: c.project_id == ^scope.active_project_id,
+      where: m.role in [:operator, :tool] and not is_nil(c.agent_id),
+      select: %{m | agent_id: c.agent_id},
+      limit: @large_limit
+    )
+    |> Repo.all()
+  end
+
+  # -- per-story reports, off those reads ---------------------------------
+
+  defp reports(stories, tasks, agents, attempts, messages, turns) do
+    attempts_by_story = Enum.group_by(attempts, & &1.story_id)
+    turns_by_story = Enum.group_by(turns, & &1.story_id)
+    interventions_by_story = interventions_by_story(agents, messages)
+
+    Map.new(stories, fn story ->
+      story_tasks = Map.get(tasks, story.id, [])
+
+      {story.id,
+       %{
+         cycle_time: cycle_time(story, story_tasks),
+         qa_rounds: qa_rounds(Map.get(attempts_by_story, story.id, [])),
+         interventions: Map.get(interventions_by_story, story.id, []),
+         tokens: tokens(Map.get(turns_by_story, story.id, []))
+       }}
+    end)
+  end
+
+  # `CycleTime.story/2`'s answer, from the grouping this already has.
+  defp cycle_time(story, tasks) do
+    promoted_at = promoted_at(story)
+
+    %{
+      status: if(is_nil(story.promoted_version), do: :in_flight, else: :finished),
+      released_at: released_at(tasks, story),
+      promoted_at: promoted_at,
+      total_seconds: total_seconds(tasks, story, promoted_at),
+      stages: stage_seconds(tasks),
+      blocked: Enum.flat_map(tasks, &blocked_spans/1)
+    }
+  end
+
+  defp promoted_at(%Story{promoted_version: nil}), do: nil
+  defp promoted_at(%Story{updated_at: at}), do: at
+
+  defp released_at([], %Story{inserted_at: at}), do: at
+
+  defp released_at(tasks, _story) do
+    tasks |> Enum.map(& &1.started_at) |> Enum.reject(&is_nil/1) |> Enum.min(DateTime, fn -> nil end)
+  end
+
+  defp total_seconds([], _story, _promoted_at), do: nil
+
+  defp total_seconds(tasks, story, promoted_at) do
+    case released_at(tasks, story) do
+      nil -> nil
+      from -> DateTime.diff(promoted_at || DateTime.utc_now(), from)
+    end
+  end
+
+  defp stage_seconds(tasks) do
+    tasks
+    |> Enum.group_by(&Stage.of(&1.session_type))
+    |> Map.new(fn {stage, stage_tasks} -> {stage, Enum.sum(Enum.map(stage_tasks, &active_seconds/1))} end)
+  end
+
+  defp active_seconds(%{started_at: nil}), do: 0
+
+  defp active_seconds(task) do
+    finished = task.completed_at || DateTime.utc_now()
+    total = DateTime.diff(finished, task.started_at)
+    blocked = task |> blocked_spans() |> Enum.map(& &1.seconds) |> Enum.sum()
+    max(total - blocked, 0)
+  end
+
+  defp blocked_spans(%{blocked_at: nil}), do: []
+
+  defp blocked_spans(task) do
+    ended = task.blocker_resolved_at || DateTime.utc_now()
+
+    [
+      %{
+        cause: task.blocker_type,
+        waiting_on: waiting_on(task.blocker_type),
+        seconds: DateTime.diff(ended, task.blocked_at),
+        resolved?: not is_nil(task.blocker_resolved_at)
+      }
+    ]
+  end
+
+  defp waiting_on(:issue), do: :another_team
+  defp waiting_on(_cause), do: :user
+
+  # `QaRounds.story/2`'s answer, from the story's slice of the project's
+  # attempts. That function reverses `Qa.list_qa_attempts/2`'s newest-first
+  # order, so its first is the earliest attempt -- and so is this one.
+  defp qa_rounds([]), do: %{measured?: false, rounds: 0, first_time_pass?: false, findings: []}
+
+  defp qa_rounds(attempts) do
+    ordered = Enum.sort_by(attempts, & &1.submitted_at, {:asc, DateTime})
+
+    %{
+      measured?: true,
+      rounds: length(ordered),
+      first_time_pass?: hd(ordered).status == :pass,
+      findings: ordered |> Enum.filter(&(&1.status != :pass)) |> Enum.flat_map(&observations/1)
+    }
+  end
+
+  defp observations(%QaAttempt{scenarios: scenarios}) do
+    scenarios
+    |> Enum.filter(&(&1.status != :pass))
+    |> Enum.map(& &1.observation)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # `Interventions.story/2` attributes an intervention by the agent's own
+  # `story_id` at read time: the story the agent holds now, not the story the
+  # message happened to land beside. An agent between stories therefore counts
+  # against none, and is counted at project level instead.
+  defp interventions_by_story(agents, messages) do
+    by_agent = Enum.group_by(messages, & &1.agent_id)
+
+    agents
+    |> Enum.reject(&is_nil(&1.story_id))
+    |> Enum.group_by(& &1.story_id)
+    |> Map.new(fn {story_id, holders} ->
+      {story_id,
+       holders
+       |> Enum.flat_map(&Map.get(by_agent, &1.id, []))
+       |> Enum.flat_map(&classify/1)}
+    end)
+  end
+
+  defp classify(%{role: :operator, sender_id: "operator"} = message),
+    do: [%{at: message.inserted_at, kind: :nudge, reason: reason_text(message)}]
+
+  defp classify(%{role: :operator, sender_id: "system:restart"} = message),
+    do: [%{at: message.inserted_at, kind: :restart, reason: reason_text(message)}]
+
+  defp classify(_message), do: []
+
+  defp reason_text(%{content: parts}) do
+    parts
+    |> Enum.filter(&(Map.get(&1, "type") == "text"))
+    |> Enum.map_join("\n", &Map.get(&1, "text", ""))
+  end
+
+  # `TokenUsage.for_story/2`, off the project's turns rather than a read each.
+  defp tokens(turns) do
+    with_usage = Enum.filter(turns, &(&1.input_tokens || &1.output_tokens))
+
+    %{
+      total: total_in_out(with_usage),
+      by_provider:
+        with_usage
+        |> Enum.group_by(& &1.provider)
+        |> Enum.reject(fn {provider, _rows} -> is_nil(provider) end)
+        |> Map.new(fn {provider, rows} -> {provider, total_in_out(rows)} end)
+    }
+  end
+
+  defp total_in_out([]), do: :unknown
+
+  defp total_in_out(turns) do
+    Enum.reduce(turns, 0, fn t, acc -> acc + (t.input_tokens || 0) + (t.output_tokens || 0) end)
+  end
+
+  # -- the teams' first-pass rates ----------------------------------------
+
+  # `QaRounds.team_first_pass_rate/3` reads every project attempt once per
+  # team. One pass over the attempts, grouped by the submitting agent's own
+  # working copy, gives every team its rate at once. The denominator is a
+  # team's stories, so one attempt per story -- the earliest, win or lose.
+  defp teams(agents, attempts) do
+    copies = Map.new(agents, &{&1.id, &1.working_copy_id})
+
+    attempts
+    |> Enum.group_by(&Map.get(copies, &1.agent_id))
+    |> Enum.reject(fn {working_copy_id, _attempts} -> is_nil(working_copy_id) end)
+    |> Map.new(fn {working_copy_id, group} -> {working_copy_id, first_pass_rate(group)} end)
+  end
+
+  defp first_pass_rate(attempts) do
+    firsts =
+      attempts
+      |> Enum.group_by(& &1.story_id)
+      |> Enum.map(fn {_story_id, story_attempts} ->
+        Enum.min_by(story_attempts, & &1.submitted_at, DateTime)
+      end)
+
+    case firsts do
+      [] -> nil
+      list -> Enum.count(list, &(&1.status == :pass)) / length(list)
+    end
+  end
+
+  # -- the project-wide summary -------------------------------------------
+
+  defp summary(scope, agents, stories, messages) do
+    %{
+      agents: agent_rows(agents, messages),
+      offer_health: OfferHealth.by_role(scope, nil),
+      throughput_by_team: throughput(stories),
+      project_level_interventions: project_interventions(scope, agents, messages),
+      project_level_blocked: project_blocked(scope)
+    }
+  end
+
+  # `ToolFailures.for_agent/2` and `Reliability.for_agent/2` each re-read one
+  # conversation and one agent row; both are already in hand.
+  defp agent_rows(agents, messages) do
+    by_agent = messages |> Enum.filter(&(&1.role == :tool)) |> Enum.group_by(& &1.agent_id)
+
+    Enum.map(agents, fn agent ->
+      calls = Map.get(by_agent, agent.id, [])
+      failed = Enum.filter(calls, & &1.tool_failed)
+
+      %{
+        agent_id: agent.id,
+        role: agent.role,
+        provider: agent.provider,
+        tool_failures: %{
+          total_calls: length(calls),
+          failed_calls: length(failed),
+          failure_rate: rate(failed, calls),
+          by_tool: failed |> Enum.map(&tool_name/1) |> Enum.frequencies()
+        },
+        reliability: reliability(agent)
+      }
+    end)
+  end
+
+  defp rate(_failed, []), do: nil
+  defp rate(failed, calls), do: length(failed) / length(calls)
+
+  defp tool_name(%{sender_id: "agent:" <> name}), do: name
+  defp tool_name(_message), do: "unknown"
+
+  # `Reliability.for_agent/2` fetches the agent row this already has.
+  defp reliability(%{provider_refusal: cause, provider_refused_at: %DateTime{} = at})
+       when is_binary(cause),
+       do: [%{at: at, cause: cause}]
+
+  defp reliability(_agent), do: []
+
+  # `Throughput.by_team/2` filters the project's stories, which are in hand.
+  defp throughput(stories) do
+    stories
+    |> Enum.filter(&(not is_nil(&1.promoted_version)))
+    |> Enum.group_by(& &1.working_copy_id)
+    |> Map.new(fn {working_copy_id, promoted} -> {working_copy_id, length(promoted)} end)
+  end
+
+  # `Interventions.project_level/1`: the agents holding no story, plus the app
+  # restarts that named no agent at all. The agents and their messages are in
+  # hand; the restarts are one read.
+  defp project_interventions(scope, agents, messages) do
+    by_agent = Enum.group_by(messages, & &1.agent_id)
+
+    held =
+      agents
+      |> Enum.filter(&is_nil(&1.story_id))
+      |> Enum.flat_map(&Map.get(by_agent, &1.id, []))
+      |> Enum.flat_map(&classify/1)
+
+    restarts =
+      scope
+      |> Agents.list_app_restarts_without_story()
+      |> Enum.map(&%{at: &1.inserted_at, kind: :restart, reason: &1.reason})
+
+    Enum.sort_by(held ++ restarts, & &1.at, DateTime)
+  end
+
+  # `BlockedTime.project_level/1` reads the main agent's own open questions --
+  # the same listing `StopDecision.wake/2` obeys, rather than a second opinion
+  # over `question_requests`/`permission_requests`.
+  defp project_blocked(scope) do
+    scope
+    |> MainAgent.list_open_questions()
+    |> Enum.map(fn open ->
+      %{
+        cause: if(open.kind == :permission, do: :tap_out, else: :question),
+        waiting_on: if(open.holder == "main_agent", do: :main_agent, else: :user),
+        seconds: DateTime.diff(DateTime.utc_now(), open.asked_at),
+        resolved?: false
+      }
+    end)
+  end
+end
