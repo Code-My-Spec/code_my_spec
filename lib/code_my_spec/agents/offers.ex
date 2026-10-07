@@ -462,7 +462,7 @@ defmodule CodeMySpec.Agents.Offers do
 
   # A refusal ends it (criterion 2055): declining a kind that has a ladder
   # holds its subject back from this agent alone, so the refusal is written on
-  # the ladder's terminal rung. `tell_main_held_back/3` reports that rung once,
+  # the ladder's terminal rung. `tell_main_held_back/2` reports that rung once,
   # with the reason (criterion 2056) -- which is why a refusal does not also
   # send a notice of its own. A kind with no ladder never escalates, so it is
   # recorded as told, the way it always was.
@@ -513,12 +513,37 @@ defmodule CodeMySpec.Agents.Offers do
     end
   end
 
-  @doc "This agent's offers settled at or after `at`."
-  @spec settled_since(Ecto.UUID.t(), DateTime.t()) :: [Offer.t()]
-  def settled_since(agent_id, %DateTime{} = at) do
+  @doc """
+  This agent's offers that have reached `held_back` and not yet been reported
+  to main (criterion 2056).
+
+  Not a time window: an ignored offer is settled inside `settle_turn/1`, so
+  "settled since" catches it, but a *refused* offer was settled earlier in the
+  same turn by the agent's own `reject_offer/4` -- before the turn end captures
+  its timestamp -- and a window would drop exactly the refusal the escalation
+  exists to carry. Reported offers are stamped `note: "told_main"`, so each
+  reaches main once and a later turn does not repeat it. `note` is free here:
+  it carries text only for the `:n_a` kinds, which never reach `held_back`.
+  """
+  @spec unreported_held_back(Ecto.UUID.t()) :: [Offer.t()]
+  def unreported_held_back(agent_id) do
     Offer
-    |> where([o], o.agent_id == ^agent_id and o.outcome_at >= ^at)
+    |> where(
+      [o],
+      o.agent_id == ^agent_id and o.next_step == "held_back" and
+        (is_nil(o.note) or o.note != "told_main")
+    )
     |> Repo.all()
+  end
+
+  @doc "Mark `offer` as reported to main, so the escalation is not repeated."
+  @spec mark_reported(Offer.t()) :: :ok
+  def mark_reported(%Offer{} = offer) do
+    offer
+    |> Ecto.Changeset.change(note: "told_main")
+    |> Repo.update()
+
+    :ok
   end
 
   defp settle([], _agent), do: :ok
