@@ -128,7 +128,8 @@ defmodule CodeMySpec.CodeMode do
       |> Bindings.install(
         catalog,
         Keyword.get(opts, :out_of_scope, []),
-        Keyword.get(opts, :agent_kind)
+        Keyword.get(opts, :agent_kind),
+        Keyword.get(opts, :carried, :all)
       )
 
     {values, _lua} = Lua.eval!(lua, script)

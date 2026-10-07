@@ -84,14 +84,17 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
         {:ok, context}
       end
 
-      then_ "collecting an answer is offered even with no question outstanding", context do
+      then_ "the answer is offered as a reply reaching the agent, with no question outstanding",
+            context do
         reason = context.response["reason"] || ""
 
-        assert reason =~ "check_answer",
+        assert reason =~ "the reply reaches you",
                "unconditional means the offer does not depend on a question " <>
                  "existing — which is the point, because a question that exists " <>
                  "and cannot be closed used to hold the top of this menu forever. " <>
-                 "Got:\n#{reason}"
+                 "It says the behaviour, not a tool: answers are pushed to an agent " <>
+                 "we run, which carries no tool to poll with, and naming one primed " <>
+                 "an agent to call something it did not have (e809c0db). Got:\n#{reason}"
 
         {:ok, context}
       end

@@ -70,7 +70,12 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
             result =
               CodeMode.eval(Layer.catalog(scope, allowed, caller(params, frame)), script,
                 out_of_scope: Layer.out_of_scope(allowed),
-                agent_kind: kind
+                agent_kind: kind,
+                # What this caller carries, so a refusal can say whether "call
+                # it directly" is advice it can take (`bd699695`). `nil` from
+                # `agent_scope/2` means no restriction, the same meaning it has
+                # everywhere else.
+                carried: allowed || :all
               )
 
             {:reply, render(result, scope, params), frame}

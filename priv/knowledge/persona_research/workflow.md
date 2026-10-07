@@ -25,7 +25,8 @@ intake interview, no JTBD).
 Personas are **project-scoped**. `create_persona` and
 `link_persona_to_story` need the scope to carry an `active_project_id`.
 If `create_persona` returns `missing_active_project`, the working
-directory isn't linked — run `init_project` to bind it, then retry.
+directory isn't linked, and binding it is the main agent's one-time setup
+act, not this task's — stop and say so, then retry once it is linked.
 
 ## Reuse before research
 

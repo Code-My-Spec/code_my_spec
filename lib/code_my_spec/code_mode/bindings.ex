@@ -45,14 +45,15 @@ defmodule CodeMySpec.CodeMode.Bindings do
   misspelling. An agent told that about a tool it knows exists tries variations
   of the name instead of learning it is not for it.
   """
-  @spec install(Lua.t(), Catalog.t(), [String.t()], String.t() | nil) :: Lua.t()
-  def install(lua, catalog, out_of_scope, kind \\ nil) do
+  @spec install(Lua.t(), Catalog.t(), [String.t()], String.t() | nil, [String.t()] | :all) ::
+          Lua.t()
+  def install(lua, catalog, out_of_scope, kind \\ nil, carried \\ :all) do
     Process.put(@printed, [])
 
     lua
     |> capture_print()
     |> bind_tools(catalog)
-    |> explain_exclusions()
+    |> explain_exclusions(carried)
     |> explain_scope(out_of_scope, kind)
   end
 
@@ -100,17 +101,42 @@ defmodule CodeMySpec.CodeMode.Bindings do
   # Absence alone produces "attempt to call a nil value", which reads like a
   # misspelling — and an agent that reads it tries variations instead of
   # learning that the tool is direct-call only.
-  defp explain_exclusions(lua) do
+  defp explain_exclusions(lua, carried) do
     Enum.reduce(Catalog.excluded(), lua, fn name, acc ->
       reason = Catalog.exclusion_reason(name)
 
       Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
-        raise Lua.RuntimeException,
-              "#{name} cannot be called from a script: #{reason}. Call it directly as a tool.\n\n" <>
-                stale_list_note(name)
+        raise Lua.RuntimeException, exclusion_message(name, reason, carried)
       end)
     end)
   end
+
+  # Whether "call it directly" is advice this caller can take.
+  #
+  # The exclusion rule is right and the refusal is right; the advice attached to
+  # it was wrong for anyone whose role does not carry the tool (`bd699695`). A
+  # QA agent was told to call `list_user_questions` directly, then told that an
+  # `Unknown tool` from it meant its connection was stale and to reconnect --
+  # but its role withholds the tool on purpose, so both halves sent it looking
+  # for a fault in a system behaving correctly. It had no `/mcp` to give either.
+  #
+  # `carried` is the caller's grant, the same answer `run_script` used to decide
+  # what to bind. `:all` is a caller with no role scoped away -- a person, an
+  # operator session -- and keeps the old wording, which is true for them.
+  defp exclusion_message(name, reason, carried) do
+    if carried?(name, carried) do
+      "#{name} cannot be called from a script: #{reason}. Call it directly as a tool.\n\n" <>
+        stale_list_note(name)
+    else
+      "#{name} cannot be called from a script: #{reason}. " <>
+        "It is also not a tool this kind of agent carries, so calling it directly " <>
+        "will be refused too -- it belongs to another role. " <>
+        "If you need what it does, say so rather than working around it."
+    end
+  end
+
+  defp carried?(_name, :all), do: true
+  defp carried?(name, carried) when is_list(carried), do: name in carried
 
   # The one case where "call it directly" is false, and the caller has no way to
   # tell.

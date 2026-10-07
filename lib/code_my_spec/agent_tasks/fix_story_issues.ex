@@ -69,7 +69,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssues do
 
     #{names}
 
-    Use the `resolve_issue` MCP tool with the issue `id` and `resolution` for each one you fix.
+    Use the `resolve_issue` MCP tool with the issue `issue_id` and `resolution` for each one you fix.
     """
   end
 

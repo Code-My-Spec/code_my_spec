@@ -36,6 +36,14 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingTest do
     %{scope: scope}
   end
 
+  # A second checkout on the same project, as a harness joining would mint one.
+  defp issue_scope(scope, label) do
+    {:ok, copy} =
+      WorkingCopies.issue(scope, nil, label: label, device: device_fixture(scope))
+
+    %{id: copy.id, scope: %{scope | active_working_copy_id: copy.id}}
+  end
+
   defp red_spec(scope, story) do
     [criterion | _] = story.criteria
     path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
@@ -116,5 +124,61 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingTest do
     assert {:error, %{reason: reason}} = Promotion.gate(scope, @head)
     assert reason =~ "1 spex"
     assert reason =~ path
+  end
+
+  # `02796b61`. `gate/3` passes the scope it was handed straight to
+  # `blocking_problems/2`, and with no copy on that scope the problem read
+  # falls back to `WorkingCopies.default_id/1`. So a caller with no working
+  # copy is charged the *default* copy's findings: findings that belong to
+  # some other checkout, which this caller cannot see and must not answer
+  # for. On the box this was found, promoting from a scope with no copy
+  # read `devops-qa-b9`'s problems and refused a promotion that had nothing
+  # to do with them.
+  #
+  # The gate has to resolve the copy it is judging, and with none there is
+  # nothing to judge: refuse, naming what is missing, rather than silently
+  # judging a copy the caller never mentioned.
+  describe "a scope with no working copy" do
+    test "is refused, naming the missing copy", %{scope: scope} do
+      scopeless = %{scope | active_working_copy_id: nil}
+
+      assert {:error, %{reason: reason}} = Promotion.gate(scopeless, @head),
+             "the gate judged a copy the caller never named. With no working copy " <>
+               "on the scope there is nothing to gate, so this has to refuse " <>
+               "rather than fall back to some other checkout's problems."
+
+      assert reason =~ "working copy" or reason =~ "checkout",
+             "the refusal does not say what is missing, so an agent that has " <>
+               "one scope shape and needs another cannot tell what to change. " <>
+               "Got:\n#{reason}"
+    end
+
+    test "is not charged another copy's problems", %{scope: scope} do
+      # Another checkout's blocking finding, which the fallback reads because
+      # `default_id/1` is a pure function of the project id. The scopeless
+      # caller must not be refused over it: it is not this caller's copy and
+      # `named_copy/1` would name a copy that is not the caller's either.
+      theirs =
+        issue_scope(scope, "a checkout the caller never named")
+
+      problem_fixture(%{theirs.scope | active_working_copy_id: theirs.id}, %{
+        source: "compiler",
+        source_type: :static_analysis,
+        severity: :warning,
+        message: "a warning that belongs to the other checkout",
+        category: "warning",
+        rule: nil
+      })
+
+      scopeless = %{scope | active_working_copy_id: nil}
+
+      assert {:error, %{reason: reason}} = Promotion.gate(scopeless, @head),
+             "a promotion with no working copy on its scope was judged anyway."
+
+      refute reason =~ "a warning that belongs to the other checkout",
+             "the refusal is reading another checkout's problems. That is the " <>
+               "`02796b61` bug: a caller is refused over findings on a copy it " <>
+               "never named and cannot fix.\n\nGot:\n#{reason}"
+    end
   end
 end

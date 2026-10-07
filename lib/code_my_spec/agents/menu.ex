@@ -533,18 +533,28 @@ defmodule CodeMySpec.Agents.Menu do
   # refusal caused by something else and never causes one — an unanswered
   # question that could refuse a stop would pin the agent in the loop with no
   # work available to escape.
+  # Stated as behaviour, not as a tool to call.
+  #
+  # These clauses used to name `check_answer` and `list_user_questions`
+  # unconditionally, in the nudge an agent reads every turn. Answers are pushed
+  # to an agent we run, so it has nothing to poll for and carries neither \u2014 an
+  # agent primed by the sentence called one, was refused, and stopped
+  # (`e809c0db`). Carrying them instead (`3bc106f6`) made the sentence true and
+  # paid two schemas on every turn of every role.
+  #
+  # The reply reaching the agent is the behaviour, and it is true of both kinds
+  # of agent; naming the tool is the part that was true of only one. So the
+  # offer says what happens and no longer says what to call.
   defp answer_offer(0) do
-    "\n\nIf a question you asked has been answered, `check_answer` has the reply."
+    "\n\nIf a question you asked has been answered, the reply reaches you."
   end
 
   defp answer_offer(1) do
-    "\n\n1 question is open and waiting on the user — `list_user_questions` shows it, " <>
-      "`check_answer` collects a reply once it lands."
+    "\n\n1 question is open and waiting on the user. The reply reaches you once it lands."
   end
 
   defp answer_offer(n) do
-    "\n\n#{n} questions are open and waiting on the user — `list_user_questions` shows them, " <>
-      "`check_answer` collects a reply once one lands."
+    "\n\n#{n} questions are open and waiting on the user. Each reply reaches you once it lands."
   end
 
   # Resolved from the working copy, the same asymmetry `ask_user` works around:

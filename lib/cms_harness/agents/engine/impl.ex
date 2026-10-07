@@ -756,8 +756,15 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # message is complete, so without this the answer exists only as tokens this
   # engine drops — and a turn that ran perfectly left a transcript holding the
   # question and no reply.
+  # DeepSeek on DeepInfra sometimes returns a tool call as text in its own
+  # markup instead of a structured call: nothing runs and the turn ends on it,
+  # leaving the agent idle. That turn failed, so it is reported as one and
+  # re-offered.
+  @leaked_tool_call "your tool call came back as text (<｜DSML｜ …>) and did not run; make it again as a real tool call"
+
   defp announce_outcome(state, {:ok, %{text: text}}) when is_binary(text) and text != "" do
     state.on_event.(state.agent_id, %{event: :message, text: text})
+    if leaked_tool_call?(text), do: report_failure(state, @leaked_tool_call)
   end
 
   # A turn that finished and said nothing.
@@ -796,6 +803,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
   end
 
   defp announce_outcome(_state, _result), do: :ok
+
+  defp leaked_tool_call?(text), do: String.contains?(text, "｜DSML｜")
 
   defp report_failure(state, reason) do
     state.on_event.(state.agent_id, %{event: :turn_failed, text: failure_text(reason)})
