@@ -40,6 +40,13 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   use CodeMySpecWeb, :live_view
 
+  # The frame replies in milliseconds; this bounds how long the *report* may
+  # take before the page stops promising one. The real project's report reads in
+  # 0.5-1.4s, so this is generous rather than tight -- it exists so that a task
+  # that queue-waits forever shows a sentence instead of "Loading..." (issue
+  # b118c546), not to cut off a slow-but-working read.
+  @report_timeout 20_000
+
   alias CodeMySpec.AgentPerformance
   alias CodeMySpec.AgentPerformance.Page
   alias CodeMySpec.AgentPerformance.Stage
@@ -72,15 +79,19 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     {:noreply, assign_report(socket, report)}
   end
 
-  # The read failed. The frame -- including the selects -- stays up and the
-  # page says so, rather than going blank or rendering a stale report from
-  # another filter as if it were this one's.
+  # The read failed, or took longer than this page is willing to make a person
+  # wait. The frame -- including the selects -- stays up and the page says so,
+  # rather than spinning forever or rendering a stale report from another filter
+  # as if it were this one's.
+  #
+  # The timeout is not decoration: QA attempt 4 (issue b118c546) watched
+  # "Loading..." for 90s+ on the real 188-agent project because the failure it
+  # actually hit was a `DBConnection` queue timeout *inside* the task -- an exit
+  # that, without this, leaves the assign loading and the page silent. A task
+  # taking this long is not going to finish usefully, and a person is better
+  # served by a sentence than by a promise.
   def handle_async(:report, {:exit, reason}, socket) do
-    {:noreply,
-     socket
-     |> assign(:page_loading?, false)
-     |> assign(:loading?, false)
-     |> assign(:report_error, inspect(reason))}
+    {:noreply, report_failed(socket, reason)}
   end
 
   @impl true
@@ -131,9 +142,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   defp start_async_report(socket, scope, filter) do
     if connected?(socket) do
-      assign_async(socket, :report, fn ->
-        {:ok, %{report: report(scope, filter)}}
-      end)
+      assign_async(socket, :report, fn -> {:ok, %{report: report(scope, filter)}} end,
+        timeout: @report_timeout
+      )
     else
       # The first (HTTP) render has no task to deliver into -- `assign_async`
       # would leave it loading forever. It reads synchronously, which is the
@@ -141,6 +152,18 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       assign_report(socket, report(scope, filter))
     end
   end
+
+  defp report_failed(socket, reason) do
+    socket
+    |> assign(:page_loading?, false)
+    |> assign(:loading?, false)
+    |> assign(:report_error, failure_text(reason))
+  end
+
+  defp failure_text(:timeout),
+    do: "the report took longer than #{div(@report_timeout, 1000)}s to read"
+
+  defp failure_text(reason), do: inspect(reason)
 
   defp report(scope, filter) do
     page = Page.load(scope)
