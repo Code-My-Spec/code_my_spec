@@ -155,7 +155,7 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
              })
   end
 
-  test "a completion recorded while main is absent is recovered on reconnect without acknowledgement",
+  test "a completion recorded while main has no process is recovered on reconnect without acknowledgement",
        ctx do
     AgentPresence.absent(ctx.main)
 
@@ -170,7 +170,8 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
 
     assert [undelivered] = CompletionHandoffs.pending(ctx.scope)
     assert undelivered.delivery_state == :failed
-    assert undelivered.delivery_error == ":main_unavailable"
+    assert CodeMySpec.Agents.main_agent(ctx.scope).id == ctx.main.id
+    assert undelivered.delivery_error == ":not_running"
     refute_receive {:agent_dispatch, _, _, _}, 100
     AgentPresence.present(ctx.main)
     CompletionHandoffs.recover(ctx.scope, ctx.main.working_copy_id)
@@ -182,6 +183,27 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
     assert pending.delivery_state == :queued
     assert is_nil(pending.delivery_error)
     assert is_nil(pending.acknowledged_at)
+  end
+
+  test "completion remains pending when no enabled main is available", ctx do
+    AgentPresence.absent(ctx.main)
+    {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.main, %{off_at: DateTime.utc_now()})
+    assert is_nil(CodeMySpec.Agents.main_agent(ctx.scope))
+
+    assert {:ok, _} =
+             CompletionHandoffs.complete(
+               ctx.scope,
+               ctx.owner.id,
+               ctx.task,
+               ctx.handoff.id,
+               ctx.evidence
+             )
+
+    assert [pending] = CompletionHandoffs.pending(ctx.scope)
+    assert pending.delivery_state == :failed
+    assert pending.delivery_error == ":main_unavailable"
+    assert is_nil(pending.acknowledged_at)
+    refute_receive {:agent_dispatch, _, _, _}, 100
   end
 
   test "another project cannot read or complete the handoff", ctx do
