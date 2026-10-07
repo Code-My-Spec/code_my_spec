@@ -114,18 +114,24 @@ defmodule CodeMySpec.Agents.AHeldBackOfferWakesANonContinuousMainTest do
   end
 
   describe "an offer refused outright (2063)" do
-    test "a non-continuous main receives it as a delivered message", ctx do
+    test "a non-continuous main receives it as a delivered message, at the refusal", ctx do
       offer = offer(ctx, :unblocked, {"task", @task})
 
       assert {:ok, declined} = Agents.reject_offer(ctx.scope, ctx.coder.id, offer.id, "not mine")
       assert declined.next_step == "held_back"
 
-      end_turn(ctx)
-
+      # Told at the refusal, not at the turn end that follows it: main should
+      # not have to wait out a turn to hear a decision the agent just made.
       text = told(ctx.main)
       assert text =~ ctx.coder.id
       assert text =~ @task
-      assert text =~ "refused: not mine"
+      assert text =~ "not mine"
+
+      # And once: the turn-end escalation reads the terminal rung, and this
+      # refusal has already been reported (criterion 2056, 1738).
+      end_turn(ctx)
+      refute_receive {:agent_dispatch, _, _, _}, 300,
+                     "main was told about the refusal twice"
     end
   end
 

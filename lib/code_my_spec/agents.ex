@@ -1637,14 +1637,41 @@ defmodule CodeMySpec.Agents do
   @doc """
   An agent declining an offer, with its reason (criterion 1738): `offer_id`,
   or its newest open offer when nil. The offer settles as declined and the work
-  is held back from this agent (criterion 2055); main hears about it once, from
-  `tell_main_held_back/2` at the turn end that follows it, naming the reason
-  (criterion 2056). No second notice is sent from here.
+  is held back from this agent (criterion 2055); main hears about it once,
+  naming the reason (criterion 2056).
+
+  Told here as well as from `tell_main_held_back/2` at the turn end that follows
+  it, and the two are not the same notice. This one is immediate: rejection is
+  a thing the agent decided, and main should not have to wait for a turn to end
+  to hear it -- the same turn may be a long one. The escalation is the one that
+  stamps the offer reported, so the pair still reaches main exactly once
+  (1738 asks for the refusal to be told; 2056 asks for it once).
+
+  Announced as `:offer_held_back`, not the `:teammate_stalled` this used to
+  send: `Wake` holds that event for a non-continuous main, so the refusal of a
+  main that is not continuous was recorded undelivered and never read
+  (criterion 2063). It is main's own administrative notice, told whatever the
+  role and told now.
   """
   @spec reject_offer(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, CodeMySpec.Agents.Offer.t()} | {:error, :not_found}
-  def reject_offer(%Scope{} = _scope, agent_id, offer_id, reason) do
-    Offers.reject(agent_id, offer_id, reason)
+  def reject_offer(%Scope{} = scope, agent_id, offer_id, reason) do
+    with {:ok, offer} <- Offers.reject(agent_id, offer_id, reason) do
+      notify_main(
+        scope,
+        :offer_held_back,
+        "Offer declined by agent #{agent_id}: #{offer.kind} `#{offer.subject_type}:" <>
+          "#{offer.subject_key}`. Reason: #{reason}",
+        offer: {:stalled, {"agent", agent_id}}
+      )
+
+      # Stamped here, so the turn-end escalation does not say the refusal again:
+      # `tell_main_held_back/2` reads the terminal rung and reports what has not
+      # been reported, and this is that report (criterion 2056 -- once).
+      :ok = Offers.mark_reported(offer)
+
+      {:ok, offer}
+    end
   end
 
   @doc """

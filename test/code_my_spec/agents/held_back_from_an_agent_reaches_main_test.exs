@@ -94,24 +94,30 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
     assert offer.next_step == "held_back"
   end
 
-  test "a refused offer is escalated naming the agent's reason", ctx do
+  test "a refused offer reaches main at the refusal, naming the reason", ctx do
     id = ctx.coder.id
     key = "story:1:component_spec"
     offer = settled(ctx, :work, "requirement", key, 1, :open)
 
     assert {:ok, _} = Agents.reject_offer(ctx.scope, id, offer.id, "not mine to do")
 
-    :ok = end_turn(ctx, id)
-
     # `notify_main/4` delivers from a supervised task, so the message is
     # written before this read only once that task has run.
     :ok = Fixtures.drain_background_work()
 
     sent = Fixtures.messages_to_agent(ctx.scope, main_id(ctx))
-    escalation = Enum.find(sent, &(&1 =~ "Held back from the coding agent #{id}"))
+    escalation = Enum.find(sent, &(&1 =~ "Offer declined by agent #{id}"))
 
     assert escalation, "main was never told:\n#{Enum.join(sent, "\n---\n")}"
-    assert escalation =~ "refused: not mine to do", "the refusal reason is missing: #{escalation}"
+    assert escalation =~ "not mine to do", "the refusal reason is missing: #{escalation}"
+
+    # The turn end has nothing left to say: the refusal was reported above, so
+    # the escalation does not say it a second time (criteria 1738, 2056).
+    :ok = end_turn(ctx, id)
+    :ok = Fixtures.drain_background_work()
+
+    assert Fixtures.messages_to_agent(ctx.scope, main_id(ctx)) == sent,
+           "main heard about the refusal twice"
   end
 
   defp settled(ctx, kind, type, key, attempt, status) do
