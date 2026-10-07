@@ -533,28 +533,36 @@ defmodule CodeMySpec.Agents.Menu do
   # refusal caused by something else and never causes one — an unanswered
   # question that could refuse a stop would pin the agent in the loop with no
   # work available to escape.
-  # Stated as behaviour, not as a tool to call.
+  # Stated as behaviour *and* as the tool that carries it out.
   #
   # These clauses used to name `check_answer` and `list_user_questions`
   # unconditionally, in the nudge an agent reads every turn. Answers are pushed
-  # to an agent we run, so it has nothing to poll for and carries neither \u2014 an
+  # to an agent we run, so it has nothing to poll for and carried neither — an
   # agent primed by the sentence called one, was refused, and stopped
-  # (`e809c0db`). Carrying them instead (`3bc106f6`) made the sentence true and
-  # paid two schemas on every turn of every role.
+  # (`e809c0db`). The first fix was option (b) — stop advertising, so the offer
+  # said "the reply reaches you" and named nothing. John reversed it
+  # (2026-10-05): carry both tools instead. "The reply reaches you" describes a
+  # push, and an agent whose turn ended before the answer landed has no way to
+  # collect it from that sentence; naming the tool is what lets it go and look.
   #
-  # The reply reaching the agent is the behaviour, and it is true of both kinds
-  # of agent; naming the tool is the part that was true of only one. So the
-  # offer says what happens and no longer says what to call.
+  # So both halves move together, which is the whole of the issue: the clauses
+  # name the tools again *and* the three non-main roles carry both
+  # (`@coding_tools`, `@qa_tools`, `@product_tools`), so the sentence is true of
+  # the narrowest reader rather than the widest. The cost is two schemas on
+  # every turn of those roles, paid deliberately.
   defp answer_offer(0) do
-    "\n\nIf a question you asked has been answered, the reply reaches you."
+    "\n\nIf a question you asked has been answered, `list_user_questions` shows " <>
+      "it and `check_answer` collects the reply."
   end
 
   defp answer_offer(1) do
-    "\n\n1 question is open and waiting on the user. The reply reaches you once it lands."
+    "\n\n1 question is open and waiting on the user. `list_user_questions` shows " <>
+      "it and `check_answer` collects the reply once it lands."
   end
 
   defp answer_offer(n) do
-    "\n\n#{n} questions are open and waiting on the user. Each reply reaches you once it lands."
+    "\n\n#{n} questions are open and waiting on the user. `list_user_questions` " <>
+      "shows them and `check_answer` collects each reply once it lands."
   end
 
   # Resolved from the working copy, the same asymmetry `ask_user` works around:
