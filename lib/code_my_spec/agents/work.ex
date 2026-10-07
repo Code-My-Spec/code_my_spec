@@ -478,6 +478,7 @@ defmodule CodeMySpec.Agents.Work do
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
          false <- delivery_just_failed?(current, offer),
+         false <- delivery_just_failed?(current, offer),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event),
          :ok <- still_offered(scope, reserved, ref, subject) do
       turn_prompt = offer_prompt(scope, reserved, subject)
@@ -1108,23 +1109,19 @@ defmodule CodeMySpec.Agents.Work do
   # still lists them. Measured 2026-10-02: main was re-offered one question it
   # believed it had escalated four times in six minutes, and every turn read
   # "no change".
-  # Either a refusal the agent gave, or a delivery we could not make. They are
-  # different facts (see `suppress_offer/3`) but they answer the same question
-  # for every caller here: is this offer damped right now? A failed delivery
-  # damps for its own short window, so the agent is re-offered as soon as its
-  # machine is reachable, and every reader -- including the cadence's `work?`
-  # and `list_agent_work`'s `damped/3` -- agrees about it.
-  defp already_declined?(agent, offer, questions_only?) do
-    refused?(agent, offer, questions_only?) or delivery_just_failed?(agent, offer)
-  end
-
-  defp refused?(%{declined_offer: declined} = agent, offer, questions_only?)
+  # A refusal the agent gave. A *delivery* failure is a different fact and is
+  # not this: it is paced at the retry (`delivery_just_failed?/2`), not folded
+  # in here. Folding it in damped every reader -- the cadence's `work?` and the
+  # wake that tells an agent about new work -- for an offer that was merely
+  # undeliverable once, which is how devops work stopped reaching main
+  # (criterion 1185) after a first attempt missed.
+  defp already_declined?(%{declined_offer: declined} = agent, offer, questions_only?)
        when not is_nil(declined) and declined == offer do
     repeats_spent?(agent.declined_offer_count, questions_only?) and
       within_window?(agent.declined_offer_at, questions_only?)
   end
 
-  defp refused?(_agent, _offer, _questions_only?), do: false
+  defp already_declined?(_agent, _offer, _questions_only?), do: false
 
   defp repeats_spent?(n, true), do: is_integer(n) and n >= 1
   defp repeats_spent?(n, false), do: is_integer(n) and n >= @max_repeats
@@ -1146,25 +1143,13 @@ defmodule CodeMySpec.Agents.Work do
           %{count: pos_integer(), requirement: String.t() | nil, until: DateTime.t()} | nil
   def damped(scope, %Agent{} = agent, claimable) do
     offer = offer_fingerprint(scope, agent, claimable)
-    requirement = claimable |> List.first() |> then(&(&1 && &1.name))
 
-    cond do
-      refused?(agent, offer, false) ->
-        %{
-          count: agent.declined_offer_count,
-          requirement: requirement,
-          until: DateTime.add(agent.declined_offer_at, @decline_ttl_seconds, :second)
-        }
-
-      delivery_just_failed?(agent, offer) ->
-        %{
-          count: 1,
-          requirement: requirement,
-          until: DateTime.add(agent.delivery_failed_at, @delivery_retry_after_seconds, :second)
-        }
-
-      true ->
-        nil
+    if already_declined?(agent, offer, false) do
+      %{
+        count: agent.declined_offer_count,
+        requirement: claimable |> List.first() |> then(&(&1 && &1.name)),
+        until: DateTime.add(agent.declined_offer_at, @decline_ttl_seconds, :second)
+      }
     end
   end
 
