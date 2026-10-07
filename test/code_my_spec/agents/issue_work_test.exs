@@ -91,14 +91,11 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   end
 
   # The submitted fix hands the turn to QA and the issue records that on
-  # itself (775b7cea). Whoever asks, only the role whose turn it is may be told
-  # work is available: the coder that just submitted is not offered fix_issue
-  # again, and the notice and the menu cannot name different work.
-  # `claimable_work/3` is what `get_next_requirement` and `list_agent_work`
-  # read; `work_for/4` is what the turn offer reads. An issue is not in the
-  # graph, so unless `claimable_work` routes an issue-bound agent to `IssueWork`
-  # it answers project work the offer will never name — the notice says work is
-  # available while the menu says it belongs to other roles (775b7cea).
+  # itself (775b7cea). `claimable_work/3` is what `get_next_requirement` and
+  # `list_agent_work` read; `work_for/4` is what the turn offer reads. An issue
+  # is not in the graph, so the menu must name the issue's own node — not
+  # project work the offer will never name, which is the notice saying work is
+  # available while the menu says it belongs to other roles.
   test "the menu and the offer name the same work for an issue-bound agent", ctx do
     copy_id = copy(ctx.scope)
     qa = agent(ctx.scope, :qa, copy_id)
@@ -115,5 +112,10 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
            the menu names #{inspect(Enum.map(menu, & &1.name))} and the offer names \
            #{inspect(Enum.map(offer.actionable, & &1.name))}
            """
+
+    # The same *node*, not merely a same-named one: a graph node called
+    # qa_complete would belong to a story, and this must be the issue's own.
+    assert [%{entity_type: "issue", entity_id: entity_id}] = menu
+    assert entity_id == ctx.issue.id
   end
 end
