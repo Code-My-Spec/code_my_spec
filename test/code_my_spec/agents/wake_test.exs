@@ -62,19 +62,12 @@ defmodule CodeMySpec.Agents.WakeTest do
   @collects_when_back [:question_answered, :blocker_resolved]
 
   # Events that would start a turn through an `Agents.Waiting` path.
-  #
-  # `:resume` is deliberately absent: it has no path in `Wake.@waiting_path`,
-  # because `Waiting`'s `@all` checks then held *every* event while a stale
-  # resume offer sat open (nothing supersedes one a restart left open), and a
-  # continuous idle QA was offered no `qa_complete` for 12+ minutes after
-  # `ready_for_qa` passed. A resume is dispatched by `resume_held_task/2` and
-  # redelivery, which call `Wake` directly, so it needs no waiting path -- and
-  # an agent waiting on its provider is woken by it, like any other event.
   @waits [
     :work_offer,
     :teammate_question,
     :question_answered,
     :blocker_resolved,
+    :resume,
     :nudge,
     :cadence,
     :teammate_stalled,
