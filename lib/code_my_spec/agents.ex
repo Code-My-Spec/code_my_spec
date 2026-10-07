@@ -1638,7 +1638,7 @@ defmodule CodeMySpec.Agents do
   # this kind escalates on.
   defp held_back_reason(%CodeMySpec.Agents.Offer{status: :declined, reason: reason})
        when is_binary(reason),
-    do: "refused: #{reason}"
+       do: "refused: #{reason}"
 
   defp held_back_reason(%CodeMySpec.Agents.Offer{kind: kind, subject_type: type} = offer),
     do: "offered #{held_back_count(kind, type, offer)} times and not taken"
@@ -2490,14 +2490,16 @@ defmodule CodeMySpec.Agents do
     else
       # The machine took it back and the row is already gone or already
       # settled. Nothing to correct, and nothing worth failing over.
-      nil -> {:error, :not_pending}
+      nil ->
+        {:error, :not_pending}
 
       {:error, :already_delivered} ->
         with :ok <- reconcile_consumed_message(ref) do
           {:error, :already_delivered}
         end
 
-      error -> error
+      error ->
+        error
     end
   end
 

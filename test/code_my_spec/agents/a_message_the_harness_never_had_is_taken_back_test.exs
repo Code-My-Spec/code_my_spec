@@ -94,8 +94,10 @@ defmodule CodeMySpec.Agents.AMessageTheHarnessNeverHadIsTakenBackTest do
 
   test "successful withdrawal is recorded as withdrawn", ctx do
     answer(:ok)
+
     assert {:ok, %{delivery: :withdrawn}} =
              Agents.withdraw_message(ctx.scope, ctx.agent.id, ctx.ref)
+
     assert Repo.reload!(ctx.message).delivery == :withdrawn
   end
 
@@ -103,8 +105,10 @@ defmodule CodeMySpec.Agents.AMessageTheHarnessNeverHadIsTakenBackTest do
     topic = Conversations.conversation_topic(ctx.message.conversation_id)
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic)
     answer({:error, :already_delivered})
+
     assert {:error, :already_delivered} =
              Agents.withdraw_message(ctx.scope, ctx.agent.id, ctx.ref)
+
     assert_receive {:message_updated, %{id: id, delivery: :delivered}}
     assert id == ctx.message.id
     conversation = Repo.get!(Conversation, ctx.message.conversation_id)
