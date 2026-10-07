@@ -536,7 +536,6 @@ defmodule CodeMySpec.Validation do
       else: Enum.split_with(blocking, &(&1.source not in @attribution_exempt_sources))
   end
 
-
   # Attribution demotes nothing (48f4eada), so there is nothing to log. The
   # loud logs that used to live here named a demotion the gate was making; with
   # the excuse gone, a reader wanting to know what the gate blocked reads the
