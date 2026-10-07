@@ -10,15 +10,22 @@ gets fixed; story 608 rule 1).
 For each issue in the prompt:
 
 1. **Understand the problem** — read the issue description and any QA
-   result it references.
-2. **Fix the code** — use subagents (Agent tool) for the actual fix
-   work. Group related issues into one subagent if they share a root
-   cause. Each subagent should: read the relevant source, make the fix,
-   verify it works.
-3. **Resolve** — call `resolve_issue` with the issue `id` and a
+   result it references, and read the source the issue points at.
+2. **Fix the code** — make the fix yourself, in this turn. Read the
+   relevant source, change it, and verify it works. Group related issues
+   that share a root cause into one pass rather than fixing them twice.
+3. **Resolve** — call `resolve_issue` with the issue `issue_id` and a
    `resolution` summary covering: what was fixed, files changed, how
    the fix was verified.
 4. **Run tests** at the end — `mix test` — to verify nothing else broke.
+
+## Do the work directly
+
+This role has no delegation available: it cannot spawn a helper, and it
+cannot discover one to hand work to either — the tool for that is granted
+to another role and calling it is refused. Do the work directly. If an
+issue genuinely needs a capability this role does not carry, say so in the
+`resolution` rather than trying to route it.
 
 ## Scope-aware fixing
 
