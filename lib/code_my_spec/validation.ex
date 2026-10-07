@@ -478,90 +478,50 @@ defmodule CodeMySpec.Validation do
   @doc """
   Split blocking findings into this session's and everyone else's.
 
-  A finding in a file this session never edited does not block. Several agents
-  share this repo and rebase onto main, so a warning one pushes became a hard
-  block on every other's stop — and the obvious repair on someone else's
-  in-flight file can be actively wrong, which leaves editing code you do not
-  own or staying blocked as the only two responses.
+  It no longer does — the second list is always empty. Task evaluation judges
+  the whole copy, the same way promotion does, so every blocker blocks whoever
+  stops. John, 2026-10-04 (issue 48f4eada), retired the attribution excuse.
 
-  Three things refuse to demote. Two because the failure mode points the same
-  way — a gate that quietly stops blocking is worse than one that blocks too
-  much, and it is invisible:
+  What it was: a finding in a file this session never edited did not block.
+  Several agents share this repo and rebase onto main, so a warning one pushes
+  became a hard block on every other's stop — and the obvious repair on someone
+  else's in-flight file can be actively wrong (`7a0fadeb` retargeted a preview
+  spex at the wrong endpoint), which left editing code you do not own or staying
+  blocked as the only two responses.
 
-    * A `nil` attribution set, which means attribution is *unusable* — no
-      session id, or recorded paths that join no File row in this project.
-      Nothing can be concluded from a set that means nothing.
-    * A finding with no `file_path`. A spex that died in `setup_all` has
-      nothing to attribute; unattributable is not the same as somebody else's,
-      and collapsing them drops the finding nobody can place.
+  Why it went anyway. v2.0.347 made credo's default `block_all`, but this
+  demotion ran after it, so in practice task evaluation stayed
+  changed-files-only for any agent that edited anything; whole-copy applied only
+  when there was no attribution at all. The gate's own moduledoc meanwhile read
+  as though it judged the copy. Measured across one evening: every agent, every
+  stop, `demoted N blocking finding(s) to advisory`, N never zero. A gate with
+  two answers that read as one is the metric_flow failure again, which is why
+  the excuse is removed rather than narrowed.
 
-  An **empty** set is not one of them, and used to be. It was refused on the
-  reasoning that "the session wrote nothing" and "attribution broke" are
-  indistinguishable — true when it was written, and no longer the whole
-  picture: `verify_against_ledger/3` now answers `nil` for the broken case
-  specifically, so the two arrive here as different values. What is left when a
-  session records zero edits is a session that edited nothing, and a session
-  that edited nothing cannot own a finding in a file.
+  The old rule's incidents are answered upstream now, and better:
 
-  That case was the expensive one. A QA agent writes no project files at all,
-  so it hit this on every stop and every finding blocked — `76008385` is one
-  following the advice exactly (`git log -1` on each path, confirmed neither
-  was its own, escalated to the owner rather than editing an in-flight file)
-  and being told the same thing again on the next stop, with no action
-  available that would change the answer.
+    * `split_by_story_enforcement/3` asks "is this red mine to fix" from the
+      owning story's `specs_ready` latch, not from which files were written
+      this turn — the question attribution was approximating (`a9e9caca`,
+      26 spex failures in unrelated stories, answered by the latch).
+    * `split_by_role/2` reads the role profile, so a QA or product agent is
+      not handed code work (`d91436b7`).
 
-  No special case implements this. `MapSet.member?/2` on an empty set is false
-  for everything, so the ordinary branch already demotes each finding that is
-  attributable at all — the empty-set clause had to be *removed* for the rule
-  to apply, not added.
-
-  The third refusal is **spex**, and it is the only source with a mandate test
-  of its own. `split_by_story_enforcement/3` has already asked the question this
-  demotion approximates — is this red the agent's to fix — and answered it from
-  the owning story's `specs_ready` latch rather than from which files happened
-  to be written this turn. A spex that reaches here is red on a story that was
-  green once, which is a regression in this working copy, not somebody else's
-  in-flight work.
-
-  Stacking attribution on top of that turned `spex: :block_all` into a setting
-  with no effect. Measured across one evening on this project: every agent,
-  every stop, `demoted N blocking finding(s) to advisory`, N never zero, while
-  the mode had read `:block_all` for months.
-
-  Every other source keeps demoting. They have no per-story latch, so
-  attribution is the only thing standing between an agent and a rebase's worth
-  of findings it has no mandate to fix.
-
-  Public so the property that decides whether the gate still works can be
-  asserted directly, the same reason `blocking_key/1` is.
+  Kept as a function with its old shape rather than deleted, so the call site
+  and the property this file asserts stay readable; `attributable_to?/2` is
+  gone with it. The list is still computed, because the caller's log line and
+  `verify_against_ledger/3` still want to know what attribution said — they just
+  no longer decide anything.
   """
-  # Sources whose mandate is decided before this point, so attribution must not
-  # decide it again.
-  @attribution_exempt_sources ~w(spex)
-
   @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
           {[Problems.Problem.t()], [Problems.Problem.t()]}
-  # Story 894: an agent that made no edits is blocked by nothing — and nothing
-  # means nothing, `@attribution_exempt_sources` included.
-  #
-  # The exempt list exists so a finding with no file to attribute, or a spex
-  # failure that belongs to a story rather than a file, is not silently demoted
-  # away from an agent that *was* working. Applied to a session that wrote
-  # nothing at all it does the opposite: it hands that agent every failing spex
-  # in the project. Measured 2026-08-20 — a QA session with a provably empty
-  # `git status` was refused a stop over 26 spex failures in three unrelated
-  # stories, all last touched days earlier by someone else (a9e9caca).
-  #
-  # Ownership is the whole question this function asks, and a session that
-  # edited nothing owns nothing. There is no finding it could have caused.
-  def split_unattributed(blocking, %MapSet{} = session_paths) do
-    case MapSet.size(session_paths) do
-      0 -> {[], blocking}
-      _ -> Enum.split_with(blocking, &attributable_to?(&1, session_paths))
-    end
-  end
-
   def split_unattributed(blocking, _session_paths), do: {blocking, []}
+
+  # Sources whose mandate is decided before this point, so `split_by_role/2`
+  # must not decide it again. Attribution used to read this too; 48f4eada
+  # removed that half, and the role half is a different question — see the
+  # comment on `split_by_role/2`.
+  @attribution_exempt_sources ~w(spex)
 
   # The attribution-exempt sources block only the roles that fix code.
   #
@@ -576,51 +536,11 @@ defmodule CodeMySpec.Validation do
       else: Enum.split_with(blocking, &(&1.source not in @attribution_exempt_sources))
   end
 
-  defp attributable_to?(problem, session_paths) do
-    problem.source in @attribution_exempt_sources or
-      not is_binary(problem.file_path) or
-      MapSet.member?(session_paths, problem.file_path)
-  end
 
-  # Loudly, because this is the gate declining to block. A demotion that is
-  # right is uninteresting and a demotion that is wrong is invisible in the
-  # response — the log is the only place the difference shows up.
-  #
-  # The empty-set case says so separately, because it is the one that can hide a
-  # broken recorder. "Findings in files it never edited" is a comparison; "this
-  # session recorded no edits at all" is the absence of one, and a PostToolUse
-  # hook that stopped recording produces exactly that shape while looking like
-  # an ordinary read-only session. Nothing here can tell them apart — the
-  # demotion is correct for the ordinary one and wrong for the broken one — so
-  # the log names the condition and lets a reader who sees it on a session that
-  # was plainly writing files draw the conclusion.
-  defp log_demotions([], _session_paths, _opts), do: :ok
-
-  defp log_demotions(unattributed, %MapSet{} = session_paths, opts) do
-    if MapSet.size(session_paths) == 0 do
-      Logger.info(
-        "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted all " <>
-          "#{length(unattributed)} blocking finding(s) to advisory: this session recorded " <>
-          "no edits at all, so it can own none of them. If it did write files, the " <>
-          "PostToolUse recorder is not working and the gate is off for this session."
-      )
-    else
-      log_edited_elsewhere(unattributed, opts)
-    end
-  end
-
-  defp log_demotions(unattributed, _session_paths, opts),
-    do: log_edited_elsewhere(unattributed, opts)
-
-  defp log_edited_elsewhere(unattributed, opts) do
-    paths = unattributed |> Enum.map(& &1.file_path) |> Enum.uniq() |> Enum.take(5)
-
-    Logger.info(
-      "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted " <>
-        "#{length(unattributed)} blocking finding(s) to advisory: files it never " <>
-        "edited (#{Enum.join(paths, ", ")})"
-    )
-  end
+  # Attribution demotes nothing (48f4eada), so there is nothing to log. The
+  # loud logs that used to live here named a demotion the gate was making; with
+  # the excuse gone, a reader wanting to know what the gate blocked reads the
+  # response, which is now the only answer.
 
   # This session's edits, normalized the same way `filter_by_session_attribution`
   # normalizes them — PostToolUse stores whatever Claude passed, typically
@@ -937,7 +857,6 @@ defmodule CodeMySpec.Validation do
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
     {blocking, not_this_role} = split_by_role(blocking, Keyword.get(opts, :agent_role))
     advisory = advisory ++ unattributed ++ not_this_role
-    log_demotions(unattributed, session_paths, opts)
 
     decide(blocking, advisory,
       # Computed here, from the opts that actually carry the identity.
