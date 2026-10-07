@@ -359,10 +359,11 @@ defmodule CodeMySpec.PromotionQueue do
   # A fix may promote itself; other accepted issues on this copy still hold
   # its work until they are resolved or their assignment is removed.
   defp assigned_issues_clear(scope, copy, subject) do
-    promoting_issue_id = case subject do
-      {:issue, issue} -> issue.id
-      _ -> nil
-    end
+    promoting_issue_id =
+      case subject do
+        {:issue, issue} -> issue.id
+        _ -> nil
+      end
 
     blockers =
       scope
@@ -370,11 +371,17 @@ defmodule CodeMySpec.PromotionQueue do
       |> Enum.filter(&(&1.assigned_working_copy_id == copy.id and &1.id != promoting_issue_id))
 
     case blockers do
-      [] -> :ok
+      [] ->
+        :ok
+
       issues ->
-        {:error, %{reason: "Accepted issues assigned to this working copy block promotion: " <>
-          Enum.map_join(issues, ", ", & &1.id) <>
-          ". Resolve their fixes or remove their assignments before promoting this work."}}
+        {:error,
+         %{
+           reason:
+             "Accepted issues assigned to this working copy block promotion: " <>
+               Enum.map_join(issues, ", ", & &1.id) <>
+               ". Resolve their fixes or remove their assignments before promoting this work."
+         }}
     end
   end
 

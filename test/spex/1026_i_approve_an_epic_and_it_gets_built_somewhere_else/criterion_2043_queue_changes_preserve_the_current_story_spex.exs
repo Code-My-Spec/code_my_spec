@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2043Spex do
           |> Slice.main_copy()
           |> Slice.base()
           |> Slice.waiting(assigned: true)
-          |> Slice.waiting()
+          |> Slice.waiting(title: "Additional queued story")
 
         answer = Slice.call(context, CreateEpic, %{name: "Additional queued work"})
         [_, epic_id] = Regex.run(~r/ID: ([^,\s]+)/, answer)
@@ -45,7 +45,8 @@ defmodule CodeMySpecSpex.Story1026.Criterion2043Spex do
         {:ok, Map.put(context, :queue_answer, answer)}
       end
 
-      then_ "the placement is confirmed and both teammates still read their current story", context do
+      then_ "the placement is confirmed and both teammates still read their current story",
+            context do
         assert context.queue_answer =~ context.scope.cwd
 
         for agent <- context.team do

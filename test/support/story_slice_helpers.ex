@@ -45,7 +45,17 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     staff(context, staffed?)
   end
 
-  defp staff(context, true), do: context
+  defp staff(context, true) do
+    team =
+      context.scope
+      |> CodeMySpec.Agents.list_agents()
+      |> Enum.filter(
+        &(&1.working_copy_id == context.scope.active_working_copy_id and
+            &1.role in [:coding, :qa] and is_nil(&1.retired_at))
+      )
+
+    Map.put(context, :team, team)
+  end
 
   defp staff(context, false) do
     team = for role <- ~w(coding qa), do: Fixtures.running_agent(context.scope, role: role)
@@ -136,7 +146,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
 
     story =
       StoryHelpers.create_and_link(context.scope, module,
-        title: "Waiting story B",
+        title: Keyword.get(opts, :title, "Waiting story B"),
         description: "Future work",
         acceptance_criteria: ["Waiting works"],
         priority: 0

@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2044Spex do
         {:ok, view, _html} =
           live(
             context.conn,
-            "/app/projects/#{context.project.id}/working-copies/#{reply["working_copy_id"]}"
+            "/app/projects/#{context.project.id}/working-copies/#{reply[:working_copy_id]}"
           )
 
         {:ok,

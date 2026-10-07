@@ -121,6 +121,9 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop)
   component(CodeMySpec.McpServers.Stories.Tools.SetActiveStory)
   component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.UnassignStoryFromWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.UnassignEpicFromWorkingCopy)
 
   # Story 1108: an agent on a copy can start, restart and stop its own copy's
   # app. Always the caller's own copy, never a parameter — see each tool's

@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2046Spex do
             "Individual queue edits"
           )
 
-        copy_id = reply["working_copy_id"]
+        copy_id = reply[:working_copy_id]
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, created, _} = CreateEpic.execute(%{name: "Individually queued stories"}, frame)
         false = created.isError

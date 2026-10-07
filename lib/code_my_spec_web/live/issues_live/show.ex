@@ -221,7 +221,8 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
            nil
          ) do
       {:ok, issue} ->
-        {:noreply, socket |> assign_issue(issue) |> put_flash(:info, "Issue removed from working copy.")}
+        {:noreply,
+         socket |> assign_issue(issue) |> put_flash(:info, "Issue removed from working copy.")}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Failed to remove issue from working copy.")}

@@ -115,9 +115,10 @@ defmodule CodeMySpecSpex.Story1026.Criterion2049Spex do
         "Tool destination"
       )
 
-    copy_id = reply["working_copy_id"]
+    copy_id = reply[:working_copy_id]
     frame = %Frame{assigns: %{current_scope: context.main_scope, agent_id: context.main.id}}
-    {:reply, created, _} = CreateEpic.execute(%{name: "Tool-managed epic"}, frame)
+    epic_name = "Tool-managed epic #{System.unique_integer([:positive])}"
+    {:reply, created, _} = CreateEpic.execute(%{name: epic_name}, frame)
     false = created.isError
     [_, epic_id] = Regex.run(~r/ID: ([^,\s]+)/, response_text(created))
 
@@ -125,14 +126,14 @@ defmodule CodeMySpecSpex.Story1026.Criterion2049Spex do
       for title <- ["Selected tool story", "Sibling tool story"] do
         story =
           StoryHelpers.create_story(context.scope,
-            title: title,
+            title: "#{title} #{epic_name}",
             description: "Unstarted work managed through tools",
             acceptance_criteria: ["It works"]
           )
 
         {:reply, assigned, _} =
           AssignStoryToEpic.execute(
-            %{story_number: story.number, epic_name: "Tool-managed epic"},
+            %{story_number: story.number, epic_name: epic_name},
             frame
           )
 

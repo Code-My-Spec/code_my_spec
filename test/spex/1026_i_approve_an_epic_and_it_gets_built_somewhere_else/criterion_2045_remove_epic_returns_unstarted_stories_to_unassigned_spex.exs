@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2045Spex do
             "Queued epic copy"
           )
 
-        copy_id = reply["working_copy_id"]
+        copy_id = reply[:working_copy_id]
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, created, _} = CreateEpic.execute(%{name: "Unstarted queued epic"}, frame)
         false = created.isError
@@ -104,7 +104,12 @@ defmodule CodeMySpecSpex.Story1026.Criterion2045Spex do
         selector = "[data-test='epic'][data-epic-id='#{context.queued_epic_id}']"
         assert has_element?(board, selector)
         epic_html = board |> element(selector) |> render()
-        assert has_element?(board, selector <> " [data-test='epic-assignment'][data-assigned-count='0']")
+
+        assert has_element?(
+                 board,
+                 selector <> " [data-test='epic-assignment'][data-assigned-count='0']"
+               )
+
         assert epic_html =~ "Unassigned"
 
         for story <- context.stories do

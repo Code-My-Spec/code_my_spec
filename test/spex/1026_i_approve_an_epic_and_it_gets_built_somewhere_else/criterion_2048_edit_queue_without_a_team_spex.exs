@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2048Spex do
 
     story =
       StoryHelpers.create_story(context.scope,
-        title: "Work for an unstaffed copy",
+        title: "Work for an unstaffed copy #{System.unique_integer([:positive])}",
         description: "Queued independently of a team's current story",
         acceptance_criteria: ["It works"]
       )
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2048Spex do
     {:ok, view, _html} =
       live(
         context.conn,
-        "/app/projects/#{context.project.id}/working-copies/#{reply["working_copy_id"]}"
+        "/app/projects/#{context.project.id}/working-copies/#{reply[:working_copy_id]}"
       )
 
     Map.merge(context, %{copy_view: view, queued_story: story})

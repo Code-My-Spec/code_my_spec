@@ -40,7 +40,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.EpicDispatch
+  alias CodeMySpec.Epics
   alias CodeMySpec.Staffing
+  alias CodeMySpec.Stories
   alias CodeMySpecWeb.AgentLoopBadge
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
@@ -201,6 +204,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     socket
     |> assign(:row, row)
     |> assign(:off_agents, off)
+    |> assign(
+      :queued_stories,
+      Enum.filter(
+        Stories.list_stories(socket.assigns.current_scope),
+        &(&1.working_copy_id == row.harness.id)
+      )
+    )
+    |> assign(:queue_epics, Epics.list_epics(socket.assigns.current_scope))
     |> assign(:now, now)
     |> assign(:page_title, row.heading)
   end
@@ -211,6 +222,18 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # clears whichever copy held it before, so the page's own idea of the project
   # is stale the moment this returns.
   @impl true
+  def handle_event("add_story_to_queue", %{"queue" => %{"story_number" => number}}, socket),
+    do: edit_story_queue(socket, number, :add)
+
+  def handle_event("remove_story_from_queue", %{"story_number" => number}, socket),
+    do: edit_story_queue(socket, number, :remove)
+
+  def handle_event("add_epic_to_queue", %{"queue" => %{"epic_id" => id}}, socket),
+    do: edit_queue(socket, :epic, id, :add)
+
+  def handle_event("remove_epic_from_queue", %{"epic_id" => id}, socket),
+    do: edit_queue(socket, :epic, id, :remove)
+
   def handle_event("designate_main", _params, socket) do
     case Staffing.designate_main(
            socket.assigns.current_scope,
@@ -289,6 +312,29 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # runs out while product carries on — and a page that only said "working" once
   # every role agreed would go quiet exactly when the first one finished.
   defp working?(agents), do: Enum.any?(agents, &(&1.continuous == true))
+
+  defp edit_story_queue(socket, number, action) do
+    case Integer.parse(to_string(number)) do
+      {number, ""} -> edit_queue(socket, :story, number, action)
+      _ -> {:noreply, put_flash(socket, :error, "Choose a valid story number.")}
+    end
+  end
+
+  defp edit_queue(socket, kind, subject, action) do
+    case EpicDispatch.edit_queue(
+           socket.assigns.current_scope,
+           kind,
+           subject,
+           socket.assigns.working_copy_id,
+           action
+         ) do
+      {:ok, _count} ->
+        {:noreply, load(socket, socket.assigns.project)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not update this copy's queue.")}
+    end
+  end
 
   # The chat is only an offer where there is something on the other end of it.
   #
@@ -421,6 +467,56 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             </span>
           </:actions>
         </.header>
+
+        <section class="my-6 space-y-4" data-test="working-copy-queue">
+          <h2 class="text-lg font-semibold">Queued work</h2>
+          <form phx-submit="add_story_to_queue" data-test="add-story-to-queue" class="flex gap-2">
+            <label>
+              Story number
+              <input name="queue[story_number]" type="number" required class="input input-sm" />
+            </label>
+            <button type="submit" class="btn btn-sm">Add story</button>
+          </form>
+          <form phx-submit="add_epic_to_queue" data-test="add-epic-to-queue" class="flex gap-2">
+            <label>
+              Epic
+              <select name="queue[epic_id]" required class="select select-sm">
+                <option value="">Choose an epic</option>
+                <option :for={epic <- @queue_epics} value={epic.id}>{epic.name}</option>
+              </select>
+            </label>
+            <button type="submit" class="btn btn-sm">Add epic</button>
+          </form>
+          <div :for={epic <- @queue_epics} :if={Enum.any?(@queued_stories, &(&1.epic_id == epic.id))}>
+            <span>{epic.name}</span>
+            <button
+              phx-click="remove_epic_from_queue"
+              phx-value-epic_id={epic.id}
+              data-test="remove-epic-from-queue"
+              data-epic-id={epic.id}
+              class="btn btn-sm btn-ghost"
+            >
+              Remove epic
+            </button>
+          </div>
+          <div
+            :for={story <- @queued_stories}
+            data-test="queued-story"
+            data-story-number={story.number}
+          >
+            <span>{story.number}: {story.title}</span>
+            <button
+              phx-click="remove_story_from_queue"
+              phx-value-story_number={story.number}
+              data-test="remove-story-from-queue"
+              data-story-number={story.number}
+              class="btn btn-sm btn-ghost"
+            >
+              Remove story
+            </button>
+          </div>
+          <p :if={@queued_stories == []}>No stories queued.</p>
+        </section>
 
         <.list>
           <:item title="Working copy id">{@row.harness.id}</:item>
