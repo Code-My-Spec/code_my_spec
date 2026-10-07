@@ -47,13 +47,14 @@ defmodule CodeMySpec.CodeMode.Bindings do
   """
   @spec install(Lua.t(), Catalog.t(), [String.t()], String.t() | nil, [String.t()] | :all) ::
           Lua.t()
-  def install(lua, catalog, out_of_scope, kind \\ nil, carried \\ :all) do
+  def install(lua, catalog, out_of_scope, kind \\ nil, carried \\ :all, direct \\ :all) do
     Process.put(@printed, [])
 
     lua
     |> capture_print()
     |> bind_tools(catalog)
     |> explain_exclusions(carried)
+    |> explain_direct_names(direct)
     |> explain_scope(out_of_scope, kind)
   end
 
@@ -178,9 +179,51 @@ defmodule CodeMySpec.CodeMode.Bindings do
     end)
   end
 
-  # Named when we know it. "a qa agent cannot call delete_story" is a sentence
-  # somebody can act on; "this agent cannot" leaves them wondering whether it is
-  # about the type, the project, or the moment.
+  # Every other tool on the server, bound to a sentence rather than left absent.
+  #
+  # `explain_scope/3` above covers the scriptable tools this role is not given,
+  # and `explain_exclusions/2` the scriptable ones no script may call. What is
+  # left over is a third group, and until this clause existed it fell through to
+  # the diagnostic for a *typo*.
+  #
+  # A QA agent at the 1015 stop hook was refused on problems, told "block it
+  # with `ask_user_question` or `tap_out`", and tried both from a script
+  # (`27fb2de3`). `ask_user_question` is a scriptable tool without a grant, so
+  # its refusal is right. `tap_out` is excluded from scripts *and* withheld from
+  # the QA role, and what it got was "No tool is bound under that name â it may
+  # be a similar name, or on this project's machine". That sends the search to
+  # spellings and to the machine; the one place the tool actually lives â the
+  # caller's own tool list, or another role's â is the one place neither names.
+  # `tool_docs` had already learned to answer this question for the same tool
+  # (`e809c0db`); this is that answer given by the refusal the agent hits.
+  #
+  # Ordered last on purpose: a stub only fills a name nothing else has claimed,
+  # so a scriptable tool keeps the narrower refusal that says why a script may
+  # not call it.
+  defp explain_direct_names(lua, :all), do: lua
+
+  defp explain_direct_names(lua, carried) when is_list(carried) do
+    Enum.reduce(Catalog.direct_only(carried), lua, fn name, acc ->
+      Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
+        raise Lua.RuntimeException, not_direct(name)
+      end)
+    end)
+  end
+
+  # True for an excluded tool the role grants â `tap_out`, `reject_offer` â and
+  # false for everything else the server registers that this caller does not
+  # carry.
+  defp not_direct(name) do
+    if name in ["tap_out", "reject_offer"] do
+      "#{name} is yours to do, made once about the turn you are in â it is not " <>
+        "something a script does. Call it directly as a tool."
+    else
+      "#{name} is a tool on this server, but not one this kind of agent carries: it " <>
+        "belongs to another role, so calling it directly will be refused too. It is " <>
+        "not a misspelling and it is not on this project's machine. If you need what " <>
+        "it does, say so rather than working around it."
+    end
+  end
   defp describe(nil), do: "this agent"
   defp describe(kind), do: "a #{kind} agent"
 
