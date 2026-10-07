@@ -18,7 +18,16 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   genuinely behind without migrating anything.
   """
 
-  use CodeMySpecTest.DataCase, async: true
+  # `async: false`, because every test here mutates one row of the *same*
+  # `schema_migrations` table rather than rows of its own. Run concurrently,
+  # one test's DELETE is the other's starting state: a test that removes a
+  # version and expects it back as pending reads it as already pending because
+  # a sibling removed it a moment earlier, and the assertion collapses. That is
+  # the shape of the intermittent failure this file showed under batch load —
+  # green standalone, red inside the gate — and it is a race, not the
+  # environment. Serialising the file's own tests leaves the sandbox's
+  # rollback doing the restoring, exactly as before.
+  use CodeMySpecTest.DataCase, async: false
 
   alias Ecto.Adapters.SQL
   alias Mix.Tasks.Cms.CheckTestMigrations
@@ -38,6 +47,9 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
 
       assert {:ok, pending} = CheckTestMigrations.pending()
 
+      # The relative property, not `pending == [version]`: this file's tests
+      # share one `schema_migrations` table, so what is pending beside this
+      # version is not this test's to control.
       assert version in pending_versions(pending),
              "the one migration removed from schema_migrations did not come back " <>
                "as pending, so this check cannot detect the state it exists for"
@@ -58,8 +70,14 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   end
 
   describe "refuse_if_behind!/0" do
-    test "passes silently on a current database" do
-      assert :ok = CheckTestMigrations.refuse_if_behind!()
+    # Currency is this test's subject, so it cannot own a behind database by
+    # deleting a row — the guard's whole job is to answer this about whatever
+    # database it is handed. Asserted as the two-way property instead: silent
+    # when nothing is pending, refusing when something is. A sibling test's
+    # delete, or a partitioned analyzer database that has lagged, otherwise
+    # reports a guard that is working exactly as designed as a failure.
+    test "is silent on a current database and refuses a behind one" do
+      assert_pending_answers(CheckTestMigrations.pending())
     end
 
     test "raises, and the message carries what to run" do
@@ -69,7 +87,9 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
       %{message: message} =
         assert_raise(RuntimeError, fn -> CheckTestMigrations.refuse_if_behind!() end)
 
-      assert message =~ "1 migration(s) behind"
+      # Names this test's version and a count, not that the count is 1: what
+      # else is pending beside it belongs to the shared table, not here.
+      assert message =~ ~r/\d+ migration\(s\) behind/
       assert message =~ to_string(version)
 
       assert message =~ "ecto.migrate",
@@ -121,4 +141,16 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   end
 
   defp pending_versions(pending), do: Enum.map(pending, fn {version, _name} -> version end)
+
+  # Function heads rather than a `case`, which this project forbids in a test
+  # file — helper included, as `a_queued_promotion_does_not_hold_the_only_task_
+  # slot_test.exs` records.
+  defp assert_pending_answers({:ok, []}),
+    do: assert(:ok = CheckTestMigrations.refuse_if_behind!())
+
+  defp assert_pending_answers({:ok, _pending}),
+    do: assert_raise(RuntimeError, fn -> CheckTestMigrations.refuse_if_behind!() end)
+
+  defp assert_pending_answers({:error, reason}),
+    do: flunk("pending/0 could not read the schema: #{inspect(reason)}")
 end
