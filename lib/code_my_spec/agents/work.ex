@@ -1108,13 +1108,23 @@ defmodule CodeMySpec.Agents.Work do
   # still lists them. Measured 2026-10-02: main was re-offered one question it
   # believed it had escalated four times in six minutes, and every turn read
   # "no change".
-  defp already_declined?(%{declined_offer: declined} = agent, offer, questions_only?)
+  # Either a refusal the agent gave, or a delivery we could not make. They are
+  # different facts (see `suppress_offer/3`) but they answer the same question
+  # for every caller here: is this offer damped right now? A failed delivery
+  # damps for its own short window, so the agent is re-offered as soon as its
+  # machine is reachable, and every reader -- including the cadence's `work?`
+  # and `list_agent_work`'s `damped/3` -- agrees about it.
+  defp already_declined?(agent, offer, questions_only?) do
+    refused?(agent, offer, questions_only?) or delivery_just_failed?(agent, offer)
+  end
+
+  defp refused?(%{declined_offer: declined} = agent, offer, questions_only?)
        when not is_nil(declined) and declined == offer do
     repeats_spent?(agent.declined_offer_count, questions_only?) and
       within_window?(agent.declined_offer_at, questions_only?)
   end
 
-  defp already_declined?(_agent, _offer, _questions_only?), do: false
+  defp refused?(_agent, _offer, _questions_only?), do: false
 
   defp repeats_spent?(n, true), do: is_integer(n) and n >= 1
   defp repeats_spent?(n, false), do: is_integer(n) and n >= @max_repeats
@@ -1136,13 +1146,25 @@ defmodule CodeMySpec.Agents.Work do
           %{count: pos_integer(), requirement: String.t() | nil, until: DateTime.t()} | nil
   def damped(scope, %Agent{} = agent, claimable) do
     offer = offer_fingerprint(scope, agent, claimable)
+    requirement = claimable |> List.first() |> then(&(&1 && &1.name))
 
-    if already_declined?(agent, offer, false) do
-      %{
-        count: agent.declined_offer_count,
-        requirement: claimable |> List.first() |> then(&(&1 && &1.name)),
-        until: DateTime.add(agent.declined_offer_at, @decline_ttl_seconds, :second)
-      }
+    cond do
+      refused?(agent, offer, false) ->
+        %{
+          count: agent.declined_offer_count,
+          requirement: requirement,
+          until: DateTime.add(agent.declined_offer_at, @decline_ttl_seconds, :second)
+        }
+
+      delivery_just_failed?(agent, offer) ->
+        %{
+          count: 1,
+          requirement: requirement,
+          until: DateTime.add(agent.delivery_failed_at, @delivery_retry_after_seconds, :second)
+        }
+
+      true ->
+        nil
     end
   end
 
