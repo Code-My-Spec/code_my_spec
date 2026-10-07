@@ -501,8 +501,19 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp app_url_line(_scope, endpoint_module), do: main_app_url_line(endpoint_module)
 
+  # Do not tell the agent to boot a BEAM here (ab4e412c). `mix run` was the
+  # original instruction, and it hangs against any copy where the app is already
+  # running — which is every copy QA runs against. The fresh node blocks on the
+  # compile lock the running release holds rather than failing fast: the reporter
+  # ran it twice, 10s then 60s, and both hung, for information `qa/plan.md`
+  # already documents. `:4000`, `:4003` and `:4004` all hold compile locks on
+  # this machine, so the command shape is the hazard, not the endpoint.
   defp main_app_url_line(endpoint_module) do
-    "**App URL:** Run `mix run -e 'IO.puts(#{endpoint_module}.url())'`."
+    "**App URL:** `http://127.0.0.1:4000` (hosted), " <>
+      "`http://127.0.0.1:4004` (this checkout's local app). " <>
+      "Both are documented in `.code_my_spec/qa/plan.md`. " <>
+      "Do not boot a node to ask `#{endpoint_module}.url()` — a fresh `mix run` " <>
+      "blocks on the compile lock a running release holds and hangs."
   end
 
   defp own_copy_app_url_line(copy) do
