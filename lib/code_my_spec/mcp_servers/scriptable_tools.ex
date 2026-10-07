@@ -43,6 +43,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
   component(CodeMySpec.McpServers.Issues.Tools.UpdateIssue)
   component(CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy)
+  component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
   component(CodeMySpec.McpServers.Personas.Tools.CreatePersona)
   component(CodeMySpec.McpServers.Personas.Tools.UpdatePersona)
   component(CodeMySpec.McpServers.Personas.Tools.DeletePersona)

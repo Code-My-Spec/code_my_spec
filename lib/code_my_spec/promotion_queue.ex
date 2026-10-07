@@ -112,6 +112,7 @@ defmodule CodeMySpec.PromotionQueue do
          {:ok, copy} <- promoting_copy(scope),
          {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id)),
          :ok <- qa_passed(scope, subject),
+         :ok <- assigned_issues_clear(scope, copy, subject),
          {:ok, head} <- clean_head(scope, copy),
          :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
          {:ok, entry} <-
@@ -354,6 +355,28 @@ defmodule CodeMySpec.PromotionQueue do
     do: qa_verdict(Qa.issue_qa_passed?(scope, issue.id), "the fix for issue #{issue.id}")
 
   defp qa_passed(_scope, nil), do: :ok
+
+  # A fix may promote itself; other accepted issues on this copy still hold
+  # its work until they are resolved or their assignment is removed.
+  defp assigned_issues_clear(scope, copy, subject) do
+    promoting_issue_id = case subject do
+      {:issue, issue} -> issue.id
+      _ -> nil
+    end
+
+    blockers =
+      scope
+      |> Issues.list_by_status(:accepted)
+      |> Enum.filter(&(&1.assigned_working_copy_id == copy.id and &1.id != promoting_issue_id))
+
+    case blockers do
+      [] -> :ok
+      issues ->
+        {:error, %{reason: "Accepted issues assigned to this working copy block promotion: " <>
+          Enum.map_join(issues, ", ", & &1.id) <>
+          ". Resolve their fixes or remove their assignments before promoting this work."}}
+    end
+  end
 
   defp qa_verdict(true, _what), do: :ok
 

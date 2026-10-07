@@ -103,6 +103,15 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
         <button type="submit" class="btn btn-sm btn-primary">Assign</button>
       </form>
 
+      <button
+        :if={@issue.status == :accepted and @issue.assigned_working_copy_id != nil}
+        phx-click="unassign_from_working_copy"
+        data-test="unassign-issue-from-working-copy"
+        class="btn btn-sm btn-ghost mt-4"
+      >
+        Remove from working copy
+      </button>
+
       <form
         :if={@show_form == :dismiss}
         phx-submit="dismiss"
@@ -204,6 +213,20 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   end
 
   def handle_event("assign_to_working_copy", _params, socket), do: {:noreply, socket}
+
+  def handle_event("unassign_from_working_copy", _params, socket) do
+    case Agents.assign_issue_to_working_copy(
+           socket.assigns.current_scope,
+           socket.assigns.issue.id,
+           nil
+         ) do
+      {:ok, issue} ->
+        {:noreply, socket |> assign_issue(issue) |> put_flash(:info, "Issue removed from working copy.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to remove issue from working copy.")}
+    end
+  end
 
   @impl true
   def handle_event("show_dismiss_form", _params, socket) do
