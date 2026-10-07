@@ -2,8 +2,19 @@ defmodule CodeMySpec.Agents.TheTeamFinishesAStoryTogetherTest do
   @moduledoc """
   a31f1cd6 step 3. The team moves on only when its story is complete for all
   of it, and then it moves together: one agent's part finishing advances
-  nobody, and a finished story takes the whole team onto the next eligible one
-  without anyone selecting it.
+  nobody.
+
+  John, 2026-10-07 retired the other half of that — the automatic move. A
+  finished story does not take the team anywhere; a landing tells main the team
+  is free and main assigns the next story with `set_active_story` (criteria
+  2064/2065). So what is left here is the "moves together, or not at all"
+  property, asserted from the not-at-all side: nothing a teammate reads moves
+  the team, complete or landed.
+
+  The `held` assertions are the point rather than the rendered answer alone.
+  The answer could name the right story while the rows said otherwise, and the
+  incident f0c18598 was exactly that: `set_active_story` returned success four
+  times and the team's rows were moved within the minute anyway.
   """
 
   use CodeMySpecSpex.Case, async: false
@@ -38,15 +49,23 @@ defmodule CodeMySpec.Agents.TheTeamFinishesAStoryTogetherTest do
     assert held(ctx.qa) == ctx.story.id
   end
 
-  test "a finished story moves the whole team onto the next eligible story", ctx do
+  test "a finished story does not move the team onto the next eligible story", ctx do
     ctx = ctx |> Slice.complete() |> Slice.land() |> Slice.waiting()
 
+    # John, 2026-10-07: the automatic rebinding is retired. A landed story is
+    # finished, and finishing is not a move — it tells main the team is free so
+    # main can assign the next story with `set_active_story` (criterion 2064).
+    # This test asserted the opposite until then, and `208fba1c`/`f0c18598` are
+    # why: a team that walked itself off a story could not be held on it.
     answer = Slice.next(ctx, %{agent_id: ctx.coding.id})
 
-    assert answer =~ "# Story #{ctx.waiting.number}:"
-    assert held(ctx.coding) == ctx.waiting.id
-    assert held(ctx.qa) == ctx.waiting.id, "the teammate moved with it"
-    assert Slice.next(ctx, %{agent_id: ctx.qa.id}) =~ "# Story #{ctx.waiting.number}:"
+    refute answer =~ "# Story #{ctx.waiting.number}:",
+           "a finished story moved the whole team on its own. The move is always an " <>
+             "agent's act. Got:\n#{answer}"
+
+    assert held(ctx.coding) == ctx.story.id
+    assert held(ctx.qa) == ctx.story.id, "the teammate moved with it"
+    refute Slice.next(ctx, %{agent_id: ctx.qa.id}) =~ "# Story #{ctx.waiting.number}:"
   end
 
   test "with nothing eligible the team stays on its finished story", ctx do

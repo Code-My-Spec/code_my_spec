@@ -12,6 +12,13 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
 
   So the epic pull binds the team to the next story only when the active one
   has landed, never because it reads complete first.
+
+  John, 2026-10-07: the rebinding is retired entirely. A landing does not pull
+  the team anywhere either — it tells main the team is free, and main assigns
+  the next story with `set_active_story`. So this file's four scenarios are the
+  same assertion from both sides: no read moves the team, landed or not. The
+  gate f0c18598 asked for (landed, not merely complete) survives inside
+  `Assignment.advance/4`, which an explicit assignment still reaches.
   """
 
   use CodeMySpecSpex.Case, async: false
@@ -59,7 +66,13 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
     assert CodeMySpec.Qa.Verdict.complete?(ctx.scope, ctx.story.id),
            "the premise failed: QA has not passed this story, so it does not read complete"
 
-    assert CodeMySpec.Requirements.story_execution(ctx.scope, :qa, nil, fn _ -> false end, {:bound, ctx.story.id, nil}).status ==
+    assert CodeMySpec.Requirements.story_execution(
+             ctx.scope,
+             :qa,
+             nil,
+             fn _ -> false end,
+             {:bound, ctx.story.id, nil}
+           ).status ==
              :complete,
            "the premise failed: the story does not read complete for the team, so the pull would not fire"
 
@@ -98,19 +111,25 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
     assert held(ctx.qa) == ctx.story.id
   end
 
-  test "a landed story still moves the team onto the next one", ctx do
+  test "and a landed story does not move the team either", ctx do
     ctx = unlanded(ctx)
 
     story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
     {:ok, story} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "2.0.44")
     assert story.promoted_version == "2.0.44"
 
+    # Landing is the other half of f0c18598's fix and the whole of John's
+    # 2026-10-07 decision: a landing tells main the team is free
+    # (`Assignment.notify_team_free/3`) and main assigns the next story with
+    # `set_active_story`. Nothing moves the team as a side effect of reading.
+    # Criterion 2064 is the spex behind this.
     answer = Slice.next(ctx, %{agent_id: ctx.coding.id})
 
-    assert answer =~ "# Story #{ctx.waiting.number}:",
-           "a landed story must still let the team move on. Got:\n#{answer}"
+    refute answer =~ "# Story #{ctx.waiting.number}:",
+           "a landed story still moved its team, which is the automatic rebinding " <>
+             "retired on 2026-10-07. The move is always an agent's act. Got:\n#{answer}"
 
-    assert held(ctx.coding) == ctx.waiting.id
-    assert held(ctx.qa) == ctx.waiting.id
+    assert held(ctx.coding) == ctx.story.id
+    assert held(ctx.qa) == ctx.story.id, "the teammate was pulled with it"
   end
 end

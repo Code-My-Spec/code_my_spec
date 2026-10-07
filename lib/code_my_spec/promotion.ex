@@ -905,18 +905,48 @@ defmodule CodeMySpec.Promotion do
         "at #{head}"
     )
 
-    named = named_copy(working_copy_id)
+    with {:ok, scope, named} <- gate_copy(scope, working_copy_id) do
+      # Every source, whatever the project's config (c6f54b90): config decides
+      # what the stop hook sweeps, never what promote demands. Narrowing this
+      # would let a project promote a commit `exunit` had never once run against.
+      {answered, missing} = answers_at(scope, Run.sources(), head)
 
-    # Every source, whatever the project's config (c6f54b90): config decides
-    # what the stop hook sweeps, never what promote demands. Narrowing this
-    # would let a project promote a commit `exunit` had never once run against.
-    {answered, missing} = answers_at(scope, Run.sources(), head)
-
-    case blocking_problems(scope, Map.keys(answered)) do
-      [] -> certify(scope, answered, missing, head, named, opts)
-      problems -> gate_result(problems, named)
+      case blocking_problems(scope, Map.keys(answered)) do
+        [] -> certify(scope, answered, missing, head, named, opts)
+        problems -> gate_result(problems, named)
+      end
+      |> log_gate(working_copy_id, head)
     end
-    |> log_gate(working_copy_id, head)
+  end
+
+  # The copy the gate judges, resolved here rather than left to the read.
+  #
+  # `blocking_problems/2` reads problems through
+  # `ProblemRepository.scope_to_harness/2`, which treats a scope with no
+  # `active_working_copy_id` as "the default copy" (`WorkingCopies.default_id/1`)
+  # because a plain project-wide read has no copy to narrow to. That is right for
+  # a page showing a project-wide count, and wrong here: the gate is judging one
+  # checkout's commit, and with none named there is nothing to judge. Left
+  # unresolved it quietly judged the default copy's problems instead, so a caller
+  # with no working copy was refused over findings on a checkout it had never
+  # named and could not fix (`02796b61`).
+  #
+  # Refused, not narrowed to a copy nobody asked for. `gate/3`'s callers resolve a
+  # copy before they get here (`promoting_copy/2`), so this is the case where
+  # nobody did.
+  defp gate_copy(scope, working_copy_id) when is_binary(working_copy_id) do
+    {:ok, scope, named_copy(working_copy_id)}
+  end
+
+  defp gate_copy(_scope, nil) do
+    {:error,
+     %{
+       reason:
+         "no working copy on this scope, so there is nothing to gate. A promotion " <>
+           "judges one checkout's commit; name the working copy it is yours to " <>
+           "promote from.",
+       working_copy: nil
+     }}
   end
 
   # The gate's answer, beside the line that says it was asked: a gate that was

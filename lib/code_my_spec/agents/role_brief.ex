@@ -172,6 +172,24 @@ defmodule CodeMySpec.Agents.RoleBrief do
 
     If work you are offered or holding should not be done, `tap_out` of it with
     the reason rather than refusing in prose.
+
+    ## Reaching what you need (7cb35065)
+
+    The framework reference ships with the project under `priv/knowledge/`. Read
+    it with `read_knowledge({ path = "devops/README.md" })` -- for the devops
+    and observability notes, `"liveview/forms.md"` for LiveView, and so on.
+    `list_knowledge` lists what is there. Do not reach for `read_project_file`
+    for these: it reads the environment's checkout, not the reference.
+
+    A path *outside* your working copy is refused, on purpose -- your file tools
+    are scoped to the copy and a spill directory, and that is a sandbox rather
+    than an oversight. If a task needs something that lives elsewhere, say so in
+    your reply and carry on; do not ask another agent to fetch it for you, which
+    hides the gap from everyone but the one doing the smoothing.
+
+    Abandoned work is invisible to `git status` and `git diff`. `git stash list`
+    shows it, and `git stash show -p <ref>` reads one -- reach for it before
+    concluding a prototype or a partial change never existed.
     """,
     qa: """
     You are the QA agent on this project.

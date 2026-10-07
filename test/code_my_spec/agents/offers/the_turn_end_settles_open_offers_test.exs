@@ -383,13 +383,20 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       assert %{ignored: 0, held?: false} = Offers.standing(ctx.agent.id)[@node]
     end
 
-    test "nothing but work escalates (1742)", ctx do
+    test "a kind not in the ladders never escalates (1742, 2057)", ctx do
       offered = offer(ctx, :resume, {"restart", nil})
-      denial = offer(ctx, :denial, {"tap_out", "r-1"})
+      check_in = offer(ctx, :check_in, {"cadence", nil})
       end_turn(ctx)
 
       assert settled(offered).next_step == nil
-      assert settled(denial).next_step == nil
+      assert settled(check_in).next_step == nil
+    end
+
+    test "a denial escalates on its own one-rung ladder (2057)", ctx do
+      denial = offer(ctx, :denial, {"tap_out", "r-1"})
+      end_turn(ctx)
+
+      assert settled(denial).next_step == "held_back"
     end
   end
 

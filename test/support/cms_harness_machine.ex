@@ -254,53 +254,53 @@ defmodule CmsHarnessTest.Machine do
   end
 
   @doc """
-  Make sure the tree an agent lives in exists — both halves of it.
+  Make sure the tree an agent lives in exists — the whole of it.
 
   An agent is supervised under its copy (`CmsHarness.CopiesSupervisor` →
-  `CmsHarness.Copy.Supervisor`) and registered in
-  `CmsHarness.Registry`, and it needs both: without the registry, starting one
-  raises `unknown registry` from inside the `:via` tuple. The harness starts
-  both; a spex run starts neither.
+  `CmsHarness.Copy.Supervisor`) and registered in `CmsHarness.Registry`, and it
+  needs both: without the registry, starting one raises `unknown registry` from
+  inside the `:via` tuple.
 
-  Linked to the caller, so each scenario gets a clean tree and nothing leaks
-  into the next.
+  ## Why this boots `CmsHarness.Supervisor` rather than its two children
+
+  It used to start `CmsHarness.Registry` and `CmsHarness.CopiesSupervisor`
+  directly, on the reasoning that a spex run starts neither and those were the
+  two an agent needs. That left the tree *half* built, and both halves of the
+  damage are reproducible:
+
+    * `CmsHarness.Supervisor` was left unnamed while its two globally named
+      children were alive. A later file calling
+      `Projects.ensure_harness_supervisor_started/0` — which guards on the
+      supervisor's own name — found it unregistered and booted a fresh tree
+      whose first child, `{Registry, name: CmsHarness.Registry}`, could not
+      start. `Supervisor.start_link/2` *exits* the caller rather than returning
+      an error tuple, so it arrived as `EXIT from #PID<…> shutdown: failed to
+      start child: CmsHarness.Registry` with no stacktrace naming the caller.
+      Story 704's criterion_1484 (a `Machine` file) then criterion_431 (an
+      `ensure_live_harness` file): 1 failure in that order, 0 the other way.
+
+    * The children it skipped are not optional. `CmsHarness.Web.Endpoint` is a
+      child of `CmsHarness.Supervisor`, and the live-harness path posts hooks
+      through it — so with only the two hand-started children up, a later file
+      failed with `could not find persistent term for endpoint
+      CmsHarness.Web.Endpoint`.
+
+  One idempotent call to the supervisor gives every caller the same tree, and
+  keeps what the hand-starting was for: unlinked, so the tree outlives the
+  scenario that happened to start it.
   """
   @spec ensure_supervisor() :: :ok
   def ensure_supervisor do
-    ensure(CmsHarness.Registry, fn ->
-      Registry.start_link(keys: :unique, name: CmsHarness.Registry)
-    end)
+    case CmsHarness.Supervisor.start_link([]) do
+      {:ok, pid} ->
+        # Unlinked on purpose, and the same reason the two hand-starts it
+        # replaced were: linked, the tree dies with whichever scenario started
+        # it, and the next one either raises `unknown registry` or starts a
+        # second tree while agents live in the first.
+        Process.unlink(pid)
+        :ok
 
-    ensure(CmsHarness.CopiesSupervisor, fn ->
-      DynamicSupervisor.start_link(name: CmsHarness.CopiesSupervisor, strategy: :one_for_one)
-    end)
-  end
-
-  # `whereis` then `start` is a check-then-act, and two callers can both pass
-  # the check. That is not hypothetical here: waking is dispatched from tasks,
-  # so two wakes landing together both find `nil` and both start — the loser
-  # got `{:error, {:already_started, _}}` against a bare `{:ok, pid}` match and
-  # brought its task down with a `MatchError`, logged at `:error`, which
-  # `SexySpex.ErrorCapture` turns into a failure of whichever spex was running.
-  #
-  # Losing the race is the normal outcome of an idempotent start, so it is
-  # treated as one.
-  defp ensure(name, start) do
-    case Process.whereis(name) do
-      nil ->
-        case start.() do
-          {:ok, pid} ->
-            # Unlinked on purpose: linked, it dies with whichever scenario
-            # happened to start it, and the next one either raises `unknown
-            # registry` or starts a second tree while agents live in the first.
-            Process.unlink(pid)
-            :ok
-
-          {:error, {:already_started, _pid}} ->
-            :ok
-        end
-
-      _pid ->
+      {:error, {:already_started, _pid}} ->
         :ok
     end
   end

@@ -17,6 +17,25 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  # How long to wait for the message the stubbed Cloudflare plug sends back to
+  # this process.
+  #
+  # Naming it rather than leaning on ExUnit's defaults, and naming it once. The
+  # two sites below pinned `100` explicitly — not the macro default, a timeout
+  # of their own — which stopped `3c8ab289`'s global raise from reaching them.
+  # The wait is cross-process either way: the plug reads the request body in
+  # Req's connection process and `send/2`s the decoded body from there, so its
+  # arrival is scheduling-dependent, not sequenced by anything this test does.
+  # Under a loaded gate that is exactly the shape that goes red.
+  #
+  # A passing assert returns the moment the message lands, so only a genuine
+  # failure pays this. `refute_receive` is the one that must not be generous —
+  # it waits the whole window by construction — so it gets the short one, which
+  # is sound because the thing it asserts *absent* is asserted absent after a
+  # synchronous `PreviewTunnel.release/1` has already returned.
+  @arrival_timeout 5_000
+  @absence_timeout 250
+
   import CodeMySpec.DevicesFixtures
 
   import CodeMySpec.AccountsFixtures
@@ -346,8 +365,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       assert {:error, :no_tunnel_on_this_device} = PreviewTunnel.ensure(elsewhere)
 
-      refute_receive {:put_config, _}, 100
-      refute_receive {:dns_record, _}, 100
+      refute_receive {:put_config, _}, @absence_timeout
+      refute_receive {:dns_record, _}, @absence_timeout
 
       {:ok, saved} = WorkingCopies.fetch(elsewhere.id)
       assert saved.preview_tunnel_id == nil
@@ -363,7 +382,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
         WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
 
       assert {:error, :not_the_main_copy} = PreviewTunnel.ensure(worktree)
-      refute_receive {:put_config, _}, 100
+      refute_receive {:put_config, _}, @absence_timeout
     end
 
     test "release/1 drops this copy's ingress rule and DNS record, and clears its address", %{
@@ -383,7 +402,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       stub_shared_cloudflare(self(), [%{"hostname" => host, "service" => "http://127.0.0.1:41234"}])
       assert {:ok, _} = PreviewTunnel.ensure(sibling)
-      assert_receive {:put_config, _}, 100
+      assert_receive {:put_config, _}, @arrival_timeout
       {:ok, sibling} = WorkingCopies.fetch(sibling.id)
 
       stub_shared_cloudflare(
@@ -426,13 +445,13 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       stub_shared_cloudflare(self(), [%{"hostname" => host, "service" => "http://127.0.0.1:41234"}])
       assert {:ok, _} = PreviewTunnel.ensure(sibling)
-      assert_receive {:put_config, _}, 100
+      assert_receive {:put_config, _}, @arrival_timeout
       {:ok, sibling} = WorkingCopies.fetch(sibling.id)
 
       stub_shared_cloudflare(self(), [], [])
 
       assert :ok = PreviewTunnel.release(sibling)
-      refute_receive {:dns_deleted, _}, 100
+      refute_receive {:dns_deleted, _}, @absence_timeout
 
       {:ok, saved} = WorkingCopies.fetch(sibling.id)
       assert saved.preview_tunnel_id == nil

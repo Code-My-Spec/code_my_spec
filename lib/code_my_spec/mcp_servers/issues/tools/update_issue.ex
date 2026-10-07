@@ -39,6 +39,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
 
   use Anubis.Server.Component, type: :tool
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
@@ -74,11 +75,26 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
           "to correct a first."
   end
 
+  # The re-triage levers, which are product's.
+  #
+  # `append` is deliberately not here: it only ever adds, and the roles that
+  # discover a report has gone stale are the ones working it (`0074e1b8`). The
+  # fields below are the accept/dismiss decision under another name, so a caller
+  # who does not carry the triage authority is refused them.
+  @triage_fields [
+    {:severity, "severity"},
+    {:story_number, "story_number"},
+    {:detach_from_story, "detach_from_story"},
+    {:category, "category"},
+    {:source_path, "source_path"}
+  ]
+
   @impl true
   def execute(params, frame) do
     with {:ok, attrs} <- build_attrs(params),
          {:ok, scope} <- Validators.validate_local_scope(frame, params),
          :ok <- ensure_some_field(attrs, params[:append]),
+         :ok <- ensure_may_triage(scope, frame, params),
          {:ok, attrs} <- StoryRefs.put_story_id(scope, attrs),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
          attrs = maybe_append(attrs, issue, params[:append]),
@@ -101,6 +117,48 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
 
       {:error, reason} ->
         {:reply, IssuesMapper.error(reason), frame}
+    end
+  end
+
+  # Refuses the triage fields to a role that does not carry them, and lets
+  # `append` through.
+  #
+  # The role comes from the agent on the connection (`AgentScope`), never from
+  # an argument: an argument is not where authority comes from. A caller with
+  # no agent at all -- a person, an operator session -- keeps the whole tool,
+  # which is what every other tool in this server assumes.
+  defp ensure_may_triage(scope, frame, params) do
+    case role_of(scope, frame) do
+      :product -> :ok
+      :unscoped -> :ok
+      role -> refuse_or_allow(role, params)
+    end
+  end
+
+  defp refuse_or_allow(role, params) do
+    case Enum.filter(@triage_fields, fn {key, _} -> provided?(params[key]) end) do
+      [] ->
+        :ok
+
+      named ->
+        {:error,
+         "Re-triaging an issue (#{Enum.map_join(named, ", ", &elem(&1, 1))}) is product's call; " <>
+           "a #{role} agent carries only `append`. Append the evidence and, if the triage " <>
+           "is wrong, say so in the append so product can act on it."}
+    end
+  end
+
+  # `detach_from_story` is a boolean and only means anything as `true`, so the
+  # binary `present?/1` above would let it through as "not provided".
+  defp provided?(true), do: true
+  defp provided?(value), do: present?(value)
+
+  defp role_of(scope, frame) do
+    with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
+         {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
+      agent.role
+    else
+      _ -> :unscoped
     end
   end
 

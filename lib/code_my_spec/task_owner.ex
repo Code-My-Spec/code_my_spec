@@ -172,7 +172,30 @@ defmodule CodeMySpec.TaskOwner do
     end)
   end
 
-  @doc "Block an active task while retaining its identity, ownership and continuous policy."
+  @doc """
+  Block a task while retaining its identity, ownership and continuous policy.
+
+  An `:active` task is the ordinary case: it becomes `:blocked` on the new
+  blocker.
+
+  A task that is already `:blocked` is accepted too, and this is the whole of
+  ce070442. It used to fall through to `{:error, :task_not_active}`, which left
+  a blocked task unreachable by `tap_out` — and `tap_out` is what the loop's own
+  refusal text tells an agent to reach for ("block it with `ask_user_question`
+  or `tap_out`, or `cancel_task`"). The reported sequence is exactly that: a
+  `qa_complete` task blocked on a question, the question answered, `start_task`
+  refusing to resume it (`:requirement_not_eligible` on the entity_id bug
+  ab111a52), `tap_out` refusing it as inactive, and nothing left but
+  `cancel_task` — which discards the attempt instead of asking a person, the
+  opposite of what the agent wanted.
+
+  Re-blocking is not a contradiction. The agent is saying "a person should
+  decide this", and the task is demonstrably not active *because* nobody has
+  decided the old blocker yet. What changes is which blocker it waits on: the
+  new one, so approving it frees exactly this task. `blocker_resolved_at` is
+  cleared for the same reason `block_tap_out_task/5` relies on — a task waiting
+  again is not a task whose blocker is answered.
+  """
   @spec block_task(Scope.t(), t(), String.t(), atom(), String.t(), keyword()) ::
           {:ok, t()} | {:error, term()}
   def block_task(scope, owner, task_id, type, blocker_id, opts \\ [])
@@ -180,10 +203,12 @@ defmodule CodeMySpec.TaskOwner do
              blocker_id != "" do
     locked_update(scope, owner, fn current ->
       case find_task(current, task_id) do
-        %Task{status: :active} ->
+        %Task{status: status} = task when status in [:active, :blocked] ->
           update_embedded_task(current, task_id, %{
             status: :blocked,
-            blocked_at: now(),
+            # The first block's time is kept: it is when this task stopped being
+            # worked, and re-blocking does not restart that clock.
+            blocked_at: task.blocked_at || now(),
             blocker_type: type,
             blocker_id: blocker_id,
             blocker_resolved_at: nil,
