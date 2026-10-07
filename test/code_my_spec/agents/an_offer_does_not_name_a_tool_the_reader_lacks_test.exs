@@ -98,9 +98,11 @@ defmodule CodeMySpec.Agents.AnOfferDoesNotNameAToolTheReaderLacksTest do
   defp offer_text do
     source = File.read!(@offer_source)
 
-    case Regex.run(~r/defp answer_offer.*?(?=\n  defp open_questions)/s, source) do
-      [block] -> block
-      _ -> flunk("could not find answer_offer/1 in #{@offer_source}")
-    end
+    source
+    |> then(&Regex.run(~r/defp answer_offer.*?(?=\n  defp open_questions)/s, &1))
+    |> offer_block(source)
   end
+
+  defp offer_block([block], _source), do: block
+  defp offer_block(_miss, source), do: flunk("could not find answer_offer/1 in #{source}")
 end

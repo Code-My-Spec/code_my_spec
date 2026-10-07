@@ -92,12 +92,8 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
     end)
   end
 
-  defp argument_names(component) do
-    case component.input_schema do
-      %{"properties" => properties} -> Map.keys(properties)
-      _ -> []
-    end
-  end
+  defp argument_names(%{input_schema: %{"properties" => properties}}), do: Map.keys(properties)
+  defp argument_names(_component), do: []
 
   defp definitions do
     component =
@@ -124,19 +120,18 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
   # The instruction as one agent receives it: the prompt, plus every playbook
   # the prompt points that agent at. Each is tagged with where it came from, so
   # a failure says which file to open.
-  defp instruction_sources(module) do
-    case source_of(module) do
-      nil -> []
-      prompt -> [{prompt, "the prompt"} | Enum.map(referenced_docs(prompt), &playbook_source/1)]
-    end
+  defp instruction_sources(module), do: instruction_sources(module, source_of(module))
+
+  defp instruction_sources(_module, nil), do: []
+
+  defp instruction_sources(_module, prompt) do
+    [{prompt, "the prompt"} | Enum.map(referenced_docs(prompt), &playbook_source/1)]
   end
 
-  defp playbook_source(path) do
-    case File.read(Path.join(@knowledge_root, path)) do
-      {:ok, source} -> {source, path}
-      _ -> {"", path}
-    end
-  end
+  defp playbook_source(path), do: playbook_source(path, File.read(Path.join(@knowledge_root, path)))
+
+  defp playbook_source(path, {:ok, source}), do: {source, path}
+  defp playbook_source(path, _error), do: {"", path}
 
   defp tool_gaps(catalogue) do
     for definition <- definitions(),
@@ -342,8 +337,12 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
     rest
     |> backticked_names_with_offsets()
     |> Enum.find_value(rest, fn {name, next_offset} ->
-      if MapSet.member?(catalogue, name), do: String.slice(rest, 0, next_offset)
+      tool_slice(catalogue, name, rest, next_offset)
     end)
+  end
+
+  defp tool_slice(catalogue, name, rest, next_offset) do
+    MapSet.member?(catalogue, name) && String.slice(rest, 0, next_offset) || nil
   end
 
   defp backticked_names_with_offsets(text) do
