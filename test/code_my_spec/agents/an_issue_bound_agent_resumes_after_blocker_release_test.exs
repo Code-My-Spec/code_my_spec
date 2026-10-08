@@ -107,5 +107,39 @@ defmodule CodeMySpec.Agents.AnIssueBoundAgentResumesAfterBlockerReleaseTest do
     for project_id <- [nil, "invalid", Ecto.UUID.generate()] do
       assert Issues.get_issue(%{minimal | active_project_id: project_id}, issue.id) == nil
     end
+
+    for account_id <- [nil, "invalid", Ecto.UUID.generate()] do
+      assert Issues.get_issue(%{minimal | active_account_id: account_id}, issue.id) == nil
+    end
+
+    assert {:ok, %{id: ^id}} = Issues.fetch_issue(minimal, String.slice(issue.id, 0, 8))
+  end
+
+  test "ID-only vendor scopes retain framework access without exposing tenant app issues", %{
+    scope: scope
+  } do
+    previous = Application.get_env(:code_my_spec, :code_my_spec_project_id)
+    Application.put_env(:code_my_spec, :code_my_spec_project_id, scope.active_project_id)
+
+    on_exit(fn ->
+      if is_nil(previous),
+        do: Application.delete_env(:code_my_spec, :code_my_spec_project_id),
+        else: Application.put_env(:code_my_spec, :code_my_spec_project_id, previous)
+    end)
+
+    tenant = full_scope_fixture()
+    framework = issue_fixture(tenant, %{scope: :framework})
+    app = issue_fixture(tenant, %{scope: :app})
+
+    vendor = %CodeMySpec.Users.Scope{
+      active_account_id: scope.active_account_id,
+      active_project_id: scope.active_project_id
+    }
+
+    assert Issues.get_issue(vendor, framework.id).id == framework.id
+    assert Issues.get_issue(vendor, app.id) == nil
+
+    assert Issues.get_issue(%{vendor | active_account_id: tenant.active_account_id}, framework.id) ==
+             nil
   end
 end
