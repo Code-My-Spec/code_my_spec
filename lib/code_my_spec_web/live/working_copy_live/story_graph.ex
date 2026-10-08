@@ -104,10 +104,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
 
     Enum.flat_map(teams, fn team ->
       tasks =
-        Enum.filter(team.agent.tasks || [], fn task ->
-          field && task_name(requirement.entity_type, task.requirement_name) == requirement.name &&
-            to_string(Map.get(task, field)) == to_string(requirement.entity_id)
-        end)
+        Enum.filter(team.agent.tasks || [], &task_for_requirement?(&1, field, requirement))
 
       ids = MapSet.new(tasks, & &1.id)
 
@@ -116,6 +113,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
           MapSet.member?(ids, request.task_id)
       end)
     end)
+  end
+
+  defp task_for_requirement?(task, field, requirement) do
+    field && task_name(requirement.entity_type, task.requirement_name) == requirement.name &&
+      to_string(Map.get(task, field)) == to_string(requirement.entity_id)
   end
 
   defp group_components(flow, []), do: flow

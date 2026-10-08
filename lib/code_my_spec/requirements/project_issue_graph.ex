@@ -35,21 +35,7 @@ defmodule CodeMySpec.Requirements.ProjectIssueGraph do
       edges = Enum.reject(graph.edges, &(&1.to == aggregate))
       edges = edges ++ if(issues == [], do: [%{from: setup, to: aggregate}], else: branches)
 
-      nodes =
-        Enum.map(graph.nodes, fn node ->
-          if Topology.node_key(node) == aggregate do
-            %{
-              node
-              | satisfied: issues == [],
-                satisfied_by: nil,
-                role: nil,
-                description: "All blocking project-scoped issues are completed",
-                details: %{"open_project_issues" => length(issues)}
-            }
-          else
-            node
-          end
-        end) ++ issue_nodes
+      nodes = Enum.map(graph.nodes, &update_aggregate(&1, aggregate, issues)) ++ issue_nodes
 
       blocked = Topology.descendants_of(Enum.reject(nodes, & &1.satisfied), edges)
       by_key = Map.new(nodes, &{Topology.node_key(&1), &1})
@@ -76,6 +62,21 @@ defmodule CodeMySpec.Requirements.ProjectIssueGraph do
       %{graph | nodes: nodes, edges: edges, actionable: actionable}
     else
       graph
+    end
+  end
+
+  defp update_aggregate(node, aggregate, issues) do
+    if Topology.node_key(node) == aggregate do
+      %{
+        node
+        | satisfied: issues == [],
+          satisfied_by: nil,
+          role: nil,
+          description: "All blocking project-scoped issues are completed",
+          details: %{"open_project_issues" => length(issues)}
+      }
+    else
+      node
     end
   end
 

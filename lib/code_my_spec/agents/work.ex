@@ -4,6 +4,7 @@ defmodule CodeMySpec.Agents.Work do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.IssueWork
@@ -1221,8 +1222,8 @@ defmodule CodeMySpec.Agents.Work do
     scope = at_copy(scope, owner)
 
     bag =
-      if CodeMySpec.Agents.Assignment.team_member?(owner.role),
-        do: CodeMySpec.Agents.IssueAssignment.bag(scope, owner.working_copy_id),
+      if Assignment.team_member?(owner.role),
+        do: IssueAssignment.bag(scope, owner.working_copy_id),
         else: []
 
     cond do

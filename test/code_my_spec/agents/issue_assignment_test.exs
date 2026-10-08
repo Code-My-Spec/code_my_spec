@@ -17,6 +17,9 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
+  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias CodeMySpec.McpServers.Issues.Tools.UnassignIssue
+  alias CodeMySpec.McpServers.Issues.Tools.SetActiveIssue
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
@@ -54,13 +57,16 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
 
-  for linked? <- [true, false] do
+  defp linked_story(true, scope), do: CodeMySpec.StoriesFixtures.story_fixture(scope)
+  defp linked_story(false, _scope), do: nil
+
+  for {linked?, criterion} <- [{true, 2079}, {false, 2080}] do
     @linked linked?
-    @tag criterion: if(linked?, do: 2079, else: 2080)
+    @tag criterion: criterion
     test "issue assignment replaces the whole team's story binding (linked: #{linked?})", ctx do
       copy_id = copy(ctx.scope)
       previous = CodeMySpec.StoriesFixtures.story_fixture(ctx.scope)
-      target = if @linked, do: CodeMySpec.StoriesFixtures.story_fixture(ctx.scope)
+      target = linked_story(@linked, ctx.scope)
       target_id = target && target.id
       {:ok, issue} = Issues.update_issue(ctx.scope, ctx.issue, %{story_id: target_id})
 
@@ -506,7 +512,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       {:reply, response, _} =
-        CodeMySpec.McpServers.Issues.Tools.SetActiveIssue.execute(
+        SetActiveIssue.execute(
           %{working_copy_id: copy_id, issue_id: ctx.issue.id},
           frame
         )
@@ -563,7 +569,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       {:reply, response, _} =
-        CodeMySpec.McpServers.Issues.Tools.UnassignIssue.execute(%{issue_id: ctx.issue.id}, frame)
+        UnassignIssue.execute(%{issue_id: ctx.issue.id}, frame)
 
       refute response.isError
       assert reload(coding).issue_id == second.id
@@ -617,7 +623,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       {:ok, [row]} =
-        CodeMySpec.McpServers.Issues.Tools.ListIssues.script_result(
+        ListIssues.script_result(
           %{working_copy_id: copy_id, severity: "all"},
           frame
         )

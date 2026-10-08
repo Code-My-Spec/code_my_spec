@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.IssueWork do
   alias CodeMySpec.AgentTasks.IssuePromote
   alias CodeMySpec.AgentTasks.IssueQa
   alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Users.Scope
 
   @waiting_for_main "Waiting for main assignment: the team is free and nothing is assigned yet."
@@ -37,7 +38,7 @@ defmodule CodeMySpec.Agents.IssueWork do
     ordered =
       Enum.sort_by(
         issues,
-        &{&1.id != agent.issue_id, CodeMySpec.Issues.Issue.severity_index(&1.severity), &1.id}
+        &{&1.id != agent.issue_id, Issue.severity_index(&1.severity), &1.id}
       )
 
     results = Enum.map(ordered, &stage(scope, agent, &1))

@@ -177,11 +177,8 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     new_team = lock_team(scope, working_copy_id)
     if new_team == [], do: Repo.rollback(:no_team)
 
-    unless issue.status == :accepted, do: Repo.rollback("Only accepted issues can be assigned.")
     existing = bag(scope, working_copy_id) |> Enum.reject(&(&1.id == issue.id))
-
-    if Enum.any?(existing, &(&1.story_id != issue.story_id)),
-      do: Repo.rollback("A project issue bag cannot mix issues from different story assignments.")
+    validate_bag(issue, existing)
 
     old_team = lock_team(scope, issue.assigned_working_copy_id)
     move_tasks(old_team, new_team, issue.id)
@@ -202,6 +199,13 @@ defmodule CodeMySpec.Agents.IssueAssignment do
       {:error, reason} ->
         Repo.rollback(reason)
     end
+  end
+
+  defp validate_bag(issue, existing) do
+    unless issue.status == :accepted, do: Repo.rollback("Only accepted issues can be assigned.")
+
+    if Enum.any?(existing, &(&1.story_id != issue.story_id)),
+      do: Repo.rollback("A project issue bag cannot mix issues from different story assignments.")
   end
 
   defp focus_remaining(_scope, nil), do: :ok
@@ -276,37 +280,38 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   def free(%Scope{} = _scope, %{assigned_working_copy_id: nil}), do: :ok
 
   def free(%Scope{} = scope, %{id: issue_id}) do
-    case transaction(scope, issue_id, fn issue ->
-           case issue.assigned_working_copy_id do
-             nil ->
-               :ok
-
-             copy_id ->
-               team = lock_team(scope, copy_id)
-               {:ok, _} = Issues.set_assigned_working_copy(scope, issue, nil)
-               release_issue(team, issue_id)
-               Enum.each(team, &complete_held_tasks(scope, &1, issue_id))
-               remaining = bag(scope, copy_id)
-
-               if remaining == [] do
-                 now = DateTime.utc_now()
-
-                 for agent <- team do
-                   from(a in Agent, where: a.id == ^agent.id)
-                   |> Repo.update_all(set: [team_free_at: free_at(agent, now)])
-                 end
-
-                 if Enum.any?(team, &is_nil(&1.story_id)), do: notify_main(scope, copy_id, issue)
-               else
-                 focus_remaining(scope, copy_id)
-               end
-
-               :ok
-           end
-         end) do
+    case transaction(scope, issue_id, &finish_binding(scope, &1)) do
       {:ok, :ok} -> :ok
       {:error, reason} -> raise "Could not release issue assignment: #{inspect(reason)}"
     end
+  end
+
+  defp finish_binding(_scope, %{assigned_working_copy_id: nil}), do: :ok
+
+  defp finish_binding(scope, %{assigned_working_copy_id: copy_id} = issue) do
+    team = lock_team(scope, copy_id)
+    {:ok, _} = Issues.set_assigned_working_copy(scope, issue, nil)
+    release_issue(team, issue.id)
+    Enum.each(team, &complete_held_tasks(scope, &1, issue.id))
+
+    if bag(scope, copy_id) == [] do
+      free_finished_team(scope, team, copy_id, issue)
+    else
+      focus_remaining(scope, copy_id)
+    end
+
+    :ok
+  end
+
+  defp free_finished_team(scope, team, copy_id, issue) do
+    now = DateTime.utc_now()
+
+    for agent <- team do
+      from(a in Agent, where: a.id == ^agent.id)
+      |> Repo.update_all(set: [team_free_at: free_at(agent, now)])
+    end
+
+    if Enum.any?(team, &is_nil(&1.story_id)), do: notify_main(scope, copy_id, issue)
   end
 
   defp complete_held_tasks(scope, agent, issue_id) do

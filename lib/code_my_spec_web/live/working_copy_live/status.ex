@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
@@ -156,7 +157,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     socket
     |> assign(:graph_error, nil)
     |> start_async(:story_graph, fn ->
-      work = Enum.map(agents, &{&1, CodeMySpec.Agents.Work.work_for(scope, &1.role, &1)})
+      work = Enum.map(agents, &{&1, Work.work_for(scope, &1.role, &1)})
 
       flow =
         cond do
@@ -190,15 +191,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
 
       issues = Agents.assigned_issues(scope, id)
 
-      teams =
-        Enum.map(agents, fn agent ->
-          agent
-          |> team_details(scope, id)
-          |> Map.put(
-            :issues,
-            if(is_nil(agent.retired_at) and agent.role in [:coding, :qa], do: issues, else: [])
-          )
-        end)
+      teams = Enum.map(agents, &team_with_issues(&1, scope, id, issues))
 
       assigned_id = WorkingCopies.team_story_id(id)
       story = assigned_id && Stories.get_story(scope, assigned_id)
@@ -229,6 +222,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
       |> put_flash(:error, "That working copy is not on this project.")
       |> push_navigate(to: ~p"/app/projects")
     end
+  end
+
+  defp team_with_issues(agent, scope, id, issues) do
+    assigned = if is_nil(agent.retired_at) and agent.role in [:coding, :qa], do: issues, else: []
+    agent |> team_details(scope, id) |> Map.put(:issues, assigned)
   end
 
   defp team_details(agent, scope, copy_id) do
