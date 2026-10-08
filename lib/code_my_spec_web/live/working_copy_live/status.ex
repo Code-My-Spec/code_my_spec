@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
      assign(socket,
        page_title: "Working copy status",
        flow: nil,
+       agent_work: [],
        stories: [],
        story_id: nil,
        selected_requirement_id: nil,
@@ -104,7 +105,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_async(:story_graph, {:ok, flow}, socket) do
+  def handle_async(:story_graph, {:ok, {flow, work}}, socket) do
     previous = socket.assigns.flow
 
     changed =
@@ -112,7 +113,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
         Map.keys(previous.edges) != Map.keys(flow.edges)
 
     flow = StoryGraph.preserve_view(flow, previous)
-    socket = assign(socket, flow: flow, needs_layout: changed, graph_error: nil)
+    socket = assign(socket, flow: flow, agent_work: work, needs_layout: changed, graph_error: nil)
     {:noreply, if(changed and previous, do: arrange(socket), else: socket)}
   end
 
@@ -131,7 +132,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
   end
 
   defp load_graph(%{assigns: %{story_id: nil}} = socket),
-    do: socket |> cancel_async(:story_graph) |> assign(flow: nil, graph_error: nil)
+    do:
+      socket |> cancel_async(:story_graph) |> assign(flow: nil, agent_work: [], graph_error: nil)
 
   defp load_graph(socket) do
     scope = %{
@@ -149,7 +151,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     |> start_async(:story_graph, fn ->
       {:ok, graph} = Requirements.story_graph(scope, story_id)
       work = Enum.map(agents, &{&1, CodeMySpec.Agents.Work.work_for(scope, &1.role, &1)})
-      StoryGraph.build(graph, work, teams)
+      {StoryGraph.build(graph, work, teams), work}
     end)
   end
 
@@ -175,7 +177,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
 
       socket =
         if story_id != socket.assigns.story_id,
-          do: assign(socket, flow: nil, selected_requirement_id: nil),
+          do: assign(socket, flow: nil, agent_work: [], selected_requirement_id: nil),
           else: socket
 
       topic = GraphInputs.topic(project.id)
@@ -246,7 +248,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     >
       <div
         :if={assigns[:row]}
-        class="mx-auto w-full max-w-[1800px]"
+        class="w-full"
         data-test="working-copy-status-page"
       >
         <.header>
@@ -254,8 +256,21 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
           <:subtitle>Working copy status</:subtitle>
           <:actions><button phx-click="refresh" class="btn btn-sm">Refresh</button></:actions>
         </.header>
+        <form phx-change="filter" class="mt-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="hidden" name="show_retired" value="false" />
+            <input
+              type="checkbox"
+              name="show_retired"
+              value="true"
+              checked={@show_retired}
+              class="toggle toggle-sm"
+            />
+            <span>Show retired</span>
+          </label>
+        </form>
         <div
-          class="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]"
+          class="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]"
           data-test="graph-data-layout"
         >
           <div class="min-w-0">
@@ -268,9 +283,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
             />
           </div>
           <aside
-            class="min-w-0 space-y-4 lg:max-h-[80vh] lg:overflow-y-auto"
+            class="min-w-0 space-y-4 lg:max-h-[calc(100dvh-180px)] lg:overflow-y-auto"
             data-test="requirement-data"
           >
+            <Components.Agent.next_work :for={{agent, work} <- @agent_work} agent={agent} work={work} />
             <div :if={@selected} class="flex items-center justify-between gap-2">
               <span class="text-sm font-medium">Blockers for {@selected.data.label}</span>
               <button phx-click="clear_requirement_filter" class="btn btn-sm btn-ghost">
@@ -278,19 +294,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
               </button>
             </div>
             <Components.StoryGraph.selection selected={@selected} />
-            <form phx-change="filter" class="mt-6">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="hidden" name="show_retired" value="false" />
-                <input
-                  type="checkbox"
-                  name="show_retired"
-                  value="true"
-                  checked={@show_retired}
-                  class="toggle toggle-sm"
-                />
-                <span>Show retired</span>
-              </label>
-            </form>
+
             <p :if={@teams == []} class="mt-6 opacity-60">No agents match this filter.</p>
             <p
               :if={@selected && @visible_teams == []}

@@ -31,10 +31,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
         No published requirements for this story at this working copy.
       </p>
       <div :if={@flow && map_size(@flow.nodes) > 0}>
-        <p class="mb-2 text-sm opacity-60">
-          Prerequisites → dependent work. Click a card for details.
-        </p>
-        <div class="story-requirements h-[560px] overflow-hidden rounded-box border border-base-300">
+        <div class="story-requirements h-[calc(100dvh-260px)] min-h-[420px] overflow-hidden rounded-box border border-base-300">
           <.live_component
             module={LiveFlow.Components.Flow}
             id="story-requirements-flow"

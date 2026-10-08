@@ -29,6 +29,31 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Agent do
     """
   end
 
+  attr(:agent, :map, required: true)
+  attr(:work, :map, required: true)
+
+  def next_work(assigns) do
+    assigns = assign(assigns, :next, List.first(assigns.work.actionable))
+
+    ~H"""
+    <section
+      class="rounded border border-base-300 border-l-4 p-3"
+      style={"border-left-color: #{color(@agent.id)}"}
+      data-test="agent-next-task"
+      data-agent-id={@agent.id}
+    >
+      <p class="text-sm font-semibold">{String.capitalize(to_string(@agent.role))} · Next task</p>
+      <%= if @next do %>
+        <p class="mt-1 font-medium">{Phoenix.Naming.humanize(@next.name)}</p>
+        <p class="text-sm opacity-70">{@next.entity_name}</p>
+      <% else %>
+        <p class="mt-1 text-sm">No task currently available.</p>
+        <p :if={@work[:reason]} class="text-sm opacity-70">{@work.reason}</p>
+      <% end %>
+    </section>
+    """
+  end
+
   attr(:team, :map, required: true)
   attr(:agents, :map, required: true)
   attr(:filtered, :boolean, default: false)
