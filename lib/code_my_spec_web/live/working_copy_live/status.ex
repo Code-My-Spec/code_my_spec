@@ -4,6 +4,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
@@ -17,12 +18,15 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket), do: Issues.subscribe(socket.assigns.current_scope)
+
     {:ok,
      assign(socket,
        page_title: "Working copy status",
        flow: nil,
        agent_work: [],
        stories: [],
+       issues: [],
        story_id: nil,
        selected_requirement_id: nil,
        graph_error: nil,
@@ -102,6 +106,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
       else: {:noreply, socket}
   end
 
+  def handle_info({event, %Issues.Issue{project_id: project_id}}, socket)
+      when event in [:created, :updated, :resolved, :deleted] do
+    {:noreply, if(project_id == socket.assigns.project.id, do: load(socket), else: socket)}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -109,10 +118,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     previous = socket.assigns.flow
 
     changed =
-      is_nil(previous) or Map.keys(previous.nodes) != Map.keys(flow.nodes) or
-        Map.keys(previous.edges) != Map.keys(flow.edges)
+      not is_nil(flow) and
+        (is_nil(previous) or Map.keys(previous.nodes) != Map.keys(flow.nodes) or
+           Map.keys(previous.edges) != Map.keys(flow.edges))
 
-    flow = StoryGraph.preserve_view(flow, previous)
+    flow = if flow, do: StoryGraph.preserve_view(flow, previous)
     socket = assign(socket, flow: flow, agent_work: work, needs_layout: changed, graph_error: nil)
     {:noreply, if(changed and previous, do: arrange(socket), else: socket)}
   end
@@ -131,10 +141,6 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     |> push_event("lf:fit_view", %{padding: 0.1, duration: 0})
   end
 
-  defp load_graph(%{assigns: %{story_id: nil}} = socket),
-    do:
-      socket |> cancel_async(:story_graph) |> assign(flow: nil, agent_work: [], graph_error: nil)
-
   defp load_graph(socket) do
     scope = %{
       socket.assigns.current_scope
@@ -149,9 +155,15 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     socket
     |> assign(:graph_error, nil)
     |> start_async(:story_graph, fn ->
-      {:ok, graph} = Requirements.story_graph(scope, story_id)
       work = Enum.map(agents, &{&1, CodeMySpec.Agents.Work.work_for(scope, &1.role, &1)})
-      {StoryGraph.build(graph, work, teams), work}
+
+      flow =
+        if story_id do
+          {:ok, graph} = Requirements.story_graph(scope, story_id)
+          StoryGraph.build(graph, work, teams)
+        end
+
+      {flow, work}
     end)
   end
 
@@ -168,7 +180,17 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
           &(&1.working_copy_id == id and (socket.assigns.show_retired or is_nil(&1.retired_at)))
         )
 
-      teams = Enum.map(agents, &team_details(&1, scope, id))
+      issues = Agents.assigned_issues(scope, id)
+
+      teams =
+        Enum.map(agents, fn agent ->
+          agent
+          |> team_details(scope, id)
+          |> Map.put(
+            :issues,
+            if(is_nil(agent.retired_at) and agent.role in [:coding, :qa], do: issues, else: [])
+          )
+        end)
 
       assigned_id = WorkingCopies.team_story_id(id)
       story = assigned_id && Stories.get_story(scope, assigned_id)
@@ -187,6 +209,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
       assign(socket,
         graph_topic: topic,
         stories: stories,
+        issues: issues,
         story_id: story_id,
         row: row,
         agents: Map.new(agents, &{&1.id, "#{&1.role} · #{String.slice(&1.id, 0, 8)}"}),
@@ -274,7 +297,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
           data-test="graph-data-layout"
         >
           <div class="min-w-0">
+            <Components.Issues.detail :if={@issues != []} issues={@issues} teams={@teams} />
             <Components.StoryGraph.graph
+              :if={@story_id || @issues == []}
               flow={@flow}
               stories={@stories}
               story_id={@story_id}

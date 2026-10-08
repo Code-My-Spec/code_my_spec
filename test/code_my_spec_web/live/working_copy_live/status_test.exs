@@ -111,6 +111,52 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
     refute graph =~ "Historical reservation"
   end
 
+  test "issue bag and next work remain visible with no story, scoped to this copy", ctx do
+    copy = join_working_copy(ctx, "/tmp/status-bag", "Issue team")
+    member = agent(ctx, copy.working_copy_id)
+
+    first =
+      CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{
+        status: :accepted,
+        title: "Active bag issue"
+      })
+
+    second =
+      CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{
+        status: :accepted,
+        title: "Other bag issue"
+      })
+
+    CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{
+      status: :accepted,
+      title: "Unassigned elsewhere"
+    })
+
+    {:ok, _} =
+      CodeMySpec.Agents.assign_issue_to_working_copy(ctx.scope, first.id, copy.working_copy_id)
+
+    {:ok, _} =
+      CodeMySpec.Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy.working_copy_id)
+
+    {:ok, view, _} = live(ctx.conn, status_path(ctx, copy.working_copy_id))
+    render_async(view, 15_000)
+    assert has_element?(view, "[data-test=working-copy-issue-bag]", "Issues (2)")
+    assert has_element?(view, "[data-issue-id='#{first.id}']", "Active")
+
+    assert has_element?(
+             view,
+             "#agent-#{member.id} [data-test=agent-assignment]",
+             "Active issue: Active bag issue"
+           )
+
+    assert has_element?(view, "[data-test=agent-next-task]", "Active bag issue")
+    refute render(view) =~ "Unassigned elsewhere"
+    refute has_element?(view, "[data-test=story-requirements]")
+    {:ok, _} = CodeMySpec.Agents.assign_issue_to_working_copy(ctx.scope, second.id, nil)
+    render_async(view, 15_000)
+    assert has_element?(view, "[data-test=working-copy-issue-bag]", "Issues (1)")
+  end
+
   defp status_path(ctx, id),
     do: "/app/projects/#{ctx.project.id}/working-copies/#{id}/status"
 

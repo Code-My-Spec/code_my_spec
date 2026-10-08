@@ -68,6 +68,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Agent do
       style={"border-left-color: #{color(@team.agent.id)}"}
     >
       <.summary agent={@team.agent} />
+      <Components.Issues.summary agent={@team.agent} issues={@team[:issues] || []} />
       <div
         :if={not @filtered}
         data-test="agent-chart-band"
