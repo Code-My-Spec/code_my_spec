@@ -54,6 +54,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     {:noreply, assign(socket, :selected_requirement_id, id)}
   end
 
+  def handle_event("clear_requirement_filter", _params, socket),
+    do: {:noreply, assign(socket, :selected_requirement_id, nil)}
+
   def handle_event("lf:request_layout", _params, socket), do: {:noreply, arrange(socket)}
 
   def handle_event("lf:node_change", %{"changes" => changes}, socket) do
@@ -226,6 +229,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
 
   @impl true
   def render(assigns) do
+    selected = assigns.flow && assigns.flow.nodes[assigns.selected_requirement_id]
+
+    assigns =
+      assign(assigns,
+        selected: selected,
+        visible_teams: StoryGraph.filter_teams(assigns[:teams] || [], selected)
+      )
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -233,35 +244,70 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div :if={assigns[:row]} class="mx-auto w-full max-w-6xl" data-test="working-copy-status-page">
+      <div
+        :if={assigns[:row]}
+        class="mx-auto w-full max-w-[1800px]"
+        data-test="working-copy-status-page"
+      >
         <.header>
           {@row.heading}
           <:subtitle>Working copy status</:subtitle>
           <:actions><button phx-click="refresh" class="btn btn-sm">Refresh</button></:actions>
         </.header>
-        <Components.StoryGraph.graph
-          flow={@flow}
-          stories={@stories}
-          story_id={@story_id}
-          selected={@flow && @flow.nodes[@selected_requirement_id]}
-          error={@graph_error}
-        />
-        <form phx-change="filter" class="mt-6">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="hidden" name="show_retired" value="false" />
-            <input
-              type="checkbox"
-              name="show_retired"
-              value="true"
-              checked={@show_retired}
-              class="toggle toggle-sm"
+        <div
+          class="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]"
+          data-test="graph-data-layout"
+        >
+          <div class="min-w-0">
+            <Components.StoryGraph.graph
+              flow={@flow}
+              stories={@stories}
+              story_id={@story_id}
+              selected={@flow && @flow.nodes[@selected_requirement_id]}
+              error={@graph_error}
             />
-            <span>Show retired</span>
-          </label>
-        </form>
-        <p :if={@teams == []} class="mt-6 opacity-60">No agents match this filter.</p>
-        <div class="mt-6 space-y-4">
-          <Components.Agent.detail :for={team <- @teams} team={team} agents={@agents} />
+          </div>
+          <aside
+            class="min-w-0 space-y-4 lg:max-h-[80vh] lg:overflow-y-auto"
+            data-test="requirement-data"
+          >
+            <div :if={@selected} class="flex items-center justify-between gap-2">
+              <span class="text-sm font-medium">Blockers for {@selected.data.label}</span>
+              <button phx-click="clear_requirement_filter" class="btn btn-sm btn-ghost">
+                Show all
+              </button>
+            </div>
+            <Components.StoryGraph.selection selected={@selected} />
+            <form phx-change="filter" class="mt-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="hidden" name="show_retired" value="false" />
+                <input
+                  type="checkbox"
+                  name="show_retired"
+                  value="true"
+                  checked={@show_retired}
+                  class="toggle toggle-sm"
+                />
+                <span>Show retired</span>
+              </label>
+            </form>
+            <p :if={@teams == []} class="mt-6 opacity-60">No agents match this filter.</p>
+            <p
+              :if={@selected && @visible_teams == []}
+              class="text-sm opacity-60"
+              data-test="no-requirement-blockers"
+            >
+              No pending questions or tap-outs for this requirement.
+            </p>
+            <div class="mt-6 space-y-4">
+              <Components.Agent.detail
+                :for={team <- @visible_teams}
+                team={team}
+                agents={@agents}
+                filtered={not is_nil(@selected)}
+              />
+            </div>
+          </aside>
         </div>
       </div>
     </Layouts.app>

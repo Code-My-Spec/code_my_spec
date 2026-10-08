@@ -76,6 +76,22 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
     State.new(nodes: nodes, edges: edges) |> group_components(graph.components ++ graph.owners)
   end
 
+  def filter_teams(teams, nil), do: teams
+
+  def filter_teams(teams, selected) do
+    ids = MapSet.new(selected.data.warnings, & &1.id)
+
+    teams
+    |> Enum.map(fn team ->
+      %{
+        team
+        | questions: Enum.filter(team.questions, &MapSet.member?(ids, &1.id)),
+          tap_outs: Enum.filter(team.tap_outs, &MapSet.member?(ids, &1.id))
+      }
+    end)
+    |> Enum.reject(&(&1.questions == [] and &1.tap_outs == []))
+  end
+
   defp warnings(requirement, teams) do
     field =
       case requirement.entity_type do

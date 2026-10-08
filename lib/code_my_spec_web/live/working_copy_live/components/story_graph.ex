@@ -10,7 +10,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
 
   def graph(assigns) do
     ~H"""
-    <section class="mt-8 space-y-3" data-test="story-requirements">
+    <section class="space-y-3" data-test="story-requirements">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="text-lg font-semibold">Story requirements</h2>
         <button
@@ -43,37 +43,44 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
             opts={%{controls: true, nodes_draggable: false, nodes_connectable: false}}
           />
         </div>
-        <div
-          :if={@selected}
-          class="mt-3 rounded-box border border-base-300 p-4"
-          data-test="requirement-details"
-        >
-          <div class="flex justify-between gap-3">
-            <h3 class="font-semibold">{@selected.data.label}</h3>
-            <span class="badge badge-outline">{@selected.data.status}</span>
-          </div>
-          <%= if @selected.type == :context do %>
-            <p class="mt-2 text-sm opacity-70">Only requirements related to this story.</p>
-            <div
-              class="mt-3 max-h-96 overflow-y-auto divide-y divide-base-300"
-              data-test="context-requirements"
-            >
-              <details :for={item <- @selected.data.requirements} class="py-2">
-                <summary class="cursor-pointer text-sm">
-                  <span class={["badge badge-sm mr-2", status_class(item.status)]}>
-                    {item.status}
-                  </span>
-                  {item.requirement.entity_name} · {item.label}
-                </summary>
-                <.requirement_details data={item} />
-              </details>
-            </div>
-          <% else %>
-            <.requirement_details data={@selected.data} />
-          <% end %>
-        </div>
       </div>
     </section>
+    """
+  end
+
+  attr(:selected, :any, default: nil)
+
+  def selection(assigns) do
+    ~H"""
+    <div
+      :if={@selected}
+      class="mt-3 rounded-box border border-base-300 p-4"
+      data-test="requirement-details"
+    >
+      <div class="flex justify-between gap-3">
+        <h3 class="font-semibold">{@selected.data.label}</h3>
+        <span class="badge badge-outline">{@selected.data.status}</span>
+      </div>
+      <%= if @selected.type == :context do %>
+        <p class="mt-2 text-sm opacity-70">Only requirements related to this story.</p>
+        <div
+          class="mt-3 max-h-96 overflow-y-auto divide-y divide-base-300"
+          data-test="context-requirements"
+        >
+          <details :for={item <- @selected.data.requirements} class="py-2">
+            <summary class="cursor-pointer text-sm">
+              <span class={["badge badge-sm mr-2", status_class(item.status)]}>
+                {item.status}
+              </span>
+              {item.requirement.entity_name} · {item.label}
+            </summary>
+            <.requirement_details data={item} />
+          </details>
+        </div>
+      <% else %>
+        <.requirement_details data={@selected.data} />
+      <% end %>
+    </div>
     """
   end
 

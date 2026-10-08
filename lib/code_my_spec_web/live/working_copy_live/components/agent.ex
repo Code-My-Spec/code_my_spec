@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Agent do
 
   attr(:team, :map, required: true)
   attr(:agents, :map, required: true)
+  attr(:filtered, :boolean, default: false)
 
   def detail(assigns) do
     ~H"""
@@ -43,13 +44,18 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Agent do
     >
       <.summary agent={@team.agent} />
       <div
+        :if={not @filtered}
         data-test="agent-chart-band"
         class="mt-3 flex flex-wrap items-start gap-4 border-y border-base-300 py-3"
       >
         <Components.Offers.chart agent_id={@team.agent.id} results={@team.offer_results} />
       </div>
       <div class="mt-4 space-y-3">
-        <details id={"questions-#{@team.agent.id}"} class="rounded border border-base-300 p-3">
+        <details
+          open={@filtered}
+          id={"questions-#{@team.agent.id}"}
+          class="rounded border border-base-300 p-3"
+        >
           <summary class="cursor-pointer">
             <Components.Questions.summary questions={@team.questions} />
           </summary>
@@ -57,7 +63,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Agent do
             <Components.Questions.detail questions={@team.questions} agents={@agents} />
           </div>
         </details>
-        <details id={"tap-outs-#{@team.agent.id}"} class="rounded border border-base-300 p-3">
+        <details
+          open={@filtered}
+          id={"tap-outs-#{@team.agent.id}"}
+          class="rounded border border-base-300 p-3"
+        >
           <summary class="cursor-pointer">
             <Components.TapOuts.summary tap_outs={@team.tap_outs} />
           </summary>

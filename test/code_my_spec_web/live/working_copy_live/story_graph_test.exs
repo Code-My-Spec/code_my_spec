@@ -138,6 +138,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
     flow = StoryGraph.build(graph, [], [team])
     assert flow.nodes["story-1-story_issues_resolved"].data.warnings == [question, tap_out]
     assert flow.nodes["story-1-qa_complete"].data.warnings == []
+    selected = flow.nodes["story-1-story_issues_resolved"]
+    other_team = %{agent: %{tasks: []}, questions: [unbound], tap_outs: []}
+    assert [filtered] = StoryGraph.filter_teams([team, other_team], selected)
+    assert filtered.questions == [question]
+    assert filtered.tap_outs == [tap_out]
+    assert StoryGraph.filter_teams([team], flow.nodes["story-1-qa_complete"]) == []
+    assert StoryGraph.filter_teams([team, other_team], nil) == [team, other_team]
 
     html =
       Phoenix.LiveViewTest.render_component(

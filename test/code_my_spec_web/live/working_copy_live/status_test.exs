@@ -35,6 +35,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
 
     {:ok, view, _html} = live(ctx.conn, status_path(ctx, copy.working_copy_id))
     html = view |> element("[data-test=working-copy-status-page]") |> render()
+    assert has_element?(view, "[data-test=graph-data-layout] > aside[data-test=requirement-data]")
     assert html =~ "Visible question"
     assert html =~ "Visible tap-out"
     refute html =~ "Other question"
