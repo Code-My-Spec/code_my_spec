@@ -3,11 +3,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
 
   alias LiveFlow.{Edge, Handle, Node, State}
 
-  def build(graph) do
+  def build(graph, agent_work \\ nil, teams \\ []) do
+    actionable_nodes =
+      if is_nil(agent_work),
+        do: graph.actionable,
+        else: Enum.flat_map(agent_work, fn {_agent, work} -> work.actionable end)
+
+    next_agents =
+      Enum.reduce(agent_work || [], %{}, fn {agent, work}, acc ->
+        case List.first(work.actionable) do
+          nil -> acc
+          node -> Map.update(acc, key(node), [agent], &(&1 ++ [agent]))
+        end
+      end)
+
     by_key = Map.new(graph.nodes, &{key(&1), &1})
     included = MapSet.new(graph.nodes, &key/1)
     roots = graph.story_keys
-    actionable = MapSet.new(graph.actionable, &key/1)
+    actionable = MapSet.new(actionable_nodes, &key/1)
 
     nodes =
       included
@@ -29,6 +42,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
           %{x: 0, y: index * 130},
           %{
             requirement: requirement,
+            next_agents: Map.get(next_agents, key, []),
+            warnings: warnings(requirement, teams),
             label: humanize(requirement.name),
             status: status,
             boundary: not MapSet.member?(roots, key)
@@ -59,6 +74,32 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
       end)
 
     State.new(nodes: nodes, edges: edges) |> group_components(graph.components ++ graph.owners)
+  end
+
+  defp warnings(requirement, teams) do
+    field =
+      case requirement.entity_type do
+        "story" -> :story_id
+        "component" -> :component_id
+        "project" -> :project_id
+        "issue" -> :issue_id
+        _ -> nil
+      end
+
+    Enum.flat_map(teams, fn team ->
+      tasks =
+        Enum.filter(team.agent.tasks || [], fn task ->
+          field && task.requirement_name == requirement.name &&
+            to_string(Map.get(task, field)) == to_string(requirement.entity_id)
+        end)
+
+      ids = MapSet.new(tasks, & &1.id)
+
+      Enum.filter(team.questions ++ team.tap_outs, fn request ->
+        request.status == "pending" && not is_nil(request.task_id) &&
+          MapSet.member?(ids, request.task_id)
+      end)
+    end)
   end
 
   defp group_components(flow, []), do: flow
@@ -123,6 +164,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
         label: (owner && owner.module_name) || first.data.requirement.entity_name || owner_id,
         status: status,
         counts: counts,
+        warnings: requirements |> Enum.flat_map(& &1.warnings) |> Enum.uniq_by(& &1.id),
+        next_agents: requirements |> Enum.flat_map(& &1.next_agents) |> Enum.uniq_by(& &1.id),
         requirements: requirements,
         boundary: Enum.all?(requirements, & &1.boundary)
       }

@@ -1,5 +1,6 @@
 defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
   use ExUnit.Case, async: true
+  require Phoenix.LiveViewTest
 
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpecWeb.WorkingCopyLive.StoryGraph
@@ -76,6 +77,76 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
     assert flow.nodes["component-surface-implementation_file"].data.status == "Actionable"
     assert Map.has_key?(flow.nodes, "component-child-tests_passing")
     refute Map.has_key?(flow.nodes, "component-other-implementation_file")
+  end
+
+  test "uses agent eligibility instead of the project frontier and marks each agent's next work" do
+    resolve = node("story", 1, "story_issues_resolved")
+    qa = node("story", 1, "qa_complete")
+    coder = %{id: "coder", role: :coding}
+
+    graph = %{
+      nodes: [resolve, qa],
+      actionable: [qa],
+      edges: [],
+      story_keys:
+        MapSet.new([{"story", 1, "story_issues_resolved"}, {"story", 1, "qa_complete"}]),
+      components: [],
+      owners: []
+    }
+
+    flow = StoryGraph.build(graph, [{coder, %{actionable: [resolve]}}])
+    assert flow.nodes["story-1-story_issues_resolved"].data.status == "Actionable"
+    assert flow.nodes["story-1-story_issues_resolved"].data.next_agents == [coder]
+
+    html =
+      Phoenix.LiveViewTest.render_component(
+        &CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph.requirement/1,
+        node: flow.nodes["story-1-story_issues_resolved"]
+      )
+
+    assert html =~ CodeMySpecWeb.WorkingCopyLive.Components.Agent.color(coder.id)
+    assert html =~ "data-next-agent-ids=\"coder\""
+    assert flow.nodes["story-1-qa_complete"].data.status == "Blocked"
+    assert flow.nodes["story-1-qa_complete"].data.next_agents == []
+  end
+
+  test "warning follows the pending decision's task, not the agent's other requirements" do
+    resolve = node("story", 1, "story_issues_resolved")
+    qa = node("story", 1, "qa_complete")
+
+    graph = %{
+      nodes: [resolve, qa],
+      actionable: [],
+      edges: [],
+      story_keys: MapSet.new(),
+      components: [],
+      owners: []
+    }
+
+    task = %{id: "task", requirement_name: resolve.name, story_id: 1}
+    question = %{id: "q", task_id: "task", status: "pending"}
+    answered = %{id: "answered", task_id: "task", status: "answered"}
+    unbound = %{id: "unbound", task_id: nil, status: "pending"}
+    tap_out = %{id: "tap", task_id: "task", status: "pending"}
+
+    team = %{
+      agent: %{tasks: [task]},
+      questions: [question, answered, unbound],
+      tap_outs: [tap_out]
+    }
+
+    flow = StoryGraph.build(graph, [], [team])
+    assert flow.nodes["story-1-story_issues_resolved"].data.warnings == [question, tap_out]
+    assert flow.nodes["story-1-qa_complete"].data.warnings == []
+
+    html =
+      Phoenix.LiveViewTest.render_component(
+        &CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph.requirement/1,
+        node: flow.nodes["story-1-story_issues_resolved"]
+      )
+
+    assert html =~ "requirement-warning"
+    assert html =~ "Pending question or tap-out"
   end
 
   defp build(graph, story_id, component_ids \\ MapSet.new(), components \\ []) do

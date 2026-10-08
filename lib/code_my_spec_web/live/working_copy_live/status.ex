@@ -138,12 +138,15 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     }
 
     story_id = socket.assigns.story_id
+    teams = socket.assigns.teams
+    agents = teams |> Enum.map(& &1.agent) |> Enum.reject(& &1.retired_at)
 
     socket
     |> assign(:graph_error, nil)
     |> start_async(:story_graph, fn ->
       {:ok, graph} = Requirements.story_graph(scope, story_id)
-      StoryGraph.build(graph)
+      work = Enum.map(agents, &{&1, CodeMySpec.Agents.Work.work_for(scope, &1.role, &1)})
+      StoryGraph.build(graph, work, teams)
     end)
   end
 

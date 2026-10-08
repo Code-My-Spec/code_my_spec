@@ -85,9 +85,20 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
       type="button"
       phx-click="select_requirement"
       phx-value-id={@node.id}
-      class="block w-full p-3 text-left"
+      class="relative block w-full p-3 text-left"
       aria-label={@node.data.label}
+      style={next_style(@node.data)}
+      data-next-agent-ids={Enum.map_join(@node.data.next_agents, " ", & &1.id)}
     >
+      <span
+        :if={@node.data.warnings != []}
+        class="absolute right-1 top-1 badge badge-warning badge-xs"
+        title="Pending question or tap-out"
+        aria-label="Pending question or tap-out"
+        data-test="requirement-warning"
+      >
+        !
+      </span>
       <span class="block font-semibold leading-snug">{@node.data.label}</span>
       <span
         :if={@node.data.requirement.entity_type != "story" or @node.data.boundary}
@@ -111,9 +122,20 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
       type="button"
       phx-click="select_requirement"
       phx-value-id={@node.id}
-      class="block w-full p-3 text-left"
+      class="relative block w-full p-3 text-left"
       aria-label={@node.data.label}
+      style={next_style(@node.data)}
+      data-next-agent-ids={Enum.map_join(@node.data.next_agents, " ", & &1.id)}
     >
+      <span
+        :if={@node.data.warnings != []}
+        class="absolute right-1 top-1 badge badge-warning badge-xs"
+        title="Pending question or tap-out"
+        aria-label="Pending question or tap-out"
+        data-test="requirement-warning"
+      >
+        !
+      </span>
       <span class="block font-semibold leading-snug break-words">{@node.data.label}</span>
       <span class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
         <span class="text-success">{Map.get(@node.data.counts, "Satisfied", 0)} satisfied</span>
@@ -135,6 +157,18 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
     </p>
     <pre :if={@data.requirement.details != %{}} class="mt-3 whitespace-pre-wrap break-words text-xs">{Jason.encode!(@data.requirement.details, pretty: true)}</pre>
     """
+  end
+
+  defp next_style(data) do
+    data.next_agents
+    |> Enum.with_index(1)
+    |> Enum.map_join(", ", fn {agent, index} ->
+      "inset 0 0 0 #{index * 3}px #{CodeMySpecWeb.WorkingCopyLive.Components.Agent.color(agent.id)}"
+    end)
+    |> then(fn
+      "" -> nil
+      shadows -> "box-shadow: #{shadows}; border-radius: 8px"
+    end)
   end
 
   defp status_class("Satisfied"), do: "badge-success"
