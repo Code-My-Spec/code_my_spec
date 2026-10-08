@@ -40,14 +40,29 @@ defmodule CmsHarness.Agents.LivenessTest do
     :ok = Liveness.watch(id, pid, root)
     assert_receive {:agent_liveness, :up, ^id, ^root, _}
 
-    # Process.exit/2 only sends an exit signal. Wait for the process to die
-    # before timing delivery through the application-wide Liveness mailbox.
+    # Monitor installation and the test's kill come from different senders.
+    # Receiving :up confirms Liveness requested a monitor, not that the target
+    # installed it. Killing earlier can legitimately report :noproc instead
+    # of :killed. Establish this test's prerequisite on the target first.
+    await_monitor(pid, GenServer.whereis(Liveness), 1_000)
     monitor = Process.monitor(pid)
     Process.exit(pid, :kill)
     assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}, 5_000
 
-    assert_receive {:agent_liveness, :down, ^id, ^root, :killed}, 5_000
+    assert_receive {:agent_liveness, :down, ^id, ^root, reason}
+    assert reason == :killed
     assert Liveness.present(root) == []
+  end
+
+  defp await_monitor(_pid, _watcher, 0), do: flunk("Liveness did not install its monitor")
+
+  defp await_monitor(pid, watcher, remaining) do
+    {:monitored_by, watchers} = Process.info(pid, :monitored_by)
+
+    unless watcher in watchers do
+      Process.sleep(1)
+      await_monitor(pid, watcher, remaining - 1)
+    end
   end
 
   test "watching the same process twice reports it up once", %{root: root, id: id} do
