@@ -4,9 +4,11 @@ defmodule CmsHarness.Agents.LivenessTest do
   the moment it dies, by working copy — the harness half of agent presence.
   """
 
-  # The harness tree's own `Liveness`, shared by everything on it: each test
-  # watches its own copy, so it hears its own agents only.
-  use ExUnit.Case, async: true
+  # Liveness is one application-wide server. Unique roots isolate its
+  # records, but every subscriber receives every event through the same
+  # mailbox. Keep delivery timing assertions apart from concurrent tests
+  # that also create and stop agents on that server.
+  use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Liveness
 
@@ -122,7 +124,10 @@ defmodule CmsHarness.Agents.LivenessTest do
   end
 
   describe "an agent its Keeper gave up on" do
-    test "is remembered for the copy's join to report, until it comes up again", %{root: root, id: id} do
+    test "is remembered for the copy's join to report, until it comes up again", %{
+      root: root,
+      id: id
+    } do
       {pid, keeper} = {an_agent(), an_agent()}
       :ok = Liveness.watch(id, pid, root)
       :ok = Liveness.watch_keeper(id, keeper, root)
