@@ -349,8 +349,6 @@ defmodule CodeMySpec.Issues.IssuesRepository do
         :not_found -> vendor_lookup(%{scope | active_project: project}, id)
         found -> found
       end
-    else
-      :not_found -> :not_found
     end
   end
 
