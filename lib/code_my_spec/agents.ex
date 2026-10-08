@@ -188,6 +188,12 @@ defmodule CodeMySpec.Agents do
     to: IssueAssignment,
     as: :assign
 
+  defdelegate prioritize_issue(scope, working_copy_id, issue_id),
+    to: IssueAssignment,
+    as: :prioritize
+
+  defdelegate assigned_issues(scope, working_copy_id), to: IssueAssignment, as: :bag
+
   defdelegate free_issue_team(scope, issue), to: IssueAssignment, as: :free
   defdelegate providers(), to: Providers, as: :names
 

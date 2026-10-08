@@ -2,13 +2,12 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy do
   @moduledoc """
   Assigns an issue to a working copy's coding and QA team.
 
-  Both team members inherit the issue's story_id, replacing their previous
-  story assignment (or clearing it when the issue has no story).
-
-  Both team members are bound to the issue: the coder is offered its fix
-  ahead of any other eligible work, and QA is offered testing it once the
-  fix is submitted. Assigning an issue already bound to another copy moves
-  it — and its open task — to this one, freeing the old team.
+  Adds an accepted issue to the team's bag without replacing its current
+  priority. The first issue establishes the active priority and its story
+  binding (a project issue clears a previous story). Use `set_active_issue`
+  to prioritize another member and `unassign_issue` to remove one.
+  Moving an issue preserves its workflow stage and transfers its open tasks.
+  Coding and QA may work on different eligible issues from the same bag.
 
   Main or the operator can pass `rework: true` and a correction `reason`
   for an accepted issue awaiting QA on the same copy. With no open issue

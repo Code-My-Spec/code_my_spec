@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Agents.IssueWork do
   @moduledoc """
-  The work offered to a team bound to an issue, or freed of one (story 1091).
+  Role-specific work across a working copy’s assigned issue bag (story 1091).
+  The active issue sorts first when eligible; other bag members remain claimable.
 
   Bypasses the requirement graph entirely — an issue is not in it. The coder
   fixes it (`fix_issue`); once that is done QA tests it (`qa_complete`, named
@@ -24,13 +25,36 @@ defmodule CodeMySpec.Agents.IssueWork do
   @doc "`Agents.Work.work_for/4`'s answer for an agent bound to an issue, or just freed of one."
   @spec execution(Scope.t(), Agent.t()) :: map()
   def execution(scope, %Agent{issue_id: id} = agent) when is_binary(id) do
+    case IssueAssignment.bag(scope, agent.working_copy_id) do
+      [] -> legacy_execution(scope, agent, id)
+      issues -> execution(scope, agent, issues)
+    end
+  end
+
+  def execution(_scope, %Agent{team_free_at: %DateTime{}}), do: blocked(@waiting_for_main)
+
+  def execution(scope, agent, issues) when is_list(issues) do
+    ordered =
+      Enum.sort_by(
+        issues,
+        &{&1.id != agent.issue_id, CodeMySpec.Issues.Issue.severity_index(&1.severity), &1.id}
+      )
+
+    results = Enum.map(ordered, &stage(scope, agent, &1))
+    actionable = Enum.flat_map(results, & &1.actionable)
+
+    case actionable do
+      [] -> blocked(Enum.map_join(results, "\n", & &1.reason))
+      nodes -> %{ready(hd(nodes)) | actionable: nodes, wave: nodes, remaining: length(nodes)}
+    end
+  end
+
+  defp legacy_execution(scope, agent, id) do
     case Issues.get_issue(scope, id) do
       nil -> blocked("Your team's assigned issue (#{id}) no longer exists.")
       issue -> stage(scope, agent, issue)
     end
   end
-
-  def execution(_scope, %Agent{team_free_at: %DateTime{}}), do: blocked(@waiting_for_main)
 
   # A resolution recorded outside this pairing's own close (`resolve_issue`
   # directly, rather than a passing `Qa.IssueQaAttempts.submit/2`) leaves the

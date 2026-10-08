@@ -1217,12 +1217,34 @@ defmodule CodeMySpec.Agents.Work do
   # back on, bypasses the graph entirely — an issue is not in it
   # (`Agents.IssueWork`, story 1091). Checked ahead of everything else, the
   # same standing as `bound_story_id/1`: offered that and nothing else.
-  def work_for(%Scope{} = scope, _role, %Agent{issue_id: id} = owner, opts)
-      when is_binary(id) do
+  def work_for(%Scope{} = scope, role, %Agent{} = owner, opts) do
     scope = at_copy(scope, owner)
-    execution = IssueWork.execution(scope, owner)
-    withheld? = withholding(scope, owner, opts)
-    actionable = Enum.reject(execution.actionable, withheld?)
+
+    bag =
+      if CodeMySpec.Agents.Assignment.team_member?(owner.role),
+        do: CodeMySpec.Agents.IssueAssignment.bag(scope, owner.working_copy_id),
+        else: []
+
+    cond do
+      bag != [] ->
+        filter_issue_work(scope, owner, IssueWork.execution(scope, owner, bag), opts)
+
+      is_binary(owner.issue_id) ->
+        filter_issue_work(scope, owner, IssueWork.execution(scope, owner), opts)
+
+      not is_nil(owner.team_free_at) ->
+        IssueWork.execution(scope, owner)
+
+      true ->
+        story_work_for(scope, role, owner, opts)
+    end
+  end
+
+  def work_for(%Scope{} = scope, role, owner, opts),
+    do: story_work_for(scope, role, owner, opts)
+
+  defp filter_issue_work(scope, owner, execution, opts) do
+    actionable = Enum.reject(execution.actionable, withholding(scope, owner, opts))
 
     if execution.actionable != [] and actionable == [] do
       %{
@@ -1231,25 +1253,18 @@ defmodule CodeMySpec.Agents.Work do
           actionable: [],
           wave: [],
           remaining: 0,
-          reason:
-            "The issue's current task is held by a teammate or blocked on an unresolved decision."
+          reason: "The issue work is held by a teammate or blocked on an unresolved decision."
       }
     else
-      execution
+      %{execution | actionable: actionable, wave: actionable, remaining: length(actionable)}
     end
   end
 
-  def work_for(%Scope{} = scope, _role, %Agent{team_free_at: %DateTime{}} = owner, _opts) do
-    IssueWork.execution(at_copy(scope, owner), owner)
-  end
-
-  def work_for(%Scope{} = scope, role, owner, opts) do
+  defp story_work_for(scope, role, owner, opts) do
     scope = at_copy(scope, owner)
     number = Keyword.get(opts, :story_number)
     withheld? = withholding(scope, owner, opts)
-    assignment = assignment(scope, owner)
-
-    Requirements.story_execution(scope, role, number, withheld?, assignment)
+    Requirements.story_execution(scope, role, number, withheld?, assignment(scope, owner))
   end
 
   # The team is no longer moved to its next story on its own (John, 2026-10-07,
