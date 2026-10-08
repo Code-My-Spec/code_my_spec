@@ -3,8 +3,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements

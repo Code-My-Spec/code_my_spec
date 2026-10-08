@@ -10,16 +10,16 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.Main.Digest
-  alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.Issues.Tools.UnassignIssue
   alias CodeMySpec.McpServers.Issues.Tools.SetActiveIssue
+  alias CodeMySpec.McpServers.Issues.Tools.UnassignIssue
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner

@@ -4,9 +4,9 @@ defmodule CodeMySpec.Agents.Work do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
+  alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
