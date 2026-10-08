@@ -121,11 +121,12 @@ defmodule CodeMySpec.Agents.AnIssueBoundAgentResumesAfterBlockerReleaseTest do
     previous = Application.get_env(:code_my_spec, :code_my_spec_project_id)
     Application.put_env(:code_my_spec, :code_my_spec_project_id, scope.active_project_id)
 
-    on_exit(fn ->
-      if is_nil(previous),
-        do: Application.delete_env(:code_my_spec, :code_my_spec_project_id),
-        else: Application.put_env(:code_my_spec, :code_my_spec_project_id, previous)
-    end)
+    restore = fn
+      nil -> Application.delete_env(:code_my_spec, :code_my_spec_project_id)
+      value -> Application.put_env(:code_my_spec, :code_my_spec_project_id, value)
+    end
+
+    on_exit(fn -> restore.(previous) end)
 
     tenant = full_scope_fixture()
     framework = issue_fixture(tenant, %{scope: :framework})
