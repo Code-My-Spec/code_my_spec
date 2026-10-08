@@ -59,10 +59,14 @@ defmodule CmsHarness.Agents.LivenessTest do
   defp await_monitor(pid, watcher, remaining) do
     {:monitored_by, watchers} = Process.info(pid, :monitored_by)
 
-    unless watcher in watchers do
-      Process.sleep(1)
-      await_monitor(pid, watcher, remaining - 1)
-    end
+    await_monitor(watcher in watchers, pid, watcher, remaining)
+  end
+
+  defp await_monitor(true, _pid, _watcher, _remaining), do: :ok
+
+  defp await_monitor(false, pid, watcher, remaining) do
+    Process.sleep(1)
+    await_monitor(pid, watcher, remaining - 1)
   end
 
   test "watching the same process twice reports it up once", %{root: root, id: id} do
