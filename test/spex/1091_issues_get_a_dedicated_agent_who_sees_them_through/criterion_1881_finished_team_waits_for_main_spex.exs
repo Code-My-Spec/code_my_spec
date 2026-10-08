@@ -107,6 +107,11 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
 
       then_ "main has exactly one delivered team-free offer naming the team and its finished issue",
             context do
+        delivered = what_was_told(context.main.id)
+        assert delivered =~ context.issue_id
+        assert delivered =~ context.scope.active_working_copy_id
+        :ok = Fixtures.drain_background_work()
+
         {:reply, response, _} =
           ListOffers.execute(
             %{agent_id: context.main.id, kind: "team_free"},

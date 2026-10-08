@@ -526,7 +526,10 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       copy_id = copy(ctx.scope)
       coding = agent(ctx.scope, :coding, copy_id)
       qa = agent(ctx.scope, :qa, copy_id)
-      main = agent(ctx.scope, :main, copy(ctx.scope))
+      main_copy = copy(ctx.scope)
+      {:ok, _} = WorkingCopies.designate_main(ctx.scope, main_copy)
+      main = agent(ctx.scope, :main, main_copy)
+      :ok = AgentPresence.absent(main)
       second = issue_fixture(ctx.scope, %{status: :accepted})
       {:ok, first} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
       {:ok, second} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy_id)
@@ -538,7 +541,9 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       :ok = IssueAssignment.free(ctx.scope, second)
       assert reload(coding).issue_id == nil
       assert reload(coding).team_free_at != nil
-      assert length(Agents.Offers.list_for_agent(main.id)) == 1
+      assert [%{status: :undelivered}] = Agents.Offers.list_for_agent(main.id)
+      assert Agents.assigned_issues(ctx.scope, copy_id) == []
+      assert reload(qa).issue_id == nil
       :ok = IssueAssignment.free(ctx.scope, second)
       assert length(Agents.Offers.list_for_agent(main.id)) == 1
     end

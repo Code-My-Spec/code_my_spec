@@ -15,11 +15,8 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
-  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
@@ -281,8 +278,16 @@ defmodule CodeMySpec.Agents.IssueAssignment do
 
   def free(%Scope{} = scope, %{id: issue_id}) do
     case transaction(scope, issue_id, &finish_binding(scope, &1)) do
-      {:ok, :ok} -> :ok
-      {:error, reason} -> raise "Could not release issue assignment: #{inspect(reason)}"
+      {:ok, {:notify, copy_id, issue}} ->
+        CodeMySpec.Agents.notify_main(scope, :team_free, team_free_message(copy_id, issue),
+          offer: {:team_free, {"copy", copy_id}}
+        )
+
+      {:ok, :ok} ->
+        :ok
+
+      {:error, reason} ->
+        raise "Could not release issue assignment: #{inspect(reason)}"
     end
   end
 
@@ -298,45 +303,25 @@ defmodule CodeMySpec.Agents.IssueAssignment do
       free_finished_team(scope, team, copy_id, issue)
     else
       focus_remaining(scope, copy_id)
+      :ok
     end
-
-    :ok
   end
 
-  defp free_finished_team(scope, team, copy_id, issue) do
-    now = DateTime.utc_now()
+  defp free_finished_team(_scope, team, copy_id, issue) do
+    if team != [] and Enum.all?(team, &is_nil(&1.story_id)) do
+      from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
+      |> Repo.update_all(set: [team_free_at: DateTime.utc_now()])
 
-    for agent <- team do
-      from(a in Agent, where: a.id == ^agent.id)
-      |> Repo.update_all(set: [team_free_at: free_at(agent, now)])
+      {:notify, copy_id, issue}
+    else
+      :ok
     end
-
-    if Enum.any?(team, &is_nil(&1.story_id)), do: notify_main(scope, copy_id, issue)
   end
 
   defp complete_held_tasks(scope, agent, issue_id) do
     for %{issue_id: ^issue_id, status: status, id: task_id} <- TaskOwner.tasks(agent),
         status in [:active, :prepared, :blocked] do
       {:ok, _} = TaskOwner.complete_task(scope, Repo.get!(Agent, agent.id), task_id, :completed)
-    end
-  end
-
-  defp free_at(%Agent{story_id: nil}, now), do: now
-  defp free_at(%Agent{}, _now), do: nil
-
-  defp notify_main(scope, copy_id, issue) do
-    case AgentsRepository.list_running_main(scope) do
-      [main | _] ->
-        text = team_free_message(copy_id, issue)
-
-        main
-        |> Conversations.record_sent_to_agent(text)
-        |> Offers.record(main, :team_free, {"copy", copy_id})
-
-        :ok
-
-      [] ->
-        :ok
     end
   end
 

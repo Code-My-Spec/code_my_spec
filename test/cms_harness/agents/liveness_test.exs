@@ -40,9 +40,13 @@ defmodule CmsHarness.Agents.LivenessTest do
     :ok = Liveness.watch(id, pid, root)
     assert_receive {:agent_liveness, :up, ^id, ^root, _}
 
+    # Process.exit/2 only sends an exit signal. Wait for the process to die
+    # before timing delivery through the application-wide Liveness mailbox.
+    monitor = Process.monitor(pid)
     Process.exit(pid, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}, 5_000
 
-    assert_receive {:agent_liveness, :down, ^id, ^root, :killed}
+    assert_receive {:agent_liveness, :down, ^id, ^root, :killed}, 5_000
     assert Liveness.present(root) == []
   end
 
