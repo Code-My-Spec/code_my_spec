@@ -2,6 +2,9 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy do
   @moduledoc """
   Assigns an issue to a working copy's coding and QA team.
 
+  Both team members inherit the issue's story_id, replacing their previous
+  story assignment (or clearing it when the issue has no story).
+
   Both team members are bound to the issue: the coder is offered its fix
   ahead of any other eligible work, and QA is offered testing it once the
   fix is submitted. Assigning an issue already bound to another copy moves

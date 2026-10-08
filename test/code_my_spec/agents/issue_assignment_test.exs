@@ -54,6 +54,62 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
 
+  for linked? <- [true, false] do
+    @linked linked?
+    @tag criterion: if(linked?, do: 2079, else: 2080)
+    test "issue assignment replaces the whole team's story binding (linked: #{linked?})", ctx do
+      copy_id = copy(ctx.scope)
+      previous = CodeMySpec.StoriesFixtures.story_fixture(ctx.scope)
+      target = if @linked, do: CodeMySpec.StoriesFixtures.story_fixture(ctx.scope)
+      target_id = target && target.id
+      {:ok, issue} = Issues.update_issue(ctx.scope, ctx.issue, %{story_id: target_id})
+
+      team =
+        for role <- [:coding, :qa] do
+          agent(ctx.scope, role, copy_id)
+          |> Ecto.Changeset.change(story_id: previous.id)
+          |> Repo.update!()
+        end
+
+      frame = %Frame{assigns: %{current_scope: ctx.scope}}
+
+      {:reply, response, _} =
+        AssignIssueToWorkingCopy.execute(
+          %{issue_id: issue.id, working_copy_id: copy_id},
+          frame
+        )
+
+      refute response.isError
+
+      for member <- team do
+        updated = reload(member)
+        assert updated.issue_id == issue.id
+        assert updated.story_id == target_id
+      end
+
+      assert WorkingCopies.team_story_id(copy_id) == target_id
+
+      destination = copy(ctx.scope)
+
+      destination_team =
+        for role <- [:coding, :qa] do
+          agent(ctx.scope, role, destination)
+          |> Ecto.Changeset.change(story_id: previous.id)
+          |> Repo.update!()
+        end
+
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, issue.id, destination)
+
+      for member <- destination_team do
+        assert reload(member).issue_id == issue.id
+        assert reload(member).story_id == target_id
+      end
+
+      assert WorkingCopies.team_story_id(destination) == target_id
+      assert Enum.all?(team, &is_nil(reload(&1).issue_id))
+    end
+  end
+
   test "main can request corrections after a completed fix without a failed QA attempt", ctx do
     copy_id = copy(ctx.scope)
     coding = agent(ctx.scope, :coding, copy_id)

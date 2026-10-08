@@ -3,9 +3,9 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   Which working copy's team an issue is bound to (story 1091).
 
   Mirrors `Assignment`'s story binding, but keyed on `Issue.assigned_working_copy_id`
-  rather than a reservation: an issue is not a checkout's story, it is simply
-  handed to a copy's coding and QA agents, who each hold it on their own
-  `issue_id` (`Agent.issue_id`) the same way a team member holds `story_id`.
+  rather than a reservation. Both teammates take the issue on `issue_id` and
+  its story on `story_id`. An issue without a story clears any prior story
+  binding; unrelated story work must not survive implicitly.
 
   ## Moving an issue
 
@@ -99,6 +99,7 @@ defmodule CodeMySpec.Agents.IssueAssignment do
 
     with {:ok, noted} <- Issues.update_issue(scope, issue, %{description: description}),
          {:ok, updated} <- Issues.set_awaiting_role(scope, noted, :coding) do
+      bind(team, updated)
       updated
     else
       {:error, error} -> Repo.rollback(error)
@@ -136,7 +137,7 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     old_team = lock_team(scope, issue.assigned_working_copy_id)
     move_tasks(old_team, new_team, issue.id)
     release(old_team)
-    bind(new_team, issue.id)
+    bind(new_team, issue)
 
     case Issues.set_assigned_working_copy(scope, issue, working_copy_id) do
       {:ok, updated} -> updated
@@ -185,9 +186,9 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     |> Repo.update_all(set: [issue_id: nil])
   end
 
-  defp bind(new_team, issue_id) do
+  defp bind(new_team, issue) do
     from(a in Agent, where: a.id in ^Enum.map(new_team, & &1.id))
-    |> Repo.update_all(set: [issue_id: issue_id, team_free_at: nil])
+    |> Repo.update_all(set: [issue_id: issue.id, story_id: issue.story_id, team_free_at: nil])
   end
 
   @doc """
