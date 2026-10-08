@@ -110,6 +110,23 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
     end
   end
 
+  test "reassigning to the same copy preserves a blocked issue task exactly", ctx do
+    copy_id = copy(ctx.scope)
+    qa = agent(ctx.scope, :qa, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+    {:ok, qa} =
+      TaskOwner.add_task(ctx.scope, reload(qa), %{
+        status: :blocked,
+        requirement_name: "qa_complete",
+        issue_id: ctx.issue.id,
+        session_type: CodeMySpec.AgentTasks.IssueQa
+      })
+
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    assert reload(qa).tasks == qa.tasks
+  end
+
   test "main can request corrections after a completed fix without a failed QA attempt", ctx do
     copy_id = copy(ctx.scope)
     coding = agent(ctx.scope, :coding, copy_id)

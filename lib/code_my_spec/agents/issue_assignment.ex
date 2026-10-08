@@ -166,7 +166,7 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     Enum.each(old_team, fn old_agent ->
       with task when not is_nil(task) <- open_issue_task(old_agent, issue_id),
            new_agent when not is_nil(new_agent) <-
-             Enum.find(new_team, &(&1.role == old_agent.role)) do
+             Enum.find(new_team, &(&1.role == old_agent.role and &1.id != old_agent.id)) do
         old_agent |> Agent.drop_task(task.id) |> Repo.update!()
         new_agent |> Agent.add_task(Map.from_struct(task)) |> Repo.update!()
       else
