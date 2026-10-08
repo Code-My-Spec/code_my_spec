@@ -191,6 +191,7 @@ defmodule CodeMySpec.MixProject do
       # ResizeObserver addition locked up mobile Safari — a maintained
       # library is less to keep re-debugging by hand.
       {:live_pane, "~> 0.6.6"},
+      {:live_flow, "== 0.2.3"},
       {:esbuild, "~> 0.10", runtime: Mix.env() in [:dev, :demo]},
       {:tailwind, "~> 0.3", runtime: Mix.env() in [:dev, :demo]},
       {:heroicons,

@@ -11,6 +11,8 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.IssueAssignment
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
@@ -83,7 +85,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
     entry = Enum.find(Agents.Main.list_agent_work(ctx.scope), &(&1.agent_id == coding.id))
     assert entry.idle?
-    assert Agents.Main.Digest.stalled(%Agents.Main.Digest{work: [entry]}) == []
+    assert Agents.Main.Digest.stalled(%Digest{work: [entry]}) == []
   end
 
   test "an answered blocker makes its issue task claimable again", ctx do
@@ -251,7 +253,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       {:ok, bound} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
       assert bound.assigned_working_copy_id == copy_id
 
-      assert :ok = CodeMySpec.Agents.IssueAssignment.free(ctx.scope, bound)
+      assert :ok = IssueAssignment.free(ctx.scope, bound)
 
       assert reload_issue(ctx.issue.id).assigned_working_copy_id == nil
     end

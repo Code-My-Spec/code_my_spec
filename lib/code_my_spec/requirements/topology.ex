@@ -191,18 +191,13 @@ defmodule CodeMySpec.Requirements.Topology do
   end
 
   @doc """
-  Returns `edges` with transitively-redundant edges removed. An
-  edge `A → B` is redundant iff there exists a path
-  `A → … → B` of length ≥ 2 — i.e., one of `A`'s other successors
-  reaches `B`. The longer path enforces the same gating, so
-  reachability is preserved.
+  Removes transitive shortcuts while preserving reachability.
 
-  Cycles are handled rather than merely survived: strongly-connected
-  components are condensed first, so every member of a cycle reaches
-  every other and no edge carrying the cycle is dropped. This used to
-  say cycle behaviour was undefined; it is now defined and pinned by
-  tests, which matters because `finalize_unresolved/1` exists only
-  because cycles occur here in practice.
+  An edge is removed only when a route through a strictly intermediate
+  strongly-connected component carries it. Edges within a cycle and
+  equivalent entrances into a cycle are retained. This deliberately does
+  not minimize cyclic subgraphs: independently removing their alternate
+  paths can remove every entrance or destroy the cycle itself.
   """
   @spec transitive_reduction([edge()]) :: [edge()]
   def transitive_reduction(edges), do: reduce(edges, reach(edges))
@@ -234,7 +229,7 @@ defmodule CodeMySpec.Requirements.Topology do
   end
 
   @doc """
-  `edges` with every redundant one removed, given reachability over them.
+  `edges` with safe transitive shortcuts removed, given reachability over them.
   """
   @spec reduce([edge()], reach()) :: [edge()]
   def reduce(edges, %{bit: bit, reach: reach, outgoing: outgoing}) do
@@ -273,7 +268,8 @@ defmodule CodeMySpec.Requirements.Topology do
   end
 
   @doc """
-  The members of `keys` that no other member reaches.
+  The members of `keys` that no strictly upstream member reaches.
+  Mutually reachable members are retained together.
 
   A fan-out to a set of nodes keeps only the edges to nodes none of the others
   reach, because the path through the one that does enforces the same gating.
@@ -289,11 +285,23 @@ defmodule CodeMySpec.Requirements.Topology do
       k_bit = Map.get(bit, k, 0)
 
       cond do
-        (via &&& k_bit) == 0 -> true
-        (Map.get(reach, k, 0) &&& k_bit) == 0 -> false
-        # On a cycle, so the bit may be its own doing: ask the others.
-        true -> not Enum.any?(keys, &(&1 != k and (Map.get(reach, &1, 0) &&& k_bit) != 0))
+        (via &&& k_bit) == 0 ->
+          true
+
+        (Map.get(reach, k, 0) &&& k_bit) == 0 ->
+          false
+
+        # Keep members of the same cycle; only a strictly upstream key replaces one.
+        true ->
+          not strictly_upstream_member?(keys, k, k_bit, bit, reach)
       end
+    end)
+  end
+
+  defp strictly_upstream_member?(keys, key, key_bit, bit, reach) do
+    Enum.any?(keys, fn other ->
+      other != key and (Map.get(reach, other, 0) &&& key_bit) != 0 and
+        (Map.get(reach, key, 0) &&& Map.get(bit, other, 0)) == 0
     end)
   end
 
@@ -385,28 +393,28 @@ defmodule CodeMySpec.Requirements.Topology do
     end
   end
 
-  # `A → B` is redundant when another successor of `A` reaches `B`. "Another"
-  # matters only when `B` reaches itself — otherwise `B`'s own reach set cannot
-  # contain `B` and the cheap union is already exact.
+  # Remove an edge only through a strictly intermediate strongly-connected
+  # component. A route through A's or B's own cycle can rely on the very
+  # edge being removed, or on another entrance removed in the same pass.
+  # Keep intra-cycle edges and equivalent entrances; reduce the DAG between
+  # cycles without trying to minimize the cycles themselves.
   defp redundant?(a, b, outgoing, bit, reach, via_successors) do
+    a_bit = Map.get(bit, a, 0)
     b_bit = Map.get(bit, b, 0)
 
-    cond do
-      # Nothing A's successors reach is B: the edge is the only way there.
-      (Map.get(via_successors, a, 0) &&& b_bit) == 0 ->
-        false
+    if (Map.get(via_successors, a, 0) &&& b_bit) == 0 or
+         (Map.get(reach, b, 0) &&& a_bit) != 0 do
+      false
+    else
+      Enum.any?(Map.get(outgoing, a, []), fn successor ->
+        successor_bit = Map.get(bit, successor, 0)
+        successor_reach = Map.get(reach, successor, 0)
 
-      # B cannot reach itself, so the union above cannot be B's own doing.
-      (Map.get(reach, b, 0) &&& b_bit) == 0 ->
-        true
-
-      # B is on a cycle. Now it matters which successor supplied the bit, so
-      # ask each one — the only case that costs more than two bit tests, and
-      # it needs a cycle through B to happen at all.
-      true ->
-        Enum.any?(Map.get(outgoing, a, []), fn s ->
-          s != b and (Map.get(reach, s, 0) &&& b_bit) != 0
-        end)
+        successor != a and successor != b and
+          (successor_reach &&& b_bit) != 0 and
+          (successor_reach &&& a_bit) == 0 and
+          (Map.get(reach, b, 0) &&& successor_bit) == 0
+      end)
     end
   end
 

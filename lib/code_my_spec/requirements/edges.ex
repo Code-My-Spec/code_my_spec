@@ -201,15 +201,22 @@ defmodule CodeMySpec.Requirements.Edges do
     end)
   end
 
-  # An exit is redundant when one of its source's successors is, or reaches,
-  # another source landing on the same node: the longer path gates the same.
+  # Only a strictly downstream exit makes an exit redundant. Sources in the
+  # same cycle must survive: treating their mutual reachability as alternate
+  # exits can remove every edge into the story's completion milestone.
   defp kept_exit(exit_by_to, reach) do
     Enum.flat_map(exit_by_to, fn {to, sources} ->
       sources
-      |> Enum.reject(fn source ->
-        reach |> Topology.successors(source) |> Enum.any?(&touches?(reach, &1, sources))
-      end)
+      |> Enum.reject(&redundant_exit?(&1, sources, reach))
       |> Enum.map(&%{from: &1, to: to})
+    end)
+  end
+
+  defp redundant_exit?(source, sources, reach) do
+    Enum.any?(sources, fn other ->
+      other != source and
+        Topology.reaches?(reach, source, Topology.mask(reach, [other])) and
+        not Topology.reaches?(reach, other, Topology.mask(reach, [source]))
     end)
   end
 

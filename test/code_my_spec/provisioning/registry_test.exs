@@ -11,6 +11,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
   """
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.Provisioning.HostBaseline
   alias CodeMySpec.Provisioning.Registry
   alias CodeMySpec.Users.Scope
 
@@ -449,7 +450,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
       # Restarting Docker stops everything on the box, which on the app's
       # server is the app. Only when the file actually changes.
-      assert trust == CodeMySpec.Provisioning.HostBaseline.docker_command("10.0.0.2:5000")
+      assert trust == HostBaseline.docker_command("10.0.0.2:5000")
     end
 
     # Same correction as `ensure_container/2`'s, at the site the live bug

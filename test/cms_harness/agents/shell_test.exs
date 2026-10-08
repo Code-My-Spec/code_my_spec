@@ -1,6 +1,7 @@
 defmodule CmsHarness.Agents.ShellTest do
   use ExUnit.Case, async: false
 
+  alias CmsHarness.Agents.Engine.Impl
   alias CmsHarness.Agents.Shell
 
   # The CMS probe is this test's own. MIX_ENV is put back as it was; the
@@ -27,7 +28,7 @@ defmodule CmsHarness.Agents.ShellTest do
   end
 
   test "a timed-out command returns output already printed" do
-    bash = Enum.find(CmsHarness.Agents.Engine.Impl.tools([]), &(&1.name() == "bash"))
+    bash = Enum.find(Impl.tools([]), &(&1.name() == "bash"))
 
     assert {:error, output} =
              bash.execute(

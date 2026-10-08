@@ -24,6 +24,7 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Repo
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -63,7 +64,7 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
     assert story.promoted_version == nil,
            "the premise failed: this story was promoted, so it has landed"
 
-    assert CodeMySpec.Qa.Verdict.complete?(ctx.scope, ctx.story.id),
+    assert Verdict.complete?(ctx.scope, ctx.story.id),
            "the premise failed: QA has not passed this story, so it does not read complete"
 
     assert CodeMySpec.Requirements.story_execution(

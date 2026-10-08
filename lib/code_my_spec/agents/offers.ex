@@ -218,7 +218,7 @@ defmodule CodeMySpec.Agents.Offers do
   @doc """
   This project's offers, newest first, with their agent and linked messages.
 
-  Filters, all optional: `:agent_id`, `:kind`, `:status`, `:since` (a
+  Filters, all optional: `:agent_id`, `:working_copy_id`, `:kind`, `:status`, `:since` (a
   `DateTime`, on `inserted_at`), and `:limit` (default #{@default_limit}).
   """
   @spec list(Scope.t(), keyword()) :: [Offer.t()]
@@ -257,6 +257,9 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp filter({:agent_id, id}, query) when is_binary(id), do: where(query, [o], o.agent_id == ^id)
+
+  defp filter({:working_copy_id, id}, query) when is_binary(id),
+    do: where(query, [o], o.working_copy_id == ^id)
 
   defp filter({:kind, kind}, query) when is_atom(kind) and not is_nil(kind),
     do: where(query, [o], o.kind == ^kind)
@@ -793,7 +796,7 @@ defmodule CodeMySpec.Agents.Offers do
   # An undelivered offer was never made, so it does not count.
   defp attempt(same) do
     last_claimed =
-      Repo.one(from o in same, where: o.status == :claimed, select: max(o.inserted_at))
+      Repo.one(from(o in same, where: o.status == :claimed, select: max(o.inserted_at)))
 
     since =
       if last_claimed, do: where(same, [o], o.inserted_at > ^last_claimed), else: same

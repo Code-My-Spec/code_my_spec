@@ -60,7 +60,7 @@ defmodule CmsHarness.HookDecision do
     unreachable(hook, reason, working_dir, payload, channel_state(reason, working_dir))
   end
 
-  @doc false
+  @doc "Build a refusal using an already captured channel state."
   def unreachable(hook, reason, working_dir, payload, state) do
     explanation = explain(reason, working_dir, state)
 
@@ -102,7 +102,7 @@ defmodule CmsHarness.HookDecision do
   @spec summarize(reason()) :: String.t()
   def summarize(reason), do: summarize(reason, channel_state(reason, nil))
 
-  @doc false
+  @doc "Summarize a failure using an already captured channel state."
   def summarize({:not_connected, {:http, status}}, _state) when status >= 500 do
     "channel down, server answering #{status} — server-side; the channel rejoins on its own"
   end
@@ -385,7 +385,7 @@ defmodule CmsHarness.HookDecision do
   # `[HarnessProject] channel DIED` with the reason.
   @recent_join_seconds 60
 
-  @doc false
+  @doc "Explain whether the channel was absent, recently rebuilt, or established."
   # Public so the three readings can be asserted without standing up a channel,
   # the same reason `McpController.error_page_summary/3` is. The message is the
   # whole of the fix here — the previous one was a correct sentence drawing the

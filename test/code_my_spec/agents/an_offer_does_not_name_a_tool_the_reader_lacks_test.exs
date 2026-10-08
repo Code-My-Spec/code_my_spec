@@ -35,7 +35,16 @@ defmodule CodeMySpec.Agents.AnOfferDoesNotNameAToolTheReaderLacksTest do
 
   # What every agent we run is, and what each carries. The offer text is shared
   # by all of them, so it has to be true of the narrowest.
-  @roles [:main, :coding, :qa, :product, :researcher, :spec_writer, :test_writer, :bdd_spec_writer]
+  @roles [
+    :main,
+    :coding,
+    :qa,
+    :product,
+    :researcher,
+    :spec_writer,
+    :test_writer,
+    :bdd_spec_writer
+  ]
 
   @offer_source "lib/code_my_spec/agents/menu.ex"
   @docs_source "lib/code_my_spec/mcp_servers/code_mode/tools/tool_docs.ex"
@@ -51,9 +60,9 @@ defmodule CodeMySpec.Agents.AnOfferDoesNotNameAToolTheReaderLacksTest do
 
       named =
         @polling_tools
-        |> Enum.filter(&String.contains?(text, &1))
         |> Enum.filter(fn name ->
-          Enum.any?(@roles, fn role -> not RoleProfile.carries?(role, name) end)
+          String.contains?(text, name) and
+            Enum.any?(@roles, fn role -> not RoleProfile.carries?(role, name) end)
         end)
 
       assert named == [],

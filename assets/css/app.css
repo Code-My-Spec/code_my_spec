@@ -22,10 +22,12 @@
 }
 
 @import "tailwindcss" source(none);
+@import "../../deps/live_flow/assets/css/live_flow.css";
 @source "../css";
 @source "../js";
 @source "../../lib/code_my_spec_web";
 @source "../../deps/live_pane/lib";
+@source "../../deps/live_flow/lib";
 
 @plugin "@tailwindcss/typography";
 
@@ -303,3 +305,13 @@ body {
         font-size: 1rem;
     }
 }
+
+/* Keep the story diagram in the application's theme. */
+.story-requirements .lf-container {
+  --lf-background: var(--color-base-200);
+  --lf-node-bg: var(--color-base-100);
+  --lf-node-border: var(--color-base-300);
+  --lf-edge-stroke: var(--color-base-content);
+  --lf-node-selected-border: var(--color-primary);
+}
+.story-requirements .lf-node-content { padding: 0; }

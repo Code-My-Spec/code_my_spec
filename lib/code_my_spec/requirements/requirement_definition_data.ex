@@ -166,7 +166,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
           "This story's working copy is certified ready for QA: a clean tree, every " <>
             "analyzer clean at HEAD, and the story's own specs green there. Completing " <>
             "this task certifies it and stamps the commit.",
-        prerequisites: [2],
+        prerequisites: [2, 6],
         execution_type: :main_agent
       }),
       new!(%{
@@ -213,40 +213,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA complete: the latest DB-backed attempt is a valid pass",
-        # Was [3] — straight off `bdd_specs_passing`. That is what let nine
-        # stories reach QA on 2026-09-09 whose code had never left the coding
-        # agent's worktree; QA failed all nine for code that was never there.
-        #
-        # Now [6] rather than [18]: known issues on the story are cleared before
-        # QA spends a pass. John: "we have to move story issues resolved before
-        # qa because that's the logical progression." The deadlock that forced
-        # it is on `story_issues_resolved` below.
-        #
-        # Story 1003, revised 2026-09-28: `story_promoted` (18) is no
-        # longer upstream of this node at all — it moved to *depend on*
-        # `qa_complete` instead (story 1108 gave every copy its own app, so
-        # QA no longer needs the story's code on main first).
-        #
-        # `problems_resolved` (19) sat here too, holding QA on a clean copy.
-        # Removed (28d72f8a): analyzer findings are the promote gate's job,
-        # run when `story_promoted` completes — a completed run per source at
-        # HEAD on a clean tree.
-        #
-        # Whether the story's own copy is actually serving is deliberately
-        # *not* a prerequisite here (a `qa_target_serving` node ahead of this
-        # one was tried and reverted the same day): `QaStory`'s own dispatch
-        # already calls `AppTransport.ensure_app_running/2` live
-        # (`qa_story.ex`'s `own_copy_app_url_line/1`) and, on anything short of
-        # `"serving"`, still hands out the task with a prompt telling the agent
-        # to say so and investigate rather than test. A graph-level refusal
-        # that redirected to `PromoteWork` instead would have let an agent
-        # stamp `promoted_version` before this node was ever satisfied — the
-        # exact ordering story 1003 exists to prevent. Caught by Harness
-        # before it shipped.
-        #
-        # `20` (`story_issues_triaged`): an untriaged finding on the story
-        # holds QA too, at any severity (255f1dcd).
-        prerequisites: [6, 20],
+        # Certification follows issue triage and resolution. QA starts only
+        # after the working copy is certified ready.
+        prerequisites: [3],
         execution_type: :sub_agent,
         # Automatic, because "the latest DB-backed attempt is a valid pass"
         # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
@@ -290,8 +259,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       #
       # Off `component_linked`, the chain's head, so a finding can be triaged
       # whenever it lands; every story node descends from that head, and the
-      # edge derivation relies on it. It gates only `qa_complete`, and product
-      # has no work downstream of it, so it clamps nothing of product's own.
+      # edge derivation relies on it. Triage gates resolution, then readiness
+      # certification; product has no work downstream of its own triage gate.
       new!(%{
         id: 20,
         name: "story_issues_triaged",
@@ -328,39 +297,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :review,
         description:
           "Accepted issues against this story are resolved at the project's blocking severity",
-        # Was [4] — after `qa_complete`, on the reasoning that this gate is about
-        # what a story's own QA pass raised. `IssuesChecker.story_resolved?/2`
-        # does not read it that way: it counts *any* accepted issue carrying this
-        # `story_id` at or above the threshold, whoever filed it and whenever.
-        # Product files them, coding files them, and `Issues.attribute_to_story/3`
-        # sweeps unattributed `:app` issues onto whichever story's QA attempt is
-        # being submitted.
-        #
-        # So an issue could sit on a story before QA ever ran, block the QA
-        # agent's task, and be unreachable — the node that clears it was gated
-        # behind the QA it was preventing. Measured 2026-09-23 on Broken Oaths
-        # story 947: QA's `qa_complete` task blocked on issue 71869489, and
-        # `FixStoryIssues` could not be offered because `qa_complete` was its
-        # prerequisite. Nothing in the graph broke the circle.
-        #
-        # The property the old order was protecting is not lost. "A story does
-        # not release carrying a blocker its own QA pass raised" is enforced by
-        # the checker, not by the ordering: this node is in
-        # `StoryExecution.@completion_names`, so an issue QA files afterwards
-        # takes the story back out of completion whenever it arrives. Ordering
-        # only decides when the work is *offered*, and offering it before QA
-        # spends a pass on a story with known blockers is the better trade.
-        #
-        # Story 1003, revised 2026-09-28: was [18] (`story_promoted`).
-        # `story_promoted` moved to depend on `qa_complete`, which
-        # depends on this node — leaving the prerequisite at [18] would have
-        # closed a cycle (4 needs 6, 6 needs 18, 18 needs 4), the exact
-        # deadlock shape this node exists to avoid. Repointed straight to [3]
-        # (`bdd_specs_passing`): `IssuesChecker.story_resolved?/2` counts any
-        # accepted issue regardless of ordering, so this only ever decided
-        # *when* the work is offered, never enforced anything through the
-        # edge itself — offering it as soon as specs are green is safe.
-        prerequisites: [3],
+        # Resolve accepted blockers after triage and before certifying the
+        # working copy. QA findings can reopen this gate on later passes.
+        prerequisites: [20],
         execution_type: :main_agent
       }),
       # Criterion 1963: the loop's next work after QA clears is the UAT deploy.

@@ -22,19 +22,21 @@ defmodule CodeMySpec.Telemetry.Reader do
   end
 
   def check(scope, environment) do
-    with {:ok, connection} <- Credentials.resolve(scope, environment) do
-      case ClickHouseClient.query(connection, "SELECT Timestamp FROM otel_logs LIMIT 1", %{}) do
-        {:ok, _} ->
-          %{reachable: true, reads: :ok, writes: write_permission(connection)}
+    case Credentials.resolve(scope, environment) do
+      {:ok, connection} ->
+        case ClickHouseClient.query(connection, "SELECT Timestamp FROM otel_logs LIMIT 1", %{}) do
+          {:ok, _} ->
+            %{reachable: true, reads: :ok, writes: write_permission(connection)}
 
-        {:error, {:clickhouse_error, _, _}} ->
-          %{reachable: true, reads: :error, writes: :error}
+          {:error, {:clickhouse_error, _, _}} ->
+            %{reachable: true, reads: :error, writes: :error}
 
-        {:error, _} ->
-          unavailable()
-      end
-    else
-      {:error, _} -> unavailable()
+          {:error, _} ->
+            unavailable()
+        end
+
+      {:error, _} ->
+        unavailable()
     end
   end
 

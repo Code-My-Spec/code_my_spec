@@ -718,6 +718,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/working-copies", WorkingCopyLive.Index, :index
       live "/projects/:project_id/working-copies/:id", WorkingCopyLive.Show, :show
       live "/projects/:project_id/working-copies/:id/edit", WorkingCopyLive.Form, :edit
+      live "/projects/:project_id/working-copies/:id/status", WorkingCopyLive.Status, :status
       # The cockpit is a *project* page, and which agent you are reading is a
       # selection within it (`?conversation=<id>`) rather than a different
       # route. Switching agents is then a patch: the transcript changes and the

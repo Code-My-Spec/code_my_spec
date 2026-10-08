@@ -1,0 +1,182 @@
+defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
+  @moduledoc "Read-only presentation of one story and its upstream component requirements."
+
+  alias LiveFlow.{Edge, Handle, Node, State}
+
+  def build(graph) do
+    by_key = Map.new(graph.nodes, &{key(&1), &1})
+    included = MapSet.new(graph.nodes, &key/1)
+    roots = graph.story_keys
+    actionable = MapSet.new(graph.actionable, &key/1)
+
+    nodes =
+      included
+      |> Enum.filter(&Map.has_key?(by_key, &1))
+      |> Enum.sort()
+      |> Enum.with_index()
+      |> Enum.map(fn {key, index} ->
+        requirement = Map.fetch!(by_key, key)
+
+        status =
+          cond do
+            requirement.satisfied -> "Satisfied"
+            MapSet.member?(actionable, key) -> "Actionable"
+            true -> "Blocked"
+          end
+
+        Node.new(
+          id(key),
+          %{x: 0, y: index * 130},
+          %{
+            requirement: requirement,
+            label: humanize(requirement.name),
+            status: status,
+            boundary: not MapSet.member?(roots, key)
+          },
+          type: :requirement,
+          draggable: false,
+          connectable: false,
+          deletable: false,
+          style: %{width: "260px"},
+          handles: [
+            Handle.new(:target, :left, connectable: false),
+            Handle.new(:source, :right, connectable: false)
+          ]
+        )
+        |> Map.merge(%{width: 260, height: 112})
+      end)
+
+    edges =
+      graph.edges
+      |> Enum.filter(&(MapSet.member?(included, &1.from) and MapSet.member?(included, &1.to)))
+      |> Enum.uniq_by(&{&1.from, &1.to})
+      |> Enum.map(fn edge ->
+        Edge.new("#{id(edge.from)}--#{id(edge.to)}", id(edge.from), id(edge.to),
+          type: :smoothstep,
+          selectable: false,
+          deletable: false
+        )
+      end)
+
+    State.new(nodes: nodes, edges: edges) |> group_components(graph.components ++ graph.owners)
+  end
+
+  defp group_components(flow, []), do: flow
+
+  defp group_components(flow, components) do
+    by_id = Map.new(components, &{&1.id, &1})
+
+    owners =
+      Map.new(flow.nodes, fn {id, node} ->
+        case node.data.requirement do
+          %{entity_type: "component", entity_id: component_id} ->
+            owner = context_owner(component_id, by_id, MapSet.new()) || component_id
+            {id, "context-#{owner}"}
+
+          _ ->
+            {id, id}
+        end
+      end)
+
+    nodes =
+      flow.nodes
+      |> Map.values()
+      |> Enum.group_by(&owners[&1.id])
+      |> Map.new(&group_node(&1, by_id))
+
+    edges =
+      flow.edges
+      |> Map.values()
+      |> Enum.map(fn edge ->
+        source = owners[edge.source]
+        target = owners[edge.target]
+        %{edge | id: "#{source}--#{target}", source: source, target: target}
+      end)
+      |> Enum.reject(&(&1.source == &1.target))
+      |> Enum.uniq_by(& &1.id)
+
+    %{flow | nodes: nodes, edges: Map.new(edges, &{&1.id, &1})}
+  end
+
+  defp group_node({id, members}, by_id) do
+    first = hd(members)
+
+    if first.data.requirement.entity_type == "component" do
+      owner_id = String.replace_prefix(id, "context-", "")
+      owner = by_id[owner_id]
+
+      requirements =
+        members
+        |> Enum.map(& &1.data)
+        |> Enum.sort_by(&{&1.requirement.entity_name || "", &1.requirement.name})
+
+      counts = Enum.frequencies_by(requirements, & &1.status)
+
+      status =
+        cond do
+          Map.get(counts, "Satisfied", 0) == length(requirements) -> "Satisfied"
+          Map.get(counts, "Actionable", 0) > 0 -> "Actionable"
+          true -> "Blocked"
+        end
+
+      data = %{
+        label: (owner && owner.module_name) || first.data.requirement.entity_name || owner_id,
+        status: status,
+        counts: counts,
+        requirements: requirements,
+        boundary: Enum.all?(requirements, & &1.boundary)
+      }
+
+      {id, %{first | id: id, type: :context, data: data}}
+    else
+      {id, first}
+    end
+  end
+
+  # Use recorded ownership, including nested children; never infer a context
+  # from a module-name prefix. Unowned components stay visible on their own.
+  defp context_owner(id, components, seen) do
+    if MapSet.member?(seen, id) do
+      nil
+    else
+      case components[id] do
+        %{type: type} when type in ["context", "live_context"] ->
+          id
+
+        %{parent_component_id: parent} when not is_nil(parent) ->
+          context_owner(parent, components, MapSet.put(seen, id))
+
+        _ ->
+          nil
+      end
+    end
+  end
+
+  def preserve_view(flow, nil), do: flow
+
+  def preserve_view(flow, previous) do
+    nodes =
+      Map.new(flow.nodes, fn {id, node} ->
+        case previous.nodes[id] do
+          nil ->
+            {id, node}
+
+          old ->
+            {id,
+             %{
+               node
+               | position: old.position,
+                 width: old.width,
+                 height: old.height,
+                 selected: old.selected
+             }}
+        end
+      end)
+
+    %{flow | nodes: nodes, viewport: previous.viewport}
+  end
+
+  defp key(node), do: {node.entity_type, node.entity_id, node.name}
+  defp id({type, entity_id, name}), do: "#{type}-#{entity_id}-#{name}"
+  defp humanize(name), do: name |> String.replace("_", " ") |> String.capitalize()
+end
