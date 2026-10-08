@@ -2,6 +2,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
   @moduledoc "Story requirement cards and their selected details."
   use CodeMySpecWeb, :html
 
+  attr(:title, :string, default: "Story requirements")
+  attr(:issue_bag, :boolean, default: false)
   attr(:flow, :any, default: nil)
   attr(:stories, :list, required: true)
   attr(:story_id, :any, default: nil)
@@ -12,7 +14,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
     ~H"""
     <section class="space-y-3" data-test="story-requirements">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2 class="text-lg font-semibold">Story requirements</h2>
+        <h2 class="text-lg font-semibold">{@title}</h2>
         <button
           :if={@flow && map_size(@flow.nodes) > 0}
           phx-click="lf:request_layout"
@@ -21,8 +23,12 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
           Arrange
         </button>
       </div>
-      <p :for={story <- @stories} class="font-medium">{story.number} · {story.title}</p>
-      <p :if={@stories == []} class="text-sm opacity-60">No story assigned to this working copy.</p>
+      <p :for={story <- if(@issue_bag, do: [], else: @stories)} class="font-medium">
+        {story.number} · {story.title}
+      </p>
+      <p :if={@stories == [] and not @issue_bag} class="text-sm opacity-60">
+        No story assigned to this working copy.
+      </p>
       <p :if={@error} role="alert" class="text-error">{@error}</p>
       <p :if={@story_id && is_nil(@flow) && is_nil(@error)} class="text-sm opacity-60">
         Loading requirements…

@@ -158,6 +158,8 @@ defmodule CodeMySpec.Requirements do
   defdelegate story_graph(scope, story_id), to: CodeMySpec.Requirements.StoryGraph, as: :read
 
   @doc "Adds live project-issue branches to the requirements graph visualization."
+  defdelegate issue_bag_graph(issues), to: CodeMySpec.Requirements.ProjectIssueGraph, as: :bag
+
   defdelegate project_issue_graph(scope, graph),
     to: CodeMySpec.Requirements.ProjectIssueGraph,
     as: :read

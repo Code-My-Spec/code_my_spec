@@ -79,6 +79,28 @@ defmodule CodeMySpec.Requirements.ProjectIssueGraph do
     end
   end
 
+  @doc "The assigned bag's branches, using the same milestones as the project graph."
+  def bag(issues) do
+    nodes = Enum.flat_map(issues, &nodes/1)
+
+    edges =
+      Enum.flat_map(issues, fn issue ->
+        ["assigned", "submitted", "completed"]
+        |> Enum.map(&{"issue", issue.id, &1})
+        |> Enum.chunk_every(2, 1, :discard)
+        |> Enum.map(fn [from, to] -> %{from: from, to: to} end)
+      end)
+
+    %{
+      nodes: nodes,
+      edges: edges,
+      actionable: [],
+      story_keys: MapSet.new(nodes, &Topology.node_key/1),
+      components: [],
+      owners: []
+    }
+  end
+
   defp nodes(issue) do
     assigned = not is_nil(issue.assigned_working_copy_id)
     submitted = issue.awaiting_role in [:qa, :promote]

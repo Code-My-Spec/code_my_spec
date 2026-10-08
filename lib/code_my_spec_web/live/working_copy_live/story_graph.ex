@@ -105,7 +105,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
     Enum.flat_map(teams, fn team ->
       tasks =
         Enum.filter(team.agent.tasks || [], fn task ->
-          field && task.requirement_name == requirement.name &&
+          field && task_name(requirement.entity_type, task.requirement_name) == requirement.name &&
             to_string(Map.get(task, field)) == to_string(requirement.entity_id)
         end)
 
@@ -235,7 +235,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraph do
     %{flow | nodes: nodes, viewport: previous.viewport}
   end
 
-  defp key(node), do: {node.entity_type, node.entity_id, node.name}
+  defp key(node), do: {node.entity_type, node.entity_id, task_name(node.entity_type, node.name)}
+
+  defp task_name("issue", "fix_issue"), do: "submitted"
+  defp task_name("issue", name) when name in ["qa_complete", "promote_issue"], do: "completed"
+  defp task_name(_type, name), do: name
   defp id({type, entity_id, name}), do: "#{type}-#{entity_id}-#{name}"
   defp humanize(name), do: name |> String.replace("_", " ") |> String.capitalize()
 end

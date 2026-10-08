@@ -148,6 +148,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
         cwd: socket.assigns.row.harness.root
     }
 
+    issues = socket.assigns.issues
     story_id = socket.assigns.story_id
     teams = socket.assigns.teams
     agents = teams |> Enum.map(& &1.agent) |> Enum.reject(& &1.retired_at)
@@ -158,9 +159,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
       work = Enum.map(agents, &{&1, CodeMySpec.Agents.Work.work_for(scope, &1.role, &1)})
 
       flow =
-        if story_id do
-          {:ok, graph} = Requirements.story_graph(scope, story_id)
-          StoryGraph.build(graph, work, teams)
+        cond do
+          issues != [] ->
+            StoryGraph.build(Requirements.issue_bag_graph(issues), work, teams)
+
+          story_id ->
+            {:ok, graph} = Requirements.story_graph(scope, story_id)
+            StoryGraph.build(graph, work, teams)
+
+          true ->
+            nil
         end
 
       {flow, work}
@@ -297,9 +305,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
           data-test="graph-data-layout"
         >
           <div class="min-w-0">
-            <Components.Issues.detail :if={@issues != []} issues={@issues} teams={@teams} />
             <Components.StoryGraph.graph
-              :if={@story_id || @issues == []}
+              title={if @issues != [], do: "Issues (#{length(@issues)})", else: "Story requirements"}
+              issue_bag={@issues != []}
               flow={@flow}
               stories={@stories}
               story_id={@story_id}

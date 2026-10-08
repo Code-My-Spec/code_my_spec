@@ -140,8 +140,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
 
     {:ok, view, _} = live(ctx.conn, status_path(ctx, copy.working_copy_id))
     render_async(view, 15_000)
-    assert has_element?(view, "[data-test=working-copy-issue-bag]", "Issues (2)")
-    assert has_element?(view, "[data-issue-id='#{first.id}']", "Active")
+    assert has_element?(view, "[data-test=story-requirements]", "Issues (2)")
+    assert has_element?(view, "[data-test=story-requirements]", "Submitted")
 
     assert has_element?(
              view,
@@ -151,10 +151,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
 
     assert has_element?(view, "[data-test=agent-next-task]", "Active bag issue")
     refute render(view) =~ "Unassigned elsewhere"
-    refute has_element?(view, "[data-test=story-requirements]")
+    assert has_element?(view, "#story-requirements-flow")
     {:ok, _} = CodeMySpec.Agents.assign_issue_to_working_copy(ctx.scope, second.id, nil)
     render_async(view, 15_000)
-    assert has_element?(view, "[data-test=working-copy-issue-bag]", "Issues (1)")
+    assert has_element?(view, "[data-test=story-requirements]", "Issues (1)")
   end
 
   defp status_path(ctx, id),
