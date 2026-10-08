@@ -105,6 +105,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @spec project_graph_with_metrics(Scope.t()) :: {map(), %{atom() => integer()}}
   def project_graph_with_metrics(%Scope{} = scope) do
     {graph_data, metrics} = Requirements.project_graph_with_actionable_metrics(scope)
+    graph_data = Requirements.project_issue_graph(scope, graph_data)
 
     {us_components, components} =
       :timer.tc(fn -> Components.list_components_with_dependencies(scope) end)
@@ -114,13 +115,18 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     metrics =
       metrics
+      |> Map.put(
+        :project_issue_count,
+        Enum.count(graph_data.nodes, &(&1.entity_type == "issue" and &1.name == "assigned"))
+      )
       |> Map.put(:components_query_ms, div(us_components, 1000))
       |> Map.put(:layout_ms, div(us_layout, 1000))
 
     {sigma_data, metrics}
   end
 
-  defp project_layout(%{nodes: nodes, edges: edges, actionable: actionable}, components) do
+  @doc false
+  def project_layout(%{nodes: nodes, edges: edges, actionable: actionable}, components) do
     actionable_set =
       MapSet.new(actionable, &node_key/1)
 
@@ -364,7 +370,37 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         )
       end)
 
-    all_sigma = early_sigma ++ pre_sigma ++ comp_sigma ++ post_sigma ++ late_sigma
+    base_sigma = early_sigma ++ pre_sigma ++ comp_sigma ++ post_sigma ++ late_sigma
+    issue_x = base_sigma |> Enum.map(& &1.attributes.x) |> Enum.max(fn -> 0 end)
+
+    issue_sigma =
+      nodes
+      |> Enum.filter(&(&1.entity_type == "issue"))
+      |> Enum.group_by(& &1.entity_id)
+      |> Enum.sort_by(fn {id, _} -> id end)
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {{id, reqs}, column} ->
+        reqs
+        |> sort_by_depth(topo)
+        |> Enum.with_index()
+        |> Enum.map(fn {req, row} ->
+          mk_node(
+            nkey(req),
+            "#{String.slice(id, 0, 6)} · #{story_label(req)}",
+            issue_x + column * @story_col_gap * 2,
+            story_start_y - row * @story_row_gap,
+            9,
+            cls(req, actionable_set),
+            entity_type: "issue",
+            entity_id: id,
+            name: req.name,
+            title: req.entity_name,
+            details: req.details
+          )
+        end)
+      end)
+
+    all_sigma = base_sigma ++ issue_sigma
     all_keys = MapSet.new(all_sigma, & &1.key)
 
     raw_edges = Enum.map(edges, fn e -> {key_to_string(e.from), key_to_string(e.to), e} end)
@@ -655,7 +691,10 @@ defmodule CodeMySpec.Requirements.GraphProjector do
           :rand.uniform(5000) - 2500,
           :rand.uniform(5000) - 2500,
           size,
-          summary_status(reqs, actionable_set), entity_type: "component", entity_id: comp_id)
+          summary_status(reqs, actionable_set),
+          entity_type: "component",
+          entity_id: comp_id
+        )
       end)
 
     all_keys = MapSet.new(sigma_nodes, & &1.key)

@@ -157,6 +157,11 @@ defmodule CodeMySpec.Requirements do
   """
   defdelegate story_graph(scope, story_id), to: CodeMySpec.Requirements.StoryGraph, as: :read
 
+  @doc "Adds live project-issue branches to the requirements graph visualization."
+  defdelegate project_issue_graph(scope, graph),
+    to: CodeMySpec.Requirements.ProjectIssueGraph,
+    as: :read
+
   @doc """
   Whether requirement `name` is one `role` is offered, by its profile's
   `requirements` selectors — the filter `actionable_for_role/2` applies.
