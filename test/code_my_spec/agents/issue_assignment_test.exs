@@ -9,10 +9,15 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.AgentTasks.IssueFix
+  alias CodeMySpec.Issues
+  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
@@ -48,6 +53,130 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   end
 
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
+
+  test "main can request corrections after a completed fix without a failed QA attempt", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    qa = agent(ctx.scope, :qa, copy_id)
+    {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+    {:ok, coding} =
+      TaskOwner.add_task(ctx.scope, reload(coding), %{
+        status: :completed,
+        requirement_name: "fix_issue",
+        issue_id: ctx.issue.id,
+        session_type: IssueFix
+      })
+
+    [completed] = coding.tasks
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, assigned, :qa)
+
+    main = agent(ctx.scope, :main, copy_id)
+    main_frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: main.id}}
+
+    {:reply, requested, _} =
+      AssignIssueToWorkingCopy.execute(
+        %{
+          issue_id: ctx.issue.id,
+          working_copy_id: copy_id,
+          rework: true,
+          reason: "The submitted fix fails the named regression files."
+        },
+        main_frame
+      )
+
+    refute requested.isError
+    updated = Issues.get_issue(ctx.scope, ctx.issue.id)
+
+    assert updated.status == :accepted
+    assert updated.awaiting_role == :coding
+    assert updated.description =~ "The submitted fix fails the named regression files."
+    assert reload(qa).issue_id == ctx.issue.id
+    assert Agents.Work.work_for(ctx.scope, :qa, reload(qa)).actionable == []
+
+    assert [%{name: "fix_issue", entity_id: issue_id}] =
+             Agents.Work.claimable_work(ctx.scope, reload(coding))
+
+    assert issue_id == ctx.issue.id
+
+    frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
+
+    {:reply, started, _} =
+      StartTask.execute(
+        %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id},
+        frame
+      )
+
+    refute started.isError
+    assert TaskOwner.find_task(reload(coding), completed.id).status == :completed
+    assert TaskOwner.active_task(reload(coding)).id != completed.id
+  end
+
+  test "corrections require a reason and preserve the QA turn on refusal", ctx do
+    copy_id = copy(ctx.scope)
+    agent(ctx.scope, :coding, copy_id)
+    agent(ctx.scope, :qa, copy_id)
+    {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, assigned, :qa)
+
+    assert {:error, _} =
+             Agents.assign_issue_to_working_copy(
+               ctx.scope,
+               ctx.issue.id,
+               copy_id,
+               rework: true,
+               reason: "  "
+             )
+
+    unchanged = Issues.get_issue(ctx.scope, ctx.issue.id)
+    assert unchanged.awaiting_role == :qa
+    assert unchanged.description == ctx.issue.description
+  end
+
+  test "corrections cannot interrupt an active QA task", ctx do
+    copy_id = copy(ctx.scope)
+    agent(ctx.scope, :coding, copy_id)
+    qa = agent(ctx.scope, :qa, copy_id)
+    {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, assigned, :qa)
+
+    {:ok, _} =
+      TaskOwner.add_task(ctx.scope, reload(qa), %{
+        status: :active,
+        requirement_name: "qa_complete",
+        issue_id: ctx.issue.id
+      })
+
+    assert {:error, _} =
+             Agents.assign_issue_to_working_copy(
+               ctx.scope,
+               ctx.issue.id,
+               copy_id,
+               rework: true,
+               reason: "Known regression"
+             )
+
+    assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :qa
+    assert TaskOwner.active_task(reload(qa)).status == :active
+  end
+
+  test "a coder cannot request its own return from QA", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    agent(ctx.scope, :qa, copy_id)
+    {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, assigned, :qa)
+    frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
+
+    {:reply, refused, _} =
+      AssignIssueToWorkingCopy.execute(
+        %{issue_id: ctx.issue.id, working_copy_id: copy_id, rework: true, reason: "Try again"},
+        frame
+      )
+
+    assert refused.isError
+    assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :qa
+  end
 
   test "binds both the coding and qa agent on the destination copy", ctx do
     copy_id = copy(ctx.scope)
@@ -85,7 +214,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
     entry = Enum.find(Agents.Main.list_agent_work(ctx.scope), &(&1.agent_id == coding.id))
     assert entry.idle?
-    assert Agents.Main.Digest.stalled(%Digest{work: [entry]}) == []
+    assert Digest.stalled(%Digest{work: [entry]}) == []
   end
 
   test "an answered blocker makes its issue task claimable again", ctx do

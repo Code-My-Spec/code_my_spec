@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.AMessageTheHarnessNeverHadIsTakenBackTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Repo
 
   defmodule Answering do
@@ -80,6 +81,37 @@ defmodule CodeMySpec.Agents.AMessageTheHarnessNeverHadIsTakenBackTest do
     assert {:error, :already_delivered} =
              Agents.withdraw_message(ctx.scope, ctx.agent.id, ctx.ref)
 
-    assert Repo.reload!(ctx.message).delivery == :pending
+    assert Repo.reload!(ctx.message).delivery == :delivered
+  end
+
+  test "unreachable and uncertain outcomes remain pending", ctx do
+    for reason <- [:not_running, :harness_not_connected, :message_timed_out] do
+      answer({:error, reason})
+      assert {:error, ^reason} = Agents.withdraw_message(ctx.scope, ctx.agent.id, ctx.ref)
+      assert Repo.reload!(ctx.message).delivery == :pending
+    end
+  end
+
+  test "successful withdrawal is recorded as withdrawn", ctx do
+    answer(:ok)
+
+    assert {:ok, %{delivery: :withdrawn}} =
+             Agents.withdraw_message(ctx.scope, ctx.agent.id, ctx.ref)
+
+    assert Repo.reload!(ctx.message).delivery == :withdrawn
+  end
+
+  test "authoritative consumption broadcasts and clears pending controls", ctx do
+    topic = Conversations.conversation_topic(ctx.message.conversation_id)
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic)
+    answer({:error, :already_delivered})
+
+    assert {:error, :already_delivered} =
+             Agents.withdraw_message(ctx.scope, ctx.agent.id, ctx.ref)
+
+    assert_receive {:message_updated, %{id: id, delivery: :delivered}}
+    assert id == ctx.message.id
+    conversation = Repo.get!(Conversation, ctx.message.conversation_id)
+    assert Conversations.pending_messages(conversation) == []
   end
 end

@@ -344,11 +344,33 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   @min_prefix 4
 
   def fetch_issue(%Scope{} = scope, id) when is_binary(id) do
-    case lookup(scope.active_project.id, id) do
-      :not_found -> vendor_lookup(scope, id)
-      found -> found
+    with {:ok, project} <- lookup_project(scope) do
+      case lookup(project.id, id) do
+        :not_found -> vendor_lookup(%{scope | active_project: project}, id)
+        found -> found
+      end
+    else
+      :not_found -> :not_found
     end
   end
+
+  # Background owners carry IDs rather than preloaded associations. Validate
+  # the project against its account before either local or vendor lookup.
+  defp lookup_project(scope) do
+    project_id = scope.active_project_id || association_id(scope.active_project)
+    account_id = scope.active_account_id || association_id(scope.active_account)
+
+    with {:ok, project_id} <- Ecto.UUID.cast(project_id),
+         {:ok, account_id} <- Ecto.UUID.cast(account_id),
+         %Project{} = project <- Repo.get_by(Project, id: project_id, account_id: account_id) do
+      {:ok, project}
+    else
+      _ -> :not_found
+    end
+  end
+
+  defp association_id(%{id: id}), do: id
+  defp association_id(_), do: nil
 
   # The vendor reaches a framework issue in any project, because that is where
   # framework issues live.

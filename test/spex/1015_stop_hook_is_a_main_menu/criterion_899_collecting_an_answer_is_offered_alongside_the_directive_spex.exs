@@ -84,17 +84,21 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
         {:ok, context}
       end
 
-      then_ "the answer is offered as a reply reaching the agent, with no question outstanding",
+      then_ "the answer is offered by the tools that collect it, with no question outstanding",
             context do
         reason = context.response["reason"] || ""
 
-        assert reason =~ "the reply reaches you",
+        assert reason =~ "check_answer",
                "unconditional means the offer does not depend on a question " <>
                  "existing — which is the point, because a question that exists " <>
                  "and cannot be closed used to hold the top of this menu forever. " <>
-                 "It says the behaviour, not a tool: answers are pushed to an agent " <>
-                 "we run, which carries no tool to poll with, and naming one primed " <>
-                 "an agent to call something it did not have (e809c0db). Got:\n#{reason}"
+                 "It names the tools that collect a reply: John settled e809c0db on " <>
+                 "2026-10-05 as option (a), carry both tools, because 'the reply " <>
+                 "reaches you' describes a push and an agent whose turn ended before " <>
+                 "the answer landed has no way to collect it from that sentence. " <>
+                 "The roles that read this now carry `check_answer` and " <>
+                 "`list_user_questions`, so the sentence is true of the narrowest " <>
+                 "reader rather than the widest. Got:\n#{reason}"
 
         {:ok, context}
       end

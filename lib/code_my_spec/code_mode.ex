@@ -129,7 +129,12 @@ defmodule CodeMySpec.CodeMode do
         catalog,
         Keyword.get(opts, :out_of_scope, []),
         Keyword.get(opts, :agent_kind),
-        Keyword.get(opts, :carried, :all)
+        Keyword.get(opts, :carried, :all),
+        # Every tool on the server, so a name belonging to another role is told
+        # apart from a name that belongs to nothing (`27fb2de3`). Separate from
+        # `out_of_scope` because the registered list is the MCP layer's
+        # knowledge; here it is just another list of names.
+        Keyword.get(opts, :direct_names, :all)
       )
 
     {values, _lua} = Lua.eval!(lua, script)

@@ -20,11 +20,9 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
   # next read already offers `qa_complete` instead of `fix_issue` again.
   defp hand_to_qa(scope, task) do
     case Issues.get_issue(scope, task.issue_id) do
-      nil -> :ok
+      nil -> {:error, "Issue #{task.issue_id} no longer exists."}
       issue -> Issues.set_awaiting_role(scope, issue, :qa)
     end
-
-    :ok
   end
 
   @doc "Read the assigned issue and build the fix prompt. Returns `{:ok, prompt_text}`."
@@ -40,8 +38,9 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
 
   @doc "Trusts the coder's own report; QA is the review for issue work."
   def evaluate(scope, task) do
-    :ok = hand_to_qa(scope, task)
-    {:ok, :valid}
+    with {:ok, _issue} <- hand_to_qa(scope, task) do
+      {:ok, :valid}
+    end
   end
 
   defp build_prompt(issue, task) do

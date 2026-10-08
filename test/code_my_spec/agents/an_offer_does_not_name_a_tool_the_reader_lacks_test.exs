@@ -1,68 +1,65 @@
 defmodule CodeMySpec.Agents.AnOfferDoesNotNameAToolTheReaderLacksTest do
   @moduledoc """
-  An offer describes what happens, not what to call.
+  The offer names the polling tools, and no role that reads it lacks them.
 
-  Issue `e809c0db`. Two surfaces told every agent to call tools a correctly
-  configured agent does not and should not carry:
+  Issue `e809c0db`, decided as (a) on 2026-10-05: **carry both tools**. This file
+  was written for the first pass, option (b) — stop advertising, so
+  `answer_offer/1` said "the reply reaches you" and named nothing. John reversed
+  it, so the assertion does too.
 
-    * `Validation.Menu.answer_offer/1` named `check_answer` and
-      `list_user_questions` unconditionally, in the nudge an agent reads every
-      turn. Answers are pushed to an agent we run, so there is nothing for it
-      to poll for and neither tool is carried. An agent primed by that sentence
-      called one, was refused, and stopped.
-    * `tool_docs` described a direct-only tool as "its schema is already in your
-      tool list" — true for Claude Code, false for an Alloy agent that does not
-      carry the name.
+  What survives the reversal is the half that was never about wording: a sentence
+  every agent reads must not name a tool the narrowest reader does not carry.
+  Option (b) satisfied that by dropping the names; option (a) satisfies it by
+  granting them. Both are the same test — the names are in the offer, and every
+  reader carries them — and it is written against the role's grants rather than
+  the phrasing, so the next sentence that names an uncarried tool fails here
+  rather than on a live agent's turn.
 
-  The decision is (b): stop advertising. The reply reaching the agent is the
-  behaviour worth stating, and it is true of both kinds of agent; naming the
-  tool is the part that is true of only one. The same for `tool_docs`: it says
-  whether the caller carries a tool rather than asserting that it does.
-
-  ## Why a test rather than the two edits
-
-  The class is "a sentence an agent reads names a tool its role does not
-  carry", and it has recursed. Carrying the tool instead (`3bc106f6` did that
-  for these two) makes the sentence true and pays a schema on every turn of
-  every role. The assertion is written against the role's grants, not the
-  wording, so the next sentence that names an uncarried tool fails here rather
-  than on a live agent's turn.
+  `tool_docs` is untouched by the reversal: its half of the issue was that it
+  asserted "its schema is already in your tool list" for a caller that may not
+  have it, and the answer there is still to say whether the caller carries it.
   """
 
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Agents.RoleProfile
 
-  # What every agent we run is, and what each carries. The offer text is shared
-  # by all of them, so it has to be true of the narrowest.
-  @roles [
-    :main,
-    :coding,
-    :qa,
-    :product,
-    :researcher,
-    :spec_writer,
-    :test_writer,
-    :bdd_spec_writer
-  ]
+  # Every role we run, read from the module rather than listed here: the offer
+  # text is shared by all of them, so it has to be true of the narrowest, and a
+  # role added later has to be covered without this file changing.
+  defp roles, do: RoleProfile.roles()
 
   @offer_source "lib/code_my_spec/agents/menu.ex"
   @docs_source "lib/code_my_spec/mcp_servers/code_mode/tools/tool_docs.ex"
 
-  # The tools this issue is about: real, direct-call-only, and not carried by
-  # an agent we run. `semantic_search` is scriptable, so the answer for it is
-  # that it is not presented as directly-callable at all.
+  # The tools this issue is about: real, direct-call-only, and named in the
+  # offer every agent reads.
   @polling_tools ["check_answer", "list_user_questions"]
 
   describe "the offer text an agent reads" do
-    test "names no tool a role does not carry" do
+    test "names both polling tools" do
+      text = offer_text()
+
+      Enum.each(@polling_tools, fn name ->
+        assert text =~ name,
+               """
+               the offer does not name `#{name}`. Decision (a) is to carry both
+               tools *and* say what to call: "the reply reaches you" describes a
+               push, and an agent whose turn ended before the answer landed has
+               no way to collect it from that sentence.
+
+                   #{text}
+               """
+      end)
+    end
+
+    test "names no tool any reader lacks" do
       text = offer_text()
 
       named =
-        @polling_tools
-        |> Enum.filter(fn name ->
+        Enum.filter(@polling_tools, fn name ->
           String.contains?(text, name) and
-            Enum.any?(@roles, fn role -> not RoleProfile.carries?(role, name) end)
+            Enum.any?(roles(), fn role -> not RoleProfile.carries?(role, name) end)
         end)
 
       assert named == [],
