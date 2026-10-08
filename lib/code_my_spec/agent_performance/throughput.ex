@@ -3,10 +3,8 @@ defmodule CodeMySpec.AgentPerformance.Throughput do
   Story throughput per team over a period: how many stories a team
   promoted.
 
-  A team is the working copy a story was built on. `promoted_at` is
-  approximated from the story's own `updated_at` at the moment
-  `promoted_version` is set -- see `CycleTime` for why nothing stamps
-  that moment more directly.
+  A team is the copy recorded at promotion, independent of current assignment.
+  Older stories without a promotion stamp retain the legacy attribution.
   """
 
   alias CodeMySpec.Stories
@@ -23,15 +21,15 @@ defmodule CodeMySpec.AgentPerformance.Throughput do
     scope
     |> list_stories()
     |> Enum.filter(&promoted_in_period?(&1, since))
-    |> Enum.group_by(& &1.working_copy_id)
+    |> Enum.group_by(&(&1.promoted_working_copy_id || &1.working_copy_id))
     |> Map.new(fn {working_copy_id, stories} -> {working_copy_id, length(stories)} end)
   end
 
   defp promoted_in_period?(%Story{promoted_version: nil}, _since), do: false
   defp promoted_in_period?(%Story{}, nil), do: true
 
-  defp promoted_in_period?(%Story{updated_at: at}, since),
-    do: DateTime.compare(at, since) != :lt
+  defp promoted_in_period?(%Story{} = story, since),
+    do: DateTime.compare(story.promoted_at || story.updated_at, since) != :lt
 
   defp list_stories(scope) do
     case Stories.list_project_stories(scope) do

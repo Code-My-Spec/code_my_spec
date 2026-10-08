@@ -115,27 +115,29 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
         assert story.specs_ready,
                "the story's specs_ready must be set before this scenario starts"
 
-        {:ok, story} = Stories.set_qa_ready(context.scope, story, String.duplicate("a", 40), qa_ready_at)
+        {:ok, story} =
+          Stories.set_qa_ready(context.scope, story, String.duplicate("a", 40), qa_ready_at)
 
         {:ok, Map.put(context, :story, story)}
       end
 
-      then_ "the story reads as complete — nothing is offered for it", context do
+      then_ "the finished team waits for Main — nothing is offered to it", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
         {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
 
         text = TaskResponseHelpers.response_text(response)
 
-        assert text =~ "This story is complete for this working copy.",
-               "expected the shipped story to read as complete, got: #{text}"
+        assert String.downcase(text) =~ "waiting for main assignment",
+               "expected the finished team to wait for Main, got: #{text}"
 
         {:ok, context}
       end
 
-      when_ "a new criterion is added to it", context do
+      when_ "a new criterion is added and Main assigns the revision to this team", context do
         response = add_criterion(context, context.story, "It also works on Tuesdays")
         refute response.isError, inspect(response)
+        refute set_active_story(context, context.story).isError
         {:ok, context}
       end
 

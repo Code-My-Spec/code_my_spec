@@ -102,6 +102,19 @@ defmodule CodeMySpec.StoriesTest do
       assert stamped.specs_ready == true
       assert stamped.promoted_version == "2.0.11"
       assert stamped.specs_ready_commit == "abc"
+      assert stamped.promoted_working_copy_id == scope.active_working_copy_id
+      assert stamped.promoted_at == stamped.specs_ready_at
+      {:ok, revised} = Stories.set_specs_ready(scope, stamped, false)
+      later = DateTime.add(stamped.promoted_at, 86_400, :second)
+
+      {:ok, promoted_again} =
+        Stories.mark_story_promoted(scope, revised, "2.0.12",
+          at: later,
+          working_copy_id: Ecto.UUID.generate()
+        )
+
+      assert promoted_again.promoted_working_copy_id == stamped.promoted_working_copy_id
+      assert promoted_again.promoted_at == stamped.promoted_at
       assert Stories.get_story!(scope, other.id).promoted_version == nil
     end
 

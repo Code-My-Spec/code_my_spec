@@ -138,6 +138,9 @@ defmodule CodeMySpec.Stories.Story do
     # Nil is also the invalidation switch: clearing it is how a story gets
     # sent back through `story_promoted` after its work is revised.
     field :promoted_version, :string
+    # Historical attribution survives release of the active working-copy assignment.
+    field :promoted_working_copy_id, :binary_id
+    field :promoted_at, :utc_datetime_usec
 
     # The id this story had on the harness it was migrated from. Story ids are
     # per-deployment sequences and the ranges overlap, so without this the same
@@ -238,6 +241,8 @@ defmodule CodeMySpec.Stories.Story do
       :qa_ready_at,
       :three_amigos_sealed,
       :promoted_version,
+      :promoted_working_copy_id,
+      :promoted_at,
       :priority,
       :locked_at,
       :lock_expires_at,

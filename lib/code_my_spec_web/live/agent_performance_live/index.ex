@@ -26,7 +26,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
     teams =
       stories
-      |> Enum.map(& &1.working_copy_id)
+      |> Enum.flat_map(&[&1.working_copy_id, &1.promoted_working_copy_id])
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Map.new(&{&1, AgentPerformance.team_first_pass_rate(scope, &1)})
@@ -72,7 +72,11 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
     <section data-test="teams" class="mt-6">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Teams</h2>
-      <div :for={{working_copy_id, rate} <- @teams} data-test="team" data-working-copy-id={working_copy_id}>
+      <div
+        :for={{working_copy_id, rate} <- @teams}
+        data-test="team"
+        data-working-copy-id={working_copy_id}
+      >
         First-pass rate: {percent(rate)}
         <span>Promoted: {Map.get(@summary.throughput_by_team, working_copy_id, 0)}</span>
       </div>
@@ -89,7 +93,12 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
     <section data-test="stories" class="mt-6 space-y-6">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Stories</h2>
-      <div :for={story <- @stories} id={"story-#{story.id}"} data-test="story" class="card bg-base-100 shadow-md">
+      <div
+        :for={story <- @stories}
+        id={"story-#{story.id}"}
+        data-test="story"
+        class="card bg-base-100 shadow-md"
+      >
         <div class="card-body">
           <h3 class="card-title">{story.title}</h3>
           {cycle_time_block(Map.fetch!(@reports, story.id).cycle_time)}
@@ -183,7 +192,8 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
     ~H"""
     <div data-test="story-interventions">
-      <span>{length(@interventions)}</span> intervention(s)
+      <span>{length(@interventions)}</span>
+      intervention(s)
       <div :for={i <- @interventions} data-test="intervention">
         {kind_label(i.kind)} ({i.reason})
       </div>
