@@ -145,7 +145,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   # ============================================================================
 
   defp build_prompt(scope, relevant_pairs) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
     project = scope.active_project
 
     grouped = Enum.group_by(relevant_pairs, fn {_problem, story} -> story.id end)

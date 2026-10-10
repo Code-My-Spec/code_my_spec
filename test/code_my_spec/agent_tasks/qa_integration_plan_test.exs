@@ -14,8 +14,9 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
 
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     scope = %{scope | cwd: tmp_dir, environment: Environment.new(:local, tmp_dir)}
+    :ok = register_working_copy_environment(scope, scope.environment)
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -44,25 +45,26 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     write_file!(
       env,
       ".code_my_spec/architecture/decisions/#{name}.md",
-      content || """
-      # #{String.capitalize(name)}
+      content ||
+        """
+        # #{String.capitalize(name)}
 
-      ## Status
+        ## Status
 
-      Accepted
+        Accepted
 
-      ## Context
+        ## Context
 
-      We need #{name} for the project.
+        We need #{name} for the project.
 
-      ## Decision
+        ## Decision
 
-      Use #{name} with API token authentication.
+        Use #{name} with API token authentication.
 
-      ## Consequences
+        ## Consequences
 
-      - Need to manage API credentials
-      """
+        - Need to manage API credentials
+        """
     )
   end
 
@@ -70,13 +72,14 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     write_file!(
       env,
       ".code_my_spec/integrations.md",
-      content || """
-      # Integrations
+      content ||
+        """
+        # Integrations
 
-      | Integration | Auth Type | Status |
-      |---|---|---|
-      | twilio | api_token | verified |
-      """
+        | Integration | Auth Type | Status |
+        |---|---|---|
+        | twilio | api_token | verified |
+        """
     )
   end
 

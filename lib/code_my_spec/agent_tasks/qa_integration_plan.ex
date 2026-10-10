@@ -26,7 +26,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   credential gathering with the user.
   """
   def command(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     decisions = read_decisions(env)
     existing_specs = read_existing_specs(env)

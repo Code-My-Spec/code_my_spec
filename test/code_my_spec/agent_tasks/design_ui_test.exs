@@ -13,8 +13,9 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
 
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -31,7 +32,11 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
   end
 
   defp write_design_system_html(env, content \\ nil) do
-    write_file!(env, ".code_my_spec/design/design_system.html", content || valid_design_system_html())
+    write_file!(
+      env,
+      ".code_my_spec/design/design_system.html",
+      content || valid_design_system_html()
+    )
   end
 
   defp write_template_file(env) do

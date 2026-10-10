@@ -30,7 +30,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
@@ -181,9 +180,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   defp run_bootstrap_task(scope, external_id, session_type) do
     with {:ok, _} <- validate_external_id(external_id),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil) do
-      # Bootstrap tasks get a minimal scope — just environment/cwd, no project needed
-      bootstrap_scope = ensure_environment(scope)
-      {:ok, prompt} = apply(agent_task_module, :command, [bootstrap_scope, %{}])
+      {:ok, prompt} = apply(agent_task_module, :command, [scope, %{}])
       {:ok, prompt, %{}}
     end
   end
@@ -283,7 +280,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp decisions_context(scope) do
-    case Environments.read_file(scope.environment, Paths.decisions_index()) do
+    case Environments.read_file(CodeMySpec.AgentTasks.environment(scope), Paths.decisions_index()) do
       {:ok, content} when byte_size(content) > 0 ->
         """
         ## Architecture Decision Records
@@ -313,25 +310,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   defp validate_external_id(external_id) when is_binary(external_id), do: {:ok, external_id}
 
-  # Ensures scope has an environment, building a minimal one from cwd if needed
-  defp ensure_environment(%{environment: nil, cwd: cwd} = scope) when is_binary(cwd) do
-    %{scope | environment: Environment.new(:local, cwd)}
+  defp validate_environment(scope) do
+    case CodeMySpec.AgentTasks.environment(scope) do
+      nil -> {:error, "No environment configured (no working directory)"}
+      env -> {:ok, env}
+    end
   end
-
-  # A scope with no cwd gets no environment. It used to get one rooted at this
-  # server's directory, which is a working copy of the wrong project — every
-  # file a bootstrap task then read or wrote belonged to code_my_spec, not to
-  # the caller. Bootstrap prompts render without one; see
-  # `Setup.Helpers.app_name/1`, which reads the synced mix.exs instead.
-  defp ensure_environment(%{environment: nil} = scope), do: scope
-
-  defp ensure_environment(scope), do: scope
-
-  defp validate_environment(%{environment: nil}) do
-    {:error, "No environment configured (no working directory)"}
-  end
-
-  defp validate_environment(%{environment: env}) when not is_nil(env), do: {:ok, env}
 
   # Session type resolution
 
@@ -410,7 +394,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # Sync — incremental only.
 
   defp sync_project(scope) do
-    base_dir = scope.environment && scope.environment.cwd
+    env = CodeMySpec.AgentTasks.environment(scope)
+    base_dir = env && env.cwd
 
     if base_dir do
       # `changed_paths` threaded through to `ComponentSync` — this function's

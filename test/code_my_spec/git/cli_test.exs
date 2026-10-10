@@ -4,6 +4,7 @@ defmodule CodeMySpec.Git.CLITest do
   import CodeMySpec.{UsersFixtures, IntegrationsFixtures}
 
   alias CodeMySpec.Git.CLI
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Users.Scope
 
   # ============================================================================
@@ -55,6 +56,58 @@ defmodule CodeMySpec.Git.CLITest do
 
       assert {:error, :not_connected} = result
       refute File.exists?(clone_path)
+    end
+  end
+
+  describe "explicit environment" do
+    test "an invalid selected copy refuses the stale scope environment" do
+      root = CodeMySpec.TempFile.owned_dir("git_invalid_selection")
+      scope = full_scope_fixture(%{local_path: root})
+
+      scope = %{
+        scope
+        | active_working_copy_id: Ecto.UUID.generate(),
+          environment: Environment.new(:local, root)
+      }
+
+      assert {:error, :no_environment} = CLI.pull(scope, root)
+    end
+
+    test "missing environment returns an error without creating a clone path" do
+      {scope, _token} = scope_with_github_integration()
+      clone_path = temp_clone_path()
+
+      assert {:error, :no_environment} = CLI.clone(scope, github_repo_url(), clone_path, nil)
+      refute File.exists?(clone_path)
+    end
+
+    test "pull uses the explicit environment instead of scope.environment" do
+      {scope, _token} = scope_with_github_integration()
+      explicit_repo = temp_clone_path()
+      stale_repo = temp_clone_path()
+      File.mkdir_p!(explicit_repo)
+      File.mkdir_p!(stale_repo)
+
+      on_exit(fn ->
+        cleanup_path(explicit_repo)
+        cleanup_path(stale_repo)
+      end)
+
+      for {repo, remote} <- [
+            {explicit_repo, "git@github.com:owner/repo.git"},
+            {stale_repo, "https://github.com/owner/repo.git"}
+          ] do
+        {_, 0} = System.cmd("git", ["init", "-q"], cd: repo)
+        {_, 0} = System.cmd("git", ["remote", "add", "origin", remote], cd: repo)
+      end
+
+      scope = %{scope | environment: Environment.new(:local, stale_repo)}
+
+      assert {:error, :invalid_url} =
+               CLI.pull(scope, explicit_repo, Environment.new(:local, explicit_repo))
+
+      {remote, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: explicit_repo)
+      assert String.trim(remote) == "git@github.com:owner/repo.git"
     end
   end
 
@@ -152,8 +205,11 @@ defmodule CodeMySpec.Git.CLITest do
 
       File.mkdir_p!(clone_path)
       File.write!(Path.join(clone_path, "existing_file.txt"), "content")
-      result = CLI.clone(scope, test_repo_url(), clone_path)
-      assert {:error, _reason} = result
+
+      result =
+        CLI.clone(scope, test_repo_url(), clone_path, Environment.new(:local, System.tmp_dir!()))
+
+      assert {:error, {:clone_failed, _reason}} = result
       cleanup_path(clone_path)
     end
 
@@ -162,9 +218,10 @@ defmodule CodeMySpec.Git.CLITest do
       {scope, _token} = scope_with_github_integration()
       clone_path = "/nonexistent/parent/directory/repo"
 
-      result = CLI.clone(scope, test_repo_url(), clone_path)
+      result =
+        CLI.clone(scope, test_repo_url(), clone_path, Environment.new(:local, System.tmp_dir!()))
 
-      assert {:error, _reason} = result
+      assert {:error, {:clone_failed, _reason}} = result
     end
   end
 
@@ -181,8 +238,9 @@ defmodule CodeMySpec.Git.CLITest do
       on_exit(fn -> cleanup_path(clone_path) end)
 
       # Clone and pull
-      {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
-      _result = CLI.pull(scope, clone_path)
+      environment = Environment.new(:local, System.tmp_dir!())
+      {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path, environment)
+      _result = CLI.pull(scope, clone_path, environment)
 
       # Verify remote URL doesn't contain token
       {remote_url, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: clone_path)
@@ -213,7 +271,7 @@ defmodule CodeMySpec.Git.CLITest do
           cd: clone_path
         )
 
-      result = CLI.pull(scope, clone_path)
+      result = CLI.pull(scope, clone_path, Environment.new(:local, clone_path))
 
       assert {:error, :not_connected} = result
     end
@@ -223,9 +281,10 @@ defmodule CodeMySpec.Git.CLITest do
     test "returns error when path doesn't exist" do
       {scope, _token} = scope_with_github_integration()
 
-      result = CLI.pull(scope, "/nonexistent/path/to/repo")
+      result =
+        CLI.pull(scope, "/nonexistent/path/to/repo", Environment.new(:local, System.tmp_dir!()))
 
-      assert {:error, _reason} = result
+      assert {:error, :no_remote} = result
     end
 
     test "returns error when path is not a git repository" do
@@ -236,9 +295,9 @@ defmodule CodeMySpec.Git.CLITest do
 
       on_exit(fn -> cleanup_path(non_repo_path) end)
 
-      result = CLI.pull(scope, non_repo_path)
+      result = CLI.pull(scope, non_repo_path, Environment.new(:local, System.tmp_dir!()))
 
-      assert {:error, _reason} = result
+      assert {:error, :no_remote} = result
     end
 
     test "returns error for nil path" do
@@ -271,7 +330,8 @@ defmodule CodeMySpec.Git.CLITest do
       on_exit(fn -> cleanup_path(clone_path) end)
 
       # Clone the repository
-      {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path)
+      environment = Environment.new(:local, System.tmp_dir!())
+      {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path, environment)
 
       readme_path = Path.join(clone_path, "README.md")
       File.write!(readme_path, "# Conflicting change\n")
@@ -279,7 +339,7 @@ defmodule CodeMySpec.Git.CLITest do
       System.cmd("git", ["commit", "-m", "Local change"], cd: clone_path)
 
       # Attempt pull (may fail due to divergence)
-      _result = CLI.pull(scope, clone_path)
+      _result = CLI.pull(scope, clone_path, environment)
 
       # Verify token was cleaned up from remote URL
       {remote_url, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: clone_path)

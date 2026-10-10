@@ -17,7 +17,8 @@ defmodule CodeMySpec.AgentTasks.AStoryTaskIsDoneWhenItsStoryIsLinkedTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+    scope = %{working_copy_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+    :ok = register_working_copy_environment(scope, scope.environment)
 
     # An orphan context exists, so `command/2` records revision mode.
     component = component_fixture(scope, %{type: "context"})

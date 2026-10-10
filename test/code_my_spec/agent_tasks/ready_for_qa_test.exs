@@ -68,12 +68,13 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
   end
 
   defp a_copy(status \\ "") do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "copy", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     a_harness(copy.id)
     {:ok, env} = InMemoryEnvironment.create(shell: script(status))
     scope = %{scope | active_working_copy_id: copy.id, environment: env}
+    :ok = register_working_copy_environment(scope, env)
     %{scope: scope, story: story_fixture(scope)}
   end
 

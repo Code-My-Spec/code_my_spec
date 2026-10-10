@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentTasks.FixStoryIssuesPromptTest do
 
   # 8a186121
   test "tells a coder how to get an obsolete criterion retired" do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     story = story_fixture(scope)
     issue_fixture(scope, %{status: :accepted, severity: :high, story_id: story.id})
 

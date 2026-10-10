@@ -39,7 +39,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   Returns {:ok, prompt_text}
   """
   def command(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
     project = scope.active_project
 
     app_name = derive_app_name(env)
@@ -78,7 +78,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   - {:ok, :invalid, feedback} if stories are incomplete or summary missing
   """
   def evaluate(scope, session, _opts \\ []) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     stories = list_stories(scope)
     summary_exists = summary_exists?(env)
@@ -97,7 +97,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   # ============================================================================
 
   defp generate_story_prompts(scope, stories) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     Enum.map(stories, fn story ->
       child_task = %{story_id: story.id}

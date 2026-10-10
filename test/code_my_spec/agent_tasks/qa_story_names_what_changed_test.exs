@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryNamesWhatChangedTest do
   alias CodeMySpec.Qa.QaAttempt
 
   setup do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
 
     scope = %{
       scope

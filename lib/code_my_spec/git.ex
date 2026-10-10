@@ -24,8 +24,10 @@ defmodule CodeMySpec.Git do
     deps: [
       CodeMySpec.Environments,
       CodeMySpec.Integrations,
+      CodeMySpec.LocalScope,
       CodeMySpec.Users,
-      CodeMySpec.Users.Scope
+      CodeMySpec.Users.Scope,
+      CodeMySpec.WorkingCopies
     ],
     exports: :all
 
@@ -71,6 +73,20 @@ defmodule CodeMySpec.Git do
   @spec clone(Scope.t(), repo_url(), path()) :: {:ok, path()} | {:error, error_reason()}
   def clone(scope, repo_url, path), do: impl().clone(scope, repo_url, path)
 
+  @doc "Clones using an explicitly selected execution environment."
+  @spec clone(Scope.t(), repo_url(), path(), term()) ::
+          {:ok, path()} | {:error, error_reason() | :environment_not_supported}
+  def clone(scope, repo_url, path, environment) do
+    implementation = impl()
+
+    with {:module, ^implementation} <- Code.ensure_loaded(implementation),
+         true <- function_exported?(implementation, :clone, 4) do
+      implementation.clone(scope, repo_url, path, environment)
+    else
+      _ -> {:error, :environment_not_supported}
+    end
+  end
+
   @doc """
   Pulls changes from the remote repository using authenticated credentials.
 
@@ -97,4 +113,18 @@ defmodule CodeMySpec.Git do
   """
   @spec pull(Scope.t(), path()) :: :ok | {:error, error_reason()}
   def pull(scope, path), do: impl().pull(scope, path)
+
+  @doc "Pulls using an explicitly selected execution environment."
+  @spec pull(Scope.t(), path(), term()) ::
+          :ok | {:error, error_reason() | :environment_not_supported}
+  def pull(scope, path, environment) do
+    implementation = impl()
+
+    with {:module, ^implementation} <- Code.ensure_loaded(implementation),
+         true <- function_exported?(implementation, :pull, 3) do
+      implementation.pull(scope, path, environment)
+    else
+      _ -> {:error, :environment_not_supported}
+    end
+  end
 end

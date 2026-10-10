@@ -19,7 +19,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryWithoutADiskTest do
   alias CodeMySpec.Files.File, as: FileRecord
 
   setup do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
 
     {:ok, story} =
       CodeMySpec.Stories.create_story(scope, %{

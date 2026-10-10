@@ -26,8 +26,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
 
   defp prompt_without_a_working_copy do
     tmp_dir = CodeMySpec.TempFile.owned_dir("qa_story_app_url")
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
     story = story_fixture(scope)
 
     plan_path = Path.join(tmp_dir, ".code_my_spec/qa/plan.md")

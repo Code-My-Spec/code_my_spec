@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   the agent works on the first un-skipped phase per session.
   """
   def command(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     stories = list_stories(scope)
     write_stories_file(env, stories)

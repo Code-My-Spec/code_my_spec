@@ -160,11 +160,14 @@ defmodule CodeMySpec.UsersFixtures do
   end
 
   @doc "A full test scope whose selected working copy has a registered environment."
-  def provisioning_scope_fixture(project_attrs \\ %{}) do
+  def working_copy_scope_fixture(project_attrs \\ %{}) do
     scope = full_scope_fixture(project_attrs)
     :ok = register_working_copy_environment(scope, scope.environment)
     scope
   end
+
+  def provisioning_scope_fixture(project_attrs \\ %{}),
+    do: working_copy_scope_fixture(project_attrs)
 
   def full_preferences_fixture do
     scope = full_scope_fixture()

@@ -57,7 +57,7 @@ defmodule CodeMySpec.AgentTasks.TheBddPromptCarriesTheScenariosTest do
   end
 
   setup do
-    {:ok, scope: full_scope_fixture()}
+    {:ok, scope: working_copy_scope_fixture()}
   end
 
   test "the scenario reaches the agent, not just the criterion title", %{scope: scope} do

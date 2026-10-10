@@ -15,8 +15,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 

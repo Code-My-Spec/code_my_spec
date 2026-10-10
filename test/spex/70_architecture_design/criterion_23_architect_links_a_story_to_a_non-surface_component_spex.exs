@@ -96,12 +96,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5292Spex do
         - #{app}Web.DesignLive -> #{app}.AgentTasks
         """
 
-        :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
-            Fixtures.proposal_path(),
-            proposal
-          )
+        HarnessHooks.write_file(context, Fixtures.proposal_path(), proposal)
 
         {:ok, context}
       end

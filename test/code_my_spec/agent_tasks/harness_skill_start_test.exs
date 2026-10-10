@@ -28,14 +28,21 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
 
   setup do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
-    {:ok, scope: full_scope_fixture()}
+    {:ok, scope: working_copy_scope_fixture()}
   end
 
   # The shape a light harness presents: it names the working copy it serves —
   # on the scope and on the environment, because a harness reports its root —
   # and cannot walk it from here.
   defp harness_scope(scope) do
-    %{scope | cwd: "/workspace/app", environment: Environment.new(:harness, "/workspace/app")}
+    scope = %{
+      scope
+      | cwd: "/workspace/app",
+        environment: Environment.new(:harness, "/workspace/app")
+    }
+
+    :ok = register_working_copy_environment(scope, scope.environment)
+    scope
   end
 
   test "/sync says why it did not scan, rather than reporting a clean sync", %{scope: scope} do

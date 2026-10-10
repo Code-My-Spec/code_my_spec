@@ -26,19 +26,18 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
   # ============================================================================
 
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
-  def command(%{environment: nil}, _task) do
-    {:ok,
-     "# Spex Boundary Ready\n\nProject environment is not available yet — finish project setup so the working directory is bound, then re-open this requirement."}
-  end
-
   def command(scope, _task) do
-    env = scope.environment
-    app_name = Helpers.extract_app_name(env) || "your_app"
-    app_module = camelize(app_name)
-    # The same "a plan exists" that satisfies `architecture_designed`.
-    {planned?, _} = ArchitectureChecker.complete?(scope, nil)
+    env = CodeMySpec.AgentTasks.environment(scope)
 
-    {:ok, build_prompt(app_name, app_module, planned?)}
+    if is_nil(env) do
+      {:ok,
+       "# Spex Boundary Ready\n\nProject environment is not available yet — finish project setup so the working directory is bound, then re-open this requirement."}
+    else
+      app_name = Helpers.extract_app_name(env) || "your_app"
+      app_module = camelize(app_name)
+      {planned?, _} = ArchitectureChecker.complete?(scope, nil)
+      {:ok, build_prompt(app_name, app_module, planned?)}
+    end
   end
 
   # ============================================================================

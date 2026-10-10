@@ -48,7 +48,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   """
   def command(scope, task) do
     with {:ok, story_id} <- get_story_id(scope, task) do
-      env = scope.environment
+      env = CodeMySpec.AgentTasks.environment(scope)
       story = Stories.get_story!(scope, story_id)
       ensure_qa_dirs(env, story.number)
       {:ok, build_prompt(scope, story)}
@@ -76,7 +76,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   """
   def evaluate(scope, task) do
     with {:ok, story_id} <- get_story_id(scope, task) do
-      env = scope.environment
+      env = CodeMySpec.AgentTasks.environment(scope)
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
 
       # Most-recent first, `:invalidations` preloaded — see QaAttempts.list/2.
@@ -367,7 +367,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # ============================================================================
 
   defp build_prompt(scope, story) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
     endpoint_module = endpoint_module_name(scope)
     criteria_text = format_criteria(Map.get(story, :criteria, []))
     spec_paths = collect_spec_file_paths(scope, story.id)

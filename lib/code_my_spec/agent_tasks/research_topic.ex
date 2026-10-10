@@ -33,7 +33,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, task) do
     topic = get_topic(task)
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     research_brief = read_research_brief(env, topic)
     mix_exs = read_mix_exs(env)
@@ -58,7 +58,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, task) do
     topic = get_topic(task)
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     knowledge_files = check_existing_knowledge(env, topic)
 
@@ -77,7 +77,9 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
 
   defp get_topic(%{requirement_name: name}) when is_binary(name) and name != "", do: name
   defp get_topic(%{state: %{"topic" => topic}}) when is_binary(topic) and topic != "", do: topic
-  defp get_topic(_task), do: raise("ResearchTopic requires task.requirement_name or state[\"topic\"]")
+
+  defp get_topic(_task),
+    do: raise("ResearchTopic requires task.requirement_name or state[\"topic\"]")
 
   defp read_research_brief(env, topic) do
     path = "#{Paths.research_dir()}/#{topic}.md"

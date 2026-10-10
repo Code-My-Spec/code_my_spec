@@ -18,8 +18,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   # ============================================================================
 
   defp scope_with_cwd(tmp_dir) do
-    scope = full_scope_fixture()
-    %{scope | environment: Environment.new(:local, tmp_dir)}
+    scope = working_copy_scope_fixture()
+    env = Environment.new(:local, tmp_dir)
+    :ok = register_working_copy_environment(scope, env)
+    %{scope | environment: env}
   end
 
   defp create_story_with_component(scope, opts \\ %{}) do

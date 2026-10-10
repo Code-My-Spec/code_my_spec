@@ -21,7 +21,7 @@ defmodule CodeMySpec.AgentTasks.DeployTest do
   alias CodeMySpec.StoriesFixtures
 
   setup do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     story = StoriesFixtures.story_fixture(scope)
 
     {:ok, scope: scope, story: story}

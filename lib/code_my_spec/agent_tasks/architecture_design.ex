@@ -9,7 +9,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   require Logger
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
 
   @proposal_path Paths.proposal_path()
   @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
@@ -36,14 +35,13 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   """
   def command(scope, _task) do
     project = scope.active_project
-    working_dir = scope.environment && scope.environment.cwd
 
     stories = Stories.list_unsatisfied_stories(scope)
     component_count = Components.count_components(scope)
 
     # The caller's environment or none. Inventing one at this server's
     # directory made `proposal_exists?` answer about *this* repository.
-    env = scope.environment || cli_env(working_dir)
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     proposal_exists? = revision_mode?(env, component_count)
 
@@ -155,21 +153,23 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # the asymmetry `Environments`' moduledoc warns about. So a nil environment
   # did not merely fail to decide the mode, it decided *initial*, which is the
   # branch that rewrites the proposal end-to-end. Refuse before the guess.
-  def evaluate(%{environment: nil}, _task), do: {:error, :no_environment}
-
   def evaluate(scope, task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
-    # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
-    # A failing patch-mode evaluate (e.g. unlinked story) used to clear the
-    # marker and silently promote the next evaluate to full proposal
-    # validation, forcing the architect to hand-edit proposal.md after
-    # any DB-side fix. The marker survives until the next `start_task`,
-    # which re-records based on proposal existence.
-    if patch_mode?(env) do
-      evaluate_patch_mode(scope, task)
+    if is_nil(env) do
+      {:error, :no_environment}
     else
-      evaluate_initial_mode(scope, env)
+      # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
+      # A failing patch-mode evaluate (e.g. unlinked story) used to clear the
+      # marker and silently promote the next evaluate to full proposal
+      # validation, forcing the architect to hand-edit proposal.md after
+      # any DB-side fix. The marker survives until the next `start_task`,
+      # which re-records based on proposal existence.
+      if patch_mode?(env) do
+        evaluate_patch_mode(scope, task)
+      else
+        evaluate_initial_mode(scope, env)
+      end
     end
   end
 
@@ -194,7 +194,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @spec execute_proposal(map()) ::
           {:ok, :valid} | {:ok, :valid, String.t()} | {:ok, :invalid, String.t()}
   def execute_proposal(scope) do
-    evaluate_initial_mode(scope, scope.environment)
+    case CodeMySpec.AgentTasks.environment(scope) do
+      nil -> {:error, :no_environment}
+      env -> evaluate_initial_mode(scope, env)
+    end
   end
 
   defp evaluate_initial_mode(scope, env) do
@@ -285,11 +288,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # tree no boundary claims. Two derivations in one file, disagreeing, and the
   # prompt handed out the wrong one: an agent registered fourteen components
   # under `E2etodo.` before noticing and refused to paper over it in code.
-  # Only when a directory was actually supplied. `nil` means this server has
-  # no working copy for the project, which every caller below handles.
-  defp cli_env(nil), do: nil
-  defp cli_env(working_dir), do: Environment.new(:cli, working_dir)
-
   # `file_exists?/2` cannot answer this, by documented design: it returns
   # `false` both for "not there" and for "no disk to look at". `stat` can, and
   # the same `Environments` moduledoc points at `Setup.Context.dir_status/2` as

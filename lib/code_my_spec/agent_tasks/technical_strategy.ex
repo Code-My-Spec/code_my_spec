@@ -131,7 +131,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   """
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
     project = scope.active_project
 
     ensure_premade_decisions(env)
@@ -167,7 +167,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     index_exists = decisions_index_exists?(env)
 

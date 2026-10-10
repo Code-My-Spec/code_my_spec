@@ -108,12 +108,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         - #{app}.Rules -> #{app}.Stories
         """
 
-        :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
-            Fixtures.proposal_path(),
-            proposal
-          )
+        HarnessHooks.write_file(context, Fixtures.proposal_path(), proposal)
 
         {:ok, context}
       end
@@ -158,7 +153,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         # No spec stubs should be created when execution is blocked by validation
         spec_path = Fixtures.spec_file(Macro.underscore("#{app}.Stories"))
 
-        refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
+        refute File.exists?(Path.join(context.harness.root, spec_path)),
                "expected no spec stub at #{spec_path} when proposal was rejected"
 
         {:ok, context}

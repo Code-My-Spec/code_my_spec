@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.PersonaResearchTest do
   alias CodeMySpec.Personas
 
   setup do
-    %{scope: full_scope_fixture()}
+    %{scope: working_copy_scope_fixture()}
   end
 
   describe "command/2" do

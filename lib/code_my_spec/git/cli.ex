@@ -8,7 +8,9 @@ defmodule CodeMySpec.Git.CLI do
 
   alias CodeMySpec.Git.URLParser
   alias CodeMySpec.Integrations
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @type repo_url :: String.t()
   @type path :: String.t()
@@ -38,12 +40,17 @@ defmodule CodeMySpec.Git.CLI do
       {:error, :invalid_url}
   """
   @spec clone(Scope.t(), repo_url(), path()) :: {:ok, path()} | {:error, error_reason()}
-  def clone(%Scope{} = scope, repo_url, path) do
+  def clone(%Scope{} = scope, repo_url, path),
+    do: clone(scope, repo_url, path, resolve_environment(scope))
+
+  @doc "Clones using the explicitly selected execution environment."
+  @spec clone(Scope.t(), repo_url(), path(), term()) :: {:ok, path()} | {:error, error_reason()}
+  def clone(%Scope{} = scope, repo_url, path, environment) do
     with {:ok, provider} <- URLParser.provider(repo_url),
          {:ok, integration} <- get_integration(scope, provider),
          {:ok, authenticated_url} <- URLParser.inject_token(repo_url, integration.access_token),
-         :ok <- execute_clone(scope.environment, authenticated_url, path),
-         :ok <- set_remote_url(scope.environment, path, repo_url) do
+         :ok <- execute_clone(environment, authenticated_url, path),
+         :ok <- set_remote_url(environment, path, repo_url) do
       {:ok, path}
     end
   end
@@ -77,17 +84,26 @@ defmodule CodeMySpec.Git.CLI do
   def pull(%Scope{}, ""), do: {:error, :invalid_path}
 
   def pull(%Scope{} = scope, path) when is_binary(path) do
-    with {:ok, original_url} <- get_remote_url(scope.environment, path),
+    pull(scope, path, resolve_environment(scope))
+  end
+
+  @doc "Pulls using the explicitly selected execution environment."
+  @spec pull(Scope.t(), path(), term()) :: :ok | {:error, error_reason()}
+  def pull(%Scope{}, path, _environment) when path in [nil, ""],
+    do: {:error, :invalid_path}
+
+  def pull(%Scope{} = scope, path, environment) when is_binary(path) do
+    with {:ok, original_url} <- get_remote_url(environment, path),
          {:ok, provider} <- URLParser.provider(original_url),
          {:ok, integration} <- get_integration(scope, provider),
          {:ok, authenticated_url} <-
            URLParser.inject_token(original_url, integration.access_token) do
       # Inject credentials, pull, then restore - always restore URL
-      case set_remote_url(scope.environment, path, authenticated_url) do
+      case set_remote_url(environment, path, authenticated_url) do
         :ok ->
-          result = execute_pull(scope.environment, path)
+          result = execute_pull(environment, path)
           # Always restore original URL, regardless of pull result
-          set_remote_url(scope.environment, path, original_url)
+          set_remote_url(environment, path, original_url)
           result
 
         {:error, _reason} = error ->
@@ -96,10 +112,16 @@ defmodule CodeMySpec.Git.CLI do
     else
       {:error, _reason} = error ->
         # Attempt to restore original URL even on error
-        restore_remote_url(scope.environment, path)
+        restore_remote_url(environment, path)
         error
     end
   end
+
+  defp resolve_environment(%Scope{active_working_copy_id: copy_id} = scope)
+       when not is_nil(copy_id),
+       do: WorkingCopies.environment(scope)
+
+  defp resolve_environment(%Scope{active_project: project}), do: LocalScope.environment(project)
 
   # Private Functions
 
@@ -114,14 +136,13 @@ defmodule CodeMySpec.Git.CLI do
   # included. They used to come from the git_cli dependency, which shells out on
   # its own and so ignored the environment entirely: a sprite asking to clone
   # its own repo would have cloned it onto whichever machine ran the call.
-  defp cmd(nil, args, opts), do: System.cmd("git", args, opts)
+  defp cmd(nil, _args, _opts), do: {:error, :no_environment}
 
   defp cmd(env, args, opts), do: CodeMySpec.Environments.cmd(env, "git", args, opts)
 
   defp get_remote_url(env, path) do
-    case cmd(env, ["-C", path, "config", "--get", "remote.origin.url"],
-           stderr_to_stdout: true
-         ) do
+    case cmd(env, ["-C", path, "config", "--get", "remote.origin.url"], stderr_to_stdout: true) do
+      {:error, _reason} = error -> error
       {output, 0} -> {:ok, String.trim(output)}
       {_output, _exit_code} -> {:error, :no_remote}
     end
@@ -129,6 +150,7 @@ defmodule CodeMySpec.Git.CLI do
 
   defp set_remote_url(env, path, url) do
     case cmd(env, ["remote", "set-url", "origin", url], stderr_to_stdout: true, cd: path) do
+      {:error, _reason} = error -> error
       {_output, 0} -> :ok
       {_output, _exit_code} -> {:error, :failed_to_update_remote}
     end
@@ -136,6 +158,7 @@ defmodule CodeMySpec.Git.CLI do
 
   defp execute_clone(env, authenticated_url, path) do
     case cmd(env, ["clone", authenticated_url, path], stderr_to_stdout: true) do
+      {:error, _reason} = error -> error
       {_output, 0} -> :ok
       {output, _exit_code} -> {:error, {:clone_failed, redact_credentials(output)}}
     end
@@ -143,6 +166,7 @@ defmodule CodeMySpec.Git.CLI do
 
   defp execute_pull(env, path) do
     case cmd(env, ["-C", path, "pull"], stderr_to_stdout: true) do
+      {:error, _reason} = error -> error
       {_output, 0} -> :ok
       {output, _exit_code} -> {:error, {:pull_failed, redact_credentials(output)}}
     end

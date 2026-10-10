@@ -112,12 +112,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
         - #{app}Web.StoryLive.Index -> #{app}.Stories
         """
 
-        :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
-            Fixtures.proposal_path(),
-            proposal
-          )
+        HarnessHooks.write_file(context, Fixtures.proposal_path(), proposal)
 
         {:reply, executed, _frame} =
           ExecuteProposal.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
