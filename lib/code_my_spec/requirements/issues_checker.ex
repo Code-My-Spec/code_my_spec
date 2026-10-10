@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.IssuesChecker do
 
     * `triaged?` / `resolved?` answer for the **project** — the queue as a
       whole, at the end of the cycle.
-    * `story_resolved?` / `story_triaged?` answer for **one story** — only
+    * `story_triaged?` answer for **one story** — only
       what is attributed to it, gating that story's QA and nothing else.
 
   All but `story_triaged?` read the threshold from `ProjectConfiguration`, which is where
@@ -82,31 +82,6 @@ defmodule CodeMySpec.Requirements.IssuesChecker do
     case Issues.list_by_status_and_min_severity(scope, :accepted, threshold) do
       [] -> {true, %{status: "No unresolved #{threshold}+ issues"}}
       unresolved -> {false, %{reason: "#{length(unresolved)} unresolved #{threshold}+ issues"}}
-    end
-  end
-
-  @doc """
-  Check that this story carries no accepted issue at or above the configured
-  severity.
-
-  Only issues QA attributed to the story count. An issue with no `story_id`
-  is the project queue's problem, not this story's — it gates at
-  `issues_resolved`, at the end, and must not hold a finished story hostage.
-  """
-  @spec story_resolved?(term(), term()) :: {boolean(), map()}
-  def story_resolved?(scope, %{id: story_id}) do
-    threshold = Configurations.fix_issues_min_severity(scope)
-
-    case Issues.list_by_story_status_and_min_severity(scope, story_id, :accepted, threshold) do
-      [] ->
-        {true, %{status: "No unresolved #{threshold}+ issues on this story"}}
-
-      unresolved ->
-        {false,
-         %{
-           reason: "#{length(unresolved)} unresolved #{threshold}+ issue(s) on this story",
-           issues: Enum.map(unresolved, &"#{&1.severity}: #{&1.title}")
-         }}
     end
   end
 end

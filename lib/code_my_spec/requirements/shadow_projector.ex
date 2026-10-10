@@ -474,7 +474,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # which would have made the handler pure overhead rather than a saving.
     answered =
       handled
-      |> Enum.reject(fn {mark, _c, _w} -> mark.kind in Handlers.partial_kinds() end)
+      |> Enum.reject(fn {mark, _c, _w} -> Handlers.partial_event?(mark) end)
       |> MapSet.new(fn {mark, _c, _w} -> mark.observation_id end)
 
     {handled,

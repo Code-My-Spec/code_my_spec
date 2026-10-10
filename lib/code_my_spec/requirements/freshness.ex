@@ -90,21 +90,7 @@ defmodule CodeMySpec.Requirements.Freshness do
       # move the story, or the node stays unoffered after the work is possible.
       {:setup_missing, Map.get(ctx, :setup_missing)},
       {:running_copy, Map.get(ctx, :delegated_inputs, %{}) |> Map.get("working_copies")},
-      # This story's issues, which is what `story_issues_resolved` reads:
-      # `IssuesChecker.story_resolved?/2` counts only what QA attributed here,
-      # and says so — "an issue with no `story_id` is the project queue's
-      # problem, not this story's".
-      #
-      # It was the project's list until criterion 3476. That was deliberate and
-      # the note above it argued the trade was fine because issues are "filed
-      # and resolved by hand, a handful a day" — a premise this module's own
-      # later note already recorded as measurably false, and which cost one
-      # issue 973 of 2086 requirements and 137 of 137 stories on dev.
-      #
-      # There was never a correctness side to the trade. The project-wide
-      # readers, `issues_triaged` and `issues_resolved`, are project nodes, and
-      # `recompute_stale/3` rebuilds those unconditionally on every pass — so
-      # they do not consult a story's fingerprint and never did.
+      # Triage and each inherited issue submission are scoped to this story.
       {:issues, Map.get(ctx, :issues_by_story, %{}) |> Map.get(story.id, [])},
       config_part(ctx)
     ])
@@ -271,6 +257,14 @@ defmodule CodeMySpec.Requirements.Freshness do
     %{
       components: hash(components),
       stories: hash(stories),
+      story_issues:
+        hash(
+          Enum.map(
+            Map.get(ctx, :story_issues, []),
+            &{&1.id, &1.story_id, &1.status, &1.severity, &1.assigned_working_copy_id}
+          )
+          |> Enum.sort()
+        ),
       config: hash(config_shape(config)),
       definitions: hash(definition_shape(ctx))
     }
@@ -324,7 +318,11 @@ defmodule CodeMySpec.Requirements.Freshness do
     types = ctx.components |> Enum.map(& &1.type) |> Enum.uniq() |> Enum.sort()
 
     graphs =
-      [RequirementDefinitionData.story_graph(), RequirementDefinitionData.project_graph()] ++
+      [
+        RequirementDefinitionData.story_graph(),
+        RequirementDefinitionData.story_issue_graph(),
+        RequirementDefinitionData.project_graph()
+      ] ++
         Enum.map(types, &RequirementDefinitionData.graph_for_type/1)
 
     graphs
@@ -348,7 +346,11 @@ defmodule CodeMySpec.Requirements.Freshness do
   # timestamps and would make every config save look like a new shape.
   # The level the filters apply, not the raw column: a legacy nil and :off
   # are the same shape.
-  defp config_shape(config), do: [devops: ProjectConfiguration.devops_level(config)]
+  defp config_shape(config),
+    do: [
+      devops: ProjectConfiguration.devops_level(config),
+      fix_issues_min_severity: Map.get(config, :fix_issues_min_severity)
+    ]
 
   @doc """
   The project's own inputs, as a fingerprint.

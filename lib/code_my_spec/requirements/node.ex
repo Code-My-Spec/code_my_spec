@@ -48,16 +48,16 @@ defmodule CodeMySpec.Requirements.Node do
         }
 
   schema "requirements" do
-    field :name, :string
-    field :description, :string
-    field :satisfied, :boolean, default: false
-    field :details, :map, default: %{}
-    field :checked_at, :naive_datetime
+    field(:name, :string)
+    field(:description, :string)
+    field(:satisfied, :boolean, default: false)
+    field(:details, :map, default: %{})
+    field(:checked_at, :naive_datetime)
 
     # What this requirement's own sources looked like when its answer was last
     # worked out. `nil` on a row computed before this existed, which reads as
     # "no basis to skip it" rather than as "unchanged".
-    field :inputs_fingerprint, :string
+    field(:inputs_fingerprint, :string)
 
     # Which definition produced this node. The name alone is ambiguous: six of
     # them exist both as a parent template's `:child` def and as the child
@@ -66,12 +66,13 @@ defmodule CodeMySpec.Requirements.Node do
     #
     # `nil` on a row written before these columns existed; `Projection` infers
     # for those and the next pass rewrites them.
-    field :owner_component_type, :string
-    field :node_scope, :string
+    field(:owner_component_type, :string)
+    field(:node_scope, :string)
 
-    belongs_to :component, Component, type: :binary_id
-    belongs_to :story, Story
-    belongs_to :project, Project, type: :binary_id
+    belongs_to(:component, Component, type: :binary_id)
+    belongs_to(:issue, CodeMySpec.Issues.Issue, type: :binary_id)
+    belongs_to(:story, Story)
+    belongs_to(:project, Project, type: :binary_id)
 
     # Which checkout reached this verdict.
     #
@@ -85,7 +86,7 @@ defmodule CodeMySpec.Requirements.Node do
     # working copy on purpose, blending every checkout's files. That row is the
     # project-wide answer, and the unique indexes use `NULLS NOT DISTINCT` so
     # there is exactly one of it rather than a fresh duplicate per render.
-    belongs_to :working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id
+    belongs_to(:working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id)
 
     timestamps()
   end
@@ -101,6 +102,7 @@ defmodule CodeMySpec.Requirements.Node do
     :node_scope,
     :component_id,
     :story_id,
+    :issue_id,
     :project_id,
     :working_copy_id
   ]
@@ -121,7 +123,7 @@ defmodule CodeMySpec.Requirements.Node do
   # every one of the three owners can carry one.
   defp validate_one_owner(changeset) do
     owners =
-      [:component_id, :story_id, :project_id]
+      [:component_id, :story_id, :project_id, :issue_id]
       |> Enum.count(&(get_field(changeset, &1) != nil))
 
     case owners do

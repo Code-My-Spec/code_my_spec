@@ -34,7 +34,10 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
+  alias CodeMySpec.Qa
   alias CodeMySpec.Sessions
+  alias CodeMySpec.Stories
+  alias CodeMySpec.TaskOwner
 
   # Maps session type names to AgentTask modules. A function, not a module
   # attribute: an attribute naming every task module is a compile-time reference
@@ -73,6 +76,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       "release" => AgentTasks.Release,
       "init" => AgentTasks.Init,
       "issue_fix" => AgentTasks.IssueFix,
+      "submit_story_issue" => AgentTasks.SubmitStoryIssue,
       # Not started through here in practice — `Agents.IssueWork` creates this
       # task directly once a team's fix is done — but registered for the same
       # reason `issue_fix` is: `Evaluator.custom_evaluate_modules/0` requires
@@ -146,6 +150,13 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   - `{:error, reason}` on failure
   """
   @spec run(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t(), map()} | {:error, term()}
+  def run(_scope, %{session_type: "submit_story_issue"}) do
+    {:error,
+     "Start story issue work with start_task using requirement_name submitted, " <>
+       "entity_type issue, and the issue ID. The graph route checks the assigned " <>
+       "coding agent and creates the issue-bound task."}
+  end
+
   def run(scope, args) do
     external_id = Map.get(args, :external_id)
     session_type = Map.get(args, :session_type)
@@ -241,10 +252,77 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, _session} <- create_topic_session(scope, external_id, agent_task_module, topic),
-         task_attrs <- %{project_id: scope.active_project_id, requirement_name: topic},
+         {:ok, session} <- create_topic_session(scope, external_id, agent_task_module, topic),
+         {:ok, task_attrs} <- topic_task(scope, session, agent_task_module, topic),
          {:ok, prompt} <- apply(agent_task_module, :command, [scope, task_attrs]) do
       {:ok, with_project_context(prompt, scope), sync_result}
+    end
+  end
+
+  defp topic_task(scope, session, AgentTasks.QaStory, topic) do
+    with {number, ""} <- Integer.parse(to_string(topic)),
+         story when not is_nil(story) <- Stories.get_story_by_number(scope, number) do
+      existing =
+        Enum.find(TaskOwner.tasks(session), fn task ->
+          task.requirement_name == "qa_complete" and task.story_id == story.id and
+            task.status in [:active, :prepared, :blocked]
+        end)
+
+      qa_topic_task(scope, session, story, existing)
+    else
+      nil -> {:error, "QaStory: no story numbered #{topic} in this project"}
+      _ -> {:error, "QaStory requires a numeric story number, got: #{inspect(topic)}"}
+    end
+  end
+
+  defp topic_task(scope, _session, _module, topic),
+    do: {:ok, %{project_id: scope.active_project_id, requirement_name: topic}}
+
+  defp qa_topic_task(scope, session, story, nil) do
+    attrs = %{
+      id: Ecto.UUID.generate(),
+      session_type: AgentTasks.QaStory,
+      requirement_name: "qa_complete",
+      story_id: story.id,
+      project_id: scope.active_project_id,
+      status: :active,
+      started_at: DateTime.utc_now()
+    }
+
+    with {:ok, owner} <- TaskOwner.add_task(scope, session, attrs) do
+      task = TaskOwner.find_task(owner, attrs.id)
+
+      case Qa.capture_story_review(scope, task) do
+        {:ok, _} ->
+          {:ok, task}
+
+        {:error, reason} ->
+          {:ok, _} = TaskOwner.complete_task(scope, owner, task.id, :cancelled)
+          {:error, reason}
+      end
+    end
+  end
+
+  defp qa_topic_task(_scope, _session, _story, %{status: :blocked}),
+    do: {:error, :task_blocked}
+
+  defp qa_topic_task(scope, session, story, %{status: :prepared} = task) do
+    with {:ok, owner} <- TaskOwner.activate_task(scope, session, task.id) do
+      qa_topic_task(scope, owner, story, TaskOwner.find_task(owner, task.id))
+    end
+  end
+
+  defp qa_topic_task(scope, session, story, task) do
+    case Qa.capture_story_review(scope, task) do
+      {:ok, _} ->
+        {:ok, task}
+
+      {:error, :qa_review_superseded} ->
+        with {:ok, owner} <- TaskOwner.complete_task(scope, session, task.id, :cancelled),
+             do: qa_topic_task(scope, owner, story, nil)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

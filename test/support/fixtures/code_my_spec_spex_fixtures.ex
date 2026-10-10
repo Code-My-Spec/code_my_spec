@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   use Boundary,
     top_level?: true,
-    exports: [GraphVerification],
+    exports: [GraphVerification, StoryIssueBag],
     deps: [
       CmsHarness,
       CodeMySpec,
@@ -59,6 +59,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.ProjectSecrets,
       CodeMySpec.ProjectSync,
       CodeMySpec.Projects,
+      CodeMySpec.Qa,
       CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
       CodeMySpec.Repo,
@@ -4068,6 +4069,16 @@ defmodule CodeMySpecSpex.Fixtures do
           })
       end
 
+    story = Stories.get_story!(scope, story.id)
+
+    story =
+      if story.qa_ready_at && story.qa_ready_commit do
+        story
+      else
+        {:ok, certified} = Stories.set_qa_ready(scope, story, String.duplicate("a", 40))
+        certified
+      end
+
     task_id = Ecto.UUID.generate()
     session_external_id = "spex-qa-#{System.unique_integer([:positive])}"
 
@@ -4099,6 +4110,9 @@ defmodule CodeMySpecSpex.Fixtures do
           }
         ]
       })
+
+    {:ok, _review} =
+      CodeMySpec.Qa.capture_story_review(scope, %{id: task_id, story_id: story.id})
 
     {story, task_id, session}
   end

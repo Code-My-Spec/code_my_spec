@@ -26,7 +26,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
       %CodeMySpec.Sessions.Task{
         id: "43d57947-9b6b-4309-806c-53a32ae5c65b",
         status: :active,
-        requirement_name: "story_issues_resolved",
+        requirement_name: "ready_for_qa",
         story_id: 904
       },
       attrs
@@ -79,7 +79,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
       menu = Menu.render(scope, true, nil, agent([task(%{story_id: story.id})]))
 
       assert menu =~ "you have an open task"
-      assert menu =~ "`story_issues_resolved` on story #{story.number}"
+      assert menu =~ "`ready_for_qa` on story #{story.number}"
       assert menu =~ "call `evaluate_task`"
       assert menu =~ ~s(task_id "43d57947-9b6b-4309-806c-53a32ae5c65b")
     end
@@ -137,7 +137,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
       [
         task(%{
           id: "oldest",
-          requirement_name: "story_issues_resolved",
+          requirement_name: "ready_for_qa",
           story_id: oldest.id,
           started_at: ~U[2026-09-06 11:26:20.022400Z]
         }),

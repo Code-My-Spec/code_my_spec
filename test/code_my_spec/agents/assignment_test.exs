@@ -116,8 +116,8 @@ defmodule CodeMySpec.Agents.AssignmentTest do
       CodeMySpec.TaskOwner.add_task(ctx.scope, reload(ctx.coding), %{
         status: :blocked,
         story_id: ctx.first.id,
-        requirement_name: "story_issues_resolved",
-        session_type: CodeMySpec.AgentTasks.IssueFix
+        requirement_name: "ready_for_qa",
+        session_type: CodeMySpec.AgentTasks.ReadyForQa
       })
 
     {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, issue.id, copy_id)

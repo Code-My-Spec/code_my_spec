@@ -34,31 +34,37 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.Utils
 
   schema do
-    field :requirement_name, :string,
+    field(:requirement_name, :string,
       required: true,
       doc: "Name of the requirement (e.g., implementation_file, ready_for_qa)"
+    )
 
-    field :entity_type, :string,
+    field(:entity_type, :string,
       required: true,
       doc: "Entity type: component, story, or project"
+    )
 
-    field :story_number, :integer,
+    field(:story_number, :integer,
       doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+    )
 
-    field :entity_id, :string,
+    field(:entity_id, :string,
       doc:
         "The entity that owns this requirement: a story's number, or a component's or project's id"
+    )
 
-    field :module_name, :string,
+    field(:module_name, :string,
       doc: "Component module name (alternative to entity_id for component requirements)"
+    )
 
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field(:session_id, :string, doc: "Injected by hook — do not set manually")
 
-    field :agent_id, :string, doc: "Your agent identifier — claims ownership of the task"
+    field(:agent_id, :string, doc: "Your agent identifier — claims ownership of the task")
 
     # Legacy — kept for backwards compatibility
-    field :requirement_id, :string,
+    field(:requirement_id, :string,
       doc: "Deprecated: use requirement_name + entity_type + entity_id"
+    )
   end
 
   @impl true
@@ -235,8 +241,32 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     # same requirement_name for different components.
     entity_id = to_string(requirement.entity_id)
     existing = find_existing_task(owner, requirement, entity_id)
-    handle_existing(existing, scope, owner, requirement, agent_id, frame)
+
+    case current_review_task(scope, owner, existing) do
+      {:ok, owner, existing} ->
+        handle_existing(existing, scope, owner, requirement, agent_id, frame)
+
+      {:error, reason} ->
+        {:reply, TasksMapper.error(reason), frame}
+    end
   end
+
+  defp current_review_task(scope, owner, %{requirement_name: "qa_complete", issue_id: nil} = task) do
+    case CodeMySpec.Qa.capture_story_review(owner_scope(scope, owner), task) do
+      {:ok, _} ->
+        {:ok, owner, task}
+
+      {:error, :qa_review_superseded} ->
+        with {:ok, updated} <- TaskOwner.complete_task(scope, owner, task.id, :cancelled) do
+          {:ok, updated, nil}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp current_review_task(_scope, owner, task), do: {:ok, owner, task}
 
   defp find_existing_task(owner, requirement, entity_id) do
     Enum.find(TaskOwner.tasks(owner), fn t ->
@@ -252,7 +282,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     with :ok <- role_may_claim(owner, requirement),
          :ok <- story_may_claim(scope, owner, requirement),
          :ok <- team_may_claim(scope, owner, requirement),
-         :ok <- not_already_done(scope, owner, requirement) do
+         :ok <- not_already_done(scope, owner, requirement),
+         :ok <- qa_eligible_to_start(scope, owner, requirement) do
       create_and_activate(scope, owner, requirement, agent_id, frame)
     else
       {:error, reason} -> {:reply, TasksMapper.error(reason), frame}
@@ -412,6 +443,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp entity_label(_scope, %{entity_id: id}), do: id
 
+  defp qa_eligible_to_start(
+         scope,
+         owner,
+         %{entity_type: "story", name: "qa_complete"} = requirement
+       ),
+       do: eligible_to_resume(owner_scope(scope, owner), owner, requirement)
+
+  defp qa_eligible_to_start(_scope, _owner, _requirement), do: :ok
+
   defp eligible_to_resume(scope, owner, requirement) do
     role = if match?(%Agent{}, owner), do: owner.role, else: nil
 
@@ -457,6 +497,14 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # the story is assigned to the whole team before the task starts. An agent
   # already holding an active task is refused by `TaskOwner` first, so it moves
   # no team.
+  defp team_may_claim(scope, %Agent{} = agent, %{
+         entity_type: "issue",
+         details: %{"story_id" => story_id}
+       })
+       when not is_nil(story_id) do
+    if Agent.active_task(agent), do: :ok, else: claim_for_team(scope, agent, story_id)
+  end
+
   defp team_may_claim(scope, %Agent{} = agent, %{entity_type: "story", entity_id: story_id}) do
     if Agent.active_task(agent), do: :ok, else: claim_for_team(scope, agent, story_id)
   end
@@ -512,6 +560,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     comp = Components.get_component(scope, id)
     {id, comp && comp.module_name, nil}
   end
+
+  defp build_entity_refs(_scope, %{entity_type: "issue", details: %{"story_id" => id}}),
+    do: {nil, nil, id}
 
   defp build_entity_refs(_scope, %{entity_type: "story", entity_id: id}), do: {nil, nil, id}
   defp build_entity_refs(_scope, _req), do: {nil, nil, nil}

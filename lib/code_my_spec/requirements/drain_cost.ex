@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
   available for it was `checked_at` — whether a requirement's row was rewritten.
   That was a fair proxy for the batched pass, where a rewritten row means work
   happened. It is not one for a projection that applies events: settling
-  `story_issues_resolved` is one `UPDATE` across every story's row plus the
+  `story_issues_triaged` is one `UPDATE` across every story's row plus the
   exceptions, which is two writes for a population of any size and stamps every
   row. So the cheaper system reads as the more expensive one, and a criterion
   written on the proxy goes red on an improvement.

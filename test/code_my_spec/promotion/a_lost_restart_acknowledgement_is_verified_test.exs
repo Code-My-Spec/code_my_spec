@@ -14,6 +14,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.QaFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -153,6 +154,12 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
     scope = %{scope | active_working_copy_id: copy.id, environment: env}
 
     story = story_fixture(scope, %{title: "Lost ack"})
+
+    story
+    |> Ecto.Changeset.change(qa_ready_commit: @merged, qa_ready_at: DateTime.utc_now())
+    |> CodeMySpec.Repo.update!()
+
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     {_n, _} =
       Files.upsert_files(scope, [

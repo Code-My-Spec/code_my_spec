@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion1749Spex do
 
       then_ "it is offered the story's issue, on its story", context do
         assert context.text =~ "# Story #{context.story.number}:"
-        assert offers?(context.text, "story_issues_resolved"), context.text
+        assert offers?(context.text, "submitted"), context.text
         {:ok, context}
       end
 
