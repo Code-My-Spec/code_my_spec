@@ -342,6 +342,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # for is a mark that a crash turns into a permanently stale entity, which
     # is the failure the durable set exists to rule out.
     Invalidations.consume(marks)
+    account_for(marks, state.project_id)
     announce(state, marks)
 
     # Served, so forgotten — what `GraphWatcher` does after a pass. A checkout
@@ -355,6 +356,17 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
         last_drain: DateTime.utc_now(),
         last_error: nil
     }
+  end
+
+  defp account_for([], _project_id), do: :ok
+
+  defp account_for(marks, project_id) do
+    ids = marks |> Enum.map(& &1.observation_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    Logger.info("[ShadowProjector] accounted for #{length(ids)} observation(s)",
+      obs: Enum.join(ids, ","),
+      cms_project: project_id
+    )
   end
 
   # What the pass does after it writes, done here when this is the writer that

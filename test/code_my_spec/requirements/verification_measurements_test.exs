@@ -42,6 +42,26 @@ defmodule CodeMySpec.Requirements.VerificationMeasurementsTest do
     assert %DateTime{} = report.measured_at
   end
 
+  test "thrown drains retain failure and propagate the original value" do
+    id = Ecto.UUID.generate()
+
+    assert catch_throw(
+             DrainCost.measure(%{kind: :event, project_id: id}, fn -> throw(:stopped) end)
+           ) == :stopped
+
+    assert DrainCost.last(id, :event).raised
+  end
+
+  test "exiting drains retain failure and propagate the original reason" do
+    id = Ecto.UUID.generate()
+
+    assert catch_exit(
+             DrainCost.measure(%{kind: :event, project_id: id}, fn -> exit(:stopped) end)
+           ) == :stopped
+
+    assert DrainCost.last(id, :event).raised
+  end
+
   test "successful drains explicitly record success" do
     id = Ecto.UUID.generate()
 

@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
 
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.ShadowProjector
 
@@ -137,6 +138,21 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
     {:ok, _view, html} = live(conn, ~p"/dev/graph")
     assert html =~ "graph differs from what is served"
     refute html =~ "Nothing. Every entity's inputs, recomputed now, agree"
+  end
+
+  test "successful event drains account for the observation they consumed", %{scope: scope} do
+    previous = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: previous) end)
+
+    log =
+      ExUnit.CaptureLog.capture_log([level: :info, metadata: [:obs]], fn ->
+        GraphInputs.announce(scope, "Verification", [], :this_checkout)
+        :ok = ShadowProjector.settle(scope.active_project_id, [scope.active_working_copy_id])
+      end)
+
+    assert log =~ "[ShadowProjector] accounted for 1 observation(s)"
+    assert log =~ "obs="
   end
 
   test "the drain panel labels failure and unknown work", %{conn: conn, scope: scope} do
