@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
       })
 
     AgentPresence.present(agent)
+    {:ok, _} = Agents.Mailbox.register(scope, agent.id, "test-engine")
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -64,6 +65,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
              })
 
     assert [%{status: :open}] = Offers.list_for_agent(ctx.agent.id)
+
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
 
     assert :ok =
              Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
@@ -105,10 +108,14 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
 
     assert {:ok, :queued} = Agents.message_agent(ctx.scope, id, "Keep my exact words.")
     assert_received {:agent_dispatch, ^id, first_ref, "Keep my exact words."}
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, id, first_ref, "test-engine")
+    {:ok, _} = Agents.Mailbox.finish(ctx.scope, id, first_ref, "test-engine")
     refute_received {:agent_dispatch, ^main_id, _, _}
 
     assert {:ok, :queued} = Agents.message_agent(ctx.scope, id, "Keep my exact words.")
     assert_received {:agent_dispatch, ^id, second_ref, "Keep my exact words."}
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, id, second_ref, "test-engine")
+    {:ok, _} = Agents.Mailbox.finish(ctx.scope, id, second_ref, "test-engine")
     assert_receive {:agent_dispatch, ^main_id, _, notice}, 5_000
     assert notice =~ "repeated an instruction"
     assert notice =~ id
@@ -139,7 +146,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
       CodeMySpecTest.DeliveryBeforeAckTransport
     )
 
-    assert {:ok, :queued, message} =
+    assert {:ok, :started, message} =
              Agents.dispatch_message(ctx.scope, ctx.agent.id, "Inspect this.", :operator_message)
 
     assert message.delivery == :delivered
@@ -164,6 +171,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
                "coding"
              )
 
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
+
     assert :ok =
              Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
                "kind" => "message_delivered",
@@ -178,6 +187,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
   test "a delivered instruction is seen without judging the tools used", ctx do
     assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, "Inspect this.")
     assert_received {:agent_dispatch, _, ref, "Inspect this."}
+
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
 
     assert :ok =
              Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
@@ -199,19 +210,20 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert offer.status == :n_a
   end
 
-  test "a failed delivery is recorded without accusing the agent of ignoring it", ctx do
+  test "unconfirmed transport leaves the durable message pending without accusing the agent",
+       ctx do
     Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.UnreachableMachine)
 
     assert {:error, :harness_not_connected} =
              Agents.message_agent(ctx.scope, ctx.agent.id, "Inspect this.")
 
     assert [offer] = Offers.list_for_agent(ctx.agent.id)
-    assert offer.status == :undelivered
+    assert offer.status == :open
     assert [link] = offer.messages
-    assert Repo.get!(Message, link.message_id).delivery == :failed
+    assert Repo.get!(Message, link.message_id).delivery == :pending
     assert :ok = Offers.settle_turn(ctx.agent)
     assert [settled] = Offers.list_for_agent(ctx.agent.id)
-    assert settled.status == :undelivered
+    assert settled.status == :open
   end
 
   test "the development route also queues and measures its instruction", ctx do
@@ -243,6 +255,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert [pending] = Offers.list_for_agent(id)
     assert pending.status == :open
     assert pending.outcome_at == nil
+
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, id, ref, "test-engine")
 
     assert :ok =
              Agents.record_turn_event(ctx.scope, id, %{

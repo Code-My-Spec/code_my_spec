@@ -72,6 +72,8 @@ defmodule CodeMySpec.Conversations.Message do
     # message rather than describing it: two identical messages are
     # indistinguishable by text at exactly the moment it matters.
     field :delivery_ref, :string
+    field :mailbox_state, :string, virtual: true
+    field :delivery_diagnostic, :string, virtual: true
 
     belongs_to :conversation, Conversation
 

@@ -1,17 +1,17 @@
 defmodule CmsHarness.Agents.Engine.State do
   @moduledoc """
-  Pure queue transitions for one harness agent.
+  Pure active-turn transitions for one harness agent.
 
   `Engine` supplies process ownership and runs Alloy. This module answers only
-  how incoming work changes the active-turn and queued-work state.
+  whether an idle engine can start work. Waiting messages belong to the server mailbox.
   """
 
   @type entry :: %{ref: String.t(), message: String.t(), timeout: timeout()}
-  @type state :: %{required(:turn) => map() | nil, required(:queue) => [entry()]}
+  @type state :: %{required(:turn) => map() | nil}
 
-  @spec offer(state(), entry()) :: {:start, entry(), state()} | {:queued, state()}
+  @spec offer(state(), entry()) :: {:start, entry(), state()} | {:rejected, :busy, state()}
   def offer(%{turn: nil} = state, entry), do: {:start, entry, state}
-  def offer(state, entry), do: {:queued, %{state | queue: state.queue ++ [entry]}}
+  def offer(state, _entry), do: {:rejected, :busy, state}
 
   @doc "Admit a work request only when idle; retain admitted IDs against transport replays."
   def offer_work(state, entry) do
@@ -21,7 +21,7 @@ defmodule CmsHarness.Agents.Engine.State do
       MapSet.member?(admitted, entry.ref) ->
         {:rejected, :duplicate, state}
 
-      state.turn != nil or state.queue != [] ->
+      state.turn != nil ->
         {:rejected, :busy, state}
 
       true ->
@@ -29,22 +29,14 @@ defmodule CmsHarness.Agents.Engine.State do
     end
   end
 
-  @spec finish(state()) :: {:idle, state()} | {:start, entry(), state()}
-  def finish(%{queue: []} = state), do: {:idle, %{state | turn: nil}}
+  @spec finish(state()) :: {:idle, state()}
+  def finish(state), do: {:idle, %{state | turn: nil}}
 
-  def finish(%{queue: [next | rest]} = state),
-    do: {:start, next, %{state | turn: nil, queue: rest}}
-
-  @spec withdraw(state(), String.t()) :: {:ok, state()} | :already_delivered
-  def withdraw(state, ref) do
-    case Enum.split_with(state.queue, &(&1.ref == ref)) do
-      {[], _keep} -> :already_delivered
-      {_taken, keep} -> {:ok, %{state | queue: keep}}
-    end
-  end
+  @spec withdraw(state(), String.t()) :: :already_delivered
+  def withdraw(_state, _ref), do: :already_delivered
 
   @spec status(state()) :: %{busy?: boolean(), queued: non_neg_integer()}
-  def status(state), do: %{busy?: state.turn != nil, queued: length(state.queue)}
+  def status(state), do: %{busy?: state.turn != nil, queued: 0}
 
   def whereis(agent_id) do
     case Registry.lookup(CmsHarness.Registry, {:agent, agent_id}) do

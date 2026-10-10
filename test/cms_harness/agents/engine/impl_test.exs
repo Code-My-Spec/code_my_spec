@@ -15,17 +15,15 @@ defmodule CmsHarness.Agents.Engine.ImplTest do
     assert state == %{turn: nil, queue: []}
   end
 
-  test "a busy agent queues work in arrival order and starts it when idle" do
-    busy = %{turn: %{task: :running}, queue: []}
-    assert {:queued, queued} = State.offer(busy, entry("second"))
-    assert %{busy?: true, queued: 1} = State.status(queued)
-    assert {:start, %{ref: "second"}, %{turn: nil, queue: []}} = State.finish(queued)
+  test "a busy engine refuses admission and retains no waiting payload" do
+    busy = %{turn: %{task: :running}}
+    assert {:rejected, :busy, ^busy} = State.offer(busy, entry("second"))
+    assert %{busy?: true, queued: 0} = State.status(busy)
+    assert {:idle, %{turn: nil}} = State.finish(busy)
   end
 
-  test "only queued work can be withdrawn" do
-    busy = %{turn: %{task: :running}, queue: [entry("second")]}
-    assert {:ok, %{queue: []}} = State.withdraw(busy, "second")
-    assert :already_delivered = State.withdraw(busy, "first")
+  test "withdrawal is not an engine queue operation" do
+    assert :already_delivered = State.withdraw(%{turn: nil}, "first")
   end
 
   test "work availability cannot queue beside an active turn" do
@@ -43,8 +41,8 @@ defmodule CmsHarness.Agents.Engine.ImplTest do
     assert {:start, _, _} = State.offer_work(idle, entry("later-work"))
   end
 
-  test "work requests do not displace queued user messages" do
-    queued = %{turn: nil, queue: [entry("user-message")]}
-    assert {:rejected, :busy, ^queued} = State.offer_work(queued, entry("work"))
+  test "idle work requests hold no payload queue" do
+    assert {:start, _, state} = State.offer_work(%{turn: nil}, entry("work"))
+    refute Map.has_key?(state, :queue)
   end
 end

@@ -117,6 +117,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox, as: AgentMailbox
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
@@ -957,6 +958,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec put_agent_mid_turn(Scope.t(), String.t()) :: :ok
   def put_agent_mid_turn(%Scope{} = scope, agent_id) do
+    consume_recorded_dispatch(scope, agent_id)
     CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_started"})
   end
 
@@ -1054,7 +1056,7 @@ defmodule CodeMySpecSpex.Fixtures do
       conversation ->
         conversation
         |> CodeMySpec.Conversations.list_messages()
-        |> Enum.filter(&(&1.role == :operator))
+        |> Enum.filter(&(&1.role == :operator and &1.delivery != :failed))
         |> Enum.map(&message_text/1)
     end
   end
@@ -1874,8 +1876,48 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc "Durable messages still waiting for an agent to consume them."
+  def queued_agent_messages(scope, agent_id) do
+    scope |> AgentMailbox.entries(agent_id) |> Enum.filter(&(&1.state in [:queued, :claimed]))
+  end
+
+  # Recording transports stop at the wire. These fixtures explicitly model the
+  # engine's consumption handshake before reporting that a turn began or ended.
+  defp consume_recorded_dispatch(scope, agent_id, ref \\ nil) do
+    entry =
+      Enum.find(AgentMailbox.entries(scope, agent_id), fn entry ->
+        entry.state == :claimed and (is_nil(ref) or entry.delivery_ref == ref)
+      end)
+
+    consume_recorded_entry(scope, agent_id, entry)
+  end
+
+  defp consume_recorded_entry(_scope, _agent_id, nil), do: :ok
+
+  defp consume_recorded_entry(scope, agent_id, entry) do
+    {:ok, agent} = AgentsRepository.fetch_agent(scope, agent_id)
+    generation = agent.mailbox_generation || "fixture-engine"
+    {:ok, :ok} = AgentMailbox.register(scope, agent_id, generation)
+    {:ok, _entry} = AgentMailbox.consume(scope, agent_id, entry.delivery_ref, generation)
+    :ok
+  end
+
+  @doc "Terminal evidence for the fixture engine’s current consumed message."
+  def mailbox_turn_end(scope, agent_id) do
+    scope
+    |> AgentMailbox.entries(agent_id)
+    |> Enum.find(&(&1.state == :consumed))
+    |> mailbox_terminal_event()
+  end
+
+  defp mailbox_terminal_event(nil), do: %{event: :turn_ended}
+
+  defp mailbox_terminal_event(entry),
+    do: %{event: :turn_ended, ref: entry.delivery_ref, generation: entry.generation}
+
   @doc "Deliver a queued message and begin its turn through the harness channel."
   def deliver_agent_message(%Scope{} = scope, agent_id, ref) do
+    consume_recorded_dispatch(scope, agent_id, ref)
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 
     Enum.each([%{event: :message_delivered, ref: ref}, %{event: :turn_started}], fn event ->
@@ -1918,7 +1960,7 @@ defmodule CodeMySpecSpex.Fixtures do
            "agent_turn_event",
            %{
              "agent_id" => agent_id,
-             "event" => ChannelClient.encode_turn_event(%{event: :turn_ended})
+             "event" => ChannelClient.encode_turn_event(mailbox_turn_end(scope, agent_id))
            },
            socket
          ) do
@@ -1939,7 +1981,12 @@ defmodule CodeMySpecSpex.Fixtures do
 
       rest ->
         :ok =
-          CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, rest)
+          CodeMySpec.Agents.record_turn_event(
+            scope,
+            agent_id,
+            ChannelClient.encode_turn_event(mailbox_turn_end(scope, agent_id)),
+            rest
+          )
     end
   end
 
@@ -3007,7 +3054,10 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec start_continuous_mode(map(), String.t()) :: :ok
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
-    case AgentTasks.SkillRouter.resolve(scope, %{"skill" => "implement", "external_id" => external_id}) do
+    case AgentTasks.SkillRouter.resolve(scope, %{
+           "skill" => "implement",
+           "external_id" => external_id
+         }) do
       {:ok, %{prompt: _}} -> :ok
       other -> raise "start_continuous_mode failed: #{inspect(other)}"
     end
@@ -3048,7 +3098,37 @@ defmodule CodeMySpecSpex.Fixtures do
   # Story 1038's criteria are about what a *running* agent carries and what a
   # script it runs can reach, so they start one. Through the bridge because
   # `CodeMySpecSpex` is its own Boundary and cannot name `CmsHarness` directly.
-  defdelegate launch_agent(request), to: CmsHarness.Agents, as: :launch
+  def launch_agent(request) do
+    callbacks = mailbox_callbacks(request["agent_id"])
+
+    request
+    |> Map.put("on_register", callbacks[:on_register])
+    |> Map.put("on_consume", callbacks[:on_consume])
+    |> CmsHarness.Agents.launch()
+  end
+
+  def mailbox_callbacks(agent_id) do
+    agent = Repo.get!(CodeMySpec.Agents.Agent, agent_id)
+
+    scope = %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id,
+      active_working_copy_id: agent.working_copy_id
+    }
+
+    [
+      on_register: fn id, generation ->
+        CodeMySpec.Agents.Mailbox.register(scope, id, generation)
+      end,
+      on_consume: fn id, ref, generation ->
+        CodeMySpec.Agents.Mailbox.consume(scope, id, ref, generation)
+      end
+    ]
+  end
+
+  def dispatch_agent_mail(_copy, agent, ref, text, timeout),
+    do: CmsHarness.Agents.send_message(agent.id, ref, text, timeout)
+
   defdelegate halt_agent(agent_id), to: CmsHarness.Agents, as: :halt
 
   @doc "What one agent is doing right now — mid-turn, and how much is behind it."
@@ -3062,7 +3142,7 @@ defmodule CodeMySpecSpex.Fixtures do
   an agent is busy — which needs the agent busy, not the spec blocked.
   """
   def send_agent_message(agent_id, text) do
-    CmsHarness.Agents.send_message(agent_id, "spec-" <> Ecto.UUID.generate(), text)
+    CodeMySpec.Agents.send_to_agent(agent_id, text, :operator_message)
   end
 
   @doc """

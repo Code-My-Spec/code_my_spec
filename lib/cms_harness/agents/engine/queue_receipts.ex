@@ -1,6 +1,8 @@
 defmodule CmsHarness.Agents.Engine.QueueReceipts do
   @moduledoc """
-  Message refs and what became of them, surviving a harness restart.
+  Legacy message receipts retained for pre-mailbox deliveries.
+
+  New delivery uses the server mailbox and never writes these files.
 
   A queued receipt permits withdrawal and a delivered one refuses it. A ref
   with neither never reached this harness's queue, or the queue holding it was

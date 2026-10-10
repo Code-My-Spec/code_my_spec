@@ -82,6 +82,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Defaults
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.ModelSetting
@@ -1441,7 +1442,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Operator delivery waits only for admission to the engine queue.
+  # Operator delivery waits for durable admission, not for the model's turn.
   defp send_to_any(%Agent{} = agent, text, :no_wait),
     do: send_to_any(agent, text, @message_timeout_ms)
 
@@ -1537,23 +1538,33 @@ defmodule CodeMySpec.Agents do
         ref = "answer-" <> Ecto.UUID.generate()
 
         with {:ok, conversation} <- open_conversation(agent_scope(agent), agent),
-             {:ok, message} <- record_sent(conversation, text, ref, :queued) do
-          offered = record_offer({:ok, message}, agent, opts[:offer])
+             {:ok, {message, offered, admission}} <-
+               record_admission(agent, conversation, text, ref, event, opts[:offer]) do
+          result = dispatch_admitted(agent, admission, timeout, message, offered, opts)
 
-          result =
-            case Wake.allow?(agent_scope(agent), agent, event) do
-              :ok ->
-                Transport.dispatch_message(agent.working_copy_id, agent, ref, text, timeout)
-
-              hold ->
-                Wake.to_error(hold)
-            end
-
-          case record_dispatch_result(result, message, offered) do
+          case result do
             {:ok, disposition, _message} -> {:ok, disposition}
             error -> error
           end
         end
+    end
+  end
+
+  defp dispatch_admitted(agent, :ok, timeout, message, offered, async: true) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      deliver_recorded(agent, :ok, timeout)
+      |> record_dispatch_result(message, offered)
+    end)
+
+    {:ok, :queued, message}
+  end
+
+  defp dispatch_admitted(agent, admission, timeout, message, offered, opts) do
+    if Keyword.get(opts, :async, false) and admission == :ok do
+      dispatch_admitted(agent, admission, timeout, message, offered, async: true)
+    else
+      deliver_recorded(agent, admission, timeout)
+      |> record_dispatch_result(message, offered)
     end
   end
 
@@ -1717,21 +1728,12 @@ defmodule CodeMySpec.Agents do
     ref = Ecto.UUID.generate()
 
     with {:ok, conversation} <- open_conversation(scope, main),
-         {:ok, message} <- record_sent(conversation, text, ref, :queued) do
-      offered = record_offer({:ok, message}, main, offer)
-
-      case Wake.allow?(scope, main, event) do
-        :ok ->
-          {:ok, _pid} =
-            Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-              main.working_copy_id
-              |> Transport.dispatch_message(main, ref, text, @message_timeout_ms)
-              |> record_dispatch_result(message, offered)
-            end)
-
-        hold ->
-          record_dispatch_result(Wake.to_error(hold), message, offered)
-      end
+         {:ok, {message, offered, admission}} <-
+           record_admission(main, conversation, text, ref, event, offer) do
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        deliver_recorded(main, admission, @message_timeout_ms)
+        |> record_dispatch_result(message, offered)
+      end)
     end
 
     :ok
@@ -2331,25 +2333,24 @@ defmodule CodeMySpec.Agents do
 
   def dispatch_message(%Scope{} = scope, id, text, event, timeout, opts) when is_binary(text) do
     ref = Ecto.UUID.generate()
+    subject = :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
          {:ok, conversation} <- open_conversation(scope, agent),
-         {:ok, message} <-
-           record_sent(
+         {:ok, {message, offered, admission}} <-
+           record_admission(
+             agent,
              conversation,
              text,
              ref,
-             :queued,
+             event,
+             {:instruction, {"message", subject}},
              Keyword.get(opts, :sender_id, "operator")
            ) do
-      subject = :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
-      offered = Offers.record({:ok, message}, agent, :instruction, {"message", subject})
-
       result =
-        agent.working_copy_id
-        |> Transport.dispatch_message(agent, ref, text, timeout)
+        deliver_recorded(agent, admission, timeout)
         |> record_dispatch_result(message, offered)
 
       report_repeated_instruction(scope, agent, offered)
@@ -2372,19 +2373,66 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The row and offer exist before the engine can announce delivery. A late
-  # queued acknowledgement must never overwrite an earlier delivery event.
-  defp record_dispatch_result({:ok, :started}, message, _offered) do
-    case Conversations.pending_message_by_ref(message.delivery_ref) do
-      nil -> :ok
-      pending -> Conversations.set_delivery(pending, :delivered)
+  # Commit message, offer and mailbox identity together, before any transport
+  # work or acknowledgement. Held notifications remain visible as failed offers.
+  defp record_admission(agent, conversation, text, ref, event, offer, sender_id \\ "operator") do
+    result =
+      Repo.transaction(fn ->
+        case record_sent(conversation, text, ref, :queued, sender_id) do
+          {:ok, message} ->
+            offered = record_offer({:ok, message}, agent, offer)
+
+            {message, admission} = admit_if_allowed(agent, message, event, offered)
+
+            {message, offered, admission}
+
+          {:error, reason} ->
+            Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, {message, _, _}} ->
+        Conversations.broadcast_new_message(conversation, message)
+        Mailbox.publish(message)
+
+      _ ->
+        :ok
     end
 
-    {:ok, :started, Repo.get!(Conversations.Message, message.id)}
+    result
   end
 
-  defp record_dispatch_result({:ok, :queued}, message, _offered),
-    do: {:ok, :queued, Repo.get!(Conversations.Message, message.id)}
+  defp admit_if_allowed(agent, message, event, offered) do
+    case Wake.allow?(agent_scope(agent), agent, event) do
+      :ok ->
+        Mailbox.admit(agent, message, event)
+        {message, :ok}
+
+      hold ->
+        :ok = Offers.undelivered(offered)
+        {:ok, message} = Conversations.set_delivery(message, :failed, broadcast: false)
+        {message, Wake.to_error(hold)}
+    end
+  end
+
+  defp pump_mailbox(scope, agent_id) do
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> Mailbox.pump(scope, agent_id) end)
+
+    :ok
+  end
+
+  defp deliver_recorded(agent, :ok, timeout),
+    do: Mailbox.pump(agent_scope(agent), agent.id, timeout)
+
+  defp deliver_recorded(_agent, error, _timeout), do: error
+
+  defp record_dispatch_result({:ok, disposition}, message, _offered)
+       when disposition in [:started, :queued] do
+    current = Repo.get!(Conversations.Message, message.id)
+    disposition = if current.delivery == :delivered, do: :started, else: :queued
+    {:ok, disposition, current}
+  end
 
   # A missing acknowledgement does not prove delivery or failure. Keep the
   # pending record so a later delivery event can establish what happened.
@@ -2392,8 +2440,15 @@ defmodule CodeMySpec.Agents do
     do: error
 
   defp record_dispatch_result({:error, _reason} = error, message, offered) do
-    Offers.undelivered(offered)
-    Conversations.set_delivery(message, :failed)
+    case Repo.get_by(Mailbox.Entry, message_id: message.id) do
+      nil ->
+        Offers.undelivered(offered)
+        Conversations.set_delivery(message, :failed)
+
+      _admitted ->
+        :ok
+    end
+
     error
   end
 
@@ -2460,10 +2515,11 @@ defmodule CodeMySpec.Agents do
 
   # Started or queued, on the row. The difference is the only thing the sender
   # can still act on, so it is not something the view infers from a timestamp.
-  defp record_sent(conversation, text, ref, disposition, sender_id \\ "operator") do
+  defp record_sent(conversation, text, ref, disposition, sender_id) do
     Conversations.add_message(conversation, :operator, text, sender_id, [],
       delivery: delivery_of(disposition),
-      delivery_ref: ref
+      delivery_ref: ref,
+      broadcast: false
     )
   end
 
@@ -2486,6 +2542,13 @@ defmodule CodeMySpec.Agents do
   @spec withdraw_message(Scope.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, Conversations.Message.t()} | {:error, term()}
   def withdraw_message(%Scope{} = scope, id, ref) when is_binary(ref) do
+    case Repo.get_by(Mailbox.Entry, agent_id: id, delivery_ref: ref) do
+      nil -> withdraw_legacy_message(scope, id, ref)
+      _ -> Mailbox.withdraw(scope, id, ref)
+    end
+  end
+
+  defp withdraw_legacy_message(scope, id, ref) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          :ok <-
            agent.working_copy_id
@@ -2544,6 +2607,24 @@ defmodule CodeMySpec.Agents do
   @spec record_turn_event(Scope.t(), Ecto.UUID.t(), map(), keyword()) :: :ok
   def record_turn_event(scope, agent_id, event, opts \\ [])
 
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "mailbox_ready", "generation" => generation} = event,
+        _opts
+      ) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         true <- agent.working_copy_id == scope.active_working_copy_id do
+      Mailbox.ready(scope, agent_id, generation, event["ref"])
+
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Mailbox.pump(scope, agent_id)
+      end)
+    end
+
+    :ok
+  end
+
   # A turn ending is not a step, so nothing is written to the transcript for it.
   # It is the moment the orchestrator gets to speak — the internal equivalent of
   # an external agent's Stop hook firing, which is the one thing this runtime
@@ -2552,42 +2633,10 @@ defmodule CodeMySpec.Agents do
   # A turn ending starts no analysis (John, 2026-10-04): the decision below
   # reads the problems runs already persisted. `opts` reaches
   # `StopDecision.deliver/3` for callers that drive this path directly.
-  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"}, opts) do
-    case AgentsRepository.fetch_agent(scope, agent_id) do
-      {:ok, agent} ->
-        # The turn is over, so nothing is in flight. Cleared before the decision
-        # rather than after: `deliver/3` runs the whole stop menu — graph and
-        # problems — and an agent read during it would show a turn that ended
-        # as still running.
-        # Read before the clear: `Work.record_decline/3` needs it to tell a turn
-        # that closed a task from one that did nothing, and the next line is
-        # what destroys it.
-        turn_started_at = agent.turn_started_at
-
-        {:ok, agent} =
-          AgentsRepository.update_agent(
-            scope,
-            agent,
-            Map.merge(%{turn_started_at: nil}, refusal_outlived(agent, turn_started_at))
-          )
-
-        broadcast(scope, {:agent_turn, agent})
-
-        # Before the stop menu, because `deliver/3` is what produces the
-        # observation that fires `Work.consider_project/2` — recording the
-        # decline afterwards would lose the race with the wake it is meant to
-        # damp.
-        {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
-
-        # Settled before the stop menu, which may make new offers of its own.
-        :ok = Offers.settle_turn(agent)
-        tell_main_held_back(scope, agent)
-
-        StopDecision.deliver(scope, agent, opts)
-
-      _ ->
-        :ok
-    end
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"} = event, opts) do
+    if current_terminal_event?(scope, agent_id, event),
+      do: record_terminal_event(scope, agent_id, opts),
+      else: :ok
   end
 
   # A turn beginning, which nothing used to record.
@@ -2912,6 +2961,66 @@ defmodule CodeMySpec.Agents do
 
   defp refusal_outlived(_agent, _turn_started_at), do: %{}
 
+  defp current_terminal_event?(scope, agent_id, %{"generation" => generation, "ref" => ref})
+       when is_binary(generation) and is_binary(ref) do
+    case AgentsRepository.fetch_agent(scope, agent_id) do
+      {:ok, %{mailbox_generation: ^generation}} ->
+        case Mailbox.finish(scope, agent_id, ref, generation) do
+          {:ok, _} -> true
+          # A coalescible work signal has no mailbox payload.
+          {:error, :not_found} -> true
+          _ -> false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  defp current_terminal_event?(_scope, _agent_id, _legacy), do: true
+
+  defp record_terminal_event(scope, agent_id, opts) do
+    case AgentsRepository.fetch_agent(scope, agent_id) do
+      {:ok, agent} ->
+        # The turn is over, so nothing is in flight. Cleared before the decision
+        # rather than after: `deliver/3` runs the whole stop menu — graph and
+        # problems — and an agent read during it would show a turn that ended
+        # as still running.
+        # Read before the clear: `Work.record_decline/3` needs it to tell a turn
+        # that closed a task from one that did nothing, and the next line is
+        # what destroys it.
+        turn_started_at = agent.turn_started_at
+
+        {:ok, agent} =
+          AgentsRepository.update_agent(
+            scope,
+            agent,
+            Map.merge(%{turn_started_at: nil}, refusal_outlived(agent, turn_started_at))
+          )
+
+        broadcast(scope, {:agent_turn, agent})
+
+        # Before the stop menu, because `deliver/3` is what produces the
+        # observation that fires `Work.consider_project/2` — recording the
+        # decline afterwards would lose the race with the wake it is meant to
+        # damp.
+        {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
+
+        # Settled before the stop menu, which may make new offers of its own.
+        :ok = Offers.settle_turn(agent)
+        tell_main_held_back(scope, agent)
+
+        if Mailbox.pending?(agent.id) do
+          pump_mailbox(scope, agent.id)
+        else
+          StopDecision.deliver(scope, agent, opts)
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
   # A compaction is not a step either. It is what the agent will resume from,
   # and it goes in its own table: a row in the transcript would have to be
   # skipped by every renderer, every preview and every `role` clause, and the
@@ -2938,9 +3047,13 @@ defmodule CodeMySpec.Agents do
   # is that.
   defp write_turn_event(_conversation, _agent, %{"kind" => "message_delivered", "ref" => ref})
        when is_binary(ref) do
-    case Conversations.pending_message_by_ref(ref) do
-      nil -> :ok
-      message -> with {:ok, _} <- Conversations.set_delivery(message, :delivered), do: :ok
+    case {Repo.get_by(Mailbox.Entry, delivery_ref: ref),
+          Conversations.pending_message_by_ref(ref)} do
+      {nil, %Conversations.Message{} = message} ->
+        with {:ok, _} <- Conversations.set_delivery(message, :delivered), do: :ok
+
+      _ ->
+        :ok
     end
   end
 

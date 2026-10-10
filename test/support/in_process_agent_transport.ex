@@ -18,6 +18,7 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   alias CmsHarness.WorkingCopies.Create
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.McpServers.ToolRegistry
 
   @impl true
@@ -42,6 +43,24 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
       |> LaunchRequest.for(ToolRegistry.registry())
       |> Map.put_new("api_key", "unused-in-process")
       |> Map.put("on_event", CodeMySpecTest.TurnEventRelay.reporter())
+      |> Map.put("on_register", fn id, generation ->
+        scope = %CodeMySpec.Users.Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: agent.working_copy_id
+        }
+
+        Mailbox.register(scope, id, generation)
+      end)
+      |> Map.put("on_consume", fn id, ref, generation ->
+        scope = %CodeMySpec.Users.Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: agent.working_copy_id
+        }
+
+        Mailbox.consume(scope, id, ref, generation)
+      end)
 
     # Presence is the channel's to keep, and there is no channel here.
     :ok = CodeMySpecTest.PresenceRelay.relay(agent)

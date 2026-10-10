@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpecTest.UnreachableMachine
 
   @doc """
@@ -40,13 +41,16 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     Machine.ensure_supervisor()
 
     copy = Keyword.get_lazy(opts, :working_copy, &scratch_copy/0)
+    mailbox = CodeMySpecSpex.Fixtures.mailbox_callbacks(agent_id)
 
     assert {:ok, _} =
              Machine.start_agent(agent_id, copy,
                on_stop: Keyword.get(opts, :on_stop),
                base_url: Keyword.get(opts, :base_url),
                on_event: Keyword.get(opts, :on_event),
-               on_draft: Keyword.get(opts, :on_draft)
+               on_draft: Keyword.get(opts, :on_draft),
+               on_register: mailbox[:on_register],
+               on_consume: mailbox[:on_consume]
              ),
            "the premise is an agent that is actually running; without one this " <>
              "criterion asserts nothing about spending"
@@ -135,7 +139,7 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     HeldProvider.hold()
 
     assert {:ok, :started} =
-             Machine.send_message(agent_id, "spex-first-turn", "work on something"),
+             CodeMySpecSpex.Fixtures.send_agent_message(agent_id, "work on something"),
            "the agent would not take a first message, so there is no turn for a " <>
              "second one to arrive in the middle of"
 
@@ -152,7 +156,20 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   @spec finish_turn(String.t()) :: :ok
   def finish_turn(agent_id) do
     HeldProvider.release()
+    await_mailbox_idle(agent_id, 500)
     Machine.await_idle(agent_id)
+  end
+
+  defp await_mailbox_idle(_agent_id, 0),
+    do: flunk("mailbox did not settle after the provider was released")
+
+  defp await_mailbox_idle(agent_id, attempts) do
+    if Mailbox.pending?(agent_id) do
+      Process.sleep(10)
+      await_mailbox_idle(agent_id, attempts - 1)
+    else
+      :ok
+    end
   end
 
   @doc """
@@ -219,7 +236,7 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
     socket
     |> agents_to_restore()
     |> Enum.each(fn request ->
-      assert {:ok, _} = Machine.launch(request),
+      assert {:ok, _} = CodeMySpecSpex.Fixtures.launch_agent(request),
              "the harness could not bring an agent back, so what follows is about a " <>
                "machine with no agents rather than about a restart"
     end)

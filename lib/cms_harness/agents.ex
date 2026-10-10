@@ -90,6 +90,16 @@ defmodule CmsHarness.Agents do
       # the default is right for the harness and it is not the only
       # caller.
       on_event: request["on_event"] || reporter_for(request["working_copy"]),
+      on_consume: request["on_consume"],
+      on_register:
+        request["on_register"] ||
+          fn agent_id, generation ->
+            ChannelClient.mailbox(request["working_copy"], %{
+              "operation" => "register",
+              "agent_id" => agent_id,
+              "generation" => generation
+            })
+          end,
       # The text of a turn as it is written, to whoever is watching live. Only
       # the channel wants it; a caller naming its own `on_event` gets none.
       on_draft: request["on_draft"] || drafter_for(request["on_event"], request["working_copy"])

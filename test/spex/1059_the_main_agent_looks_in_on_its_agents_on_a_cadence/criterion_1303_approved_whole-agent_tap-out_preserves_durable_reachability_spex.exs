@@ -113,9 +113,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
 
       when_ "the user explicitly chats with that same agent", context do
         {:ok, :started} =
-          Machine.send_message(
+          Fixtures.send_agent_message(
             context.main_id,
-            "explicit-user-chat",
             "Please summarize the export question"
           )
 

@@ -44,6 +44,8 @@ defmodule CmsHarness.Agents.Engine do
 
   defdelegate stop(agent_id), to: Impl
 
+  defdelegate whereis(agent_id), to: State
+
   def running, do: State.running()
   def running?(agent_id), do: match?({:ok, _}, State.whereis(agent_id))
   defdelegate tools(opts), to: Impl

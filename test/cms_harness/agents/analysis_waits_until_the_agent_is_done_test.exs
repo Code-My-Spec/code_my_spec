@@ -1,34 +1,13 @@
 defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
   @moduledoc """
-  A turn end is announced when the agent is done, not between turns of one run.
-
-  `announce_turn_end/1` is what fires the analyzers and produces the stop
-  decision — the internal equivalent of Claude Code's Stop hook. It fired on
-  every turn end, on the reasoning that "`Analysis` supersedes a duplicate
-  rather than running it twice, so the cost of saying so early is a row".
-
-  In continuous mode a turn ends every 15-20 seconds: the loop delivers a
-  message, the agent acts, it settles, the decision sends another. Each settle
-  enqueued a full sweep while a spex run takes ~176s. Measured on one working
-  copy: 84 superseded against 26 completed, and the decision an agent got was
-  built from whatever last completed — several turns behind the tree it was
-  looking at.
-
-  John: "it should only run the analyzer when the agent is fully done, not like
-  between tool calls and stuff."
-
-  The signal was already in the struct. `drain/1` reads `queue` one line below
-  `announce_turn_end/1` to decide whether another turn starts immediately.
-
-  Driven through real engine turns with a provider that parks the first request
-  until this test releases it, so "a message arrived while the agent was
-  mid-turn" is a fact rather than a race. No sleeps: the plug says when it has
-  the turn, and the test says when to let go.
+  Engine turn boundaries and execution shutdown. Waiting payload ownership and
+  FIFO delivery are exercised against the database mailbox in story 1051.
+  These isolated harness tests use an explicit authority callback, not a queue.
   """
   use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Engine
-  alias CmsHarness.Agents.Liveness
+  alias CmsHarness.Agents.Engine.QueueReceipts
   alias CmsHarnessTest.Machine
 
   @moduletag :tmp_dir
@@ -115,123 +94,58 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     end
   end
 
-  # 5150cd98: a queue dropped by a harness restart left refs the engine never
-  # saw again, and each one answered "already delivered".
-  test "a ref this harness never had is not reported as delivered", %{root: root} do
+  test "legacy receipt evidence remains usable after engine replacement", %{root: root} do
+    agent = start_agent(root, gated_plug(self()), self())
+    :ok = QueueReceipts.queued(agent, "legacy-waiting")
+    :ok = QueueReceipts.delivered(agent, "legacy-consumed")
+    :ok = Machine.stop_agent(agent)
+    assert {:ok, _} = Machine.start_agent(agent, root)
+    assert :ok = Machine.withdraw(agent, "legacy-waiting")
+    assert {:error, :already_delivered} = Machine.withdraw(agent, "legacy-consumed")
+    assert {:error, :never_received} = Machine.withdraw(agent, "unknown")
+  end
+
+  test "new deliveries do not write legacy queue receipts", %{root: root} do
     agent = start_agent(root, gated_plug(self()), self())
     assert {:ok, :started} = Machine.send_message(agent, "running", "first")
     assert_receive {:holding_turn, _execution}, 5_000
-
-    assert {:error, :never_received} = Machine.withdraw(agent, "lost-in-a-restart")
-    assert {:error, :already_delivered} = Machine.withdraw(agent, "running")
+    assert {:error, :never_received} = Machine.withdraw(agent, "running")
+    assert {:error, :busy} = Machine.send_message(agent, "waiting", "second")
+    assert {:error, :never_received} = Machine.withdraw(agent, "waiting")
   end
 
-  test "a queued message lost in a crash is not reported as delivered", %{root: root} do
-    :ok = Liveness.subscribe()
-    agent = start_agent(root, gated_plug(self()), self())
-    assert_receive {:agent_liveness, :up, ^agent, _, nil}, 2_000
-    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
-    assert_receive {:holding_turn, _execution}, 5_000
-    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "take this back")
-    assert {:ok, pid} = Engine.State.whereis(agent)
-
-    Process.exit(pid, :kill)
-    assert_receive {:agent_liveness, :down, ^agent, _, :killed}, 2_000
-    assert_receive {:agent_liveness, :up, ^agent, _, nil}, 5_000
-
-    refute_received {:event, %{event: :message_delivered, ref: "waiting"}}
-    assert :ok = Machine.withdraw(agent, "waiting")
-    assert {:error, :already_delivered} = Machine.withdraw(agent, "running")
-    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
-  end
-
-  test "an unconsumed message remains withdrawable after its Keeper is replaced", %{root: root} do
-    plug = gated_plug(self())
-    agent = start_agent(root, plug, self())
-    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
-    assert_receive {:holding_turn, _execution}, 5_000
-    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "take this back")
-    assert :ok = Machine.stop_agent(agent)
-
-    assert {:ok, _} =
-             Machine.start_agent(agent, root,
-               provider: "anthropic",
-               api_key: "unused",
-               req_options: [plug: plug]
-             )
-
-    assert :ok = Machine.withdraw(agent, "waiting")
-    assert {:error, :already_delivered} = Machine.withdraw(agent, "running")
-    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
-  end
-
-  test "a consumed queued message stays non-withdrawable after Keeper replacement", %{root: root} do
-    plug = gated_plug(self())
-    agent = start_agent(root, plug, self())
-    assert {:ok, :started} = Machine.send_message(agent, "running", "first")
-    assert_receive {:holding_turn, execution}, 5_000
-    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
-
-    send(execution, :release)
-    assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
-    assert_receive {:event, %{event: :turn_ended}}, 5_000
-    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
-    assert :ok = Machine.stop_agent(agent)
-
-    assert {:ok, _} =
-             Machine.start_agent(agent, root,
-               provider: "anthropic",
-               api_key: "unused",
-               req_options: [plug: plug]
-             )
-
-    assert {:error, :already_delivered} = Machine.withdraw(agent, "waiting")
-  end
-
-  test "the settle that has work queued behind it stays quiet", %{root: root} do
+  test "each executing turn reports a terminal boundary to the mailbox", %{root: root} do
     agent = start_agent(root, gated_plug(self()), self())
 
     assert {:ok, :started} = Machine.send_message(agent, "ref-a", "first")
     assert_receive {:holding_turn, plug_pid}, 5_000
 
-    # Queued rather than started, said by the engine itself: it runs one turn at
-    # a time and the turn it is on is the one parked in the plug above. This is
-    # the state the old code announced from.
-    assert {:ok, :queued} = Machine.send_message(agent, "ref-b", "second")
-    assert {:ok, %{busy?: true, queued: 1}} = Engine.status(agent)
+    # Only the server mailbox may retain the second instruction.
+    assert {:error, :busy} = Machine.send_message(agent, "ref-b", "second")
+    assert {:ok, %{busy?: true, queued: 0}} = Engine.status(agent)
 
     send(plug_pid, :release)
 
-    assert count_turn_ends() == 1, """
-    Two turns ran and both announced. The first settled with the second already
-    on the queue — the agent was between two turns of one run, not done — and
-    announcing there is what enqueued a sweep every 15 seconds while one was
-    still going.
-    """
+    assert count_turn_ends() == 1
   end
 
-  test "three instructions wait for the running turn and are delivered in order", %{root: root} do
+  test "busy engine refuses waiting payloads without retaining them", %{root: root} do
     agent = start_agent(root, gated_plug(self()), self())
     assert {:ok, :started} = Machine.send_message(agent, "running", "first")
     assert_receive {:holding_turn, plug_pid}, 5_000
     assert_receive {:event, %{event: :message_delivered, ref: "running"}}
 
-    assert {:ok, :queued} = Engine.send_message(agent, "one", "instruction one", 1)
-    assert {:ok, :queued} = Engine.send_message(agent, "two", "instruction two", 1)
-    assert {:ok, :queued} = Engine.send_message(agent, "three", "instruction three", 1)
-    assert {:ok, %{busy?: true, queued: 3}} = Engine.status(agent)
-    refute_received {:event, %{event: :message_delivered}}
+    for ref <- ["one", "two", "three"] do
+      assert {:error, :busy} = Engine.send_message(agent, ref, ref, 1)
+    end
 
+    assert {:ok, %{busy?: true, queued: 0}} = Engine.status(agent)
     send(plug_pid, :release)
-    assert_receive {:event, %{event: :message_delivered, ref: "one"}}, 5_000
-    assert_receive {:event, %{event: :message_delivered, ref: "two"}}, 5_000
-    assert_receive {:event, %{event: :message_delivered, ref: "three"}}, 5_000
     assert_receive {:event, %{event: :turn_ended}}, 5_000
-    assert {:ok, %{busy?: false, queued: 0}} = Engine.status(agent)
-    refute_received {:event, %{event: :turn_failed}}
+    refute_received {:event, %{event: :message_delivered}}
   end
 
-  test "a caller timeout leaves the running turn and its queue intact", %{root: root} do
+  test "a caller timeout leaves the running turn intact", %{root: root} do
     agent = start_agent(root, gated_plug(self()), self())
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
 
@@ -242,12 +156,14 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
     assert_receive {:holding_turn, execution}, 5_000
     assert {:timeout, _} = Task.await(caller)
-    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
-    assert {:ok, %{busy?: true, queued: 1}} = Engine.status(agent)
+    assert {:error, :busy} = Machine.send_message(agent, "waiting", "second")
+    assert {:ok, %{busy?: true, queued: 0}} = Engine.status(agent)
     assert Process.alive?(execution)
     refute_received {:event, %{event: :message_delivered, ref: "waiting"}}
 
     send(execution, :release)
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, :started} = Machine.send_message(agent, "waiting", "queued instruction")
     assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
     assert_receive {:event, %{event: :turn_ended}}, 5_000
     refute_received {:event, %{event: :turn_failed}}
@@ -264,7 +180,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
     assert {:ok, :started} = Machine.send_message(agent, "running", "original instruction")
     assert_receive {:holding_turn, execution}, 5_000
-    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "queued instruction")
+    assert {:error, :busy} = Machine.send_message(agent, "waiting", "queued instruction")
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
     state = :sys.get_state(engine)
     remaining = Process.read_timer(state.turn.timer)
@@ -274,6 +190,8 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
     # Deliver the real timer's message without making the test wait 30 minutes.
     send(engine, {:turn_ceiling, state.turn.task.ref})
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, :started} = Machine.send_message(agent, "waiting", "queued instruction")
     assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
     refute Process.alive?(execution)
     assert_receive {:DOWN, ^monitor, :process, ^execution, :killed}
@@ -297,12 +215,14 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     agent = start_agent(root, gated_plug(self()), self())
     assert {:ok, :started} = Machine.send_message(agent, "running", "first")
     assert_receive {:holding_turn, execution}, 5_000
-    assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
+    assert {:error, :busy} = Machine.send_message(agent, "waiting", "second")
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
     state = :sys.get_state(engine)
 
     Process.exit(state.turn.task.pid, :kill)
 
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, :started} = Machine.send_message(agent, "waiting", "queued instruction")
     assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
     refute Process.alive?(execution)
     assert_receive {:event, %{event: :turn_failed}}, 5_000
@@ -335,12 +255,14 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
       end)
 
       assert_receive {:holding_turn, _execution}, 5_000
-      assert {:ok, :queued} = Machine.send_message(agent, "waiting", "second")
+      assert {:error, :busy} = Machine.send_message(agent, "waiting", "second")
       [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
       state = :sys.get_state(engine)
 
       send(engine, {:turn_ceiling, state.turn.task.ref})
 
+      assert_receive {:event, %{event: :turn_ended}}, 5_000
+      assert {:ok, :started} = Machine.send_message(agent, "waiting", "queued instruction")
       assert_receive {:event, %{event: :message_delivered, ref: "waiting"}}, 5_000
 
       {_output, status} =

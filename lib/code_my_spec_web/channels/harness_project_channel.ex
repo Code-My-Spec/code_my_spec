@@ -602,6 +602,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         mark_gave_up(socket, entry["agent_id"], entry["reason"], entry["at"])
       end)
 
+    scope = socket.assigns.scope
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Enum.each(ids, &Agents.Mailbox.pump(scope, &1))
+    end)
+
     {:reply, :ok, consider_once(socket, :present)}
   end
 
@@ -893,6 +899,39 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   #
   # Replied to rather than ignored so the machine knows the step landed, but the
   # machine does not wait on it: it casts.
+  def handle_in(
+        "agent_mailbox",
+        %{"operation" => "register", "agent_id" => id, "generation" => generation},
+        socket
+      )
+      when is_binary(generation) do
+    scope = socket.assigns.scope
+
+    with {:ok, agent} <- Agents.fetch_agent(scope, id),
+         true <- agent.working_copy_id == scope.active_working_copy_id,
+         {:ok, _} <- Agents.Mailbox.register(scope, id, generation) do
+      {:reply, {:ok, %{}}, socket}
+    else
+      _ -> {:reply, {:error, %{reason: "mailbox registration refused"}}, socket}
+    end
+  end
+
+  def handle_in(
+        "agent_mailbox",
+        %{"operation" => "consume", "agent_id" => id, "ref" => ref, "generation" => generation},
+        socket
+      ) do
+    scope = socket.assigns.scope
+
+    with {:ok, agent} <- Agents.fetch_agent(scope, id),
+         true <- agent.working_copy_id == scope.active_working_copy_id,
+         {:ok, _} <- Agents.Mailbox.consume(scope, id, ref, generation) do
+      {:reply, {:ok, %{}}, socket}
+    else
+      _ -> {:reply, {:error, %{reason: "mailbox consumption refused"}}, socket}
+    end
+  end
+
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
     Agents.record_turn_event(socket.assigns.scope, agent_id, event)
     settle_draft(socket, agent_id, event)
@@ -1181,6 +1220,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
+  def handle_call({:dispatch_mailbox, request}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+    push(socket, "mailbox_delivery", Map.put(request, "ref", ref))
+
+    {:noreply,
+     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  end
+
   def handle_call({:dispatch_message, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
 
@@ -1430,6 +1477,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     message_timed_out
     withdraw_timed_out
     already_delivered
+    busy
+    duplicate
   )
 
   defp decode_reason(reason) when reason in @machine_reasons, do: String.to_atom(reason)
@@ -2723,7 +2772,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         :ok
 
       agent ->
-        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, payload["response"] || %{})
+        TokenUsage.record(
+          scope,
+          agent.id,
+          agent.story_id,
+          agent.provider,
+          payload["response"] || %{}
+        )
+
         mirror_failed_tool_results(scope, agent, payload["request"] || %{})
     end
   end

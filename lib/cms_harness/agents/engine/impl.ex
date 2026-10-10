@@ -56,6 +56,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.McpServers.ToolRegistry
 
@@ -210,7 +211,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   This is the whole of what a held stdin pipe was for.
   """
   @spec chat(String.t(), String.t(), timeout()) ::
-          {:ok, term()} | {:ok, {:queued, String.t()}} | {:error, term()}
+          {:ok, term()} | {:error, term()}
   def chat(agent_id, message, timeout \\ 180_000) do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, {:chat, message, timeout}, timeout + call_grace_ms())
@@ -231,7 +232,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   indistinguishable at the moment it matters.
   """
   @spec send_message(String.t(), String.t(), String.t(), timeout()) ::
-          {:ok, :started | :queued} | {:error, term()}
+          {:ok, :started} | {:error, term()}
   def send_message(agent_id, ref, message, timeout \\ 180_000) do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, {:send, ref, message, timeout})
@@ -260,10 +261,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   What this agent is doing right now.
 
-  `busy?` is whether a turn is in flight and `queued` is what is stacked behind
-  it. The row cannot answer either: it says an agent is running, which is true
-  of one thinking and one waiting, and those are the two states somebody
-  watching wants told apart.
+  `busy?` reports an executing turn. `queued` is always zero: waiting payloads
+  belong to the server mailbox. The field remains for older status clients.
   """
   @spec status(String.t()) ::
           {:ok, %{busy?: boolean(), queued: non_neg_integer()}} | {:error, :not_running}
@@ -398,6 +397,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
       {:ok, alloy} ->
         Process.flag(:trap_exit, true)
         :ok = Liveness.watch(agent_id, self(), Keyword.fetch!(opts, :working_copy))
+        generation = new_ref()
+        :ok = register_mailbox(opts, agent_id, generation)
 
         {:ok,
          %{
@@ -420,8 +421,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
            # The turn in flight, or nil. One at a time — an agent working two
            # turns at once in one checkout is two agents editing one tree.
            turn: nil,
-           # What is waiting for it, oldest first.
-           queue: []
+           generation: generation,
+           on_consume: Keyword.get(opts, :on_consume)
          }
          |> settle_interrupted(interrupted)}
 
@@ -519,11 +520,52 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # `_timeout` is the sender's and is deliberately unused here. It is how long
   # that caller waits, which `awaiting` settles; it is not how long the agent
   # may work. Threading it in made the two the same thing and cost a QA run.
+  defp register_mailbox(opts, agent_id, generation) do
+    case Keyword.get(opts, :on_register) do
+      fun when is_function(fun, 2) ->
+        case fun.(agent_id, generation) do
+          {:ok, _} -> :ok
+          :ok -> :ok
+          error -> raise "Mailbox registration failed: #{inspect(error)}"
+        end
+
+      nil ->
+        :ok
+    end
+  end
+
+  @doc "The server commits consumption before any model/tool execution is allowed."
+  def consume_message(state, ref) do
+    result =
+      case state.on_consume do
+        fun when is_function(fun, 3) ->
+          fun.(state.agent_id, ref, state.generation)
+
+        _ ->
+          ChannelClient.mailbox(state.working_copy, %{
+            "operation" => "consume",
+            "agent_id" => state.agent_id,
+            "ref" => ref,
+            "generation" => state.generation
+          })
+      end
+
+    case result do
+      :ok -> :ok
+      {:ok, _} -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
   def start_turn(state, ref, message, _timeout, awaiting) do
     checkpoint = state.alloy |> :sys.get_state() |> Alloy.Agent.State.materialize()
 
     :ok =
-      Keeper.remember(state.agent_id, %{messages: checkpoint.messages, in_flight: message}, ref)
+      Keeper.remember(
+        state.agent_id,
+        %{messages: checkpoint.messages, in_flight: message, delivery_ref: ref},
+        nil
+      )
 
     announce_delivery(state, ref)
     announce_turn_start(state)
@@ -593,80 +635,14 @@ defmodule CmsHarness.Agents.Engine.Impl do
     reply_to(state.turn.awaiting, result)
     announce_turn_end(state, result)
 
-    case State.finish(state) do
-      {:idle, state} ->
-        {:noreply, state}
-
-      {:start, next, state} ->
-        {:noreply, %{state | turn: start_turn(state, next.ref, next.message, next.timeout, nil)}}
-    end
+    {:idle, state} = State.finish(state)
+    send(self(), :mailbox_ready)
+    {:noreply, state}
   end
 
-  # The turn is over, said out loud.
-  #
-  # An external agent's turn ending fires Claude Code's Stop hook, which is
-  # where the orchestrator gets to run the analyzers and decide whether the
-  # agent should have stopped. This runtime fires no hooks, so nothing marked
-  # the moment at all — story 1043's first rule, and the reason a turn ending
-  # here enqueued no analysis and produced no decision.
-  #
-  # After the reply, deliberately. Whoever asked for this turn hears its answer
-  # first; the decision is about what to do *next* and must not sit in front of
-  # the thing that was asked for.
-  #
-  # Only when nothing is queued behind it — when the agent is actually done
-  # rather than between two turns of one run.
-  #
-  # This fired on every turn end, on the reasoning that "`Analysis` supersedes a
-  # duplicate rather than running it twice, so the cost of saying so early is a
-  # row". The row was never the cost. In continuous mode a turn ends every
-  # 15-20 seconds — the loop delivers a message, the agent acts, it settles, the
-  # decision sends another — and each settle enqueued a full sweep while a spex
-  # run takes ~176s. Measured on one working copy: 84 superseded against 26
-  # completed.
-  #
-  # Superseding is not destructive (`supersede_queued/2` drops queued runs only,
-  # never one in flight), so nothing was thrashing. What it cost is that the
-  # decision an agent gets is built from whatever last completed, which by then
-  # is several turns behind the tree it is looking at. John: "it should only run
-  # the analyzer when the agent is fully done, not like between tool calls and
-  # stuff."
-  #
-  # `queue` is the whole signal and it was already here — `drain/1` reads the
-  # same field one line below to decide whether another turn starts now.
-  #
-  # The loop is unaffected. The message that continues it is sent *by* the
-  # decision, so the queue is empty at the settle that produces it; a non-empty
-  # queue means somebody already gave the agent its next thing to do, and a stop
-  # decision in front of that is advice about a choice already made.
-  #
-  # What this gives up is the case the old comment named: a tree broken on turn
-  # 3 of a long run goes unmentioned until the run ends. Accepted deliberately —
-  # splitting fast analyzers from slow ones would keep both properties and is
-  # more machinery than the problem is worth today.
-  # A turn beginning, said out loud — the half that was missing.
-  #
-  # `Agents.record_turn_event/4` has always stamped `turn_started_at` from a
-  # `"turn_started"` event, `WorkRepository.list_agent_work/1` reads it, and
-  # `AgentWorkMapper.in_flight/1` renders it. All three were built for story
-  # 1054's criteria 3297 and 3279, and the server-side comment names them. The
-  # only producer was a spex fixture calling the channel directly, so the field
-  # was reachable in test and unreachable in production.
-  #
-  # QA found it by measurement rather than by reading: a real coding agent given
-  # a long generation, polled ~90 times across two runs while `message_agent`'s
-  # own tracking agreed it was mid-turn, answered "in flight: nothing — no turn
-  # is open" on every sample (`b48aa9e8`).
-  #
-  # What that costs is 3279's whole point: a long reasoning turn is supposed to
-  # be distinguishable from a stalled agent, so nobody restarts it mid-flight
-  # and throws away the turn and the spend. With no signal, a stall can never be
-  # ruled out.
-  #
-  # No queue guard, unlike the end. `announce_turn_end` stays quiet while more
-  # work is queued because the loop has not finished; a turn *starting* is true
-  # each time one does, and a run of queued turns should read as continuously
-  # busy rather than as busy once.
+  # Every completed turn reports its ref and generation. The server decides
+  # whether durable waiting work or the stop decision goes next. A separate
+  # ready event after settling closes the race with a dispatch that saw busy.
   defp announce_turn_start(%{on_event: nil}), do: :ok
 
   defp announce_turn_start(state) do
@@ -676,10 +652,14 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   defp announce_turn_end(%{on_event: nil}, _result), do: :ok
 
-  defp announce_turn_end(%{queue: [_ | _]}, _result), do: :ok
-
   defp announce_turn_end(state, result) do
-    state.on_event.(state.agent_id, %{event: :turn_ended, usage: usage_of(result)})
+    state.on_event.(state.agent_id, %{
+      event: :turn_ended,
+      usage: usage_of(result),
+      ref: state.turn && state.turn.ref,
+      generation: state.generation
+    })
+
     :ok
   end
 

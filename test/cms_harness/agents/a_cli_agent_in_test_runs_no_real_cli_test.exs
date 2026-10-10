@@ -27,6 +27,8 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
         "agent_id" => id,
         "provider" => "openai-codex",
         "working_copy" => root,
+        "on_register" => fn _, _ -> :ok end,
+        "on_consume" => fn _, _, _ -> :ok end,
         "role" => "coding"
       })
 

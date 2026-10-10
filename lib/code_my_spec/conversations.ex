@@ -558,7 +558,7 @@ defmodule CodeMySpec.Conversations do
     |> case do
       {:ok, message} ->
         touch(conversation, read_after(role))
-        broadcast_new_message(conversation, message)
+        if Keyword.get(opts, :broadcast, true), do: broadcast_new_message(conversation, message)
         {:ok, message}
 
       error ->
@@ -580,18 +580,20 @@ defmodule CodeMySpec.Conversations do
   """
   @spec set_delivery(Message.t(), :delivered | :withdrawn | :failed) ::
           {:ok, Message.t()} | {:error, Ecto.Changeset.t()}
-  def set_delivery(%Message{} = message, delivery)
+  def set_delivery(%Message{} = message, delivery, opts \\ [])
       when delivery in [:delivered, :withdrawn, :failed] do
     message
     |> Ecto.Changeset.change(delivery: delivery)
     |> Repo.update()
     |> case do
       {:ok, updated} ->
-        Phoenix.PubSub.broadcast(
-          CodeMySpec.PubSub,
-          conversation_topic(updated.conversation_id),
-          {:message_updated, updated}
-        )
+        if Keyword.get(opts, :broadcast, true) do
+          Phoenix.PubSub.broadcast(
+            CodeMySpec.PubSub,
+            conversation_topic(updated.conversation_id),
+            {:message_updated, updated}
+          )
+        end
 
         {:ok, updated}
 
@@ -1244,7 +1246,8 @@ defmodule CodeMySpec.Conversations do
     )
   end
 
-  defp broadcast_new_message(%Conversation{} = conversation, %Message{} = message) do
+  @doc "Publish a newly committed message when its caller deferred broadcasting inside a transaction."
+  def broadcast_new_message(%Conversation{} = conversation, %Message{} = message) do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       conversation_topic(conversation.id),

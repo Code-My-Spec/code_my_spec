@@ -28,6 +28,7 @@ defmodule CodeMySpec.Agents.Transport do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
 
   @doc """
   Ask the machine serving `working_copy_id` to launch this agent.
@@ -182,8 +183,11 @@ defmodule CodeMySpec.Agents.Transport do
     do: gated(agent, fn -> impl().dispatch_message(copy_id, agent, ref, text, timeout) end)
 
   @doc "Offer a work turn, unless the agent is off or retired."
-  def request_work_turn(copy_id, %Agent{} = agent, ref, text, timeout),
-    do: gated(agent, fn -> impl().request_work_turn(copy_id, agent, ref, text, timeout) end)
+  def request_work_turn(copy_id, %Agent{} = agent, ref, text, timeout) do
+    if Mailbox.pending?(agent.id),
+      do: {:error, :busy},
+      else: gated(agent, fn -> impl().request_work_turn(copy_id, agent, ref, text, timeout) end)
+  end
 
   defp gated(agent, deliver) do
     with :ok <- deliverable(agent), do: deliver.()

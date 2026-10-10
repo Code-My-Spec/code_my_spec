@@ -72,7 +72,7 @@ defmodule CodeMySpec.Agents.Transport.Harness do
       {:ok, pid} ->
         call(
           pid,
-          {:dispatch_message,
+          {:dispatch_mailbox,
            %{"agent_id" => agent.id, "message_ref" => ref, "message" => message}},
           timeout,
           :message_timed_out

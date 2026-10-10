@@ -11,6 +11,8 @@ defmodule CodeMySpecTest.DeliveryBeforeAckTransport do
       active_working_copy_id: agent.working_copy_id
     }
 
+    {:ok, _} = Agents.Mailbox.consume(scope, agent.id, ref, "test-engine")
+
     :ok =
       Agents.record_turn_event(scope, agent.id, %{
         "kind" => "message_delivered",

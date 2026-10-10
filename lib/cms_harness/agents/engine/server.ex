@@ -16,7 +16,16 @@ defmodule CmsHarness.Agents.Engine.Server do
   end
 
   @impl true
-  def init(opts), do: Impl.init(opts)
+  def init(opts) do
+    case Impl.init(opts) do
+      {:ok, state} ->
+        send(self(), :mailbox_ready)
+        {:ok, state}
+
+      error ->
+        error
+    end
+  end
 
   # Idle, so the turn starts now and this caller waits it out.
   @impl true
@@ -30,36 +39,23 @@ defmodule CmsHarness.Agents.Engine.Server do
     end
   end
 
-  # Busy. Waiting is the answer rather than blocking: holding the caller would
-  # make them wait two turns for one, and the ref is what lets them change
-  # their mind in the meantime.
-  def handle_call({:chat, message, timeout}, _from, state) do
-    ref = Impl.new_ref()
-
-    case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
-      {:queued, state} ->
-        :ok = Keeper.queued(state.agent_id, ref)
-        {:reply, {:ok, {:queued, ref}}, state}
-    end
-  end
+  # Waiting payloads belong to the server database, never this process.
+  def handle_call({:chat, _message, _timeout}, _from, state),
+    do: {:reply, {:error, :busy}, state}
 
   def handle_call({:send, ref, message, timeout}, _from, %{turn: nil} = state) do
-    entry = %{ref: ref, message: message, timeout: timeout}
-
-    case State.offer(state, entry) do
-      {:start, entry, state} ->
+    case Impl.consume_message(state, ref) do
+      :ok ->
         {:reply, {:ok, :started},
-         %{state | turn: Impl.start_turn(state, entry.ref, entry.message, entry.timeout, nil)}}
+         %{state | turn: Impl.start_turn(state, ref, message, timeout, nil)}}
+
+      {:error, _} = error ->
+        {:reply, error, state}
     end
   end
 
-  def handle_call({:send, ref, message, timeout}, _from, state) do
-    case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
-      {:queued, state} ->
-        :ok = Keeper.queued(state.agent_id, ref)
-        {:reply, {:ok, :queued}, state}
-    end
-  end
+  def handle_call({:send, _ref, _message, _timeout}, _from, state),
+    do: {:reply, {:error, :busy}, state}
 
   def handle_call({:work_available, ref, message, timeout}, _from, state) do
     case State.offer_work(state, %{ref: ref, message: message, timeout: timeout}) do
@@ -92,17 +88,26 @@ defmodule CmsHarness.Agents.Engine.Server do
   end
 
   def handle_call({:withdraw, ref}, _from, state) do
-    receipt = Keeper.withdraw(state.agent_id, ref)
-
-    case State.withdraw(state, ref) do
-      {:ok, state} -> {:reply, :ok, state}
-      # A receipt survives an engine crash or harness restart that its queue
-      # does not.
-      :already_delivered -> {:reply, receipt, state}
-    end
+    {:reply, Keeper.withdraw(state.agent_id, ref), state}
   end
 
   @impl true
+  def handle_info(:mailbox_ready, state) do
+    case state.on_event do
+      fun when is_function(fun, 2) ->
+        fun.(state.agent_id, %{
+          event: :mailbox_ready,
+          generation: state.generation,
+          ref: state.turn && state.turn.ref
+        })
+
+      _ ->
+        :ok
+    end
+
+    {:noreply, state}
+  end
+
   def handle_info({task_ref, result}, %{turn: %{task: %Task{ref: task_ref}}} = state) do
     Process.demonitor(task_ref, [:flush])
     Impl.settle(state, result)

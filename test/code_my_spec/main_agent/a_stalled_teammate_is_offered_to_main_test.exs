@@ -9,6 +9,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Agents.Offers
@@ -52,6 +53,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
       )
 
     AgentPresence.present(main)
+    {:ok, _} = Mailbox.register(ctx.scope, main.id, "test-main")
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -99,6 +101,8 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
   defp deliver_notice(ctx) do
     id = ctx.main.id
     assert_received {:agent_dispatch, ^id, ref, _text}
+
+    assert {:ok, _} = Mailbox.consume(ctx.scope, id, ref, "test-main")
 
     assert :ok =
              Agents.record_turn_event(ctx.scope, id, %{
@@ -178,13 +182,13 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
     assert [%{status: :undelivered}] = stalled_offers(ctx)
   end
 
-  test "a notice whose send failed is recorded undelivered", ctx do
+  test "a notice whose acknowledgement failed remains pending", ctx do
     Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
     ctx = main(ctx)
     announce(ctx, "a1b2c3d4")
 
-    assert [%{status: :undelivered}] = stalled_offers(ctx)
+    assert [%{status: :open}] = stalled_offers(ctx)
     end_turn(ctx)
-    assert [%{status: :undelivered}] = stalled_offers(ctx)
+    assert [%{status: :open}] = stalled_offers(ctx)
   end
 end

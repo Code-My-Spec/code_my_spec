@@ -87,6 +87,10 @@ defmodule CmsHarnessTest.Machine do
       "api_key" => Keyword.get(opts, :api_key, "unused-in-spex"),
       "working_copy" => working_copy,
       "on_stop" => Keyword.get(opts, :on_stop),
+      # Isolated harness tests have no server. DB-backed fixtures override both
+      # callbacks with the real mailbox authority.
+      "on_register" => Keyword.get(opts, :on_register, fn _, _ -> :ok end),
+      "on_consume" => Keyword.get(opts, :on_consume, fn _, _, _ -> :ok end),
       # Where the model is. Without one the agent talks to z.ai for real, which
       # is right in production and would be a live call from a criterion — so
       # anything that actually runs a turn passes a local endpoint here.

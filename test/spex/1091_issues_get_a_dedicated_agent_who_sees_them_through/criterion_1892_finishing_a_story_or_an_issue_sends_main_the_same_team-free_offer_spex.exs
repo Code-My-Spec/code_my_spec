@@ -69,6 +69,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
       when_ "team A's story lands", context do
         response = promote_from(context.team_a, context.story.number)
         assert what_was_told(context.team_a.agent_id) =~ "landed on main"
+        story_notice = what_was_told(context.main.id)
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.main.id)
+        :ok = Fixtures.end_turn(context.scope, context.main.id)
 
         {:reply, next, _} =
           GetNextRequirement.execute(
@@ -80,7 +83,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
 
         refute next.isError
         assert String.downcase(response_text(next)) =~ "waiting for main assignment"
-        {:ok, Map.put(context, :promote_response, response)}
+        {:ok, Map.merge(context, %{promote_response: response, story_notice: story_notice})}
       end
 
       when_ "team B's fix passes QA and lands", context do
@@ -98,7 +101,8 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
 
       then_ "main receives one team-free offer per team, both the same kind, each naming its copy and what it finished",
             context do
-        notices = [what_was_told(context.main.id), what_was_told(context.main.id)]
+        issue_notice = what_was_told(context.main.id)
+        notices = [context.story_notice, issue_notice]
         assert Enum.any?(notices, &(&1 =~ "story #{context.story.number} ("))
         assert Enum.any?(notices, &(&1 =~ context.issue_id))
         :ok = Fixtures.drain_background_work()

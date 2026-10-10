@@ -54,6 +54,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   require Logger
 
+  alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Config
@@ -289,6 +290,16 @@ defmodule CmsHarness.Project.ChannelClient do
   def start_skill(root, params) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.call(pid, {:start_skill, params}, decision_timeout() + 2_000)
+      [] -> {:error, :not_connected}
+    end
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
+  @doc "Authenticated mailbox transition, acknowledged by the database authority."
+  def mailbox(root, params) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, {:mailbox, params}, 17_000)
       [] -> {:error, :not_connected}
     end
   catch
@@ -732,6 +743,13 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_preview_check()
     schedule_machine_load_check()
     report_agents_present(socket)
+
+    for id <- Liveness.present(socket.assigns.project.root) do
+      case Engine.whereis(id) do
+        {:ok, pid} -> send(pid, :mailbox_ready)
+        _ -> :ok
+      end
+    end
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -1463,16 +1481,30 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_message(_topic, "start_agent", %{"ref" => ref} = msg, socket) do
-    result = CmsHarness.Agents.launch(msg)
+    parent = self()
+    topic = socket.assigns.topic
+    id = msg["agent_id"]
+    launching = socket.assigns[:launching] || %{}
 
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_start_result",
-      Map.put(encode_start_result(result), "ref", ref)
-    )
+    if Map.has_key?(launching, id) do
+      push(
+        socket,
+        topic,
+        "agent_start_result",
+        Map.put(encode_start_result({:error, :already_starting}), "ref", ref)
+      )
 
-    {:ok, socket}
+      {:ok, socket}
+    else
+      # Engine registration calls back through this channel. Never block the
+      # channel waiting for init, or neither half can complete the handshake.
+      Task.start(fn ->
+        result = CmsHarness.Agents.launch(msg)
+        send(parent, {:agent_start_result, topic, ref, id, result})
+      end)
+
+      {:ok, assign(socket, :launching, Map.put(launching, id, []))}
+    end
   end
 
   # The agent id is the handle. It used to be a process group id paired with the
@@ -1506,23 +1538,15 @@ defmodule CmsHarness.Project.ChannelClient do
   # Hand an agent a message and say what became of it, without waiting for the
   # turn.
   #
-  # Answered from here rather than from a task, unlike `message_agent` above:
-  # the engine decides started-or-queued without running anything, so there is
-  # no turn to hold the channel behind.
-  def handle_message(_topic, "send_message", %{"ref" => ref} = msg, socket) do
-    result =
-      CmsHarness.Agents.send_message(
-        msg["agent_id"],
-        msg["message_ref"],
-        msg["message"]
-      )
+  # The engine must obtain a durable consumption acknowledgement through this
+  # channel, so keep the channel free while waiting for it.
+  def handle_message(topic, "mailbox_delivery", %{"ref" => ref} = msg, socket) do
+    parent = self()
 
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_send_result",
-      Map.put(encode_send_result(result), "ref", ref)
-    )
+    Task.start(fn ->
+      result = CmsHarness.Agents.send_message(msg["agent_id"], msg["message_ref"], msg["message"])
+      send(parent, {:mailbox_send_result, topic, ref, result})
+    end)
 
     {:ok, socket}
   end
@@ -1888,6 +1912,15 @@ defmodule CmsHarness.Project.ChannelClient do
     do: assign(socket, :held_stops, [ref | socket.assigns[:held_stops] || []])
 
   defp stop_or_hold(socket, agent_id, ref) do
+    launching = socket.assigns[:launching] || %{}
+
+    case Map.fetch(launching, agent_id) do
+      {:ok, refs} -> assign(socket, :launching, Map.put(launching, agent_id, [ref | refs]))
+      :error -> stop_unlaunched(socket, agent_id, ref)
+    end
+  end
+
+  defp stop_unlaunched(socket, agent_id, ref) do
     queue = socket.assigns[:restore_queue] || []
 
     case Enum.split_with(queue, &(&1["agent_id"] == agent_id)) do
@@ -1989,6 +2022,7 @@ defmodule CmsHarness.Project.ChannelClient do
       # Only a delivery event has one, and for that event it is the whole
       # message: this named thing is no longer withdrawable.
       "ref" => Map.get(envelope, :ref),
+      "generation" => Map.get(envelope, :generation),
       "text" => turn_event_text(envelope),
       # The call as data, beside the sentence describing it.
       #
@@ -2273,6 +2307,43 @@ defmodule CmsHarness.Project.ChannelClient do
   # The answer to a `message_agent`, handed back by the task that ran the turn.
   # Pushed from here rather than from that task, because this process owns the
   # socket.
+  def handle_info({:agent_start_result, topic, ref, id, result}, socket) do
+    transport().push(
+      socket,
+      topic,
+      "agent_start_result",
+      Map.put(encode_start_result(result), "ref", ref),
+      5_000
+    )
+
+    {stops, launching} = Map.pop(socket.assigns[:launching] || %{}, id, [])
+    socket = assign(socket, :launching, launching)
+
+    socket =
+      case stops do
+        [] ->
+          socket
+
+        refs ->
+          stopped = CmsHarness.Agents.halt(id)
+          Enum.reduce(refs, socket, &push_stop_result(&2, &1, stopped))
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:mailbox_send_result, topic, ref, result}, socket) do
+    transport().push(
+      socket,
+      topic,
+      "agent_send_result",
+      Map.put(encode_send_result(result), "ref", ref),
+      5_000
+    )
+
+    {:noreply, socket}
+  end
+
   def handle_info({:agent_message_result, topic, ref, result}, socket) do
     push(
       socket,
@@ -2546,6 +2617,16 @@ defmodule CmsHarness.Project.ChannelClient do
 
       {:error, _reason} ->
         {:reply, {:error, :not_connected}, socket}
+    end
+  end
+
+  def handle_call({:mailbox, _params}, _from, %{assigns: %{joined: false}} = socket),
+    do: {:reply, {:error, :not_connected}, socket}
+
+  def handle_call({:mailbox, params}, from, socket) do
+    case Engine.whereis(params["agent_id"]) do
+      {:ok, pid} when pid == elem(from, 0) -> mailbox_request(params, from, socket)
+      _ -> {:reply, {:error, :stale_engine}, socket}
     end
   end
 
@@ -3038,6 +3119,17 @@ defmodule CmsHarness.Project.ChannelClient do
     end)
 
     assign(socket, :pending, %{})
+  end
+
+  defp mailbox_request(params, from, socket) do
+    case transport().push(socket, socket.assigns.topic, "agent_mailbox", params, 15_000) do
+      {:ok, ref} ->
+        timer = Process.send_after(self(), {:reply_timeout, ref}, 15_000)
+        {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
+
+      {:error, _} ->
+        {:reply, {:error, :not_connected}, socket}
+    end
   end
 
   defp normalize_reply({:ok, payload}) when is_map(payload), do: {:ok, payload}

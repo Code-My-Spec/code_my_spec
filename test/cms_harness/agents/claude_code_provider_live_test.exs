@@ -43,6 +43,8 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
         "agent_id" => "claude-code-live-#{System.unique_integer([:positive])}",
         "provider" => "claude-code",
         "working_copy" => root,
+        "on_register" => fn _, _ -> :ok end,
+        "on_consume" => fn _, _, _ -> :ok end,
         "role" => "coding"
       },
       overrides
