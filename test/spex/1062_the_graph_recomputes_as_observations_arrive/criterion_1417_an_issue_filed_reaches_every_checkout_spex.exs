@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
 
   ## Filed *and* accepted, because filing alone is not this story's problem
 
-  `IssuesChecker.story_resolved?/2` counts only issues that are accepted at or
+  Story submission nodes include only issues that are accepted at or
   above the severity threshold. A freshly filed `:incoming` issue leaves every
   answer exactly where it was — correctly — so a scenario that stopped at
   filing would assert nothing and pass on a graph that ignores issues entirely.
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
 
   spex "An issue belongs to the project, so every checkout hears about it", criterion: 1417 do
     scenario "An issue filed reaches every checkout" do
-      given_ :synced_context_component
+      given_(:synced_context_component)
 
       given_ "a story for the issue to be filed against", context do
         story =
@@ -75,20 +75,21 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
          |> Map.put(:first_id, context.scope.active_working_copy_id)}
       end
 
-      given_ "both checkouts say the story has nothing unresolved against it", context do
-        # given: already true — `create_story/2` above makes a story with no
-        # issues, and nothing between here and there files one. Read rather than
-        # established on purpose: without it, "both say unresolved" below would
-        # pass for a story that was already in that state.
-        first = resolved?(read_settled_graph(context, context.first_id), context.story_id)
-        second = resolved?(read_settled_graph(context, context.second_id), context.story_id)
+      given_ "both checkouts show the story without issue submission nodes", context do
+        for copy_id <- [context.first_id, context.second_id] do
+          graph = read_settled_graph(context, copy_id)
 
-        assert first == true and second == true,
-               """
-               This story is supposed to start clear from both checkouts.
+          assert Enum.any?(
+                   graph["nodes"],
+                   &(&1["entity_type"] == "story" and
+                       to_string(&1["entity_id"]) == to_string(context.story_id))
+                 )
 
-               first: #{inspect(first)}  second: #{inspect(second)}
-               """
+          refute Enum.any?(
+                   graph["nodes"],
+                   &(&1["entity_type"] == "issue" and &1["name"] == "submitted")
+                 )
+        end
 
         {:ok, context}
       end
@@ -121,11 +122,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
          context
          |> Map.put(
            :first_after,
-           resolved?(read_settled_graph(context, context.first_id), context.story_id)
+           submitted?(read_settled_graph(context, context.first_id), issue_id(filed))
          )
          |> Map.put(
            :second_after,
-           resolved?(read_settled_graph(context, context.second_id), context.story_id)
+           submitted?(read_settled_graph(context, context.second_id), issue_id(filed))
          )}
       end
 
@@ -165,14 +166,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
     |> List.first()
   end
 
-  # What a checkout says about `story_issues_resolved` for one story. `nil` when
-  # the requirement is not projected there at all, kept distinct from `false`
-  # because a missing row and a negative answer fail for different reasons.
-  defp resolved?(graph, story_id) do
+  # Missing projection is distinct from an unsatisfied submission.
+  defp submitted?(graph, issue_id) do
     (graph["nodes"] || [])
     |> Enum.find(
-      &(&1["entity_type"] == "story" and to_string(&1["entity_id"]) == to_string(story_id) and
-          &1["name"] == "story_issues_resolved")
+      &(&1["entity_type"] == "issue" and &1["entity_id"] == issue_id and &1["name"] == "submitted")
     )
     |> verdict_of()
   end

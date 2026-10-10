@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
 
   spex "An observation that names no checkout settles every checkout", criterion: 1420 do
     scenario "an issue is filed, which is about no checkout in particular" do
-      given_ :synced_context_component
+      given_(:synced_context_component)
 
       given_ "a second checkout of the same project", context do
         second_root = CodeMySpec.TempFile.owned_dir("test")

@@ -42,29 +42,33 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   alias CodeMySpec.Stories
 
   schema do
-    field :task_id, :string,
+    field(:task_id, :string,
       required: true,
       doc: "Active QA task id (from the start_task response on a qa_complete requirement)"
+    )
 
-    field :status, :string,
+    field(:status, :string,
       required: true,
       doc:
         "Outcome: 'pass' (satisfies qa_complete), 'partial' (audit only), or 'fail' (audit only)"
+    )
 
-    field :scenarios, {:list, :map},
+    field(:scenarios, {:list, :map},
       required: true,
       doc:
         "Structured list of scenarios probed during this pass. Each entry: " <>
           "%{name: string, status: 'pass'|'partial'|'fail', observation: string}."
+    )
 
-    field :issue_ids, {:list, :string},
+    field(:issue_ids, {:list, :string},
       doc:
         "List of issue ids filed via `create_issue` during this QA pass. " <>
           "REQUIRED when `status` is `partial` or `fail` — submissions with a non-pass " <>
           "status and an empty `issue_ids` list are rejected at the tool boundary. " <>
           "May be empty when `status` is `pass`."
+    )
 
-    field :tools_used, {:list, :string},
+    field(:tools_used, {:list, :string},
       doc:
         "Which tools you actually called while gathering this evidence — e.g. " <>
           "['browser_navigate', 'browser_click', 'browser_get_text']. Self-reported " <>
@@ -73,6 +77,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
           "instead of an inference from adjectives. Report what you called, not what " <>
           "the story required — an empty list on a browser-required story is itself " <>
           "the finding, not something to round up."
+    )
   end
 
   @impl true
@@ -195,29 +200,10 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       #{tools_used_line(attempt.tools_used)}
       #{evidence_line(attempt.evidence)}
 
-      #{satisfaction_note(attempt.status)}#{wait_note(attempt.wait)}
+      #{satisfaction_note(attempt)}
       """
     )
   end
-
-  defp wait_note({:issue, id}),
-    do: "\n\nYour task is blocked on issue #{id}; resolving it hands the story back to you."
-
-  # Refused, not silent: a block below the fix threshold never releases.
-  defp wait_note({:not_blocking, threshold, issues}) do
-    named =
-      case issues do
-        [] -> "none of the ids name an issue in this project"
-        _ -> Enum.map_join(issues, ", ", &"#{&1.id} (#{&1.severity}, #{&1.status})")
-      end
-
-    "\n\nNot blocked: no named issue is open at or above the project's fix threshold " <>
-      "(#{threshold}), so none will be fixed before QA. Recorded: #{named}. " <>
-      "Your task stays active — finish the attempt: resubmit `pass` if nothing at " <>
-      "#{threshold}+ is wrong, or file that finding and resubmit `fail` with it."
-  end
-
-  defp wait_note(_), do: ""
 
   defp tools_used_line(nil), do: "tools_used: (not reported)"
   defp tools_used_line([]), do: "tools_used: (none — reported explicitly)"
@@ -231,11 +217,15 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       "evidence: #{length(evidence)} file(s) uploaded — " <>
         Enum.map_join(evidence, ", ", & &1.name)
 
-  defp satisfaction_note(:pass),
-    do: "Status pass — qa_complete is satisfied for the story."
+  defp satisfaction_note(%{stale: true}),
+    do: "This review is preserved as history; it does not approve the story's newer work."
 
-  defp satisfaction_note(status),
-    do: "Status #{status} — qa_complete remains unsatisfied. Resubmit when ready."
+  defp satisfaction_note(%{status: :pass}),
+    do: "Status pass — the current reviewed work has passed QA. This review task is complete."
+
+  defp satisfaction_note(%{status: status}),
+    do:
+      "Status #{status} — this review task is complete. The story graph routes required fixes and a fresh QA review."
 
   defp validation_error(changeset) do
     errors =

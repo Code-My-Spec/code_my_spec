@@ -16,7 +16,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   4. Write summary to `.code_my_spec/qa/summary.md`
 
   Two main functions:
-  - `command/3` - Writes per-story prompt files via QaStory.command, returns orchestration prompt
+  - `command/3` - Writes per-story task-start instructions, returns orchestration prompt
   - `evaluate/3` - Delegates per-story validation to QaStory.evaluate, checks summary
   """
 
@@ -30,7 +30,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   Generate prompt files and orchestration instructions for the QA session.
 
   For each story:
-  1. Calls QaStory.command to build the prompt, writes to `.code_my_spec/qa/{story_number}/prompt.md`
+  1. Writes instructions to start a captured story QA task, writes to `.code_my_spec/qa/{story_number}/prompt.md`
   2. Collects the prompt file paths
 
   Then writes an orchestration prompt instructing the agent to smoke-test
@@ -49,7 +49,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     bdd_summaries = format_bdd_summaries(env)
     existing_issues = list_existing_issues(scope)
 
-    # Generate per-story prompt files via QaStory.command
+    # Defer each review capture until its QA task starts.
     story_prompts = generate_story_prompts(scope, stories)
 
     prompt =
@@ -100,20 +100,20 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     env = scope.environment
 
     Enum.map(stories, fn story ->
-      child_task = %{story_id: story.id}
+      prompt = """
+      # QA Story #{story.number}: #{story.title}
 
-      case QaStory.command(scope, child_task) do
-        {:ok, prompt} ->
-          prompt_path = Path.join([Paths.qa_dir(), to_string(story.number), "prompt.md"])
-          :ok = Environments.write_file(env, prompt_path, prompt)
-          %{story_number: story.number, story_title: story.title, prompt_path: prompt_path}
+      Begin this review by calling `start_task` with requirement_name `qa_complete`,
+      entity_type `story`, and entity_id `#{story.number}`. Use the returned task ID
+      and review instructions. This captures the certified revision and submitted
+      fixes when QA actually starts. If readiness is blocked, finish the required
+      story work before beginning QA; do not test from an uncaptured prompt.
+      """
 
-        {:error, reason} ->
-          Logger.warning("[QaApp] Failed to generate prompt for story #{story.number}: #{reason}")
-          nil
-      end
+      prompt_path = Path.join([Paths.qa_dir(), to_string(story.number), "prompt.md"])
+      :ok = Environments.write_file(env, prompt_path, prompt)
+      %{story_number: story.number, story_title: story.title, prompt_path: prompt_path}
     end)
-    |> Enum.reject(&is_nil/1)
   end
 
   # ============================================================================

@@ -166,7 +166,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
           "This story's working copy is certified ready for QA: a clean tree, every " <>
             "analyzer clean at HEAD, and the story's own specs green there. Completing " <>
             "this task certifies it and stamps the commit.",
-        prerequisites: [2, 6],
+        prerequisites: [2, 20],
         execution_type: :main_agent
       }),
       new!(%{
@@ -244,23 +244,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # completion is impossible because completing requires the attempt.
         validation_type: :automatic
       }),
-      # Every finding on this story decided — accepted or dismissed — before QA
-      # tests it again.
-      #
-      # metric_flow story 47, 2026-09-29: product triaged two highs and skipped
-      # the low 9e8b52f4. `story_issues_resolved` counts only accepted issues at
-      # the threshold, so QA was re-offered the story with a finding nobody had
-      # looked at, and tapped out to a human (255f1dcd).
-      #
-      # Its own node rather than a second clause in `story_issues_resolved`,
-      # because the work is product's: coding cannot accept or dismiss
-      # (`Agents.ToolSets`), so offering it `FixStoryIssues` for an incoming
-      # issue is the claim-find-nothing-tap-out spin.
-      #
-      # Off `component_linked`, the chain's head, so a finding can be triaged
-      # whenever it lands; every story node descends from that head, and the
-      # edge derivation relies on it. Triage gates resolution, then readiness
-      # certification; product has no work downstream of its own triage gate.
+      # Product triages every finding before coding submits blocking fixes.
+      # Incoming findings at any severity must be accepted or dismissed;
+      # accepted findings at the fix threshold become individual submission nodes.
       new!(%{
         id: 20,
         name: "story_issues_triaged",
@@ -272,34 +258,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :review,
         description: "No incoming issue on this story, at any severity",
         prerequisites: [1],
-        execution_type: :main_agent
-      }),
-      # Issues QA raised against *this* story, resolved before it is released.
-      #
-      # The project-level `issues_resolved` runs once, at the end, over the
-      # whole queue — the right place for issues nobody attributed to a story,
-      # and the wrong place for a blocker that this story's own QA pass just
-      # found. Waiting until then means the story ships, or the whole cycle
-      # stalls behind a defect that belongs to one story.
-      #
-      # Reads only issues carrying this `story_id`, so an issue in another
-      # agent's territory cannot gate here. That is the same argument that
-      # moved `issues_resolved` off `qa_setup`, applied one level down: a gate
-      # whose passing state depends on work outside the gated unit is a wall.
-      new!(%{
-        id: 6,
-        name: "story_issues_resolved",
-        role: :coding,
-        node_scope: :self,
-        check_type: :delegate,
-        config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :story_resolved?},
-        satisfied_by: AgentTasks.FixStoryIssues,
-        artifact_type: :review,
-        description:
-          "Accepted issues against this story are resolved at the project's blocking severity",
-        # Resolve accepted blockers after triage and before certifying the
-        # working copy. QA findings can reopen this gate on later passes.
-        prerequisites: [20],
         execution_type: :main_agent
       }),
       # Criterion 1963: the loop's next work after QA clears is the UAT deploy.
@@ -339,9 +297,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.Deploy,
         artifact_type: :deployment,
         description: "Story is deployed to UAT and its health check passed",
-        # Follows `qa_complete` rather than `story_issues_resolved`, which it
-        # used to, because those two swapped places above. Deploy still comes
-        # last in the story chain; the node it waits on is now the QA pass.
+        # Deploy follows promotion, which follows shared story QA. Individual
+        # issue submissions join readiness upstream of that QA pass.
         #
         # Story 1003, revised 2026-09-28: was [4] (`qa_complete`) — no longer
         # enough on its own. `story_promoted` moved to depend on
@@ -603,6 +560,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   # instantiation takes over)
   # ═══════════════════════════════════════════════════════════════════════
 
+  def story_issue_graph do
+    [
+      new!(%{
+        id: 1,
+        name: "submitted",
+        role: :coding,
+        node_scope: :self,
+        check_type: :field_present,
+        config: %{field: :story_submission_ref},
+        satisfied_by: AgentTasks.SubmitStoryIssue,
+        artifact_type: :review,
+        description: "The story issue fix is submitted for shared story QA",
+        prerequisites: [],
+        execution_type: :main_agent
+      })
+    ]
+  end
+
   def story_requirements, do: story_graph()
   def project_requirements, do: project_graph()
 
@@ -653,6 +628,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       controller_graph() ++
       liveview_graph() ++
       story_graph() ++
+      story_issue_graph() ++
       project_graph()
   end
 
