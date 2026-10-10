@@ -7,7 +7,6 @@ defmodule CodeMySpec.Projects do
     top_level?: true,
     deps: [
       CodeMySpec.Auth,
-      CodeMySpec.ClientUsers.ClientUser,
       CodeMySpec.Environments,
       CodeMySpec.GitHub,
       CodeMySpec.Oauth,
@@ -18,7 +17,6 @@ defmodule CodeMySpec.Projects do
     exports: :all
 
   import Ecto.Query, warn: false
-  alias CodeMySpec.ClientUsers.ClientUser
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Projects.Project
@@ -253,12 +251,8 @@ defmodule CodeMySpec.Projects do
   def scope_from_local_config(project_root) when is_binary(project_root) do
     with {:ok, config} <- read_local_config(project_root),
          {:ok, project} <- get_or_create_project(config, project_root) do
-      user = local_user()
-
       {:ok,
        %Scope{
-         user: user,
-         user_id: user.id,
          active_account: nil,
          active_account_id: config["account_id"],
          active_project: project,
@@ -270,19 +264,6 @@ defmodule CodeMySpec.Projects do
   end
 
   def scope_from_local_config(nil), do: {:error, :no_working_dir}
-
-  # Same default `Users.Scope.for_local_project/2` and `for_local_cwd/1` use
-  # for a CLI/non-OAuth caller — kept in sync by hand since it is one struct
-  # literal, not worth a round trip through `Users` to share.
-  defp local_user do
-    %ClientUser{
-      id: 0,
-      email: "cli@localhost",
-      oauth_token: nil,
-      oauth_refresh_token: nil,
-      oauth_expires_at: nil
-    }
-  end
 
   # Reads the local config file from the project root directory. Expects a
   # directory containing `.code_my_spec/config.yml`.

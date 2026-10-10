@@ -104,11 +104,11 @@ defmodule CodeMySpec.McpServers.Validators do
 
   defp configured_scope(_project_id) do
     require Logger
+    alias CodeMySpec.LocalScope
     alias CodeMySpec.Projects
-    alias CodeMySpec.Users.Scope
 
     with {:ok, project} <- Projects.resolve_local_project(nil),
-         {:ok, scope} <- Scope.for_local_project(project, nil) do
+         {:ok, scope} <- LocalScope.for_local_project(project, nil) do
       {:ok, scope}
     else
       {:error, reason} ->

@@ -6393,7 +6393,7 @@ defmodule CodeMySpecSpex.Case do
     # every replay ask for a bucket the cassette had never heard of.
     project = existing_or_created_project(scope, context, account, user, stub_dir)
 
-    # Register the env so Scope.for_local_project (called by LiveViews that
+    # Register the env so LocalScope.for_local_project (called by LiveViews that
     # rebuild scope from project) returns THIS env instead of a default
     # :local env. Registration is monitored — when the test process exits
     # the entry is cleaned up automatically.

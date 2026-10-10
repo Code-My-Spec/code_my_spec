@@ -297,7 +297,7 @@ defmodule CodeMySpec.Environments.Local do
   #
   # `{:error, :no_working_directory}`, not a raise. This used to raise on the
   # theory that a directoryless environment reaching here was a coding
-  # mistake nothing should actually trigger — `Scope.resolve_environment/2`
+  # mistake nothing should actually trigger — `LocalScope.resolve_environment/2`
   # was supposed to return `nil` first. It is not a mistake: a harness-scoped
   # caller with no local checkout is an ordinary, expected case (a project
   # reached through the light harness, e.g.), and every caller of this

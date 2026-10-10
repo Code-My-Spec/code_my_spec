@@ -65,6 +65,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Telemetry,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
+      CodeMySpec.LocalScope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
       # `share_copy_app`/`unshare_copy_app` call `PreviewTunnel.ensure/1` and

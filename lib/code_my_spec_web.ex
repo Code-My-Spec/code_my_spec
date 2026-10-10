@@ -102,6 +102,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
+      CodeMySpec.LocalScope,
       CodeMySpec.Utils,
       # Attaches `Validation.RunReconciled` at app start.
       CodeMySpec.Validation,

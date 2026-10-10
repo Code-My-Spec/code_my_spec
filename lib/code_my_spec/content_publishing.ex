@@ -8,7 +8,7 @@ defmodule CodeMySpec.ContentPublishing do
   buckets before triggering the deployed client to pull.
 
   The snapshot is staged in the `content_admin` table, scoped by
-  `scope.active_project_id` (the local scope from `Scope.for_local_project/1`
+  `scope.active_project_id` (the local scope from `LocalScope.for_local_project/1`
   carries only `active_account_id`/`active_project_id`, not loaded structs —
   so we query by id, never `scope.active_account.id`).
   """

@@ -24,6 +24,8 @@ defmodule CodeMySpecSpex.Story1084.Criterion1726Spex do
           defmodule Billing do
             @moduledoc false
             alias Accounts
+
+            def charge(order), do: Accounts.fetch(order)
           end
           """)
 
@@ -54,6 +56,7 @@ defmodule CodeMySpecSpex.Story1084.Criterion1726Spex do
         # refute below is about the dependency going away, not about the
         # page rendering nothing.
         assert section =~ "context", "expected Billing's section to still render"
+
         refute section =~ "Accounts",
                "expected no Accounts dependency after the code call was removed: #{section}"
 

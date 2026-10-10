@@ -26,6 +26,11 @@ defmodule CodeMySpecSpex.Story1084.Criterion1728Spex do
             @moduledoc false
             alias Billing.Invoice
             alias Accounts
+
+            def charge(order) do
+              Invoice.new(order)
+              Accounts.fetch(order)
+            end
           end
           """)
 
@@ -42,13 +47,19 @@ defmodule CodeMySpecSpex.Story1084.Criterion1728Spex do
 
       then_ "no dependency is shown for the call to Billing's own Invoice module", context do
         section = component_section(context.html, "Billing")
-        refute section =~ "Invoice", "expected the intra-context call to Invoice to be hidden: #{section}"
+
+        refute section =~ "Invoice",
+               "expected the intra-context call to Invoice to be hidden: #{section}"
+
         {:ok, context}
       end
 
       then_ "a call from Billing to Accounts is shown", context do
         section = component_section(context.html, "Billing")
-        assert section =~ "Accounts", "expected the cross-context call to Accounts to be shown: #{section}"
+
+        assert section =~ "Accounts",
+               "expected the cross-context call to Accounts to be shown: #{section}"
+
         {:ok, context}
       end
     end

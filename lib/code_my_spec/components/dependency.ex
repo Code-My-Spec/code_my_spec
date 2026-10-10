@@ -28,8 +28,8 @@ defmodule CodeMySpec.Components.Dependency do
     # `## Dependencies` never removes an authored edge (3aeb66cf).
     field :provenance, Ecto.Enum, values: [:authored, :discovered]
 
-    # Whether live code currently names this edge (an `alias` crossing
-    # contexts). Independent of `provenance`: the unique constraint on the
+    # Whether scanned source has a call or struct use across contexts.
+    # Independent of `provenance`: the unique constraint on the
     # pair means one row per edge, so a planned-and-coded edge is
     # `provenance: :authored, in_code: true` rather than two rows.
     field :in_code, :boolean, default: false

@@ -59,6 +59,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   alias CodeMySpec.Activity
   alias CodeMySpec.Generators.DeployArtifacts
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.Backups
@@ -72,7 +73,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Widget
   alias CodeMySpec.Telemetry
-  alias CodeMySpec.Users.Scope
 
   alias CodeMySpecWeb.ConsoleLive.Components.DiagnosticsPanel
   alias CodeMySpecWeb.ConsoleLive.Components.EnvironmentSwitcher
@@ -1135,7 +1135,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp with_project_environment(scope, nil), do: scope
 
   defp with_project_environment(%{environment: nil} = scope, project) do
-    case Scope.for_local_project(project) do
+    case LocalScope.for_local_project(project) do
       {:ok, %{environment: env, cwd: cwd}} -> %{scope | environment: env, cwd: cwd}
       _ -> scope
     end

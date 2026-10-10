@@ -15,6 +15,7 @@ defmodule CodeMySpecWeb.PortableHost do
 
   import Phoenix.LiveView, only: [attach_hook: 4, push_navigate: 2, put_flash: 3]
 
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.Scope
@@ -101,12 +102,10 @@ defmodule CodeMySpecWeb.PortableHost do
   # one page and patched around it locally; lifted here so every route under
   # `:portable` gets the fix, not just that one.
   #
-  # Only the environment is taken, not a whole rebuilt scope —
-  # `Scope.for_local_project/2` centers an entire scope on a default local
-  # user, and adopting that here would quietly swap out the signed-in user
-  # mid-request.
+  # Only the environment and working directory are taken. The local scope
+  # carries no caller identity, so the signed-in request scope remains intact.
   defp with_project_environment(%{environment: nil} = scope, project) do
-    case Scope.for_local_project(project) do
+    case LocalScope.for_local_project(project) do
       {:ok, %{environment: env, cwd: cwd}} -> %{scope | environment: env, cwd: cwd}
       _ -> scope
     end

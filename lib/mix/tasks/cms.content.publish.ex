@@ -57,10 +57,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.ContentPublishing
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.Users.Scope
 
   @shortdoc "Publish a project's markdown content to its deployed site"
 
@@ -106,7 +106,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
     Application.ensure_all_started(:ecto_sql)
     Application.ensure_all_started(:req)
 
-    # Environments.Registry too: Scope.for_local_project/1 resolves the project's
+    # Environments.Registry too: LocalScope.for_local_project/1 resolves the project's
     # working directory through it.
     children = [
       CodeMySpec.Vault,
@@ -171,7 +171,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
   end
 
   defp build_scope!(project) do
-    case Scope.for_local_project(project) do
+    case LocalScope.for_local_project(project) do
       {:ok, scope} ->
         scope
 
@@ -289,9 +289,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
   # this runs before any project (and so any scope) is resolved.
   defp publishable_projects do
     Repo.all(
-      from p in Project,
+      from(p in Project,
         where: not is_nil(p.content_source_path) and p.content_source_path != "",
         order_by: p.name
+      )
     )
   end
 

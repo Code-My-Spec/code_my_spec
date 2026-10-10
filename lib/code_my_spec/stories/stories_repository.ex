@@ -12,12 +12,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   # PaperTrail originator, or `nil` when there isn't a real one.
   #
-  # The local CLI scope carries a synthetic `%ClientUser{id: 0}` that is
-  # never persisted (`Scope.for_local_project/1`). Handing that to PaperTrail
-  # writes `versions.originator_id = 0` and violates
-  # `versions_originator_id_fkey` — SQLite tolerates it only because FK
-  # enforcement is off there, so it fails the moment the same write runs
-  # against Postgres. Local work simply records no originator.
+  # Local CLI scopes have no user identity, so local work records no
+  # originator. PaperTrail must never receive a placeholder id here: an
+  # originator id that is not persisted violates `versions_originator_id_fkey`.
   defp originator(%Scope{user: %User{} = user}), do: user
   defp originator(%Scope{}), do: nil
 

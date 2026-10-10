@@ -52,6 +52,19 @@ defmodule CodeMySpec.ProjectsTest do
       assert {:error, :not_found} = Projects.resolve_local_project("/home/dev/nope")
     end
 
+    test "scope_from_local_config/1 leaves caller identity unset" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+      project = project_fixture(scope)
+      dir = write_config(%{"project_id" => project.id, "account_id" => account.id})
+
+      assert {:ok, local_scope} = Projects.scope_from_local_config(dir)
+      assert local_scope.active_project_id == project.id
+      assert local_scope.user == nil
+      assert local_scope.user_id == nil
+    end
+
     test "resolve_local_project/1 reads project_id from the project's own config" do
       user = user_fixture()
       account = account_with_owner_fixture(user)

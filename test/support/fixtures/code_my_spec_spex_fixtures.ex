@@ -1323,7 +1323,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     # Its own **environment**, not just its own path, and registered against its
     # own root. The hook does not trust the request: it rebuilds the scope from
-    # the harness row via `Scope.for_local_project/2`, which resolves the
+    # the harness row via `LocalScope.for_local_project/2`, which resolves the
     # environment from the registry. Registered per project — as it was — every
     # harness on the project resolved to the *same* env, so this agent scanned
     # the other one's working copy, found its spec, and re-projected the very
@@ -3007,7 +3007,10 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec start_continuous_mode(map(), String.t()) :: :ok
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
-    case AgentTasks.SkillRouter.resolve(scope, %{"skill" => "implement", "external_id" => external_id}) do
+    case AgentTasks.SkillRouter.resolve(scope, %{
+           "skill" => "implement",
+           "external_id" => external_id
+         }) do
       {:ok, %{prompt: _}} -> :ok
       other -> raise "start_continuous_mode failed: #{inspect(other)}"
     end

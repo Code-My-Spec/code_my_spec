@@ -22,10 +22,10 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
   require Logger
 
   alias CodeMySpec.AgentHarness
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
   # Role string -> requirement `role`. Roles absent here don't auto-pull.
@@ -111,7 +111,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
          {:ok, config} <- Jason.decode(contents),
          {:ok, copy} <- WorkingCopies.fetch(config["harness_id"] || config["working_copy_id"]),
          true <- is_binary(copy.root) and Path.expand(copy.root) == Path.expand(working_dir),
-         {:ok, scope} <- Scope.for_local_project(copy.project, working_dir) do
+         {:ok, scope} <- LocalScope.for_local_project(copy.project, working_dir) do
       {:ok, %{scope | active_working_copy_id: copy.id}}
     else
       _ -> {:error, :unavailable_working_copy}

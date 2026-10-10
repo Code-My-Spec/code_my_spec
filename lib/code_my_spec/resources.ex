@@ -33,6 +33,7 @@ defmodule CodeMySpec.Resources do
     top_level?: true,
     deps: [
       CodeMySpec.Configurations,
+      CodeMySpec.LocalScope,
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
@@ -49,6 +50,7 @@ defmodule CodeMySpec.Resources do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning
@@ -486,7 +488,7 @@ defmodule CodeMySpec.Resources do
   #
   # Provisioning has always run against the project's own checkout, regardless
   # of which session asked for it to run. Re-deriving `:local` here, the same
-  # way `Scope.for_local_project/2` does, is what makes an MCP-invoked run
+  # way `LocalScope.for_local_project/2` does, is what makes an MCP-invoked run
   # behave like the button on the page instead of like whichever connection
   # issued it.
   @doc """
@@ -505,7 +507,7 @@ defmodule CodeMySpec.Resources do
   # place. But re-deriving used to mean `project.local_path` alone, which
   # missed a project onboarded outside the usual local_path-setting flow
   # (adopted, no persisted column) even while a harness was live-registered
-  # for it right now. `Scope.for_local_project/1` checks that registration
+  # for it right now. `LocalScope.for_local_project/1` checks that registration
   # first and falls back to `local_path` only if nothing answers, so this
   # gets the same live-checkout preference the nil-environment clause below
   # already has.
@@ -531,7 +533,7 @@ defmodule CodeMySpec.Resources do
   # `:error`, and the checklist read that as a fresh "Missing" (issue a2ea10a8).
   #
   # `ProvisioningLive.with_project_environment/2` already solved this for the
-  # per-project setup page by resolving through `Scope.for_local_project/2` —
+  # per-project setup page by resolving through `LocalScope.for_local_project/2` —
   # which checks a live-registered harness before falling back to
   # `project.local_path`, so a currently-connected checkout wins over a stale
   # column. This mirrors it so the account-wide "Run setup" button gets the
@@ -542,7 +544,7 @@ defmodule CodeMySpec.Resources do
   # name that plainly rather than guessing — there is nothing to adopt here,
   # only somewhere real to look first.
   def project_scope(%Scope{environment: nil} = scope, project) do
-    case Scope.for_local_project(project) do
+    case LocalScope.for_local_project(project) do
       {:ok, %{environment: environment, cwd: cwd}} ->
         %Scope{
           scope
@@ -565,7 +567,7 @@ defmodule CodeMySpec.Resources do
   # is to "where is this project's checkout" — more specific than
   # `local_path`, which nothing sets for a project that has only ever been
   # reached through its own harness connection and never through any other
-  # onboarding flow. `Scope.for_local_project/1`'s own registry check is
+  # onboarding flow. `LocalScope.for_local_project/1`'s own registry check is
   # spex-test-only (`CodeMySpec.Environments.register/2`'s own doc says so),
   # so in production it always missed and fell straight to `local_path` —
   # `nil` for a project like this, raising deep inside `Environments.Local.
@@ -595,7 +597,7 @@ defmodule CodeMySpec.Resources do
   defp harness_environment(_working_copy_id, project), do: fallback_environment(project)
 
   defp fallback_environment(project) do
-    case Scope.for_local_project(project) do
+    case LocalScope.for_local_project(project) do
       {:ok, %{environment: environment}} -> environment
       {:error, _reason} -> Environment.new(:local, project.local_path)
     end

@@ -15,21 +15,11 @@ defmodule CodeMySpec.Users.Scope do
   Feel free to extend the fields on this struct to fit the needs of
   growing application requirements.
 
-  Its own boundary, and a leaf: nearly every context takes a scope, so every
-  dependency this module takes on becomes a dependency of all of them. Keep it
-  a struct and constructors that read nothing — `Users.scope_for/1` is where
-  the one that loads preferences lives.
+  This is a pure data contract. Keep it free of dependencies because nearly
+  every context takes a scope.
   """
 
-  use Boundary,
-    top_level?: true,
-    deps: [CodeMySpec.ClientUsers.ClientUser, CodeMySpec.Environments],
-    exports: :all
-
-  alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.ClientUsers.ClientUser
-  alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Users.User
+  use Boundary, top_level?: true, deps: [], exports: :all
 
   defstruct user: nil,
             user_id: nil,
@@ -42,140 +32,14 @@ defmodule CodeMySpec.Users.Scope do
             environment: nil
 
   @type t :: %__MODULE__{
-          user: User.t() | ClientUser.t() | nil,
-          user_id: Ecto.UUID.t() | integer() | nil,
-          active_account: Account.t() | nil,
-          active_account_id: Ecto.UUID.t() | nil,
-          # A project struct, whatever shape `CodeMySpec.Projects.Project`
-          # currently has — Scope carries it without depending on that
-          # module's compiled type. Users → Projects would be the wrong
-          # direction (a project belongs to an account, which is many-to-many
-          # on users, not the other way round).
+          user: struct() | nil,
+          user_id: binary() | integer() | nil,
+          active_account: struct() | nil,
+          active_account_id: binary() | nil,
           active_project: struct() | nil,
-          active_project_id: Ecto.UUID.t() | nil,
-          # Which working copy of the project this scope speaks for. Files and
-          # problems are projections of one checkout, so a read or write of them
-          # without this is a statement about the project that no checkout made.
-          # `nil` outside a harness's channel — the web UI, mix tasks, anything
-          # asking about the project rather than a copy of it.
-          active_working_copy_id: Ecto.UUID.t() | nil,
+          active_project_id: binary() | nil,
+          active_working_copy_id: binary() | nil,
           cwd: String.t() | nil,
-          environment: Environment.t() | nil
+          environment: struct() | nil
         }
-
-  @doc """
-  Builds a complete local scope from a project record, preferring a live
-  checkout over `local_path`.
-
-  No config.yml needed. `resolve_environment/2` checks a live-registered
-  harness first — a currently-connected checkout wins over a stale or absent
-  column — and falls back to `root || project.local_path` only when nothing
-  is registered.
-
-  A `root` may be supplied to override the persisted `local_path`. A sprite
-  clones to a path it chooses at runtime and is not the only checkout of that
-  project, so the column is neither authoritative nor necessarily set for it —
-  the caller that did the cloning is.
-
-  Errors only when neither source resolves anything — a project with no
-  `local_path`, no `root`, and no live registration is genuinely reachable
-  nowhere, not merely missing a column. Failing that case here, once, means
-  every caller of this function gets the live-registry check for free instead
-  of each having to know to ask for it — a project onboarded outside the
-  usual `local_path`-setting flow (an adopted, pre-existing checkout with a
-  live harness but no persisted column) used to read as unreachable even
-  while a harness was actively connected to it.
-  """
-  @spec for_local_project(struct(), String.t() | nil) :: {:ok, t()} | {:error, atom()}
-  def for_local_project(project, root \\ nil)
-
-  def for_local_project(nil, _root), do: {:error, :no_local_path}
-
-  # `%_{}` — any struct, not specifically `CodeMySpec.Projects.Project` — is
-  # the point: every caller already holds a real project, and matching on the
-  # module by name would make Scope depend on Projects' compiled type for no
-  # reason a project belongs to an account, not to Users.
-  def for_local_project(%_{} = project, root) do
-    case resolve_environment(project, root) do
-      %Environment{cwd: nil} ->
-        {:error, :no_local_path}
-
-      env ->
-        user = default_local_user()
-
-        {:ok,
-         %__MODULE__{
-           user: user,
-           user_id: user.id,
-           active_account: nil,
-           active_account_id: project.account_id,
-           active_project: project,
-           active_project_id: project.id,
-           cwd: env.cwd,
-           environment: env
-         }}
-    end
-  end
-
-  @doc """
-  Builds a minimal local scope carrying only the working directory — no
-  linked project.
-
-  Used by bootstrap flows like `/codemyspec:init` that need a cwd and
-  environment but must run *before* any project is linked. Project-scoped
-  code paths see `active_project: nil` and fail with a clean "no project"
-  error instead of being blocked at the router.
-  """
-  @spec for_local_cwd(String.t() | nil) :: {:ok, t()} | {:error, :no_working_dir}
-  def for_local_cwd(nil), do: {:error, :no_working_dir}
-
-  def for_local_cwd(working_dir) when is_binary(working_dir) do
-    user = default_local_user()
-
-    {:ok,
-     %__MODULE__{
-       user: user,
-       user_id: user.id,
-       active_account: nil,
-       active_account_id: nil,
-       active_project: nil,
-       active_project_id: nil,
-       cwd: working_dir,
-       environment: Environment.new(:local, working_dir)
-     }}
-  end
-
-  # Consult the environment registry first — spex tests register an
-  # in-memory env so the LiveView (which rebuilds scope from the project
-  # record) gets the same env the test set up. Production projects have no
-  # registration and get a default :local env.
-  #
-  # A root-specific registration wins over the project's, because an
-  # environment describes a *working copy* and a project can have several. With
-  # only the project key, every harness on a project resolved to one env, so a
-  # second agent scanned the first one's files — and story 892's scenarios,
-  # which turn on one agent holding a component no other checkout has, could
-  # not be written at all. The reclaim deleted the component and the live
-  # agent's own sync re-projected it from what it believed was its working
-  # copy, which is correct behaviour on a false premise.
-  defp resolve_environment(%_{} = project, root) do
-    case registered_for(root) || CodeMySpec.Environments.lookup_registered(project.id) do
-      nil -> Environment.new(:local, root || project.local_path)
-      %Environment{} = env -> env
-    end
-  end
-
-  defp registered_for(nil), do: nil
-  defp registered_for(root), do: CodeMySpec.Environments.lookup_registered({:root, root})
-
-  # Default user for local/CLI contexts where no OAuth user is available
-  defp default_local_user do
-    %ClientUser{
-      id: 0,
-      email: "cli@localhost",
-      oauth_token: nil,
-      oauth_refresh_token: nil,
-      oauth_expires_at: nil
-    }
-  end
 end

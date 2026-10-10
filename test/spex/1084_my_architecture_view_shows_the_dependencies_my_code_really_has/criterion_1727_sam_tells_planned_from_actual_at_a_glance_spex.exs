@@ -29,6 +29,11 @@ defmodule CodeMySpecSpex.Story1084.Criterion1727Spex do
             @moduledoc false
             alias Accounts
             alias Notifications
+
+            def charge(order) do
+              Accounts.fetch(order)
+              Notifications.notify(order)
+            end
           end
           """)
 
@@ -47,7 +52,9 @@ defmodule CodeMySpecSpex.Story1084.Criterion1727Spex do
         section = component_section(context.html, "Billing")
         marker = dependency_marker(section, "Accounts")
 
-        assert marker, "expected a dependency marker next to Accounts in Billing's section: #{section}"
+        assert marker,
+               "expected a dependency marker next to Accounts in Billing's section: #{section}"
+
         assert marker =~ "planned", "expected Accounts to be marked planned, got: #{marker}"
         assert marker =~ "in code", "expected Accounts to be marked in code, got: #{marker}"
 
@@ -62,7 +69,9 @@ defmodule CodeMySpecSpex.Story1084.Criterion1727Spex do
                "expected a dependency marker next to Notifications in Billing's section: #{section}"
 
         assert marker =~ "in code", "expected Notifications to be marked in code, got: #{marker}"
-        refute marker =~ "planned", "expected Notifications not to be marked planned, got: #{marker}"
+
+        refute marker =~ "planned",
+               "expected Notifications not to be marked planned, got: #{marker}"
 
         {:ok, context}
       end
