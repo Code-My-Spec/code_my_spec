@@ -144,13 +144,6 @@ defmodule CmsHarnessTest.Machine do
     Agents.send_message(agent_id, ref, text)
   end
 
-  @doc "Take back a message the agent has not picked up."
-  @spec withdraw(String.t(), String.t()) :: :ok | {:error, term()}
-  def withdraw(agent_id, ref) do
-    ensure_supervisor()
-    Agents.withdraw(agent_id, ref)
-  end
-
   @doc "Whether this agent is mid-turn, and what is stacked behind it."
   @spec status(String.t()) :: {:ok, map()} | {:error, term()}
   def status(agent_id) do
@@ -177,7 +170,7 @@ defmodule CmsHarnessTest.Machine do
 
   defp await_idle(agent_id, timeout, started) do
     case Agents.status(agent_id) do
-      {:ok, %{busy?: false, queued: 0}} ->
+      {:ok, %{busy?: false}} ->
         :ok
 
       _ ->

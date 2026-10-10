@@ -130,7 +130,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1490Spex do
       end
 
       then_ "no automatic turn is requested and the completed task remains completed", context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
         {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
         refute tasks.isError, response_text(tasks)

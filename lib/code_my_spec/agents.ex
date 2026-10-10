@@ -1492,18 +1492,9 @@ defmodule CodeMySpec.Agents do
   scope in would mean *reconstructing* one from the row to re-derive an answer
   the row already holds.
 
-  Dispatched, not called. `message_agent/4` is a `GenServer.call` to the process
-  holding the working copy, and that process runs the *whole turn* inside the
-  call — so delivering this way waited out the agent's entire reply, inside the
-  person's form submission, and timed out:
-  `{GenServer, :call, [#PID<…>, {:stream_chat, "The user answered your
-  question…"}]}`. The answer was recorded and the agent was not told, so John
-  pasted it in by hand — which is the cost of this failing quietly: the loop
-  still runs, with a person carrying the message.
-
-  `Agents.StopDecision` had already learned this and says so: a dispatch goes
-  off this process so a busy agent is queued rather than interrupted. Same act,
-  same route.
+  Like operator messages and stop notices, answers enter the durable mailbox.
+  Admission returns without waiting for the model's reply. A busy engine leaves
+  the payload in the database until the shared pump can deliver it.
 
   Recorded before it is dispatched, and for the same reason the stop decision is:
   delivery can fail — a halted agent has nobody to tell — and what the person
@@ -2529,68 +2520,14 @@ defmodule CodeMySpec.Agents do
   @doc """
   Take back a message the agent has not picked up yet.
 
-  Asked of the machine first and recorded second, for the same reason as
-  sending: the agent's process is the only thing that knows whether the turn
-  ended a moment ago, and a withdrawal that only cleared the record would leave
-  the operator believing the agent will not see something it is about to act
-  on.
-
-  `{:error, :already_delivered}` is the honest answer to a click that lost the
-  race — which is most of them, because people click when a turn is about to
-  end.
+  Withdrawal and consumption lock the same database mailbox entry. A queued or
+  claimed message can be withdrawn; a consumed message is already delivered.
+  Historical messages without mailbox ownership cannot change delivery state.
   """
   @spec withdraw_message(Scope.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, Conversations.Message.t()} | {:error, term()}
-  def withdraw_message(%Scope{} = scope, id, ref) when is_binary(ref) do
-    case Repo.get_by(Mailbox.Entry, agent_id: id, delivery_ref: ref) do
-      nil -> withdraw_legacy_message(scope, id, ref)
-      _ -> Mailbox.withdraw(scope, id, ref)
-    end
-  end
-
-  defp withdraw_legacy_message(scope, id, ref) do
-    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
-         :ok <-
-           agent.working_copy_id
-           |> Transport.impl().withdraw_message(agent, ref, @message_timeout_ms)
-           |> taken_back(),
-         %Conversations.Message{} = message <- Conversations.pending_message_by_ref(ref) do
-      Conversations.set_delivery(message, :withdrawn)
-    else
-      # The machine took it back and the row is already gone or already
-      # settled. Nothing to correct, and nothing worth failing over.
-      nil ->
-        {:error, :not_pending}
-
-      {:error, :already_delivered} ->
-        with :ok <- reconcile_consumed_message(ref) do
-          {:error, :already_delivered}
-        end
-
-      error ->
-        error
-    end
-  end
-
-  # The harness confirmed consumption even if its delivery event was lost.
-  # Keep refusing withdrawal, but stop presenting the message as pending.
-  defp reconcile_consumed_message(ref) do
-    case Conversations.pending_message_by_ref(ref) do
-      nil ->
-        :ok
-
-      message ->
-        case Conversations.set_delivery(message, :delivered) do
-          {:ok, _updated} -> :ok
-          error -> error
-        end
-    end
-  end
-
-  # A ref the harness never queued, typically one a restart dropped, will
-  # never be delivered (5150cd98).
-  defp taken_back({:error, :never_received}), do: :ok
-  defp taken_back(result), do: result
+  def withdraw_message(%Scope{} = scope, id, ref) when is_binary(ref),
+    do: Mailbox.withdraw(scope, id, ref)
 
   @doc """
   Write one step an agent took to the conversation it belongs to.
@@ -2614,8 +2551,12 @@ defmodule CodeMySpec.Agents do
         _opts
       ) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
-         true <- agent.working_copy_id == scope.active_working_copy_id do
-      Mailbox.ready(scope, agent_id, generation, event["ref"])
+         true <- agent.working_copy_id == scope.active_working_copy_id,
+         {:ok, _} <- Mailbox.ready(scope, agent_id, generation, event["ref"]) do
+      if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do
+        with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent_id),
+             do: broadcast(scope, {:agent_turn, current})
+      end
 
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Mailbox.pump(scope, agent_id)
@@ -2649,8 +2590,7 @@ defmodule CodeMySpec.Agents do
   # Still written to the transcript as well: the step is part of what the agent
   # did, and the row is the current state of it. Two different questions.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_started"} = event, _opts) do
-    # A queued turn keeps the run's start. The harness announces every start but
-    # only the run's end, so overwriting here dated the run from its last turn and
+    # Keep the first start timestamp for duplicate start notifications;
     # `Work.record_decline/3` missed a task an earlier turn closed — the coder was
     # damped for ten minutes as having refused work (35e80d6d).
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
@@ -2977,7 +2917,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  defp current_terminal_event?(_scope, _agent_id, _legacy), do: true
+  defp current_terminal_event?(_scope, _agent_id, _event), do: false
 
   defp record_terminal_event(scope, agent_id, opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
@@ -3038,21 +2978,6 @@ defmodule CodeMySpec.Agents do
         # else: the transcript is untouched and the agent is still running on
         # the summary it just made.
         Logger.info("[Agents] a compaction checkpoint for #{conversation.id} was not saved")
-        :ok
-    end
-  end
-
-  # A message the agent has just picked up is not a step of a turn — it is the
-  # end of the operator's ability to take it back, and the only thing to record
-  # is that.
-  defp write_turn_event(_conversation, _agent, %{"kind" => "message_delivered", "ref" => ref})
-       when is_binary(ref) do
-    case {Repo.get_by(Mailbox.Entry, delivery_ref: ref),
-          Conversations.pending_message_by_ref(ref)} do
-      {nil, %Conversations.Message{} = message} ->
-        with {:ok, _} <- Conversations.set_delivery(message, :delivered), do: :ok
-
-      _ ->
         :ok
     end
   end

@@ -1,5 +1,5 @@
 defmodule CodeMySpecTest.DeliveryBeforeAckTransport do
-  @moduledoc "A transport boundary that delivers before its queued acknowledgement returns."
+  @moduledoc "A transport boundary that delivers before its transport acknowledgement returns."
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Users.Scope
@@ -13,12 +13,6 @@ defmodule CodeMySpecTest.DeliveryBeforeAckTransport do
 
     {:ok, _} = Agents.Mailbox.consume(scope, agent.id, ref, "test-engine")
 
-    :ok =
-      Agents.record_turn_event(scope, agent.id, %{
-        "kind" => "message_delivered",
-        "ref" => ref
-      })
-
-    {:ok, :queued}
+    {:ok, :started}
   end
 end

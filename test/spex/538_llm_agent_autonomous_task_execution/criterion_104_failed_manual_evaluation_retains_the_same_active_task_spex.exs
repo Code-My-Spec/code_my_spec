@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1495Spex do
         {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == context.tasks_before
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
         {:ok, context}
       end

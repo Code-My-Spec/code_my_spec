@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2026Spex do
   end
 
   spex "A runnable main agent reaches the provider right after a question commits",
-       criterion: 2026 do
+    criterion: 2026 do
     scenario "a coding agent raises a new question and a continuous, idle main is given a turn" do
       given_ "a continuous, idle main agent is running", context do
         context = given_a_staffed_checkout(context, "spex_2026")
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2026Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(main.id)
+        assert {:ok, %{busy?: false}} = Machine.status(main.id)
 
         coding_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coding.id}}
 
@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2026Spex do
         # main's turn to reach the provider before asking whether it is busy.
         HeldProvider.await_request()
 
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id),
+        assert {:ok, %{busy?: true}} = Machine.status(context.main_id),
                """
                The main agent was not given a turn right after the question
                committed. Nothing in this scenario ever calls CheckIn, so a

@@ -41,7 +41,8 @@ defmodule CodeMySpecSpex.Story1051.Criterion2088Spex do
                ]
 
         assert Enum.map(H.entries(ctx), & &1.state) == [:consumed, :queued, :queued, :queued]
-        assert {:ok, %{queued: 0}} = Fixtures.agent_status(ctx.agent.id)
+        assert {:ok, status} = Fixtures.agent_status(ctx.agent.id)
+        refute Map.has_key?(status, :queued)
         HeldProvider.release()
         H.await(fn -> Enum.all?(H.entries(ctx), &(&1.state == :completed)) end)
         {:ok, ctx}

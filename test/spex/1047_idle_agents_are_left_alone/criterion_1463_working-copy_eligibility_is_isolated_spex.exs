@@ -116,8 +116,8 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
       end
 
       then_ "only the assigned checkout's agent takes a turn", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.first_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.second_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.first_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.second_id)
         assert length(HeldProvider.seen()) == 1
 
         {:reply, conversation, _} =

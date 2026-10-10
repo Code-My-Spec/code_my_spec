@@ -603,33 +603,6 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
-  The message waiting on `ref`, if it is still waiting.
-
-  Scoped to `:pending` deliberately. A ref that names a message the agent
-  already has must not be findable here, or a withdrawal would clear a row the
-  agent is acting on and the transcript would disagree with the agent.
-  """
-  @spec pending_message_by_ref(String.t()) :: Message.t() | nil
-  def pending_message_by_ref(ref) when is_binary(ref) do
-    Repo.get_by(Message, delivery_ref: ref, delivery: :pending)
-  end
-
-  @doc """
-  What this conversation is still waiting to deliver, oldest first.
-
-  Read rather than held in a view's assigns: a person who reloads the page has
-  not stopped waiting, and a pending message that vanished on refresh reads as
-  one that was never accepted.
-  """
-  @spec pending_messages(Conversation.t()) :: [Message.t()]
-  def pending_messages(%Conversation{} = conversation) do
-    Message
-    |> where([m], m.conversation_id == ^conversation.id and m.delivery == :pending)
-    |> order_by([m], asc: m.inserted_at)
-    |> Repo.all()
-  end
-
-  @doc """
   A page of messages for a conversation, oldest-first (ready to render).
 
   Paginated by default — returns the most recent `:limit` messages (default

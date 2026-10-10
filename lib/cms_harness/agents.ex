@@ -118,51 +118,24 @@ defmodule CmsHarness.Agents do
   @spec halt(String.t()) :: :ok | {:error, :not_running}
   defdelegate halt(agent_id), to: Engine, as: :stop
 
-  @doc """
-  Give a running agent something to do, and wait for the turn.
-
-  The whole of what a held stdin pipe was for. `Engine.chat/3` is the call; this
-  is the name the wire uses for it.
-  """
-  @spec message(String.t(), String.t(), timeout()) :: {:ok, String.t()} | {:error, term()}
-  def message(agent_id, text, timeout \\ 180_000) when is_binary(text) do
-    case Engine.chat(agent_id, text, timeout) do
-      {:ok, result} -> {:ok, said(result)}
-      {:error, reason} -> {:error, reason}
-    end
+  @doc "Consume a claimed mailbox message; waiting for the result does not bypass consumption."
+  def send_message(agent_id, ref, text, timeout \\ 180_000, opts \\ []) when is_binary(text) do
+    result = Engine.send_message(agent_id, ref, text, timeout, opts)
+    if Keyword.get(opts, :await, false), do: message_result(result), else: result
   end
 
-  @doc """
-  Hand a running agent a message without waiting for the turn.
+  defp message_result({:ok, result}), do: {:ok, said(result)}
+  defp message_result(error), do: error
 
-  `ref` is the operator's handle on it. Answers `:started` or `:queued` — the
-  difference is whether it can still be taken back, which is the only thing the
-  sender can act on before the turn ends.
-  """
-  @spec send_message(String.t(), String.t(), String.t(), timeout()) ::
-          {:ok, :started | :queued} | {:error, term()}
+  @doc "Request coalescible work on an idle engine; this carries no queued instruction."
   def request_work_turn(agent_id, ref, text, timeout \\ 180_000),
     do: Engine.request_work_turn(agent_id, ref, text, timeout)
 
-  def send_message(agent_id, ref, text, timeout \\ 180_000) when is_binary(text) do
-    Engine.send_message(agent_id, ref, text, timeout)
-  end
-
   @doc """
-  Take back a message the agent has not picked up.
-
-  `{:error, :already_delivered}` when it has, which is a real outcome rather
-  than a failure to handle: the window is small and it is exactly the window in
-  which people click.
-  """
-  @spec withdraw(String.t(), String.t()) :: :ok | {:error, term()}
-  defdelegate withdraw(agent_id, ref), to: Engine
-
-  @doc """
-  What one agent is doing right now — mid-turn, and how much is behind it.
+  Whether the agent currently has an executing turn.
   """
   @spec status(String.t()) ::
-          {:ok, %{busy?: boolean(), queued: non_neg_integer()}} | {:error, :not_running}
+          {:ok, %{busy?: boolean()}} | {:error, :not_running}
   defdelegate status(agent_id), to: Engine
 
   @doc """
@@ -207,11 +180,6 @@ defmodule CmsHarness.Agents do
   # somewhere inside, so the reply is narrowed here, where the wire contract
   # already says it is a string.
   #
-  # Busy is one of the answers. Reported as what it is rather than as an empty
-  # turn: an operator told "(no message)" concludes the agent ignored them, and
-  # sends it again.
-  defp said({:queued, _ref}), do: "(queued — the agent is mid-turn and will get this next)"
-
   # A turn that failed comes back as an `:ok` result carrying an error, and a
   # clause that only looks at `text` reports that as "(no message)" — the agent
   # ignoring you, rather than the agent's provider refusing.

@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3564Spex do
         for id <- [main.id, coding.id] do
           assert {:ok, _} = Machine.start_agent(id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(id)
+          assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
         {:reply, conversation, _} =
@@ -78,8 +78,8 @@ defmodule CodeMySpecSpex.Story1047.Criterion3564Spex do
       end
 
       then_ "only main is taking a turn and both agents still choose their own tasks", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert length(HeldProvider.seen()) == 1
 
         for id <- [context.main_id, context.coding_id] do

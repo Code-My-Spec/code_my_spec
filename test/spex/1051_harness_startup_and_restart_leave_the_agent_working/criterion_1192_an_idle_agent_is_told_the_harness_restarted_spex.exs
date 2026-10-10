@@ -50,7 +50,8 @@ defmodule CodeMySpecSpex.Story1051.Criterion3210Spex do
     :ok
   end
 
-  spex "An agent is told when its harness restarts, and told what happened to any work of its own that was in flight", criterion: 1192 do
+  spex "An agent is told when its harness restarts, and told what happened to any work of its own that was in flight",
+    criterion: 1192 do
     scenario "An idle agent is told the harness restarted" do
       given_ "an agent that is idle with nothing in flight, and live work for its role",
              context do
@@ -68,7 +69,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3210Spex do
         # Idle is the premise, so it is checked rather than assumed. An agent
         # that happened to be mid-turn here would make this criterion assert
         # 3209's claim and pass for the wrong reason.
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent_id),
+        assert {:ok, %{busy?: false}} = Machine.status(agent_id),
                "the premise is an idle agent, and this one is working"
 
         path = Fixtures.agent_conversation_path(context.scope, %{id: agent_id})

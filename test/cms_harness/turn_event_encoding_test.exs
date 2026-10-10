@@ -57,10 +57,10 @@ defmodule CmsHarness.TurnEventEncodingTest do
     end
 
     test "a delivery carries the ref, which is the whole of what it says" do
-      encoded = ChannelClient.encode_turn_event(%{event: :message_delivered, ref: "r-1"})
+      encoded = ChannelClient.encode_turn_event(%{event: :turn_started, ref: "r-1"})
 
       assert encoded["ref"] == "r-1"
-      assert encoded["kind"] == "message_delivered"
+      assert encoded["kind"] == "turn_started"
     end
 
     test "a turn starting carries no text, not an inspected empty map" do

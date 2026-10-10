@@ -120,7 +120,12 @@ defmodule CodeMySpec.Agents.Mailbox do
           from e in Entry, where: e.agent_id == ^agent_id and e.state in [:consumed, :uncertain]
         )
 
-      reconcile_engine(active, generation, current_ref)
+      result = reconcile_engine(active, generation, current_ref)
+
+      if is_nil(current_ref),
+        do: agent |> Ecto.Changeset.change(turn_started_at: nil) |> Repo.update!()
+
+      result
     end)
     |> publish_transition()
   end
@@ -187,7 +192,7 @@ defmodule CodeMySpec.Agents.Mailbox do
   end
 
   # Delivery is established by consume/4, never by a transport acknowledgement.
-  defp reconcile_dispatch(_scope, _agent_id, _entry, {:ok, _}), do: {:ok, :started}
+  defp reconcile_dispatch(_scope, _agent_id, _entry, {:ok, :started}), do: {:ok, :started}
 
   defp reconcile_dispatch(scope, agent_id, entry, {:error, reason} = error) do
     case transition(scope, agent_id, entry.delivery_ref, fn

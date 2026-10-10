@@ -39,8 +39,23 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
   test "a fresh turn and a resumed one both answer from the recording", %{id: id} do
     sessions_before = codex_sessions()
 
-    assert {:ok, first} = Engine.chat(id, "Reply with the single word: ready.")
-    assert {:ok, second} = Engine.chat(id, "Reply with the single word: again.")
+    assert {:ok, first} =
+             Engine.send_message(
+               id,
+               Ecto.UUID.generate(),
+               "Reply with the single word: ready.",
+               180_000,
+               await: true
+             )
+
+    assert {:ok, second} =
+             Engine.send_message(
+               id,
+               Ecto.UUID.generate(),
+               "Reply with the single word: again.",
+               180_000,
+               await: true
+             )
 
     for result <- [first, second] do
       assert result.status == :completed, "the recorded turn did not complete: #{inspect(result)}"

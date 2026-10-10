@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "**qa_complete**"
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
         {:reply, conversation, _} =
           ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
@@ -124,7 +124,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
 
         refute conversation.isError, response_text(conversation)
         assert response_text(conversation) == context.conversation_before
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert Machine.history(context.agent_id) == context.history_before
         assert HeldProvider.seen() == []
         {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)

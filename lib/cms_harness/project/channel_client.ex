@@ -1507,34 +1507,6 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # The agent id is the handle. It used to be a process group id paired with the
-  # boot it belonged to, because a group number outlives the group and gets
-  # reused — a supervised process has no such problem, and the server already
-  # knows the id it asked us to start.
-  # Give a running agent something to do.
-  #
-  # Answered from a task, not from here: a turn is a model call and can take
-  # minutes, and holding the channel for it would stall every other thing this
-  # copy needs to say — its reports, its manifests, its next stop — behind one
-  # agent thinking.
-  def handle_message(_topic, "message_agent", %{"ref" => ref} = msg, socket) do
-    topic = socket.assigns.topic
-    parent = self()
-
-    Task.start(fn ->
-      result =
-        CmsHarness.Agents.message(
-          msg["agent_id"],
-          msg["message"],
-          msg["timeout"] || 180_000
-        )
-
-      send(parent, {:agent_message_result, topic, ref, result})
-    end)
-
-    {:ok, socket}
-  end
-
   # Hand an agent a message and say what became of it, without waiting for the
   # turn.
   #
@@ -1564,19 +1536,6 @@ defmodule CmsHarness.Project.ChannelClient do
       socket.assigns.topic,
       "agent_send_result",
       Map.put(encode_send_result(result), "ref", ref)
-    )
-
-    {:ok, socket}
-  end
-
-  def handle_message(_topic, "withdraw_message", %{"ref" => ref} = msg, socket) do
-    result = CmsHarness.Agents.withdraw(msg["agent_id"], msg["message_ref"])
-
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_withdraw_result",
-      Map.put(encode_withdraw_result(result), "ref", ref)
     )
 
     {:ok, socket}
@@ -1637,7 +1596,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # A script on the server asked for something that lives here. The browser is
   # the only such thing today, and it is on this machine because Chrome is.
-  # Answered from a task, on the same reasoning as `message_agent` above and
+  # Answered from a task, on the same reasoning as mailbox delivery above and
   # for a reason the browser split made unavoidable. This used to run inline,
   # which held the channel for the length of the call — survivable while every
   # such call was capped at thirty seconds, and not survivable now the caller
@@ -2019,8 +1978,7 @@ defmodule CmsHarness.Project.ChannelClient do
       "kind" => to_string(Map.get(envelope, :event, "step")),
       "seq" => Map.get(envelope, :seq),
       "turn" => Map.get(envelope, :turn),
-      # Only a delivery event has one, and for that event it is the whole
-      # message: this named thing is no longer withdrawable.
+      # Turn boundaries carry the durable identity and owning engine generation.
       "ref" => Map.get(envelope, :ref),
       "generation" => Map.get(envelope, :generation),
       "text" => turn_event_text(envelope),
@@ -2176,36 +2134,10 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp primary_argument(_input), do: nil
 
-  # Started or queued, which is the whole answer: the difference is whether the
-  # sender can still take it back.
-  defp encode_send_result({:ok, disposition}) when disposition in [:started, :queued],
-    do: %{"status" => "ok", "disposition" => to_string(disposition)}
+  defp encode_send_result({:ok, :started}),
+    do: %{"status" => "ok", "disposition" => "started"}
 
   defp encode_send_result({:error, reason}),
-    do: %{"status" => "error", "reason" => reason_text(reason)}
-
-  # `already_delivered` travels as its own status rather than as an error
-  # string. It is not a failure — the agent has the message — and whoever asked
-  # has to be able to tell it from "the machine could not be reached", because
-  # one means the agent is acting on it and the other means nobody knows.
-  defp encode_withdraw_result(:ok), do: %{"status" => "ok"}
-
-  defp encode_withdraw_result({:error, :already_delivered}),
-    do: %{"status" => "already_delivered"}
-
-  defp encode_withdraw_result({:error, :never_received}),
-    do: %{"status" => "never_received"}
-
-  defp encode_withdraw_result({:error, reason}),
-    do: %{"status" => "error", "reason" => reason_text(reason)}
-
-  defp encode_message_result({:ok, reply}) when is_binary(reply),
-    do: %{"status" => "ok", "reply" => reply}
-
-  defp encode_message_result({:ok, other}),
-    do: %{"status" => "ok", "reply" => inspect(other)}
-
-  defp encode_message_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
   defp encode_create_result({:ok, %{root: root, working_copy_id: id}}),
@@ -2304,7 +2236,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @impl Slipstream
-  # The answer to a `message_agent`, handed back by the task that ran the turn.
+  # The startup result, handed back by the task that launched the engine.
   # Pushed from here rather than from that task, because this process owns the
   # socket.
   def handle_info({:agent_start_result, topic, ref, id, result}, socket) do
@@ -2339,17 +2271,6 @@ defmodule CmsHarness.Project.ChannelClient do
       "agent_send_result",
       Map.put(encode_send_result(result), "ref", ref),
       5_000
-    )
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:agent_message_result, topic, ref, result}, socket) do
-    push(
-      socket,
-      topic,
-      "agent_message_result",
-      Map.put(encode_message_result(result), "ref", ref)
     )
 
     {:noreply, socket}

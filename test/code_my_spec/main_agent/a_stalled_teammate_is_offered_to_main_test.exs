@@ -7,6 +7,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Mailbox
@@ -103,12 +104,6 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
     assert_received {:agent_dispatch, ^id, ref, _text}
 
     assert {:ok, _} = Mailbox.consume(ctx.scope, id, ref, "test-main")
-
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
   end
 
   defp called(ctx, name) do
@@ -124,7 +119,14 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
         turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)
       })
 
-    Agents.record_turn_event(ctx.scope, ctx.main.id, %{"kind" => "turn_ended"})
+    Agents.record_turn_event(
+      ctx.scope,
+      ctx.main.id,
+      ChannelClient.encode_turn_event(
+        CodeMySpecSpex.Fixtures.mailbox_turn_end(ctx.scope, ctx.main.id)
+      )
+    )
+
     await_dispatches()
   end
 

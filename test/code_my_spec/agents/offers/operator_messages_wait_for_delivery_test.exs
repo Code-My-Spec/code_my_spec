@@ -68,12 +68,6 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
 
     {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
 
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
-
     assert [%{status: :open}] = Offers.list_for_agent(ctx.agent.id)
 
     assert :ok =
@@ -173,12 +167,6 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
 
     {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
 
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
-
     assert :ok = Offers.settle_turn(ctx.agent)
     assert [offer] = Offers.list_for_agent(ctx.agent.id)
     assert offer.status == :n_a
@@ -189,12 +177,6 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert_received {:agent_dispatch, _, ref, "Inspect this."}
 
     {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
-
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
 
     assert {:ok, _} =
              Conversations.add_tool_call(
@@ -257,12 +239,6 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert pending.outcome_at == nil
 
     {:ok, _} = Agents.Mailbox.consume(ctx.scope, id, ref, "test-engine")
-
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
 
     assert Repo.get!(Message, message.id).delivery == :delivered
 

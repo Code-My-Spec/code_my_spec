@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
 
         refute answer.isError, response_text(answer)
         assert response_text(answer) =~ "Keep existing"
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert [_answer] = Fixtures.queued_agent_messages(context.scope, context.agent_id)
         assert length(HeldProvider.seen()) == 1
         {:ok, view, _} = live(context.conn, context.conversation_path)

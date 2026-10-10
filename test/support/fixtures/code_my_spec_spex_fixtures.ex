@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   use Boundary,
     top_level?: true,
+    exports: [GraphVerification],
     deps: [
       CmsHarness,
       CodeMySpec,
@@ -1907,12 +1908,17 @@ defmodule CodeMySpecSpex.Fixtures do
     scope
     |> AgentMailbox.entries(agent_id)
     |> Enum.find(&(&1.state == :consumed))
-    |> mailbox_terminal_event()
+    |> mailbox_terminal_event(scope, agent_id)
   end
 
-  defp mailbox_terminal_event(nil), do: %{event: :turn_ended}
+  defp mailbox_terminal_event(nil, scope, agent_id) do
+    {:ok, agent} = AgentsRepository.fetch_agent(scope, agent_id)
+    generation = agent.mailbox_generation || "fixture-engine"
+    {:ok, :ok} = AgentMailbox.register(scope, agent_id, generation)
+    %{event: :turn_ended, ref: "work-#{Ecto.UUID.generate()}", generation: generation}
+  end
 
-  defp mailbox_terminal_event(entry),
+  defp mailbox_terminal_event(entry, _scope, _agent_id),
     do: %{event: :turn_ended, ref: entry.delivery_ref, generation: entry.generation}
 
   @doc "Deliver a queued message and begin its turn through the harness channel."
@@ -1920,7 +1926,7 @@ defmodule CodeMySpecSpex.Fixtures do
     consume_recorded_dispatch(scope, agent_id, ref)
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 
-    Enum.each([%{event: :message_delivered, ref: ref}, %{event: :turn_started}], fn event ->
+    Enum.each([Map.put(mailbox_turn_end(scope, agent_id), :event, :turn_started)], fn event ->
       case CodeMySpecWeb.HarnessProjectChannel.handle_in(
              "agent_turn_event",
              %{
@@ -3137,9 +3143,8 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   Give an agent something to do without waiting for the turn.
 
-  `send_message/4` rather than `message/4`: a spec that waited would wait on a
-  model, and what these criteria are about is what happens to a *delivery* while
-  an agent is busy — which needs the agent busy, not the spec blocked.
+  Admission returns while the message waits in the database mailbox. The
+  scenario can observe delivery while the agent remains busy.
   """
   def send_agent_message(agent_id, text) do
     CodeMySpec.Agents.send_to_agent(agent_id, text, :operator_message)
@@ -3149,7 +3154,7 @@ defmodule CodeMySpecSpex.Fixtures do
   Tell an agent something and wait for the turn it takes about it.
 
   The waiting half of the pair above, and the one a *measured* run needs.
-  `send_message/4` answers `:queued` the moment the message is accepted, and an
+  `send_to_agent/4` answers `:queued` when the message is accepted, and an
   agent that has not dequeued it yet reads as idle — so a helper that sent and
   then waited for idle could return before the turn began, with an empty
   transcript, and count that as the agent having done nothing.
@@ -3160,7 +3165,33 @@ defmodule CodeMySpecSpex.Fixtures do
   caused.
   """
   def message_agent_and_wait(agent_id, text, timeout) do
-    CmsHarness.Agents.message(agent_id, text, timeout)
+    with {:ok, _} <- send_agent_message(agent_id, text) do
+      await_mailbox_turn(agent_id, System.monotonic_time(:millisecond) + timeout)
+    end
+  end
+
+  defp await_mailbox_turn(agent_id, deadline) do
+    agent = Repo.get!(CodeMySpec.Agents.Agent, agent_id)
+    scope = %Scope{active_account_id: agent.account_id, active_project_id: agent.project_id}
+
+    pending =
+      Enum.any?(
+        AgentMailbox.entries(scope, agent_id),
+        &(&1.state in [:queued, :claimed, :consumed, :uncertain])
+      )
+
+    cond do
+      not pending ->
+        with {:ok, messages} <- CmsHarness.Agents.history(agent_id),
+             do: {:ok, inspect(messages, pretty: true, limit: :infinity)}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:error, :message_timed_out}
+
+      true ->
+        Process.sleep(20)
+        await_mailbox_turn(agent_id, deadline)
+    end
   end
 
   defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools

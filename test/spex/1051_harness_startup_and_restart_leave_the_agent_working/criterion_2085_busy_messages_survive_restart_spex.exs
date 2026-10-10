@@ -34,7 +34,8 @@ defmodule CodeMySpecSpex.Story1051.Criterion2085Spex do
 
       then_ "the same message identities execute in order with no engine payload queue", ctx do
         assert Enum.map(H.entries(ctx), & &1.delivery_ref) == ctx.refs
-        assert {:ok, %{queued: 0}} = Fixtures.agent_status(ctx.agent.id)
+        assert {:ok, status} = Fixtures.agent_status(ctx.agent.id)
+        refute Map.has_key?(status, :queued)
         HeldProvider.release()
 
         H.await(fn ->

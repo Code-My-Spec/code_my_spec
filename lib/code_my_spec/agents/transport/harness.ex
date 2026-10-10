@@ -51,22 +51,6 @@ defmodule CodeMySpec.Agents.Transport.Harness do
   end
 
   @impl true
-  def message_agent(working_copy_id, %Agent{} = agent, message, timeout) do
-    case holder(working_copy_id) do
-      {:ok, pid} ->
-        call(
-          pid,
-          {:message_agent, %{"agent_id" => agent.id, "message" => message, "timeout" => timeout}},
-          timeout,
-          :message_timed_out
-        )
-
-      :none ->
-        unreachable(working_copy_id, agent, "message")
-    end
-  end
-
-  @impl true
   def dispatch_message(working_copy_id, %Agent{} = agent, ref, message, timeout) do
     case holder(working_copy_id) do
       {:ok, pid} ->
@@ -97,22 +81,6 @@ defmodule CodeMySpec.Agents.Transport.Harness do
 
       :none ->
         unreachable(working_copy_id, agent, "work turn")
-    end
-  end
-
-  @impl true
-  def withdraw_message(working_copy_id, %Agent{} = agent, ref, timeout) do
-    case holder(working_copy_id) do
-      {:ok, pid} ->
-        call(
-          pid,
-          {:withdraw_message, %{"agent_id" => agent.id, "message_ref" => ref}},
-          timeout,
-          :withdraw_timed_out
-        )
-
-      :none ->
-        unreachable(working_copy_id, agent, "withdraw a message from")
     end
   end
 

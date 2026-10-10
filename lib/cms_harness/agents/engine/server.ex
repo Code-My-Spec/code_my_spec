@@ -4,7 +4,6 @@ defmodule CmsHarness.Agents.Engine.Server do
   use GenServer, restart: :temporary
 
   alias CmsHarness.Agents.Engine.Impl
-  alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
 
   def start_link(opts) do
@@ -27,34 +26,20 @@ defmodule CmsHarness.Agents.Engine.Server do
     end
   end
 
-  # Idle, so the turn starts now and this caller waits it out.
   @impl true
-  def handle_call({:chat, message, timeout}, from, %{turn: nil} = state) do
-    entry = %{ref: Impl.new_ref(), message: message, timeout: timeout}
-
-    case State.offer(state, entry) do
-      {:start, entry, state} ->
-        {:noreply,
-         %{state | turn: Impl.start_turn(state, entry.ref, entry.message, entry.timeout, from)}}
-    end
-  end
-
-  # Waiting payloads belong to the server database, never this process.
-  def handle_call({:chat, _message, _timeout}, _from, state),
-    do: {:reply, {:error, :busy}, state}
-
-  def handle_call({:send, ref, message, timeout}, _from, %{turn: nil} = state) do
+  def handle_call({:send, ref, message, timeout, await?}, from, %{turn: nil} = state) do
     case Impl.consume_message(state, ref) do
       :ok ->
-        {:reply, {:ok, :started},
-         %{state | turn: Impl.start_turn(state, ref, message, timeout, nil)}}
+        awaiting = if await?, do: from
+        state = %{state | turn: Impl.start_turn(state, ref, message, timeout, awaiting)}
+        if await?, do: {:noreply, state}, else: {:reply, {:ok, :started}, state}
 
       {:error, _} = error ->
         {:reply, error, state}
     end
   end
 
-  def handle_call({:send, _ref, _message, _timeout}, _from, state),
+  def handle_call({:send, _ref, _message, _timeout, _await?}, _from, state),
     do: {:reply, {:error, :busy}, state}
 
   def handle_call({:work_available, ref, message, timeout}, _from, state) do
@@ -68,9 +53,6 @@ defmodule CmsHarness.Agents.Engine.Server do
     end
   end
 
-  # Only what is still waiting can be taken back. Anything else the agent
-  # already has, and there is no unsaying it — so this says so instead of
-  # clearing a queue entry that is not there and reporting success.
   def handle_call(:alloy, _from, state) do
     {:reply, {:ok, state.alloy}, state}
   end
@@ -85,10 +67,6 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   def handle_call(:mcp_client, _from, state) do
     {:reply, state.mcp_client, state}
-  end
-
-  def handle_call({:withdraw, ref}, _from, state) do
-    {:reply, Keeper.withdraw(state.agent_id, ref), state}
   end
 
   @impl true

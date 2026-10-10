@@ -2247,7 +2247,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">
               {Message.text(notice)}
             </span>
-            <.withdraw_button :if={length(run) > 1 and notice.delivery == :pending} message={notice} />
+            <.withdraw_button
+              :if={length(run) > 1 and notice.mailbox_state in ["queued", "claimed"]}
+              message={notice}
+            />
           </div>
         </details>
         <span :if={run == []} class="min-w-0 whitespace-pre-wrap break-words">
@@ -2256,7 +2259,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <span class="opacity-60">
           {message.delivery_diagnostic || message.mailbox_state || "queued"}
         </span>
-        <.withdraw_button :if={length(run) < 2 and message.delivery == :pending} message={message} />
+        <.withdraw_button
+          :if={length(run) < 2 and message.mailbox_state in ["queued", "claimed"]}
+          message={message}
+        />
       </div>
 
       <form

@@ -9,10 +9,6 @@ defmodule CmsHarness.Agents.Engine.State do
   @type entry :: %{ref: String.t(), message: String.t(), timeout: timeout()}
   @type state :: %{required(:turn) => map() | nil}
 
-  @spec offer(state(), entry()) :: {:start, entry(), state()} | {:rejected, :busy, state()}
-  def offer(%{turn: nil} = state, entry), do: {:start, entry, state}
-  def offer(state, _entry), do: {:rejected, :busy, state}
-
   @doc "Admit a work request only when idle; retain admitted IDs against transport replays."
   def offer_work(state, entry) do
     admitted = Map.get(state, :admitted_work_requests, MapSet.new())
@@ -32,11 +28,8 @@ defmodule CmsHarness.Agents.Engine.State do
   @spec finish(state()) :: {:idle, state()}
   def finish(state), do: {:idle, %{state | turn: nil}}
 
-  @spec withdraw(state(), String.t()) :: :already_delivered
-  def withdraw(_state, _ref), do: :already_delivered
-
-  @spec status(state()) :: %{busy?: boolean(), queued: non_neg_integer()}
-  def status(state), do: %{busy?: state.turn != nil, queued: 0}
+  @spec status(state()) :: %{busy?: boolean()}
+  def status(state), do: %{busy?: state.turn != nil}
 
   def whereis(agent_id) do
     case Registry.lookup(CmsHarness.Registry, {:agent, agent_id}) do

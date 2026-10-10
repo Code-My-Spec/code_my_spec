@@ -272,16 +272,6 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   end
 
   @doc """
-  Take back a message by the ref it was sent under, on the machine.
-
-  Here rather than through the page for criteria whose claim is about the
-  machine's answer — the page is checked by the criteria about what the
-  operator is told.
-  """
-  @spec withdraw(String.t(), String.t()) :: :ok | {:error, term()}
-  defdelegate withdraw(agent_id, ref), to: Machine
-
-  @doc """
   End an agent's process without changing what the record says it should be.
 
   What a harness restart does: the process goes, the intent does not. Not the

@@ -49,9 +49,9 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   So `deliver/4` takes the requester\'s id: everyone else keeps the silence,
   and the one who asked gets an answer either way.
 
-  Delivery is dispatched, never called: `message_agent/4` runs the whole turn
-  inside a `GenServer.call`, and this runs inside the reconciler, which must not
-  wait out an agent's reply to finish recording a run.
+  Delivery enters the durable mailbox without waiting for the agent's turn.
+  The reconciler can finish recording the run while the notification waits
+  for consumption.
 
   An agent with no process is not owed delivery and is not a failure
   (criterion 3049). `dispatch_message` answers `{:error, :not_running}` and this

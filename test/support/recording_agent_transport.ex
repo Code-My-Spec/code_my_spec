@@ -20,15 +20,9 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
   def listen, do: :persistent_term.put({__MODULE__, :owner}, self())
 
   @impl true
-  def message_agent(_working_copy_id, agent, message, _timeout) do
-    send(owner(), {:agent_message, agent.id, message})
-    {:ok, "recorded"}
-  end
-
-  @impl true
   def dispatch_message(_working_copy_id, agent, ref, message, _timeout) do
     send(owner(), {:agent_dispatch, agent.id, ref, message})
-    {:ok, :queued}
+    {:ok, :started}
   end
 
   @impl true
@@ -36,9 +30,6 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
     send(owner(), {:work_turn_requested, agent.id, ref, message})
     {:ok, :started}
   end
-
-  @impl true
-  def withdraw_message(_working_copy_id, _agent, _ref, _timeout), do: :ok
 
   # `record_started/3` matches `%{agent_id: _id}` — "the machine confirms
   # the id it was asked to run, and that is the whole report" — and nothing

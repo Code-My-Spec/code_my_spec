@@ -5,6 +5,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
   alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
+  alias Ecto.Adapters.SQL.Sandbox
 
   defmodule BusyTransport do
     def dispatch_message(_copy, _agent, _ref, _text, _timeout), do: {:error, :busy}
@@ -63,6 +64,47 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
 
     entry = Mailbox.admit(ctx.agent, message, :operator_message)
     {message, entry}
+  end
+
+  test "unfenced and stale terminal events cannot settle current work", ctx do
+    {message, _} = admit(ctx, "current turn")
+    assert {:ok, :started} = Mailbox.pump(ctx.scope, ctx.agent.id)
+
+    :ok =
+      CodeMySpec.Agents.record_turn_event(ctx.scope, ctx.agent.id, %{"kind" => "turn_started"})
+
+    for event <- [
+          %{"kind" => "turn_ended"},
+          %{"kind" => "turn_ended", "ref" => message.delivery_ref},
+          %{"kind" => "turn_ended", "ref" => message.delivery_ref, "generation" => "old-engine"}
+        ] do
+      :ok = CodeMySpec.Agents.record_turn_event(ctx.scope, ctx.agent.id, event)
+      assert [%{state: :consumed}] = Mailbox.entries(ctx.scope, ctx.agent.id)
+      assert Repo.reload!(ctx.agent).turn_started_at
+    end
+  end
+
+  test "replacement readiness records interruption and clears the dead turn", ctx do
+    Sandbox.mode(Repo, {:shared, self()})
+    admit(ctx, "interrupted turn")
+    assert {:ok, :started} = Mailbox.pump(ctx.scope, ctx.agent.id)
+
+    :ok =
+      CodeMySpec.Agents.record_turn_event(ctx.scope, ctx.agent.id, %{"kind" => "turn_started"})
+
+    {:ok, :ok} = Mailbox.register(ctx.scope, ctx.agent.id, "replacement")
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "agents:#{ctx.scope.active_project_id}")
+
+    :ok =
+      CodeMySpec.Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
+        "kind" => "mailbox_ready",
+        "generation" => "replacement",
+        "ref" => nil
+      })
+
+    assert [%{state: :interrupted}] = Mailbox.entries(ctx.scope, ctx.agent.id)
+    assert Repo.reload!(ctx.agent).turn_started_at == nil
+    assert_receive {:agent_turn, %{turn_started_at: nil}}
   end
 
   test "busy leaves the only payload queued in the database", ctx do

@@ -16,6 +16,7 @@ defmodule CodeMySpec.Agents.ATaskClosedEarlierInARunIsNotADeclineTest do
   """
   use CodeMySpecSpex.Case, async: false
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Requirements.GraphWatcher
@@ -94,7 +95,15 @@ defmodule CodeMySpec.Agents.ATaskClosedEarlierInARunIsNotADeclineTest do
 
     # Turn C, queued behind it. Its end is the only one announced.
     turn_started(ctx.scope, ctx.agent)
-    :ok = Agents.record_turn_event(ctx.scope, ctx.agent.id, %{"kind" => "turn_ended"})
+
+    :ok =
+      Agents.record_turn_event(
+        ctx.scope,
+        ctx.agent.id,
+        ChannelClient.encode_turn_event(
+          CodeMySpecSpex.Fixtures.mailbox_turn_end(ctx.scope, ctx.agent.id)
+        )
+      )
 
     agent = reload(ctx.scope, ctx.agent)
 

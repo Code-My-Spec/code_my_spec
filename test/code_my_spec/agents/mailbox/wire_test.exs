@@ -53,7 +53,7 @@ defmodule CodeMySpec.Agents.Mailbox.WireTest do
     assert [%{state: :consumed, generation: generation}] = Mailbox.entries(scope, agent.id)
     assert is_binary(generation)
     assert {:ok, :queued} = Agents.send_to_agent(agent.id, "waiting in DB", :operator_message)
-    assert {:ok, %{busy?: true, queued: 0}} = CmsHarness.Agents.status(agent.id)
+    assert {:ok, %{busy?: true}} = CmsHarness.Agents.status(agent.id)
     assert [%{state: :consumed}, %{state: :queued}] = Mailbox.entries(scope, agent.id)
     HeldProvider.release()
   end

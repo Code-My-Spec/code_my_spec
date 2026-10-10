@@ -5,6 +5,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
   """
   use CodeMySpecSpex.Case, async: false
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
@@ -80,7 +81,12 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
         work_requested_at: nil
       })
 
-    Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_ended"})
+    Agents.record_turn_event(
+      scope,
+      agent.id,
+      ChannelClient.encode_turn_event(CodeMySpecSpex.Fixtures.mailbox_turn_end(scope, agent.id))
+    )
+
     await_dispatches()
   end
 

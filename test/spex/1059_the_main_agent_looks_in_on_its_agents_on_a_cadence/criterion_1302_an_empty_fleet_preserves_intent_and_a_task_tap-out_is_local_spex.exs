@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
             assert Fixtures.role_queue_size(context.scope, agent.id) == 0
             assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
             on_exit(fn -> Machine.stop_agent(agent.id) end)
-            assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+            assert {:ok, %{busy?: false}} = Machine.status(agent.id)
             agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
             {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
             refute tasks.isError, response_text(tasks)
@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
         assert Machine.running() == context.running_ids
 
         for snapshot <- context.agents do
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(snapshot.agent.id)
+          assert {:ok, %{busy?: false}} = Machine.status(snapshot.agent.id)
           assert Fixtures.role_queue_size(context.scope, snapshot.agent.id) == 0
           {:reply, tasks, _} = ListTasks.execute(%{}, snapshot.frame)
           refute tasks.isError, response_text(tasks)

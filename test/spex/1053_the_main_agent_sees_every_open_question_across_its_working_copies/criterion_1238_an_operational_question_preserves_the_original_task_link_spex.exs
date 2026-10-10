@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
         for agent <- [main, coding] do
           assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(agent.id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+          assert {:ok, %{busy?: false}} = Machine.status(agent.id)
         end
 
         {:ok,
@@ -147,7 +147,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
         assert Machine.running() == context.running_ids
 
         for id <- [context.main_id, context.coding_id] do
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(id)
+          assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
         assert HeldProvider.seen() == []

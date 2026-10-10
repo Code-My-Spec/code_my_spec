@@ -27,7 +27,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
     :ok
   end
 
-  spex "Failed recovery evidence is not an empty digest or an admission override", criterion: 1301 do
+  spex "Failed recovery evidence is not an empty digest or an admission override",
+    criterion: 1301 do
     scenario "An unavailable analyzer ledger is recorded while main stays autonomous-off" do
       given_ "the main agent is idle with continuous off and a digest source unavailable",
              context do
@@ -38,7 +39,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(main.id)
+        assert {:ok, %{busy?: false}} = Machine.status(main.id)
         {:reply, conversation, _} = ReadAgentConversation.execute(%{agent_id: main.id}, frame)
         refute conversation.isError, response_text(conversation)
         :ok = Fixtures.break_digest_source(context.scope)
@@ -71,7 +72,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
       end
 
       then_ "the failure has not started a turn or written a control message", context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id)
         assert Machine.running() == context.running_ids
         assert HeldProvider.seen() == []
 
