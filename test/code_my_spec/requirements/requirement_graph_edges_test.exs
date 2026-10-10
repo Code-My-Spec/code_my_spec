@@ -548,18 +548,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         end)
       end
 
-      assert edge?.("ready_for_qa", "story_issues_resolved"),
-             "story_issues_resolved should follow ready_for_qa directly"
-
-      assert edge?.("story_issues_resolved", "qa_complete"),
-             "qa_complete should wait on the story's known issues being resolved"
-
-      assert edge?.("qa_complete", "story_promoted"),
-             "promotion should follow QA, not the other way round"
-
-      refute edge?.("ready_for_qa", "qa_complete"),
-             "the direct edge would let QA start on a story whose code has not " <>
-               "left the coding agent's worktree"
+      assert edge?.("story_issues_triaged", "story_issues_resolved")
+      assert edge?.("story_issues_resolved", "ready_for_qa")
+      assert edge?.("ready_for_qa", "qa_complete")
+      assert edge?.("qa_complete", "story_promoted")
+      refute edge?.("ready_for_qa", "story_issues_resolved")
 
       refute edge?.("story_promoted", "qa_complete"),
              "the old direction — promotion gating QA — must not survive the reorder"

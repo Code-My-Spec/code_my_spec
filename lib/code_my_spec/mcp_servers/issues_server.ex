@@ -14,4 +14,6 @@ defmodule CodeMySpec.McpServers.IssuesServer do
   component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
   component(CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy)
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
+  component(CodeMySpec.McpServers.Issues.Tools.SetActiveIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.UnassignIssue)
 end

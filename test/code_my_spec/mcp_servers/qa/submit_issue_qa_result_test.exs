@@ -8,6 +8,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResultTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.CodeMode.Tools.ToolDocs
   alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
+  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.Qa.IssueQaAttempts
   alias CodeMySpec.TaskOwner
 
@@ -94,7 +95,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResultTest do
       |> Map.put(:scenarios, [%{name: "Validation", status: "pass", observation: "Observed"}])
 
     {:reply, response, _} =
-      CodeMySpec.McpServers.Qa.Tools.SubmitQaResult.execute(params, ctx.frame)
+      SubmitQaResult.execute(params, ctx.frame)
 
     assert response.isError
     assert text(response) =~ "submit_issue_qa_result"

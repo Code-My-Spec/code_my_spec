@@ -4,9 +4,11 @@ defmodule CmsHarness.Agents.LivenessTest do
   the moment it dies, by working copy — the harness half of agent presence.
   """
 
-  # The harness tree's own `Liveness`, shared by everything on it: each test
-  # watches its own copy, so it hears its own agents only.
-  use ExUnit.Case, async: true
+  # Liveness is one application-wide server. Unique roots isolate its
+  # records, but every subscriber receives every event through the same
+  # mailbox. Keep delivery timing assertions apart from concurrent tests
+  # that also create and stop agents on that server.
+  use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Liveness
 
@@ -38,10 +40,33 @@ defmodule CmsHarness.Agents.LivenessTest do
     :ok = Liveness.watch(id, pid, root)
     assert_receive {:agent_liveness, :up, ^id, ^root, _}
 
+    # Monitor installation and the test's kill come from different senders.
+    # Receiving :up confirms Liveness requested a monitor, not that the target
+    # installed it. Killing earlier can legitimately report :noproc instead
+    # of :killed. Establish this test's prerequisite on the target first.
+    await_monitor(pid, GenServer.whereis(Liveness), 1_000)
+    monitor = Process.monitor(pid)
     Process.exit(pid, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^pid, :killed}, 5_000
 
-    assert_receive {:agent_liveness, :down, ^id, ^root, :killed}
+    assert_receive {:agent_liveness, :down, ^id, ^root, reason}
+    assert reason == :killed
     assert Liveness.present(root) == []
+  end
+
+  defp await_monitor(_pid, _watcher, 0), do: flunk("Liveness did not install its monitor")
+
+  defp await_monitor(pid, watcher, remaining) do
+    {:monitored_by, watchers} = Process.info(pid, :monitored_by)
+
+    await_monitor(watcher in watchers, pid, watcher, remaining)
+  end
+
+  defp await_monitor(true, _pid, _watcher, _remaining), do: :ok
+
+  defp await_monitor(false, pid, watcher, remaining) do
+    Process.sleep(1)
+    await_monitor(pid, watcher, remaining - 1)
   end
 
   test "watching the same process twice reports it up once", %{root: root, id: id} do
@@ -122,7 +147,10 @@ defmodule CmsHarness.Agents.LivenessTest do
   end
 
   describe "an agent its Keeper gave up on" do
-    test "is remembered for the copy's join to report, until it comes up again", %{root: root, id: id} do
+    test "is remembered for the copy's join to report, until it comes up again", %{
+      root: root,
+      id: id
+    } do
       {pid, keeper} = {an_agent(), an_agent()}
       :ok = Liveness.watch(id, pid, root)
       :ok = Liveness.watch_keeper(id, keeper, root)

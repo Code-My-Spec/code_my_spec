@@ -28,6 +28,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.WhoMayAppendTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
+  alias Anubis.Server.Response
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.Tools.UpdateIssue
@@ -131,7 +132,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.WhoMayAppendTest do
 
   defp text(response) do
     response
-    |> Anubis.Server.Response.to_protocol()
+    |> Response.to_protocol()
     |> Map.fetch!("content")
     |> List.first()
     |> Map.fetch!("text")

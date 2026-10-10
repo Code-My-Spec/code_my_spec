@@ -39,24 +39,33 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
           {:ok, IssueQaAttempt.t()} | {:error, Ecto.Changeset.t() | atom()}
   def submit(%Scope{} = scope, %Agent{} = owner, params) do
     with :ok <- validate_findings_path(params) do
-      Repo.transaction(fn ->
-        issue_id = MapAccess.get(params, :issue_id)
+      result =
+        Repo.transaction(fn ->
+          issue_id = MapAccess.get(params, :issue_id)
 
-        issue =
-          Repo.one(
-            from(i in CodeMySpec.Issues.Issue,
-              where: i.id == ^issue_id and i.project_id == ^scope.active_project_id,
-              lock: "FOR UPDATE"
+          issue =
+            Repo.one(
+              from(i in CodeMySpec.Issues.Issue,
+                where: i.id == ^issue_id and i.project_id == ^scope.active_project_id,
+                lock: "FOR UPDATE"
+              )
             )
-          )
 
-        if is_nil(issue), do: Repo.rollback(:issue_not_found)
+          if is_nil(issue), do: Repo.rollback(:issue_not_found)
 
-        case insert_attempt(build_attrs(owner, params)) do
-          {:ok, attempt} -> handle_outcome(scope, owner, attempt)
-          {:error, reason} -> Repo.rollback(reason)
-        end
-      end)
+          case insert_attempt(build_attrs(owner, params)) do
+            {:ok, attempt} -> handle_outcome(scope, owner, attempt)
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end)
+
+      # Completion can wake Main. Publish only after the QA transaction commits.
+      case result do
+        {:ok, attempt} -> announce_resolved(scope, attempt.issue_id)
+        _ -> :ok
+      end
+
+      result
     end
   end
 
@@ -89,14 +98,16 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   end
 
   defp resolve(scope, issue, resolution) do
-    with {:ok, resolved} <- Issues.resolve_issue(scope, issue, resolution) do
-      # Agents frees the issue's team (`Agents.Events`); Qa sits below Agents.
-      :telemetry.execute([:code_my_spec, :qa, :issue_passed], %{}, %{
-        scope: scope,
-        issue: resolved
-      })
+    with {:ok, _resolved} <- Issues.resolve_issue(scope, issue, resolution), do: :ok
+  end
 
-      :ok
+  defp announce_resolved(scope, issue_id) do
+    case Issues.get_issue(scope, issue_id) do
+      %{status: :resolved, assigned_working_copy_id: copy_id} = issue when not is_nil(copy_id) ->
+        :telemetry.execute([:code_my_spec, :qa, :issue_passed], %{}, %{scope: scope, issue: issue})
+
+      _ ->
+        :ok
     end
   end
 
@@ -109,8 +120,10 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   @spec fix_landed(Scope.t(), Ecto.UUID.t(), String.t()) :: :ok | {:error, term()}
   def fix_landed(%Scope{} = scope, issue_id, commit) do
     with %{} = issue <- Issues.get_issue(scope, issue_id) || {:error, :issue_not_found},
-         {:ok, issue} <- Issues.record_fix_landed(scope, issue, commit) do
-      after_landing(scope, issue, passed?(scope, issue.id), commit)
+         {:ok, issue} <- Issues.record_fix_landed(scope, issue, commit),
+         :ok <- after_landing(scope, issue, passed?(scope, issue.id), commit) do
+      announce_resolved(scope, issue.id)
+      :ok
     end
   end
 

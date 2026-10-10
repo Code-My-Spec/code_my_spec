@@ -2,10 +2,18 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy do
   @moduledoc """
   Assigns an issue to a working copy's coding and QA team.
 
-  Both team members are bound to the issue: the coder is offered its fix
-  ahead of any other eligible work, and QA is offered testing it once the
-  fix is submitted. Assigning an issue already bound to another copy moves
-  it — and its open task — to this one, freeing the old team.
+  Adds an accepted issue to the team's bag without replacing its current
+  priority. The first issue establishes the active priority and its story
+  binding (a project issue clears a previous story). Use `set_active_issue`
+  to prioritize another member and `unassign_issue` to remove one.
+  Moving an issue preserves its workflow stage and transfers its open tasks.
+  Coding and QA may work on different eligible issues from the same bag.
+
+  Main or the operator can pass `rework: true` and a correction `reason`
+  for an accepted issue awaiting QA on the same copy. With no open issue
+  task, this returns the issue to coding and records the instructions;
+  completed fix tasks remain completed. Ordinary reassignment preserves
+  the current turn.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -23,18 +31,25 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy do
       doc: "Working copy whose coding and QA team takes the issue"
 
     field :reason, :string,
-      doc: "Why the issue is moving, when reassigning it away from another team"
+      doc: "Why the issue is moving, or the required correction instructions when rework is true"
+
+    field :rework, :boolean,
+      doc:
+        "Main or the operator requests corrections to a submitted fix on the same copy. " <>
+          "Requires a reason and no open issue task; preserves completed task history."
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+         :ok <- may_request_rework(scope, frame, params),
          {:ok, issue} <-
            Agents.assign_issue_to_working_copy(
              scope,
              params.issue_id,
              params.working_copy_id,
-             reason: params[:reason]
+             reason: params[:reason],
+             rework: Map.get(params, :rework, false)
            ) do
       {:reply, IssuesMapper.issue_updated_response(issue, "assigned"), frame}
     else
@@ -44,6 +59,21 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy do
       {:error, reason} -> {:reply, IssuesMapper.error(reason), frame}
     end
   end
+
+  defp may_request_rework(scope, frame, %{rework: true}) do
+    case frame.assigns[:agent_id] do
+      nil ->
+        :ok
+
+      agent_id ->
+        case Agents.fetch_agent(scope, agent_id) do
+          {:ok, %{role: :main}} -> :ok
+          _ -> {:error, "Only main or the operator may request issue corrections."}
+        end
+    end
+  end
+
+  defp may_request_rework(_scope, _frame, _params), do: :ok
 
   defp no_team_error do
     Response.tool()

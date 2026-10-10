@@ -315,6 +315,8 @@ defmodule CodeMySpec.Stories do
       |> maybe_put(:specs_ready_at, Keyword.get(opts, :at))
       |> maybe_put(:specs_ready_commit, Keyword.get(opts, :commit))
       |> maybe_put(:promoted_version, Keyword.get(opts, :promoted_version))
+      |> maybe_put(:promoted_working_copy_id, Keyword.get(opts, :promoted_working_copy_id))
+      |> maybe_put(:promoted_at, Keyword.get(opts, :promoted_at))
 
     update_story(scope, story, attrs)
   end
@@ -351,11 +353,31 @@ defmodule CodeMySpec.Stories do
 
   A story already stamped keeps its version: the promote that first carried
   it is the answer to "which promotion put this on main". `nil` (no version
-  to stamp) latches without stamping. `opts` are `:at` and `:commit`.
+  to stamp) latches without stamping. `opts` are `:at`, `:commit`, and
+  `:working_copy_id`. Promotion team and time survive assignment cleanup.
   """
   def mark_story_promoted(%Scope{} = scope, %Story{} = story, version, opts \\ []) do
     stamp = story.promoted_version || version
-    set_specs_ready(scope, story, true, Keyword.put(opts, :promoted_version, stamp))
+    opts = Keyword.put(opts, :promoted_version, stamp)
+
+    opts =
+      if stamp do
+        opts
+        |> Keyword.put(
+          :promoted_working_copy_id,
+          story.promoted_working_copy_id ||
+            Keyword.get(opts, :working_copy_id) || story.working_copy_id ||
+            scope.active_working_copy_id
+        )
+        |> Keyword.put(
+          :promoted_at,
+          story.promoted_at || Keyword.get(opts, :at) || DateTime.utc_now()
+        )
+      else
+        opts
+      end
+
+    set_specs_ready(scope, story, true, opts)
   end
 
   defp maybe_put(map, _key, nil), do: map

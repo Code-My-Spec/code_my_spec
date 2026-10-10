@@ -228,7 +228,7 @@ defmodule CodeMySpec.Agents.Offers do
   @doc """
   This project's offers, newest first, with their agent and linked messages.
 
-  Filters, all optional: `:agent_id`, `:kind`, `:status`, `:since` (a
+  Filters, all optional: `:agent_id`, `:working_copy_id`, `:kind`, `:status`, `:since` (a
   `DateTime`, on `inserted_at`), and `:limit` (default #{@default_limit}).
   """
   @spec list(Scope.t(), keyword()) :: [Offer.t()]
@@ -267,6 +267,9 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp filter({:agent_id, id}, query) when is_binary(id), do: where(query, [o], o.agent_id == ^id)
+
+  defp filter({:working_copy_id, id}, query) when is_binary(id),
+    do: where(query, [o], o.working_copy_id == ^id)
 
   defp filter({:kind, kind}, query) when is_atom(kind) and not is_nil(kind),
     do: where(query, [o], o.kind == ^kind)
@@ -494,7 +497,8 @@ defmodule CodeMySpec.Agents.Offers do
 
   @doc """
   Decline an open offer with a reason (criterion 1738): `offer_id`, or the
-  agent's newest open offer when nil. Answers the declined offer.
+  agent's newest delivered open offer when nil. Pending, failed and withdrawn
+  deliveries cannot be declined. Unlinked legacy offers remain eligible.
   """
   @spec reject(Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, Offer.t()} | {:error, :not_found}
@@ -553,9 +557,8 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp open_offer(agent_id, nil) do
-    Offer
-    |> where([o], o.agent_id == ^agent_id and o.status == :open)
-    |> order_by([o], desc: o.inserted_at)
+    rejectable_offers(agent_id)
+    |> order_by([o], desc: o.inserted_at, desc: o.id)
     |> limit(1)
     |> Repo.one()
   end
@@ -563,11 +566,28 @@ defmodule CodeMySpec.Agents.Offers do
   defp open_offer(agent_id, offer_id) do
     case Ecto.UUID.cast(offer_id) do
       {:ok, id} ->
-        Repo.one(where(Offer, [o], o.id == ^id and o.agent_id == ^agent_id and o.status == :open))
+        Repo.one(where(rejectable_offers(agent_id), [o], o.id == ^id))
 
       :error ->
         nil
     end
+  end
+
+  defp rejectable_offers(agent_id) do
+    linked = from(link in OfferMessage, select: link.offer_id)
+
+    delivered =
+      from(link in OfferMessage,
+        join: message in Message,
+        on: message.id == link.message_id,
+        where: is_nil(message.delivery) or message.delivery == :delivered,
+        select: link.offer_id
+      )
+
+    from(offer in Offer,
+      where: offer.agent_id == ^agent_id and offer.status == :open,
+      where: offer.id not in subquery(linked) or offer.id in subquery(delivered)
+    )
   end
 
   @doc """

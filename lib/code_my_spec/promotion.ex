@@ -257,7 +257,7 @@ defmodule CodeMySpec.Promotion do
     with {:ok, %{head: head, version: version}} <- current_of(scope, running, named),
          :ok <- runs_at(scope, ["spex"], head, named, opts),
          :ok <- story_spex_pass(scope, story, named) do
-      stamp_promoted_story(scope, story, version, head)
+      stamp_promoted_story(scope, story, version, head, id)
       notify_team_free(scope, id, story)
 
       # Always a restart: nothing was merged, so there is no diff to judge a
@@ -520,7 +520,7 @@ defmodule CodeMySpec.Promotion do
         ) :: :ok
   def record_landed_stories(scope, stories, version, commit) do
     for {story, copy_id} <- stories do
-      stamp_promoted_story(scope, story, version, commit)
+      stamp_promoted_story(scope, story, version, commit, copy_id)
       notify_team_free(scope, copy_id, story)
     end
 
@@ -537,10 +537,10 @@ defmodule CodeMySpec.Promotion do
         story: story
       })
 
-  defp stamp_promoted_story(_scope, nil, _version, _commit), do: :ok
+  defp stamp_promoted_story(_scope, nil, _version, _commit, _copy_id), do: :ok
 
-  defp stamp_promoted_story(scope, story, version, commit) do
-    opts = [at: DateTime.utc_now(), commit: commit]
+  defp stamp_promoted_story(scope, story, version, commit, copy_id) do
+    opts = [at: DateTime.utc_now(), commit: commit, working_copy_id: copy_id]
 
     case Stories.mark_story_promoted(scope, story, version, opts) do
       {:ok, _story} ->

@@ -189,9 +189,9 @@ defmodule CodeMySpec.Agents.Agent do
     field :story_id, :id
     field :epic_id, Ecto.UUID
 
-    # The issue this agent's team is bound to (story 1091), mirroring
-    # `story_id` (a31f1cd6). Held by every team member on the copy an issue
-    # is assigned to; takes priority over `story_id` in dispatch.
+    # Shared priority within the working copy's assigned issue bag (story 1091).
+    # Membership lives on Issue.assigned_working_copy_id. Each role can claim
+    # other eligible bag members while this priority waits on its teammate.
     field :issue_id, Ecto.UUID
     # When this team last became free of its last issue with no story to
     # fall back to. Set, the team is told it is waiting for main's next

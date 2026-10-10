@@ -34,8 +34,8 @@ defmodule CodeMySpec.Agents.APlaybookDoesNotPromiseDelegationItsRoleLacksTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.ToolSets
 
   @playbook "priv/knowledge/fix_issues/workflow.md"
 

@@ -397,6 +397,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
               </div>
 
               <div class="flex items-center gap-2">
+                <.link
+                  navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}/status"}
+                  class="btn btn-sm btn-ghost"
+                  data-test="working-copy-status"
+                >
+                  Status
+                </.link>
                 <.button
                   navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}"}
                   class="btn btn-sm"

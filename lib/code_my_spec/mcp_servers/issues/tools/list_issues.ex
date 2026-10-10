@@ -32,6 +32,10 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
     field :scope, :string, doc: "Filter by scope: app, qa, docs, framework"
     field :story_number, :integer, doc: "Filter by the related story's number"
+
+    field :working_copy_id, :string,
+      doc: "Filter by assigned working copy (use severity all to include the entire bag)"
+
     field :query, :string, doc: "Text that the title or description contains (case-insensitive)"
     field :limit, :integer, doc: "Most issues to return, newest first (default 50)"
   end
@@ -115,7 +119,9 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
         |> list(maybe_put(filters, :story_id, story_id))
         |> Enum.filter(
           &(in?(&1.status, statuses) and in?(&1.severity, severities) and
-              contains?(&1, params[:query]))
+              contains?(&1, params[:query]) and
+              (is_nil(params[:working_copy_id]) or
+                 &1.assigned_working_copy_id == params[:working_copy_id]))
         )
         |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
 
@@ -125,6 +131,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
         |> Map.put(:severity, severity_label(severities))
         |> maybe_put(:story_number, params[:story_number])
         |> maybe_put(:query, params[:query])
+        |> maybe_put(:working_copy_id, params[:working_copy_id])
 
       {:ok, matching, shown}
     end
@@ -146,6 +153,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
       "status" => to_string(issue.status),
       "description" => issue.description,
       "story_id" => issue.story_id,
+      "assigned_working_copy_id" => issue.assigned_working_copy_id,
+      "awaiting_role" => to_string(issue.awaiting_role),
       "inserted_at" => issue.inserted_at && DateTime.to_iso8601(issue.inserted_at)
     }
   end

@@ -87,7 +87,7 @@ defmodule CodeMySpec.Agents.APromoteInTheQueueDoesNotHoldTheAgentsOnlyTaskSlotTe
   # turn is `promote_issue` â the state bf57fc93 was measured in. Adds
   # `:task_id`.
   defp holds_promote(ctx) do
-    issue = issue_fixture(ctx.scope)
+    issue = issue_fixture(ctx.scope, %{status: :accepted})
     {:ok, bound} = IssueAssignment.assign(ctx.scope, issue.id, ctx.copy.id)
     {:ok, promoted} = Issues.set_awaiting_role(ctx.scope, bound, :promote)
 

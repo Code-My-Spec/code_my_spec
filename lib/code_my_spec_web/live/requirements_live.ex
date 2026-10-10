@@ -218,6 +218,16 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
   def handle_info({:watcher_synced, _info}, socket), do: {:noreply, socket}
 
+  def handle_info(
+        {event, %CodeMySpec.Issues.Issue{project_id: project_id}},
+        %{assigns: %{live_action: :graph, scope: scope}} = socket
+      )
+      when event in [:created, :updated, :accepted, :resolved, :dismissed, :deleted] do
+    if project_id == scope.active_project_id,
+      do: handle_info({:watcher_synced, %{}}, socket),
+      else: {:noreply, socket}
+  end
+
   def handle_info(:graph_recompute, %{assigns: %{scope: scope}} = socket)
       when not is_nil(scope) do
     socket = assign(socket, graph_timer: nil)
@@ -247,6 +257,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   defp maybe_watch(socket, scope) do
     if connected?(socket) do
       ProjectSync.subscribe(scope)
+      CodeMySpec.Issues.subscribe(scope)
       assign(socket, watching?: true)
     else
       socket
@@ -288,6 +299,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
       computed_at: metrics[:computed_at],
       served_from: metrics[:served_from],
       node_count: metrics[:node_count],
+      project_issue_count: metrics[:project_issue_count] || 0,
       watcher: scope && GraphWatcher.status(scope.active_project_id)
     }
   end
@@ -411,6 +423,9 @@ defmodule CodeMySpecWeb.RequirementsLive do
         <span data-test="graph-served-from">
           {if @provenance.served_from == "cache", do: "from cache", else: "not computed yet"}
         </span>
+      </span>
+      <span data-test="graph-project-issues">
+        + {@provenance.project_issue_count} live project issue branches: assigned → submitted → completed
       </span>
       <span data-test="graph-computed-at" title={@provenance.computed_at}>
         computed {@provenance.computed_at}
@@ -831,5 +846,4 @@ defmodule CodeMySpecWeb.RequirementsLive do
        setup_error: nil
      )}
   end
-
 end

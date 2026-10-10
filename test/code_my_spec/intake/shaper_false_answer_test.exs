@@ -1,3 +1,16 @@
+defmodule CodeMySpec.Intake.ShaperFalseAnswerTest.AlwaysPlans do
+  @moduledoc false
+  @behaviour CodeMySpec.Intake.Shaper
+
+  @impl true
+  def shape(_plan, _turns),
+    do: {:ok, %{needs_sign_in: false, separate_copies: false, who_uses: "beginners"}}
+
+  @impl true
+  def conclude(_plan, _turns),
+    do: {:ok, %{needs_sign_in: false, separate_copies: false, who_uses: "beginners"}}
+end
+
 defmodule CodeMySpec.Intake.ShaperFalseAnswerTest do
   @moduledoc """
   `false` from the model is an answer, not a missing one.
@@ -69,17 +82,4 @@ defmodule CodeMySpec.Intake.ShaperFalseAnswerTest do
              "viewer keeps a Thinking bubble under a finished plan card. Only the " <>
              "question path cleared it."
   end
-end
-
-defmodule CodeMySpec.Intake.ShaperFalseAnswerTest.AlwaysPlans do
-  @moduledoc false
-  @behaviour CodeMySpec.Intake.Shaper
-
-  @impl true
-  def shape(_plan, _turns),
-    do: {:ok, %{needs_sign_in: false, separate_copies: false, who_uses: "beginners"}}
-
-  @impl true
-  def conclude(_plan, _turns),
-    do: {:ok, %{needs_sign_in: false, separate_copies: false, who_uses: "beginners"}}
 end

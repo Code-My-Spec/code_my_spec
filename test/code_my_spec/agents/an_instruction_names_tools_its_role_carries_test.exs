@@ -87,9 +87,7 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
   # without anybody maintaining this.
   defp declared_arguments do
     ScriptableTools.__components__()
-    |> Enum.reduce(%{}, fn component, acc ->
-      Map.put(acc, component.name, argument_names(component))
-    end)
+    |> Map.new(fn component -> {component.name, argument_names(component)} end)
   end
 
   defp argument_names(%{input_schema: %{"properties" => properties}}), do: Map.keys(properties)
@@ -128,7 +126,8 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
     [{prompt, "the prompt"} | Enum.map(referenced_docs(prompt), &playbook_source/1)]
   end
 
-  defp playbook_source(path), do: playbook_source(path, File.read(Path.join(@knowledge_root, path)))
+  defp playbook_source(path),
+    do: playbook_source(path, File.read(Path.join(@knowledge_root, path)))
 
   defp playbook_source(path, {:ok, source}), do: {source, path}
   defp playbook_source(path, _error), do: {"", path}
@@ -342,7 +341,7 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
   end
 
   defp tool_slice(catalogue, name, rest, next_offset) do
-    MapSet.member?(catalogue, name) && String.slice(rest, 0, next_offset) || nil
+    (MapSet.member?(catalogue, name) && String.slice(rest, 0, next_offset)) || nil
   end
 
   defp backticked_names_with_offsets(text) do

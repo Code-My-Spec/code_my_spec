@@ -70,26 +70,22 @@ defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
       end
     end
 
-    test "the chain runs ready_for_qa → story_issues_resolved → qa_complete → story_promoted → deploy" do
+    test "the chain runs triaged → resolved → ready_for_qa → qa_complete → promotion" do
       template = RequirementDefinitionData.story_graph()
       by_name = Map.new(template, &{&1.name, &1})
       id_of = fn name -> by_name[name].id end
 
-      assert by_name["story_issues_resolved"].prerequisites ==
-               [id_of.("ready_for_qa")],
-             """
-             Known issues have to be clearable before QA runs, independent of
-             promotion — repointing this at story_promoted (or leaving
-             it there once story_promoted moved past qa_complete) closes
-             the circle that stalled story 947 one hop later.
-             """
+      assert by_name["story_issues_resolved"].prerequisites == [id_of.("story_issues_triaged")]
+
+      assert by_name["ready_for_qa"].prerequisites ==
+               [id_of.("bdd_specs_exist"), id_of.("story_issues_resolved")]
 
       refute Map.has_key?(by_name, "problems_resolved"),
              "28d72f8a: analyzer findings are the promote gate's job, not a QA prerequisite"
 
       assert by_name["qa_complete"].prerequisites ==
-               [id_of.("story_issues_resolved"), id_of.("story_issues_triaged")],
-             "QA waits on issues clear and nothing untriaged"
+               [id_of.("ready_for_qa")],
+             "QA waits for certification after issues are cleared"
 
       assert by_name["story_promoted"].prerequisites == [id_of.("qa_complete")],
              "story 1003: promotion follows QA, not the other way round"

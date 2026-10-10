@@ -80,13 +80,19 @@ defmodule CodeMySpecSpex.Story1015.Criterion2412Spex do
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "leaving the loop is offered", context do
+      then_ "leaving the loop is not offered by the refusal that holds it in", context do
         reason = context.response["reason"] || ""
 
-        assert reason =~ "tap_out",
-               "an agent burning tokens in a loop has a tool for exactly that, " <>
-                 "and no way to learn it exists unless the refusal says so. " <>
-                 "Got:\n#{reason}"
+        # A refusal is not the place for the exit (`227d1595`). This very
+        # response is what is keeping the agent in the loop; telling it to ask
+        # to leave is the offer John removed for the empty queue, and it is no
+        # more coherent here. `tap_out` exits continuous mode, so an agent that
+        # took the offer here would have to be re-staffed by hand before the
+        # problems it is being held on could be fixed. The offer still reaches
+        # an agent with work in front of it, through the menu's own paths.
+        refute reason =~ "asks to leave it",
+               "the refusal holds the agent in the loop and must not then invite " <>
+                 "it to leave. Got:\n#{reason}"
 
         {:ok, context}
       end

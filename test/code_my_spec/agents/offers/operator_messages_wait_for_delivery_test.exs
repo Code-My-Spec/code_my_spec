@@ -307,4 +307,55 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert settled.status == :n_a
     assert settled.outcome_at
   end
+
+  test "default rejection skips a newer pending instruction", ctx do
+    delivered = rejection_offer(ctx, :delivered, "received work")
+    pending = rejection_offer(ctx, :pending, "waiting instruction")
+
+    {:ok, _} =
+      delivered
+      |> Ecto.Changeset.change(inserted_at: DateTime.add(DateTime.utc_now(), -60, :second))
+      |> Repo.update()
+
+    assert {:ok, declined} = Offers.reject(ctx.agent.id, nil, "Decline received work")
+    assert declined.id == delivered.id
+    assert declined.reason == "Decline received work"
+    assert Repo.reload!(pending).status == :open
+  end
+
+  test "explicit rejection refuses pending, failed and withdrawn deliveries", ctx do
+    for delivery <- [:pending, :failed, :withdrawn] do
+      offer = rejection_offer(ctx, delivery, "unseen #{delivery}")
+      assert {:error, :not_found} = Offers.reject(ctx.agent.id, offer.id, "Unrelated refusal")
+      assert Repo.reload!(offer).status == :open
+      assert Repo.reload!(offer).reason == nil
+    end
+  end
+
+  test "only pending offers cannot be declined by default", ctx do
+    offer = rejection_offer(ctx, :pending, "still queued")
+    assert {:error, :not_found} = Offers.reject(ctx.agent.id, nil, "Unrelated refusal")
+    assert Repo.reload!(offer).status == :open
+  end
+
+  test "delivered identity and unlinked legacy offers remain rejectable", ctx do
+    delivered = rejection_offer(ctx, :delivered, "received instruction")
+    legacy = Offers.record(:ok, ctx.agent, :work, {"requirement", "legacy"})
+    assert {:ok, %{id: id}} = Offers.reject(ctx.agent.id, delivered.id, "Received and declined")
+    assert id == delivered.id
+    assert Repo.reload!(legacy).status == :open
+    assert {:error, :not_found} = Offers.reject(Ecto.UUID.generate(), legacy.id, "Foreign agent")
+    assert {:ok, %{id: legacy_id}} = Offers.reject(ctx.agent.id, legacy.id, "Legacy declined")
+    assert legacy_id == legacy.id
+  end
+
+  defp rejection_offer(ctx, delivery, text) do
+    {:ok, message} =
+      Conversations.add_message(ctx.conversation, :operator, text, "operator", [],
+        delivery: delivery,
+        delivery_ref: Ecto.UUID.generate()
+      )
+
+    Offers.record({:ok, message}, ctx.agent, :instruction, {"message", text})
+  end
 end

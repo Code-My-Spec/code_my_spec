@@ -2602,9 +2602,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # Cross-context dependency edges.
-  # Sibling deps (same parent) are handled by template instantiation.
-  # Cross-context deps gate the dependent's first requirement.
+  # Every recorded dependency gates the dependent's first requirement.
+  # Ownership does not imply that a parent repeats its children's dependencies.
   defp cross_context_dependency_edges(ctx, config) do
     Enum.flat_map(ctx.components, &edges_from_component_deps(&1, ctx, config))
   end
@@ -2624,16 +2623,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp cross_context_edge_for_dep(dep, comp, ctx, config) do
-    with %_{} = dep_comp <- Map.get(ctx.components_by_id, dep.id),
-         false <- skip_cross_context?(comp, dep_comp) do
-      sources = component_boundary(dep_comp, :exit, ctx, config)
-      targets = component_boundary(comp, :entry, ctx, config)
+    case Map.get(ctx.components_by_id, dep.id) do
+      nil ->
+        []
 
-      for source <- sources, target <- targets, source != target do
-        %{from: source, to: target}
-      end
-    else
-      _ -> []
+      dep_comp ->
+        sources = component_boundary(dep_comp, :exit, ctx, config)
+        targets = component_boundary(comp, :entry, ctx, config)
+
+        for source <- sources, target <- targets, source != target do
+          %{from: source, to: target}
+        end
     end
   end
 
@@ -2666,17 +2666,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp boundary_nodes(comp, %{name: name}, _definitions, _ctx),
     do: [{"component", comp.id, name}]
-
-  defp siblings?(comp, dep_comp) do
-    comp.parent_component_id != nil and
-      comp.parent_component_id == dep_comp.parent_component_id
-  end
-
-  # Skip cross-context edges for child components — parent_child_edges
-  # propagates ordering from the parent context to its children.
-  defp skip_cross_context?(comp, dep_comp) do
-    not siblings?(comp, dep_comp) and comp.parent_component_id != nil
-  end
 
   # Cross-entity: project.qa_setup → story.component_linked
   defp project_to_story_edges(ctx) do

@@ -36,9 +36,11 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
 
   alias Anubis.Server.Response
   alias CodeMySpec.CodeMode
+  alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.CodeMode.Result
   alias CodeMySpec.McpServers.AgentAlert
   alias CodeMySpec.McpServers.CodeMode, as: Layer
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.Validators
 
   schema do
@@ -75,7 +77,10 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
                 # it directly" is advice it can take (`bd699695`). `nil` from
                 # `agent_scope/2` means no restriction, the same meaning it has
                 # everywhere else.
-                carried: allowed || :all
+                carried: allowed || :all,
+                # Every tool on the server, so the refusal can tell "another
+                # role's tool" apart from "no such tool" (`27fb2de3`).
+                direct_names: direct_names(allowed)
               )
 
             {:reply, render(result, scope, params), frame}
@@ -134,6 +139,17 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # what is actually known.
   defp put_present(caller, _key, nil), do: caller
   defp put_present(caller, key, value), do: Map.put(caller, key, value)
+
+  # The names a refusal may have to place: every tool the server registers that
+  # this caller does not carry and no script may call.
+  #
+  # `:all` for the unscoped caller, which is `carried`'s own spelling for "no
+  # restriction" and has to stay distinguishable from "carries nothing" â the
+  # second would put a stub on every tool that exists.
+  defp direct_names(nil), do: :all
+
+  defp direct_names(allowed),
+    do: Catalog.direct_only(LocalServer.__components__(), allowed)
 
   # `nil` for a call nobody attributed to an agent — a person at an MCP client,
   # or an agent started before scoping existed. Both could already call

@@ -155,14 +155,13 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
       for %{from: {"story", ^story_id, _} = f, to: {"story", ^story_id, _} = t} <- edges,
           do: %{from: f, to: t}
 
-    names = own |> Enum.flat_map(&[elem(&1.from, 2), elem(&1.to, 2)]) |> Enum.uniq()
     reach = Topology.reach(own)
-    first = {"story", story_id, "component_linked"}
-
-    Enum.all?(
-      names,
-      &(&1 == "component_linked" or
-          Topology.reaches?(reach, first, Topology.mask(reach, [{"story", story_id, &1}])))
+    # Issue triage now gives component_linked a separate path into readiness.
+    # The path replaced by component work is specifically BDD → ready_for_qa.
+    Topology.reaches?(
+      reach,
+      {"story", story_id, "bdd_specs_exist"},
+      Topology.mask(reach, [{"story", story_id, "ready_for_qa"}])
     )
   end
 
