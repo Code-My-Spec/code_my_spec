@@ -76,6 +76,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
       end
 
       given_ "both checkouts show the story without issue submission nodes", context do
+        # given: already true — the preceding givens created this story and joined both checkouts.
         for copy_id <- [context.first_id, context.second_id] do
           graph = read_settled_graph(context, copy_id)
 

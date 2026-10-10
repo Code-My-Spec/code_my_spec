@@ -1,8 +1,8 @@
 defmodule CodeMySpec.Sessions.SessionTypeTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.AgentTasks
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.AgentTasks
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.Sessions.Task
