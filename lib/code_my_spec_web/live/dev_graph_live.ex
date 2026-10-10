@@ -70,6 +70,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
 
   # Long, because events do the work. This only catches what has no
@@ -337,7 +338,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
               disagreeing {elem(@stale, 1).disagree}; edges not served {elem(@stale, 1).edges_missing}, served but not recomputed {elem(
                 @stale,
                 1
-              ).edges_extra}.
+              ).edges_extra}; offered-work differences {elem(@stale, 1).actionable_disagree}.
             </p>
             <p class="text-xs opacity-70">
               The event path serves this project. It settles rows from observations and
@@ -523,7 +524,10 @@ defmodule CodeMySpecWeb.DevGraphLive do
             the last overall — a single slot holds whichever finished second and the comparison
             this whole feature rests on is lost. <code>event</code>
             is a projection maintained from handlers; <code>pass</code>
-            is a whole recompute.
+            is a whole recompute. Counts cover the projection block, excluding queue
+            consumption and notifications. Handled and fallback counts count marks per
+            checkout, not nodes; seeding and topology work are additional. The latest
+            drains may represent different observations and are not a paired benchmark.
           </p>
           <div
             :for={d <- @drains_by_kind}
@@ -532,6 +536,9 @@ defmodule CodeMySpecWeb.DevGraphLive do
             class="flex flex-wrap items-baseline gap-4 text-sm tabular-nums"
           >
             <span class="font-mono w-14 opacity-70">{d.kind}</span>
+            <span :if={d.raised} data-test="drain-failed" class="text-error">
+              Failed — partial cost
+            </span>
             <span data-test="drain-queries">{d.queries} queries</span>
             <span data-test="drain-rows-written">{d.rows_written} rows written</span>
             <span data-test="drain-edges-rebuilt">{d[:edges_rebuilt] || 0} edge rebuilds</span>
@@ -543,14 +550,16 @@ defmodule CodeMySpecWeb.DevGraphLive do
             </span>
             <span data-test="drain-vantages">{d.vantages || "—"} checkouts</span>
             <span data-test="drain-observations" class="opacity-60">
-              {d.observations || 0} observations
+              {d.observations || "unknown"} observations
             </span>
-            <span data-test="drain-handled" class="opacity-60">settled {d.handled || 0}</span>
+            <span data-test="drain-handled" class="opacity-60">
+              handled mark/checkouts {d.handled || "unknown"}
+            </span>
             <span
               data-test="drain-recomputed"
               class={if (d.recomputed || 0) > 0, do: "text-warning", else: "opacity-60"}
             >
-              recomputed {d.recomputed || 0}
+              fallback mark/checkouts {d.recomputed || "unknown"}
             </span>
             <span class="opacity-40">
               {d.duration_ms}ms (db {d[:db_ms] || 0}, queued {d[:queued_ms] || 0})
@@ -733,10 +742,8 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp stale_list({:partial, entities}), do: entities
   defp stale_list(_other), do: []
 
-  defp recomputed_clean?({:recomputed, report}) do
-    report.missing == 0 and report.disagree == 0 and report.edges_missing == 0 and
-      report.edges_extra == 0
-  end
+  defp recomputed_clean?({:recomputed, report}),
+    do: Verification.clean?(report)
 
   defp event_label(:announced), do: "announced"
   defp event_label(:recomputed), do: "recomputed"

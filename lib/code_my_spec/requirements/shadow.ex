@@ -17,15 +17,16 @@ defmodule CodeMySpec.Requirements.Shadow do
       revisits, which costs an agent a session.
 
     * `extra` — the shadow has a row the live projection does not. Usually the
-      shadow computed an entity the live pass had no reason to, which costs a
-      recompute and nothing else.
+      shadow retained a requirement the pass no longer has. An extra requirement
+      can offer work that should not exist, so this also fails agreement.
 
     * `disagree` — both have the row and the verdicts differ. The expensive one
       to read, because it is either a stale shadow row (a missed mark, same as
       `missing`) or a genuine computation difference, and the sample is what
       tells them apart.
 
-  A run of passes at `missing: 0, disagree: 0` is what earns the swap.
+  Agreement requires zero missing, extra and disagreeing nodes and edges.
+  Agreement with another implementation is not independent proof of correctness.
 
   ## What the diff cannot see
 
@@ -61,6 +62,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
+  alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -387,13 +389,31 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   defp select_existing(query, "component" = entity_type),
-    do: select(query, [n], %{id: n.id, name: n.name, owner_id: n.component_id, entity_type: ^entity_type})
+    do:
+      select(query, [n], %{
+        id: n.id,
+        name: n.name,
+        owner_id: n.component_id,
+        entity_type: ^entity_type
+      })
 
   defp select_existing(query, "story" = entity_type),
-    do: select(query, [n], %{id: n.id, name: n.name, owner_id: n.story_id, entity_type: ^entity_type})
+    do:
+      select(query, [n], %{
+        id: n.id,
+        name: n.name,
+        owner_id: n.story_id,
+        entity_type: ^entity_type
+      })
 
   defp select_existing(query, "project" = entity_type),
-    do: select(query, [n], %{id: n.id, name: n.name, owner_id: n.project_id, entity_type: ^entity_type})
+    do:
+      select(query, [n], %{
+        id: n.id,
+        name: n.name,
+        owner_id: n.project_id,
+        entity_type: ^entity_type
+      })
 
   defp delete_ids([], _target), do: :ok
 
@@ -906,25 +926,8 @@ defmodule CodeMySpec.Requirements.Shadow do
   produced it.
   """
   @spec log(report()) :: :ok
-  def log(%{live: 0, shadow: 0}), do: :ok
-
-  # Edges count, and they did not.
-  #
-  # `diff/1` has computed `edges_missing` and `edges_extra` since the edge
-  # tables were added, and this line printed neither and gated on neither. A
-  # projection with every verdict right and its whole topology wrong logged
-  # "agrees", and a run of passes at zero — the thing that earns the swap — was
-  # a statement about nodes that read like one about the graph.
-  #
-  # Both directions fail the verdict here, where node `extra` does not. An edge
-  # is a prerequisite: a missing one lets work start before the thing it waits
-  # on, an extra one blocks work that is ready, and both change the answer to
-  # "what should I do next" — which is the only question the graph is asked. A
-  # spare node costs a recompute and nothing else.
   def log(report) do
-    clean? =
-      report.missing == 0 and report.disagree == 0 and
-        report.edges_missing == 0 and report.edges_extra == 0
+    clean? = Verification.clean?(report)
 
     Logger.info(
       "[Requirements] shadow #{if clean?, do: "agrees", else: "differs"} — " <>
@@ -1056,20 +1059,14 @@ defmodule CodeMySpec.Requirements.Shadow do
     source
     |> scoped(project_id, component_ids, story_ids)
     |> where(^copy_filter(working_copy_id))
-    |> select_verdicts()
     |> Repo.all()
-    |> Map.new(fn {component_id, story_id, proj_id, name, satisfied, checked_at} ->
-      {{component_id, story_id, proj_id, name}, {satisfied, checked_at}}
+    |> Map.new(fn row ->
+      {{row.component_id, row.story_id, row.project_id, row.name},
+       {Verification.stored(row), row.checked_at}}
     end)
   end
 
   defp verdict(side, key), do: side |> Map.fetch!(key) |> elem(0)
-
-  defp select_verdicts(query) do
-    from(n in query,
-      select: {n.component_id, n.story_id, n.project_id, n.name, n.satisfied, n.checked_at}
-    )
-  end
 
   defp scoped(source, project_id, component_ids, story_ids) do
     from(n in source,
@@ -1126,14 +1123,16 @@ defmodule CodeMySpec.Requirements.Shadow do
       disagree
       |> Enum.take(3)
       |> Enum.map(fn key ->
-        "disagree #{key_label(key)} (live #{side_label(live, key)}, shadow #{side_label(shadow, key)})"
+        fields = Verification.changed_fields(verdict(live, key), verdict(shadow, key))
+
+        "disagree #{key_label(key)} (#{Enum.join(fields, ", ")}; live #{side_label(live, key)}, shadow #{side_label(shadow, key)})"
       end)
     ])
   end
 
   defp side_label(side, key) do
-    {satisfied, checked_at} = Map.fetch!(side, key)
-    "#{satisfied}@#{checked_at && NaiveDateTime.to_time(checked_at)}"
+    {answer, checked_at} = Map.fetch!(side, key)
+    "#{answer.satisfied}@#{checked_at && NaiveDateTime.to_time(checked_at)}"
   end
 
   defp key_label({component_id, story_id, project_id, name}) do

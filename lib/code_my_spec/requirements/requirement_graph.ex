@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
@@ -39,6 +40,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Requirements.Topology
+  alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
 
   @type node_key :: {String.t(), any(), String.t()}
@@ -1623,8 +1625,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {served, served_edges} = Projection.load(scope, ctx)
     {computed, computed_edges} = compute_topology(scope, ctx, config)
 
-    served_by_key = Map.new(served, &{node_key(&1), &1.satisfied})
-    computed_by_key = Map.new(computed, &{node_key(&1), &1.satisfied})
+    served_by_key = Map.new(served, &{node_key(&1), Verification.behavior(&1)})
+    computed_by_key = Map.new(computed, &{node_key(&1), Verification.behavior(&1)})
     served_keys = MapSet.new(Map.keys(served_by_key))
     computed_keys = MapSet.new(Map.keys(computed_by_key))
 
@@ -1636,12 +1638,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> MapSet.intersection(computed_keys)
       |> Enum.filter(&(Map.fetch!(served_by_key, &1) != Map.fetch!(computed_by_key, &1)))
 
+    actionable_differences =
+      Enum.flat_map(RoleProfile.roles(), fn role ->
+        actual = actionable_keys(served, served_edges, ctx, role)
+        expected = actionable_keys(computed, computed_edges, ctx, role)
+
+        Enum.map(
+          MapSet.difference(expected, actual),
+          &"#{role} work not offered: #{audit_label(&1)}"
+        ) ++
+          Enum.map(
+            MapSet.difference(actual, expected),
+            &"#{role} extra work offered: #{audit_label(&1)}"
+          )
+      end)
+
     served_edge_set = MapSet.new(served_edges, &{&1.from, &1.to})
     computed_edge_set = MapSet.new(computed_edges, &{&1.from, &1.to})
     edges_missing = MapSet.difference(computed_edge_set, served_edge_set)
     edges_extra = MapSet.difference(served_edge_set, computed_edge_set)
 
     %{
+      actionable_disagree: length(actionable_differences),
       served: map_size(served_by_key),
       computed: map_size(computed_by_key),
       missing: MapSet.size(missing),
@@ -1654,10 +1672,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       sample:
         Enum.map(missing, &"not served: #{audit_label(&1)}") ++
           Enum.map(extra, &"served, not recomputed: #{audit_label(&1)}") ++
-          Enum.map(disagree, &"disagrees: #{audit_label(&1)}") ++
+          Enum.map(disagree, fn key ->
+            fields = Verification.changed_fields(served_by_key[key], computed_by_key[key])
+            "disagrees: #{audit_label(key)} (#{Enum.join(fields, ", ")})"
+          end) ++
+          actionable_differences ++
           Enum.map(edges_missing, &"edge not served: #{audit_edge(&1)}") ++
           Enum.map(edges_extra, &"edge served, not recomputed: #{audit_edge(&1)}")
     }
+  end
+
+  defp actionable_keys(nodes, edges, ctx, role) do
+    nodes
+    |> actionable_for_role_from(edges, ctx, role)
+    |> MapSet.new(&node_key/1)
   end
 
   # A reader that named only the project id — the dev page — carries neither
