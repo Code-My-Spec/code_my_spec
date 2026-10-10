@@ -67,6 +67,14 @@ defmodule CodeMySpec.Requirements.Requirement do
     details: %{}
   ]
 
+  @doc "The orchestration owner shared by computation and row rehydration."
+  def orchestration_parent(_definition, _entity, parent) when not is_nil(parent),
+    do: {parent.id, parent.module_name}
+
+  def orchestration_parent(%{orchestrated_by: nil}, _entity, nil), do: {nil, nil}
+
+  def orchestration_parent(_definition, entity, nil), do: {entity.id, entity.module_name}
+
   @doc """
   String-key a details map, so a computed requirement and a stored one carry the
   same shape.

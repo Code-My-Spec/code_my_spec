@@ -209,10 +209,10 @@ defmodule CodeMySpec.Requirements.DrainCost do
       {result, extra} = fun.()
       emit(Map.merge(meta, extra), counter, System.monotonic_time() - started)
       result
-    rescue
-      error ->
+    catch
+      kind, reason ->
         emit(Map.put(meta, :raised, true), counter, System.monotonic_time() - started)
-        reraise error, __STACKTRACE__
+        :erlang.raise(kind, reason, __STACKTRACE__)
     after
       :telemetry.detach(handler_id)
     end
@@ -305,6 +305,9 @@ defmodule CodeMySpec.Requirements.DrainCost do
   defp report(meta, measurements) do
     %{
       kind: meta.kind,
+      raised: Map.get(meta, :raised, false),
+      measured_at: DateTime.utc_now(),
+      measurement_scope: :projection,
       duration_ms: System.convert_time_unit(measurements.duration, :native, :millisecond),
       queries: measurements.queries,
       rows_written: measurements.rows_written,

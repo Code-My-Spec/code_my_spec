@@ -742,8 +742,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         end
       )
 
-    account_for(consumed)
-
     # After the writes, never before — a mark consumed on the strength of having
     # been started is one a crash turns into a permanently stale entity
     # (criterion 3521). Consumed by the pass as well as the projector now: only
@@ -768,6 +766,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # silently misses one reports agreement it has not checked.
     unless shadow_will_consume?(state), do: Invalidations.consume(marks)
     report_shadow(state, computed)
+    account_for(consumed)
 
     # Only when an input actually moved. A pass that ran purely to onboard a
     # vantage a reader named for the first time (`consumed == []`, including

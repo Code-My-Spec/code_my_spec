@@ -509,7 +509,12 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # Coverage matches files to criteria by number, so it reads the whole copy
   # rather than the files a story happens to own.
   defp copy_files(_scope, %{files_by_project: files}) when is_list(files), do: files
-  defp copy_files(scope, _ctx), do: Files.list_files(scope)
+
+  defp copy_files(scope, _ctx) do
+    # The project view reads its designated checkout, just like a full load.
+    # A nil copy passed directly to Files would blend every checkout's specs.
+    Files.list_files(%{scope | active_working_copy_id: Preloader.files_copy(scope)})
+  end
 
   defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
     scope
