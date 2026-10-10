@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   use Boundary,
     top_level?: true,
+    exports: [GraphVerification],
     deps: [
       CmsHarness,
       CodeMySpec,
