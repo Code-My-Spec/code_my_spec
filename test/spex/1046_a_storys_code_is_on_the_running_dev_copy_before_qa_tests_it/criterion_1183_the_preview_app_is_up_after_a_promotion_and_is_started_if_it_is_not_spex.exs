@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -81,7 +82,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
         {head, 0} = git(context, context.running_root, ["rev-parse", "HEAD"])
 
         :ok =
-          CodeMySpecSpex.Fixtures.StoryIssueBag.certify(
+          StoryIssueBag.certify(
             context.scope,
             story.id,
             String.trim(head)
