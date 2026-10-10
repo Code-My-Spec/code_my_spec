@@ -1037,12 +1037,7 @@ defmodule CodeMySpec.Requirements.Shadow do
     entity_coverage?(held, Map.get(defined, :entities)) and
       covered?(issue_held, Map.get(defined, :issue, MapSet.new(["submitted"]))) and
       covered?(story_held, defined.story) and covered?(project_held, defined.project) and
-      Enum.all?(component_held, fn {type, names} ->
-        case Map.fetch(defined.component, type) do
-          {:ok, expected} -> covered?(names, expected)
-          :error -> true
-        end
-      end)
+      component_definitions_covered?(component_held, defined.component)
   end
 
   def definitions_covered?(%Scope{}, _defined), do: true
@@ -1083,6 +1078,15 @@ defmodule CodeMySpec.Requirements.Shadow do
     (Map.keys(actual) ++ Map.keys(expected))
     |> Enum.filter(&(Map.get(actual, &1, MapSet.new()) != Map.get(expected, &1, MapSet.new())))
     |> MapSet.new()
+  end
+
+  defp component_definitions_covered?(held, defined) do
+    Enum.all?(held, fn {type, names} ->
+      case Map.fetch(defined, type) do
+        {:ok, expected} -> covered?(names, expected)
+        :error -> true
+      end
+    end)
   end
 
   defp component_definition_names(held) do
