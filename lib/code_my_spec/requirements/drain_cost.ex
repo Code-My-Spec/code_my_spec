@@ -305,6 +305,9 @@ defmodule CodeMySpec.Requirements.DrainCost do
   defp report(meta, measurements) do
     %{
       kind: meta.kind,
+      raised: Map.get(meta, :raised, false),
+      measured_at: DateTime.utc_now(),
+      measurement_scope: :projection,
       duration_ms: System.convert_time_unit(measurements.duration, :native, :millisecond),
       queries: measurements.queries,
       rows_written: measurements.rows_written,

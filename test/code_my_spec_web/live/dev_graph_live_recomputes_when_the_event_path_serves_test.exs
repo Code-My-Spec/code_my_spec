@@ -20,6 +20,7 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.ShadowProjector
 
@@ -48,7 +49,7 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
   end
 
   test "the stale panel recomputes from the domain rather than reading the pass's fingerprints",
-       %{conn: conn} do
+       %{conn: conn, scope: scope} do
     {:ok, _view, html} = live(conn, ~p"/dev/graph")
 
     assert html =~ ~s(data-test="recomputed"),
@@ -60,6 +61,7 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
            project. Either a recompute from the domain really differs from the
            seed here — which the exactness tests would also be saying — or the
            panel misreads the report.
+           #{inspect(Requirements.served_vs_recomputed(scope))}
            """
 
     refute html =~ "inputs have moved past",
@@ -87,7 +89,68 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
            A story with an open question reads as a disagreement between the
            rows and a recompute of them. The rows say the question is open;
            the recompute was run from a scope with no account and saw none.
+           #{inspect(Requirements.served_vs_recomputed(scope))}
            """
+  end
+
+  test "waiting metadata disagreement is visible even when satisfaction agrees", %{
+    conn: conn,
+    scope: scope
+  } do
+    import Ecto.Query
+
+    CodeMySpec.Repo.update_all(
+      from(n in CodeMySpec.Requirements.Node,
+        where: n.project_id == ^scope.active_project_id and n.name == "personas_complete"
+      ),
+      set: [details: %{"waiting_on" => "verification probe"}]
+    )
+
+    report = Requirements.served_vs_recomputed(scope)
+    assert report.disagree > 0
+    assert report.actionable_disagree > 0
+    assert Enum.any?(report.sample, &String.contains?(&1, "details"))
+    {:ok, _view, html} = live(conn, ~p"/dev/graph")
+    assert html =~ "graph differs from what is served"
+    refute html =~ "Nothing. Every entity's inputs, recomputed now, agree"
+  end
+
+  test "an extra served requirement prevents a green audit", %{conn: conn, scope: scope} do
+    story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{ready_for_dev: true})
+    :ok = GraphWatcher.settle(scope)
+    :ok = ShadowProjector.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
+    assert Requirements.served_vs_recomputed(scope).extra == 0
+
+    for copy_id <- Enum.uniq([nil, scope.active_working_copy_id]) do
+      CodeMySpec.Repo.insert!(%CodeMySpec.Requirements.Node{
+        name: "deploy",
+        description: "Extra work despite devops being off",
+        story_id: story.id,
+        working_copy_id: copy_id,
+        satisfied: false
+      })
+    end
+
+    report = Requirements.served_vs_recomputed(scope)
+    assert report.extra == 1
+    assert report.actionable_disagree > 0
+    {:ok, _view, html} = live(conn, ~p"/dev/graph")
+    assert html =~ "graph differs from what is served"
+    refute html =~ "Nothing. Every entity's inputs, recomputed now, agree"
+  end
+
+  test "the drain panel labels failure and unknown work", %{conn: conn, scope: scope} do
+    assert_raise RuntimeError, "verification probe", fn ->
+      DrainCost.measure(
+        %{kind: :event, project_id: scope.active_project_id, observations: 1},
+        fn -> raise "verification probe" end
+      )
+    end
+
+    {:ok, _view, html} = live(conn, ~p"/dev/graph")
+    assert html =~ "Failed — partial cost"
+    assert html =~ "handled mark/checkouts unknown"
+    assert html =~ "fallback mark/checkouts unknown"
   end
 
   test "the harness panel reports whether a harness has joined, not a watcher nothing starts", %{

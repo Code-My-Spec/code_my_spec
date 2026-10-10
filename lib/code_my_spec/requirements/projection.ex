@@ -394,6 +394,9 @@ defmodule CodeMySpec.Requirements.Projection do
     end
   end
 
+  defp with_parent(req, "story", story, _definition, _ctx),
+    do: %{req | parent_entity_id: story.project_id}
+
   defp with_parent(req, _type, _entity, _definition, _ctx), do: req
 
   defp entity_for(%Node{component_id: id}, ctx) when not is_nil(id) do
