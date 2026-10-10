@@ -83,14 +83,16 @@ defmodule CodeMySpec.StoryReconcile do
   @doc "Apply releases while preserving only the exact certification already reviewed."
   @spec carry_out(Scope.t(), plan()) :: :ok | {:error, term()}
   def carry_out(%Scope{} = scope, plan) do
-    case Repo.transaction(fn ->
-           case each(plan.unpark, &release(scope, &1)) do
-             :ok -> :ok
-             {:error, reason} -> Repo.rollback(reason)
-           end
-         end) do
+    case Repo.transaction(fn -> release_all(scope, plan.unpark) end) do
       {:ok, :ok} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp release_all(scope, unpark) do
+    case each(unpark, &release(scope, &1)) do
+      :ok -> :ok
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 
