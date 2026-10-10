@@ -87,7 +87,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # An issue is not in the requirement graph (story 1091): the offer
   # `get_next_requirement` gave is read the same way here, through
   # `Agents.Work`, rather than looked up in `RequirementGraph`.
-  defp resolve_requirement(scope, %{requirement_name: name, entity_type: "issue", entity_id: id}, owner)
+  defp resolve_requirement(
+         scope,
+         %{requirement_name: name, entity_type: "issue", entity_id: id},
+         owner
+       )
        when is_binary(name) and is_binary(id) do
     role = if match?(%Agent{}, owner), do: owner.role, else: nil
 
@@ -339,9 +343,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # offered that (4292518a). Another story's story-level work is
   # `team_may_claim/3`'s refusal; this one covers everything else — every
   # project-level requirement, and other stories' components.
-  # An issue takes priority over a bound story (story 1091, `Agent.issue_id`'s
-  # doc comment): refusing it for the story the agent also still holds would
-  # contradict the offer `get_next_requirement` just made.
+  # Explicit issue work has its own bag and role checks. Assigning that bag
+  # clears the team's story assignment, so this story-only check does not apply.
   defp story_may_claim(_scope, _owner, %{entity_type: "issue"}), do: :ok
 
   defp story_may_claim(scope, %Agent{} = agent, requirement) do
