@@ -911,13 +911,64 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # child under a parent that turns out not to be a container recomputes both
   # where one would have done, which costs a little and cannot be wrong.
   defp expand_component_families(stale, ctx) do
-    ctx.components
-    |> Enum.group_by(&(&1.parent_component_id || &1.id), & &1.id)
-    |> Enum.reduce(stale, fn {_family, ids}, acc ->
-      if Enum.any?(ids, &MapSet.member?(acc, {"component", &1})),
-        do: Enum.reduce(ids, acc, &MapSet.put(&2, {"component", &1})),
-        else: acc
+    components = Map.new(ctx.components, &{&1.id, &1})
+    children = Enum.group_by(ctx.components, & &1.parent_component_id)
+
+    stale
+    |> Enum.filter(&(elem(&1, 0) == "component"))
+    |> Enum.reduce(stale, fn {"component", id}, covered ->
+      covered
+      |> add_component_template_family(id, components, children)
+      |> add_context_ancestor_families(id, components, children)
     end)
+  end
+
+  # The template for a context emits child-scoped nodes for its direct
+  # children. Recomputing one of those children therefore has to include the
+  # context and its siblings, or reduce_to/2 drops the template owner and the
+  # child is incorrectly treated as a standalone component.
+  defp add_component_template_family(covered, id, components, children) do
+    case Map.get(components, id) do
+      nil ->
+        covered
+
+      component ->
+        parent_is_container =
+          case Map.get(components, component.parent_component_id) do
+            %{type: type} when is_binary(type) -> RequirementsRegistry.has_children?(type)
+            _ -> false
+          end
+
+        ids =
+          if not parent_is_container and RequirementsRegistry.has_children?(component.type),
+            do: [id | Enum.map(Map.get(children, id, []), & &1.id)],
+            else: [id]
+
+        Enum.reduce(ids, covered, &MapSet.put(&2, {"component", &1}))
+    end
+  end
+
+  # If that template owner is itself a child of another context, the full pass
+  # does not run its own template. Carry the containing context into the narrow
+  # context as well, recursively, so the same ownership rules apply at every
+  # nested level.
+  defp add_context_ancestor_families(covered, id, components, children) do
+    add_context_ancestor_families(covered, id, components, children, MapSet.new())
+  end
+
+  defp add_context_ancestor_families(covered, id, components, children, seen) do
+    seen = MapSet.put(seen, id)
+
+    with %{parent_component_id: parent_id} when not is_nil(parent_id) <- Map.get(components, id),
+         %{type: type} when is_binary(type) <- Map.get(components, parent_id),
+         true <- RequirementsRegistry.has_children?(type),
+         false <- MapSet.member?(seen, parent_id) do
+      covered
+      |> add_component_template_family(parent_id, components, children)
+      |> add_context_ancestor_families(parent_id, components, children, seen)
+    else
+      _ -> covered
+    end
   end
 
   # Rows whose entity is no longer in the context at all.
@@ -1729,7 +1780,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec defined_names(map(), map()) :: %{
           story: MapSet.t(String.t()),
           project: MapSet.t(String.t()),
-          component: %{String.t() => MapSet.t(String.t())}
+          component: %{String.t() => MapSet.t(String.t())},
+          entities: %{{String.t(), term()} => MapSet.t(String.t())}
         }
   def defined_names(ctx, config) do
     {top_level, _children_by_parent} = component_families(ctx)
@@ -1752,8 +1804,57 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     %{
       story: template_names(RequirementDefinitionData.story_graph(), config),
       project: template_names(RequirementDefinitionData.project_graph(), config),
-      component: component
+      component: component,
+      entities: defined_entities(ctx, config)
     }
+  end
+
+  @doc """
+  Expected requirement names for each story and component in a loaded context.
+
+  This derives membership from the same filtered templates and parent/child
+  split used by graph computation. It does not run requirement checkers, so it
+  can identify missing rows without performing verdict work.
+  """
+  @spec defined_entities(map(), map()) :: %{{String.t(), term()} => MapSet.t(String.t())}
+  def defined_entities(ctx, config) do
+    entities =
+      Map.new(ctx.components, &{{"component", &1.id}, MapSet.new()})
+      |> Map.merge(Map.new(ctx.stories, &{{"story", &1.id}, MapSet.new()}))
+
+    {top_level, children_by_parent} = component_families(ctx)
+
+    entities =
+      Enum.reduce(top_level, entities, fn component, acc ->
+        template =
+          component.type
+          |> RequirementDefinitionData.graph_for_type()
+          |> filter_definitions_by_config(config)
+
+        own_names =
+          template
+          |> Enum.filter(&(&1.node_scope in [:parent, :self]))
+          |> MapSet.new(& &1.name)
+
+        acc = Map.update!(acc, {"component", component.id}, &MapSet.union(&1, own_names))
+
+        Enum.reduce(Map.get(children_by_parent, component.id, []), acc, fn child, child_acc ->
+          child_names =
+            template
+            |> Enum.filter(&(&1.node_scope == :child))
+            |> filter_defs_for_child_type(child.type)
+            |> MapSet.new(& &1.name)
+
+          Map.update!(child_acc, {"component", child.id}, &MapSet.union(&1, child_names))
+        end)
+      end)
+
+    story_names = template_names(RequirementDefinitionData.story_graph(), config)
+
+    Map.new(entities, fn
+      {{"story", _id} = key, _names} -> {key, story_names}
+      {key, names} -> {key, names}
+    end)
   end
 
   defp template_names(template, config),
@@ -2328,13 +2429,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # 0555b8a3). An `:authored` component is never filtered — it is real
   # architecture regardless of whether its file has landed yet.
   #
-  # Matched on the key's presence rather than defaulted in: `Preloader.topology_context/1`
-  # deliberately carries no file data ("enough for the shape, not enough for any
-  # verdict") and feeds this same code through `Edges.plan/3` on every
-  # `ShadowProjector` redraw. Reading `ctx.files_by_component` unconditionally
-  # raised `KeyError` there for any project with a `:discovered` component,
-  # which the drain's rescue swallowed — leaving every entity in that drain
-  # unwritten, not just the phantom check's own answer wrong.
+  # Lightweight topology loads carry checkout-specific file membership;
+  # full loads carry the records. Both must exclude exactly the same ghosts.
+  defp phantom?(%{provenance: :discovered, id: id}, %{file_component_ids: ids}),
+    do: not MapSet.member?(ids, id)
+
   defp phantom?(%{provenance: :discovered, id: id}, %{files_by_component: files_by_component}),
     do: Map.get(files_by_component, id, []) == []
 
@@ -3121,7 +3220,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     files = Map.get(ctx.files_by_component, entity.id, [])
     result = RequirementCalculator.compute_one(scope, entity, definition, files, ctx)
 
-    {parent_id, parent_name} = orchestration_parent(definition, entity, parent)
+    {parent_id, parent_name} = Requirement.orchestration_parent(definition, entity, parent)
 
     %Requirement{
       entity_type: "component",
@@ -3145,16 +3244,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       details: Requirement.normalize_details(result.details)
     }
   end
-
-  # Child nodes use the explicit parent. Parent- and self-scope nodes
-  # self-parent when orchestrated, so they group with the child nodes under the
-  # same context header instead of floating above the wave they belong to.
-  defp orchestration_parent(_definition, _entity, parent) when not is_nil(parent),
-    do: {parent.id, parent.module_name}
-
-  defp orchestration_parent(%{orchestrated_by: nil}, _entity, _parent), do: {nil, nil}
-
-  defp orchestration_parent(_definition, entity, _parent), do: {entity.id, entity.module_name}
 
   # Which template produced this node: a `:child` def comes from the parent's,
   # everything else from the entity's own. Stored on the row because the name

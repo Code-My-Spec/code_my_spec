@@ -1003,7 +1003,8 @@ defmodule CodeMySpec.Requirements.Shadow do
       end)
       |> Map.new(fn {type, names} -> {type, MapSet.new(names)} end)
 
-    covered?(story_held, defined.story) and covered?(project_held, defined.project) and
+    entity_coverage?(held, Map.get(defined, :entities)) and
+      covered?(story_held, defined.story) and covered?(project_held, defined.project) and
       Enum.all?(component_held, fn {type, names} ->
         case Map.fetch(defined.component, type) do
           {:ok, expected} -> covered?(names, expected)
@@ -1013,6 +1014,41 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   def definitions_covered?(%Scope{}, _defined), do: true
+
+  @doc "Entities whose persisted node membership differs from the current template."
+  def incomplete_entities(%Scope{active_project_id: project_id} = scope, expected) do
+    {component_ids, story_ids} = entity_ids(project_id)
+
+    held =
+      event_target()
+      |> scoped(project_id, component_ids, story_ids)
+      |> where(^copy_filter(Projection.vantage(scope)))
+      |> select([n], {n.component_id, n.story_id, n.owner_component_type, n.node_scope, n.name})
+      |> Repo.all()
+
+    mismatched_entities(held, expected)
+  end
+
+  defp entity_coverage?(_held, nil), do: true
+  defp entity_coverage?(held, expected), do: MapSet.size(mismatched_entities(held, expected)) == 0
+
+  defp mismatched_entities(held, expected) do
+    actual =
+      Enum.reduce(held, %{}, fn
+        {component, nil, _type, _scope, name}, acc when not is_nil(component) ->
+          Map.update(acc, {"component", component}, MapSet.new([name]), &MapSet.put(&1, name))
+
+        {nil, story, _type, _scope, name}, acc when not is_nil(story) ->
+          Map.update(acc, {"story", story}, MapSet.new([name]), &MapSet.put(&1, name))
+
+        _project, acc ->
+          acc
+      end)
+
+    (Map.keys(actual) ++ Map.keys(expected))
+    |> Enum.filter(&(Map.get(actual, &1, MapSet.new()) != Map.get(expected, &1, MapSet.new())))
+    |> MapSet.new()
+  end
 
   # No rows of the type is not a mismatch: the vantage may hold no such
   # entity. Rows of the type carry exactly the defined names, or a release

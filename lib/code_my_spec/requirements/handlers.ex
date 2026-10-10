@@ -153,7 +153,9 @@ defmodule CodeMySpec.Requirements.Handlers do
   # projector asks the shape whether the edges have to be redrawn. Component
   # kinds are not listed because `@partial` already sends them down the path
   # that asks.
-  @shape ~w(dependency_changed story_changed)
+  # File presence controls whether discovered components belong to a story's
+  # dependency closure, even when no component or dependency record changed.
+  @shape ~w(dependency_changed story_changed files_synced)
 
   @doc "The handled kinds after which the projector checks the shape."
   @spec shape_kinds() :: [String.t()]

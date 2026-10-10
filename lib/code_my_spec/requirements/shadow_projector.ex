@@ -207,8 +207,8 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
        # all — `Freshness.topology/2` is the same hash the pass records, over
        # component ids, types, parents, dependencies and the story population.
        last_topology: %{},
-       # The vantage-invariant half of the edges, keyed by the project-wide
-       # shape it was generated for. See `edge_plan/2`.
+       # Generated edges keyed by shape and discovered-file membership.
+       # See `edge_plan/3`.
        edge_plan: nil,
        last_drain: nil,
        last_error: nil
@@ -817,6 +817,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     if topology == last and not node_set_moved? do
       state
     else
+      # A membership change (including a story moving into this checkout) can
+      # be handled by verdict sweeps, which cannot create its missing rows.
+      # Establish those entities before drawing edges over the stored nodes.
+      expected = RequirementGraph.defined_entities(shape, config)
+      incomplete = Shadow.incomplete_entities(state.scope, expected)
+      narrow_each(incomplete, state.scope, config)
       {state, drawn} = redraw(state, shape, config)
 
       Logger.info(
@@ -840,7 +846,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # Announced as an edge rebuild for `last_drain`, so criterion 3618 can go on
   # saying that a drain of verdicts drew nothing.
   defp redraw(state, shape, config) do
-    {state, plan} = edge_plan(state, config)
+    {state, plan} = edge_plan(state, shape, config)
     ids = Shadow.node_ids(state.scope)
     story_ids = Enum.map(shape.stories, & &1.id)
 
@@ -862,14 +868,24 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
      }}
   end
 
-  # The generated half of the edges, once per shape rather than once per
-  # vantage. Keyed by the project-wide shape — every ready story, whichever
-  # checkout holds it — so a drain settling ten vantages generates once, and
-  # a later drain that finds the shape unmoved generates nothing. Measured on
-  # dev before this: generating was ~65% of a 452ms redraw, and none of it
-  # read the vantage.
-  defp edge_plan(state, config) do
-    wide = Preloader.topology_context(%{state.scope | active_working_copy_id: nil})
+  # Reuse a generated plan only when both the project shape and this
+  # checkout's discovered-component file membership match. Story dependency
+  # closure excludes discoveries with no files here, so a project-wide plan
+  # alone can introduce dependencies belonging to a different checkout.
+  defp edge_plan(state, shape, config) do
+    file_component_ids =
+      Map.get_lazy(shape, :file_component_ids, fn ->
+        shape.files_by_component
+        |> Enum.reject(fn {_id, files} -> files == [] end)
+        |> MapSet.new(fn {id, _files} -> id end)
+      end)
+
+    wide =
+      state.scope
+      |> Map.put(:active_working_copy_id, nil)
+      |> Preloader.topology_context()
+      |> Map.put(:file_component_ids, file_component_ids)
+
     key = Freshness.topology(wide, config)
 
     case state.edge_plan do

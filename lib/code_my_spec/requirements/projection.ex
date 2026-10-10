@@ -382,16 +382,12 @@ defmodule CodeMySpec.Requirements.Projection do
   # under `## unknown` while its children sit under the context — which reads
   # as two waves and is what criteria 5628, 5815, 5903 and 5574 are about.
   defp with_parent(%Requirement{} = req, "component", component, definition, ctx) do
-    cond do
-      parent = Map.get(ctx.components_by_id, Map.get(component, :parent_component_id)) ->
-        %{req | parent_entity_id: parent.id, parent_entity_name: parent.module_name}
+    parent =
+      if definition.node_scope == :child,
+        do: Map.get(ctx.components_by_id, Map.get(component, :parent_component_id))
 
-      definition.orchestrated_by ->
-        %{req | parent_entity_id: component.id, parent_entity_name: component.module_name}
-
-      true ->
-        req
-    end
+    {parent_id, parent_name} = Requirement.orchestration_parent(definition, component, parent)
+    %{req | parent_entity_id: parent_id, parent_entity_name: parent_name}
   end
 
   defp with_parent(req, "story", story, _definition, _ctx),
