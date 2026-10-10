@@ -27,7 +27,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
-  alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Support.TestAdapter
@@ -120,11 +120,15 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "the retired spec alignment analyzer is unavailable", %{scope: scope} do
       assert {:error, "Unknown analyzer: spec_alignment"} =
-               StaticAnalysis.run(scope, :spec_alignment)
+               StaticAnalysis.run(scope, :spec_alignment, environment: local_environment(scope))
     end
 
     test "returns error when analyzer name is invalid", %{scope: scope} do
-      assert {:error, message} = StaticAnalysis.run(scope, :nonexistent_analyzer)
+      assert {:error, message} =
+               StaticAnalysis.run(scope, :nonexistent_analyzer,
+                 environment: local_environment(scope)
+               )
+
       assert is_binary(message)
       assert message =~ "Unknown analyzer"
     end
@@ -147,7 +151,9 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "executes all available analyzers and returns aggregated Problems", %{scope: scope} do
       use_cmd_cassette "static_analysis_run_all" do
-        assert {:ok, problems} = StaticAnalysis.run_all(scope)
+        assert {:ok, problems} =
+                 StaticAnalysis.run_all(scope, environment: local_environment(scope))
+
         assert is_list(problems)
       end
     end
@@ -155,27 +161,32 @@ defmodule CodeMySpec.StaticAnalysisTest do
     test "delegates to Runner.run_all/2 with options", %{scope: scope} do
       use_cmd_cassette "static_analysis_run_all" do
         # Run with custom timeout
-        assert {:ok, problems} = StaticAnalysis.run_all(scope, timeout: 60_000)
+        assert {:ok, problems} =
+                 StaticAnalysis.run_all(scope,
+                   timeout: 60_000,
+                   environment: local_environment(scope)
+                 )
+
         assert is_list(problems)
       end
     end
 
-    test "returns empty list when no analyzers are available" do
-      # Create scope with no cwd - no analyzers will be available
+    test "refuses execution when no runtime is available" do
+      # This scope has neither a rooted working copy nor a local runtime.
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project)
 
-      assert {:ok, []} = StaticAnalysis.run_all(scope)
+      assert {:error, :no_environment} = StaticAnalysis.run_all(scope)
     end
 
     test "logs warnings for failed analyzers", %{scope: scope} do
       use_cmd_cassette "static_analysis_run_all" do
         log =
           capture_log(fn ->
-            StaticAnalysis.run_all(scope)
+            StaticAnalysis.run_all(scope, environment: local_environment(scope))
           end)
 
         # Log output may contain warnings about failed or unavailable analyzers
@@ -183,4 +194,6 @@ defmodule CodeMySpec.StaticAnalysisTest do
       end
     end
   end
+
+  defp local_environment(scope), do: Environment.new(:local, scope.cwd)
 end

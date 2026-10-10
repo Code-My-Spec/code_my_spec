@@ -19,7 +19,9 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("specs_ready_note")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+    environment = Environment.new(:local, tmp)
+    scope = %{full_scope_fixture() | cwd: tmp, environment: environment}
+    :ok = register_working_copy_environment(scope, environment)
 
     Configurations.get_or_create(scope)
     # spex defaults to :off for a fresh project (nothing has ever gone green

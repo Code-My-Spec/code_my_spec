@@ -9,9 +9,9 @@ defmodule CodeMySpec.Host do
   ## One behaviour, two backends
 
   The behaviour is defined once — in `priv/host/provision_app.sh` and
-  `priv/host/verify_isolation.sh` — and runs wherever the scope's environment
-  points. In development that is a container; in production it is a Hetzner
-  box. Nothing here branches on which.
+  `priv/host/verify_isolation.sh` — and runs in the explicit target environment
+  supplied by the caller. Nothing here guesses which host should receive a
+  deployment from the caller's working copy.
 
   That falls out of `Environments.Container` rather than being arranged: the
   container environment drives `docker`, and `DOCKER_HOST` already accepts
@@ -42,13 +42,13 @@ defmodule CodeMySpec.Host do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.Users, CodeMySpec.Users.Scope],
+    deps: [CodeMySpec.Environments],
     exports: :all
 
   require Logger
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Environments.Environment
 
   @scripts_dir "priv/host"
 
@@ -64,8 +64,9 @@ defmodule CodeMySpec.Host do
   to the app's key *and* the admin's, and a default here would silently
   produce a box whose secrets nobody can read once the box is gone.
   """
-  @spec provision_app(Scope.t(), app(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
-  def provision_app(%Scope{} = scope, %{name: name, port: port} = app, opts \\ []) do
+  @spec provision_app(Environment.t() | nil, app(), keyword()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def provision_app(environment, %{name: name, port: port} = app, opts \\ []) do
     admin_key = Keyword.get(opts, :admin_age_pubkey) || System.get_env("ADMIN_AGE_PUBKEY")
 
     if is_nil(admin_key) or admin_key == "" do
@@ -77,7 +78,7 @@ defmodule CodeMySpec.Host do
 
       run_opts = [env: [{"ADMIN_AGE_PUBKEY", admin_key}]] ++ Keyword.take(opts, [:cmd])
 
-      scope
+      environment
       |> run("provision_app.sh", args, run_opts)
       |> case do
         {output, 0} -> {:ok, output}
@@ -93,10 +94,10 @@ defmodule CodeMySpec.Host do
   non-zero exit is deliberate: this is meant to gate a deploy rather than be
   read by a human who may or may not be looking.
   """
-  @spec verify_isolation(Scope.t(), String.t(), String.t(), keyword()) ::
+  @spec verify_isolation(Environment.t() | nil, String.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
-  def verify_isolation(%Scope{} = scope, app, other, opts \\ []) do
-    case run(scope, "verify_isolation.sh", [app, other], Keyword.take(opts, [:cmd])) do
+  def verify_isolation(environment, app, other, opts \\ []) do
+    case run(environment, "verify_isolation.sh", [app, other], Keyword.take(opts, [:cmd])) do
       {output, 0} ->
         {:ok, output}
 
@@ -112,8 +113,8 @@ defmodule CodeMySpec.Host do
   They live in this repository so that one edit changes what runs everywhere,
   rather than each box carrying a copy that drifts.
   """
-  @spec install(Scope.t()) :: :ok | {:error, term()}
-  def install(%Scope{environment: env}) when not is_nil(env) do
+  @spec install(Environment.t() | nil) :: :ok | {:error, term()}
+  def install(%Environment{} = env) do
     for file <-
           ~w(provision_app.sh verify_isolation.sh templates/app.service templates/caddy-site) do
       source = Path.join([Application.app_dir(:code_my_spec), @scripts_dir, file])
@@ -124,13 +125,13 @@ defmodule CodeMySpec.Host do
     :ok
   end
 
-  def install(_scope), do: {:error, :no_environment}
+  def install(_environment), do: {:error, :no_environment}
 
-  defp run(%Scope{environment: nil}, script, _args, _opts) do
-    {"cannot run #{script}: this scope has no environment to run commands in", 1}
+  defp run(nil, script, _args, _opts) do
+    {"cannot run #{script}: no target environment was provided", 1}
   end
 
-  defp run(%Scope{environment: env}, script, args, opts) do
+  defp run(%Environment{} = env, script, args, opts) do
     # `:cmd` is a seam for tests to observe the command without a container;
     # in every real path it is `Environments.cmd/4`, which is what actually
     # reaches the box.

@@ -45,7 +45,9 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+    environment = Environment.new(:local, tmp)
+    scope = %{full_scope_fixture() | cwd: tmp, environment: environment}
+    :ok = register_working_copy_environment(scope, environment)
 
     Configurations.get_or_create(scope)
     {:ok, _} = Configurations.update(scope, %{credo: :block_all})

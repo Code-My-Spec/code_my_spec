@@ -35,7 +35,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     {:ok, updated_project} =
       Projects.update_project(scope, project, %{code_repo: project_dir})
 
-    scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
+    scope =
+      user_scope_fixture(user, account, updated_project)
+      |> Map.put(:cwd, project_dir)
+      |> Map.put(:active_working_copy_id, nil)
 
     on_exit(fn ->
       TestAdapter.checkin(project_dir)
@@ -96,7 +99,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       project = project_fixture(scope)
 
       scope =
-        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/invalid/path")
+        user_scope_fixture(user, account, project)
+        |> Map.put(:cwd, "/nonexistent/invalid/path")
+        |> Map.put(:active_working_copy_id, nil)
 
       assert Sobelow.available?(scope) == false
     end
@@ -112,7 +117,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       File.mkdir_p!(project_dir)
 
       project = project_fixture(scope)
-      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, project_dir)
+
+      scope =
+        user_scope_fixture(user, account, project)
+        |> Map.put(:cwd, project_dir)
+        |> Map.put(:active_working_copy_id, nil)
 
       result = Sobelow.available?(scope)
       File.rm_rf!(project_dir)
@@ -125,7 +134,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
-      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent")
+
+      scope =
+        user_scope_fixture(user, account, project)
+        |> Map.put(:cwd, "/nonexistent")
+        |> Map.put(:active_working_copy_id, nil)
 
       result = Sobelow.available?(scope)
       assert is_boolean(result)
@@ -222,7 +235,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       project = project_fixture(scope)
 
       scope =
-        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/invalid/path")
+        user_scope_fixture(user, account, project)
+        |> Map.put(:cwd, "/nonexistent/invalid/path")
+        |> Map.put(:active_working_copy_id, nil)
 
       use_cmd_cassette "static_analysis_sobelow_run_nonexistent", ignore: [[:opts, :cd]] do
         capture_log(fn ->
@@ -237,7 +252,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
-      scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent")
+
+      scope =
+        user_scope_fixture(user, account, project)
+        |> Map.put(:cwd, "/nonexistent")
+        |> Map.put(:active_working_copy_id, nil)
 
       temp_files_before = count_temp_files()
 

@@ -21,6 +21,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Problems.ProblemConverter
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Users.Scope
 
@@ -71,17 +72,27 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   Compile the project and persist diagnostics as problems.
 
   Clears all compiler problems (mix compile produces the complete picture)
-  and replaces with the new diagnostics. Returns `:ok` or `{:error, reason}`
-  when compilation has errors.
+  and replaces with the new diagnostics. Returns `{:error, :no_environment}`
+  without changing saved findings when there is no execution environment.
   """
-  @spec compile(Scope.t(), keyword()) :: :ok | {:error, String.t()}
+  @spec compile(Scope.t(), keyword()) :: :ok | {:error, term()}
   def compile(scope, opts \\ [])
-  def compile(%Scope{cwd: nil}, _opts), do: :ok
 
   def compile(%Scope{} = scope, opts) do
+    cwd = opts[:cwd] || scope.cwd
+    environment = StaticAnalysis.resolve_environment(opts, scope, cwd)
+
+    if is_nil(environment) do
+      {:error, :no_environment}
+    else
+      compile_in_environment(scope, opts, environment)
+    end
+  end
+
+  defp compile_in_environment(scope, opts, environment) do
     start = System.monotonic_time(:millisecond)
 
-    execute_opts = [environment: scope.environment]
+    execute_opts = [environment: environment]
 
     execute_opts =
       case Keyword.get(opts, :compile_output_file) do
@@ -271,18 +282,33 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   `:exunit_stale` / `:spex_stale` must be split out by the caller, since
   they execute as subprocesses rather than through `Runner`.
 
+  Returns `{:error, :no_environment}` without changing saved findings when
+  there is no execution environment.
+
   Per-analyzer file scope is config-driven: credo in `:block_all` runs
   project-wide (no file path args, all credo problems cleared before
   re-insert); other modes and other analyzers stay scoped to the
   changed files of this turn.
   """
-  @spec run_analyzers(Scope.t(), [atom()], [map()], map(), keyword()) :: :ok
+  @spec run_analyzers(Scope.t(), [atom()], [map()], map(), keyword()) :: :ok | {:error, term()}
   def run_analyzers(scope, analyzers, changed_files, config \\ %{}, opts \\ [])
   def run_analyzers(_scope, [], _changed_files, _config, _opts), do: :ok
 
   def run_analyzers(scope, analyzers, changed_files, config, opts) do
-    run_analyzer_set(scope, analyzers, changed_files, config, opts)
-    :ok
+    cwd = Keyword.get(opts, :cwd) || scope.cwd
+    environment = StaticAnalysis.resolve_environment(opts, scope, cwd)
+
+    if is_nil(environment) do
+      {:error, :no_environment}
+    else
+      execution_opts =
+        opts
+        |> Keyword.put(:environment, environment)
+        |> Keyword.put(:cwd, Keyword.get(opts, :cwd) || environment.cwd)
+
+      run_analyzer_set(scope, analyzers, changed_files, config, execution_opts)
+      :ok
+    end
   end
 
   # -- Internal analyzer execution --
@@ -297,7 +323,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
     all_problems =
       (run_static_analyzers(scope, static_analyzers, file_paths, config, opts) ++
-         run_validators(scope, validators, files))
+         run_validators(scope, validators, files, opts[:environment]))
       |> Enum.map(&stamp_component_id(&1, component_map))
 
     source_scopes = source_scopes_for(static_analyzers, validators, file_paths, config)
@@ -330,7 +356,11 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   defp run_static_analyzers(scope, analyzer_atoms, file_paths, config, opts) do
     Enum.flat_map(analyzer_atoms, fn atom ->
       analyzer_files = files_for_analyzer(atom, file_paths, config)
-      runner_opts = [files: analyzer_files] |> with_test_output(atom, opts)
+
+      runner_opts =
+        [files: analyzer_files, environment: opts[:environment], cwd: opts[:cwd]]
+        |> with_test_output(atom, opts)
+
       start = System.monotonic_time(:millisecond)
 
       result = Runner.run(scope, atom, runner_opts)
@@ -400,12 +430,12 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   # is what `:block_changed` always claimed and never delivered.
   defp files_for_analyzer(_atom, _file_paths, _config), do: nil
 
-  defp run_validators(_scope, [], _files), do: []
+  defp run_validators(_scope, [], _files, _environment), do: []
 
-  defp run_validators(scope, validators, files) do
+  defp run_validators(scope, validators, files, environment) do
     Enum.flat_map(validators, fn validator ->
       start = System.monotonic_time(:millisecond)
-      problems = run_validator(scope, validator, files)
+      problems = run_validator(scope, validator, files, environment)
       ms = System.monotonic_time(:millisecond) - start
 
       file_count =
@@ -422,21 +452,21 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end)
   end
 
-  defp run_validator(scope, :validate_qa, files) do
+  defp run_validator(scope, :validate_qa, files, environment) do
     fun = &qa_document_type/2
 
     files
     |> Enum.filter(&(&1.role in [:qa_brief, :qa_result]))
-    |> Enum.flat_map(&validate_document(scope, &1, "qa_validation", fun))
+    |> Enum.flat_map(&validate_document(scope, environment, &1, "qa_validation", fun))
   end
 
-  defp run_validator(_scope, validator, _files) do
+  defp run_validator(_scope, validator, _files, _environment) do
     Logger.warning("[Pipeline] Unknown validator: #{validator}")
     []
   end
 
-  defp validate_document(%Scope{environment: env} = scope, file, source, document_type_fn) do
-    case Environments.read_file(env, file.path) do
+  defp validate_document(scope, environment, file, source, document_type_fn) do
+    case Environments.read_file(environment, file.path) do
       {:ok, content} ->
         run_document_validation(scope, file, source, document_type_fn.(file, content), content)
 

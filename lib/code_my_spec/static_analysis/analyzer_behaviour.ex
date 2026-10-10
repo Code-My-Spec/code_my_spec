@@ -31,7 +31,7 @@ defmodule CodeMySpec.StaticAnalysis.AnalyzerBehaviour do
   - `{:error, String.t()}` - Error message if execution fails
   """
   @callback run(scope :: Scope.t(), opts :: keyword()) ::
-              {:ok, [Problem.t()]} | {:error, String.t()}
+              {:ok, [Problem.t()]} | {:error, String.t() | :no_environment}
 
   @doc """
   Check if the analyzer's tool is available and can be executed.
@@ -42,13 +42,14 @@ defmodule CodeMySpec.StaticAnalysis.AnalyzerBehaviour do
   ## Parameters
 
   - `scope` - The scope containing project context
+  - `opts` - Runtime options shared with execution, including `:environment`
 
   ## Returns
 
   - `true` if the tool can be executed
   - `false` otherwise
   """
-  @callback available?(scope :: Scope.t()) :: boolean()
+  @callback available?(scope :: Scope.t(), opts :: keyword()) :: boolean()
 
   @doc """
   Return the human-readable name of the analyzer for reporting and logging purposes.

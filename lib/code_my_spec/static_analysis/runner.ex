@@ -10,6 +10,7 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   """
 
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.Analyzers.{Credo, Sobelow}
   alias CodeMySpec.Users.Scope
 
@@ -51,6 +52,7 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   ## Returns
 
   - `{:ok, [Problem.t()]}` - List of problems found during analysis
+  - `{:error, :no_environment}` - No runtime is available for this request
   - `{:error, String.t()}` - Error message if execution fails
 
   ## Examples
@@ -64,14 +66,17 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
       iex> Runner.run(scope, :nonexistent)
       {:error, "Unknown analyzer: nonexistent"}
   """
-  @spec run(Scope.t(), atom(), keyword()) :: {:ok, [Problem.t()]} | {:error, String.t()}
+  @spec run(Scope.t(), atom(), keyword()) ::
+          {:ok, [Problem.t()]} | {:error, String.t() | :no_environment}
   def run(%Scope{} = scope, analyzer_name, opts \\ []) do
+    environment = resolve_environment(scope, opts)
+    opts = opts |> Keyword.put(:environment, environment) |> put_runtime_cwd(environment)
+
     with {:ok, _project} <- validate_project(scope),
-         :ok <- validate_cwd(scope),
+         :ok <- validate_cwd(environment, opts),
          {:ok, analyzer_module} <- resolve_analyzer(analyzer_name),
-         {:ok, :available} <- check_availability(analyzer_module, scope),
-         opts_with_cwd = ensure_cwd_option(opts, scope),
-         {:ok, problems} <- execute_analyzer(analyzer_module, scope, opts_with_cwd) do
+         {:ok, :available} <- check_availability(analyzer_module, scope, opts),
+         {:ok, problems} <- execute_analyzer(analyzer_module, scope, opts) do
       validate_problems(problems, scope)
     end
   end
@@ -92,7 +97,8 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   ## Returns
 
   - `{:ok, [Problem.t()]}` - Aggregated list of problems from all successful analyzers
-  - `{:error, String.t()}` - Error only if project validation fails
+  - `{:error, :no_environment}` - No runtime is available for this request
+  - `{:error, String.t()}` - The runtime has no working directory
 
   ## Examples
 
@@ -102,28 +108,23 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
       iex> Runner.run_all(scope, timeout: 60_000)
       {:ok, [%Problem{}, ...]}
   """
-  @spec run_all(Scope.t(), keyword()) :: {:ok, [Problem.t()]} | {:error, String.t()}
+  @spec run_all(Scope.t(), keyword()) ::
+          {:ok, [Problem.t()]} | {:error, String.t() | :no_environment}
   def run_all(%Scope{} = scope, opts \\ []) do
-    # Don't validate project early - let filter_available_analyzers handle it
-    # If no cwd is set, no analyzers will be available and we'll return empty list
     timeout = Keyword.get(opts, :timeout, 120_000)
 
-    opts_with_cwd =
-      case scope.cwd do
-        cwd when is_binary(cwd) and cwd != "" ->
-          Keyword.put_new(opts, :cwd, cwd)
+    environment = resolve_environment(scope, opts)
+    opts = opts |> Keyword.put(:environment, environment) |> put_runtime_cwd(environment)
 
-        _ ->
-          opts
-      end
+    with :ok <- validate_cwd(environment, opts) do
+      problems =
+        list_analyzers()
+        |> filter_available_analyzers(scope, opts)
+        |> execute_analyzers_parallel(scope, opts, timeout)
+        |> aggregate_results(scope)
 
-    problems =
-      list_analyzers()
-      |> filter_available_analyzers(scope)
-      |> execute_analyzers_parallel(scope, opts_with_cwd, timeout)
-      |> aggregate_results(scope)
-
-    {:ok, problems}
+      {:ok, problems}
+    end
   end
 
   # Private functions
@@ -134,14 +135,23 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   defp validate_project(%Scope{active_project: project}),
     do: {:ok, project}
 
-  defp validate_cwd(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "", do: :ok
-  defp validate_cwd(_scope), do: {:error, "No working directory (cwd) in scope"}
+  defp validate_cwd(nil, _opts), do: {:error, :no_environment}
 
-  defp ensure_cwd_option(opts, %Scope{cwd: cwd}) when is_binary(cwd) do
-    Keyword.put_new(opts, :cwd, cwd)
+  defp validate_cwd(environment, opts) do
+    case Keyword.get(opts, :cwd) || environment.cwd do
+      cwd when is_binary(cwd) and cwd != "" -> :ok
+      _ -> {:error, "No working directory (cwd) in scope"}
+    end
   end
 
-  defp ensure_cwd_option(opts, _scope), do: opts
+  defp resolve_environment(scope, opts) do
+    StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
+  end
+
+  defp put_runtime_cwd(opts, %{cwd: cwd}) when is_binary(cwd) and cwd != "",
+    do: Keyword.put_new(opts, :cwd, cwd)
+
+  defp put_runtime_cwd(opts, _environment), do: opts
 
   defp resolve_analyzer(analyzer_name) when is_atom(analyzer_name) do
     analyzer_map = %{
@@ -155,8 +165,8 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
     end
   end
 
-  defp check_availability(analyzer_module, scope) do
-    if analyzer_module.available?(scope),
+  defp check_availability(analyzer_module, scope, opts) do
+    if analyzer_module.available?(scope, opts),
       do: {:ok, :available},
       else: {:error, "Analyzer #{analyzer_module.name()} is not available"}
   rescue
@@ -197,10 +207,10 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
     {:ok, validated}
   end
 
-  defp filter_available_analyzers(analyzers, scope) do
+  defp filter_available_analyzers(analyzers, scope, opts) do
     Enum.filter(analyzers, fn analyzer ->
       try do
-        analyzer.available?(scope)
+        analyzer.available?(scope, opts)
       rescue
         exception ->
           Logger.error(
