@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.RepositoryAdoptionNamingTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     _ = github_integration_fixture(scope.user)
 
     %{env: Environment.new(:local, tmp), scope: scope}

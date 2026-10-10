@@ -22,16 +22,21 @@ defmodule CodeMySpec.Provisioning.CommitGeneratedConfigurationUnreachableEnviron
 
   # The same shape a harness-only project's `Environment.new(:local, project.
   # local_path)` takes when `local_path` is nil — distinct from `nil` itself.
-  defp unreachable(scope), do: %{scope | environment: Environment.new(:local, nil)}
+  defp unreachable(scope),
+    do: %{
+      scope
+      | active_working_copy_id: Ecto.UUID.generate(),
+        environment: Environment.new(:local, nil)
+    }
 
   test "does nothing, rather than crashing, when the environment cannot be reached" do
-    scope = unreachable(full_scope_fixture())
+    scope = unreachable(provisioning_scope_fixture())
 
     assert :ok = Steps.commit_generated_configuration(scope)
   end
 
   test "still commits setup's generated files when the environment is reachable" do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     tmp = scope.environment.cwd
 
     System.cmd("git", ["init"], cd: tmp)

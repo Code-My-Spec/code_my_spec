@@ -26,7 +26,7 @@ defmodule CodeMySpec.Provisioning.ContentWidgetProofsTest do
   }
 
   setup do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
 
     # `ensure_publishable/1` refuses to start without these, and rightly so —
     # a trigger-only pipeline with no client would publish into silence. The
@@ -113,7 +113,9 @@ defmodule CodeMySpec.Provisioning.ContentWidgetProofsTest do
 
     test "says so when the publish itself never happened", ctx do
       assert {:error, _reason, resources} =
-               run_content(ctx.scope, publish: fn _scope -> {:error, %{message: "bucket gone"}} end)
+               run_content(ctx.scope,
+                 publish: fn _scope -> {:error, %{message: "bucket gone"}} end
+               )
 
       assert [failure] = find(resources, "content_failure")
       assert failure.identifier =~ "objects_uploaded=false"

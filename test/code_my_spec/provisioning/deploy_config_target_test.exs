@@ -45,7 +45,8 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       """
 
     tmp = CodeMySpec.TempFile.owned_dir("deploy_config_target")
-    scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
+    scope = %{provisioning_scope_fixture() | environment: Environment.new(:local, tmp)}
+    :ok = register_working_copy_environment(scope, scope.environment)
 
     {:ok, project} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})

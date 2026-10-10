@@ -24,12 +24,18 @@ defmodule CodeMySpec.Provisioning.ImageTagUnreachableEnvironmentTest do
 
   # The same shape a harness-only project's `Environment.new(:local, project.
   # local_path)` takes when `local_path` is nil — distinct from `nil` itself.
-  defp unreachable(scope), do: %{scope | environment: Environment.new(:local, nil)}
+  defp unreachable(scope),
+    do: %{
+      scope
+      | active_working_copy_id: Ecto.UUID.generate(),
+        environment: Environment.new(:local, nil)
+    }
 
   describe "the environment is reachable" do
     test "reads the real git HEAD rather than any reported value" do
-      scope = full_scope_fixture(%{head_commit: String.duplicate("a", 40)})
+      scope = provisioning_scope_fixture(%{head_commit: String.duplicate("a", 40)})
       tmp = scope.environment.cwd
+      scope = %{scope | environment: nil}
 
       System.cmd("git", ["init"], cd: tmp)
       System.cmd("git", ["commit", "--allow-empty", "-m", "x"], cd: tmp)
@@ -39,27 +45,30 @@ defmodule CodeMySpec.Provisioning.ImageTagUnreachableEnvironmentTest do
       assert {:ok, tag} = Steps.image_tag(scope, [])
       assert tag == String.slice(real_sha, 0, 12)
       refute tag == "aaaaaaaaaaaa"
+
+      stale = Environment.new(:local, CodeMySpec.TempFile.owned_dir("stale-scope"))
+      assert {:ok, ^tag} = Steps.image_tag(%{scope | environment: stale}, [])
     end
   end
 
   describe "the environment cannot be reached" do
     test "falls back to the harness-reported head_commit instead of crashing" do
       sha = String.duplicate("b", 40)
-      scope = unreachable(full_scope_fixture(%{head_commit: sha}))
+      scope = unreachable(provisioning_scope_fixture(%{head_commit: sha}))
 
       assert {:ok, tag} = Steps.image_tag(scope, [])
       assert tag == String.slice(sha, 0, 12)
     end
 
     test "reports nothing to tag, rather than raising, when nothing has been reported" do
-      scope = unreachable(full_scope_fixture())
+      scope = unreachable(provisioning_scope_fixture())
 
       assert {:error, reason} = Steps.image_tag(scope, [])
       assert reason =~ "no commit to build"
     end
 
     test "an explicit :tag still wins over both" do
-      scope = unreachable(full_scope_fixture(%{head_commit: String.duplicate("c", 40)}))
+      scope = unreachable(provisioning_scope_fixture(%{head_commit: String.duplicate("c", 40)}))
 
       assert {:ok, "deadbeef"} = Steps.image_tag(scope, tag: "deadbeef")
     end

@@ -81,11 +81,21 @@ defmodule CodeMySpec.Generators do
       [{:missing_file, %{key: :dockerfile, ...}}]
   """
   @spec audit(Scope.t(), String.t()) :: [finding()]
-  def audit(%Scope{environment: env} = scope, router_path) when not is_nil(env) do
-    missing_files(scope) ++
-      missing_env_files(scope) ++
-      plaintext_env_files(scope) ++
-      config_findings(scope, router_path)
+  def audit(%Scope{environment: env} = scope, router_path) when not is_nil(env),
+    do: audit(scope, router_path, env)
+
+  @doc """
+  Audits a project using an explicitly supplied environment.
+
+  The scope supplies project identity and synced file evidence; filesystem
+  checks use `environment` directly, without consulting `scope.environment`.
+  """
+  @spec audit(Scope.t(), String.t(), Environments.Environment.t() | nil) :: [finding()]
+  def audit(%Scope{} = scope, router_path, environment) do
+    missing_files(scope, environment) ++
+      missing_env_files(scope, environment) ++
+      plaintext_env_files(scope, environment) ++
+      config_findings(scope, router_path, environment)
   end
 
   @doc """
@@ -119,16 +129,20 @@ defmodule CodeMySpec.Generators do
     do:
       "missing #{path} — the migrate overlay calls <App>.Release.migrate inside the released binary, and without this module the migration crashes on a real box instead of failing setup here"
 
-  defp missing_files(scope) do
-    scope |> DeployBoilerplate.missing() |> Enum.map(&{:missing_file, &1})
+  defp missing_files(scope, environment) do
+    scope |> DeployBoilerplate.missing(environment) |> Enum.map(&{:missing_file, &1})
   end
 
-  defp missing_env_files(scope) do
-    scope |> DeployBoilerplate.missing_env_files() |> Enum.map(&{:missing_env_file, &1})
+  defp missing_env_files(scope, environment) do
+    scope
+    |> DeployBoilerplate.missing_env_files(environment)
+    |> Enum.map(&{:missing_env_file, &1})
   end
 
-  defp plaintext_env_files(scope) do
-    scope |> DeployBoilerplate.plaintext_env_files() |> Enum.map(&{:plaintext_env_file, &1})
+  defp plaintext_env_files(scope, environment) do
+    scope
+    |> DeployBoilerplate.plaintext_env_files(environment)
+    |> Enum.map(&{:plaintext_env_file, &1})
   end
 
   # `force_ssl_excludes_health` still takes the environment alone, not the
@@ -137,11 +151,11 @@ defmodule CodeMySpec.Generators do
   # no fallback for it the way `present?/2` has one. A harness-scoped caller
   # genuinely cannot answer it, and it already says so in its own words
   # rather than guessing.
-  defp config_findings(%Scope{environment: env} = scope, router_path) do
+  defp config_findings(scope, router_path, env) do
     [
       DeployBoilerplate.force_ssl_excludes_health(env),
       health_route_finding(scope, env, router_path),
-      DeployBoilerplate.release_module_exists?(scope, release_module_path(router_path))
+      DeployBoilerplate.release_module_exists?(scope, release_module_path(router_path), env)
     ]
     |> Enum.flat_map(fn
       :ok -> []
@@ -195,6 +209,6 @@ defmodule CodeMySpec.Generators do
   """
   @spec audit_environment(Environments.Environment.t(), String.t()) :: [finding()]
   def audit_environment(env, router_path) do
-    audit(%Scope{environment: env}, router_path)
+    audit(%Scope{}, router_path, env)
   end
 end

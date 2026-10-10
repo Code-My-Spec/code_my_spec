@@ -70,7 +70,9 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
         sync(scope, path)
       end
 
-      findings = Generators.audit(scope, @router)
+      # The audit receives a data-only scope plus a directoryless explicit
+      # environment; synced file evidence must still satisfy existence checks.
+      findings = Generators.audit(scope, @router, Environment.new(:local, nil))
 
       refute Enum.any?(findings, &match?({:missing_file, _}, &1)),
              "expected every synced artifact to read as present, got #{inspect(findings)}"

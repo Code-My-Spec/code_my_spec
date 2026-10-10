@@ -33,7 +33,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
   @private_ip "10.0.0.5"
 
   setup do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
 
     stub_hetzner()
@@ -216,7 +216,11 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       on_exit(fn -> restore_environment_env(previous) end)
 
-      directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
+      directoryless = %{
+        ctx.scope
+        | active_working_copy_id: Ecto.UUID.generate(),
+          environment: Environment.new(:local, nil)
+      }
 
       run = fn [_command] -> {"", 0} end
 
@@ -246,13 +250,19 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       on_exit(fn -> restore_environment_env(previous) end)
 
-      directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
+      directoryless = %{
+        ctx.scope
+        | active_working_copy_id: Ecto.UUID.generate(),
+          environment: Environment.new(:local, nil)
+      }
 
       assert {:error, reason} =
                Steps.put_secret(directoryless, "prod", "DATABASE_URL", "ecto://u:p@host/db")
 
-      assert reason =~ "working directory",
+      assert reason =~ "working environment",
              "expected a clean, named reason rather than a raw exception message: #{reason}"
+
+      assert {:error, :not_found} = ProjectSecrets.fetch_value(ctx.scope, "age_private_key_prod")
     end
   end
 

@@ -25,7 +25,7 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
   alias CodeMySpec.Provisioning.Steps
 
   setup do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
 
     {:ok, project} =
       Projects.update_project(scope, scope.active_project, %{domain: "uat.example.com"})
@@ -50,7 +50,11 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
   defp unresolvable, do: [resolver: fn _url -> {:error, :stubbed} end]
 
   defp resolvable do
-    [resolver: fn _url -> {:ok, %{status: 200, body: %{"Answer" => [%{"data" => "1.2.3.4"}]}}} end]
+    [
+      resolver: fn _url ->
+        {:ok, %{status: 200, body: %{"Answer" => [%{"data" => "1.2.3.4"}]}}}
+      end
+    ]
   end
 
   # Counted per host, because the step fans out over environments and a shared
@@ -76,7 +80,11 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
   # challenge path served rather than bounced.
   defp redirecting_proxy(challenge_status) do
     fn _host, opts ->
-      redirecting_answer(Keyword.get(opts, :scheme), Keyword.get(opts, :health_path), challenge_status)
+      redirecting_answer(
+        Keyword.get(opts, :scheme),
+        Keyword.get(opts, :health_path),
+        challenge_status
+      )
     end
   end
 

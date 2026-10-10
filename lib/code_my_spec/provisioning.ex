@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.Generators,
       CodeMySpec.GitHub,
       CodeMySpec.Integrations,
+      CodeMySpec.LocalScope,
       CodeMySpec.ProjectSecrets,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning.Environment,
@@ -65,6 +66,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.Telemetry,
       CodeMySpec.TempFile,
       CodeMySpec.Users.Scope,
+      CodeMySpec.WorkingCopies,
       CodeMySpec.Utils
     ],
     exports: :all

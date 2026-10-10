@@ -83,6 +83,27 @@ defmodule CodeMySpec.GeneratorsTest do
     end
   end
 
+  describe "audit/3 with an explicit environment" do
+    test "uses the supplied environment even when the scope contains a stale one", %{
+      env: env,
+      dir: dir
+    } do
+      deployable_project(dir)
+      stale_dir = CodeMySpec.TempFile.owned_dir("stale-generator-environment")
+      stale_env = Environment.new(:local, stale_dir)
+      scope = %CodeMySpec.Users.Scope{environment: stale_env}
+
+      assert Generators.audit(scope, @router, env) == []
+    end
+
+    test "uses the supplied environment when the scope has none", %{env: env, dir: dir} do
+      deployable_project(dir)
+      scope = %CodeMySpec.Users.Scope{environment: nil}
+
+      assert Generators.audit(scope, @router, env) == []
+    end
+  end
+
   describe "missing artifacts" do
     test "names each missing file with the reason it matters", %{env: env, dir: dir} do
       deployable_project(dir)
@@ -101,7 +122,8 @@ defmodule CodeMySpec.GeneratorsTest do
       deployable_project(dir)
       File.rm!(Path.join(dir, "envs/uat.enc.env"))
 
-      assert [{:missing_env_file, "envs/uat.enc.env"}] = Generators.audit_environment(env, @router)
+      assert [{:missing_env_file, "envs/uat.enc.env"}] =
+               Generators.audit_environment(env, @router)
     end
   end
 
@@ -355,7 +377,11 @@ defmodule CodeMySpec.GeneratorsTest do
     # `#{}_host`, that was never substituted — wearing the same syntax kamal
     # happens to use for its own, later pass.
     test "no generated file carries an unrendered template tag", %{dir: dir} do
-      allowed = [~s(<% if ENV["CMS_SSH_KEY_PATH"] %>), ~s(<%= ENV["CMS_SSH_KEY_PATH"] %>), "<% end %>"]
+      allowed = [
+        ~s(<% if ENV["CMS_SSH_KEY_PATH"] %>),
+        ~s(<%= ENV["CMS_SSH_KEY_PATH"] %>),
+        "<% end %>"
+      ]
 
       offenders =
         Path.wildcard(Path.join(dir, "**/*"))
@@ -394,5 +420,4 @@ defmodule CodeMySpec.GeneratorsTest do
       assert uat =~ "service: my-app-uat\n"
     end
   end
-
 end

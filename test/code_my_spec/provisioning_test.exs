@@ -10,7 +10,7 @@ defmodule CodeMySpec.ProvisioningTest do
   doctest Sequence, only: [for_options: 1]
 
   setup do
-    %{scope: full_scope_fixture()}
+    %{scope: provisioning_scope_fixture()}
   end
 
   # Every step succeeds; nothing is already provisioned.
@@ -511,7 +511,7 @@ defmodule CodeMySpec.ProvisioningTest do
     # step left in the sequence, so this asks Steps directly.
     test "a step with no provider names itself rather than reporting done" do
       assert {:error, {:not_implemented, :nonexistent}} =
-               Steps.run(:nonexistent, full_scope_fixture(), [])
+               Steps.run(:nonexistent, provisioning_scope_fixture(), [])
     end
 
     # Every key in the sequence, so a step added later is covered without
@@ -571,7 +571,7 @@ defmodule CodeMySpec.ProvisioningTest do
 
     test "a step that shells out names the missing environment instead of crashing",
          %{scope: scope} do
-      scope = %{scope | environment: nil}
+      scope = %{scope | active_working_copy_id: Ecto.UUID.generate(), environment: nil}
 
       halted =
         for key <- [:repository, :deploy, :backups] do

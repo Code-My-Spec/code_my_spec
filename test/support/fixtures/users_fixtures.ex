@@ -146,6 +146,26 @@ defmodule CodeMySpec.UsersFixtures do
     |> Map.put(:environment, Environment.new(:local, tmp_dir))
   end
 
+  @doc "Registers the selected working copy at an explicit environment root."
+  def register_working_copy_environment(
+        %{active_working_copy_id: id},
+        %Environment{cwd: cwd} = env
+      )
+      when is_binary(id) and is_binary(cwd) do
+    {:ok, copy} = WorkingCopies.fetch(id)
+    {:ok, _copy} = WorkingCopies.report_root(copy, cwd)
+    :ok = CodeMySpec.Environments.unregister({:working_copy, id})
+    :ok = CodeMySpec.Environments.register({:working_copy, id}, env)
+    :ok
+  end
+
+  @doc "A full test scope whose selected working copy has a registered environment."
+  def provisioning_scope_fixture(project_attrs \\ %{}) do
+    scope = full_scope_fixture(project_attrs)
+    :ok = register_working_copy_environment(scope, scope.environment)
+    scope
+  end
+
   def full_preferences_fixture do
     scope = full_scope_fixture()
 

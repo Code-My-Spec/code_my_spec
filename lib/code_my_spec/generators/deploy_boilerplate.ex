@@ -107,16 +107,24 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   it can find.
   """
   @spec missing(Scope.t()) :: [artifact()]
-  def missing(scope) do
-    Enum.reject(@files, &present?(scope, &1.path))
+  def missing(%Scope{environment: env} = scope), do: missing(scope, env)
+
+  @doc "Returns missing artifacts using the supplied environment."
+  @spec missing(Scope.t(), Environment.t() | nil) :: [artifact()]
+  def missing(%Scope{} = scope, env) do
+    Enum.reject(@files, &present?(scope, &1.path, env))
   end
 
   @doc """
   Returns the encrypted environment files a project is missing.
   """
   @spec missing_env_files(Scope.t()) :: [String.t()]
-  def missing_env_files(scope) do
-    Enum.reject(@env_files, &present?(scope, &1))
+  def missing_env_files(%Scope{environment: env} = scope), do: missing_env_files(scope, env)
+
+  @doc "Returns missing encrypted environment files using the supplied environment."
+  @spec missing_env_files(Scope.t(), Environment.t() | nil) :: [String.t()]
+  def missing_env_files(%Scope{} = scope, env) do
+    Enum.reject(@env_files, &present?(scope, &1, env))
   end
 
   @doc """
@@ -139,9 +147,13 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   history, and the reverse still reaches the image.
   """
   @spec plaintext_env_files(Scope.t()) :: [String.t()]
-  def plaintext_env_files(%Scope{environment: env} = scope) do
+  def plaintext_env_files(%Scope{environment: env} = scope), do: plaintext_env_files(scope, env)
+
+  @doc "Returns exposed plaintext env files using the supplied environment."
+  @spec plaintext_env_files(Scope.t(), Environment.t() | nil) :: [String.t()]
+  def plaintext_env_files(%Scope{} = scope, env) do
     @plaintext_env_names
-    |> Enum.filter(&present?(scope, &1))
+    |> Enum.filter(&present?(scope, &1, env))
     |> Enum.reject(&excluded_from_shipping?(env, &1))
   end
 
@@ -335,8 +347,16 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
           :ok | {:error, {:missing_release_module, String.t()}}
   def release_module_exists?(_scope, nil), do: :ok
 
-  def release_module_exists?(scope, path) do
-    if present?(scope, path), do: :ok, else: {:error, {:missing_release_module, path}}
+  def release_module_exists?(%Scope{environment: env} = scope, path),
+    do: release_module_exists?(scope, path, env)
+
+  @doc "Checks the release module using the supplied environment."
+  @spec release_module_exists?(Scope.t(), String.t() | nil, Environment.t() | nil) ::
+          :ok | {:error, {:missing_release_module, String.t()}}
+  def release_module_exists?(_scope, nil, _env), do: :ok
+
+  def release_module_exists?(scope, path, env) do
+    if present?(scope, path, env), do: :ok, else: {:error, {:missing_release_module, path}}
   end
 
   defp check_health_route(body, path) do
@@ -366,7 +386,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   # directoryless environment that could never have answered honestly. It did
   # not need to ask that at all: the sync this project already runs had the
   # answer the whole time.
-  defp present?(%Scope{environment: env} = scope, path) do
+  defp present?(%Scope{} = scope, path, env) do
     Environments.file_exists?(env, path) == true or synced?(scope, path)
   end
 
