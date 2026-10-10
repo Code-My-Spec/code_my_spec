@@ -35,17 +35,20 @@ defmodule CodeMySpec.Files.SyncChangedOnAHarnessTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
+  import CodeMySpec.DevicesFixtures
 
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.WorkingCopies
 
   setup do
     scope = full_scope_fixture()
+    {:ok, copy} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
+    {:ok, copy} = WorkingCopies.report_root(copy, "/somewhere/else")
 
-    # A harness environment: the type is the whole point, and `cwd` is a path on
-    # a machine this server cannot read.
-    {:ok, scope: %{scope | environment: Environment.new(:harness, "/somewhere/else")}}
+    # A rooted selected copy synthesizes a harness environment: the type is the
+    # whole point, and its cwd is on a machine this server cannot read.
+    {:ok, scope: WorkingCopies.put_scope(scope, copy)}
   end
 
   test "returns rather than raising when the environment cannot be scanned", %{scope: scope} do

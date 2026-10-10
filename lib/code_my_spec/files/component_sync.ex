@@ -33,6 +33,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @type sync_result :: %{
           all_components: [Component.t()],
@@ -40,13 +41,20 @@ defmodule CodeMySpec.Files.ComponentSync do
           dependency_observation: map()
         }
 
+  defp environment(scope, opts) do
+    case Keyword.fetch(opts, :environment) do
+      {:ok, env} -> env
+      :error -> WorkingCopies.environment(scope)
+    end
+  end
+
   @doc """
   Sync components from File records.
 
   ## Options
-  - `:base_dir` — accepted for backwards compatibility, ignored. File content
-    is read via `scope.environment` so the dispatcher can route to in-memory
-    implementations for tests.
+  - `:environment` — the filesystem environment to read, resolved from the
+    active working copy when omitted.
+  - `:base_dir` — accepted for backwards compatibility, ignored.
   - `:changed_paths` — when provided, only process files matching these paths (incremental sync)
   - `:removed_module_names` — module names named by implementation files that
     were just removed (see `removed_module_names/1`). An incremental sync never
@@ -59,6 +67,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     _ = Keyword.get(opts, :base_dir)
     changed_paths = Keyword.get(opts, :changed_paths)
     removed_module_names = Keyword.get(opts, :removed_module_names, [])
+    env = environment(scope, opts)
     start = System.monotonic_time(:millisecond)
 
     # Only main's code says what exists — a feature copy's unpromoted module and
@@ -70,11 +79,11 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     code =
       live_files
-      |> Enum.map(&parse_impl_file(&1, scope.environment))
+      |> Enum.map(&parse_impl_file(&1, env))
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq_by(& &1.module_name)
 
-    do_sync(scope, code, live_files, is_list(changed_paths), start, removed_module_names)
+    do_sync(scope, code, live_files, is_list(changed_paths), start, removed_module_names, env)
   end
 
   @doc """
@@ -119,7 +128,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
   end
 
-  defp do_sync(scope, code, live_files, incremental?, start, removed_module_names) do
+  defp do_sync(scope, code, live_files, incremental?, start, removed_module_names, env) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     existing_components = Components.list_components(scope)
@@ -140,7 +149,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     |> then(&update_parent_relationships(scope, &1, component_map))
 
     dependency_observation =
-      sync_discovered_dependencies(scope, live_files, component_map, incremental?)
+      sync_discovered_dependencies(scope, live_files, component_map, incremental?, env)
 
     cond do
       not incremental? ->
@@ -306,11 +315,12 @@ defmodule CodeMySpec.Files.ComponentSync do
   Unreadable or unparsable files make removal unsafe; positive evidence remains
   usable. Authored edges remain authored even when code stops using them.
   """
-  def dependency_report(%Scope{} = scope) do
+  def dependency_report(%Scope{} = scope, opts \\ []) do
+    env = environment(scope, opts)
     components = Components.list_components(scope)
     component_map = Map.new(components, &{&1.module_name, &1})
     files = scope |> query_files(nil) |> live_only(scope.active_project_id)
-    observations = dependency_observations(scope, files, component_map)
+    observations = dependency_observations(scope, files, component_map, env)
     existing = Components.list_dependencies(scope)
 
     Map.merge(observations, %{
@@ -326,11 +336,11 @@ defmodule CodeMySpec.Files.ComponentSync do
     })
   end
 
-  defp sync_discovered_dependencies(_scope, _files, _component_map, true),
+  defp sync_discovered_dependencies(_scope, _files, _component_map, true, _env),
     do: %{status: :deferred, unavailable: [], unresolved: []}
 
-  defp sync_discovered_dependencies(scope, files, component_map, false) do
-    observation = dependency_observations(scope, files, component_map)
+  defp sync_discovered_dependencies(scope, files, component_map, false, env) do
+    observation = dependency_observations(scope, files, component_map, env)
     reconcile_discovered_dependencies(scope, observation)
 
     if observation.unavailable != [] do
@@ -347,7 +357,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     }
   end
 
-  defp dependency_observations(_scope, [], _component_map),
+  defp dependency_observations(_scope, [], _component_map, _env),
     do: %{
       pairs: MapSet.new(),
       evidence: [],
@@ -355,14 +365,14 @@ defmodule CodeMySpec.Files.ComponentSync do
       unresolved: []
     }
 
-  defp dependency_observations(scope, files, component_map) do
+  defp dependency_observations(_scope, files, component_map, env) do
     by_id = Map.new(Map.values(component_map), &{&1.id, &1})
 
     Enum.reduce(
       files,
       %{pairs: MapSet.new(), evidence: [], unavailable: [], unresolved: []},
       fn file, acc ->
-        case dependency_evidence(file, scope.environment) do
+        case dependency_evidence(file, env) do
           %{"status" => "ok", "references" => references} = evidence ->
             pairs = Enum.flat_map(references, &evidence_pair(&1, component_map, by_id))
 
@@ -420,6 +430,9 @@ defmodule CodeMySpec.Files.ComponentSync do
     case stored_component_data(errors) do
       %{"dependency_evidence" => %{"version" => 1} = evidence} ->
         evidence
+
+      _ when is_nil(environment) ->
+        %{error: :no_environment}
 
       _ ->
         case Environments.read_file(environment, path) do

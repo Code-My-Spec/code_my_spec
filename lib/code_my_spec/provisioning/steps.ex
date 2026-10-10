@@ -1298,6 +1298,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp publish_content(scope, opts) do
+    opts = Keyword.put_new_lazy(opts, :environment, fn -> env(scope) end)
+
     case ContentPublishing.run(scope, opts) do
       %{state: :rendered} = result ->
         {:ok, [content_proof(result) | content_objects(result)]}

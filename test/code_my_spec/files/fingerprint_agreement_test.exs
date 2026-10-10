@@ -48,7 +48,7 @@ defmodule CodeMySpec.Files.FingerprintAgreementTest do
     Fixtures.deliver_manifest(scope)
     from_manifest = fingerprint(scope)
 
-    {:ok, _} = FileSync.sync(scope, base_dir: tmp)
+    {:ok, _} = FileSync.sync(scope, base_dir: tmp, environment: Environment.new(:local, tmp))
     from_disk = fingerprint(scope)
 
     assert from_manifest != nil, "the manifest should have recorded this file"

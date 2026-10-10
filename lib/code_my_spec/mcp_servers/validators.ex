@@ -4,6 +4,8 @@ defmodule CodeMySpec.McpServers.Validators do
   """
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @doc """
   Validates that the current scope has an active account set.
@@ -167,12 +169,10 @@ defmodule CodeMySpec.McpServers.Validators do
   Resolve the execution environment for a local MCP tool, or nil when this
   machine holds no working copy for the request.
 
-  Prefers the environment already attached to the current scope — in
-  production that is the `:local` environment built from the project's
-  `local_path`; in specs it is the in-memory environment seeded by
-  `setup_active_project`. Falls back to a `:local` environment rooted at
-  the resolved working dir for early bootstrap, where no project scope is
-  resolved yet.
+  A selected working copy resolves through its recorded identity and project.
+  An invalid selection is refused without falling back to a local directory.
+  Before a working copy is selected, a configured bootstrap directory supplies
+  an explicit local environment. The environment carried by Scope is ignored.
 
   Returns nil when there is no working directory to root one at. See
   `mcp_working_dir/1` for why guessing is worse than refusing.
@@ -180,8 +180,8 @@ defmodule CodeMySpec.McpServers.Validators do
   @spec mcp_environment(map()) :: Environment.t() | nil
   def mcp_environment(frame) do
     case frame.assigns[:current_scope] do
-      %{environment: %Environment{} = env} ->
-        env
+      %Scope{active_working_copy_id: id} = scope when not is_nil(id) ->
+        WorkingCopies.environment(scope)
 
       _ ->
         case mcp_working_dir(frame) do

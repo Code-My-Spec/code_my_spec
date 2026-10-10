@@ -46,13 +46,9 @@ defmodule CodeMySpecWeb.ContentLiveTest do
     end
   end
 
-  describe "resolving scope.environment (issue 780ca909)" do
-    # `scope` here comes from a signed-in HTTP session (`Scope.for_user/1`),
-    # which never sets `environment` — the same scope PortableHost's on_mount
-    # amends with the routed project. Without that amendment,
-    # `ContentPublishing.sync/1` calls `Environments.glob(nil, _)`, which
-    # returns `[]` unconditionally: Re-sync would always find nothing, no
-    # matter what is really on disk.
+  describe "resolving the content environment" do
+    # The HTTP session scope can lack an environment. Content sync resolves the
+    # routed project's local environment explicitly before reading the source.
     setup %{scope: scope, project: project} do
       tmp_dir = CodeMySpec.TempFile.owned_dir("test")
 

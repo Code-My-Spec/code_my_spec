@@ -58,7 +58,7 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
   } do
     unreadable_spec!(scope, ".code_my_spec/spec/code_my_spec/widgets.spec.md")
 
-    ComponentSync.sync_from_files(scope)
+    ComponentSync.sync_from_files(scope, environment: nil)
 
     assert Components.get_component(scope, component.id),
            "the component was deleted because a file could not be opened — architecture " <>
@@ -73,7 +73,7 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
 
     unreadable_spec!(scope, ".code_my_spec/spec/code_my_spec/anything.spec.md")
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
   end
 
   test "a reconcile that removes a file whose module has no component does not raise", %{

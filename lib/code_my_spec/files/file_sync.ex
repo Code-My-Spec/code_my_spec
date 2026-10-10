@@ -35,6 +35,16 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
+  defp environment(scope, opts) do
+    case Keyword.fetch(opts, :environment) do
+      {:ok, env} -> env
+      :error -> WorkingCopies.environment(scope)
+    end
+  end
+
+  defp env_cwd(%{cwd: cwd}), do: cwd
+  defp env_cwd(_), do: nil
+
   # Whitelist of roots walked on sync. Anything outside these trees is invisible
   # to FileSync — `deps/`, `_build/`, `node_modules/`, `priv/`, `assets/`, `.git/`
   # are never touched. Keep in sync with `classify/1`.
@@ -47,7 +57,8 @@ defmodule CodeMySpec.Files.FileSync do
   Embeds nothing: embeddings are reconciled server-side (`Embeddings`).
   """
   @spec sync(Scope.t(), keyword()) :: {:ok, map()}
-  def sync(%Scope{environment: env} = scope, _opts \\ []) do
+  def sync(%Scope{} = scope, opts \\ []) do
+    env = environment(scope, opts)
     start = System.monotonic_time(:millisecond)
 
     # One read model for the whole pass. The pre-split code queried components
@@ -56,7 +67,7 @@ defmodule CodeMySpec.Files.FileSync do
     read_model = Files.read_model(scope)
 
     with {:ok, observations} <- observe(scope, env, read_model) do
-      finish_sync(scope, observations, start)
+      finish_sync(scope, observations, start, env)
     end
   end
 
@@ -67,7 +78,7 @@ defmodule CodeMySpec.Files.FileSync do
   # the two that bang-match crash naming the environment rather than silently
   # deleting the projection.
   defp observe(%Scope{} = scope, env, read_model) do
-    case Scanner.observe(env, read_model) do
+    case if(is_nil(env), do: {:error, :no_environment}, else: Scanner.observe(env, read_model)) do
       {:ok, observations} ->
         {:ok, observations}
 
@@ -94,7 +105,7 @@ defmodule CodeMySpec.Files.FileSync do
     end
   end
 
-  defp finish_sync(scope, observations, start) do
+  defp finish_sync(scope, observations, start, env) do
     scan_ms = System.monotonic_time(:millisecond) - start
 
     %{
@@ -107,7 +118,7 @@ defmodule CodeMySpec.Files.FileSync do
     file_entries = observations
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
 
-    maybe_reconcile_lockfile(scope, changed_entries)
+    maybe_reconcile_lockfile(scope, changed_entries, env)
 
     total_ms = System.monotonic_time(:millisecond) - start
 
@@ -534,9 +545,9 @@ defmodule CodeMySpec.Files.FileSync do
   # with no signal at all, because `reconcile_lockfile/1` re-derives "did it
   # actually change" itself from stored state rather than trusting the
   # caller.
-  defp maybe_reconcile_lockfile(scope, changed_entries) do
+  defp maybe_reconcile_lockfile(scope, changed_entries, env) do
     if Enum.any?(changed_entries, &(&1.role == :lockfile)) do
-      reconcile_lockfile(scope)
+      reconcile_lockfile(scope, environment: env)
     end
 
     :ok
@@ -559,15 +570,19 @@ defmodule CodeMySpec.Files.FileSync do
   first) tries again from the same comparison.
   """
   @spec reconcile_lockfile(Scope.t()) :: :ok
-  def reconcile_lockfile(%Scope{active_project: %Project{}} = scope) do
+  def reconcile_lockfile(scope, opts \\ [])
+
+  def reconcile_lockfile(%Scope{active_project: %Project{}} = scope, opts) do
+    env = environment(scope, opts)
+
     if main_copy?(scope) do
-      do_reconcile_lockfile(scope)
+      do_reconcile_lockfile(scope, env)
     else
       :ok
     end
   end
 
-  def reconcile_lockfile(%Scope{}), do: :ok
+  def reconcile_lockfile(%Scope{}, _opts), do: :ok
 
   defp main_copy?(%Scope{active_working_copy_id: id}) when not is_binary(id), do: false
 
@@ -575,18 +590,20 @@ defmodule CodeMySpec.Files.FileSync do
     match?(%WorkingCopy{id: ^id}, WorkingCopies.main(scope))
   end
 
-  defp do_reconcile_lockfile(%Scope{active_project: project} = scope) do
+  defp do_reconcile_lockfile(%Scope{active_project: project} = scope, env) do
     case Files.get_by_path(scope, "mix.lock") do
       %FileRecord{fingerprint: fingerprint}
       when is_binary(fingerprint) and fingerprint != project.mix_lock_fingerprint ->
-        fetch_and_record_lockfile(scope, project, fingerprint)
+        fetch_and_record_lockfile(scope, project, fingerprint, env)
 
       _ ->
         :ok
     end
   end
 
-  defp fetch_and_record_lockfile(%Scope{environment: env} = scope, project, fingerprint) do
+  defp fetch_and_record_lockfile(_scope, _project, _fingerprint, nil), do: :ok
+
+  defp fetch_and_record_lockfile(scope, project, fingerprint, env) do
     with {:ok, content} <- Environments.read_file(env, "mix.lock"),
          {:ok, _} <- Dependencies.record_lockfile(scope, content) do
       Projects.update_project(scope, project, %{mix_lock_fingerprint: fingerprint})
@@ -644,17 +661,23 @@ defmodule CodeMySpec.Files.FileSync do
   their rows.
   """
   @spec reconcile_project_knowledge(Scope.t()) :: :ok
-  def reconcile_project_knowledge(%Scope{active_project: %Project{} = project} = scope) do
+  def reconcile_project_knowledge(scope, opts \\ [])
+
+  def reconcile_project_knowledge(%Scope{active_project: %Project{} = project} = scope, opts) do
+    env = environment(scope, opts)
+
     if Embeddings.server_reconciled?() and main_copy?(scope) do
-      do_reconcile_project_knowledge(scope, project)
+      do_reconcile_project_knowledge(scope, project, env)
     else
       :ok
     end
   end
 
-  def reconcile_project_knowledge(%Scope{}), do: :ok
+  def reconcile_project_knowledge(%Scope{}, _opts), do: :ok
 
-  defp do_reconcile_project_knowledge(%Scope{environment: env} = scope, project) do
+  defp do_reconcile_project_knowledge(_scope, _project, nil), do: :ok
+
+  defp do_reconcile_project_knowledge(scope, project, env) do
     desired =
       scope
       |> Files.list_files_with_role(:project_knowledge)
@@ -687,7 +710,8 @@ defmodule CodeMySpec.Files.FileSync do
   Returns `{:ok, %{upserted: count, removed: count, changed_paths: [path], total_files: count}}`.
   """
   @spec sync_changed(Scope.t(), keyword()) :: {:ok, map()}
-  def sync_changed(%Scope{environment: env} = scope, _opts \\ []) do
+  def sync_changed(%Scope{} = scope, opts \\ []) do
+    env = environment(scope, opts)
     start = System.monotonic_time(:millisecond)
 
     with {:ok, stream} <- walk(scope, env) do
@@ -700,7 +724,7 @@ defmodule CodeMySpec.Files.FileSync do
   # deletion that actually fired: `0 files scanned … 3937 removed`, four minutes
   # after the fix to `sync/2` went live and while the harness was healthy.
   defp walk(%Scope{} = scope, env) do
-    case Scanner.stream_files(env) do
+    case if(is_nil(env), do: {:error, :no_environment}, else: Scanner.stream_files(env)) do
       {:ok, stream} ->
         {:ok, stream}
 
@@ -814,7 +838,7 @@ defmodule CodeMySpec.Files.FileSync do
       Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
     end
 
-    maybe_reconcile_lockfile(scope, fingerprint_changed_entries)
+    maybe_reconcile_lockfile(scope, fingerprint_changed_entries, env)
 
     clear_specs_ready_for_rewritten_specs(scope, fingerprint_changed_entries, removed_records)
 
@@ -875,11 +899,15 @@ defmodule CodeMySpec.Files.FileSync do
   the file was unrecognized or ignored.
   """
   @spec sync_path(Scope.t(), String.t(), keyword()) :: {:ok, map()}
-  def sync_path(%Scope{environment: env} = scope, abs_path, opts \\ []) do
-    base_dir = Keyword.get(opts, :base_dir, env.cwd || ".")
+  def sync_path(%Scope{} = scope, abs_path, opts \\ []) do
+    env = environment(scope, opts)
+    base_dir = Keyword.get(opts, :base_dir, env_cwd(env) || ".")
     rel_path = Path.relative_to(abs_path, base_dir)
 
     cond do
+      is_nil(env) ->
+        {:error, {:cannot_scan, :no_environment}}
+
       Scanner.ignored_path?(rel_path) ->
         {:ok, %{changed_path: nil}}
 

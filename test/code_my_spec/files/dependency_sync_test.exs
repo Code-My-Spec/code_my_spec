@@ -23,7 +23,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
 
     assert %{provenance: :discovered, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
     assert is_nil(Components.get_dependency_between(scope, billing.id, accounts.id))
   end
 
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
       "defmodule MyApp.Billing do\n def call(\nend"
     )
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
 
     assert %{id: id, provenance: :discovered, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -99,7 +99,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
 
     assert is_nil(Components.get_dependency_between(scope, billing.id, notifications.id))
 
@@ -141,7 +141,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
         in_code: true
       })
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
 
     assert %{source_component_id: billing_id, target_component_id: accounts_id} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -184,7 +184,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
       validation_errors: %{"data" => %{"module_name" => "MyApp.Billing"}}
     })
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
 
     assert %{id: id, provenance: :discovered, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -211,7 +211,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     """)
 
     assert {:ok, %{dependency_observation: %{status: :partial}}} =
-             ComponentSync.sync_from_files(scope)
+             ComponentSync.sync_from_files(scope, environment: nil)
 
     assert %{id: id, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -229,7 +229,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    report = ComponentSync.dependency_report(scope)
+    report = ComponentSync.dependency_report(scope, environment: nil)
     assert report.additions == [{billing.id, accounts.id}]
     assert report.unavailable == []
     assert is_nil(Components.get_dependency_between(scope, billing.id, accounts.id))

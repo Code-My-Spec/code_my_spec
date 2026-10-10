@@ -5,7 +5,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
 
   Runs the same two steps the Content LiveView drives:
 
-  1. `ContentPublishing.sync/1` — parse every markdown file under the project's
+  1. `ContentPublishing.sync/2` — parse every markdown file under the project's
      `content_source_path` into the local snapshot and upload any images to the
      project's image bucket.
   2. `ContentPublishing.publish/1` — write a content blob plus an integrity
@@ -83,9 +83,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
       |> override_deploy_key(opts[:deploy_key])
 
     scope = build_scope!(project)
+    environment = LocalScope.environment(project)
 
     print_target(project)
-    sync!(scope)
+    sync!(scope, environment)
 
     if Keyword.get(opts, :sync_only, false) do
       Mix.shell().info("\nStopped after sync (--sync-only). Nothing published.")
@@ -208,8 +209,8 @@ defmodule Mix.Tasks.Cms.Content.Publish do
 
   defp production_warning(_), do: ""
 
-  defp sync!(scope) do
-    case ContentPublishing.sync(scope) do
+  defp sync!(scope, environment) do
+    case ContentPublishing.sync(scope, environment) do
       {:ok, counts} ->
         Mix.shell().info(
           "Synced #{counts.success} file(s), #{counts.error} error(s), " <>
@@ -225,6 +226,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
         Set one in the harness content settings.
         """)
 
+        System.halt(1)
+
+      {:error, :no_environment} ->
+        Mix.shell().error("This project has no available local environment to read content from.")
         System.halt(1)
     end
   end

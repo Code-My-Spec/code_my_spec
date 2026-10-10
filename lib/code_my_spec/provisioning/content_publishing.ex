@@ -83,14 +83,21 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
   `opts`:
     * `:path` — the path to fetch back (e.g. `"/blog/hello-world"`), required
     * `:expect` — a string that must appear in the rendered body, required
+    * `:environment` — the environment whose content source should be synced
+      into the snapshot before publishing; required when syncing content
     * `:publish` / `:fetch` — injection points for tests
+    * `:sync` — optional arity-1 sync callback for tests
     * `:now` — clock injection
   """
   @spec run(Scope.t(), keyword()) :: result()
   def run(%Scope{} = scope, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     publish = Keyword.get(opts, :publish, &CodeMySpec.ContentPublishing.publish/1)
-    sync = Keyword.get(opts, :sync, &CodeMySpec.ContentPublishing.sync/1)
+
+    sync =
+      Keyword.get(opts, :sync, fn sync_scope ->
+        CodeMySpec.ContentPublishing.sync(sync_scope, Keyword.get(opts, :environment))
+      end)
 
     # `verify_render/2` is handled in a `case` rather than as another `with`
     # clause so `published` is still in scope when it fails. As an `else`

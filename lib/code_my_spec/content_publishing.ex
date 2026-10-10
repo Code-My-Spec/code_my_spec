@@ -36,6 +36,7 @@ defmodule CodeMySpec.ContentPublishing do
   alias CodeMySpec.ContentPublishing.ImageAsset
   alias CodeMySpec.ContentPublishing.Snapshot
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -47,29 +48,34 @@ defmodule CodeMySpec.ContentPublishing do
   Parse every markdown file under the project's content source directory into
   the local snapshot, replacing any prior snapshot for this project.
 
-  Reads straight from `scope.environment` — no clone/fetch/pull. A single
+  Reads straight from the supplied environment — no clone/fetch/pull. A single
   malformed file lands as a `parse_status: :error` row; the sync never aborts.
-  Returns `{:ok, counts}` or `{:error, :no_source_path}` when no source is set.
+  Returns `{:ok, counts}`, `{:error, :no_source_path}` when no source is set,
+  or `{:error, :no_environment}` when no environment is supplied.
   """
-  @spec sync(Scope.t()) :: {:ok, counts()} | {:error, :no_source_path}
-  def sync(%Scope{} = scope) do
+  @spec sync(Scope.t(), Environment.t() | nil) ::
+          {:ok, counts()} | {:error, :no_source_path | :no_environment}
+  def sync(%Scope{} = scope, environment) do
     project = scope.active_project
 
-    case project && project.content_source_path do
-      nil ->
+    case {environment, project && project.content_source_path} do
+      {nil, _source_path} ->
+        {:error, :no_environment}
+
+      {_environment, nil} ->
         {:error, :no_source_path}
 
-      "" ->
+      {_environment, ""} ->
         {:error, :no_source_path}
 
-      source_path ->
+      {environment, source_path} ->
         rows =
-          scope
+          environment
           |> content_files(source_path)
-          |> Enum.map(&parse_file(scope, &1, project.images_host))
+          |> Enum.map(&parse_file(scope, environment, &1, project.images_host))
 
         replace_snapshot(scope, rows)
-        image_counts = sync_images(scope, project, source_path)
+        image_counts = sync_images(scope, environment, project, source_path)
         {:ok, Map.merge(count_rows(rows), image_counts)}
     end
   end
@@ -401,14 +407,14 @@ defmodule CodeMySpec.ContentPublishing do
 
   # -- internals --
 
-  defp content_files(scope, source_path) do
-    scope
+  defp content_files(environment, source_path) do
+    environment
     |> all_files(source_path)
     |> Enum.filter(&(Path.extname(&1) in [".md", ".html"]))
   end
 
-  defp all_files(scope, source_path) do
-    case Environments.glob(scope.environment, Path.join(source_path, "**/*")) do
+  defp all_files(environment, source_path) do
+    case Environments.glob(environment, Path.join(source_path, "**/*")) do
       {:ok, paths} -> paths
       paths when is_list(paths) -> paths
       _ -> []
@@ -417,29 +423,30 @@ defmodule CodeMySpec.ContentPublishing do
 
   # -- image upload + Cloudflare purge (criteria 6271, 6273) --
 
-  defp sync_images(_scope, %{image_bucket: bucket}, _source) when bucket in [nil, ""] do
+  defp sync_images(_scope, _environment, %{image_bucket: bucket}, _source)
+       when bucket in [nil, ""] do
     %{images_synced: 0, images_failed: 0}
   end
 
-  defp sync_images(scope, project, source_path) do
+  defp sync_images(scope, environment, project, source_path) do
     images =
-      scope
+      environment
       |> all_files(source_path)
       |> Enum.filter(&(Path.extname(&1) in @image_extensions))
 
     {synced, failed, purge_urls} =
       Enum.reduce(images, {0, 0, []}, fn path, {synced, failed, purge} ->
-        upload_image(scope, project, path, {synced, failed, purge})
+        upload_image(scope, environment, project, path, {synced, failed, purge})
       end)
 
     if purge_urls != [], do: CloudflareClient.purge(Enum.reverse(purge_urls))
     %{images_synced: synced, images_failed: failed}
   end
 
-  defp upload_image(scope, project, path, {synced, failed, purge}) do
+  defp upload_image(scope, environment, project, path, {synced, failed, purge}) do
     key = Path.basename(path)
 
-    case read(scope, path) do
+    case read(environment, path) do
       nil ->
         {synced, failed + 1, purge}
 
@@ -500,10 +507,10 @@ defmodule CodeMySpec.ContentPublishing do
 
   defp hex(bin), do: Base.encode16(bin, case: :lower)
 
-  defp parse_file(scope, path, images_host) do
+  defp parse_file(scope, environment, path, images_host) do
     filename = path |> Path.basename() |> Path.rootname()
     format = FrontmatterParser.format_for(path)
-    raw = read(scope, path)
+    raw = read(environment, path)
 
     base = %{
       project_id: scope.active_project_id,
@@ -570,8 +577,8 @@ defmodule CodeMySpec.ContentPublishing do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp read(scope, path) do
-    case Environments.read_file(scope.environment, path) do
+  defp read(environment, path) do
+    case Environments.read_file(environment, path) do
       {:ok, content} -> content
       _ -> nil
     end

@@ -14,6 +14,7 @@ defmodule CodeMySpec.ContentPublishingTest do
 
   alias CodeMySpec.ContentPublishing
   alias CodeMySpec.ContentPublishing.Snapshot
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Repo
 
   defp put_snapshot(scope, attrs) do
@@ -65,6 +66,34 @@ defmodule CodeMySpec.ContentPublishingTest do
 
       assert {:error, %{message: message}} = ContentPublishing.publish(scope)
       assert message =~ "content bucket"
+    end
+  end
+
+  describe "sync/2 — explicit environment" do
+    test "reads through the supplied environment when the scope has no environment" do
+      tmp_dir = CodeMySpec.TempFile.owned_dir("content-sync")
+
+      File.write!(
+        Path.join(tmp_dir, "hello.md"),
+        "---\ntitle: Hello\nslug: hello\ncontent_type: page\n---\nBody.\n"
+      )
+
+      scope = full_scope_fixture(%{content_source_path: tmp_dir})
+      scope = %{scope | environment: nil}
+
+      assert {:ok, %{success: 1, error: 0}} =
+               ContentPublishing.sync(scope, Environment.new(:local, tmp_dir))
+
+      assert [%Snapshot{metadata: %{"slug" => "hello"}}] = ContentPublishing.list_snapshot(scope)
+    end
+
+    test "a missing environment leaves the existing snapshot untouched" do
+      tmp_dir = CodeMySpec.TempFile.owned_dir("content-sync")
+      scope = full_scope_fixture(%{content_source_path: tmp_dir})
+      snapshot = put_snapshot(scope, %{})
+
+      assert {:error, :no_environment} = ContentPublishing.sync(scope, nil)
+      assert [^snapshot] = ContentPublishing.list_snapshot(scope)
     end
   end
 end

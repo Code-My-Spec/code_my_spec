@@ -14,12 +14,38 @@ defmodule CodeMySpec.LocalScope do
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Builds a complete local scope from a project record, preferring a live
-  checkout over `local_path`.
+  Resolves an environment from a project and optional explicit root.
 
   A root-specific registry entry wins over the project's entry because a
   project may have several working copies. If neither registration exists,
-  resolution falls back to `root || project.local_path`.
+  resolution falls back to `root || project.local_path`. Missing paths return
+  `nil`; this operation never guesses a process working directory.
+  """
+  @spec environment(struct() | nil, String.t() | nil) :: Environment.t() | nil
+  def environment(project, root \\ nil)
+
+  def environment(nil, _root), do: nil
+
+  def environment(%_{} = project, root) do
+    env =
+      registered_for(root) || Environments.lookup_registered(project.id) ||
+        Environment.new(:local, root || project.local_path)
+
+    case env do
+      %Environment{cwd: nil} ->
+        nil
+
+      %Environment{} = env ->
+        env
+    end
+  end
+
+  @doc """
+  Builds a complete local scope from a project record, preferring a live
+  checkout over `local_path`.
+
+  Root-specific registration takes precedence over project registration.
+  Missing paths return `{:error, :no_local_path}`.
   """
   @spec for_local_project(struct() | nil, String.t() | nil) ::
           {:ok, Scope.t()} | {:error, :no_local_path}
@@ -28,8 +54,8 @@ defmodule CodeMySpec.LocalScope do
   def for_local_project(nil, _root), do: {:error, :no_local_path}
 
   def for_local_project(%_{} = project, root) do
-    case resolve_environment(project, root) do
-      %Environment{cwd: nil} ->
+    case environment(project, root) do
+      nil ->
         {:error, :no_local_path}
 
       %Environment{} = env ->
@@ -42,13 +68,6 @@ defmodule CodeMySpec.LocalScope do
            cwd: env.cwd,
            environment: env
          }}
-    end
-  end
-
-  defp resolve_environment(project, root) do
-    case registered_for(root) || Environments.lookup_registered(project.id) do
-      nil -> Environment.new(:local, root || project.local_path)
-      %Environment{} = env -> env
     end
   end
 

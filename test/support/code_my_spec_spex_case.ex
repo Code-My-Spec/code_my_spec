@@ -2857,6 +2857,9 @@ defmodule CodeMySpecSpex.Case do
 
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
+    Fixtures.unregister_environment({:root, project.local_path})
+    Fixtures.register_environment({:root, project.local_path}, env)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, project.local_path}) end)
     Callbacks.on_exit(fn -> Fixtures.unregister_environment(project.id) end)
 
     context
@@ -2910,6 +2913,9 @@ defmodule CodeMySpecSpex.Case do
 
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
+    Fixtures.unregister_environment({:root, project.local_path})
+    Fixtures.register_environment({:root, project.local_path}, env)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, project.local_path}) end)
 
     Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous_opts)
@@ -6405,6 +6411,9 @@ defmodule CodeMySpecSpex.Case do
       |> Fixtures.user_scope_fixture(account, project)
       |> Map.put(:cwd, stub_dir)
       |> Map.put(:environment, env)
+
+    Fixtures.register_environment({:root, stub_dir}, env)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, stub_dir}) end)
 
     Fixtures.select_active_project(updated_scope, project.id)
 

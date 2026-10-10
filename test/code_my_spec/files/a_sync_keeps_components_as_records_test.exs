@@ -11,6 +11,7 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Repo
 
@@ -218,5 +219,30 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
     {:ok, _} = ComponentSync.sync_from_files(ctx.scope)
 
     assert %{provenance: nil} = by_name(ctx.scope)["MyApp.Planned"]
+  end
+
+  test "uses the explicit environment when the scope carries a stale one", ctx do
+    dir = CodeMySpec.TempFile.owned_dir("component-environment")
+    File.mkdir_p!(Path.join(dir, "lib/my_app"))
+    File.write!(Path.join(dir, "lib/my_app/new.ex"), "defmodule MyApp.New do\nend")
+
+    Repo.insert!(%CodeMySpec.Files.File{
+      project_id: ctx.scope.active_project_id,
+      working_copy_id: ctx.scope.active_working_copy_id,
+      path: "lib/my_app/new.ex",
+      role: :implementation,
+      fingerprint: "new-#{System.unique_integer([:positive])}",
+      size: 30,
+      valid: true
+    })
+
+    stale_scope = %{ctx.scope | environment: Environment.new(:local, "/missing/stale/root")}
+
+    assert {:ok, _} =
+             ComponentSync.sync_from_files(stale_scope,
+               environment: Environment.new(:local, dir)
+             )
+
+    assert Map.has_key?(by_name(ctx.scope), "MyApp.New")
   end
 end

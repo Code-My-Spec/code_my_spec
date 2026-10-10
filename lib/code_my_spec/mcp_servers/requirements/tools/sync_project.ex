@@ -31,8 +31,11 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   defp run_sync(%{cwd: nil} = scope, frame), do: remote_sync(scope, frame)
 
   defp run_sync(scope, frame) do
-    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
-         {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
+    environment = Validators.mcp_environment(frame)
+
+    with {:ok, file_result} <- FileSync.sync(scope, environment: environment),
+         {:ok, comp_result} <-
+           FileComponentSync.sync_from_files(scope, environment: environment) do
       text = format_result(file_result, comp_result)
       {:reply, Response.tool() |> Response.text(text), frame}
     else

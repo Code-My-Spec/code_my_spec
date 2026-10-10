@@ -53,7 +53,8 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
     test "the main copy's mix.lock is read and recorded" do
       {scope, tmp_dir} = project_with_copy(@lock, main?: true)
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       assert [%{name: "bandit", version: "1.10.4"}] = dependency_names_and_versions(scope)
       assert is_binary(stamped_fingerprint(scope))
@@ -62,7 +63,8 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
     test "a non-main copy's mix.lock is never recorded" do
       {scope, tmp_dir} = project_with_copy(@lock, main?: false)
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       assert dependency_names_and_versions(scope) == []
       assert is_nil(stamped_fingerprint(scope))
@@ -71,7 +73,8 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
     test "a project with no mix.lock yet is untouched" do
       {scope, tmp_dir} = project_with_copy(nil, main?: true)
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       assert dependency_names_and_versions(scope) == []
       assert is_nil(stamped_fingerprint(scope))
@@ -80,10 +83,14 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
     test "a second sync of the same lock does not read it again" do
       {scope, tmp_dir} = project_with_copy(@lock, main?: true)
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       fingerprint_after_first = stamped_fingerprint(scope)
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       fingerprint_after_second = stamped_fingerprint(scope)
 
       assert fingerprint_after_first == fingerprint_after_second
@@ -92,11 +99,16 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
 
     test "a lock that actually changes is re-read and re-recorded" do
       {scope, tmp_dir} = project_with_copy(@lock, main?: true)
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       fingerprint_after_first = stamped_fingerprint(scope)
 
       write_mix_lock(tmp_dir, @other_lock)
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       assert [%{name: "bandit", version: "1.10.5"}] = dependency_names_and_versions(scope)
       assert stamped_fingerprint(scope) != fingerprint_after_first

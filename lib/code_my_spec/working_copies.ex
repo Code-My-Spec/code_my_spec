@@ -45,6 +45,7 @@ defmodule CodeMySpec.WorkingCopies do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -281,6 +282,35 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   def fetch(_), do: {:error, :invalid_id}
+
+  @doc """
+  Resolves the environment for the exact working copy selected by `scope`.
+
+  Both active ids must be present, and the fetched copy must belong to the
+  active project. For a rooted copy, resolution prefers its id-specific
+  registration, then a registration for its root, then a synthesized harness
+  environment. This deliberately ignores `scope.environment`, `scope.cwd`,
+  the project's registered environment, and other copies. Root registration
+  is only a fallback for the already-validated copy root; it is not a project
+  environment override. Invalid, missing, mismatched, or unrooted copies
+  return `nil`.
+  """
+  @spec environment(Scope.t()) :: Environment.t() | nil
+  def environment(%Scope{active_project_id: project_id, active_working_copy_id: copy_id})
+      when is_binary(project_id) and is_binary(copy_id) do
+    case fetch(copy_id) do
+      {:ok, %{project_id: ^project_id, root: root}}
+      when is_binary(root) and root != "" ->
+        Environments.lookup_registered({:working_copy, copy_id}) ||
+          Environments.lookup_registered({:root, root}) ||
+          Environment.new(:harness, root, ref: %{"harness_id" => copy_id})
+
+      _ ->
+        nil
+    end
+  end
+
+  def environment(_scope), do: nil
 
   @doc "The name of the machine a working copy is on, or nil when it has none on record."
   @spec machine_name(term()) :: String.t() | nil

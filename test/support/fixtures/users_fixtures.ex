@@ -101,6 +101,14 @@ defmodule CodeMySpec.UsersFixtures do
         device: device
       )
 
+    harness =
+      if is_binary(project.local_path) and project.local_path != "" do
+        {:ok, rooted} = WorkingCopies.report_root(harness, project.local_path)
+        rooted
+      else
+        harness
+      end
+
     %{scope | active_working_copy_id: harness.id}
   end
 
