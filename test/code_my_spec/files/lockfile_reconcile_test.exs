@@ -123,7 +123,7 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
       found = Enum.find(scopes, &(&1.active_project_id == scope.active_project_id))
 
       assert found.active_account_id == scope.active_account_id
-      assert %Environment{type: :harness} = found.environment
+      assert %Environment{type: :harness} = WorkingCopies.environment(found)
     end
   end
 
@@ -152,15 +152,19 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
     {:ok, copy} =
       WorkingCopies.issue(scope, nil, label: "test copy", device: device_fixture(scope))
 
+    {:ok, copy} = WorkingCopies.report_root(copy, tmp_dir)
     main_copy_id = designated_copy_id(scope, copy, opts[:main?])
 
     write_mix_lock(tmp_dir, lock_content)
 
     scope = %{scope | active_project: project, active_working_copy_id: main_copy_id}
-    {put_fixture_environment(scope, Environment.new(:local, tmp_dir)), tmp_dir}
+    {%{scope | cwd: tmp_dir}, tmp_dir}
   end
 
-  defp designated_copy_id(_scope, copy, false), do: copy.id
+  defp designated_copy_id(scope, copy, false) do
+    {:ok, _} = WorkingCopies.designate_main(scope, scope.active_working_copy_id)
+    copy.id
+  end
 
   defp designated_copy_id(scope, copy, true) do
     {:ok, main_copy} = WorkingCopies.designate_main(scope, copy.id)

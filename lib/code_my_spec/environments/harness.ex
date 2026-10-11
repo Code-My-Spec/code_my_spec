@@ -4,8 +4,9 @@ defmodule CodeMySpec.Environments.Harness do
 
   ## Why this exists
 
-  The light harness server holds no working copy, so `scope.environment` was
-  `nil` there and every file operation returned `{:error, :no_environment}`.
+  The light harness server holds no local execution environment, so file
+  operations without an explicit remote runtime returned
+  `{:error, :no_environment}`.
   That answer is a lie in a specific and damaging way: the project *has* a
   working copy, it is simply not on this machine. Saying "no environment" says
   "no such thing", and 48 server-side modules — 19 of them agent tasks whose

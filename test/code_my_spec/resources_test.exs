@@ -222,6 +222,8 @@ defmodule CodeMySpec.ResourcesTest do
       {:ok, project} =
         Projects.update_project(scope, scope.active_project, %{local_path: nil})
 
+      # full_scope_fixture registered its own runtime under the project id.
+      :ok = CodeMySpec.Environments.unregister(project.id)
       :ok = CodeMySpec.Environments.register(project.id, Environment.new(:local, checkout))
       on_exit(fn -> CodeMySpec.Environments.unregister(project.id) end)
 

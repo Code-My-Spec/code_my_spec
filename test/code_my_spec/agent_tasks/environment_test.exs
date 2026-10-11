@@ -42,6 +42,7 @@ defmodule CodeMySpec.AgentTasks.EnvironmentTest do
     {:ok, project} =
       Projects.update_project(scope, scope.active_project, %{local_path: project_root})
 
+    :ok = CodeMySpec.Environments.unregister(scope.active_project_id)
     scope = %{scope | active_project: project, active_working_copy_id: nil}
 
     assert %Environment{cwd: ^project_root} = AgentTasks.environment(scope)

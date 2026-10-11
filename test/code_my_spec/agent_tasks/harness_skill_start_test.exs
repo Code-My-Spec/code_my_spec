@@ -84,6 +84,8 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
   # ok or an error and asserted nothing in the error case, which meant it passed
   # without ever reaching the branch its name described.
   test "/sync elsewhere reports its own failure, not the harness's excuse", %{scope: scope} do
+    scope = %{scope | active_working_copy_id: nil, cwd: nil}
+
     assert {:error, message} =
              SkillRouter.resolve(scope, %{"skill" => "sync", "external_id" => "ext-2"})
 

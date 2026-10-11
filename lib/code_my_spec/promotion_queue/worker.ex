@@ -720,7 +720,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   # Database calls keep their project scope. Disk operations resolve the
-  # environment from this exact copy id, independently of Scope.environment.
+  # environment from this exact copy id; Scope carries identity, not runtime.
   defp scope_for(%Scope{} = scope, copy),
     do: %{scope | active_working_copy_id: copy.id, cwd: copy.root}
 

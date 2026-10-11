@@ -314,7 +314,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # The fallback was also the thing that made two harnesses disagree about one
   # project. It only ever fires when the file is on disk and not yet a row, and
   # in that window the heavy harness — which has a working copy — answers
-  # satisfied while the server, whose `scope.environment` is nil, answers
+  # satisfied while the server, which has no local execution environment,
+  # answers
   # unsatisfied. Same project, same instant, two answers, and the one an agent
   # gets depends on which process it asked.
   #

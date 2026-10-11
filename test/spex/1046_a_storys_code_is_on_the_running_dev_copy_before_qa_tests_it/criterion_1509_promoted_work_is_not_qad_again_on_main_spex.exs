@@ -52,6 +52,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
       given_ "a story that passed QA on its own copy and is ready to promote", context do
         context = a_promotable_project(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
+        PromotionHelpers.materialize_source_fixture_files(context)
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
@@ -73,6 +74,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
       when_ "the story is promoted", context do
         context = analyzers_are_current(context)
         response = promote(context, context.story.number)
+        text = response_text(response)
+
+        assert text =~ "Restarted" or text =~ "serving",
+               "promotion refused before deployment: #{text}"
+
         answer_restart_app_ok(context.running_socket)
         {:ok, Map.put(context, :promote_response, response)}
       end

@@ -139,7 +139,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     {:ok, env} = InMemoryEnvironment.create(shell: script(git))
     :ok = Environments.register({:working_copy, copy.id}, env)
     :ok = Environments.register({:working_copy, running.id}, env)
-    scope = put_fixture_environment(%{scope | active_working_copy_id: copy.id}, env)
+    scope = %{scope | active_working_copy_id: copy.id}
 
     {:ok, coder} =
       AgentsRepository.create_agent(scope, %{
@@ -280,7 +280,6 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   test "the promote tool's path without a story still merges and stamps nothing" do
     %{scope: scope, story: story} = a_project()
     certified(scope)
-    scope = put_fixture_environment(scope, nil)
 
     assert {:ok, %{merged: "story/x"} = result} = Promotion.promote(scope, nil, notify: nil)
     refute Map.has_key?(result, :story)

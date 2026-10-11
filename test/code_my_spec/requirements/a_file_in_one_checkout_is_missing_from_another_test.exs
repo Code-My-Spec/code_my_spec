@@ -109,7 +109,7 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
       # real and empty — the state a branch that never carried the file is in.
       :ok =
         Environments.write_file(
-          first.environment,
+          ctx.environment,
           @impl_path,
           "defmodule ExampleContext do\nend\n"
         )

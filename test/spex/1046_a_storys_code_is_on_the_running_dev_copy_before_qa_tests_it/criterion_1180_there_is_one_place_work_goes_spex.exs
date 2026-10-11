@@ -25,7 +25,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3173Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.PromotionHelpers
-  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures

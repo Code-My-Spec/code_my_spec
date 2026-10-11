@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
+  alias CodeMySpecSpex.StorySliceHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -49,7 +50,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
         {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
 
         {reply, socket} = join_working_copy_socket(context, "/tmp/spex-2005", "the checkout")
-        scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+        scope = StorySliceHelpers.scope_for_copy(context, reply.working_copy_id, "/tmp/spex-2005")
         context = Map.put(context, :copy_socket, socket)
 
         clean =

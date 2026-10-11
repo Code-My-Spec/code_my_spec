@@ -76,8 +76,8 @@ defmodule CodeMySpec.McpServers.Tasks.TasksMapper do
   end
 
   # `:no_environment` here means this call named no working copy — on the
-  # hosted `/mcp/harness` mount that means no `X-Harness-Id` arrived, so
-  # `scope.environment` is nil (see `ProjectScopeOverride`). The raw atom told
+  # hosted `/mcp/harness` mount that means no `X-Harness-Id` arrived (see
+  # `ProjectScopeOverride`). The raw atom told
   # an agent nothing it could act on (issue `ed28189c`); naming the missing
   # header does.
   def evaluate_error_response(task, :no_environment) do

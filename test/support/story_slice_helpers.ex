@@ -30,6 +30,13 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     context
   end
 
+  @doc "Use the fixture's in-memory runtime for an explicitly joined working copy."
+  def scope_for_copy(%{scope: scope, environment: environment}, copy_id, root) do
+    :ok = Environments.unregister({:working_copy, copy_id})
+    :ok = Environments.register({:working_copy, copy_id}, environment)
+    %{scope | active_working_copy_id: copy_id, cwd: root}
+  end
+
   @doc """
   A coding and a QA agent on the scope's copy, unless it already has a team.
   A story goes to the copy's team (a31f1cd6), so a copy needs one to hold it.

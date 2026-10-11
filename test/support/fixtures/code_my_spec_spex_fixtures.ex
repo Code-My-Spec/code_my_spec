@@ -5250,7 +5250,13 @@ defmodule CodeMySpecSpex.Fixtures do
     # before the run is stamped — the way the thing that reads it syncs
     # (criteria 6529, 6532, 6533 were flaky without it while runs carried
     # fingerprints of the file set).
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
+    #
+    # Except on a live harness's copy: the server cannot walk it, and the
+    # harness has already put its files in the ledger by manifest.
+    case FileSync.sync(scope, base_dir: scope.cwd) do
+      {:ok, _} -> :ok
+      {:error, {:cannot_scan, :not_supported_on_harness}} -> :ok
+    end
 
     result =
       CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(

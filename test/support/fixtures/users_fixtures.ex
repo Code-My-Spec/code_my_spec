@@ -7,12 +7,14 @@ defmodule CodeMySpec.UsersFixtures do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.User
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
   def valid_user_password, do: "hello world!"
@@ -103,8 +105,7 @@ defmodule CodeMySpec.UsersFixtures do
 
     harness =
       if is_binary(project.local_path) and project.local_path != "" do
-        {:ok, rooted} = WorkingCopies.report_root(harness, project.local_path)
-        rooted
+        root_copy(harness, project.local_path)
       else
         harness
       end
@@ -144,15 +145,15 @@ defmodule CodeMySpec.UsersFixtures do
 
     scope = user_scope_fixture(user, account, project)
     env = Environment.new(:local, tmp_dir)
-    :ok = CodeMySpec.Environments.register(project.id, env)
+    :ok = Environments.register(project.id, env)
     %{scope | cwd: tmp_dir}
   end
 
   @doc "The runtime explicitly registered by a test fixture, independent of Scope's fields."
   def fixture_environment(scope) do
-    CodeMySpec.Environments.lookup_registered({:working_copy, scope.active_working_copy_id}) ||
-      CodeMySpec.Environments.lookup_registered({:root, scope.cwd}) ||
-      CodeMySpec.Environments.lookup_registered(scope.active_project_id)
+    Environments.lookup_registered({:working_copy, scope.active_working_copy_id}) ||
+      Environments.lookup_registered({:root, scope.cwd}) ||
+      Environments.lookup_registered(scope.active_project_id)
   end
 
   @doc "Register a fixture runtime without storing it on Scope."
@@ -162,10 +163,10 @@ defmodule CodeMySpec.UsersFixtures do
           {:root, scope.cwd},
           scope.active_project_id
         ] do
-      :ok = CodeMySpec.Environments.unregister(key)
+      :ok = Environments.unregister(key)
     end
 
-    %{scope | active_working_copy_id: nil, cwd: nil}
+    %{scope | cwd: nil}
   end
 
   def put_fixture_environment(scope, %Environment{} = env) do
@@ -174,8 +175,8 @@ defmodule CodeMySpec.UsersFixtures do
         :ok = register_working_copy_environment(scope, env)
 
       _ ->
-        :ok = CodeMySpec.Environments.unregister(scope.active_project_id)
-        :ok = CodeMySpec.Environments.register(scope.active_project_id, env)
+        :ok = Environments.unregister(scope.active_project_id)
+        :ok = Environments.register(scope.active_project_id, env)
     end
 
     %{scope | cwd: env.cwd}
@@ -188,10 +189,22 @@ defmodule CodeMySpec.UsersFixtures do
       )
       when is_binary(id) and is_binary(cwd) do
     {:ok, copy} = WorkingCopies.fetch(id)
-    {:ok, _copy} = WorkingCopies.report_root(copy, cwd)
-    :ok = CodeMySpec.Environments.unregister({:working_copy, id})
-    :ok = CodeMySpec.Environments.register({:working_copy, id}, env)
+    root_copy(copy, cwd)
+    :ok = Environments.unregister({:working_copy, id})
+    :ok = Environments.register({:working_copy, id}, env)
     :ok
+  end
+
+  # The root alone. `WorkingCopies.report_root/2` also designates a project's
+  # only checkout as main, and main refuses story work — a fixture locating its
+  # runtime must not turn the scope's copy into the project's main checkout.
+  defp root_copy(copy, root) do
+    {:ok, rooted} =
+      copy
+      |> WorkingCopy.changeset(%{root: Path.expand(root)})
+      |> Repo.update()
+
+    rooted
   end
 
   @doc "A full test scope whose selected working copy has a registered environment."

@@ -3,8 +3,9 @@ defmodule CodeMySpec.Promotion.Steps do
   The three things a promotion does to a disk, and nothing else.
 
   Extracted because they are the only part that cannot happen on the server. A
-  project's checkout is on someone else's machine, `scope.environment` is a
-  harness environment, and `Environments.Harness.cmd/4` answers
+  project's checkout is on someone else's machine. Scope identifies the
+  project and working copy; explicit runtime resolution determines where
+  file operations can run. `Environments.Harness.cmd/4` answers
   `{:error, :not_supported_on_harness}` on purpose — it carries file operations
   to the disk, not commands.
 

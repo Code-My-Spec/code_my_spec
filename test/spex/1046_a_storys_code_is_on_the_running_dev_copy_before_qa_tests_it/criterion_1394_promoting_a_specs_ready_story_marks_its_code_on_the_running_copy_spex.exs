@@ -53,9 +53,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
              context do
         context = a_promotable_project(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
+        PromotionHelpers.materialize_source_fixture_files(context)
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
+
+        # Before the named story is certified: the sibling's spec commit moves
+        # HEAD, and certification is bound to the commit it names.
+        sibling = a_promotable_story(context, title: "A different story, not the one promoted")
 
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
 
@@ -73,13 +78,17 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
         assert story.qa_ready_commit, "the premise failed: the story should be certified for QA"
         refute story.promoted_version, "the premise failed: the story should not be promoted yet"
 
-        sibling = a_promotable_story(context, title: "A different story, not the one promoted")
         {:ok, Map.put(context, :sibling, sibling)}
       end
 
       when_ "a promotion succeeds", context do
         context = analyzers_are_current(context)
         response = promote(context, context.story.number)
+        text = response_text(response)
+
+        assert text =~ "Restarted" or text =~ "serving",
+               "promotion refused before deployment: #{text}"
+
         answer_restart_app_ok(context.running_socket)
         {:ok, Map.put(context, :first_promote_response, response)}
       end

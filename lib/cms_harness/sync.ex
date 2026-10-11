@@ -105,9 +105,10 @@ defmodule CmsHarness.Sync do
   end
 
   # A server-side deploy-readiness check has no real way to read this
-  # project's `mix.exs` — `scope.environment` there resolves through
-  # `Resources.project_scope/2`'s fallback to `Environment.new(:local,
-  # project.local_path)`, a path on *this* machine, not the server's (see
+  # project's `mix.exs` — a server-side scope does not carry the remote
+  # checkout's execution environment, and falling back to
+  # `Environment.new(:local, project.local_path)` would use a path on *this*
+  # machine, not the server's (see
   # `CodeMySpec.Provisioning.Steps.app_path/1`). This machine can read it
   # directly, so it does, on every sync — self-healing a `module_name` that
   # was never set (or was set wrong) without waiting on a separate onboarding

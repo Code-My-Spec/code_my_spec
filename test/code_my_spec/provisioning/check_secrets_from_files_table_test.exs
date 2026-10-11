@@ -35,8 +35,15 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
   # local_path)` takes when `local_path` is nil. Distinct from `nil` itself,
   # which is a different, earlier-guarded failure (`no_environment_message/0`).
   defp unreachable(scope) do
-    scope = CodeMySpec.UsersFixtures.put_fixture_environment(scope, Environment.new(:local, nil))
-    %{scope | active_working_copy_id: nil}
+    :ok = Environments.unregister({:working_copy, scope.active_working_copy_id})
+
+    :ok =
+      Environments.register(
+        {:working_copy, scope.active_working_copy_id},
+        Environment.new(:local, nil)
+      )
+
+    scope
   end
 
   defp sync_env_file(scope, content) do

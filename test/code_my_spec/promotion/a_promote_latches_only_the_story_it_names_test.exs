@@ -89,7 +89,7 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     :ok = Environments.register({:working_copy, agent.id}, env)
 
     %{
-      scope: put_fixture_environment(%{scope | active_working_copy_id: agent.id}, env),
+      scope: %{scope | active_working_copy_id: agent.id},
       running: running
     }
   end

@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.ProjectBuilderTest do
       )
 
     on_exit(fn -> CodeMySpec.Environments.destroy(env) end)
-    %{scope: put_fixture_environment(scope, env), env: env}
+    %{scope: CodeMySpec.UsersFixtures.put_fixture_environment(scope, env), env: env}
   end
 
   defp synced_paths(scope) do

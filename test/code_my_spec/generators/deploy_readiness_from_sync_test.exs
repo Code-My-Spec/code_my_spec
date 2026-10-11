@@ -43,7 +43,7 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
 
   defp directoryless_scope do
     scope = full_scope_fixture()
-    %{scope | active_working_copy_id: Ecto.UUID.generate()}
+    %{scope | cwd: nil}
   end
 
   defp sync(scope, path, role \\ :config) do

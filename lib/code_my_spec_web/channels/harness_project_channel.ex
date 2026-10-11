@@ -2516,8 +2516,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The working copy this channel speaks for, as something the server can read
   # and write rather than a fact it merely knows.
   #
-  # `scope.environment` was nil on every path that starts here, so anything
-  # reaching for a file got `{:error, :no_environment}` — "there is no working
+  # The server-side scope has no execution environment, so anything reaching
+  # for a file got `{:error, :no_environment}` — "there is no working
   # copy", which is false. There is one; it is on the other end of this socket.
   # Measured on one reconcile: 25 spec files unreadable, 75 read failures, and
   # `ComponentSync` skipping its cleanup because a sync that cannot read cannot
@@ -2724,7 +2724,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         :ok
 
       agent ->
-        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, payload["response"] || %{})
+        TokenUsage.record(
+          scope,
+          agent.id,
+          agent.story_id,
+          agent.provider,
+          payload["response"] || %{}
+        )
+
         mirror_failed_tool_results(scope, agent, payload["request"] || %{})
     end
   end

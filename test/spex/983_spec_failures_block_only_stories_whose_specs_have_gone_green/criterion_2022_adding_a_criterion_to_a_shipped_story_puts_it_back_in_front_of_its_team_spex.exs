@@ -100,6 +100,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
         # shape — added after any Three Amigos artifact so this doesn't
         # itself leave the spec stale and the gate reopened.
         :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
+        :ok = sync_story_specs_to_local_copy(context, story)
         refute set_active_story(context, story).isError
         commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
 

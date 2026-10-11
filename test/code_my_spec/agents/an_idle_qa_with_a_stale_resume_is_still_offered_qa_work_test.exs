@@ -75,7 +75,13 @@ defmodule CodeMySpec.Agents.AnIdleQaWithAStaleResumeIsStillOfferedQaWorkTest do
         device: device_fixture(ctx.scope)
       )
 
-    ctx = %{ctx | scope: %{ctx.scope | active_working_copy_id: copy.id}}
+    scope =
+      Fixtures.put_fixture_environment(
+        %{ctx.scope | active_working_copy_id: copy.id},
+        ctx.environment
+      )
+
+    ctx = %{ctx | scope: scope}
 
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     ctx = HarnessHooks.ensure_live_harness(ctx)

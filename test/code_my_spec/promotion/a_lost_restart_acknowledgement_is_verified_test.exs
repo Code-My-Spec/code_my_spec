@@ -154,7 +154,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
     {:ok, env} = InMemoryEnvironment.create(shell: script())
     :ok = Environments.register({:working_copy, running.id}, env)
     :ok = Environments.register({:working_copy, copy.id}, env)
-    scope = put_fixture_environment(%{scope | active_working_copy_id: copy.id}, env)
+    scope = %{scope | active_working_copy_id: copy.id}
 
     story = story_fixture(scope, %{title: "Lost ack"})
 

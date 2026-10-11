@@ -135,7 +135,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
     assert [offer] = stalled_offers(ctx)
 
     assert %{subject_type: "agent", subject_key: "a1b2c3d4", status: :open} = offer
-    assert offer.template_version == "stalled/1"
+    assert offer.template_version == "stalled/2"
     assert [%{message_id: message_id}] = offer.messages
     assert Conversations.Message |> Repo.get!(message_id) |> Conversations.Message.text() == text
   end

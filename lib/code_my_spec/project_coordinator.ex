@@ -382,7 +382,8 @@ defmodule CodeMySpec.ProjectCoordinator do
   # ============================================================================
 
   # Deletes go through the same environment the writes did. They used to unwrap
-  # `scope.environment.cwd` and hand the joined path to File.rm, which meant a
+  # the scope's execution environment cwd and hand the joined path to File.rm,
+  # which meant a
   # prompt written onto a sprite was deleted from whatever machine happened to
   # run the evaluation — so the prompt survived, and the agent kept being told
   # to redo work it had finished.

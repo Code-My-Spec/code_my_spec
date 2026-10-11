@@ -9,7 +9,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
   snapshot and `Files.delete_removed/2` removed every row whose path was not in
   it — which was all of them.
 
-  That ran on the server, where `CodeMySpec.UsersFixtures.fixture_environment(scope)` is a `Harness` with nothing
+  That ran on the server, where the explicit runtime is a `Harness` with nothing
   local to walk, on the `get_next_requirement` path:
 
       17:22:25  sent 3936 observations for …/phx-new-generator
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
 
       assert {:error, :not_supported_on_harness} =
                Scanner.observe(
-                 CodeMySpec.UsersFixtures.fixture_environment(scope),
+                 Environment.new(:harness, nil),
                  Files.read_model(scope)
                )
     end
@@ -70,10 +70,14 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
       # The same project and the same harness, reached through the server's own
       # scope — no working copy on this side. This is the call `get_next_requirement`
       # makes, and it used to return `{:ok, %{removed: 2}}`.
-      server = %{local | cwd: nil, environment: Environment.new(:harness, nil)}
+      server = %{local | cwd: nil}
 
       assert {:error, {:cannot_scan, :not_supported_on_harness}} =
-               FileSync.sync(server, base_dir: nil, embed: false)
+               FileSync.sync(server,
+                 base_dir: nil,
+                 embed: false,
+                 environment: Environment.new(:harness, nil)
+               )
 
       assert length(Files.list_files(local)) == before
     end
@@ -95,10 +99,13 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
       before = Files.list_files(local) |> length()
       assert before >= 1
 
-      server = %{local | environment: Environment.new(:harness, nil)}
+      server = local
 
       assert {:error, {:cannot_scan, :not_supported_on_harness}} =
-               FileSync.sync_changed(server, base_dir: tmp_dir)
+               FileSync.sync_changed(server,
+                 base_dir: tmp_dir,
+                 environment: Environment.new(:harness, nil)
+               )
 
       assert length(Files.list_files(local)) == before
     end
@@ -142,10 +149,13 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
       before = Files.list_files(local) |> length()
       assert before >= 1
 
-      server = %{local | environment: Environment.new(:harness, nil)}
+      server = local
 
       assert {:error, {:cannot_scan, :not_supported_on_harness}} =
-               FileSync.sync_changed(server, base_dir: tmp_dir)
+               FileSync.sync_changed(server,
+                 base_dir: tmp_dir,
+                 environment: Environment.new(:harness, nil)
+               )
 
       assert length(Files.list_files(local)) == before
     end

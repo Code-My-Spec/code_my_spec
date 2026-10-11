@@ -11,8 +11,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.WorkingCopyHelpers
-
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
@@ -142,10 +140,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
         "the coding agent's copy"
       )
 
+    # The fixture's files live in the in-memory environment, not on this
+    # empty root: the copy reads them there, and the channel stays the copy's.
+    scope = CodeMySpecSpex.StorySliceHelpers.scope_for_copy(context, copy.working_copy_id, root)
+
     context
     |> Map.put(:copy, copy)
     |> Map.put(:copy_socket, socket)
-    |> Map.put(:scope, %{context.scope | active_working_copy_id: copy.working_copy_id})
+    |> Map.put(:scope, scope)
   end
 
   # `own_copy_app_url_line/1` dispatches `ensure_app_running` live over the

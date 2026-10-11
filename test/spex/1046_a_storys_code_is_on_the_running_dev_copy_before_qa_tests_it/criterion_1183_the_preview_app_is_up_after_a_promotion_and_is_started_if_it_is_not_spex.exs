@@ -29,13 +29,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
-  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -192,7 +192,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
       CodeMySpecSpex.PromotionHelpers.join_main_working_copy_socket(
         context,
         running_root,
-        "the checkout the dev app runs in", app_verbs: ["reload_app"])
+        "the checkout the dev app runs in",
+        app_verbs: ["reload_app"]
+      )
 
     context
     |> Map.put(:running_root, running_root)
@@ -265,16 +267,25 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   # Designate this checkout as the one the application runs from, through the
   # page that owns the choice. `main` is "designated, never inferred", so there
-  # is no state to set behind the product's back.
+  # is no state to set behind the product's back. A fixture that already
+  # selected this copy as main needs no UI action.
   defp this_copy_is_the_running_one(context) do
-    {:ok, view, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/working-copies")
+    case WorkingCopies.main(context.scope) do
+      %{id: id} when id == context.scope.active_working_copy_id ->
+        :ok
 
-    view
-    |> element(
-      "[data-test='designate-main-copy'][phx-value-id='#{context.scope.active_working_copy_id}']"
-    )
-    |> render_click()
+      _ ->
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/working-copies")
+
+        view
+        |> element(
+          "[data-test='designate-main-copy'][phx-value-id='#{context.scope.active_working_copy_id}']"
+        )
+        |> render_click()
+    end
+
+    assert WorkingCopies.main(context.scope).id == context.scope.active_working_copy_id
 
     context
   end

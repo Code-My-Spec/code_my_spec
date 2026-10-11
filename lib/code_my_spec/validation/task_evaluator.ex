@@ -16,8 +16,9 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
 
   # Replies that mean "this server could not observe the working copy", as
   # opposed to "the requirement is unmet". `Environments` returns these from
-  # every file operation when `scope.environment` is nil, which under a light
-  # harness is the steady state rather than an edge case: the server has no
+  # every file operation when no local execution environment is available,
+  # which under a light harness is the steady state rather than an edge case:
+  # the server has no
   # disk by construction, and the harness is what watches the files.
   # `Environments.unobservable?/1` is the list now, because it is what produces
   # these — so a checker deciding whether to flatten one into a verdict asks the

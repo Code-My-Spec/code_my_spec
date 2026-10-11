@@ -172,7 +172,8 @@ defmodule CodeMySpec.McpServers.Validators do
   A selected working copy resolves through its recorded identity and project.
   An invalid selection is refused without falling back to a local directory.
   Before a working copy is selected, a configured bootstrap directory supplies
-  an explicit local environment. The environment carried by Scope is ignored.
+  an explicit local environment. Scope carries identity and selection, not an
+  execution environment.
 
   Returns nil when there is no working directory to root one at. See
   `mcp_working_dir/1` for why guessing is worse than refusing.
