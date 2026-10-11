@@ -13,6 +13,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -172,8 +174,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
             ] do
           spec_path = Fixtures.spec_file(Macro.underscore(module_name))
 
-          refute CodeMySpec.Environments.file_exists?(
-                   CodeMySpec.Environments.Environment.new(:local, context.harness.root),
+          refute Environments.file_exists?(
+                   Environment.new(:local, context.harness.root),
                    spec_path
                  ),
                  "expected no spec stub at #{spec_path} when proposal was rejected"
