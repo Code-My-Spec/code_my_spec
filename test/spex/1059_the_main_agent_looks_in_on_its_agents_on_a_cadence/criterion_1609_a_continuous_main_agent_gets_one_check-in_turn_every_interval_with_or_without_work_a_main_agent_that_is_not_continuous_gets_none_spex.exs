@@ -1,13 +1,8 @@
 defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
   @moduledoc """
-  Story 1059 — The main agent looks in on its agents on a cadence.
-  Criterion 1609 — A continuous main agent gets one check-in turn every
-  interval, with or without work; a main agent that is not continuous gets
-  none.
-
-  John, 2026-10-01: "Cadence is for continuous main agents only. They should
-  be woke every 20 minutes, converge the content of both paths." The tick is
-  one turn carrying the check-in, whether or not the graph holds work for main.
+  Story 1059 — Cadence checks admit work rather than unconditional turns.
+  Continuous main with an empty queue stays idle; non-continuous main stays
+  outside the timer's admission path.
   """
   use CodeMySpecSpex.Case
 
@@ -45,9 +40,9 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
     context
   end
 
-  spex "A continuous main agent gets one check-in turn every interval, with or without work; a main agent that is not continuous gets none",
+  spex "An empty cadence check does not manufacture a main turn",
     criterion: 1609 do
-    scenario "A continuous main with no work still gets its check-in" do
+    scenario "A continuous main with no work stays idle" do
       given_ "a continuous main agent with no work, on a running timer", context do
         context = given_a_staffed_checkout(context, "spex_1609")
         context = FullSatisfactionFixtures.apply(context)
@@ -69,14 +64,12 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
 
       when_ "the interval passes", context do
         context = let_the_interval_pass(context)
-        HeldProvider.await_request(5_000)
         {:ok, context}
       end
 
-      then_ "main is taking exactly one turn, and it is the check-in", context do
-        assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
-        [request] = HeldProvider.seen()
-        assert Jason.decode!(request)["messages"] |> Jason.encode!() =~ "Check-in."
+      then_ "main remains idle and no provider request was made", context do
+        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id)
+        assert HeldProvider.seen() == []
         {:ok, context}
       end
     end
@@ -110,7 +103,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
       then_ "main takes no turn", context do
         # The machine accepts a turn before the tick returns, so this is
         # observable at once.
-        assert {:ok, %{busy?: false}} = Machine.status(context.main_id),
+        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id),
                "the timer gave a main outside the loop a turn"
 
         {:ok, context}
