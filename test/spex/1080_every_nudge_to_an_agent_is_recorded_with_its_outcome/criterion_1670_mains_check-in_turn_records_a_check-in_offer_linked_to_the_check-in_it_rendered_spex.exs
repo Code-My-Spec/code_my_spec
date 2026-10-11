@@ -33,6 +33,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1670Spex do
         context = FullSatisfactionFixtures.apply(context)
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
 
+        # Something for the check-in to raise: an empty check never wakes main
+        # (1609). A timing-out teammate, not a question — a question wakes main
+        # itself, and the check-in then finds it mid-turn.
+        coder =
+          Fixtures.running_agent(context.scope, role: "coding", working_copy: "/tmp/spex-1670")
+
+        :ok = Fixtures.fail_turn(context.scope, coder.id, "claude exec timed out after 180000ms")
+
         base_url = HeldProvider.start()
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
@@ -71,12 +79,16 @@ defmodule CodeMySpecSpex.Story1080.Criterion1670Spex do
 
         [request] = HeldProvider.seen()
 
-        assert Jason.decode!(request)["messages"] |> Jason.encode!() =~
-                 String.slice(message, 0, 40),
+        # The offer keeps the message on one line; the request keeps its newlines.
+        sent = Jason.decode!(request)["messages"] |> Enum.map_join(" ", & &1["content"])
+
+        assert squish(sent) =~ message |> squish() |> String.slice(0, 40),
                "the linked message is not the check-in main was sent"
 
         {:ok, context}
       end
     end
   end
+
+  defp squish(text), do: text |> String.split() |> Enum.join(" ")
 end

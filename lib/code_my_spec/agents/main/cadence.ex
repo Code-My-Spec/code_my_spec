@@ -9,13 +9,12 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   could still call `send_message` — had it lost that too, it would have sat
   silent indefinitely.
 
-  ## One turn a tick, continuous main only
+  ## Inspect every tick; admit a turn only when needed
 
-  John: "Cadence is for continuous main agents only." Each tick gives a
-  running, continuous main exactly one turn (`Wake` event `:cadence`), work or
-  no work: the digest, led by what waits on it, with its own work offer folded
-  in. A non-continuous main gets nothing from the timer; a main mid-turn or
-  waiting on its own run is skipped until the next tick.
+  A running continuous main receives a turn only for eligible work or an
+  observed decision/investigation. Empty recovery checks preserve the timer,
+  agent intent and conversations. Existing admission still holds busy,
+  non-continuous or analysis-waiting agents.
 
   ## A floor, not a schedule
 
@@ -46,6 +45,7 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
 
   @registry CodeMySpec.Agents.Main.CadenceRegistry
@@ -349,8 +349,22 @@ defmodule CodeMySpec.Agents.Main.Cadence do
         work: MainAgent.list_agent_work(scope),
         off: MainAgent.list_off_agents(scope),
         machinery: MainAgent.check_machinery(scope),
-        questions: MainAgent.list_open_questions(scope)
+        questions: MainAgent.list_open_questions(scope),
+        requirements: requirements_summary(scope)
       }
     end
   end
+
+  defp requirements_summary(scope) do
+    {graph, metadata} = Requirements.project_graph_with_actionable_metrics(scope)
+    requirements_summary(graph, metadata)
+  rescue
+    exception -> {:unavailable, Exception.message(exception)}
+  end
+
+  defp requirements_summary(_graph, %{served_from: "empty"}),
+    do: {:unavailable, "the project graph has not been published"}
+
+  defp requirements_summary(%{nodes: nodes}, _metadata),
+    do: %{total: length(nodes), satisfied: Enum.count(nodes, & &1.satisfied)}
 end

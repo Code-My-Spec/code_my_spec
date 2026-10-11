@@ -168,7 +168,9 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
     main = agent(ctx.scope, %{role: "main"})
 
     assert {:ok, _ref} =
-             Work.request_cadence_turn(ctx.scope, main, &"Check-in. Work offered: #{&1}")
+             Work.request_cadence_turn(ctx.scope, main, &"Check-in. Work offered: #{&1}",
+               attention?: true
+             )
 
     id = main.id
     assert_received {:work_turn_requested, ^id, _ref, "Check-in. Work offered: " <> _ = prompt}

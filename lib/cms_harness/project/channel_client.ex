@@ -2066,11 +2066,24 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp turn_event_text(envelope) do
     case envelope do
-      %{name: name} when is_binary(name) -> name
-      %{text: text} when is_binary(text) -> text
-      %{content: content} when is_binary(content) -> content
-      %{payload: %{name: name} = payload} when is_binary(name) -> tool_text(name, payload)
-      other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect_rest()
+      %{name: name} when is_binary(name) ->
+        name
+
+      %{text: text} when is_binary(text) ->
+        text
+
+      %{content: content} when is_binary(content) ->
+        content
+
+      %{payload: %{name: name} = payload} when is_binary(name) ->
+        tool_text(name, payload)
+
+      # `ref` and `generation` travel as their own fields (above); left in, a
+      # turn boundary read as `%{ref: ..., generation: ...}` in the transcript.
+      other ->
+        other
+        |> Map.drop([:v, :seq, :turn, :correlation_id, :event, :ref, :generation])
+        |> inspect_rest()
     end
   end
 

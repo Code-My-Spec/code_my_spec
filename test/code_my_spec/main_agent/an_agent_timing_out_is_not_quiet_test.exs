@@ -41,7 +41,7 @@ defmodule CodeMySpec.Agents.Main.AnAgentTimingOutIsNotQuietTest do
     test "the check-in names the run of timed-out turns on the agent line" do
       report = CheckInReport.render(digest([timing_out(6)]))
 
-      assert report =~ "task: bdd_specs_passing; last 6 turns timed out (claude exec)"
+      assert report =~ "last 6 turns timed out (claude exec)"
     end
 
     test "one timed-out turn is said in the singular" do

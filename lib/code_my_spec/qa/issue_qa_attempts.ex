@@ -72,9 +72,8 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   # Could not judge the fix, rather than judging it wrong — QA keeps the
   # issue and tries again; there is nothing for the coder to act on.
   defp handle_outcome(scope, owner, %{status: :partial} = attempt) do
-    with {:ok, _} <- TaskOwner.complete_task(scope, owner, attempt.task_id, :completed) do
-      attempt
-    else
+    case TaskOwner.complete_task(scope, owner, attempt.task_id, :completed) do
+      {:ok, _} -> attempt
       {:error, reason} -> Repo.rollback(reason)
     end
   end
