@@ -1,12 +1,12 @@
 defmodule CodeMySpecSpex.Story1080.Criterion1743Spex do
   @moduledoc """
   Story 1080 — Every nudge to an agent is recorded with its outcome.
-  Criterion 1743 — A harness restart that finds an agent idle records its restart notice
-  as an open resume offer on the restart, linked to the notice.
+  Criterion 1743 — A harness restart that finds an agent idle sends it nothing, so
+  records no offer.
 
-  A harness that comes back asks the server which agents to restore. Before
-  answering, the server tells each one what became of its turn — and that
-  notice is an offer like any other nudge (f5699eb9).
+  A harness that comes back asks the server which agents to restore. An idle
+  agent lost nothing and resumes its conversation as recorded; there is no
+  nudge to record (f5699eb9, story 1051 rule 841a5f79).
   """
 
   use CodeMySpecSpex.Case
@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1743Spex do
     :ok
   end
 
-  spex "An idle agent's restart notice is an open resume offer", criterion: 1743 do
+  spex "An idle agent is offered nothing on a restart", criterion: 1743 do
     scenario "the harness comes back and its agent was not mid-turn" do
       given_ "an agent on a harness's copy, with no turn in flight", context do
         context = a_harness(context)
@@ -37,11 +37,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1743Spex do
         {:ok, Map.put(context, :restored, restores(context))}
       end
 
-      then_ "one open resume offer on the restart, linked to the notice", context do
-        assert [offer] = offers(context, context.agent, %{kind: "resume"}), listing(context)
-        assert {offer.subject, offer.status} == {"restart", "open"}
-        assert [notice] = offer.messages
-        assert notice =~ "The harness restarted. No turn of yours was interrupted"
+      then_ "no resume offer is recorded", context do
+        assert offers(context, context.agent, %{kind: "resume"}) == [], listing(context)
         {:ok, context}
       end
     end

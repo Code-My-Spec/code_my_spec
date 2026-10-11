@@ -2,11 +2,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1744Spex do
   @moduledoc """
   Story 1080 — Every nudge to an agent is recorded with its outcome.
   Criterion 1744 — A harness restart that finds an agent mid-turn records its
-  part-way-through-a-turn notice the same way.
+  carry-on as an open resume offer on the restart, linked to it.
 
-  A harness that comes back asks the server which agents to restore. Before
-  answering, the server tells each one what became of its turn — and that
-  notice is an offer like any other nudge (f5699eb9).
+  A harness that comes back asks the server which agents to restore. An agent
+  it caught mid-turn is sent a carry-on ahead of anything queued, and that
+  carry-on is an offer like any other nudge (f5699eb9).
   """
 
   use CodeMySpecSpex.Case
@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1744Spex do
     :ok
   end
 
-  spex "A mid-turn agent's restart notice is an open resume offer", criterion: 1744 do
+  spex "A mid-turn agent's carry-on is an open resume offer", criterion: 1744 do
     scenario "the harness comes back and its agent was part-way through a turn" do
       given_ "an agent on a harness's copy, mid-turn", context do
         context = a_harness(context)
@@ -38,12 +38,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1744Spex do
         {:ok, Map.put(context, :restored, restores(context))}
       end
 
-      then_ "one open resume offer on the restart, linked to the interrupted-turn notice",
+      then_ "one open resume offer on the restart, linked to the carry-on",
             context do
         assert [offer] = offers(context, context.agent, %{kind: "resume"}), listing(context)
         assert {offer.subject, offer.status} == {"restart", "open"}
         assert [notice] = offer.messages
-        assert notice =~ "while you were part-way through a turn"
+        assert notice =~ "Carry on from your last step"
         {:ok, context}
       end
     end

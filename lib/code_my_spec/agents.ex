@@ -840,9 +840,10 @@ defmodule CodeMySpec.Agents do
   main agent acting on an agent that cannot report its own trouble. Every
   restart reported success while changing nothing (`e9f9a5ab`).
 
-  So a restart now discards the turn in flight, which is a real cost and is the
-  point: criterion 3321 asks for exactly that, and an agent that has to be
-  restarted is one whose current turn is the problem.
+  So a restart now ends the process the turn was running in. The turn itself
+  carries on (`Mailbox.carry_on/2`), from the conversation as recorded, before
+  anything queued — rule `0a06befe`. A call the hang was stuck in comes back
+  answered as unknown, which is the way out of it.
 
   The stop goes through `halt_for_restart/1`, not `end_process/2` — see the
   comment on it. `end_process/2` skips the ask for an agent whose row reads
@@ -865,7 +866,7 @@ defmodule CodeMySpec.Agents do
              status: :starting,
              os_pid: nil,
              os_boot_id: nil,
-             # The turn the restart is discarding. Left set, `list_agent_work`
+             # The turn the restart cut. Left set, `list_agent_work`
              # and every check-in go on reporting "a turn opened at <then> and
              # has not finished" for an agent that has been restarted and whose
              # process is gone — measured at two minutes past the restart and
@@ -878,7 +879,8 @@ defmodule CodeMySpec.Agents do
              # still reaped from before.
              stopped_reason: nil,
              tools: tools_of(scope, agent)
-           }) do
+           }),
+         :ok <- carry_on_if_mid_turn(scope, agent) do
       with {:ok, agent} <-
              launch(scope, LaunchRequest.hydrate(scope, %{starting | credential: credential})) do
         broadcast(scope, {:agent_started, agent})
@@ -889,6 +891,15 @@ defmodule CodeMySpec.Agents do
         {:ok, agent}
       end
     end
+  end
+
+  # Before the launch request is hydrated, so the carry-on is waiting in the
+  # mailbox rather than in the history the agent comes back holding.
+  defp carry_on_if_mid_turn(_scope, %Agent{turn_started_at: nil}), do: :ok
+
+  defp carry_on_if_mid_turn(scope, agent) do
+    {:ok, _} = Mailbox.carry_on(scope, agent.id)
+    :ok
   end
 
   # Ask the machine to end it, whatever the row says.

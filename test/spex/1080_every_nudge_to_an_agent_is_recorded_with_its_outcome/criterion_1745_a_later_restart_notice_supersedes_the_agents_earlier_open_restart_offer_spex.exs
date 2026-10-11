@@ -1,12 +1,12 @@
 defmodule CodeMySpecSpex.Story1080.Criterion1745Spex do
   @moduledoc """
   Story 1080 — Every nudge to an agent is recorded with its outcome.
-  Criterion 1745 — A later restart notice supersedes the agent's earlier open restart
-  offer.
+  Criterion 1745 — A later restart's carry-on supersedes the agent's earlier open
+  restart offer.
 
-  A harness that comes back asks the server which agents to restore. Before
-  answering, the server tells each one what became of its turn — and that
-  notice is an offer like any other nudge (f5699eb9).
+  A harness that comes back asks the server which agents to restore. An agent
+  it caught mid-turn is sent a carry-on ahead of anything queued, and that
+  carry-on is an offer like any other nudge (f5699eb9).
   """
 
   use CodeMySpecSpex.Case
@@ -26,16 +26,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1745Spex do
   end
 
   spex "A second restart supersedes the first restart offer", criterion: 1745 do
-    scenario "the harness restarts twice before the agent takes a turn" do
-      given_ "an idle agent whose harness already came back once", context do
+    scenario "the harness restarts twice before the agent carries its turn on" do
+      given_ "a mid-turn agent whose harness already came back once", context do
         context = a_harness(context)
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         context = Map.put(context, :agent, agent.id)
+        :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
         :ok = restores(context)
         {:ok, context}
       end
 
-      when_ "the harness comes back again", context do
+      when_ "the harness comes back again with the agent mid-turn", context do
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.agent)
         {:ok, Map.put(context, :restored, restores(context))}
       end
 
