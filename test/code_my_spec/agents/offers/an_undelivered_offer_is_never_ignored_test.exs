@@ -148,7 +148,9 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
     main = agent(ctx.scope, %{role: "main"})
 
     assert {:error, :harness_not_connected} =
-             Work.request_cadence_turn(ctx.scope, main, fn _work? -> "Check-in." end)
+             Work.request_cadence_turn(ctx.scope, main, fn _work? -> "Check-in." end,
+               attention?: true
+             )
 
     assert_undelivered_through_turn_end(ctx.scope, main, :check_in)
   end

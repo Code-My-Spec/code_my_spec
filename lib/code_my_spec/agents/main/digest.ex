@@ -34,11 +34,21 @@ defmodule CodeMySpec.Agents.Main.Digest do
           off: [Agent.t()],
           machinery: Machinery.t() | nil,
           questions: [OpenQuestion.t()],
+          requirements:
+            %{total: non_neg_integer(), satisfied: non_neg_integer()}
+            | {:unavailable, String.t()}
+            | nil,
           completions: [struct()],
           failed: String.t() | nil
         }
 
-  defstruct work: [], off: [], machinery: nil, questions: [], completions: [], failed: nil
+  defstruct work: [],
+            off: [],
+            machinery: nil,
+            questions: [],
+            requirements: nil,
+            completions: [],
+            failed: nil
 
   @doc "A digest that could not be assembled, and what stopped it."
   @spec failed(String.t()) :: t()

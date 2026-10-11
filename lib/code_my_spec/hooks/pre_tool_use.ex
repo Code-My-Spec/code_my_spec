@@ -484,21 +484,25 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # routing it was to be invisible, and a footer the agent had never seen
   # from a real test run was the opposite of that.
   #
-  # So the two are split at the transport instead of glued into the body:
-  # `-o`/`-w` send the response body to a file, and the HTTP status and the
-  # run's `x-exit-status` header to stdout. The script re-emits the body
-  # untouched and exits with the tool's own status, as `mix test` would have.
-  # A harness that sends no header is read by HTTP status: 0 on 200, else 1.
+  # So the two are split by the script instead of read by the agent: `-w`
+  # appends one last line, the HTTP status and the run's `x-exit-status`
+  # header, and the script prints everything before it and exits with the
+  # tool's own status, as `mix test` would have. A harness that sends no
+  # header is read by HTTP status: 0 on 200, else 1.
+  #
+  # No temp file. It used to go through `mktemp` and `rm -f "$t"`, and Claude
+  # Code's removal guard cannot resolve `$t`, so every routed run waited on a
+  # person to approve it and was denied when nobody did.
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
     url = "http://localhost:#{port}#{path(endpoint)}"
 
     script =
-      "t=$(mktemp); c=$(curl -sS -o \"$t\" -w '%{http_code} %header{x-exit-status}' " <>
+      "nl='\n'; o=$(curl -sS -w '\\n%{http_code} %header{x-exit-status}' " <>
         "-X POST '#{url}' -H 'Content-Type: application/json' " <>
         header(endpoint) <>
         "--data #{shell_quote(payload)}); " <>
-        ~S{cat "$t"; rm -f "$t"; set -- $c; [ -n "$2" ] && exit "$2"; [ "$1" = 200 ]}
+        ~S|printf '%s\n' "${o%"$nl"*}"; set -- ${o##*"$nl"}; [ -n "$2" ] && exit "$2"; [ "$1" = 200 ]|
 
     "sh -c " <> shell_quote(script)
   end
