@@ -100,13 +100,20 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
         # shape — added after any Three Amigos artifact so this doesn't
         # itself leave the spec stale and the gate reopened.
         :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
-        qa_ready_at = DateTime.utc_now()
-        {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
-
         refute set_active_story(context, story).isError
         commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
+
+        :ok =
+          Fixtures.StoryIssueBag.certify(
+            context.scope,
+            story.id,
+            head_of(context, context.agent_root)
+          )
+
+        {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
         context = analyzers_are_current(context)
         response = promote(context, story.number)
+        refute response.isError, inspect(response)
         assert what_the_agent_was_told(context) =~ "landed on main"
         refute response.isError, inspect(response)
 
@@ -114,9 +121,6 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
 
         assert story.specs_ready,
                "the story's specs_ready must be set before this scenario starts"
-
-        {:ok, story} =
-          Stories.set_qa_ready(context.scope, story, String.duplicate("a", 40), qa_ready_at)
 
         {:ok, Map.put(context, :story, story)}
       end

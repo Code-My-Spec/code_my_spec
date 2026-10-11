@@ -29,11 +29,20 @@ defmodule CodeMySpecSpex.Story1092.Criterion2012Spex do
   end
 
   spex "A team's promoted stories over a week are counted as its throughput",
-       criterion: 2012 do
+    criterion: 2012 do
     scenario "two teams promoted stories over a week" do
       given_ "one story promoted this week", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context, title: "Landed this week")
+        story = a_promotable_story(context, title: "Landed this week", qa: :not_passed)
+
+        :ok =
+          CodeMySpecSpex.Fixtures.StoryIssueBag.certify(
+            context.scope,
+            story.id,
+            head_of(context, context.agent_root)
+          )
+
+        {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
         Fixtures.running_agent(context.scope, role: "coding", working_copy: context.agent_root)
 
