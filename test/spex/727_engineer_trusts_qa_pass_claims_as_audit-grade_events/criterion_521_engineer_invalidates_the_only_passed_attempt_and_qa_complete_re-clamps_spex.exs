@@ -34,6 +34,20 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
       given_ "a story with one passed QA attempt and qa_complete satisfied", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
+        {:reply, earlier, _} =
+          SubmitQaResult.execute(
+            %{
+              task_id: context.task_id,
+              status: "pass",
+              scenarios: [%{name: "earlier", status: "pass", observation: "ok"}],
+              issue_ids: []
+            },
+            frame
+          )
+
+        false = earlier.isError
+        earlier_id = extract_attempt_id!(response_text(earlier))
+
         {:reply, submit_response, _frame} =
           SubmitQaResult.execute(
             %{
@@ -49,7 +63,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
         submit_text = response_text(submit_response)
         attempt_id = extract_attempt_id!(submit_text)
 
-        {:ok, Map.put(context, :attempt_id, attempt_id)}
+        {:ok, context |> Map.put(:attempt_id, attempt_id) |> Map.put(:earlier_id, earlier_id)}
       end
 
       when_ "the engineer invalidates the attempt with a reason", context do
@@ -87,6 +101,8 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
 
         refute list_response.isError
         text = response_text(list_response)
+
+        assert text =~ context.earlier_id
 
         assert text =~ context.attempt_id,
                "expected original attempt #{context.attempt_id} preserved in history"

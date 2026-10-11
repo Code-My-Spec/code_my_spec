@@ -60,6 +60,8 @@ defmodule CodeMySpec.DevState do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -352,14 +354,22 @@ defmodule CodeMySpec.DevState do
     copies = Repo.all(from(w in WorkingCopy, where: w.project_id == ^project.id))
     agents = AgentsRepository.list_every_agent(project_id: project.id)
     watcher = GraphWatcher.status(project.id)
+    projector = ShadowProjector.status(project.id)
+    serving_kind = Shadow.serving_kind()
+    serving_writer = serving_status(serving_kind, watcher, projector)
     copy_reports = Enum.map(copies, &copy_report(&1, agents))
 
     %{
       project_id: project.id,
       name: project.name,
+      graph_source: Atom.to_string(serving_kind),
+      graph_pass_enabled: GraphWatcher.pass_enabled?(),
+      graph_event_enabled: Shadow.enabled?(),
+      graph_writer: writer_report(serving_writer),
       graph_watcher: watcher_report(watcher),
+      graph_projector: watcher_report(projector),
       working_copies: copy_reports,
-      disagreements: disagreements(project, watcher, agents, copy_reports)
+      disagreements: disagreements(project, serving_writer, agents, copy_reports)
     }
   end
 
@@ -367,6 +377,19 @@ defmodule CodeMySpec.DevState do
 
   defp watcher_report(%{pending: pending, last_recompute: last}),
     do: %{watching: true, recompute_pending: pending, last_recompute: last}
+
+  defp serving_status(:event, _watcher, projector), do: projector
+  defp serving_status(:pass, watcher, _projector), do: watcher
+
+  defp writer_report(nil), do: %{active: false}
+
+  defp writer_report(%{pending: pending, last_recompute: last} = status),
+    do: %{
+      active: true,
+      recompute_pending: pending,
+      last_recompute: last,
+      last_error: Map.get(status, :last_error)
+    }
 
   defp copy_report(%WorkingCopy{} = copy, agents) do
     %{
@@ -412,7 +435,7 @@ defmodule CodeMySpec.DevState do
 
   # Each of these was a real incident, and each was found by reading logs rather
   # than by asking.
-  defp disagreements(project, watcher, agents, copy_reports) do
+  defp disagreements(project, serving_writer, agents, copy_reports) do
     unreachable =
       for copy <- copy_reports,
           not copy.executor.held,
@@ -432,37 +455,14 @@ defmodule CodeMySpec.DevState do
 
     in_the_loop = Enum.any?(agents, &(&1.continuous and &1.status in [:starting, :running]))
 
-    # The remedy, and only a remedy that works.
-    #
-    # This used to end "until something reads the graph", which is false and was
-    # followed. A QA agent read the graph page twice, checked here after each,
-    # got `watching: false` both times, then grepped `ensure_watching/1` to be
-    # sure rather than shrugging — which is the only reason it became a report
-    # (07f42ebf). A cycle went to it, and the same claim had been copied into a
-    # seed's documentation from this sentence.
-    #
-    # Nothing on the read path starts one for a project that has rows.
-    # `RequirementsLive.provenance/2` calls `status/1`, which is read-only, and
-    # `Requirements.cached_all/1` does not ensure one either. The callers are
-    # `watch_active_projects/0` at boot, the two continuous toggles in
-    # `agents.ex`, and — since Metric Flow sat with 3,480 marks and no rows —
-    # a read of a project with no rows at all (`RequirementGraph.settle_owner/1`).
-    # A project with agents in the loop has rows, so that door is shut here.
-    #
-    # Not fixed by having the read start one, though that was the other option
-    # and the reporter leaned toward it. This module is the place that says what
-    # the runtime is doing; a diagnostic that changes what it is diagnosing
-    # cannot be trusted to describe it. And the supervisor's own reasoning runs
-    # the other way — watchers are started on demand "rather than one per project
-    # at boot: a project nobody is working on needs no watcher", and somebody
-    # reading a page is not the project being worked.
+    # Health follows the writer serving readers. The optional comparison
+    # worker remains visible separately without being required for freshness.
     unwatched =
-      if is_nil(watcher) and in_the_loop do
+      if is_nil(serving_writer) and in_the_loop do
         [
-          "project #{project.name} has agents in the loop and no GraphWatcher — work " <>
-            "appearing will not wake anybody. Reading a graph that has rows does not " <>
-            "start one and neither does this page: toggle an agent's loop off and on, or restart the " <>
-            "server, which seeds a watcher for every project with agents in it."
+          "project #{project.name} has agents in the loop and no #{Shadow.serving_kind()} graph writer — work " <>
+            "appearing will not update the graph. Reading a graph that has rows does not " <>
+            "start one; restart the server or toggle an agent's loop to start its graph worker."
         ]
       else
         []

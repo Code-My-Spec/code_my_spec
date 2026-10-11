@@ -3,7 +3,7 @@ defmodule CodeMySpec.Agents.ATaskClosedEarlierInARunIsNotADeclineTest do
   35e80d6d — the coder that closed a task was damped as having refused work.
 
   metric_flow, 2026-09-30: three chats queued behind each other on the coder.
-  Turn B closed `story_issues_resolved` at 08:49:08; turn C, queued behind it,
+  Turn B closed `ready_for_qa` at 08:49:08; turn C, queued behind it,
   started at ~08:49:13 and ended at 08:49:23. The harness only announces the end
   of a *run* (`announce_turn_end` stays quiet while the queue is non-empty), but
   it announces every start — so `turn_started_at` held C's start, the task B
@@ -72,7 +72,7 @@ defmodule CodeMySpec.Agents.ATaskClosedEarlierInARunIsNotADeclineTest do
       scope
       |> reload(agent)
       |> CodeMySpec.Agents.Agent.add_task(%{
-        requirement_name: "story_issues_resolved",
+        requirement_name: "ready_for_qa",
         status: :completed,
         started_at: DateTime.add(now, -60, :second),
         completed_at: now

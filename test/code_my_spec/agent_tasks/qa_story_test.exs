@@ -6,6 +6,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.AgentTasks.StartAgentTask
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa
@@ -34,17 +35,14 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   end
 
   defp create_task(context) do
-    task = %{
-      project_id: context.scope.active_project.id,
-      component_id: nil,
-      story_id: task_story_id(context[:story])
-    }
+    {_, id, session} =
+      CodeMySpecSpex.Fixtures.qa_story_task_fixture(context.scope,
+        story: context.story,
+        agent_id: nil
+      )
 
-    Map.put(context, :task, task)
+    Map.put(context, :task, CodeMySpec.TaskOwner.find_task(session, id))
   end
-
-  defp task_story_id(nil), do: 42
-  defp task_story_id(%{id: id}), do: id
 
   defp write_file!(env, relative_path, content) do
     full_path = Path.join(env.cwd, relative_path)
@@ -210,7 +208,10 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     # Every other test here builds `story_id`, the graph-dispatch shape, so the
     # whole skill route could be dead with the suite green.
     test "a story number arriving as the topic reaches the story", %{scope: scope, story: story} do
+      {_, id, _} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
+
       task = %{
+        id: id,
         project_id: scope.active_project.id,
         requirement_name: to_string(story.number)
       }
@@ -220,6 +221,33 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert prompt =~ "User Authentication",
              "the skill route passed a story number and the prompt does not carry " <>
                "that story, so the argument never landed"
+    end
+
+    test "the skill dispatcher persists and reuses the review task", %{scope: scope, story: story} do
+      {:ok, _} = CodeMySpec.Stories.set_qa_ready(scope, story, "reviewed-revision")
+      external = "qa-topic-#{Ecto.UUID.generate()}"
+
+      args = %{
+        external_id: external,
+        session_type: "qa_story",
+        module_name: to_string(story.number)
+      }
+
+      assert {:ok, _prompt, _} = StartAgentTask.run(scope, args)
+      session = CodeMySpec.Sessions.get_by_external_id(scope, external)
+      assert [task] = CodeMySpec.TaskOwner.tasks(session)
+      assert task.story_id == story.id
+      assert task.requirement_name == "qa_complete"
+      assert task.status == :active
+      assert CodeMySpec.Repo.get_by(CodeMySpec.Qa.StoryReview, task_id: task.id)
+      assert {:ok, _prompt, _} = StartAgentTask.run(scope, args)
+      repeated = CodeMySpec.Sessions.get_by_external_id(scope, external)
+      assert [same] = CodeMySpec.TaskOwner.tasks(repeated)
+      assert same.id == task.id
+    end
+
+    test "a prompt cannot start a review without task identity", %{scope: scope, story: story} do
+      assert {:error, :story_review_task_required} = QaStory.command(scope, %{story_id: story.id})
     end
 
     test "a topic that is not a story id says so", %{scope: scope} do
@@ -307,7 +335,10 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     end
 
     test "accepts string story ID", %{scope: scope, story: story} do
+      {_, id, _} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
+
       task = %{
+        id: id,
         project_id: scope.active_project.id,
         component_id: nil,
         story_id: to_string(story.id)

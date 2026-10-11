@@ -63,6 +63,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Files,
       CodeMySpec.Problems,
       CodeMySpec.Promotion.RunningCopy,
+      CodeMySpec.Qa,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
@@ -82,6 +83,8 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Promotion.HandoffGate
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
+  alias CodeMySpec.Qa
+  alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Users.Scope
@@ -258,10 +261,8 @@ defmodule CodeMySpec.Promotion do
 
     with {:ok, %{head: head, version: version}} <- current_of(scope, running, named),
          :ok <- runs_at(scope, ["spex"], head, named, opts),
-         :ok <- story_spex_pass(scope, story, named) do
-      stamp_promoted_story(scope, story, version, head, id)
-      notify_team_free(scope, id, story)
-
+         :ok <- story_spex_pass(scope, story, named),
+         :ok <- record_landed_stories(scope, [{story, id, head}], version, head) do
       # Always a restart: nothing was merged, so there is no diff to judge a
       # reload by, and this path exists for an app that is down.
       plan = %{
@@ -317,7 +318,7 @@ defmodule CodeMySpec.Promotion do
         untracked: Map.get(pre, :untracked, [])
       }
 
-      land_into(scope, running, from, candidate, [{story, from.id}], opts)
+      land_into(scope, running, from, candidate, [{story, from.id, head}], opts)
     else
       {:pending, pending} ->
         Logger.info(
@@ -339,14 +340,14 @@ defmodule CodeMySpec.Promotion do
   The queue gates a batch of candidates in `from` (its gate checkout) at `head`
   and calls this on green: the same merge, submodule sync, stamping and one
   deployment a direct promotion runs after its gate, under the same lock, for
-  every story in the batch. `stories` pairs each story (or nil, for work that
-  is not a story's) with the working copy it came from.
+  every story in the batch. `stories` carries each story (or nil), its source working copy, and the
+  immutable candidate revision its QA must have reviewed.
   """
   @spec land(
           Scope.t(),
           WorkingCopy.t(),
           String.t(),
-          [{Stories.Story.t() | nil, Ecto.UUID.t()}],
+          [{Stories.Story.t() | nil, Ecto.UUID.t(), String.t()}],
           [map()],
           keyword()
         ) ::
@@ -374,16 +375,17 @@ defmodule CodeMySpec.Promotion do
     %{head: head, branch: branch, swept: swept, untracked: untracked} = candidate
     environment = copy_environment(scope, from)
 
-    with {:ok, merge_result} <-
-           Runner.merge(environment, running.root, head, from.id),
+    with :ok <- story_reviews_current(scope, stories),
+         {:ok, merge_result} <- Runner.merge(environment, running.root, head, from.id),
          # Before stamping or restarting: a refusal here has rolled the merge back.
          {:ok, _} <-
-           Runner.sync_submodule(
-             environment,
-             running.root,
-             from.root,
-             merge_result,
-             from.id
+           Runner.sync_submodule(environment, running.root, from.root, merge_result, from.id),
+         :ok <-
+           record_landed_stories(
+             scope,
+             stories,
+             Map.get(merge_result, :stamp_version),
+             Map.get(merge_result, :after)
            ) do
       version = Map.get(merge_result, :version)
       stamp_version = Map.get(merge_result, :stamp_version)
@@ -406,7 +408,6 @@ defmodule CodeMySpec.Promotion do
       # Not `version`. A no-op merge originates nothing and still has a story to
       # stamp — see `Steps.current_version/2` for why those are different
       # questions and what it cost to find out.
-      :ok = record_landed_stories(scope, stories, stamp_version, Map.get(merge_result, :after))
 
       # `head` and `after` are the same commit now that a promotion tags rather
       # than commits a version bump; both are read so a result from either
@@ -438,6 +439,12 @@ defmodule CodeMySpec.Promotion do
   # reasons now carry `:working_copy`; fall back to the merge target only for
   # refusals that happen before the gate runs (no working copy on the scope, an
   # unreported checkout).
+  defp refused(running, %{landed: true} = reason) do
+    Logger.error(
+      "[Promotion] landed into #{running.root}, but completion is held: #{reason.reason}"
+    )
+  end
+
   defp refused(running, reason) do
     named = Map.get(reason, :working_copy, running.root)
 
@@ -482,10 +489,11 @@ defmodule CodeMySpec.Promotion do
 
   # One story keeps the shape a direct promotion has always answered with; a
   # batch also lists every story it carried.
-  defp with_stories(result, [{story, _copy_id}], version), do: with_story(result, story, version)
+  defp with_stories(result, [{story, _copy_id, _revision}], version),
+    do: with_story(result, story, version)
 
   defp with_stories({:ok, report}, stories, version) do
-    numbers = for {%{number: number}, _copy_id} <- stories, do: number
+    numbers = for {%{number: number}, _copy_id, _revision} <- stories, do: number
     {:ok, Map.put(report, :stories, Enum.map(numbers, &%{number: &1, version: version}))}
   end
 
@@ -508,11 +516,8 @@ defmodule CodeMySpec.Promotion do
   # sweep stamped stories whose code sat unmerged on a different copy. `nil`
   # (no tag and no `mix.exs` version to count from) latches without stamping.
   #
-  # A write failure is logged and swallowed rather than turned into a
-  # promotion failure: the merge is real and already on disk by the time this
-  # runs, and reporting it as a failed promotion would send an agent to
-  # promote again, restarting the shared dev server every other working copy
-  # on the box is using, over a write that touched no code at all.
+  # A write failure is reported as landed-but-held: the disk merge is real,
+  # while issue completion, promotion stamping and team release remain uncommitted.
   # The story-side half of criterion 1892's team-free parity with
   # `IssueAssignment.free/2`: a story finishing by promotion sends main the
   # same offer kind an issue finishing through QA already does.
@@ -524,17 +529,55 @@ defmodule CodeMySpec.Promotion do
   """
   @spec record_landed_stories(
           Scope.t(),
-          [{Stories.Story.t() | nil, Ecto.UUID.t()}],
+          [{Stories.Story.t() | nil, Ecto.UUID.t(), String.t()}],
           String.t() | nil,
           String.t() | nil
-        ) :: :ok
+        ) :: :ok | {:error, map()}
   def record_landed_stories(scope, stories, version, commit) do
-    for {story, copy_id} <- stories do
-      stamp_promoted_story(scope, story, version, commit, copy_id)
-      notify_team_free(scope, copy_id, story)
-    end
+    result =
+      Repo.transaction(fn ->
+        for {story, copy_id, expected_revision} <- stories, not is_nil(story) do
+          case Qa.complete_reviewed_story_issues(scope, story, commit, expected_revision) do
+            {:ok, _issues} -> stamp_promoted_story(scope, story, version, commit, copy_id)
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end
+      end)
 
-    :ok
+    case result do
+      {:ok, _} ->
+        Enum.each(stories, fn {story, copy_id, _revision} ->
+          notify_team_free(scope, copy_id, story)
+        end)
+
+        :ok
+
+      {:error, reason} ->
+        {:error,
+         %{
+           landed: true,
+           assignment_held: true,
+           landed_commit: commit,
+           reason:
+             "Code landed, but story work could not be completed: #{inspect(reason)}. Assignment remains held."
+         }}
+    end
+  end
+
+  def story_reviews_current(scope, stories) do
+    case Enum.find(stories, fn {story, _copy, expected_revision} ->
+           not is_nil(story) and not Qa.story_review_current?(scope, story.id, expected_revision)
+         end) do
+      nil ->
+        :ok
+
+      {story, _, expected_revision} ->
+        {:error,
+         %{
+           reason:
+             "Story #{story.number} needs QA of its current submitted work at candidate #{expected_revision} before promotion."
+         }}
+    end
   end
 
   defp notify_team_free(_scope, _copy_id, nil), do: :ok
@@ -557,12 +600,7 @@ defmodule CodeMySpec.Promotion do
         :ok
 
       {:error, reason} ->
-        Logger.warning(
-          "[Promotion] merged story #{story.number} at version #{version || "none"}, but " <>
-            "could not latch and stamp it: #{inspect(reason)}"
-        )
-
-        :ok
+        Repo.rollback(reason)
     end
   end
 
@@ -771,6 +809,7 @@ defmodule CodeMySpec.Promotion do
 
   defp outcome_label({:ok, %{pending: _}}), do: "pending"
   defp outcome_label({:ok, _}), do: "promoted"
+  defp outcome_label({:error, %{landed: true}}), do: "landed; completion held"
   defp outcome_label({:error, _}), do: "refused"
   defp outcome_label(_other), do: "returned something unexpected"
 
@@ -826,6 +865,10 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp base_outcome_text({:ok, %{pending: pending}}), do: pending_text(pending)
+
+  defp base_outcome_text({:error, %{landed: true, reason: reason}}),
+    do:
+      "The code landed on main, but story completion is held. #{reason} Do not re-merge this candidate."
 
   defp base_outcome_text({:error, %{reason: reason}}),
     do: "Your promotion did not go through. #{reason}"

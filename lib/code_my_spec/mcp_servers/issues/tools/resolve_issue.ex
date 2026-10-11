@@ -14,14 +14,15 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ResolveIssue do
   alias CodeMySpec.TaskOwner
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID to resolve"
-    field :resolution, :string, required: true, doc: "How the issue was resolved"
+    field(:issue_id, :string, required: true, doc: "Issue ID to resolve")
+    field(:resolution, :string, required: true, doc: "How the issue was resolved")
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          issue when not is_nil(issue) <- Issues.get_issue(scope, params.issue_id),
+         :ok <- may_resolve(issue),
          {:ok, updated} <- Issues.resolve_issue(scope, issue, params.resolution) do
       # Whoever was waiting on this can go. A task blocked on an issue is the
       # one blocker the system can clear for itself — a question or a tap_out
@@ -37,4 +38,12 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ResolveIssue do
       {:error, reason} -> {:reply, IssuesMapper.error(reason), frame}
     end
   end
+
+  defp may_resolve(%{story_id: story_id, assigned_working_copy_id: nil})
+       when not is_nil(story_id),
+       do:
+         {:error,
+          "Story issues must be submitted for shared story QA and completed through promotion."}
+
+  defp may_resolve(_issue), do: :ok
 end

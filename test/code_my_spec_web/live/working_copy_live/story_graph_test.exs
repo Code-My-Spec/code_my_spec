@@ -13,11 +13,34 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
     unrelated = node("story", 3, "ready")
     external_parent = node("component", "b", "implemented")
 
+    submitted = %{
+      node("issue", "own-fix", "submitted")
+      | parent_entity_id: 1,
+        details: %{"story_id" => 1}
+    }
+
+    other_issue = %{
+      submitted
+      | entity_id: "other-fix",
+        parent_entity_id: 2,
+        details: %{"story_id" => 2}
+    }
+
     graph = %{
-      nodes: [story, component, gate, external, unrelated, external_parent],
+      nodes: [
+        story,
+        component,
+        gate,
+        external,
+        unrelated,
+        external_parent,
+        submitted,
+        other_issue
+      ],
       actionable: [component],
       edges: [
         edge(component, story),
+        edge(submitted, story),
         edge(gate, component),
         edge(external, story),
         edge(external_parent, external)
@@ -25,13 +48,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
     }
 
     flow = build(graph, 1, MapSet.new(["a"]))
-    assert map_size(flow.nodes) == 3
-    assert map_size(flow.edges) == 2
+    assert map_size(flow.nodes) == 4
+    assert map_size(flow.edges) == 3
     assert flow.nodes["component-a-implemented"].data.status == "Actionable"
     assert flow.nodes["project-p-setup"].data.status == "Satisfied"
     refute Map.has_key?(flow.nodes, "story-2-ready")
     refute Map.has_key?(flow.nodes, "story-3-ready")
     refute Map.has_key?(flow.nodes, "component-b-implemented")
+    assert Map.has_key?(flow.nodes, "issue-own-fix-submitted")
+    refute flow.nodes["issue-own-fix-submitted"].data.boundary
+    refute Map.has_key?(flow.nodes, "issue-other-fix-submitted")
 
     assert Enum.all?(flow.nodes, fn {_, node} ->
              not node.draggable and not node.deletable and not node.connectable
@@ -80,28 +106,32 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
   end
 
   test "uses agent eligibility instead of the project frontier and marks each agent's next work" do
-    resolve = node("story", 1, "story_issues_resolved")
+    submitted = %{
+      node("issue", "fix-a", "submitted")
+      | parent_entity_id: 1,
+        details: %{"story_id" => 1}
+    }
+
     qa = node("story", 1, "qa_complete")
     coder = %{id: "coder", role: :coding}
 
     graph = %{
-      nodes: [resolve, qa],
+      nodes: [submitted, qa],
       actionable: [qa],
       edges: [],
-      story_keys:
-        MapSet.new([{"story", 1, "story_issues_resolved"}, {"story", 1, "qa_complete"}]),
+      story_keys: MapSet.new([{"issue", "fix-a", "submitted"}, {"story", 1, "qa_complete"}]),
       components: [],
       owners: []
     }
 
-    flow = StoryGraph.build(graph, [{coder, %{actionable: [resolve]}}])
-    assert flow.nodes["story-1-story_issues_resolved"].data.status == "Actionable"
-    assert flow.nodes["story-1-story_issues_resolved"].data.next_agents == [coder]
+    flow = StoryGraph.build(graph, [{coder, %{actionable: [submitted]}}])
+    assert flow.nodes["issue-fix-a-submitted"].data.status == "Actionable"
+    assert flow.nodes["issue-fix-a-submitted"].data.next_agents == [coder]
 
     html =
       Phoenix.LiveViewTest.render_component(
         &CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph.requirement/1,
-        node: flow.nodes["story-1-story_issues_resolved"]
+        node: flow.nodes["issue-fix-a-submitted"]
       )
 
     assert html =~ CodeMySpecWeb.WorkingCopyLive.Components.Agent.color(coder.id)
@@ -111,11 +141,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
   end
 
   test "warning follows the pending decision's task, not the agent's other requirements" do
-    resolve = node("story", 1, "story_issues_resolved")
+    submitted = %{
+      node("issue", "fix-a", "submitted")
+      | parent_entity_id: 1,
+        details: %{"story_id" => 1}
+    }
+
     qa = node("story", 1, "qa_complete")
 
     graph = %{
-      nodes: [resolve, qa],
+      nodes: [submitted, qa],
       actionable: [],
       edges: [],
       story_keys: MapSet.new(),
@@ -123,7 +158,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
       owners: []
     }
 
-    task = %{id: "task", requirement_name: resolve.name, story_id: 1}
+    task = %{id: "task", requirement_name: submitted.name, issue_id: "fix-a", story_id: 1}
     question = %{id: "q", task_id: "task", status: "pending"}
     answered = %{id: "answered", task_id: "task", status: "answered"}
     unbound = %{id: "unbound", task_id: nil, status: "pending"}
@@ -136,9 +171,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
     }
 
     flow = StoryGraph.build(graph, [], [team])
-    assert flow.nodes["story-1-story_issues_resolved"].data.warnings == [question, tap_out]
+    assert flow.nodes["issue-fix-a-submitted"].data.warnings == [question, tap_out]
     assert flow.nodes["story-1-qa_complete"].data.warnings == []
-    selected = flow.nodes["story-1-story_issues_resolved"]
+    selected = flow.nodes["issue-fix-a-submitted"]
     other_team = %{agent: %{tasks: []}, questions: [unbound], tap_outs: []}
     assert [filtered] = StoryGraph.filter_teams([team, other_team], selected)
     assert filtered.questions == [question]
@@ -149,7 +184,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StoryGraphTest do
     html =
       Phoenix.LiveViewTest.render_component(
         &CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph.requirement/1,
-        node: flow.nodes["story-1-story_issues_resolved"]
+        node: flow.nodes["issue-fix-a-submitted"]
       )
 
     assert html =~ "requirement-warning"

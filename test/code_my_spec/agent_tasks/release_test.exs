@@ -43,7 +43,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      working_copy_scope_fixture() |> Map.put(:environment, Environment.new(:local, tmp_dir))
+      working_copy_scope_fixture() |> put_fixture_environment(Environment.new(:local, tmp_dir))
 
     :ok = register_working_copy_environment(scope, fixture_environment(scope))
 

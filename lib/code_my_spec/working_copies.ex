@@ -289,7 +289,7 @@ defmodule CodeMySpec.WorkingCopies do
   Both active ids must be present, and the fetched copy must belong to the
   active project. For a rooted copy, resolution prefers its id-specific
   registration, then a registration for its root, then a synthesized harness
-  environment. This deliberately ignores `scope.environment`, `scope.cwd`,
+  environment. This deliberately ignores `scope.cwd`,
   the project's registered environment, and other copies. Root registration
   is only a fallback for the already-validated copy root; it is not a project
   environment override. Invalid, missing, mismatched, or unrooted copies

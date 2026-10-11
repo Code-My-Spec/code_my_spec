@@ -32,6 +32,20 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
+        {:reply, earlier, _} =
+          SubmitQaResult.execute(
+            %{
+              task_id: context.task_id,
+              status: "pass",
+              scenarios: [%{name: "earlier", status: "pass", observation: "ok"}],
+              issue_ids: []
+            },
+            frame
+          )
+
+        false = earlier.isError
+        earlier_id = extract_attempt_id!(response_text(earlier))
+
         {:reply, submit_response, _frame} =
           SubmitQaResult.execute(
             %{
@@ -52,7 +66,11 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
             "/app/projects/#{context.project.id}/stories/#{context.story.number}"
           )
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:attempt_id, attempt_id)}
+        {:ok,
+         context
+         |> Map.put(:view, view)
+         |> Map.put(:attempt_id, attempt_id)
+         |> Map.put(:earlier_id, earlier_id)}
       end
 
       when_ "the engineer clicks invalidate and submits a non-empty reason", context do
@@ -79,6 +97,8 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
         assert html =~ ~r/invalidated/i,
                "expected the attempt to be marked invalidated in the UI"
 
+        assert html =~ context.earlier_id
+        refute satisfied_qa_complete_text(context.scope) =~ context.story.title
         {:ok, context}
       end
     end

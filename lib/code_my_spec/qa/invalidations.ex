@@ -11,10 +11,21 @@ defmodule CodeMySpec.Qa.Invalidations do
   DB unique-constraint error message.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Qa.Invalidation,
+      CodeMySpec.Qa.QaAttempt,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Users.Scope
+    ],
+    exports: :all
+
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Qa.Invalidation
-  alias CodeMySpec.Qa.QaAttempts
+  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
@@ -51,6 +62,49 @@ defmodule CodeMySpec.Qa.Invalidations do
     end
   end
 
+  @doc "Audit changed submission in the caller's transaction. Caller publishes its graph event after commit."
+  def invalidate_story_submission(scope, story_id, submission) do
+    attempts =
+      Repo.all(
+        from(a in QaAttempt,
+          join: s in assoc(a, :story),
+          where:
+            s.project_id == ^scope.active_project_id and a.story_id == ^story_id and
+              a.status == :pass,
+          preload: :invalidations
+        )
+      )
+
+    invalidations =
+      for attempt <- attempts, attempt.invalidations == [] do
+        %Invalidation{}
+        |> Invalidation.changeset(%{
+          qa_attempt_id: attempt.id,
+          invalidated_by_user_id: scope_user_id(scope),
+          reason: "Story issue #{submission.issue_id} submitted as #{submission.submission_ref}",
+          cause: "story_issue_submission",
+          actor_id: submission[:actor_id] && to_string(submission[:actor_id]),
+          issue_id: submission.issue_id,
+          submission_ref: submission.submission_ref,
+          invalidated_at: DateTime.utc_now()
+        })
+        |> Repo.insert!()
+      end
+
+    {:ok, invalidations}
+  end
+
+  defp get_in_project(%{active_project_id: nil}, _id), do: nil
+
+  defp get_in_project(scope, id) do
+    Repo.one(
+      from(a in QaAttempt,
+        join: s in assoc(a, :story),
+        where: a.id == ^id and s.project_id == ^scope.active_project_id
+      )
+    )
+  end
+
   # Rejecting a pass moves the graph exactly as submitting one does, and
   # nothing said so.
   #
@@ -78,7 +132,7 @@ defmodule CodeMySpec.Qa.Invalidations do
   defp announce_graph_change(_scope, _other), do: :ok
 
   defp story_entities(scope, %Invalidation{qa_attempt_id: attempt_id}) do
-    case QaAttempts.get_in_project(scope, attempt_id) do
+    case get_in_project(scope, attempt_id) do
       %{story_id: story_id} when not is_nil(story_id) -> [{"story", story_id}]
       _ -> []
     end
@@ -101,7 +155,7 @@ defmodule CodeMySpec.Qa.Invalidations do
   # owns attempt queries and its `by_project/2` already fails closed on a scope
   # with no active project.
   defp fetch_attempt(scope, attempt_id) do
-    case QaAttempts.get_in_project(scope, attempt_id) do
+    case get_in_project(scope, attempt_id) do
       nil -> {:error, :attempt_not_found}
       attempt -> {:ok, attempt}
     end
@@ -109,7 +163,7 @@ defmodule CodeMySpec.Qa.Invalidations do
 
   defp ensure_not_invalidated(attempt_id) do
     exists? =
-      Repo.exists?(from i in Invalidation, where: i.qa_attempt_id == ^attempt_id)
+      Repo.exists?(from(i in Invalidation, where: i.qa_attempt_id == ^attempt_id))
 
     if exists?, do: {:error, :already_invalidated}, else: :ok
   end

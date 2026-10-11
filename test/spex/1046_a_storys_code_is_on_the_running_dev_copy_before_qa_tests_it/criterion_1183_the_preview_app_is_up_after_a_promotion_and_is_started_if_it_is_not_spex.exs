@@ -26,15 +26,17 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
+  @endpoint CodeMySpecWeb.Endpoint
+
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
+  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
-  alias CodeMySpec.WorkingCopies
-  alias CodeMySpecSpex.PromotionHelpers
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -76,7 +78,17 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     scenario "the agent is working on the running copy and nothing is serving it" do
       given_ "an agent working on the checkout the application runs from", context do
         context = a_running_copy(context)
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
+        {head, 0} = git(context, context.running_root, ["rev-parse", "HEAD"])
+
+        :ok =
+          StoryIssueBag.certify(
+            context.scope,
+            story.id,
+            String.trim(head)
+          )
+
+        {:ok, _} = CodeMySpecSpex.Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
         CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex),
           at_head: true
@@ -97,6 +109,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
       when_ "the agent promotes", context do
         response = promote(context, context.story.number)
+        text = response_text(response)
+
+        assert text =~ "Restarted" or text =~ "serving",
+               "Promotion refused before deployment: #{text}"
+
         answer_deployment(context.running_socket, context.running_root)
         {:ok, Map.put(context, :response, response)}
       end
@@ -172,12 +189,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
 
     {running, running_socket} =
-      PromotionHelpers.join_main_working_copy_socket(
+      CodeMySpecSpex.PromotionHelpers.join_main_working_copy_socket(
         context,
         running_root,
-        "the checkout the dev app runs in",
-        app_verbs: ["reload_app"]
-      )
+        "the checkout the dev app runs in", app_verbs: ["reload_app"])
 
     context
     |> Map.put(:running_root, running_root)
@@ -248,10 +263,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     response_text(response)
   end
 
-  # The scope fixture has already designated this checkout. Assert that
-  # premise explicitly so the app lifecycle setup below uses the real main.
+  # Designate this checkout as the one the application runs from, through the
+  # page that owns the choice. `main` is "designated, never inferred", so there
+  # is no state to set behind the product's back.
   defp this_copy_is_the_running_one(context) do
-    assert WorkingCopies.main(context.scope).id == context.scope.active_working_copy_id
+    {:ok, view, _html} =
+      live(context.conn, "/app/projects/#{context.project.id}/working-copies")
+
+    view
+    |> element(
+      "[data-test='designate-main-copy'][phx-value-id='#{context.scope.active_working_copy_id}']"
+    )
+    |> render_click()
+
     context
   end
 

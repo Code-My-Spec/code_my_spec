@@ -164,8 +164,9 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   @doc """
   How many full runs of `source` on this working copy failed to run at
-  `commit`: started there, or opened since `since` and failed before they could
-  say where they started (an analyzer that would not boot). Runs its harness
+  `commit` during the attempt beginning at `since`: started there, or failed
+  before they could say where they started (an analyzer that would not boot).
+  Earlier failed attempts do not prevent a fresh promotion from retrying. Runs its harness
   going away orphaned (`stats.orphaned`) are not counted — they say nothing about
   whether the analyzer can run there.
   """
@@ -176,9 +177,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     Run
     |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
     |> where([r], r.status == :failed)
+    |> where([r], r.inserted_at >= ^since)
     |> where(
       [r],
-      r.start_commit == ^commit or (is_nil(r.start_commit) and r.inserted_at >= ^since)
+      r.start_commit == ^commit or is_nil(r.start_commit)
     )
     |> where(
       [r],

@@ -60,7 +60,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
       user
       |> Fixtures.user_scope_fixture(account, project)
       |> Map.put(:cwd, stub_dir)
-      |> Map.put(:environment, env)
+      |> Fixtures.put_fixture_environment(env)
 
     Fixtures.select_active_project(scope, project.id)
 

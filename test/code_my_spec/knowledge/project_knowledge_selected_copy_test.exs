@@ -34,7 +34,7 @@ defmodule CodeMySpec.Knowledge.ProjectKnowledgeSelectedCopyTest do
     scope: scope,
     stale_environment: stale_environment
   } do
-    assert {:ok, { :file, "# Selected checkout knowledge\n" }} =
+    assert {:ok, {:file, "# Selected checkout knowledge\n"}} =
              Knowledge.browse(scope, :project_knowledge, ["README.md"])
 
     assert {:error, :not_found} =

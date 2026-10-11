@@ -71,14 +71,24 @@ defmodule CodeMySpec.Requirements.IncomingIssuesGateQaTest do
            "an untriaged low on the story left QA offered the story"
   end
 
-  test "triage-accept then resolve re-offers QA", ctx do
+  test "triage-accept then submit and recertify re-offers QA", ctx do
     issue = file!(ctx, :high)
     refute "qa_complete" in qa(ctx)
 
     {:ok, accepted} = Issues.accept_issue(ctx.scope, issue)
     refute "qa_complete" in qa(ctx), "an accepted high has to be fixed before re-test"
 
-    {:ok, _} = Issues.resolve_issue(ctx.scope, accepted, "fixed")
+    _coding = Fixtures.running_agent(ctx.scope, role: "coding")
+
+    {:ok, _} =
+      CodeMySpec.Agents.assign_team(ctx.scope, ctx.scope.active_working_copy_id, ctx.story.id)
+
+    {:ok, _} =
+      Issues.submit_story_issue(ctx.scope, accepted, %{revision: "fix-sha", evidence: "fixed"})
+
+    refute "qa_complete" in qa(ctx), "changed submissions require renewed readiness"
+    story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+    {:ok, _} = CodeMySpec.Stories.set_qa_ready(ctx.scope, story, "fix-sha")
     assert "qa_complete" in qa(ctx)
   end
 

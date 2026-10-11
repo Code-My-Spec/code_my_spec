@@ -40,12 +40,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
     # embedding and file paths read this field and need it present.
     scope = %{scope | active_working_copy_id: nil}
 
-    {:ok, prompt} =
-      QaStory.command(scope, %{
-        project_id: scope.active_project.id,
-        component_id: nil,
-        story_id: story.id
-      })
+    {_, id, session} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
+    {:ok, prompt} = QaStory.command(scope, CodeMySpec.TaskOwner.find_task(session, id))
 
     prompt
   end

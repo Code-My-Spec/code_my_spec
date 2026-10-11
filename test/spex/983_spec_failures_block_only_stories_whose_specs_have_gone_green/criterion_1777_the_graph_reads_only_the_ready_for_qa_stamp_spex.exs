@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1777Spex do
     scenario "every analyzer clean and the story's specs green, nothing certified" do
       given_ "a story whose specs are green and every analyzer clean at HEAD", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
         context = analyzers_are_current(context)
         {:ok, Map.put(context, :story, story)}
       end
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1777Spex do
     scenario "a spex failure is recorded after certification" do
       given_ "a story certified ready for QA through its held task", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
         context = analyzers_are_current(context)
         context = a_held_ready_for_qa_task(context, story)
         {false, _} = complete_ready_for_qa(context)
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1777Spex do
       end
 
       when_ "another story's red spec is recorded and the requirements are read", context do
-        _ = a_promotable_story(context, title: "A later red story", red?: true)
+        _ = a_promotable_story(context, title: "A later red story", red?: true, qa: :not_passed)
         {:ok, Map.put(context, :body, story_requirements(context, context.story))}
       end
 

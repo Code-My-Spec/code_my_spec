@@ -27,12 +27,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  import CodeMySpecSpex.WorkingCopyHelpers
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -49,12 +52,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
       given_ "a story that passed QA on its own copy and is ready to promote", context do
         context = a_promotable_project(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
-        PromotionHelpers.sync_story_specs_to_local_copy(context, context.story)
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
+
+        :ok =
+          StoryIssueBag.certify(
+            context.scope,
+            context.story.id,
+            PromotionHelpers.head_of(context, context.agent_root)
+          )
+
         {:ok, _attempt} = Fixtures.passed_qa_attempt(context.scope, story_id: context.story.id)
 
         {:ok, context}
@@ -126,9 +136,22 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
   end
 
   defp promote(context, story_number) do
+    # A distinct merged tree requires the gate responses this scenario supplies.
+    PromotionHelpers.commit_work(
+      context,
+      context.running_root,
+      "main-only.txt",
+      "Independent main work\n"
+    )
+
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
-    response
+    task = Task.async(fn -> PromoteSync.execute(%{story_number: story_number}, frame) end)
+
+    with_task_cleanup(task, fn ->
+      PromotionHelpers.the_gate_answers(context)
+      {:reply, response, _frame} = Task.await(task, 30_000)
+      response
+    end)
   end
 
   # Standing in for the harness on the other end of `restart_app`, the way
@@ -139,7 +162,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
   # 10-minute `@restart_timeout`, risking an error log landing in the
   # middle of an unrelated later test.
   defp answer_restart_app_ok(socket) do
-    assert_push "restart_app", %{"ref" => ref}, 5_000
+    assert_push("restart_app", %{"ref" => ref}, 5_000)
 
     reply_ref =
       Phoenix.ChannelTest.push(socket, "restart_app_result", %{
@@ -160,6 +183,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
   # Two checkouts of one repository, which is what a promotion actually meets.
   # See criterion 1170's own copy of this helper for the full rationale.
   defp a_promotable_project(context) do
+    PromotionHelpers.stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1509-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
 
@@ -178,6 +202,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
 
     {_, 0} = git(context, running_root, ["add", "-A"])
     {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
+    {_, 0} = git(context, running_root, ["tag", "-a", "v0.1.0", "-m", "v0.1.0"])
 
     agent_root = CodeMySpec.TempFile.dir("spex-1509-agent")
     {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", agent_root])
@@ -188,18 +213,20 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
     _ = out
 
     {running, running_socket} =
-      PromotionHelpers.join_main_working_copy_socket(
+      CodeMySpecSpex.PromotionHelpers.join_main_working_copy_socket(
         context,
         running_root,
         "the checkout the dev app runs in"
       )
 
     agent =
-      PromotionHelpers.join_local_working_copy(
+      CodeMySpecSpex.PromotionHelpers.join_local_working_copy(
         context,
         agent_root,
         "the coding agent's copy"
       )
+
+    context = PromotionHelpers.a_gate_copy(context, running_root)
 
     {:ok, _view, html} =
       live(context.conn, "/app/projects/#{context.project.id}/working-copies")

@@ -41,6 +41,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)
   component(CodeMySpec.McpServers.Issues.Tools.DismissIssue)
   component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue)
   component(CodeMySpec.McpServers.Issues.Tools.UpdateIssue)
   component(CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy)
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
