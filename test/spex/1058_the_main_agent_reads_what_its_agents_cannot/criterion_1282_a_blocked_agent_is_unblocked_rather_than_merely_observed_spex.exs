@@ -72,6 +72,10 @@ defmodule CodeMySpecSpex.Story1058.Criterion3314Spex do
 
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3314")
 
+        # An on-duty main holds the question; with none, it goes to the user (1052, 2124).
+
+        _main = Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-1282-main")
+
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
         {:reply, asked, _frame} =
