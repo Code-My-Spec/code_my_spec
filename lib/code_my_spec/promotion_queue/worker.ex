@@ -396,10 +396,22 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     stories =
       for entry <- entries,
           story = story_of(state.scope, entry),
-          do: {story, entry.working_copy_id}
+          do: {story, entry.working_copy_id, entry.commit}
 
-    :ok = Promotion.record_landed_stories(state.scope, stories, main_version(state.scope), head)
+    case Promotion.record_landed_stories(state.scope, stories, main_version(state.scope), head) do
+      :ok ->
+        already_landed(state, entries, head)
 
+      {:error, %{landed: true} = reason} ->
+        hold_landed(state, entries, head, reason)
+
+      {:error, reason} ->
+        Enum.each(entries, &eject(state.scope, &1, reason.reason))
+        next(%{state | phase: :idle, batch: nil})
+    end
+  end
+
+  defp already_landed(state, entries, head) do
     for entry <- entries do
       landed =
         moved(entry, :landed, %{
@@ -472,7 +484,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp do_land(%{batch: batch} = state) do
-    stories = Enum.map(batch.entries, &{story_of(state.scope, &1), &1.working_copy_id})
+    stories = Enum.map(batch.entries, &{story_of(state.scope, &1), &1.working_copy_id, &1.commit})
     restart = Enum.any?(batch.entries, & &1.restart)
     notify = batch.entries |> Enum.map(& &1.requested_by_agent_id) |> Enum.reject(&is_nil/1)
 
@@ -499,6 +511,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
         next(%{state | phase: :idle, batch: nil})
 
+      {:error, %{landed: true} = reason} ->
+        hold_landed(state, batch.entries, batch.head, reason)
+
       {:error, reason} ->
         # Main moved under the batch (a direct promotion landed) or the merge
         # was refused: nothing landed, so the candidates are gated again on
@@ -511,6 +526,29 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
         end)
     end
+  end
+
+  defp hold_landed(state, entries, head, reason) do
+    for entry <- entries do
+      moved(entry, :landed, %{
+        batch_id: nil,
+        result: %{
+          "head" => head,
+          "assignment_held" => true,
+          "reason" => reason.reason
+        }
+      })
+
+      Phoenix.PubSub.broadcast(
+        CodeMySpec.PubSub,
+        Repository.topic(state.project_id),
+        {:promotion_queue_landed, entry.id, {:error, reason}}
+      )
+
+      tell(state.scope, entry, Promotion.outcome_text({:error, reason}))
+    end
+
+    next(%{state | phase: :idle, batch: nil})
   end
 
   defp landed_text(entry, %{entries: entries}, result) do

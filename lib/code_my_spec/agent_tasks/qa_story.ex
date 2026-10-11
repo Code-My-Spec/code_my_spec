@@ -47,7 +47,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   Build the full QA prompt for a story. Returns `{:ok, prompt_text}`.
   """
   def command(scope, task) do
-    with {:ok, story_id} <- get_story_id(scope, task) do
+    with {:ok, story_id} <- get_story_id(scope, task),
+         {:ok, _review} <-
+           CodeMySpec.Qa.capture_story_review(scope, %{id: Map.get(task, :id), story_id: story_id}) do
       env = scope.environment
       story = Stories.get_story!(scope, story_id)
       ensure_qa_dirs(env, story.number)
@@ -420,7 +422,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   # A re-offered story, told what moved since the last pass.
   #
-  # metric_flow story 47, 2026-09-29: coding resolved both highs QA had filed,
+  # QA needs the submitted fix evidence and revision when re-testing a story.
+  # metric_flow story 47, 2026-09-29: coding fixed both highs QA had filed,
   # QA was re-offered the story, concluded "no code has changed" and tapped out
   # (255f1dcd). The server holds the issue history but not the copy's git log,
   # so issues are listed and commits are a command to run.
@@ -439,9 +442,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     Your last attempt (#{attempt.status}) was submitted #{DateTime.to_iso8601(since)}.
 
-    Issues closed since then:
+    Fixes submitted since then:
 
-    #{format_closed(closed_since(scope, story, attempt, since))}
+    #{format_submitted(submitted_since(scope, story, since))}
 
     Commits on this copy since then: run
     `git log --oneline --since=#{DateTime.to_iso8601(since)}` in the working copy.
@@ -450,21 +453,20 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp closed_since(scope, story, attempt, since) do
-    listed = Enum.flat_map(attempt.issue_ids || [], &List.wrap(Issues.get_issue(scope, &1)))
-
-    (Issues.list_by_story(scope, story.id) ++ listed)
-    |> Enum.uniq_by(& &1.id)
-    |> Enum.filter(
-      &(&1.status in [:resolved, :dismissed] and DateTime.compare(&1.updated_at, since) == :gt)
-    )
+  defp submitted_since(scope, story, since) do
+    Issues.list_story_submissions(scope, story.id)
+    |> Enum.filter(fn issue ->
+      not is_nil(issue.story_submission_ref) and not is_nil(issue.story_submitted_at) and
+        DateTime.compare(issue.story_submitted_at, since) == :gt
+    end)
   end
 
-  defp format_closed([]), do: "_None._"
+  defp format_submitted([]), do: "_None._"
 
-  defp format_closed(issues) do
+  defp format_submitted(issues) do
     Enum.map_join(issues, "\n", fn issue ->
-      "- `#{issue.id}` [#{issue.severity}] #{issue.title} — #{issue.status}: #{issue.resolution}"
+      "- `#{issue.id}` [#{issue.severity}] #{issue.title} — submitted at " <>
+        "#{issue.story_submission_revision}: #{issue.story_submission_evidence}"
     end)
   end
 
@@ -689,7 +691,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       from this task carries this story unless you pass a `story_number`.
       `qa`, `docs` and `framework` findings are about the tooling, so they
       stay off the story unless you name one. Until each story issue is triaged and every accepted one at the
-      project's threshold is resolved, this story is not re-offered for QA —
+      project's threshold is submitted and readiness is recertified, this story is not re-offered for QA —
       a `partial` or `fail` result resumes by itself once they are. If an
       issue belongs to a *different* story, pass that `story_number` on the
       `create_issue` call — an explicit attribution is never overwritten.

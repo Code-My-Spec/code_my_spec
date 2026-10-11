@@ -17,6 +17,7 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.QaFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -156,6 +157,13 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     scope = %{scope | active_working_copy_id: agent.id}
     story = a_story_with_linked_spex(scope)
     :ok = analyzers_are_current(scope, agent_root)
+    head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
+
+    story
+    |> Ecto.Changeset.change(qa_ready_commit: head, qa_ready_at: DateTime.utc_now())
+    |> CodeMySpec.Repo.update!()
+
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     result = Promotion.promote(scope, story.number)
 

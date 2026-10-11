@@ -151,11 +151,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && takes_redelivery?(agent), do: reserve(agent), else: :not_runnable
@@ -263,11 +264,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && stranded?(scope, agent), do: reserve(agent), else: :not_stranded
@@ -427,6 +429,10 @@ defmodule CodeMySpec.Agents.Work do
         "task #{task.id} with `start_task(#{start_args(scope, task)})`"
       end) <> "."
   end
+
+  defp start_args(_scope, %{issue_id: issue_id} = task) when is_binary(issue_id),
+    do:
+      ~s(requirement_name: "#{task.requirement_name}", entity_type: "issue", entity_id: "#{issue_id}")
 
   defp start_args(scope, %{story_id: story_id} = task) when not is_nil(story_id) do
     number =
@@ -728,11 +734,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && runnable_state?(scope, agent, event),
@@ -787,15 +794,25 @@ defmodule CodeMySpec.Agents.Work do
   # An open candidate for this task's own subject is the queue's to finish;
   # a resolved one is the agent's turn.
   defp awaiting_landing?(agent, task) do
-    case subject(task) do
+    case subject(agent, task) do
       nil -> false
       {type, id} -> PromotionQueue.open_for(agent.id, type, id)
     end
   end
 
-  defp subject(%{issue_id: issue_id}) when is_binary(issue_id), do: {"issue", issue_id}
-  defp subject(%{story_id: story_id}) when is_binary(story_id), do: {"story", to_string(story_id)}
-  defp subject(_task), do: nil
+  defp subject(_agent, %{awaiting_subject_type: type, awaiting_subject_id: id})
+       when is_binary(type) and is_binary(id), do: {type, id}
+
+  defp subject(_agent, %{issue_id: issue_id}) when is_binary(issue_id), do: {"issue", issue_id}
+
+  defp subject(agent, %{story_id: story_id}) when is_integer(story_id) do
+    case CodeMySpec.Stories.get_story(%Scope{active_project_id: agent.project_id}, story_id) do
+      %{number: number} -> {"story", to_string(number)}
+      nil -> nil
+    end
+  end
+
+  defp subject(_agent, _task), do: nil
 
   # Its process alive now (`Agents.Presence`): nothing starts a turn in one that
   # is not there.

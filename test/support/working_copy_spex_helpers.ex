@@ -23,6 +23,15 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  @doc "Run channel assertions while guaranteeing cleanup of the caller's task."
+  def with_task_cleanup(task, assertions) do
+    try do
+      assertions.()
+    after
+      Task.shutdown(task, :brutal_kill)
+    end
+  end
+
   @doc """
   Bring a working copy into existence by joining for it.
 

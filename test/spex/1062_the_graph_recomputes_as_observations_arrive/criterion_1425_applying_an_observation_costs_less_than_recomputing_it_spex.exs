@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
 
   ## Why both numbers and not just queries
 
-  A projection can trade one for the other. Settling `story_issues_resolved` is
+  A projection can trade one for the other. Settling story issue submission readiness is
   one `UPDATE` across every story's row plus the exceptions — few queries, many
   rows — so a rule written on queries alone would call that an improvement while
   it stamped the whole table. Requiring neither to be worse is the honest form of
@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
 
   spex "Applying is cheaper than re-deriving, and the difference is published", criterion: 1425 do
     scenario "one observation drained both ways" do
-      given_ :synced_context_component
+      given_(:synced_context_component)
 
       given_ "a settled graph with something to file against", context do
         _settled = read_settled_graph(context)

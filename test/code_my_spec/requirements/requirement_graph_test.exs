@@ -10,7 +10,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
-  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
@@ -601,7 +600,9 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
   defp qa_complete_node(scope, story) do
     scope
     |> RequirementGraph.compute_all()
-    |> Enum.find(&(&1.entity_type == "story" and &1.entity_id == story.id and &1.name == "qa_complete"))
+    |> Enum.find(
+      &(&1.entity_type == "story" and &1.entity_id == story.id and &1.name == "qa_complete")
+    )
   end
 
   # -- Helpers --
@@ -690,18 +691,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       write_file(tmp_dir, bdd_path, bdd_content)
     end)
 
-    # Insert a DB-backed QA pass attempt directly. The requirement graph
-    # now checks Qa.complete?/2 (DB-driven), not result_complete.md on disk.
-    {:ok, _attempt} =
-      %QaAttempt{}
-      |> QaAttempt.changeset(%{
-        story_id: story.id,
-        status: :pass,
-        scenarios: [%{name: "Placeholder", status: :pass, observation: "All checks passed."}],
-        issue_ids: [],
-        submitted_at: DateTime.utc_now() |> DateTime.truncate(:second)
-      })
-      |> CodeMySpec.Repo.insert()
+    # The pass approves a captured certified revision, not merely its arrival time.
+    {:ok, _attempt} = CodeMySpec.QaFixtures.passed_qa_attempt(scope, story_id: story.id)
 
     sync!(scope, tmp_dir)
     :ok
