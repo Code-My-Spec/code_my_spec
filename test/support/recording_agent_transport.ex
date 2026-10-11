@@ -16,8 +16,38 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
 
   @behaviour CodeMySpec.Agents.Transport
 
-  @doc "Route deliveries to the calling process."
-  def listen, do: :persistent_term.put({__MODULE__, :owner}, self())
+  @doc """
+  Route deliveries to the calling process.
+
+  A dispatch this test triggers can run on a fire-and-forget Task
+  (`Agents.dispatch_admitted`'s async branch). If that Task is still in
+  flight when the *next* test calls `listen/0` and overwrites the global
+  owner, its eventual `dispatch_message`/`request_work_turn` call lands in
+  that next test's mailbox instead of this one's -- a message with the
+  wrong agent id, matched by `assert_receive`'s loose pattern (hit
+  2026-10-11, story 1091's promotion batch). Waiting here, at `on_exit`,
+  for whatever Task started during this test to finish first closes that
+  for every caller, without waiting on unrelated concurrent async tests'
+  own tasks under the same shared supervisor.
+  """
+  def listen do
+    before = CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new()
+    :persistent_term.put({__MODULE__, :owner}, self())
+    ExUnit.Callbacks.on_exit(fn -> drain_since(before) end)
+  end
+
+  defp drain_since(before, deadline \\ System.monotonic_time(:millisecond) + 500) do
+    new_children =
+      CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new() |> MapSet.difference(before)
+
+    cond do
+      Enum.empty?(new_children) -> :ok
+      System.monotonic_time(:millisecond) >= deadline -> :ok
+      true ->
+        Process.sleep(10)
+        drain_since(before, deadline)
+    end
+  end
 
   @impl true
   def dispatch_message(_working_copy_id, agent, ref, message, _timeout) do
