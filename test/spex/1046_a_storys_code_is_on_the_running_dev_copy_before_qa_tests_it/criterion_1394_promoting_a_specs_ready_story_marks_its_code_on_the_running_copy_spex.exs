@@ -192,13 +192,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
     task = Task.async(fn -> PromoteSync.execute(%{story_number: story_number}, frame) end)
 
-    try do
+    with_task_cleanup(task, fn ->
       PromotionHelpers.the_gate_answers(context)
       {:reply, response, _frame} = Task.await(task, 30_000)
       response
-    after
-      Task.shutdown(task, :brutal_kill)
-    end
+    end)
   end
 
   # Standing in for the harness on the other end of `restart_app`, the way
