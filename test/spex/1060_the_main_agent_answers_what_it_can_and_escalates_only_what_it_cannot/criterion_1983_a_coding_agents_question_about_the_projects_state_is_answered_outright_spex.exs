@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
   end
 
   spex "Which working copy an epic is built on is a fact the project already records",
-       criterion: 1983 do
+    criterion: 1983 do
     scenario "a coding agent asks which working copy its story's epic is built on" do
       given_ "an epic already running on one working copy, and an asker whose story shares it",
              context do
@@ -64,6 +64,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
           )
 
         asker = Fixtures.bind_agent(asker_scope, asker, %{story_id: story.id})
+        # An on-duty main holds the question; with none, it goes to the user (1052, 2124).
+        _main = Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-1983-main")
 
         asking = %Frame{assigns: %{current_scope: asker_scope, agent_id: asker.id}}
 

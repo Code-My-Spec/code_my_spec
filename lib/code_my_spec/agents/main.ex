@@ -1507,8 +1507,10 @@ defmodule CodeMySpec.Agents.Main do
   defp other(:main), do: :product
   defp other(:product), do: :main
 
-  defp running?(scope, agent, :product), do: product_agent(scope, agent.working_copy_id) != nil
-  defp running?(scope, agent, :main), do: main_agent_other_than(scope, agent.id) != nil
+  # On duty (not off, not retired) rather than connected: a main that is briefly
+  # unreachable still holds its questions, and the user sees them meanwhile (1201).
+  defp running?(scope, agent, role),
+    do: Enum.any?(Agents.list_on_duty(scope), &(&1.role == role and &1.id != agent.id))
 
   defp answerer_holder(:main), do: "main_agent"
   defp answerer_holder(:product), do: "product_agent"

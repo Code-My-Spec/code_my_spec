@@ -37,11 +37,16 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
   end
 
   spex "The main agent restarts a QA agent's app for it, past the copy it cannot reach",
-       criterion: 1985 do
+    criterion: 1985 do
     scenario "a QA agent's app is serving an old commit and it cannot restart it" do
       given_ "a QA agent whose own copy's app is stuck, past its own reach", context do
         reply = join_working_copy(context, "/tmp/spex-1985", "the QA checkout")
         qa_scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+
+        # An on-duty main holds the question; with none, it goes to the user (1052, 2124).
+
+        _main =
+          Fixtures.running_agent(qa_scope, role: "main", working_copy: "/tmp/spex-1985-main")
 
         qa_agent =
           Fixtures.running_agent(qa_scope, role: "qa", working_copy: "/tmp/spex-1985")
@@ -54,7 +59,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
               title: "my app will not restart",
               questions: [
                 %{
-                  "question" => "My copy's app is serving an old commit and I cannot restart it myself. Can you?",
+                  "question" =>
+                    "My copy's app is serving an old commit and I cannot restart it myself. Can you?",
                   "options" => [%{"label" => "yes"}, %{"label" => "no"}]
                 }
               ]
@@ -83,7 +89,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
           AnswerNotification.execute(
             %{
               notification_id: context.question_id,
-              answer: "Restarted /tmp/spex-1985's app — it is serving your copy's current commit.",
+              answer:
+                "Restarted /tmp/spex-1985's app — it is serving your copy's current commit.",
               basis: "record"
             },
             frame

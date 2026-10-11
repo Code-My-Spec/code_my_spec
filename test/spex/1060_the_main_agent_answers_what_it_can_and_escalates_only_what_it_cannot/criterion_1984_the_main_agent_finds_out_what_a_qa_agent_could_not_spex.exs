@@ -35,11 +35,16 @@ defmodule CodeMySpecSpex.Story1060.Criterion1984Spex do
   end
 
   spex "Not knowing which commit a QA agent's own app is serving is a reason to look",
-       criterion: 1984 do
+    criterion: 1984 do
     scenario "a QA agent cannot see which commit its own copy's app is serving" do
       given_ "a blocked QA agent and a copy whose app the main agent can check", context do
         reply = join_working_copy(context, "/tmp/spex-1984", "the QA checkout")
         qa_scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+
+        # An on-duty main holds the question; with none, it goes to the user (1052, 2124).
+
+        _main =
+          Fixtures.running_agent(qa_scope, role: "main", working_copy: "/tmp/spex-1984-main")
 
         qa_agent =
           Fixtures.running_agent(qa_scope, role: "qa", working_copy: "/tmp/spex-1984")
