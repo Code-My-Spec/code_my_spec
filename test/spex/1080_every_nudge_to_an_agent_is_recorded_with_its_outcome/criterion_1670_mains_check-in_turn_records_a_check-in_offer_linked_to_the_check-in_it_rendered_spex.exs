@@ -33,6 +33,22 @@ defmodule CodeMySpecSpex.Story1080.Criterion1670Spex do
         context = FullSatisfactionFixtures.apply(context)
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
 
+        # Something for the check-in to raise: an empty check never wakes main (1609).
+        asker =
+          Fixtures.running_agent(context.scope, role: "coding", working_copy: "/tmp/spex-1670")
+
+        {:ok, _} =
+          CodeMySpec.Notifications.create_agent_question_request(
+            context.scope,
+            asker.id,
+            %{
+              "title" => "Which way?",
+              "questions" => [%{"question" => "Which way?", "options" => []}],
+              "holder" => "main_agent"
+            },
+            nil
+          )
+
         base_url = HeldProvider.start()
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)

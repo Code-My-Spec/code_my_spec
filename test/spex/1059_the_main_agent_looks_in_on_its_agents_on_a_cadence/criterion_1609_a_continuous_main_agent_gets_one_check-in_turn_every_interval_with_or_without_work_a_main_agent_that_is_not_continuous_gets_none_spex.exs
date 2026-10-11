@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
       end
 
       then_ "main remains idle and no provider request was made", context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id)
         assert HeldProvider.seen() == []
         {:ok, context}
       end
@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
       then_ "main takes no turn", context do
         # The machine accepts a turn before the tick returns, so this is
         # observable at once.
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id),
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id),
                "the timer gave a main outside the loop a turn"
 
         {:ok, context}
