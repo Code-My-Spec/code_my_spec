@@ -139,7 +139,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
         assert response_text(tasks) =~ context.task_id
         assert response_text(tasks) =~ "[completed]"
         refute response_text(tasks) =~ "[active]"
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
         {:ok, Map.put(context, :completed_tasks, response_text(tasks))}
       end
@@ -152,7 +152,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
 
       then_ "exactly one unassigned work turn is admitted while the completed history is preserved",
             context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         [request] = HeldProvider.seen()
         prompt = request |> Jason.decode!() |> Map.fetch!("messages") |> Jason.encode!()
         refute prompt =~ "The first is:"

@@ -27,7 +27,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3319Spex do
     :ok
   end
 
-  spex "Recovery observes silence without overriding lifecycle or continuous intent", criterion: 1287 do
+  spex "Recovery observes silence without overriding lifecycle or continuous intent",
+    criterion: 1287 do
     scenario "A silent coding agent remains stopped and main remains autonomous-off" do
       given_ "a coding agent has stopped reporting while holding a task", context do
         context = given_a_staffed_checkout(context, "spex_3319")
@@ -100,7 +101,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3319Spex do
         {:reply, main_tasks, _} = ListTasks.execute(%{}, context.frame)
         refute main_tasks.isError, response_text(main_tasks)
         assert response_text(main_tasks) == "No tasks."
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id)
         assert HeldProvider.seen() == []
         {:ok, context}
       end

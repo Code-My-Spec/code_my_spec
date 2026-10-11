@@ -602,6 +602,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         mark_gave_up(socket, entry["agent_id"], entry["reason"], entry["at"])
       end)
 
+    scope = socket.assigns.scope
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Enum.each(ids, &Agents.Mailbox.pump(scope, &1))
+    end)
+
     {:reply, :ok, consider_once(socket, :present)}
   end
 
@@ -893,6 +899,39 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   #
   # Replied to rather than ignored so the machine knows the step landed, but the
   # machine does not wait on it: it casts.
+  def handle_in(
+        "agent_mailbox",
+        %{"operation" => "register", "agent_id" => id, "generation" => generation},
+        socket
+      )
+      when is_binary(generation) do
+    scope = socket.assigns.scope
+
+    with {:ok, agent} <- Agents.fetch_agent(scope, id),
+         true <- agent.working_copy_id == scope.active_working_copy_id,
+         {:ok, _} <- Agents.Mailbox.register(scope, id, generation) do
+      {:reply, {:ok, %{}}, socket}
+    else
+      _ -> {:reply, {:error, %{reason: "mailbox registration refused"}}, socket}
+    end
+  end
+
+  def handle_in(
+        "agent_mailbox",
+        %{"operation" => "consume", "agent_id" => id, "ref" => ref, "generation" => generation},
+        socket
+      ) do
+    scope = socket.assigns.scope
+
+    with {:ok, agent} <- Agents.fetch_agent(scope, id),
+         true <- agent.working_copy_id == scope.active_working_copy_id,
+         {:ok, _} <- Agents.Mailbox.consume(scope, id, ref, generation) do
+      {:reply, {:ok, %{}}, socket}
+    else
+      _ -> {:reply, {:error, %{reason: "mailbox consumption refused"}}, socket}
+    end
+  end
+
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
     Agents.record_turn_event(socket.assigns.scope, agent_id, event)
     settle_draft(socket, agent_id, event)
@@ -927,21 +966,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
-  def handle_in("agent_message_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    if from, do: GenServer.reply(from, decode_message_result(msg))
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
-  end
-
   def handle_in("agent_send_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     if from, do: GenServer.reply(from, decode_send_result(msg))
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
-  end
-
-  def handle_in("agent_withdraw_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    if from, do: GenServer.reply(from, decode_withdraw_result(msg))
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
@@ -1172,20 +1199,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
-  @impl true
-  def handle_call({:message_agent, request}, from, socket) do
+  def handle_call({:dispatch_mailbox, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(socket, "message_agent", Map.put(request, "ref", ref))
-
-    {:noreply,
-     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
-  end
-
-  def handle_call({:dispatch_message, request}, from, socket) do
-    ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(socket, "send_message", Map.put(request, "ref", ref))
+    push(socket, "mailbox_delivery", Map.put(request, "ref", ref))
 
     {:noreply,
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
@@ -1194,15 +1210,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_call({:request_work_turn, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
     push(socket, "request_work_turn", Map.put(request, "ref", ref))
-
-    {:noreply,
-     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
-  end
-
-  def handle_call({:withdraw_message, request}, from, socket) do
-    ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(socket, "withdraw_message", Map.put(request, "ref", ref))
 
     {:noreply,
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
@@ -1429,8 +1436,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     start_timed_out
     stop_timed_out
     message_timed_out
-    withdraw_timed_out
     already_delivered
+    busy
+    duplicate
   )
 
   defp decode_reason(reason) when reason in @machine_reasons, do: String.to_atom(reason)
@@ -1440,36 +1448,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # read is an error rather than a default disposition: reporting "delivered"
   # for an answer we did not understand is the failure this story is about.
   defp decode_send_result(%{"status" => "ok", "disposition" => "started"}), do: {:ok, :started}
-  defp decode_send_result(%{"status" => "ok", "disposition" => "queued"}), do: {:ok, :queued}
 
   defp decode_send_result(%{"reason" => reason}) when is_binary(reason),
     do: {:error, decode_reason(reason)}
 
   defp decode_send_result(_msg), do: {:error, :unreadable_send_result}
-
-  defp decode_withdraw_result(%{"status" => "ok"}), do: :ok
-
-  defp decode_withdraw_result(%{"status" => "already_delivered"}),
-    do: {:error, :already_delivered}
-
-  defp decode_withdraw_result(%{"status" => "never_received"}),
-    do: {:error, :never_received}
-
-  defp decode_withdraw_result(%{"reason" => reason}) when is_binary(reason),
-    do: {:error, decode_reason(reason)}
-
-  defp decode_withdraw_result(_msg), do: {:error, :unreadable_withdraw_result}
-
-  defp decode_message_result(%{"status" => "ok", "reply" => reply}) when is_binary(reply),
-    do: {:ok, reply}
-
-  defp decode_message_result(%{"status" => "error", "reason" => reason}),
-    do: {:error, decode_reason(reason)}
-
-  # A shape this server does not understand is not an answer. Reporting one as
-  # success would tell an operator their instruction landed when nothing knows
-  # whether it did.
-  defp decode_message_result(other), do: {:error, {:unexpected_message_result, other}}
 
   defp decode_stop_result(%{"status" => "ok"}), do: :ok
 

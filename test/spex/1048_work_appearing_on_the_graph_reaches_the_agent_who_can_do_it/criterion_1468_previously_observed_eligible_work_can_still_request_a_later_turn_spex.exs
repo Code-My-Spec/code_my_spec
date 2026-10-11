@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
                  Machine.start_agent(agent.id, context.copy, base_url: base_url)
 
         on_exit(fn -> Machine.stop_agent(agent.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: false}} = Machine.status(agent.id)
         {:ok, Map.merge(context, %{agent_id: agent.id, engine_pid: pid, story: story})}
       end
 
@@ -104,7 +104,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
 
       then_ "the same eligible work permits exactly one further unassigned turn", context do
         assert Process.alive?(context.engine_pid)
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 2
 
         {:reply, available, _} = GetNextRequirement.execute(%{}, context.agent_frame)

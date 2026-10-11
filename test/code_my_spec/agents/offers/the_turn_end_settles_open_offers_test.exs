@@ -7,6 +7,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
 
   import CodeMySpec.{DevicesFixtures, UsersFixtures}
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
@@ -85,7 +86,13 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
         turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)
       })
 
-    Agents.record_turn_event(ctx.scope, ctx.agent.id, %{"kind" => "turn_ended"})
+    Agents.record_turn_event(
+      ctx.scope,
+      ctx.agent.id,
+      ChannelClient.encode_turn_event(
+        CodeMySpecSpex.Fixtures.mailbox_turn_end(ctx.scope, ctx.agent.id)
+      )
+    )
   end
 
   defp settled(%Offer{id: id}), do: Repo.get!(Offer, id)

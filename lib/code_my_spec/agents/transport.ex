@@ -28,6 +28,7 @@ defmodule CodeMySpec.Agents.Transport do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
 
   @doc """
   Ask the machine serving `working_copy_id` to launch this agent.
@@ -45,37 +46,13 @@ defmodule CodeMySpec.Agents.Transport do
               {:ok, %{os_pid: pos_integer(), os_boot_id: String.t()}} | {:error, term()}
 
   @doc """
-  Give a running agent something to do, and wait for the turn.
-
-  The capability the whole engine change was for. Delivering a message used to
-  mean a held stdin pipe — a FIFO with a writer inside the agent's own process
-  group so it never saw EOF, plus a protocol nobody had written down. It is a
-  call now, and this is the seam it crosses.
-
-  Answers `{:ok, text}` with whatever the agent said, or `{:error, reason}`. A
-  turn can take minutes: the timeout is the caller's choice rather than a
-  constant here, because "send a one-line instruction" and "work on this story"
-  are the same call with very different patience.
-  """
-  @callback message_agent(
-              working_copy_id :: String.t(),
-              agent :: Agent.t(),
-              message :: String.t(),
-              timeout()
-            ) :: {:ok, String.t()} | {:error, term()}
-
-  @doc """
   Hand a running agent a message without waiting for the turn.
 
-  The same delivery as `message_agent/4` and a different promise. That one is
-  for a caller who wants the answer and can wait minutes for it; this is for a
-  person at a page, who cannot. What the agent says comes back the way
-  everything else it does comes back — as turn events, in the transcript they
-  are already reading.
+  Execution requires the database mailbox to acknowledge consumption.
+  Replies arrive as turn events in the conversation.
 
-  Answers `{:ok, :started}` or `{:ok, :queued}`. The difference is the only
-  thing the sender can still act on: a queued message can be taken back, and a
-  started one is already the agent's.
+  Answers `{:ok, :started}` only after consumption. A busy engine refuses the
+  dispatch; waiting work stays in the database mailbox.
   """
   @callback dispatch_message(
               working_copy_id :: String.t(),
@@ -83,26 +60,11 @@ defmodule CodeMySpec.Agents.Transport do
               ref :: String.t(),
               message :: String.t(),
               timeout()
-            ) :: {:ok, :started | :queued} | {:error, term()}
+            ) :: {:ok, :started} | {:error, term()}
 
   @doc "Request work on an existing idle Engine; never queue it as user chat."
   @callback request_work_turn(String.t(), Agent.t(), String.t(), String.t(), timeout()) ::
               {:ok, :started} | {:error, term()}
-
-  @doc """
-  Take back a message the agent has not picked up yet.
-
-  `{:error, :already_delivered}` is a real answer rather than a failure: the
-  turn ended while the operator was reaching for the control. Reporting success
-  there would leave them believing the agent was stopped while it acts on the
-  thing they thought they took back.
-  """
-  @callback withdraw_message(
-              working_copy_id :: String.t(),
-              agent :: Agent.t(),
-              ref :: String.t(),
-              timeout()
-            ) :: :ok | {:error, term()}
 
   @doc """
   Call a tool that lives on the machine rather than here.
@@ -173,17 +135,16 @@ defmodule CodeMySpec.Agents.Transport do
   def start_agent(copy_id, %Agent{} = agent, timeout),
     do: gated(agent, fn -> impl().start_agent(copy_id, agent, timeout) end)
 
-  @doc "Message and wait, unless the agent is off or retired."
-  def message_agent(copy_id, %Agent{} = agent, text, timeout),
-    do: gated(agent, fn -> impl().message_agent(copy_id, agent, text, timeout) end)
-
   @doc "Dispatch a message, unless the agent is off or retired."
   def dispatch_message(copy_id, %Agent{} = agent, ref, text, timeout),
     do: gated(agent, fn -> impl().dispatch_message(copy_id, agent, ref, text, timeout) end)
 
   @doc "Offer a work turn, unless the agent is off or retired."
-  def request_work_turn(copy_id, %Agent{} = agent, ref, text, timeout),
-    do: gated(agent, fn -> impl().request_work_turn(copy_id, agent, ref, text, timeout) end)
+  def request_work_turn(copy_id, %Agent{} = agent, ref, text, timeout) do
+    if Mailbox.pending?(agent.id),
+      do: {:error, :busy},
+      else: gated(agent, fn -> impl().request_work_turn(copy_id, agent, ref, text, timeout) end)
+  end
 
   defp gated(agent, deliver) do
     with :ok <- deliverable(agent), do: deliver.()

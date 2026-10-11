@@ -192,6 +192,7 @@ defmodule CodeMySpec.Agents.Agent do
     # Membership lives on Issue.assigned_working_copy_id. Each role can claim
     # other eligible bag members while this priority waits on its teammate.
     field :issue_id, Ecto.UUID
+    field :mailbox_generation, :string
     # When this team last became free of its last issue with no story to
     # fall back to. Set, the team is told it is waiting for main's next
     # assignment rather than offered project-level work.

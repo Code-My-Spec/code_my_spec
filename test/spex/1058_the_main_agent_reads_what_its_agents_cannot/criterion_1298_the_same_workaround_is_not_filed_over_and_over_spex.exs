@@ -80,6 +80,10 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
 
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3330")
 
+        # An on-duty main holds the question; with none, it goes to the user (1052, 2124).
+
+        _main = Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-1298-main")
+
         work_around(scope, agent)
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}

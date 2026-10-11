@@ -79,6 +79,19 @@ defmodule CodeMySpec.McpServers.AQuestionThatReachedAPersonSaysSoTest do
   end
 
   test "a question the main agent holds does not", %{scope: scope} do
+    # A running main to hold it: with neither main nor product running, the
+    # question goes to the person (story 1052, criterion 2124).
+    {:ok, main} =
+      AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "main",
+        status: :running,
+        working_copy: "/tmp/asking-main",
+        working_copy_id: scope.active_working_copy_id
+      })
+
+    CodeMySpecTest.AgentPresence.present(main)
     coding = an_agent(scope, "coding")
 
     said = ask(%Frame{assigns: %{current_scope: scope, agent_id: coding.id}})

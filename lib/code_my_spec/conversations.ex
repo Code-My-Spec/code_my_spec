@@ -558,7 +558,7 @@ defmodule CodeMySpec.Conversations do
     |> case do
       {:ok, message} ->
         touch(conversation, read_after(role))
-        broadcast_new_message(conversation, message)
+        if Keyword.get(opts, :broadcast, true), do: broadcast_new_message(conversation, message)
         {:ok, message}
 
       error ->
@@ -580,51 +580,26 @@ defmodule CodeMySpec.Conversations do
   """
   @spec set_delivery(Message.t(), :delivered | :withdrawn | :failed) ::
           {:ok, Message.t()} | {:error, Ecto.Changeset.t()}
-  def set_delivery(%Message{} = message, delivery)
+  def set_delivery(%Message{} = message, delivery, opts \\ [])
       when delivery in [:delivered, :withdrawn, :failed] do
     message
     |> Ecto.Changeset.change(delivery: delivery)
     |> Repo.update()
     |> case do
       {:ok, updated} ->
-        Phoenix.PubSub.broadcast(
-          CodeMySpec.PubSub,
-          conversation_topic(updated.conversation_id),
-          {:message_updated, updated}
-        )
+        if Keyword.get(opts, :broadcast, true) do
+          Phoenix.PubSub.broadcast(
+            CodeMySpec.PubSub,
+            conversation_topic(updated.conversation_id),
+            {:message_updated, updated}
+          )
+        end
 
         {:ok, updated}
 
       error ->
         error
     end
-  end
-
-  @doc """
-  The message waiting on `ref`, if it is still waiting.
-
-  Scoped to `:pending` deliberately. A ref that names a message the agent
-  already has must not be findable here, or a withdrawal would clear a row the
-  agent is acting on and the transcript would disagree with the agent.
-  """
-  @spec pending_message_by_ref(String.t()) :: Message.t() | nil
-  def pending_message_by_ref(ref) when is_binary(ref) do
-    Repo.get_by(Message, delivery_ref: ref, delivery: :pending)
-  end
-
-  @doc """
-  What this conversation is still waiting to deliver, oldest first.
-
-  Read rather than held in a view's assigns: a person who reloads the page has
-  not stopped waiting, and a pending message that vanished on refresh reads as
-  one that was never accepted.
-  """
-  @spec pending_messages(Conversation.t()) :: [Message.t()]
-  def pending_messages(%Conversation{} = conversation) do
-    Message
-    |> where([m], m.conversation_id == ^conversation.id and m.delivery == :pending)
-    |> order_by([m], asc: m.inserted_at)
-    |> Repo.all()
   end
 
   @doc """
@@ -1244,7 +1219,8 @@ defmodule CodeMySpec.Conversations do
     )
   end
 
-  defp broadcast_new_message(%Conversation{} = conversation, %Message{} = message) do
+  @doc "Publish a newly committed message when its caller deferred broadcasting inside a transaction."
+  def broadcast_new_message(%Conversation{} = conversation, %Message{} = message) do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       conversation_topic(conversation.id),

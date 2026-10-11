@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
         for task <- tasks do
           assert {:ok, _} = Machine.start_agent(task.agent_id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(task.agent_id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(task.agent_id)
+          assert {:ok, %{busy?: false}} = Machine.status(task.agent_id)
         end
 
         [original, neighbor] = tasks
@@ -147,7 +147,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
           assert response_text(tasks) =~ task.id
           assert response_text(tasks) =~ "[blocked]"
           refute response_text(tasks) =~ "[active]"
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(task.agent_id)
+          assert {:ok, %{busy?: false}} = Machine.status(task.agent_id)
         end
 
         assert HeldProvider.seen() == []
@@ -248,7 +248,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
         for task <- tasks do
           assert {:ok, _} = Machine.start_agent(task.agent_id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(task.agent_id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(task.agent_id)
+          assert {:ok, %{busy?: false}} = Machine.status(task.agent_id)
         end
 
         [original, neighbor] = tasks
@@ -297,7 +297,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
           assert response_text(tasks) =~ task.id
           assert response_text(tasks) =~ "[blocked]"
           refute response_text(tasks) =~ "[active]"
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(task.agent_id)
+          assert {:ok, %{busy?: false}} = Machine.status(task.agent_id)
         end
 
         assert HeldProvider.seen() == []

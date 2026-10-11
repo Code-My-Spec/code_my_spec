@@ -196,10 +196,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion3269Spex do
           assert response_text(blocked) =~ task.id
           assert response_text(blocked) =~ "[blocked]"
           refute response_text(blocked) =~ "[active]"
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(task.agent_id)
+          assert {:ok, %{busy?: false}} = Machine.status(task.agent_id)
         end
 
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id)
         assert HeldProvider.seen() == []
         assert Machine.running() == context.running_ids
         {:ok, context}

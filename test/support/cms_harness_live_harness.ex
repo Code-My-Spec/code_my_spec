@@ -197,9 +197,9 @@ defmodule CmsHarnessTest.LiveHarness do
   reports every step of a turn: `ChannelClient.report_turn_event/3`, pushed
   as `agent_turn_event` over the copy's socket.
   """
-  @spec end_turn(String.t(), String.t()) :: :ok
-  def end_turn(root, agent_id),
-    do: ChannelClient.report_turn_event(root, agent_id, %{event: :turn_ended})
+  @spec end_turn(String.t(), String.t(), map()) :: :ok
+  def end_turn(root, agent_id, event),
+    do: ChannelClient.report_turn_event(root, agent_id, event)
 
   @doc """
   POST a hook to the harness, the way Claude Code's plugin does, and decode the

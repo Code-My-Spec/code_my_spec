@@ -87,6 +87,10 @@ defmodule CmsHarnessTest.Machine do
       "api_key" => Keyword.get(opts, :api_key, "unused-in-spex"),
       "working_copy" => working_copy,
       "on_stop" => Keyword.get(opts, :on_stop),
+      # Isolated harness tests have no server. DB-backed fixtures override both
+      # callbacks with the real mailbox authority.
+      "on_register" => Keyword.get(opts, :on_register, fn _, _ -> :ok end),
+      "on_consume" => Keyword.get(opts, :on_consume, fn _, _, _ -> :ok end),
       # Where the model is. Without one the agent talks to z.ai for real, which
       # is right in production and would be a live call from a criterion — so
       # anything that actually runs a turn passes a local endpoint here.
@@ -140,13 +144,6 @@ defmodule CmsHarnessTest.Machine do
     Agents.send_message(agent_id, ref, text)
   end
 
-  @doc "Take back a message the agent has not picked up."
-  @spec withdraw(String.t(), String.t()) :: :ok | {:error, term()}
-  def withdraw(agent_id, ref) do
-    ensure_supervisor()
-    Agents.withdraw(agent_id, ref)
-  end
-
   @doc "Whether this agent is mid-turn, and what is stacked behind it."
   @spec status(String.t()) :: {:ok, map()} | {:error, term()}
   def status(agent_id) do
@@ -173,7 +170,7 @@ defmodule CmsHarnessTest.Machine do
 
   defp await_idle(agent_id, timeout, started) do
     case Agents.status(agent_id) do
-      {:ok, %{busy?: false, queued: 0}} ->
+      {:ok, %{busy?: false}} ->
         :ok
 
       _ ->

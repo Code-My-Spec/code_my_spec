@@ -681,6 +681,13 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.update()
   end
 
+  @doc "Stamps the commit `Promotion.certify/3` passed the issue's fix at."
+  def update_qa_ready_commit(%Issue{} = issue, commit, at) do
+    issue
+    |> Issue.qa_ready_changeset(commit, at)
+    |> Repo.update()
+  end
+
   @doc "Flip whose turn it is on an already-assigned issue."
   def update_awaiting_role(%Issue{} = issue, role) do
     issue

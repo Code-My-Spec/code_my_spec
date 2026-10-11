@@ -104,7 +104,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
       end
 
       then_ "only the eligible coding agent receives one unassigned turn", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.coding_id)
 
         for {agent, copy} <- context.agents, agent.id != context.coding_id do
           {:reply, conversation, _} =
@@ -112,7 +112,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
 
           refute conversation.isError, response_text(conversation)
           assert response_text(conversation) == context.conversations[agent.id]
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+          assert {:ok, %{busy?: false}} = Machine.status(agent.id)
         end
 
         for {agent, copy} <- context.agents do

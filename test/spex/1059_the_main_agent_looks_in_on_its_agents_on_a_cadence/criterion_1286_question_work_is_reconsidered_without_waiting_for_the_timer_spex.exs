@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(main.id)
+        assert {:ok, %{busy?: false}} = Machine.status(main.id)
         {:reply, tasks, _} = ListTasks.execute(%{}, main_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == "No tasks."
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
         {:reply, inbox, _} = ListNotifications.execute(%{}, context.main_frame)
         refute inbox.isError, response_text(inbox)
         assert response_text(inbox) =~ context.question_id
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
         assert length(HeldProvider.seen()) == 1
         {:ok, context}
       end
@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
       end
 
       then_ "there is still one unassigned turn and no queued wake message", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
         assert Machine.running() == context.running_ids
         [request] = HeldProvider.seen()
         prompt = Jason.decode!(request)["messages"] |> Jason.encode!()

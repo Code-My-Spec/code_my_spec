@@ -22,6 +22,8 @@ defmodule CodeMySpec.Issues.Issue do
           account_id: Ecto.UUID.t() | nil,
           assigned_working_copy_id: Ecto.UUID.t() | nil,
           awaiting_role: :coding | :qa | nil,
+          qa_ready_commit: String.t() | nil,
+          qa_ready_at: DateTime.t() | nil,
           synced_from_server: boolean(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -99,6 +101,11 @@ defmodule CodeMySpec.Issues.Issue do
     # `Agents.IssueWork` rather than `Agents` reaching into `Qa`'s attempts,
     # which would cycle back (`Qa` already depends on `Agents`).
     field(:awaiting_role, Ecto.Enum, values: [:coding, :qa, :promote])
+    # The commit `Promotion.certify/3` passed at, so QA tests that exact
+    # commit (story 1091). The only writer is `IssueFix`'s certifying
+    # `evaluate/3`; `IssueFix`'s read-only `evaluate/2` only reads it.
+    field(:qa_ready_commit, :string)
+    field(:qa_ready_at, :utc_datetime_usec)
     # The commit the fix landed on main at, through the promotion queue. An
     # issue resolves once this is set and its QA has passed.
     field(:story_submission_ref, :binary_id)
@@ -148,6 +155,13 @@ defmodule CodeMySpec.Issues.Issue do
     issue
     |> cast(%{landed_commit: commit}, [:landed_commit])
     |> validate_required([:landed_commit])
+  end
+
+  @doc "Records the commit `Promotion.certify/3` passed the issue's fix at, so QA tests it."
+  def qa_ready_changeset(issue, commit, at) do
+    issue
+    |> cast(%{qa_ready_commit: commit, qa_ready_at: at}, [:qa_ready_commit, :qa_ready_at])
+    |> validate_required([:qa_ready_commit, :qa_ready_at])
   end
 
   @doc "Validates a status transition, requiring a resolution/story link where the new status needs one."

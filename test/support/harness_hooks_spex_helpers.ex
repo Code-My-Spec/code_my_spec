@@ -376,7 +376,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
   sent arrives through the agent transport the scenario installed.
   """
   @spec end_turn(map(), String.t()) :: :ok
-  def end_turn(%{harness: %{root: root, working_copy_id: id}}, agent_id) do
+  def end_turn(%{harness: %{root: root, working_copy_id: id}, scope: scope}, agent_id) do
     ref = {__MODULE__, :turn_ended, make_ref()}
 
     :ok =
@@ -387,7 +387,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
         %{id: id, agent_id: agent_id, test: self(), ref: ref}
       )
 
-    :ok = LiveHarness.end_turn(root, agent_id)
+    :ok = LiveHarness.end_turn(root, agent_id, Fixtures.mailbox_turn_end(scope, agent_id))
 
     try do
       await_step(ref, :handled, root, "the harness never reported #{agent_id}'s turn ending")

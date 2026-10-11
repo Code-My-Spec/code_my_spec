@@ -37,6 +37,7 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+         :ok <- reachable(scope, frame.assigns[:agent_id], agent_id(params)),
          {:ok, reply} <- Agents.message_agent(scope, agent_id(params), message(params)) do
       response =
         agent_id(params)
@@ -48,6 +49,30 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
       {:error, reason} -> {:reply, AgentsMapper.error(reason, nil), frame}
     end
   end
+
+  # Story 1052: coding and QA message a teammate on their own copy; main,
+  # product and other copies are reached through a question instead.
+  defp reachable(scope, caller_id, target_id) when is_binary(caller_id) do
+    with {:ok, %{role: role} = caller} when role in [:coding, :qa] <-
+           Agents.fetch_agent(scope, caller_id),
+         {:ok, target} <- Agents.fetch_agent(scope, target_id) do
+      teammate(caller, target)
+    else
+      _ -> :ok
+    end
+  end
+
+  defp reachable(_scope, _caller_id, _target_id), do: :ok
+
+  defp teammate(%{working_copy_id: copy}, %{working_copy_id: copy, role: role})
+       when role in [:coding, :qa],
+       do: :ok
+
+  defp teammate(_caller, _target),
+    do:
+      {:error,
+       "You can message only a teammate on your own working copy. Ask main or product " <>
+         "with ask_user_question (to: \"main\" or \"product\") instead."}
 
   # c99aad08: main answered a teammate's question by messaging it, so the
   # question stayed pending and the teammate rightly refused an answer nothing

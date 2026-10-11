@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
   end
 
   spex "An aged tap-out is the main agent's own, through normal turn admission",
-       criterion: 1991 do
+    criterion: 1991 do
     scenario "a continuous-off main agent is not given a bypass turn for it" do
       given_ "a coding agent's tap-out aged past one recovery interval, and a continuous-off main",
              context do
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(main.id)
+        assert {:ok, %{busy?: false}} = Machine.status(main.id)
 
         coding_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coding.id}}
 
@@ -100,7 +100,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
 
       then_ "a continuous-off main is not given a bypass turn for it", context do
         assert Machine.running() == context.running_ids
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id)
 
         assert HeldProvider.seen() == [],
                "a continuous-off main agent was given a turn it never asked for"

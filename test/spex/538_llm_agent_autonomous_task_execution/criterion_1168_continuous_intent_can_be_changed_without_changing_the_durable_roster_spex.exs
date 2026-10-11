@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
         for id <- [coding.id, qa.id] do
           assert {:ok, _} = Machine.start_agent(id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(id)
+          assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
         {:ok, coding_view, _} =
@@ -81,8 +81,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
       end
 
       then_ "QA alone takes one turn and both continuous controls show enabled", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.qa_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.qa_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert length(HeldProvider.seen()) == 1
         assert Enum.sort(Machine.running()) == context.running_before
 
@@ -107,8 +107,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
         end
 
         assert Enum.sort(Machine.running()) == context.running_before
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.qa_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.qa_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert length(HeldProvider.seen()) == 1
         {:ok, context}
       end
@@ -134,7 +134,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
         for id <- [coding.id, qa.id] do
           assert {:ok, _} = Machine.start_agent(id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(id)
+          assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
         {:ok, coding_view, _} =
@@ -170,8 +170,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
       end
 
       then_ "QA alone takes one turn and both continuous controls show enabled", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.qa_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.qa_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert length(HeldProvider.seen()) == 1
         assert Enum.sort(Machine.running()) == context.running_before
 
@@ -205,8 +205,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
         end
 
         assert Enum.sort(Machine.running()) == context.running_before
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.qa_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.qa_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert length(HeldProvider.seen()) == 1
         {:ok, context}
       end

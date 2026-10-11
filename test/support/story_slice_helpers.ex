@@ -189,6 +189,47 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     Map.put(context, :waiting, story)
   end
 
+  @doc """
+  A real git repository at the copy's root, with one commit.
+
+  `staff/1`'s copy has no root (`buildable/1`'s stub is a directory marker,
+  not a checkout, and has no `.git` either), and a step that reads HEAD
+  (`Fixtures.fresh_analysis_runs(context.scope, ..., at_head: true)`) needs
+  `git rev-parse HEAD` to find an actual repository there.
+  """
+  def git_backed(context) do
+    root = CodeMySpec.TempFile.owned_dir("story-slice-git")
+
+    {_, 0} =
+      Environments.cmd(context.environment, "git", [
+        "init",
+        "--quiet",
+        "--initial-branch=main",
+        root
+      ])
+
+    {_, 0} =
+      Environments.cmd(
+        context.environment,
+        "git",
+        [
+          "-c",
+          "user.email=spex@example.com",
+          "-c",
+          "user.name=Spex",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "root"
+        ],
+        cd: root
+      )
+
+    {:ok, copy} = WorkingCopies.fetch(context.scope.active_working_copy_id)
+    {:ok, _} = WorkingCopies.report_root(copy, root)
+    context
+  end
+
   # A copy is only assignable once it has a checkout on disk, which is what a
   # harness reports when it joins. `setup_active_project` builds the copy
   # without one and leaves `root` nil, so `AssignEpicToWorkingCopy` refuses —

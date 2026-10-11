@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3550Spex do
       then_ "the same process remains available without staffing or another model request",
             context do
         assert Process.alive?(context.engine_pid)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert Enum.sort(Machine.running()) == context.roster_before
         assert Machine.history(context.agent_id) == context.history_before
         assert HeldProvider.seen() == context.requests_before

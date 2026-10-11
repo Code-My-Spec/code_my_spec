@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1875Spex do
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -27,7 +28,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1875Spex do
   spex "An assigned issue is carried from coding to QA by the same team", criterion: 1875 do
     scenario "both agents are bound and the fix is handed to QA after submission" do
       given_ "an unassigned working copy with a coder, QA agent, and accepted issue", context do
-        context = context |> Slice.main_copy() |> Slice.staff()
+        context = context |> Slice.main_copy() |> Slice.staff() |> Slice.git_backed()
         coder = Enum.find(context.team, &(&1.role == :coding))
         qa = Enum.find(context.team, &(&1.role == :qa))
 
@@ -117,6 +118,8 @@ defmodule CodeMySpecSpex.Story1091.Criterion1875Spex do
       end
 
       when_ "the coder submits the fix by completing its task", context do
+        Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
+
         {:reply, response, _frame} =
           EvaluateTask.execute(%{task_id: context.fix_task_id}, context.coder_frame)
 

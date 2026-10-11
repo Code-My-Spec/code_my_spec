@@ -14,17 +14,12 @@ defmodule CmsHarness.Agents.Engine do
 
   defdelegate start(opts), to: Impl
   defdelegate describe_start_failure(agent_id, working_copy, reason), to: Impl
-  def chat(agent_id, message), do: chat(agent_id, message, 180_000)
-
-  def chat(agent_id, message, timeout),
-    do: call(agent_id, {:chat, message, timeout}, timeout + 5_000)
-
-  def send_message(agent_id, ref, message), do: send_message(agent_id, ref, message, 180_000)
-
-  def send_message(agent_id, ref, message, timeout),
-    do: call(agent_id, {:send, ref, message, timeout})
-
-  def withdraw(agent_id, ref), do: call(agent_id, {:withdraw, ref})
+  @doc "Execute a claimed mailbox message, optionally waiting for its result."
+  def send_message(agent_id, ref, message, timeout \\ 180_000, opts \\ []) do
+    await? = Keyword.get(opts, :await, false)
+    call_timeout = if await?, do: timeout + 5_000, else: 5_000
+    call(agent_id, {:send, ref, message, timeout, await?}, call_timeout)
+  end
 
   def request_work_turn(agent_id, ref, message, timeout \\ 180_000),
     do: call(agent_id, {:work_available, ref, message, timeout})
@@ -43,6 +38,8 @@ defmodule CmsHarness.Agents.Engine do
   end
 
   defdelegate stop(agent_id), to: Impl
+
+  defdelegate whereis(agent_id), to: State
 
   def running, do: State.running()
   def running?(agent_id), do: match?({:ok, _}, State.whereis(agent_id))

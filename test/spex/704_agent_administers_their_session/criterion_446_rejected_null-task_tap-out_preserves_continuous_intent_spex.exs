@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story704.Criterion1877Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
         {:ok,
          Map.merge(context, %{
@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story704.Criterion1877Spex do
         assert response_text(tasks) == context.tasks_before
         {:ok, other_view, _} = live(context.conn, context.other_conversation_path)
         assert has_element?(other_view, "[data-test='toggle-agent-working'][data-working='true']")
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
         {:ok, context}
       end

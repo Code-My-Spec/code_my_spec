@@ -106,15 +106,17 @@ defmodule CmsHarness.Agents.ATurnStartingIsAnnouncedTest do
   # The end is deliberately quiet while more work is queued — the loop has not
   # finished. A start is true every time one happens, so a run of queued turns
   # reads as continuously busy rather than as busy once.
-  test "a queued turn announces its own start", %{root: root} do
+  test "the next admitted turn announces its own start", %{root: root} do
     agent = start_agent(root, gated_plug(self()), self())
 
     assert {:ok, :started} = Machine.send_message(agent, "ref-a", "first")
     assert_receive {:holding_turn, plug_pid}, 5_000
-    assert {:ok, :queued} = Machine.send_message(agent, "ref-b", "second")
+    assert {:error, :busy} = Machine.send_message(agent, "ref-b", "second")
 
     assert_receive {:event, %{event: :turn_started}}, 5_000
     send(plug_pid, :release)
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert {:ok, :started} = Machine.send_message(agent, "ref-b", "second")
 
     assert_receive {:event, %{event: :turn_started}},
                    5_000,

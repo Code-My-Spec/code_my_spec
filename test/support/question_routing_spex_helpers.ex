@@ -51,6 +51,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
       ]
     }
 
+    ensure_main_on_duty(context.scope)
     {:reply, reply, _frame} = AskUserQuestion.execute(params, asking_frame(context))
 
     refute reply.isError,
@@ -212,5 +213,15 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   defp call(tool, params, context) do
     {:reply, reply, _frame} = tool.execute(params, frame(context))
     reply
+  end
+
+  # The main agent these criteria name has to be on duty to hold a question:
+  # with neither main nor product on duty it goes to the user (story 1052, 2124).
+  defp ensure_main_on_duty(scope) do
+    unless Enum.any?(CodeMySpec.Agents.list_on_duty(scope), &(&1.role == :main)) do
+      Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-main-on-duty")
+    end
+
+    :ok
   end
 end

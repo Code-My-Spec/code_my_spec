@@ -41,8 +41,6 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
-  alias CodeMySpec.Agents.Offers
-  alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
@@ -254,112 +252,16 @@ defmodule CodeMySpec.Agents.StopDecision do
     end
   end
 
-  # Through the transport every other message to an agent goes through, so an
-  # agent mid-turn is queued rather than interrupted — the engine decides
-  # started-or-queued without running anything, and a decision that barged into
-  # a turn in flight would lose whatever that turn was part-way through.
-  defp send_to(scope, agent, message, {kind, subject}) do
-    # Recorded as well as sent, and recorded first.
-    #
-    # `Conversations.record_sent_to_agent/2` because this dispatches through the
-    # transport directly rather than through `Agents.dispatch_message/3`, which
-    # is the thing that normally records. Without it the decision reaches the
-    # agent and appears in no transcript.
-    #
-    # Before the dispatch, because delivery can fail — a halted agent has
-    # nobody to tell — and what the orchestrator decided is true whether or not
-    # anyone was there to hear it. The conversation was opened by `deliver/2`.
-    #
-    # Unless it is off or retired: then there is no decision for it (39af5611).
-    case Transport.deliverable(agent) do
-      :ok ->
-        offered =
-          agent
-          |> Conversations.record_sent_to_agent(message)
-          |> Offers.record(agent, kind, subject)
-
-        deliver_message(scope, agent, message, offered)
-
-      {:error, _stood_down} ->
-        :ok
-    end
-  end
-
-  # The dispatch half, shared. `send_to/3` records a decision and sends it; the
-  # nudge records its own line with its own `kind` and sends through here, so
-  # there is one definition of how a message reaches an agent and no second one
-  # to forget to call.
-  defp deliver_message(scope, agent, message, offered) do
-    ref = "stop-decision-" <> Ecto.UUID.generate()
-
-    # Off this process, and that is not an optimisation.
-    #
-    # `message_agent` is a `GenServer.call` to the process holding the working
-    # copy, and that process runs the whole turn inside the call. The turn ends
-    # while it is still there, so `deliver/2` runs in it — and the dispatch is
-    # another call to the same pid. A process cannot call itself: it raised
-    # `:calling_self`, the decision was lost, and the operator's `message_agent`
-    # failed with a crash instead of a result. Issue `ad8c1213`, found the
-    # moment there was finally a decision to deliver.
-    #
-    # It is also what criterion 3053 asks for in the first place. "A busy agent
-    # is queued, not interrupted" cannot be true of a send made synchronously
-    # inside the turn it is about; the message has to join the agent's queue the
-    # way any other message does.
-    #
-    # Nothing is waiting on the answer. The record is already written above, and
-    # the only outcomes below are `:ok` and a line in the log.
-    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      dispatch(scope, agent, ref, message, offered)
-    end)
+  # Use the same durable admission as every other message source. The engine
+  # keeps its active turn; this decision waits in the database mailbox.
+  defp send_to(_scope, agent, message, {kind, subject}) do
+    CodeMySpec.Agents.send_to_agent(agent.id, message, :nudge,
+      offer: {kind, subject},
+      timeout: dispatch_timeout(),
+      async: true
+    )
 
     :ok
-  end
-
-  # The agent's own working copy, not the caller's.
-  #
-  # These were the same thing while the only caller was `deliver/2`, which runs
-  # at the end of a turn in the copy the turn happened in. R12's wake broke that
-  # assumption: it is triggered by somebody else — a person clicking a control, an
-  # agent finishing a task in a different checkout — and the scope it carries is
-  # theirs. So the message was looked up against the wrong copy's harness and
-  # answered `:harness_not_connected` with the right harness connected and
-  # reconciling that exact copy.
-  #
-  # It reported as a delivery failure rather than a wrong address, because both
-  # produce the same silence: the message is recorded on the agent's
-  # conversation before it is sent, so the transcript showed three agents told
-  # and nothing happening. John, looking at the copy: "I don't see those agents
-  # running."
-  #
-  # `agent.working_copy_id` is the only thing here that knows where the agent
-  # is, and it is right on every path — including the original one, where it
-  # equals what the scope carried.
-  defp dispatch(_scope, agent, ref, message, offered) do
-    case Transport.dispatch_message(
-           agent.working_copy_id,
-           agent,
-           ref,
-           message,
-           dispatch_timeout()
-         ) do
-      {:ok, _} ->
-        :ok
-
-      # A halted agent is not owed one, and this is not a fault. It stopped on
-      # purpose; there is nobody to tell, which is a state rather than a failed
-      # delivery. Logged at info so the absence is visible without reading as
-      # something to fix.
-      {:error, reason} ->
-        Offers.undelivered(offered)
-
-        Logger.info(
-          "[StopDecision] agent #{agent.id} was not told (#{inspect(reason)}) — " <>
-            "nothing is wrong if it has stopped"
-        )
-
-        :ok
-    end
   end
 
   defp dispatch_timeout, do: Application.get_env(:code_my_spec, :stop_decision_timeout, 10_000)
