@@ -271,7 +271,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
         )
       end)
 
-    try do
+    with_task_cleanup(task, fn ->
       assert_push("ensure_app_running", %{"ref" => ref}, 5_000)
 
       reply_ref =
@@ -285,8 +285,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
       assert_reply(reply_ref, :ok, _, 5_000)
       Task.await(task, 5_000)
-    after
-      Task.shutdown(task, :brutal_kill)
-    end
+    end)
   end
 end

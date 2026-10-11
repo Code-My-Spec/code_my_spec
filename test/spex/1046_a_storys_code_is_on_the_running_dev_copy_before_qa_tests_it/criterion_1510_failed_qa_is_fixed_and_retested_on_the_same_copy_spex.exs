@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -86,7 +87,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
 
         :ok =
-          CodeMySpecSpex.Fixtures.StoryIssueBag.certify(
+          StoryIssueBag.certify(
             context.scope,
             context.story.id,
             String.duplicate("b", 40)

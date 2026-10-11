@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2012Spex do
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -36,7 +37,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2012Spex do
         story = a_promotable_story(context, title: "Landed this week", qa: :not_passed)
 
         :ok =
-          CodeMySpecSpex.Fixtures.StoryIssueBag.certify(
+          StoryIssueBag.certify(
             context.scope,
             story.id,
             head_of(context, context.agent_root)
