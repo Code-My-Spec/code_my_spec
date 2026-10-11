@@ -43,6 +43,14 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
     end
   end
 
+  # In CodeMySpec's own project the framework is this repository: a coder told
+  # framework defects "belong to the framework" tapped out every issue in its bag.
+  defp framework_line(%{project_id: project_id}) do
+    if project_id == Application.get_env(:code_my_spec, :code_my_spec_project_id),
+      do: "framework defects are this repository's code, so fix them here.",
+      else: "framework defects belong to the framework rather than an application workaround."
+  end
+
   defp build_prompt(issue, task) do
     """
     # Fix Issue #{issue.id}
@@ -52,8 +60,7 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
     #{issue.description}
 
     Work in the issue's scope: app defects change application code; QA defects
-    repair the test tooling; docs defects correct documentation; framework
-    defects belong to the framework rather than an application workaround.
+    repair the test tooling; docs defects correct documentation; #{framework_line(issue)}
     Add or repair regression coverage. Do not skip tests, mark them pending,
     or silence failures to make validation pass. Preserve the original behavior
     assertion unless product explicitly changes the requirement.
