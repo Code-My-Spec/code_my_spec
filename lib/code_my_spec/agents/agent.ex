@@ -236,15 +236,6 @@ defmodule CodeMySpec.Agents.Agent do
     field :declined_offer_at, :utc_datetime_usec
     field :declined_offer_count, :integer
 
-    # The offer whose *delivery* failed, and when. Separate from the refusal
-    # fields above because the two are different facts: a refusal is the agent
-    # saying no, a delivery failure is our transport not reaching the machine.
-    # Pacing retries through the refusal streak made an unreachable harness
-    # look like a refusal, which held the work back for the decline window
-    # (criterion 2063's window) and left continuous agents idle after restarts.
-    field :delivery_failed_offer, :string
-    field :delivery_failed_at, :utc_datetime_usec
-
     # The provider's own words refusing this agent's last turn (usage limit,
     # auth, model), when, and the retry time if they named one. Nil once a turn
     # ends without a refusal. Issue 044599cc.
@@ -416,8 +407,6 @@ defmodule CodeMySpec.Agents.Agent do
       :declined_offer,
       :declined_offer_at,
       :declined_offer_count,
-      :delivery_failed_offer,
-      :delivery_failed_at,
       :provider_refusal,
       :provider_refused_at,
       :provider_retry_at,
