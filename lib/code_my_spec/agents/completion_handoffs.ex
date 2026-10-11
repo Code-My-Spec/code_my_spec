@@ -38,6 +38,8 @@ defmodule CodeMySpec.Agents.CompletionHandoffs do
     end
   end
 
+  @evidence [:artifact_sha, :parent_commit, :parent_gitlink, :verification]
+
   def complete(scope, owner_id, task_id, id, attrs) do
     result =
       Repo.transaction(fn ->
@@ -45,32 +47,10 @@ defmodule CodeMySpec.Agents.CompletionHandoffs do
 
         case {handoff.owner_agent_id, handoff.task_id, handoff.status} do
           {^owner_id, ^task_id, :assigned} ->
-            required = [:artifact_sha, :parent_commit, :parent_gitlink, :verification]
-
-            unless Enum.all?(required, &(is_binary(attrs[&1]) and String.trim(attrs[&1]) != "")),
-              do: Repo.rollback(:completion_evidence_required)
-
-            unless attrs[:artifact_sha] == attrs[:parent_gitlink],
-              do: Repo.rollback(:gitlink_does_not_match_artifact)
-
-            updated =
-              update!(
-                handoff,
-                Map.merge(Map.take(attrs, required), %{
-                  status: :completed,
-                  completed_at: DateTime.utc_now()
-                })
-              )
-
-            {updated, :new}
+            {record_completion(handoff, attrs), :new}
 
           {^owner_id, ^task_id, state} when state in [:completed, :acknowledged] ->
-            fields = [:artifact_sha, :parent_commit, :parent_gitlink, :verification]
-
-            unless Enum.all?(fields, &(Map.get(handoff, &1) == attrs[&1])),
-              do: Repo.rollback(:conflicting_completion)
-
-            {handoff, :existing}
+            {same_completion!(handoff, attrs), :existing}
 
           _ ->
             Repo.rollback(:not_assigned_owner_or_task)
@@ -89,6 +69,32 @@ defmodule CodeMySpec.Agents.CompletionHandoffs do
         error
     end
   end
+
+  defp record_completion(handoff, attrs) do
+    unless Enum.all?(@evidence, &present?(attrs[&1])),
+      do: Repo.rollback(:completion_evidence_required)
+
+    unless attrs[:artifact_sha] == attrs[:parent_gitlink],
+      do: Repo.rollback(:gitlink_does_not_match_artifact)
+
+    update!(
+      handoff,
+      Map.merge(Map.take(attrs, @evidence), %{
+        status: :completed,
+        completed_at: DateTime.utc_now()
+      })
+    )
+  end
+
+  # A repeated completion is idempotent only when it carries the same evidence.
+  defp same_completion!(handoff, attrs) do
+    unless Enum.all?(@evidence, &(Map.get(handoff, &1) == attrs[&1])),
+      do: Repo.rollback(:conflicting_completion)
+
+    handoff
+  end
+
+  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 
   def acknowledge(scope, main_id, id, note) when is_binary(note) and byte_size(note) > 0 do
     with :ok <- main?(scope, main_id) do

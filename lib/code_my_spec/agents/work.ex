@@ -359,6 +359,8 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
+  @blocker_cycle [:blocker_id, :blocker_type, :blocked_at, :blocker_resolved_at]
+
   @doc """
   Offer an idle agent back the tasks a resolved blocker released — only those
   its work now includes (criterion 1863). `header` says what resolved, `detail`
@@ -375,17 +377,7 @@ defmodule CodeMySpec.Agents.Work do
   def wake_released(scope, %Agent{} = agent, released, header, detail \\ nil, opts \\ []) do
     {:ok, agent} = AgentsRepository.fetch_agent(scope, agent.id)
 
-    released =
-      Enum.filter(released, fn previous ->
-        Enum.any?(agent.tasks || [], fn current ->
-          current.id == previous.id and current.status == :blocked and
-            not is_nil(current.blocker_resolved_at) and
-            current.blocker_id == previous.blocker_id and
-            current.blocker_type == previous.blocker_type and
-            current.blocked_at == previous.blocked_at and
-            current.blocker_resolved_at == previous.blocker_resolved_at
-        end)
-      end)
+    released = Enum.filter(released, &still_released?(agent, &1))
 
     execution = work_for(scope, agent.role, agent)
 
@@ -394,18 +386,30 @@ defmodule CodeMySpec.Agents.Work do
     if waiting != [],
       do: note_released(agent, with_detail(waiting_notice(header, waiting, execution), detail))
 
-    case ready do
-      [] ->
-        if agent.working_copy_id,
-          do: consider_copy(scope, agent.working_copy_id, :blocker_resolved)
+    resume_ready(scope, agent, ready, {header, detail}, opts)
+  end
 
-        :ok
+  defp resume_ready(scope, agent, [], _notice, _opts) do
+    if agent.working_copy_id,
+      do: consider_copy(scope, agent.working_copy_id, :blocker_resolved)
 
-      [task | _] ->
-        notice = with_detail("#{header}; #{resume_instruction(scope, ready)}", detail)
-        subject = Keyword.get(opts, :subject) || {"task", task.id}
-        wake_with_notice(scope, agent, notice, :blocker_resolved, subject)
-    end
+    :ok
+  end
+
+  defp resume_ready(scope, agent, [task | _] = ready, {header, detail}, opts) do
+    notice = with_detail("#{header}; #{resume_instruction(scope, ready)}", detail)
+    subject = Keyword.get(opts, :subject) || {"task", task.id}
+    wake_with_notice(scope, agent, notice, :blocker_resolved, subject)
+  end
+
+  # Still the release this wake was about: the same blocker cycle, resolved and
+  # not since re-blocked.
+  defp still_released?(agent, previous) do
+    Enum.any?(agent.tasks || [], fn current ->
+      current.id == previous.id and current.status == :blocked and
+        not is_nil(current.blocker_resolved_at) and
+        Map.take(current, @blocker_cycle) == Map.take(previous, @blocker_cycle)
+    end)
   end
 
   # Waiting only on its own story's evidence: the agent's work is that story
