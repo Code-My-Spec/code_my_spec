@@ -105,7 +105,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5308Spex do
         - #{app}.Accounts.Account -> #{app}.Accounts.User
         """
 
-        HarnessHooks.write_file(context, Fixtures.proposal_path(), proposal)
+        :ok =
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            Fixtures.proposal_path(),
+            proposal
+          )
 
         {:ok, context}
       end

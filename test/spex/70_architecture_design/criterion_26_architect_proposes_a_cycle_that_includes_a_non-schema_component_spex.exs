@@ -12,8 +12,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -110,7 +108,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         - #{app}.Rules -> #{app}.Stories
         """
 
-        HarnessHooks.write_file(context, Fixtures.proposal_path(), proposal)
+        :ok =
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            Fixtures.proposal_path(),
+            proposal
+          )
 
         {:ok, context}
       end
@@ -155,10 +158,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
         # No spec stubs should be created when execution is blocked by validation
         spec_path = Fixtures.spec_file(Macro.underscore("#{app}.Stories"))
 
-        refute Environments.file_exists?(
-                 Environment.new(:local, context.harness.root),
-                 spec_path
-               ),
+        refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
                "expected no spec stub at #{spec_path} when proposal was rejected"
 
         {:ok, context}

@@ -104,7 +104,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
         - #{app}.Features -> #{app}.SharedKit
         """
 
-        HarnessHooks.write_file(context, Fixtures.proposal_path(), proposal)
+        :ok =
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            Fixtures.proposal_path(),
+            proposal
+          )
 
         {:ok, context}
       end

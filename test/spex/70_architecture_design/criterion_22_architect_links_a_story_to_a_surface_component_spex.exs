@@ -94,7 +94,12 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
         - #{app}Web.StoryLive.Index -> #{app}.Stories
         """
 
-        HarnessHooks.write_file(context, Fixtures.proposal_path(), proposal)
+        :ok =
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            Fixtures.proposal_path(),
+            proposal
+          )
 
         {:ok, context}
       end

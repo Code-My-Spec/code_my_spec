@@ -151,6 +151,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
       do: :ok = Fixtures.designate_main(scope, scope.active_working_copy_id)
 
     scope = %{scope | active_working_copy_id: working_copy_id}
+    :ok = keep_fixture_files(working_copy_id, Map.get(context, :environment))
 
     context
     |> Map.put(:harness, %{
@@ -162,6 +163,15 @@ defmodule CodeMySpecSpex.HarnessHooks do
       server_url: url
     })
     |> Map.put(:scope, scope)
+  end
+
+  # The fixture's files stay in its in-memory runtime: the server reads that for
+  # the harness's copy, never the checkout on disk.
+  defp keep_fixture_files(_working_copy_id, nil), do: :ok
+
+  defp keep_fixture_files(working_copy_id, env) do
+    :ok = Environments.unregister({:working_copy, working_copy_id})
+    Environments.register({:working_copy, working_copy_id}, env)
   end
 
   @doc """
