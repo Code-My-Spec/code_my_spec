@@ -357,7 +357,7 @@ defmodule CodeMySpec.Notifications do
                      "tool_input" => %{"task_id" => task_id, "reason" => reason}
                    }),
                  :ok <- block_tap_out_task(scope, owner, task, request, reason) do
-              {request, true}
+              {request, user_decides?(owner)}
             else
               {:error, error} -> Repo.rollback(error)
             end
@@ -367,12 +367,17 @@ defmodule CodeMySpec.Notifications do
         end
       end)
 
-    with {:ok, {request, created?}} <- result do
-      if created?, do: deliver_permission(request)
+    with {:ok, {request, push?}} <- result do
+      if push?, do: deliver_permission(request)
 
       {:ok, request}
     end
   end
+
+  # A teammate's tap-out is the main agent's to decide (criterion 2073), so the
+  # person is pushed only for one that is theirs: main's own, or a session's.
+  defp user_decides?(%Agent{role: role}), do: role == :main
+  defp user_decides?(_session), do: true
 
   defp tap_out_owner_key(Agent), do: :agent_id
   defp tap_out_owner_key(Session), do: :session_id
