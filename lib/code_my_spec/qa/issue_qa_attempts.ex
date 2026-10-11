@@ -28,10 +28,11 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   Optional: `:issue_ids`.
 
   A pass completes `owner`'s task and hands the coder the promotion — or, if
-  the fix already landed, resolves the issue and frees the team. Anything else
-  just completes the task — the issue stays open and bound, and the coder is
-  offered it again (`Agents.IssueWork`, from the fresh non-pass attempt
-  outranking the fix it tested).
+  the fix already landed, resolves the issue and frees the team. A partial
+  attempt could not judge the fix (an environment or tooling problem, not a
+  finding against it), so it completes the task and leaves the issue with
+  QA to try again. A fail completes the task and sends the fix back to the
+  coder (John, cae2db90).
 
   Returns `{:ok, attempt}` or `{:error, changeset | atom}`.
   """
@@ -64,6 +65,16 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
       attempt
     else
       nil -> Repo.rollback(:issue_not_found)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  # Could not judge the fix, rather than judging it wrong — QA keeps the
+  # issue and tries again; there is nothing for the coder to act on.
+  defp handle_outcome(scope, owner, %{status: :partial} = attempt) do
+    with {:ok, _} <- TaskOwner.complete_task(scope, owner, attempt.task_id, :completed) do
+      attempt
+    else
       {:error, reason} -> Repo.rollback(reason)
     end
   end
@@ -131,7 +142,7 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   @spec passed?(Scope.t(), Ecto.UUID.t()) :: boolean()
   def passed?(%Scope{} = scope, issue_id), do: match?(%{status: :pass}, latest(scope, issue_id))
 
-  # A non-passing attempt is QA's turn finishing, same as a passing one —
+  # A failing attempt is QA's turn finishing, same as a passing one —
   # it just hands the issue back to the coder instead of resolving it.
   defp send_back_to_coder(scope, issue_id) do
     case Issues.get_issue(scope, issue_id) do
