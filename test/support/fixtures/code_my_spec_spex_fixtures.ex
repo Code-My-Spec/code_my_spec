@@ -1602,9 +1602,25 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec sync_files(Scope.t()) :: :ok
   def sync_files(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
-    {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: scope.cwd)
+    opts = fixture_sync_opts(scope)
+    {:ok, _} = FileSync.sync(scope, opts)
+    {:ok, _} = ComponentSync.sync_from_files(scope, opts)
     :ok
+  end
+
+  # A fixture's files live in its registered runtime. A scope switched onto a
+  # harness copy cannot be walked from here, so the fixture syncs what it wrote.
+  defp fixture_sync_opts(scope) do
+    case WorkingCopies.environment(scope) do
+      %{type: :harness} ->
+        case UsersFixtures.fixture_environment(scope) do
+          nil -> [base_dir: scope.cwd]
+          env -> [base_dir: scope.cwd, environment: env]
+        end
+
+      _ ->
+        [base_dir: scope.cwd]
+    end
   end
 
   @doc """
@@ -1616,7 +1632,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec sync_changed(Scope.t()) :: :ok
   def sync_changed(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
+    {:ok, _} = FileSync.sync_changed(scope, fixture_sync_opts(scope))
     :ok
   end
 
@@ -3957,6 +3973,9 @@ defmodule CodeMySpecSpex.Fixtures do
   beneath it. `ensure_dir/2` is a no-op there for the same reason.
   """
   @spec add_phoenix_project_shape(Scope.t()) :: :ok
+  def add_phoenix_project_shape(%Scope{} = scope),
+    do: add_phoenix_project_shape(%{environment: UsersFixtures.fixture_environment(scope)})
+
   def add_phoenix_project_shape(%{environment: env}) do
     :ok = Environments.write_file(env, "mix.exs", "# stub for PhoenixProject.evaluate\n")
     :ok = Environments.write_file(env, "lib/.gitkeep", "")
@@ -3973,6 +3992,9 @@ defmodule CodeMySpecSpex.Fixtures do
   never had the shape passes for the wrong reason.
   """
   @spec remove_mix_exs(Scope.t()) :: :ok
+  def remove_mix_exs(%Scope{} = scope),
+    do: remove_mix_exs(%{environment: UsersFixtures.fixture_environment(scope)})
+
   def remove_mix_exs(%{environment: env}) do
     :ok = Environments.delete_file(env, "mix.exs")
     :ok
@@ -5357,13 +5379,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # before the run is stamped — the way the thing that reads it syncs
     # (criteria 6529, 6532, 6533 were flaky without it while runs carried
     # fingerprints of the file set).
-    #
-    # Except on a live harness's copy: the server cannot walk it, and the
-    # harness has already put its files in the ledger by manifest.
-    case FileSync.sync(scope, base_dir: scope.cwd) do
-      {:ok, _} -> :ok
-      {:error, {:cannot_scan, :not_supported_on_harness}} -> :ok
-    end
+    {:ok, _} = FileSync.sync(scope, fixture_sync_opts(scope))
 
     result =
       CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(
@@ -5415,7 +5431,7 @@ defmodule CodeMySpecSpex.Fixtures do
   the step production cannot skip.
   """
   def scan_working_copy(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope)
+    {:ok, _} = FileSync.sync(scope, fixture_sync_opts(scope))
     :ok
   end
 

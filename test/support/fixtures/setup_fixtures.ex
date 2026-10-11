@@ -56,7 +56,7 @@ defmodule CodeMySpec.SetupFixtures do
     # populate `valid` + `validation_errors`. The Setup.* step `check/1`
     # functions read those persisted records — they no longer touch disk.
     if scope.active_project_id do
-      {:ok, _} = FileSync.sync(scope)
+      {:ok, _} = FileSync.sync(scope, environment: env)
     end
 
     :ok
