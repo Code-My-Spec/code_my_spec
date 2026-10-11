@@ -14,10 +14,10 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
