@@ -1618,25 +1618,9 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec sync_files(Scope.t()) :: :ok
   def sync_files(%Scope{} = scope) do
-    opts = fixture_sync_opts(scope)
-    {:ok, _} = FileSync.sync(scope, opts)
-    {:ok, _} = ComponentSync.sync_from_files(scope, opts)
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
+    {:ok, _} = ComponentSync.sync_from_files(scope, base_dir: scope.cwd)
     :ok
-  end
-
-  # A fixture's files live in its registered runtime. A scope switched onto a
-  # harness copy cannot be walked from here, so the fixture syncs what it wrote.
-  defp fixture_sync_opts(scope) do
-    case WorkingCopies.environment(scope) do
-      %{type: :harness} ->
-        case UsersFixtures.fixture_environment(scope) do
-          nil -> [base_dir: scope.cwd]
-          env -> [base_dir: scope.cwd, environment: env]
-        end
-
-      _ ->
-        [base_dir: scope.cwd]
-    end
   end
 
   @doc """
@@ -1648,7 +1632,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec sync_changed(Scope.t()) :: :ok
   def sync_changed(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync_changed(scope, fixture_sync_opts(scope))
+    {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
     :ok
   end
 
@@ -5367,6 +5351,17 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  defp sync_ledger(scope) do
+    case WorkingCopies.environment(scope) do
+      %{type: :harness} ->
+        :ok
+
+      _ ->
+        {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
+        :ok
+    end
+  end
+
   @doc """
   Stamp a completed analysis run per source.
 
@@ -5394,8 +5389,9 @@ defmodule CodeMySpecSpex.Fixtures do
     # A full sync first, so the files a reader will see are in the ledger
     # before the run is stamped — the way the thing that reads it syncs
     # (criteria 6529, 6532, 6533 were flaky without it while runs carried
-    # fingerprints of the file set).
-    {:ok, _} = FileSync.sync(scope, fixture_sync_opts(scope))
+    # fingerprints of the file set). A copy served by its harness is kept
+    # current by the harness's manifests; the server has no tree to walk.
+    :ok = sync_ledger(scope)
 
     result =
       CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(
@@ -5447,7 +5443,7 @@ defmodule CodeMySpecSpex.Fixtures do
   the step production cannot skip.
   """
   def scan_working_copy(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope, fixture_sync_opts(scope))
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
     :ok
   end
 

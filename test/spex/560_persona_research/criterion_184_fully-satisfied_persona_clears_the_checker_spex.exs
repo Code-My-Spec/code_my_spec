@@ -24,7 +24,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.HarnessHooks
-  alias CodeMySpecSpex.ProjectStateFixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -58,14 +57,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
       given_ :persona_research_task_started
 
       when_ "the agent fires the stop hook", context do
-        # The harness syncs the checkout before firing the stop hook — see
-        # `Validation`, which skips `FileSync.sync_changed/2` "because the
-        # harness has already done" it. No harness here, and the artifacts
-        # this scenario wrote are what the hook is about.
         response =
-          ProjectStateFixtures.synced(context)
-
-        HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :stop_response, response)}
       end

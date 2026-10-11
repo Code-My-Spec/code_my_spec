@@ -106,9 +106,10 @@ defmodule CodeMySpecSpex.HarnessHooks do
       scanner tracks: a harness whose scan finds nothing refuses to send it.
     * `:feature` — `true` makes this checkout a feature copy, with the scope's
       fixture copy designated main (see "Two working copies").
-    * `:in_memory` — `false` leaves the server reading the checkout through the
-      harness, for a test of that round trip; by default the copy reads the
-      fixture's in-memory runtime.
+    * `:environment` — what the server reads for this copy. `:checkout` (the
+      default) reads the checkout through the harness, as production does.
+      `:in_memory` reads `context.environment`, for a spex whose files live in
+      the fixture's in-memory runtime rather than on the checkout.
   """
   @spec given_a_live_harness(map(), keyword()) :: map()
   def given_a_live_harness(context, opts \\ []) do
@@ -155,8 +156,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
     scope = %{scope | active_working_copy_id: working_copy_id}
 
-    if Keyword.get(opts, :in_memory, true),
-      do: :ok = keep_fixture_files(working_copy_id, Map.get(context, :environment))
+    :ok = serve_from(Keyword.get(opts, :environment, :checkout), working_copy_id, context)
 
     context
     |> Map.put(:harness, %{
@@ -170,11 +170,20 @@ defmodule CodeMySpecSpex.HarnessHooks do
     |> Map.put(:scope, scope)
   end
 
-  # The fixture's files stay in its in-memory runtime: the server reads that for
-  # the harness's copy, never the checkout on disk.
-  defp keep_fixture_files(_working_copy_id, nil), do: :ok
+  @doc """
+  From here on the harness's copy reads `context.environment`, the fixture's
+  in-memory runtime, instead of the checkout — what `environment: :in_memory`
+  does at start, for a harness a shared given already started.
+  """
+  @spec serve_in_memory(map()) :: map()
+  def serve_in_memory(%{harness: %{working_copy_id: id}} = context) do
+    :ok = serve_from(:in_memory, id, context)
+    context
+  end
 
-  defp keep_fixture_files(working_copy_id, env) do
+  defp serve_from(:checkout, _working_copy_id, _context), do: :ok
+
+  defp serve_from(:in_memory, working_copy_id, %{environment: %Environment{type: :memory} = env}) do
     :ok = Environments.unregister({:working_copy, working_copy_id})
     Environments.register({:working_copy, working_copy_id}, env)
   end

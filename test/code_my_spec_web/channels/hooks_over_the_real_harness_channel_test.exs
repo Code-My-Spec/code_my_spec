@@ -63,10 +63,7 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
   @doc "session-start, then two stops that judge a file read over the channel."
   def drive_a_session(ctx) do
     ctx =
-      HarnessHooks.given_a_live_harness(ctx,
-        files: %{"lib/app.ex" => "defmodule App do\nend\n"},
-        in_memory: false
-      )
+      HarnessHooks.given_a_live_harness(ctx, files: %{"lib/app.ex" => "defmodule App do\nend\n"})
 
     session_id = "e2e-#{System.unique_integer([:positive])}"
     story = Fixtures.authored_story(ctx.scope, "Owners see their home page")

@@ -39,6 +39,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
 
       when_ "the agent writes both files, fires the stop hook and asks for next work",
             context do
+        context = HarnessHooks.serve_in_memory(context)
+
         :ok =
           Environments.write_file(
             context.environment,
@@ -53,15 +55,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
             "- https://example.com — Source — 2026-04-23\n"
           )
 
-        # The harness syncs the checkout before it fires the stop hook — see
-        # `Validation`, which skips `FileSync.sync_changed/2` "because the
-        # harness has already done" it. There is no harness here, and the files
-        # this scenario wrote are what the hook is about, so the fixture does it.
-        #
-        # This used to happen by accident further down: `GetNextRequirement`
-        # opened with a full `FileSync.sync/2`, so files written any time before
-        # the agent asked were picked up on the way to the graph. That made a
-        # read responsible for a write's visibility and is gone (c83c5b58).
+        # This copy reads the fixture's in-memory runtime, which no harness
+        # scans, so the fixture syncs what was written before the stop hook.
         ProjectStateFixtures.synced(context)
 
         HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})

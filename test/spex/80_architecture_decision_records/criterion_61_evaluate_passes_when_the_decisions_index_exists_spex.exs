@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5275Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,6 +31,10 @@ defmodule CodeMySpecSpex.Story80.Criterion5275Spex do
       end
 
       given_ :technical_strategy_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "the decisions index file exists", context do
         Fixtures.with_decisions_index(context.environment)
