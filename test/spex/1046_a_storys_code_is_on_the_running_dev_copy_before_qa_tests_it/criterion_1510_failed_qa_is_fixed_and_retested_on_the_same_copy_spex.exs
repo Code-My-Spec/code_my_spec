@@ -20,13 +20,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.WorkingCopyHelpers
-
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -126,7 +125,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   # there is no second checkout here the way the promotion-flow criteria need.
   defp a_registered_copy(context) do
     root = CodeMySpec.TempFile.dir("spex-1510-copy")
-    {copy, socket} = join_working_copy_socket(context, root, "the coding agent's copy")
+
+    {copy, socket} =
+      PromotionHelpers.join_local_working_copy_socket(
+        context,
+        root,
+        "the coding agent's copy"
+      )
 
     context
     |> Map.put(:copy, copy)

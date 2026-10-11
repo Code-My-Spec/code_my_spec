@@ -33,12 +33,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1960Spex do
              context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()
         commit_work(context, context.agent_root, "lib/broken_oaths/diplomacy/peace.ex", peace())
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        context =
-          context
-          |> Map.put(:story, a_promotable_story(context))
-          |> Map.put(:certified, head_of(context, context.agent_root))
+        context = Map.put(context, :certified, head_of(context, context.agent_root))
 
         {:ok, context}
       end

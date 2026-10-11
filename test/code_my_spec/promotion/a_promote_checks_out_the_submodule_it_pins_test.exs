@@ -17,6 +17,7 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Support.InMemoryEnvironment
@@ -118,6 +119,8 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     {:ok, agent} = WorkingCopies.report_root(agent, @agent)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script(overrides))
+    :ok = Environments.register({:working_copy, running.id}, env)
+    :ok = Environments.register({:working_copy, agent.id}, env)
     scope = %{scope | active_working_copy_id: agent.id, environment: env}
 
     story = story_fixture(scope)

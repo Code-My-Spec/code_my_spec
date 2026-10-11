@@ -22,8 +22,9 @@ defmodule CodeMySpecSpex.Story983.Criterion1778Spex do
   spex "A certified commit promotes on the runs that certified it", criterion: 1778 do
     scenario "nothing changed since the story was certified" do
       given_ "a story certified ready for QA through its held task", context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
+        context = a_promotable_project(context)
         story = a_promotable_story(context)
+        context = analyzers_are_current(context)
         context = a_held_ready_for_qa_task(context, story)
         {false, _} = complete_ready_for_qa(context)
         {:ok, Map.put(context, :story, story)}

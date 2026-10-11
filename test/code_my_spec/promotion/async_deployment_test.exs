@@ -23,6 +23,8 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
@@ -136,6 +138,13 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
       )
 
     {:ok, running} = WorkingCopies.report_root(running, running_root)
+
+    :ok =
+      Environments.register(
+        {:working_copy, running.id},
+        Environment.new(:local, running_root)
+      )
+
     a_running_harness_for(running.id, running_root)
 
     {:ok, agent} =
@@ -145,6 +154,12 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
       )
 
     {:ok, agent} = WorkingCopies.report_root(agent, agent_root)
+
+    :ok =
+      Environments.register(
+        {:working_copy, agent.id},
+        Environment.new(:local, agent_root)
+      )
 
     File.write!(
       Path.join(agent_root, "app.ex"),

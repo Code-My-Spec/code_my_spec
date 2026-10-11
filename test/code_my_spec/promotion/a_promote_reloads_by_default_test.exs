@@ -17,6 +17,8 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
 
@@ -88,10 +90,23 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
       WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
 
     {:ok, running} = WorkingCopies.report_root(running, running_root)
+
+    :ok =
+      Environments.register(
+        {:working_copy, running.id},
+        Environment.new(:local, running_root)
+      )
+
     a_harness_for(running.id, running_root, opts)
 
     {:ok, agent} = WorkingCopies.issue(scope, nil, label: "agent", device: device_fixture(scope))
     {:ok, agent} = WorkingCopies.report_root(agent, agent_root)
+
+    :ok =
+      Environments.register(
+        {:working_copy, agent.id},
+        Environment.new(:local, agent_root)
+      )
 
     File.write!(Path.join(agent_root, path), "# changed\n")
     git!(agent_root, ["commit", "-qam", "the work"])

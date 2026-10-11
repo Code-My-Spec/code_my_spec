@@ -37,9 +37,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1965Spex do
           treaty()
         )
 
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        {:ok, context}
       end
 
       when_ "the agent promotes", context do
@@ -60,9 +61,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1965Spex do
       given_ "a story branch level with main, its analyzers current", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()
         commit_work(context, context.agent_root, "lib/broken_oaths/diplomacy/peace.ex", peace())
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        {:ok, context}
       end
 
       when_ "the agent promotes, and the queue lands it", context do

@@ -20,6 +20,7 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Support.InMemoryEnvironment
@@ -74,7 +75,7 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     a_harness(copy.id)
     {:ok, env} = InMemoryEnvironment.create(shell: script(status))
     scope = %{scope | active_working_copy_id: copy.id, environment: env}
-    :ok = register_working_copy_environment(scope, env)
+    :ok = Environments.register({:working_copy, copy.id}, env)
     %{scope: scope, story: story_fixture(scope)}
   end
 

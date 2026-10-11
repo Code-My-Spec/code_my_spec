@@ -31,11 +31,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1169Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -139,15 +138,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1169Spex do
   end
 
   defp this_copy_is_the_running_one(context) do
-    {:ok, view, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/working-copies")
-
-    view
-    |> element(
-      "[data-test='designate-main-copy'][phx-value-id='#{context.scope.active_working_copy_id}']"
-    )
-    |> render_click()
-
+    assert WorkingCopies.main(context.scope).id == context.scope.active_working_copy_id
     context
   end
 

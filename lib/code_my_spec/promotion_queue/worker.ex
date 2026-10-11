@@ -26,6 +26,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Analysis.ValidationHolds
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
@@ -35,6 +36,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
+  alias Phoenix.PubSub
 
   # One candidate per batch (John, 2026-10-05): a red batch is the candidate
   # that was in it, with nothing to work out.
@@ -58,13 +60,21 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   @impl true
   def init({project_id, scope}) do
-    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
-    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
-    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "completion_handoffs:#{project_id}")
+    PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
+    PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
+    PubSub.subscribe(CodeMySpec.PubSub, "completion_handoffs:#{project_id}")
     Repository.requeue_gating(project_id)
     send(self(), :next)
 
-    {:ok, %{project_id: project_id, scope: scope, phase: :idle, batch: nil, timer: nil}}
+    {:ok,
+     %{
+       project_id: project_id,
+       scope: scope,
+       phase: :idle,
+       batch: nil,
+       timer: nil,
+       reserved_entries: []
+     }}
   end
 
   @impl true
@@ -126,25 +136,33 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp next(state) do
     state = cancel_timer(state)
 
-    case CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(state.project_id) do
-      false ->
-        {:noreply, %{state | phase: :idle, batch: nil}}
-
-      true ->
-        case Repository.queued(state.project_id, @batch_cap) do
-          [] ->
-            {:noreply, %{state | phase: :idle, batch: nil}}
-
-          [entry] ->
-            case Repository.move(entry, :gating, %{}) do
-              {:ok, reserved} -> build(%{state | reserved_entries: [reserved]}, [reserved])
-              {:error, :validation_held} -> {:noreply, state}
-              {:error, :completion_handoff_pending} -> {:noreply, state}
-              {:error, reason} -> could_not_build(state, reason)
-            end
-        end
+    if ValidationHolds.promotion_allowed?(state.project_id) do
+      reserve_next(state)
+    else
+      {:noreply, idle(state)}
     end
   end
+
+  defp reserve_next(state) do
+    case Repository.queued(state.project_id, @batch_cap) do
+      [] ->
+        {:noreply, idle(state)}
+
+      [entry] ->
+        reserve_and_build(state, entry)
+    end
+  end
+
+  defp reserve_and_build(state, entry) do
+    case Repository.move(entry, :gating, %{}) do
+      {:ok, reserved} -> build(%{state | reserved_entries: [reserved]}, [reserved])
+      {:error, :validation_held} -> {:noreply, idle(state)}
+      {:error, :completion_handoff_pending} -> {:noreply, idle(state)}
+      {:error, reason} -> could_not_build(state, reason)
+    end
+  end
+
+  defp idle(state), do: %{state | phase: :idle, batch: nil, reserved_entries: []}
 
   defp build(state, entries) do
     case main_head(state.scope) do
@@ -170,7 +188,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     with %WorkingCopy{} = gate <- find_gate_copy(scope),
          {:ok, %{contained: [_ | _] = contained}} <-
            Runner.contained(
-             scope_for(scope, gate),
+             WorkingCopies.environment(scope_for(scope, gate)),
              gate.root,
              base,
              Enum.map(entries, & &1.commit),
@@ -199,7 +217,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     with {:ok, %WorkingCopy{root: root} = copy} when is_binary(root) <-
            WorkingCopies.fetch(entry.working_copy_id),
          own = scope_for(scope, copy),
-         {:ok, %{head: head}} <- Runner.precheck(own, root, copy.id, base),
+         {:ok, %{head: head}} <-
+           Runner.precheck(WorkingCopies.environment(own), root, copy.id, base),
          true <- head == entry.commit,
          true <- Promotion.certified_at?(own, entry.commit) do
       {:ok, copy}
@@ -215,7 +234,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
          gate_scope = scope_for(state.scope, gate),
          {:ok, built} <-
            Runner.build_batch(
-             gate_scope,
+             WorkingCopies.environment(gate_scope),
              gate.root,
              base,
              Enum.map(entries, & &1.commit),
@@ -233,7 +252,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           # One the build neither merged nor ejected is still queued, so
           # building again at once rebuilds the same batch, silently, forever.
           case Enum.reject(unaccounted, &MapSet.member?(conflicted, &1.commit)) do
-            [] -> next(state)
+            [] -> next(%{state | reserved_entries: []})
             left -> could_not_build(state, %{reason: unaccounted_reason(left, built)})
           end
 
@@ -281,13 +300,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     # unanswered, nothing else was due to ask, and the queue sat for over an
     # hour behind it.
     send(self(), :gate)
-    {:noreply, recheck_later(%{state | phase: :gating, batch: batch})}
+    {:noreply, recheck_later(%{state | phase: :gating, batch: batch, reserved_entries: []})}
   end
 
   defp could_not_build(state, reason) do
-    requeue(Map.get(state, :reserved_entries, []))
+    requeue(state.reserved_entries)
     Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
-    {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
+    {:noreply, retry_later(%{state | phase: :idle, batch: nil, reserved_entries: []})}
   end
 
   defp unaccounted_reason(entries, built) do
@@ -371,7 +390,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       failing ->
         for {entry, reason} <- failing, do: eject(state.scope, entry, Map.get(reason, :reason))
         requeue(batch.entries -- Enum.map(failing, &elem(&1, 0)))
-        next(%{state | phase: :idle, batch: nil})
+        next(idle(state))
     end
   end
 
@@ -393,7 +412,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # is split until it is.
   defp bisect(%{batch: %{entries: [single]}} = state, reason) do
     eject(state.scope, single, reason)
-    next(%{state | phase: :idle, batch: nil})
+    next(idle(state))
   end
 
   # The rest go back to waiting, still ahead of anything enqueued since; the
@@ -446,7 +465,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       )
     end
 
-    next(%{state | phase: :idle, batch: nil})
+    next(idle(state))
   end
 
   # -- Land -------------------------------------------------------------------
@@ -487,7 +506,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         )
 
         requeue(batch.entries)
-        next(%{state | phase: :idle, batch: nil})
+        next(idle(state))
 
       {:error, _} ->
         then.(state)
@@ -520,7 +539,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           tell(state.scope, entry, landed_text(entry, batch, result))
         end
 
-        next(%{state | phase: :idle, batch: nil})
+        next(idle(state))
 
       {:error, reason} ->
         # Main moved under the batch (a direct promotion landed) or the merge
@@ -640,7 +659,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp main_version(scope) do
     with %WorkingCopy{root: root} = main when is_binary(root) <- WorkingCopies.main(scope),
-         {:ok, %{version: version}} <- Runner.current(scope_for(scope, main), root, main.id) do
+         {:ok, %{version: version}} <-
+           Runner.current(WorkingCopies.environment(scope_for(scope, main)), root, main.id) do
       version
     else
       _ -> nil
@@ -651,7 +671,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp main_head(scope) do
     case WorkingCopies.main(scope) do
       %WorkingCopy{root: root} = main when is_binary(root) ->
-        case Runner.current(scope_for(scope, main), root, main.id) do
+        case Runner.current(WorkingCopies.environment(scope_for(scope, main)), root, main.id) do
           {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
           other -> {:error, %{reason: "could not read main's HEAD: #{inspect(other)}"}}
         end
@@ -661,12 +681,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  # A scope addressing `copy`: over its harness, or — when the template runs
-  # on this machine (the suite) — here.
-  defp scope_for(%Scope{environment: %{type: type}} = scope, copy) when type != :harness,
+  # Database calls keep their project scope. Disk operations resolve the
+  # environment from this exact copy id, independently of Scope.environment.
+  defp scope_for(%Scope{} = scope, copy),
     do: %{scope | active_working_copy_id: copy.id, cwd: copy.root}
-
-  defp scope_for(%Scope{} = scope, copy), do: WorkingCopies.put_scope(scope, copy)
 
   defp recheck_later(state, message \\ :gate) do
     state = cancel_timer(state)

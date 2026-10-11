@@ -51,7 +51,11 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
           border()
         )
 
-        story = a_promotable_story(context, title: "Fix the border dispute")
+        story =
+          a_promotable_story(%{context | scope: context.team_a.scope},
+            title: "Fix the border dispute"
+          )
+
         _qa = Fixtures.running_agent(context.team_a.scope, role: "qa")
 
         {:reply, set_active, _frame} =

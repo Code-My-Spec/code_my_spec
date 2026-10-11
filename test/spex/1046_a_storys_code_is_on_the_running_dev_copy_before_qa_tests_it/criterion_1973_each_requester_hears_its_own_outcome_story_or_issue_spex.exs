@@ -45,7 +45,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion1973Spex do
           oath()
         )
 
-        story = a_promotable_story(context, title: "Oaths are sworn")
+        story_context = %{
+          context
+          | scope: context.story_agent.scope,
+            agent_root: context.story_agent.root
+        }
+
+        story = a_promotable_story(story_context, title: "Oaths are sworn")
         its_analyzers_are_current(context, context.story_agent)
 
         {:ok, context |> analyzers_are_current() |> Map.put(:story, story)}
@@ -109,9 +115,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1973Spex do
           war(":second")
         )
 
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        {:ok, context}
       end
 
       when_ "both promote, one after the other", context do
@@ -160,9 +167,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1973Spex do
           treaty()
         )
 
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        {:ok, context}
       end
 
       when_ "the agent promotes it", context do

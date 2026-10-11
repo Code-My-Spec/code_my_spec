@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
   alias CodeMySpec.PromotionQueue.Worker
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -47,10 +48,8 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   spex-passing check reads cares about one — with a passing BDD spec file
   synced for every one of its criteria. e1174640's own precondition for a
   `promote(story_number)` naming it to succeed: `Promotion.story_spex_pass/3`
-  reads `Files.list_story_files/2` (a project-wide row, not tied to
-  whichever checkout wrote it — see `apply_bdd_spec_for_story/2`'s own use
-  of `context.environment`, the fake domain filesystem `Files` syncs from)
-  and there must be at least one, none of them failing.
+  reads `Files.list_story_files/2` for the promoting working copy, and there
+  must be at least one spec file there, none of them failing.
 
   `red?: true` records a failing spex problem against the story's own
   first criterion's file instead, for a scenario proving the refusal
@@ -70,6 +69,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
       )
 
     :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
+    sync_story_specs_to_local_copy(context, story)
     qa(context, story, Keyword.get(opts, :qa, :passed))
 
     if Keyword.get(opts, :red?, false) do
@@ -91,6 +91,117 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     do: {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
   defp qa(_context, _story, :not_passed), do: :ok
+
+  # The state fixture writes through the project's source environment.
+  # Promotion reads spec evidence from the active copy, so publish these
+  # generated files into that exact local checkout and commit only those paths.
+  @doc """
+  Mirror and commit a story's fixture BDD specs in the exact active local copy.
+
+  Source environments without a corresponding local working-copy environment
+  are left alone, preserving memory-only fixture scenarios.
+  """
+  def sync_story_specs_to_local_copy(%{scope: scope, environment: source}, story) do
+    case WorkingCopies.environment(scope) do
+      %Environment{type: :local, cwd: root} = local when is_binary(root) ->
+        paths =
+          Enum.map(story.criteria, fn criterion ->
+            path = Fixtures.spec_file_path(story, criterion)
+            {:ok, contents} = Environments.read_file(source, path)
+            :ok = Environments.write_file(local, path, contents)
+            path
+          end)
+
+        commit_fixture_specs(local, root, paths)
+        :ok = Fixtures.sync_files(scope)
+
+      _ ->
+        :ok
+    end
+  end
+
+  def sync_story_specs_to_local_copy(_context, _story), do: :ok
+
+  @doc """
+  Copy generated fixture files from the source environment into the selected
+  local checkout, then publish their exact contents to Files.
+
+  Only the fixture-owned roots are copied. A generated `mix.exs` is included
+  only when the local checkout has none, because the boundary checker needs its
+  app name to resolve the fixtures bridge path.
+  """
+  def materialize_source_fixture_files(%{scope: scope, environment: source}) do
+    case WorkingCopies.environment(scope) do
+      %Environment{type: :local, cwd: root} = local when is_binary(root) ->
+        paths = source_fixture_paths(source, local)
+
+        changed_paths =
+          Enum.reduce(paths, [], fn path, changed ->
+            copy_changed_fixture_file(source, local, path, changed)
+          end)
+
+        commit_fixture_paths(local, root, Enum.reverse(changed_paths))
+        :ok = Fixtures.sync_files(scope)
+
+      _ ->
+        :ok
+    end
+  end
+
+  def materialize_source_fixture_files(_context), do: :ok
+
+  defp copy_changed_fixture_file(source, local, path, changed) do
+    {:ok, contents} = Environments.read_file(source, path)
+
+    case Environments.read_file(local, path) do
+      {:ok, ^contents} ->
+        changed
+
+      _ ->
+        :ok = Environments.write_file(local, path, contents)
+        [path | changed]
+    end
+  end
+
+  defp source_fixture_paths(source, local) do
+    fixture_paths =
+      Environments.stream_files(source, [".code_my_spec", "lib", "test", "config"])
+      |> Enum.map(&Path.relative_to(&1, source.cwd))
+
+    mix_file_paths =
+      if Environments.file_exists?(local, "mix.exs") or
+           not Environments.file_exists?(source, "mix.exs") do
+        []
+      else
+        ["mix.exs"]
+      end
+
+    (fixture_paths ++ mix_file_paths)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp commit_fixture_specs(local, root, paths) do
+    commit_fixture_paths(local, root, paths, "add promotion fixture specs")
+  end
+
+  defp commit_fixture_paths(_local, _root, []), do: :ok
+
+  defp commit_fixture_paths(local, root, paths) do
+    commit_fixture_paths(local, root, paths, "materialize promotion fixture setup")
+  end
+
+  defp commit_fixture_paths(local, root, paths, message) do
+    {_, 0} = Environments.cmd(local, "git", ["add", "--" | paths], cd: root)
+
+    {_, 0} =
+      Environments.cmd(
+        local,
+        "git",
+        ["commit", "-q", "-m", message, "--" | paths],
+        cd: root
+      )
+  end
 
   @doc """
   A running checkout on `main` and an agent's worktree on `story/war`.
@@ -133,8 +244,8 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_out, 0} =
       git(context, running_root, ["worktree", "add", "-b", "story/war", agent_root, "main"])
 
-    running = join_working_copy(context, running_root, "the checkout the dev app runs in")
-    agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    running = join_main_working_copy(context, running_root, "the checkout the dev app runs in")
+    agent = join_local_working_copy(context, agent_root, "the coding agent's copy")
     context = a_gate_copy(context, running_root)
 
     # The running checkout joined first and so holds the designation. Asserted,
@@ -178,7 +289,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_, 0} = git(context, running_root, ["worktree", "add", "--detach", gate_root, "main"])
 
     {gate, socket} =
-      join_working_copy_socket(context, gate_root, Worker.gate_label())
+      join_local_working_copy_socket(context, gate_root, Worker.gate_label())
 
     context
     |> Map.put(:gate_root, gate_root)
@@ -328,7 +439,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_, 0} =
       git(context, context.running_root, ["worktree", "add", "-b", "story/#{key}", root, from])
 
-    copy = join_working_copy(context, root, "#{key}'s copy")
+    copy = join_local_working_copy(context, root, "#{key}'s copy")
     scope = %{context.scope | active_working_copy_id: copy.working_copy_id}
 
     agent = Fixtures.running_agent(scope, provider: "anthropic", working_copy: root)
@@ -456,4 +567,43 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   end
 
   def exists?(root, path), do: Environments.file_exists?(disk(root), path)
+
+  @doc """
+  Join a promotion checkout and register its real local disk environment by working copy ID.
+  """
+  def join_local_working_copy(context, root, label, opts \\ []) do
+    copy = join_working_copy(context, root, label, opts)
+    register_disk_environment(copy, root)
+    copy
+  end
+
+  @doc """
+  Join a promotion checkout with its channel and register its local disk environment.
+  """
+  def join_local_working_copy_socket(context, root, label, opts \\ []) do
+    {copy, socket} = join_working_copy_socket(context, root, label, opts)
+    register_disk_environment(copy, root)
+    {copy, socket}
+  end
+
+  @doc "Join the scenario's running checkout and explicitly designate it as main."
+  def join_main_working_copy(context, root, label, opts \\ []) do
+    copy = join_local_working_copy(context, root, label, opts)
+    :ok = Fixtures.designate_main(context.scope, copy.working_copy_id)
+    copy
+  end
+
+  @doc "Join the running checkout with its channel, register it locally, and designate it as main."
+  def join_main_working_copy_socket(context, root, label, opts \\ []) do
+    {copy, socket} = join_local_working_copy_socket(context, root, label, opts)
+    :ok = Fixtures.designate_main(context.scope, copy.working_copy_id)
+    {copy, socket}
+  end
+
+  defp register_disk_environment(copy, root) do
+    key = {:working_copy, copy.working_copy_id}
+    :ok = Environments.unregister(key)
+    :ok = Environments.register(key, disk(root))
+    :ok
+  end
 end

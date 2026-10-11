@@ -21,6 +21,8 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
   alias CodeMySpec.PromotionQueue.Worker
@@ -85,6 +87,13 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   defp a_copy(scope, root, label) do
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: label, device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, root)
+
+    :ok =
+      Environments.register(
+        {:working_copy, copy.id},
+        Environment.new(:local, root)
+      )
+
     copy
   end
 

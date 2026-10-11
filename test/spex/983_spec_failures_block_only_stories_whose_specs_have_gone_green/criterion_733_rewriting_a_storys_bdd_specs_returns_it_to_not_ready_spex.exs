@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpecSpex.HarnessHooks
 
@@ -37,6 +38,16 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
       given_ :synced_context_component
       given_ :story_linked_to_component
       given_ :bdd_task_started
+
+      given_ "the selected checkout has a local runtime for FilesLive sync", context do
+        :ok =
+          Environments.register(
+            {:working_copy, context.harness.working_copy_id},
+            Environment.new(:local, context.harness.root)
+          )
+
+        {:ok, context}
+      end
 
       given_ "the agent writes the story's BDD spec file", context do
         :ok = Environments.write_file(context.environment, @spex_path, passing_spex())

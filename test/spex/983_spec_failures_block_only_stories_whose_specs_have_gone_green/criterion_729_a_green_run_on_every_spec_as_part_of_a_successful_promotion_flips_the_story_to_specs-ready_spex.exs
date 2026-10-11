@@ -75,8 +75,9 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
     scenario "the story is certified ready for QA but not promoted" do
       given_ "a coding agent holding the story's ready-for-QA task on a clean copy",
              context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
+        context = a_promotable_project(context)
         story = a_promotable_story(context)
+        context = analyzers_are_current(context)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 

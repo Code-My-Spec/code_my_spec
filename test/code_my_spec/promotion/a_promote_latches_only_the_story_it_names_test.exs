@@ -19,6 +19,7 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Stories
@@ -83,6 +84,8 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     {:ok, agent} = WorkingCopies.report_root(agent, @agent)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script())
+    :ok = Environments.register({:working_copy, running.id}, env)
+    :ok = Environments.register({:working_copy, agent.id}, env)
     %{scope: %{scope | active_working_copy_id: agent.id, environment: env}, running: running}
   end
 

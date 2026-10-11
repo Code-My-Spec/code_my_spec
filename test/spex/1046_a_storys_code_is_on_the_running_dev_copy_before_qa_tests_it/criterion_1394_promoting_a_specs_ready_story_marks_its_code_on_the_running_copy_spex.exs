@@ -26,7 +26,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
-  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
@@ -34,6 +33,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -51,6 +51,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
              context do
         context = a_promotable_project(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
+        PromotionHelpers.sync_story_specs_to_local_copy(context, context.story)
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
@@ -118,7 +119,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
 
         # Its commit is already on main, so the queue lands it at once with
         # nothing to deploy (2583cc8b0): the running app is not restarted.
-        refute_push "restart_app", _payload, 1_000
+        refute_push("restart_app", _payload, 1_000)
         {:ok, Map.put(context, :second_promote_response, response)}
       end
 
@@ -233,9 +234,18 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
     _ = out
 
     {running, running_socket} =
-      join_working_copy_socket(context, running_root, "the checkout the dev app runs in")
+      PromotionHelpers.join_main_working_copy_socket(
+        context,
+        running_root,
+        "the checkout the dev app runs in"
+      )
 
-    agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    agent =
+      PromotionHelpers.join_local_working_copy(
+        context,
+        agent_root,
+        "the coding agent's copy"
+      )
 
     {:ok, _view, html} =
       live(context.conn, "/app/projects/#{context.project.id}/working-copies")

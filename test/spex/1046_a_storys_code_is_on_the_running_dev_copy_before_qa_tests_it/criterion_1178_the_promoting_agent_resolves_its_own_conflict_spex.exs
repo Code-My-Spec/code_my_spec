@@ -42,11 +42,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
-  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
+  alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -195,9 +195,21 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
 
     _ = out
 
-    running = join_working_copy(context, running_root, "the checkout the dev app runs in")
-    agent = join_working_copy(context, agent_root, "the coding agent's copy")
-    CodeMySpecSpex.PromotionHelpers.a_gate_copy(context, running_root)
+    running =
+      PromotionHelpers.join_main_working_copy(
+        context,
+        running_root,
+        "the checkout the dev app runs in"
+      )
+
+    agent =
+      PromotionHelpers.join_local_working_copy(
+        context,
+        agent_root,
+        "the coding agent's copy"
+      )
+
+    PromotionHelpers.a_gate_copy(context, running_root)
 
     # The running checkout joined first and so holds the designation: the
     # project's first checkout to report a root becomes its main copy

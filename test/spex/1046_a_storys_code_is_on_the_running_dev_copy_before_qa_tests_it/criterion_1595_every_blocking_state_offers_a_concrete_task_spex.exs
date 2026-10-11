@@ -32,8 +32,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.WorkingCopyHelpers
-
   alias CodeMySpec.Environments
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
@@ -43,6 +41,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecSpex.PromotionHelpers
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -239,7 +238,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
     running_root = CodeMySpec.TempFile.dir("spex-wedge-check-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
 
-    _running = join_working_copy(context, running_root, "the checkout the app runs from")
+    _running =
+      PromotionHelpers.join_main_working_copy(
+        context,
+        running_root,
+        "the checkout the app runs from"
+      )
 
     context
   end

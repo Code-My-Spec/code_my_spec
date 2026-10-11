@@ -9,7 +9,6 @@ defmodule CodeMySpec.Promotion.AConflictReportedByTheHarnessIsReadTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Promotion.Runner
-  alias CodeMySpec.Users.Scope
 
   test "a conflicted candidate comes back with atom keys" do
     copy_id = Ecto.UUID.generate()
@@ -35,11 +34,9 @@ defmodule CodeMySpec.Promotion.AConflictReportedByTheHarnessIsReadTest do
 
     assert_receive :up
 
-    scope = %Scope{
-      environment: Environment.new(:harness, "/gate", ref: %{"harness_id" => copy_id})
-    }
+    environment = Environment.new(:harness, "/gate", ref: %{"harness_id" => Ecto.UUID.generate()})
 
     assert {:ok, %{merged: [], conflicted: [%{commit: "c1", files: []}]}} =
-             Runner.build_batch(scope, "/gate", "base", ["c1"], copy_id)
+             Runner.build_batch(environment, "/gate", "base", ["c1"], copy_id)
   end
 end

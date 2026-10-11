@@ -37,9 +37,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1967Spex do
           treaty()
         )
 
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        {:ok, context}
       end
 
       when_ "the agent promotes, and the gate's credo reports two findings", context do

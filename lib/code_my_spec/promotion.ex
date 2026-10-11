@@ -79,6 +79,7 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.BootVersion
   alias CodeMySpec.Files
   alias CodeMySpec.Problems.ProblemRepository
+  alias CodeMySpec.Promotion.HandoffGate
   alias CodeMySpec.Promotion.Lock
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.Stories
@@ -149,7 +150,7 @@ defmodule CodeMySpec.Promotion do
   def promote(%Scope{} = scope, story_number, opts \\ []) do
     result =
       with :ok <-
-             CodeMySpec.Promotion.HandoffGate.check(
+             HandoffGate.check(
                scope.active_project_id,
                scope.active_working_copy_id
              ),
@@ -187,7 +188,8 @@ defmodule CodeMySpec.Promotion do
   defp certify_copy(scope, from, story, main, opts) do
     named = named_copy(from.id)
 
-    with {:ok, pre} <- Runner.precheck(scope, from.root, from.id, main),
+    with {:ok, pre} <-
+           Runner.precheck(copy_environment(scope, from), from.root, from.id, main),
          {:ok, head} <- reported_head(pre, named),
          {:ok, swept} <- gate(scope, head, opts),
          :ok <- story_spex_pass(scope, story, named) do
@@ -370,11 +372,19 @@ defmodule CodeMySpec.Promotion do
 
   defp land_into(scope, running, from, candidate, stories, opts) do
     %{head: head, branch: branch, swept: swept, untracked: untracked} = candidate
+    environment = copy_environment(scope, from)
 
-    with {:ok, merge_result} <- Runner.merge(scope, running.root, head, from.id),
+    with {:ok, merge_result} <-
+           Runner.merge(environment, running.root, head, from.id),
          # Before stamping or restarting: a refusal here has rolled the merge back.
          {:ok, _} <-
-           Runner.sync_submodule(scope, running.root, from.root, merge_result, from.id) do
+           Runner.sync_submodule(
+             environment,
+             running.root,
+             from.root,
+             merge_result,
+             from.id
+           ) do
       version = Map.get(merge_result, :version)
       stamp_version = Map.get(merge_result, :stamp_version)
 
@@ -610,7 +620,7 @@ defmodule CodeMySpec.Promotion do
   # The running copy's HEAD, which its spex run has to answer for, and the
   # version to stamp. Without a HEAD there is no run to read, so it refuses.
   defp current_of(scope, %WorkingCopy{root: root, id: id}, named) do
-    case Runner.current(scope, root, id) do
+    case Runner.current(copy_environment(scope, id), root, id) do
       {:ok, %{head: head} = current} when is_binary(head) ->
         {:ok, %{head: head, version: Map.get(current, :version)}}
 
@@ -620,10 +630,19 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
+  # Runner disk work belongs to the harness for the selected working copy.
+  # `main_head/3` and `land_into/6` deliberately pair `from`'s harness with
+  # the running copy's root: the harness is the transport, the root is the
+  # payload being operated on.
+  defp copy_environment(scope, %WorkingCopy{id: id}), do: copy_environment(scope, id)
+
+  defp copy_environment(scope, id),
+    do: WorkingCopies.environment(%{scope | active_working_copy_id: id})
+
   # Main's HEAD, which the promoting copy must contain. Asked through the
   # promoting copy's harness, the one the merge runs through.
   defp main_head(scope, running, from) do
-    case Runner.current(scope, running.root, from.id) do
+    case Runner.current(copy_environment(scope, from), running.root, from.id) do
       {:ok, %{head: head}} when is_binary(head) ->
         {:ok, head}
 
@@ -652,7 +671,7 @@ defmodule CodeMySpec.Promotion do
   # The certified commit is what merges. If the copy moved since, the commit
   # at its tip is not the one that was certified.
   defp head_unmoved(scope, from, head, named) do
-    case Runner.current(scope, from.root, from.id) do
+    case Runner.current(copy_environment(scope, from), from.root, from.id) do
       {:ok, %{head: ^head}} ->
         :ok
 

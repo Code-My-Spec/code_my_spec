@@ -35,9 +35,9 @@ defmodule CodeMySpecSpex.Story1026.Criterion2058Spex do
           |> Promotion.a_promotable_project()
           |> Issue.an_issue_assigned_to_the_team()
           |> Promotion.with_work_on_the_copy()
-          |> Promotion.analyzers_are_current()
 
         story = Promotion.a_promotable_story(context)
+        context = Promotion.analyzers_are_current(context)
 
         {:ok, issue_view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/issues/#{context.issue_id}")

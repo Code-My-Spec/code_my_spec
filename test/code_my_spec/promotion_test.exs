@@ -33,9 +33,9 @@ defmodule CodeMySpec.PromotionTest do
 
   describe "a runner with nowhere to run" do
     test "a harness environment with no working copy id says so" do
-      scope = %{full_scope_fixture() | environment: Environment.new(:harness, nil)}
+      environment = Environment.new(:harness, nil)
 
-      assert {:error, %{reason: reason}} = Runner.precheck(scope, "/somewhere", nil)
+      assert {:error, %{reason: reason}} = Runner.precheck(environment, "/somewhere", nil)
 
       assert reason =~ "working copy id",
              "the harness is addressed by id, not by path — a missing id has to " <>
@@ -53,10 +53,8 @@ defmodule CodeMySpec.PromotionTest do
                "Got: #{reason}"
     end
 
-    test "a scope with no environment at all is refused" do
-      scope = %{full_scope_fixture() | environment: nil}
-
-      assert {:error, %{reason: reason}} = Runner.merge(scope, "/somewhere", "main", nil)
+    test "a missing explicit environment is refused" do
+      assert {:error, %{reason: reason}} = Runner.merge(nil, "/somewhere", "main", nil)
       assert reason =~ "no environment"
     end
   end

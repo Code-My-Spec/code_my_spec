@@ -408,7 +408,9 @@ defmodule CodeMySpec.PromotionQueue do
 
   # A clean, committed checkout, read where it lives.
   defp clean_head(scope, copy) do
-    case Runner.precheck(scope, copy.root, copy.id, nil) do
+    environment = WorkingCopies.environment(%{scope | active_working_copy_id: copy.id})
+
+    case Runner.precheck(environment, copy.root, copy.id, nil) do
       {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
       {:ok, _} -> {:error, %{reason: "could not read #{copy.root}'s HEAD."}}
       {:error, _} = error -> error

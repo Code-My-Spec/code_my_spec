@@ -47,10 +47,16 @@ defmodule CodeMySpecSpex.Story1026.Criterion2059Spex do
           "defmodule DestinationWork do\nend\n"
         )
 
+        story_a = Promotion.a_promotable_story(context, title: "Copy A finished work")
+
+        story_b =
+          Promotion.a_promotable_story(
+            %{context | scope: context.destination.scope},
+            title: "Copy B finished work"
+          )
+
         context = Promotion.analyzers_are_current(context)
         context = Promotion.its_analyzers_are_current(context, context.destination)
-        story_a = Promotion.a_promotable_story(context, title: "Copy A finished work")
-        story_b = Promotion.a_promotable_story(context, title: "Copy B finished work")
 
         {:ok, issue_view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/issues/#{context.issue_id}")

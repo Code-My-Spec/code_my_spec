@@ -17,8 +17,9 @@ defmodule CodeMySpecSpex.Story983.Criterion1774Spex do
     scenario "the story's specs are green and every analyzer is clean at HEAD" do
       given_ "a coding agent holding the story's ready-for-QA task on a clean copy",
              context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
+        context = a_promotable_project(context)
         story = a_promotable_story(context)
+        context = analyzers_are_current(context)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 
@@ -45,8 +46,9 @@ defmodule CodeMySpecSpex.Story983.Criterion1774Spex do
   spex "A task held on the retired bdd_specs_passing completes the same way", criterion: 1774 do
     scenario "an agent was holding the old task when it was renamed" do
       given_ "a coding agent holding a bdd_specs_passing task on a clean copy", context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
+        context = a_promotable_project(context)
         story = a_promotable_story(context)
+        context = analyzers_are_current(context)
         {:ok, context |> a_held_ready_for_qa_task(story, legacy?: true) |> Map.put(:story, story)}
       end
 
@@ -67,9 +69,10 @@ defmodule CodeMySpecSpex.Story983.Criterion1774Spex do
     scenario "the tree has an edit not committed" do
       given_ "a coding agent holding the task, analyzers clean, and an uncommitted edit",
              context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
+        context = a_promotable_project(context)
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":uncommitted"))
         story = a_promotable_story(context)
+        context = analyzers_are_current(context)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 

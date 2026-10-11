@@ -22,6 +22,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
@@ -67,10 +68,22 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, main} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, main} = WorkingCopies.report_root(main, main_root)
 
+    :ok =
+      register_working_copy_environment(
+        %{scope | active_working_copy_id: main.id},
+        Environment.new(:local, main_root)
+      )
+
     {:ok, gate} =
       WorkingCopies.issue(scope, nil, label: Worker.gate_label(), device: device_fixture(scope))
 
     {:ok, gate} = WorkingCopies.report_root(gate, gate_root)
+
+    :ok =
+      register_working_copy_environment(
+        %{scope | active_working_copy_id: gate.id},
+        Environment.new(:local, gate_root)
+      )
 
     a_harness_for(main.id, main_root)
 
@@ -128,6 +141,13 @@ defmodule CodeMySpec.PromotionQueueTest do
       WorkingCopies.issue(ctx.scope, nil, label: name, device: device_fixture(ctx.scope))
 
     {:ok, copy} = WorkingCopies.report_root(copy, root)
+
+    :ok =
+      register_working_copy_environment(
+        %{ctx.scope | active_working_copy_id: copy.id},
+        Environment.new(:local, root)
+      )
+
     %{copy: copy, commit: git!(root, ["rev-parse", "HEAD"])}
   end
 
@@ -265,7 +285,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert_receive {:promotion_queue, %{id: id, status: :gating, batch_id: batch}}
-                   when id == first.id,
+                   when id == first.id and is_binary(batch),
                    5_000
 
     File.write!(Path.join(ctx.main_root, "elsewhere.ex"), "elsewhere\n")
@@ -288,7 +308,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     )
 
     assert_receive {:promotion_queue, %{id: id, status: :gating, batch_id: rebuilt}}
-                   when id == first.id and rebuilt != batch,
+                   when id == first.id and is_binary(rebuilt) and rebuilt != batch,
                    5_000
 
     assert git!(ctx.gate_root, ["merge-base", "--is-ancestor", moved, "HEAD"]) == ""
@@ -411,6 +431,19 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == a.copy.id)) == [],
            "a run was started in the requester's own copy"
+  end
+
+  test "runtime disk operations use the selected copy registry, not a stale scope environment",
+       ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    clean_runs_at(ctx, a.commit)
+
+    entry = queue(ctx, a)
+    stale_scope = %{ctx.scope | environment: Environment.new(:harness, "/wrong/remote/root")}
+    :ok = PromotionQueue.ensure_worker(stale_scope)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert git!(ctx.gate_root, ["rev-parse", "HEAD"]) == a.commit
   end
 
   # 3c59be47, 2026-10-05: a landing restarts the harness, which orphans the

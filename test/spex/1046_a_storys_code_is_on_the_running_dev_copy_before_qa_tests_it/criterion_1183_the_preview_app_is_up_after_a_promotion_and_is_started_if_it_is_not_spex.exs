@@ -26,16 +26,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
-  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -173,7 +172,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
 
     {running, running_socket} =
-      join_working_copy_socket(context, running_root, "the checkout the dev app runs in",
+      PromotionHelpers.join_main_working_copy_socket(
+        context,
+        running_root,
+        "the checkout the dev app runs in",
         app_verbs: ["reload_app"]
       )
 
@@ -246,19 +248,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     response_text(response)
   end
 
-  # Designate this checkout as the one the application runs from, through the
-  # page that owns the choice. `main` is "designated, never inferred", so there
-  # is no state to set behind the product's back.
+  # The scope fixture has already designated this checkout. Assert that
+  # premise explicitly so the app lifecycle setup below uses the real main.
   defp this_copy_is_the_running_one(context) do
-    {:ok, view, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/working-copies")
-
-    view
-    |> element(
-      "[data-test='designate-main-copy'][phx-value-id='#{context.scope.active_working_copy_id}']"
-    )
-    |> render_click()
-
+    assert WorkingCopies.main(context.scope).id == context.scope.active_working_copy_id
     context
   end
 

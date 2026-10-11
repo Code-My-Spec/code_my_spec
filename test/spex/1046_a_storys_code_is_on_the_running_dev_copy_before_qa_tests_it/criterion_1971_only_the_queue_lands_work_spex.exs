@@ -36,11 +36,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1971Spex do
           treaty()
         )
 
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
         context =
           context
-          |> Map.put(:story, a_promotable_story(context))
           |> Map.put(:main_before, head_of(context, context.running_root))
           |> Map.put(:copy_before, head_of(context, context.agent_root))
 

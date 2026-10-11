@@ -30,6 +30,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Repo
@@ -136,6 +137,8 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     a_harness(copy.id)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script(git))
+    :ok = Environments.register({:working_copy, copy.id}, env)
+    :ok = Environments.register({:working_copy, running.id}, env)
     scope = %{scope | active_working_copy_id: copy.id, environment: env}
 
     {:ok, coder} =
@@ -277,6 +280,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   test "the promote tool's path without a story still merges and stamps nothing" do
     %{scope: scope, story: story} = a_project()
     certified(scope)
+    scope = %{scope | environment: nil}
 
     assert {:ok, %{merged: "story/x"} = result} = Promotion.promote(scope, nil, notify: nil)
     refute Map.has_key?(result, :story)
