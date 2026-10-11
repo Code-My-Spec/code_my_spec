@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1774Spex do
       given_ "a coding agent holding the story's ready-for-QA task on a clean copy",
              context do
         context = context |> a_promotable_project() |> analyzers_are_current()
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1774Spex do
     scenario "an agent was holding the old task when it was renamed" do
       given_ "a coding agent holding a bdd_specs_passing task on a clean copy", context do
         context = context |> a_promotable_project() |> analyzers_are_current()
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
         {:ok, context |> a_held_ready_for_qa_task(story, legacy?: true) |> Map.put(:story, story)}
       end
 
@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1774Spex do
              context do
         context = context |> a_promotable_project() |> analyzers_are_current()
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":uncommitted"))
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 
