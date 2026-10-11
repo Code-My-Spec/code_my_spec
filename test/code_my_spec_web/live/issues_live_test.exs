@@ -5,7 +5,10 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
   import CodeMySpec.IssuesFixtures
   import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.DevicesFixtures
   alias CodeMySpec.Issues
+  alias CodeMySpec.WorkingCopies
 
   setup [:register_log_in_setup_account, :setup_active_account, :setup_active_project]
 
@@ -296,6 +299,43 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       assert live_view
              |> element("a[href='/app/projects/#{project.id}/issues']")
              |> has_element?()
+    end
+
+    test "assigning from the page confirms success and shows the current assignment", %{
+      project: project,
+      conn: conn,
+      scope: scope,
+      issue: issue
+    } do
+      {:ok, issue} = Issues.accept_issue(scope, issue)
+
+      {:ok, copy} = WorkingCopies.issue(scope, nil, device: DevicesFixtures.device_fixture(scope))
+
+      {:ok, _coder} =
+        AgentsRepository.create_agent(scope, %{
+          engine: :alloy,
+          provider: "zai",
+          working_copy: "/tmp/show-spex-copy",
+          role: :coding,
+          status: :running,
+          working_copy_id: copy.id
+        })
+
+      {:ok, live_view, html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
+      refute html =~ "Assigned to"
+
+      html =
+        live_view
+        |> form("[data-test='issue-assignment-form']", %{"working_copy_id" => copy.id})
+        |> render_submit()
+
+      assert html =~ "Issue assigned."
+      assert html =~ "Assigned to"
+      assert html =~ WorkingCopies.display_name(copy)
+
+      {:ok, _live, reloaded_html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
+      assert reloaded_html =~ "Assigned to"
+      assert reloaded_html =~ WorkingCopies.display_name(copy)
     end
   end
 end
