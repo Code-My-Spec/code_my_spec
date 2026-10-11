@@ -106,6 +106,9 @@ defmodule CodeMySpecSpex.HarnessHooks do
       scanner tracks: a harness whose scan finds nothing refuses to send it.
     * `:feature` — `true` makes this checkout a feature copy, with the scope's
       fixture copy designated main (see "Two working copies").
+    * `:in_memory` — `false` leaves the server reading the checkout through the
+      harness, for a test of that round trip; by default the copy reads the
+      fixture's in-memory runtime.
   """
   @spec given_a_live_harness(map(), keyword()) :: map()
   def given_a_live_harness(context, opts \\ []) do
@@ -151,7 +154,9 @@ defmodule CodeMySpecSpex.HarnessHooks do
       do: :ok = Fixtures.designate_main(scope, scope.active_working_copy_id)
 
     scope = %{scope | active_working_copy_id: working_copy_id}
-    :ok = keep_fixture_files(working_copy_id, Map.get(context, :environment))
+
+    if Keyword.get(opts, :in_memory, true),
+      do: :ok = keep_fixture_files(working_copy_id, Map.get(context, :environment))
 
     context
     |> Map.put(:harness, %{
