@@ -25,11 +25,9 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
 
   @doc "Run channel assertions while guaranteeing cleanup of the caller's task."
   def with_task_cleanup(task, assertions) do
-    try do
-      assertions.()
-    after
-      Task.shutdown(task, :brutal_kill)
-    end
+    assertions.()
+  after
+    Task.shutdown(task, :brutal_kill)
   end
 
   @doc """

@@ -1,16 +1,17 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2114Spex do
   @moduledoc "Settled and off agents are counts with a detail lookup"
   use CodeMySpecSpex.Case
-  alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
+  alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
     :ok = Fixtures.install_recording_agent_transport()
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 

@@ -135,13 +135,10 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
   end
 
   defp machinery_alarm(%Digest{work: [_ | _] = work} = digest) do
-    case Enum.all?(work, &AgentWork.provider_blocked?/1) do
-      true ->
-        "machinery: BLOCKED — every agent's provider is refusing; run_script: check_machinery({})"
-
-      false ->
-        machinery_alarm(digest.machinery)
-    end
+    if Enum.all?(work, &AgentWork.provider_blocked?/1),
+      do:
+        "machinery: BLOCKED — every agent's provider is refusing; run_script: check_machinery({})",
+      else: machinery_alarm(digest.machinery)
   end
 
   defp machinery_alarm(%Digest{machinery: machinery}), do: machinery_alarm(machinery)

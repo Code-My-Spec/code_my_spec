@@ -2,15 +2,16 @@ defmodule CodeMySpecSpex.Story1059.Criterion2119Spex do
   @moduledoc "Unavailable evidence is a failure rather than invented zero progress"
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
+  alias Ecto.Adapters.SQL.Sandbox
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
     :ok = Fixtures.install_recording_agent_transport()
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 

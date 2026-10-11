@@ -1,16 +1,17 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2118Spex do
   @moduledoc "Requirement progress agrees with the full project graph"
   use CodeMySpecSpex.Case
+  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias Ecto.Adapters.SQL.Sandbox
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
     :ok = Fixtures.install_recording_agent_transport()
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 

@@ -1,15 +1,16 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2117Spex do
   @moduledoc "A quiet check-in is one line without a model turn"
   use CodeMySpecSpex.Case
+  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
+  alias Ecto.Adapters.SQL.Sandbox
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
     :ok = Fixtures.install_recording_agent_transport()
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
