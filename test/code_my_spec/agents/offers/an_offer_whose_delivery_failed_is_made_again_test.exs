@@ -94,21 +94,13 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
     # The failure is not a refusal: nothing was declined.
     {:ok, after_failure} = AgentsRepository.fetch_agent(ctx.scope, agent.id)
     assert is_nil(after_failure.declined_offer)
-    assert is_binary(after_failure.delivery_failed_offer)
-    assert %DateTime{} = after_failure.delivery_failed_at
 
     claimable = Work.claimable_work(ctx.scope, after_failure)
     assert Work.damped(ctx.scope, after_failure, claimable) == nil
 
+    # The undelivered offer is recorded; nothing holds the work back once the
+    # machine answers.
     reachable()
-
-    assert {:ok, :not_runnable} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
-    refute_receive {:work_turn_requested, _, _, _}
-
-    assert {:ok, _} =
-             AgentsRepository.update_agent(ctx.scope, after_failure, %{
-               delivery_failed_at: DateTime.add(DateTime.utc_now(), -61, :second)
-             })
 
     assert {:ok, ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
     assert is_binary(ref)

@@ -59,6 +59,7 @@ defmodule CodeMySpec.Agents.AnIdleQaWithAStaleResumeIsStillOfferedQaWorkTest do
 
   setup do
     Sandbox.mode(Repo, {:shared, self()})
+    :ok = Fixtures.install_recording_agent_transport()
     :ok
   end
 
