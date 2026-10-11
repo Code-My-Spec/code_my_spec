@@ -1994,20 +1994,16 @@ defmodule CmsHarness.Project.ChannelClient do
     }
   end
 
-  # Deliberately not the whole `input`.
-  #
-  # A `write` call's input carries the entire file body. Putting that on the
-  # wire and into a message row would grow the transcript by the size of
-  # everything the agent has ever written — the same unbounded-growth shape that
-  # filled this machine's disk on 2026-09-03, and the reason `agent_test_events`
-  # now has a byte cap. What is needed is the identity of the call and the path
-  # it touched; the body is already on disk, which is the point of a write.
+  # The whole call: what was asked and, at its end, what came back. This is the
+  # conversation a restart resumes from, so an argument cut short or a result
+  # left out is a call the agent comes back holding that it never made.
   defp tool_meta(%{payload: %{name: name} = payload}) when is_binary(name) do
     %{
       "id" => Map.get(payload, :id),
       "name" => name,
       "path" => touched_path(Map.get(payload, :input)),
-      "input" => bounded_input(Map.get(payload, :input)),
+      "input" => Map.get(payload, :input) || %{},
+      "result" => result_text(Map.get(payload, :result)),
       "error" => error_text(Map.get(payload, :error))
     }
   end
@@ -2031,38 +2027,23 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp touched_path(_input), do: nil
 
-  # The arguments, as `Conversations.add_tool_call/5` already stores them — the
-  # same `{id, name, arguments}` shape `Chat.Runner` and the sprite recorder
-  # write, so the conversation view renders an internal agent's calls the way it
-  # already renders everybody else's rather than as chat lines.
-  #
-  # Bounded per value, which the external path does not need to be: its
-  # arguments come back from the provider and are bounded by the model's own
-  # context. These come from a local tool, and a `write` call's `content` is the
-  # whole file — the difference between recording what an agent did and
-  # recording a second copy of the repository in the message table.
-  @max_argument_bytes 2_000
+  # What a call returned, as text. Absent on `tool_start`; text or content
+  # blocks on `tool_end`, and an error struct when a tool failed without words.
+  defp result_text(nil), do: nil
+  defp result_text(text) when is_binary(text), do: text
 
-  defp bounded_input(input) when is_map(input) do
-    Map.new(input, fn {key, value} -> {key, bound(value)} end)
+  defp result_text(blocks) when is_list(blocks) do
+    Enum.map_join(blocks, "\n", fn
+      %{type: "text", text: text} -> text
+      %{type: "image"} -> "← image"
+      other -> inspect(other)
+    end)
   end
 
-  defp bounded_input(_input), do: %{}
+  defp result_text(other), do: ToolResults.describe(other)
 
-  defp bound(value) when is_binary(value) and byte_size(value) > @max_argument_bytes do
-    kept = binary_part(value, 0, @max_argument_bytes)
-    dropped = byte_size(value) - @max_argument_bytes
-    kept <> "… (#{dropped} more bytes)"
-  end
-
-  defp bound(value), do: value
-
-  # Why a call failed, when it did. `tool_end` carries the error and no result
-  # text — the result itself goes back to the model in the message blocks, not
-  # through this channel — so a failure is the one outcome worth recording, and
-  # inventing a body for a success would be writing down something nobody said.
   defp error_text(nil), do: nil
-  defp error_text(error), do: error |> ToolResults.describe() |> bound()
+  defp error_text(error), do: ToolResults.describe(error)
 
   defp turn_event_text(envelope) do
     case envelope do
@@ -2077,6 +2058,10 @@ defmodule CmsHarness.Project.ChannelClient do
 
       %{payload: %{name: name} = payload} when is_binary(name) ->
         tool_text(name, payload)
+
+      # What the model said alongside the calls it asked for (`:assistant_message`).
+      %{payload: %{text: text}} when is_binary(text) ->
+        text
 
       # `ref` and `generation` travel as their own fields (above); left in, a
       # turn boundary read as `%{ref: ..., generation: ...}` in the transcript.

@@ -25,26 +25,32 @@ defmodule CodeMySpecSpex.Story1051.Criterion2085Spex do
         Fixtures.halt_agent(ctx.agent.id)
         assert {:ok, _} = Fixtures.launch_agent(ctx.request)
 
+        # The cut turn's entry is complete, the waiting two hold their places,
+        # and the carry-on is the one the new engine took.
         H.await(fn ->
-          Enum.map(H.entries(ctx), & &1.state) == [:interrupted, :consumed, :queued]
+          Enum.map(H.entries(ctx), & &1.state) == [:completed, :queued, :queued, :consumed]
         end)
 
         {:ok, ctx}
       end
 
-      then_ "the same message identities execute in order with no engine payload queue", ctx do
-        assert Enum.map(H.entries(ctx), & &1.delivery_ref) == ctx.refs
+      then_ "the cut turn carries on, then the same message identities execute in order", ctx do
+        assert H.entries(ctx) |> Enum.map(& &1.delivery_ref) |> Enum.take(3) == ctx.refs
         assert {:ok, status} = Fixtures.agent_status(ctx.agent.id)
         refute Map.has_key?(status, :queued)
         HeldProvider.release()
 
         H.await(fn ->
-          Enum.map(H.entries(ctx), & &1.state) == [:interrupted, :completed, :completed]
+          Enum.map(H.entries(ctx), & &1.state) == [:completed, :completed, :completed, :completed]
         end)
 
         texts = HeldProvider.seen()
-        assert Enum.any?(texts, &String.contains?(&1, "first waiting"))
-        assert Enum.any?(texts, &String.contains?(&1, "second waiting"))
+        at = fn text -> Enum.find_index(texts, &String.contains?(&1, text)) end
+
+        assert at.("Carry on from your last step") < at.("first waiting"),
+               "a waiting message went before the turn it was queued behind"
+
+        assert at.("first waiting") < at.("second waiting")
         {:ok, ctx}
       end
     end

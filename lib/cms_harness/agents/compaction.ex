@@ -58,10 +58,39 @@ defmodule CmsHarness.Agents.Compaction do
 
   defp report(_reporter, _state), do: :ok
 
-  # The wire shape, which is the same one a resume arrives in. Text only, and
-  # the summary is text — the tool calls compaction dropped are not worth
-  # putting back on the way out.
-  defp as_turn(message) do
-    %{"role" => to_string(message.role), "content" => Alloy.Message.text(message)}
+  # The wire shape, which is the same one a resume arrives in: the summary as
+  # text, and the calls and results after it as blocks, so an agent resumed
+  # from a checkpoint still holds the working it kept. Thinking is the
+  # provider's, signed for one request, and stays where it was produced.
+  defp as_turn(%Alloy.Message{role: role, content: text}) when is_binary(text),
+    do: %{"role" => to_string(role), "content" => text}
+
+  defp as_turn(%Alloy.Message{role: role, content: blocks}) do
+    %{"role" => to_string(role), "content" => Enum.flat_map(blocks, &block/1)}
   end
+
+  defp block(%{type: "text", text: text}), do: [%{"type" => "text", "text" => text}]
+
+  defp block(%{type: "tool_use"} = call),
+    do: [
+      %{
+        "type" => "tool_use",
+        "id" => call.id,
+        "name" => call.name,
+        "input" => call[:input] || %{}
+      }
+    ]
+
+  defp block(%{type: "tool_result"} = result) do
+    [
+      %{
+        "type" => "tool_result",
+        "tool_use_id" => result.tool_use_id,
+        "content" => result[:content]
+      }
+      |> then(&if(result[:is_error], do: Map.put(&1, "is_error", true), else: &1))
+    ]
+  end
+
+  defp block(_other), do: []
 end

@@ -199,6 +199,26 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   end
 
   @doc """
+  The transcript region plus what is waiting to reach the agent.
+
+  A message sent to an agent sits pending, outside the transcript, until its
+  engine takes it; what the agent has been told includes it.
+  """
+  @spec told(map(), String.t()) :: String.t()
+  def told(context, path) do
+    {:ok, view, _html} = live(context.conn, path)
+
+    pending =
+      view
+      |> render()
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='agent-pending-message']")
+      |> Floki.text()
+
+    render(element(view, "[data-test='conversation-scroll']")) <> pending
+  end
+
+  @doc """
   Make a tool call and say how it ended — with a value, or by raising.
 
   Here rather than in the criterion because the distinction *is* the criterion:

@@ -57,6 +57,11 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
       <:item :if={@issue.resolution} title="Resolution">
         <p class="whitespace-pre-wrap">{@issue.resolution}</p>
       </:item>
+      <:item :if={@issue.assigned_working_copy_id} title="Assigned to">
+        <span data-test="assigned-working-copy">
+          {assigned_copy_name(@issue, @working_copies)}
+        </span>
+      </:item>
       <:item title="Created">{Calendar.strftime(@issue.inserted_at, "%b %d, %Y %H:%M")}</:item>
     </.list>
 
@@ -298,6 +303,13 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
 
   defp issue_story(_scope, %{story_id: nil}), do: nil
   defp issue_story(scope, %{story_id: story_id}), do: Stories.get_story(scope, story_id)
+
+  defp assigned_copy_name(%{assigned_working_copy_id: id}, working_copies) do
+    case Enum.find(working_copies, &(&1.id == id)) do
+      nil -> "a working copy no longer on this project"
+      copy -> WorkingCopies.display_name(copy)
+    end
+  end
 
   defp has_screenshot?(%{attachments: attachments}) when is_list(attachments) do
     Enum.any?(attachments, &(is_map(&1) and &1["type"] == "screenshot"))

@@ -32,7 +32,7 @@ defmodule CmsHarness.Agents.ShellTest do
 
     assert {:error, output} =
              bash.execute(
-               %{"command" => "echo timeout-output-marker; sleep 2", "timeout" => 500},
+               %{"command" => "echo timeout-output-marker; sleep 10", "timeout" => 3000},
                %{bash_executor: &Shell.run/2, bash_restricted: true}
              )
 

@@ -84,7 +84,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
     end
   end
 
-  test "replacement readiness records interruption and clears the dead turn", ctx do
+  test "replacement readiness carries the cut turn on and clears the dead turn", ctx do
     Sandbox.mode(Repo, {:shared, self()})
     admit(ctx, "interrupted turn")
     assert {:ok, :started} = Mailbox.pump(ctx.scope, ctx.agent.id)
@@ -102,7 +102,9 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
         "ref" => nil
       })
 
-    assert [%{state: :interrupted}] = Mailbox.entries(ctx.scope, ctx.agent.id)
+    assert [%{state: :completed, diagnostic: nil}, %{event: "own_reply"}] =
+             Mailbox.entries(ctx.scope, ctx.agent.id)
+
     assert Repo.reload!(ctx.agent).turn_started_at == nil
     assert_receive {:agent_turn, %{turn_started_at: nil}}
   end
@@ -212,23 +214,69 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
     assert [%{state: :consumed}] = Mailbox.entries(ctx.scope, ctx.agent.id)
   end
 
-  test "confirmed engine replacement preserves interrupted evidence and releases later mail",
-       ctx do
-    {first, _} = admit(ctx, "interrupted")
+  defmodule CurrentEngineTransport do
+    def dispatch_message(_copy, agent, ref, text, _timeout) do
+      send(Application.get_env(:code_my_spec, :test_mailbox_owner), {:dispatched, text})
+      generation = CodeMySpec.Repo.reload!(agent).mailbox_generation
+
+      scope = %CodeMySpec.Users.Scope{
+        active_account_id: agent.account_id,
+        active_project_id: agent.project_id,
+        active_working_copy_id: agent.working_copy_id
+      }
+
+      consumed(Mailbox.consume(scope, agent.id, ref, generation))
+    end
+
+    defp consumed({:ok, _}), do: {:ok, :started}
+    defp consumed(error), do: error
+  end
+
+  test "a replaced engine's turn carries on before the mail queued behind it", ctx do
+    {first, _} = admit(ctx, "cut part-way")
     {second, _} = admit(ctx, "still waiting")
     Mailbox.pump(ctx.scope, ctx.agent.id)
-    Mailbox.ready(ctx.scope, ctx.agent.id, "engine-one", nil)
     Mailbox.register(ctx.scope, ctx.agent.id, "replacement")
     Mailbox.ready(ctx.scope, ctx.agent.id, "replacement", nil)
 
-    assert [%{state: :interrupted, delivery_ref: ref}, %{state: :queued}] =
-             Mailbox.entries(ctx.scope, ctx.agent.id)
+    assert [
+             %{state: :completed, diagnostic: nil, delivery_ref: ref},
+             %{state: :queued},
+             %{state: :claimed, event: "own_reply"}
+           ] = Mailbox.entries(ctx.scope, ctx.agent.id)
 
     assert ref == first.delivery_ref
     assert Repo.get!(Conversations.Message, second.id).delivery == :pending
 
-    assert [%{mailbox_state: "interrupted"}, %{mailbox_state: "queued"}] =
-             Mailbox.waiting_messages(ctx.conversation)
+    Application.put_env(:code_my_spec, :test_mailbox_owner, self())
+    on_exit(fn -> Application.delete_env(:code_my_spec, :test_mailbox_owner) end)
+    Application.put_env(:code_my_spec, :agent_transport, CurrentEngineTransport)
+
+    assert {:ok, :started} = Mailbox.pump(ctx.scope, ctx.agent.id)
+    assert_received {:dispatched, text}
+
+    assert text =~ "Carry on from your last step",
+           "the queued message went before the turn it was waiting behind"
+
+    refute text =~ "cut part-way", "the cut turn's message was delivered a second time"
+
+    assert [%{mailbox_state: "queued"}] = Mailbox.waiting_messages(ctx.conversation),
+           "a finished, continued turn was still shown as waiting or interrupted"
+  end
+
+  test "a restart caught before consumption puts the claim back, behind the carry-on", ctx do
+    Application.put_env(:code_my_spec, :agent_transport, BusyTransport)
+    {message, _} = admit(ctx, "not yet taken")
+    {:ok, entry} = Repo.transaction(fn -> Mailbox.entries(ctx.scope, ctx.agent.id) end)
+    [%{} = queued] = entry
+    queued |> Ecto.Changeset.change(state: :claimed) |> Repo.update!()
+
+    {:ok, _} = Mailbox.carry_on(ctx.scope, ctx.agent.id)
+
+    assert [%{state: :queued, message_id: id}, %{state: :claimed, event: "own_reply"}] =
+             Mailbox.entries(ctx.scope, ctx.agent.id)
+
+    assert id == message.id
   end
 
   defmodule LostAckTransport do

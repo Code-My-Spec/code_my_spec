@@ -11,6 +11,7 @@ defmodule CodeMySpec.Agents.Mailbox do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.CompletionHandoffs
   alias CodeMySpec.Agents.Mailbox.Entry
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
@@ -121,7 +122,7 @@ defmodule CodeMySpec.Agents.Mailbox do
           from e in Entry, where: e.agent_id == ^agent_id and e.state in [:consumed, :uncertain]
         )
 
-      result = reconcile_engine(active, generation, current_ref)
+      result = reconcile_engine(agent, active, generation, current_ref)
 
       if is_nil(current_ref),
         do: agent |> Ecto.Changeset.change(turn_started_at: nil) |> Repo.update!()
@@ -131,10 +132,12 @@ defmodule CodeMySpec.Agents.Mailbox do
     |> publish_transition()
   end
 
-  defp reconcile_engine(nil, _generation, _ref), do: :ok
-  defp reconcile_engine(%{generation: generation, delivery_ref: ref}, generation, ref), do: :ok
+  defp reconcile_engine(_agent, nil, _generation, _ref), do: :ok
 
-  defp reconcile_engine(%{generation: generation} = entry, generation, _ref) do
+  defp reconcile_engine(_agent, %{generation: generation, delivery_ref: ref}, generation, ref),
+    do: :ok
+
+  defp reconcile_engine(_agent, %{generation: generation} = entry, generation, _ref) do
     change_entry(entry, %{
       state: :uncertain,
       diagnostic:
@@ -142,12 +145,81 @@ defmodule CodeMySpec.Agents.Mailbox do
     })
   end
 
-  defp reconcile_engine(entry, _new_generation, _ref) do
-    change_entry(entry, %{
-      state: :interrupted,
-      finished_at: DateTime.utc_now(),
-      diagnostic:
-        "Owning engine was replaced. Consumed work may have side effects; it was not replayed."
+  # The engine that consumed this was replaced mid-turn — its process crashed
+  # and was restarted. The turn carries on.
+  defp reconcile_engine(agent, _entry, _new_generation, _ref), do: carry_on_locked(agent)
+
+  @carry_on "The harness restarted part-way through your turn. Everything up to that " <>
+              "point is above, including each call you made and what it returned; a call " <>
+              "with no recorded result may or may not have taken effect. Carry on from " <>
+              "your last step."
+
+  @doc """
+  Carry on a turn a restart cut, ahead of anything queued (story 1051).
+
+  The agent comes back holding its conversation as recorded, so the turn is
+  continued rather than replayed: the message it was answering is already in
+  that conversation, and what it is sent is that the harness restarted and to
+  carry on from its last step. Entered claimed rather than queued, because a
+  claim is what the pump dispatches first — what is queued behind it is
+  delivered when the continued turn ends, in order, as always.
+
+  The cut turn's own entry is complete: its message was delivered. A claim the
+  restart caught before consumption was never delivered, so it goes back to
+  the head of the queue.
+  """
+  def carry_on(scope, agent_id) do
+    Repo.transaction(fn -> scope |> lock_agent!(agent_id) |> carry_on_locked() end)
+    |> publish_transition()
+  end
+
+  defp carry_on_locked(agent) do
+    now = DateTime.utc_now()
+
+    for entry <-
+          Repo.all(from e in Entry, where: e.agent_id == ^agent.id and e.state in ^@active) do
+      case entry do
+        # An earlier restart's carry-on nobody took; this one replaces it.
+        %{state: :claimed, event: "own_reply"} ->
+          change_entry(entry, %{state: :withdrawn, finished_at: now})
+
+          {:ok, _} =
+            Conversations.set_delivery(Repo.get!(Message, entry.message_id), :withdrawn,
+              broadcast: false
+            )
+
+        %{state: :claimed} ->
+          change_entry(entry, %{state: :queued, claimed_at: nil})
+
+        _cut ->
+          change_entry(entry, %{state: :completed, finished_at: now, diagnostic: nil})
+      end
+    end
+
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        agent.account_id,
+        agent.project_id,
+        agent.id
+      )
+
+    ref = Ecto.UUID.generate()
+
+    {:ok, message} =
+      Conversations.add_message(conversation, :operator, @carry_on, "system:restart", [],
+        delivery: :pending,
+        delivery_ref: ref
+      )
+
+    Offers.record({:ok, message}, agent, :resume, {"restart", nil})
+
+    Repo.insert!(%Entry{
+      agent_id: agent.id,
+      message_id: message.id,
+      delivery_ref: ref,
+      event: "own_reply",
+      state: :claimed,
+      claimed_at: now
     })
   end
 

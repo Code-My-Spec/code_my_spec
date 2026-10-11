@@ -462,22 +462,6 @@ defmodule CodeMySpec.Conversations do
     end
   end
 
-  @doc """
-  The message a turn opened at `started_at` was answering: the last one sent to
-  the agent — by a person or by the system — at or before that moment. Nil when
-  nothing was recorded.
-  """
-  @spec turn_starter(Ecto.UUID.t(), DateTime.t()) :: Message.t() | nil
-  def turn_starter(agent_id, %DateTime{} = started_at) when is_binary(agent_id) do
-    Message
-    |> join(:inner, [m], c in Conversation, on: c.id == m.conversation_id)
-    |> where([m, c], c.agent_id == ^agent_id and m.role in [:user, :operator])
-    |> where([m], m.inserted_at <= ^started_at)
-    |> order_by([m], desc: m.inserted_at)
-    |> limit(1)
-    |> Repo.one()
-  end
-
   @doc "The tool calls on this agent's conversation since `since`, oldest first."
   @spec tool_calls_since(Ecto.UUID.t(), DateTime.t()) :: [
           %{name: String.t(), arguments: map(), at: DateTime.t()}
@@ -694,19 +678,22 @@ defmodule CodeMySpec.Conversations do
   verbatim. That is the same shape a running agent holds after it compacts, so
   coming back lands it where it was rather than at the top.
 
-  ## Said, not done
+  ## Done as well as said
 
-  Text turns only. An assistant's tool calls and their results are its working,
-  and replaying those is worse than dropping them: a result describes a file at
-  a path, and by the time an agent is being resumed the checkout may be a
-  different one — story 963 moves the main agent between checkouts on purpose.
-  Alloy's own compaction clears old tool results for the same reason.
+  Everything the model had: an assistant's tool calls and what each returned,
+  as well as what was said. A resumed agent that knows it made calls and not
+  what they returned cannot carry on a turn, only restart it.
+
+  A call with no recorded result — one the process died in the middle of, or
+  one made before results were recorded — is answered with a result saying so.
+  A provider refuses a call nobody answered, and the honest answer is that
+  whether it took effect is unknown.
   """
   @spec resume_messages(Conversation.t()) :: [map()]
   def resume_messages(%Conversation{} = conversation) do
     case latest_checkpoint(conversation) do
-      nil -> conversation |> all_messages() |> Enum.flat_map(&as_turn/1)
-      checkpoint -> checkpoint.messages ++ tail_after(conversation, checkpoint)
+      nil -> conversation |> all_messages() |> as_turns()
+      checkpoint -> as_turns(checkpoint.messages, tail_after(conversation, checkpoint))
     end
   end
 
@@ -759,7 +746,6 @@ defmodule CodeMySpec.Conversations do
     |> where([m], m.conversation_id == ^conversation.id and m.inserted_at > ^cutoff)
     |> order_by([m], asc: m.inserted_at, asc: m.id)
     |> Repo.all()
-    |> Enum.flat_map(&as_turn/1)
   end
 
   # Unpaginated on purpose. `list_messages/2` answers what a page renders and
@@ -782,16 +768,43 @@ defmodule CodeMySpec.Conversations do
     |> Repo.one()
   end
 
-  # One transcript row as one turn, or nothing.
+  # Transcript rows as the turns a model is handed, each call answered.
   #
-  # A list rather than a value so a row with no text drops out instead of
-  # becoming an empty turn: providers reject empty content, and an agent that
-  # cannot be resumed because somebody sent a blank line is a failure with no
-  # visible cause.
+  # A row is a turn, or nothing: a row with no text and no call drops out
+  # rather than becoming an empty turn, which a provider rejects. Results are
+  # not turns of their own; each goes straight after the assistant turn that
+  # made its call, so a call and its answer stay adjacent however the rows
+  # interleaved.
+  #
+  # A checkpoint's turns arrive already paired, as the agent held them.
+  defp as_turns(checkpoint \\ [], rows) do
+    results = for %Message{role: :tool, tool_call_id: id} = row <- rows, into: %{}, do: {id, row}
+
+    turns = rows |> Enum.flat_map(&as_turn/1) |> Enum.flat_map(&answer_calls(&1, results))
+    merge_adjacent(checkpoint ++ turns)
+  end
+
   # A restart must not deliver queued messages through history or resurrect
   # messages that were withdrawn or failed delivery. Legacy rows have nil.
   defp as_turn(%Message{delivery: delivery}) when delivery in [:pending, :withdrawn, :failed],
     do: []
+
+  defp as_turn(%Message{role: :tool}), do: []
+
+  defp as_turn(%Message{role: :assistant, tool_calls: [_ | _] = calls} = message) do
+    blocks =
+      text_blocks(Message.text(message)) ++
+        Enum.map(calls, fn call ->
+          %{
+            "type" => "tool_use",
+            "id" => call["id"],
+            "name" => call["name"],
+            "input" => call["arguments"] || %{}
+          }
+        end)
+
+    [%{"role" => "assistant", "content" => blocks}]
+  end
 
   defp as_turn(%Message{} = message) do
     case {turn_role(message.role), Message.text(message)} do
@@ -802,10 +815,60 @@ defmodule CodeMySpec.Conversations do
   end
 
   # Alloy speaks two roles. An operator and an end user are both "the human" to
-  # a model, and a `:tool` row is the working this deliberately leaves out.
+  # a model.
   defp turn_role(:assistant), do: "assistant"
   defp turn_role(role) when role in [:user, :operator], do: "user"
   defp turn_role(_role), do: nil
+
+  defp text_blocks(""), do: []
+  defp text_blocks(text), do: [%{"type" => "text", "text" => text}]
+
+  defp answer_calls(%{"role" => "assistant", "content" => blocks} = turn, results)
+       when is_list(blocks) do
+    case for(%{"type" => "tool_use", "id" => id} <- blocks, do: id) do
+      [] -> [turn]
+      ids -> [turn, %{"role" => "user", "content" => Enum.map(ids, &result_block(&1, results))}]
+    end
+  end
+
+  defp answer_calls(turn, _results), do: [turn]
+
+  defp result_block(id, results) do
+    case Map.fetch(results, id) do
+      {:ok, row} ->
+        %{"type" => "tool_result", "tool_use_id" => id, "content" => Message.text(row)}
+        |> then(&if(row.tool_failed, do: Map.put(&1, "is_error", true), else: &1))
+
+      :error ->
+        %{
+          "type" => "tool_result",
+          "tool_use_id" => id,
+          "content" =>
+            "No result was recorded for this call. It may not have finished, or it may " <>
+              "have taken effect; check before repeating it."
+        }
+    end
+  end
+
+  # Two turns in a row from one side become one when either carries blocks:
+  # a call's answer and the next thing said to the agent are one user turn.
+  # Plain text turns stay as they were said.
+  defp merge_adjacent(turns) do
+    turns
+    |> Enum.reduce([], fn
+      %{"role" => role, "content" => content} = turn,
+      [%{"role" => role, "content" => before} = previous | rest]
+      when is_list(content) or is_list(before) ->
+        [%{previous | "content" => blocks(previous) ++ blocks(turn)} | rest]
+
+      turn, acc ->
+        [turn | acc]
+    end)
+    |> Enum.reverse()
+  end
+
+  defp blocks(%{"content" => text}) when is_binary(text), do: text_blocks(text)
+  defp blocks(%{"content" => blocks}) when is_list(blocks), do: blocks
 
   defp before_cursor(query, nil), do: query
 
