@@ -389,7 +389,10 @@ defmodule CodeMySpec.PromotionQueue do
     blockers =
       scope
       |> Issues.list_by_status(:accepted)
-      |> Enum.filter(&(&1.assigned_working_copy_id == copy.id and &1.id != promoting_issue_id))
+      |> Enum.filter(
+        &(&1.assigned_working_copy_id == copy.id and &1.id != promoting_issue_id and
+            not qa_passed?(&1))
+      )
 
     case blockers do
       [] ->
@@ -399,12 +402,16 @@ defmodule CodeMySpec.PromotionQueue do
         {:error,
          %{
            reason:
-             "Accepted issues assigned to this working copy block promotion: " <>
+             "Issues assigned to this working copy still awaiting a fix or QA block promotion: " <>
                Enum.map_join(issues, ", ", & &1.id) <>
                ". Resolve their fixes or remove their assignments before promoting this work."
          }}
     end
   end
+
+  # A QA-passed fix waits only on its own promotion; it does not hold the bag.
+  defp qa_passed?(%{awaiting_role: :promote}), do: true
+  defp qa_passed?(_issue), do: false
 
   defp qa_verdict(true, _what), do: :ok
 

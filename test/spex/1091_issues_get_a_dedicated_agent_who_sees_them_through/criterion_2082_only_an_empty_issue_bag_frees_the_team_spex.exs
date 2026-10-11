@@ -54,8 +54,11 @@ defmodule CodeMySpecSpex.Story1091.Criterion2082Spex do
         {:ok, Map.put(ctx, :second_issue_id, second)}
       end
 
-      when_ "the first issue passes QA and lands", ctx do
-        finish(ctx, "first")
+      when_ "both fixes pass QA and the first lands", ctx do
+        second = %{ctx | issue_id: ctx.second_issue_id}
+        ctx |> fix("first") |> qa_passes_it()
+        second |> fix("second") |> qa_passes_it()
+        ctx |> analyzers_are_current() |> the_coder_promotes_it()
         assert what_was_told(ctx.coder.id) =~ "landed on main"
         {:ok, ctx}
       end
@@ -69,9 +72,11 @@ defmodule CodeMySpecSpex.Story1091.Criterion2082Spex do
         {:ok, ctx}
       end
 
-      when_ "the remaining issue passes QA and lands", ctx do
-        next = %{ctx | issue_id: ctx.second_issue_id}
-        finish(next, "second")
+      when_ "the remaining issue lands", ctx do
+        %{ctx | issue_id: ctx.second_issue_id}
+        |> analyzers_are_current()
+        |> the_coder_promotes_it()
+
         assert what_was_told(ctx.coder.id) =~ "landed on main"
         {:ok, ctx}
       end
@@ -94,15 +99,15 @@ defmodule CodeMySpecSpex.Story1091.Criterion2082Spex do
     end
   end
 
-  defp finish(ctx, name) do
+  # A QA-passed fix no longer holds the bag; one still awaiting its fix or QA
+  # does, so both pass QA before either promotes.
+  defp fix(ctx, name) do
     ctx
     |> the_coder_fixes_it(
       "lib/broken_oaths/diplomacy/#{name}.ex",
       "defmodule BrokenOaths.Diplomacy.#{String.capitalize(name)} do\n  def done, do: :ok\nend\n"
     )
     |> analyzers_are_current()
-    |> qa_passes_it()
-    |> the_coder_promotes_it()
   end
 
   defp bag_text(ctx) do
