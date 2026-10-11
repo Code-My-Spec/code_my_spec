@@ -100,7 +100,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         # and the correction is the later of the two. Waiting for it first
         # means the log has definitely already landed.
         # The queue's "landed" message comes first; the correction follows it.
-        correction = correction(context.agent.id)
+        correction = correction(context.scope, context.agent.id)
 
         assert correction,
                "the restart failed outright and no correction reached the agent — " <>
@@ -272,15 +272,20 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
 
   defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
 
-  defp correction(agent_id) do
+  defp correction(scope, agent_id) do
     receive do
       {:agent_dispatch, ^agent_id, _ref, message} ->
-        correction(message, message =~ "Correction", agent_id)
+        correction(message, message =~ "Correction", scope, agent_id)
     after
       5_000 -> nil
     end
   end
 
-  defp correction(message, true, _agent_id), do: message
-  defp correction(_message, false, agent_id), do: correction(agent_id)
+  defp correction(message, true, _scope, _agent_id), do: message
+
+  defp correction(_message, false, scope, agent_id) do
+    :ok = Fixtures.put_agent_mid_turn(scope, agent_id)
+    :ok = Fixtures.end_turn(scope, agent_id)
+    correction(scope, agent_id)
+  end
 end

@@ -194,6 +194,19 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
 
   def fetch_answered(%Scope{}, _id), do: nil
 
+  @doc "Move a question to another answerer, keeping why."
+  def hand_to(question_id, holder, reason) do
+    case Repo.get(QuestionRequest, question_id) do
+      nil ->
+        {:error, :not_found}
+
+      request ->
+        request
+        |> QuestionRequest.changeset(%{"holder" => holder, "escalation_reason" => reason})
+        |> Repo.update()
+    end
+  end
+
   @doc """
   Hand a question to the user, with the reason it could not be answered here.
 

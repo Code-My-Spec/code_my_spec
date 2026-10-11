@@ -57,6 +57,10 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
       end
 
       given_ "a continuous coding agent and a continuous main agent on a working copy", context do
+        use_cmd_cassette "clean", record: :none do
+          Fixtures.land_outputs(context.scope, @end_turn_opts)
+        end
+
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         context = put_to_work(context)
@@ -102,8 +106,8 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
       when_ "each turn ends on a run that found a failing spec", context do
         :ok =
           use_cmd_cassette "clean", record: :none do
-            :ok = Fixtures.end_turn(context.scope, context.coder, @end_turn_opts)
-            :ok = Fixtures.end_turn(context.scope, context.main, @end_turn_opts)
+            :ok = Fixtures.end_turn(context.scope, context.coder)
+            :ok = Fixtures.end_turn(context.scope, context.main)
           end
 
         {:ok, context}

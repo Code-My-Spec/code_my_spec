@@ -30,7 +30,6 @@ defmodule CmsHarness.Agents.Engine.Keeper do
 
   use Supervisor, restart: :temporary
 
-  alias CmsHarness.Agents.Engine.QueueReceipts
   alias CmsHarness.Agents.Engine.Server
   alias CmsHarness.Mcp.Session
 
@@ -89,9 +88,7 @@ defmodule CmsHarness.Agents.Engine.Keeper do
   nowhere to write, and nothing to restart it either.
   """
   @spec remember(String.t(), transcript()) :: :ok
-  def remember(agent_id, transcript, consumed_ref \\ nil) do
-    if is_binary(consumed_ref), do: QueueReceipts.delivered(agent_id, consumed_ref)
-
+  def remember(agent_id, transcript) do
     case Registry.lookup(CmsHarness.Registry, {:transcript, agent_id}) do
       [{pid, _}] ->
         Agent.update(pid, fn _previous -> transcript end)
@@ -100,12 +97,6 @@ defmodule CmsHarness.Agents.Engine.Keeper do
         :ok
     end
   end
-
-  @doc "Remember an accepted queue ref across harness restarts."
-  defdelegate queued(agent_id, ref), to: QueueReceipts
-
-  @doc "Take back a queued ref, or say it was delivered or never queued here."
-  defdelegate withdraw(agent_id, ref), to: QueueReceipts
 
   @doc "What the agent knew when it last wrote it down; `nil` on a first start."
   @spec recall(String.t()) :: transcript() | nil

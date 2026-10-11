@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
       end
 
       then_ "main is taking exactly one turn, and it is the check-in", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
         [request] = HeldProvider.seen()
         assert Jason.decode!(request)["messages"] |> Jason.encode!() =~ "Check-in."
         {:ok, context}
@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
       then_ "main takes no turn", context do
         # The machine accepts a turn before the tick returns, so this is
         # observable at once.
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id),
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id),
                "the timer gave a main outside the loop a turn"
 
         {:ok, context}

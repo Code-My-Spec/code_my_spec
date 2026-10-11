@@ -18,6 +18,7 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   alias CmsHarness.WorkingCopies.Create
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.McpServers.ToolRegistry
 
   @impl true
@@ -42,6 +43,24 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
       |> LaunchRequest.for(ToolRegistry.registry())
       |> Map.put_new("api_key", "unused-in-process")
       |> Map.put("on_event", CodeMySpecTest.TurnEventRelay.reporter())
+      |> Map.put("on_register", fn id, generation ->
+        scope = %CodeMySpec.Users.Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: agent.working_copy_id
+        }
+
+        Mailbox.register(scope, id, generation)
+      end)
+      |> Map.put("on_consume", fn id, ref, generation ->
+        scope = %CodeMySpec.Users.Scope{
+          active_account_id: agent.account_id,
+          active_project_id: agent.project_id,
+          active_working_copy_id: agent.working_copy_id
+        }
+
+        Mailbox.consume(scope, id, ref, generation)
+      end)
 
     # Presence is the channel's to keep, and there is no channel here.
     :ok = CodeMySpecTest.PresenceRelay.relay(agent)
@@ -55,12 +74,6 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   end
 
   @impl true
-  def message_agent(_working_copy_id, agent, message, timeout) do
-    Machine.ensure_supervisor()
-    Agents.message(agent.id, message, timeout)
-  end
-
-  @impl true
   def dispatch_message(_working_copy_id, agent, ref, message, timeout) do
     Machine.ensure_supervisor()
     Agents.send_message(agent.id, ref, message, timeout)
@@ -69,12 +82,6 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   @impl true
   def request_work_turn(_working_copy_id, agent, ref, message, timeout),
     do: Agents.request_work_turn(agent.id, ref, message, timeout)
-
-  @impl true
-  def withdraw_message(_working_copy_id, agent, ref, _timeout) do
-    Machine.ensure_supervisor()
-    Agents.withdraw(agent.id, ref)
-  end
 
   # The real `Create`, against a real repository, without the wire — the same
   # bargain the rest of this module strikes. A double that answered with a path

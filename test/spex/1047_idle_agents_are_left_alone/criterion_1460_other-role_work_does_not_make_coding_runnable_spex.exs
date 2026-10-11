@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3562Spex do
         for id <- [coding.id, qa.id] do
           assert {:ok, _} = Machine.start_agent(id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(id)
+          assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
         {:reply, conversation, _} =
@@ -76,9 +76,9 @@ defmodule CodeMySpecSpex.Story1047.Criterion3562Spex do
       end
 
       then_ "QA is running one turn and coding has received nothing", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.qa_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.qa_id)
         assert length(HeldProvider.seen()) == 1
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert Machine.history(context.coding_id) == context.coding_history
 
         {:reply, conversation, _} =

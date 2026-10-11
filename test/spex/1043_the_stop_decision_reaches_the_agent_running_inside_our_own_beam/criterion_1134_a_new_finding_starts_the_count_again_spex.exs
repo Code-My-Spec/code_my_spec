@@ -27,23 +27,23 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
-
-  import CodeMySpecSpex.AgentToolsHelpers
+  alias Ecto.Adapters.SQL.Sandbox
 
   @impl_path "lib/example_context.ex"
 
-  # See criterion 3059's note: every one of these `end_turn` calls re-triggers
-  # a full, real analyzer pass — a real `mix compile` and a real recursive
-  # `mix spex` — for a scenario that has nothing to do with either.
-  @end_turn_opts [
-    compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
-    spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
-  ]
+  # Findings are already persisted; a terminal event starts no analyzer runs.
+  @end_turn_opts []
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "An agent told the same thing it could not act on is eventually left alone", criterion: 1134 do
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Fixtures.use_recording_transport()
+  end
+
+  spex "An agent told the same thing it could not act on is eventually left alone",
+    criterion: 1134 do
     scenario "A new finding starts the count again" do
       given_ "an agent left alone over a finding it could not fix", context do
         # Story 988's criterion 8201's recipe; `fresh_analysis_runs/2` is what
@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
         Fixtures.record_problem(context.scope, "credo", %{file_path: @impl_path})
         Fixtures.fresh_analysis_runs(context.scope, ["credo"])
 
-        agent_id = running_agent(context, %{"continuous" => true})
+        agent_id = Fixtures.running_agent(context.scope, continuous: true).id
         # The agent wrote the file the finding is about.
         #
         # Recorded because that is now what makes a finding its own:
@@ -72,8 +72,11 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
         Fixtures.record_agent_edit(agent_id, @impl_path)
 
         use_cmd_cassette "clean", record: :none do
-          for _ <- 1..8,
-              do: :ok = Fixtures.end_turn(context.scope, agent_id, @end_turn_opts)
+          for _ <- 1..8 do
+            :ok = Fixtures.drain_background_work()
+            :ok = Fixtures.put_agent_mid_turn(context.scope, agent_id)
+            :ok = Fixtures.end_turn(context.scope, agent_id, @end_turn_opts)
+          end
         end
 
         {:ok,
@@ -116,6 +119,7 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
 
         :ok =
           use_cmd_cassette "clean", record: :none do
+            :ok = Fixtures.put_agent_mid_turn(context.scope, context.agent_id)
             Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
           end
 

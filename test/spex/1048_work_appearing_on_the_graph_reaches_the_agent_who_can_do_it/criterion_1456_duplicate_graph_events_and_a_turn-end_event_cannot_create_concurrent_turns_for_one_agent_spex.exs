@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3558Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
         assert {:ok, :started} =
                  Machine.send_message(agent.id, "current-turn", "Finish this user-requested turn")
@@ -101,7 +101,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3558Spex do
       end
 
       then_ "remaining eligible work admits one new unassigned turn", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 2
         {:reply, tasks, _} = ListTasks.execute(%{agent_id: context.agent_id}, frame(context))
         refute tasks.isError, response_text(tasks)

@@ -37,6 +37,7 @@ defmodule CmsHarness.WorkingCopies.Create do
   require Logger
 
   alias ClientUtils.Harness.Onboarding
+  alias CmsHarness.Agents.Shell
 
   # The recipe a project owns for making a copy of itself.
   #
@@ -141,7 +142,7 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   # `just` not on this machine answers as a project with no recipe would.
   defp just(recipe, dir) do
-    System.cmd("just", [recipe], cd: dir, stderr_to_stdout: true)
+    run_recipe([recipe], dir)
   rescue
     ErlangError -> {"error: Justfile does not contain recipe `#{recipe}`", 1}
   end
@@ -259,7 +260,7 @@ defmodule CmsHarness.WorkingCopies.Create do
   # what it is. `cms_new` generates the recipe, so a project made by it has one
   # from the start.
   defp recipe(root, name, target) do
-    case System.cmd("just", [@recipe, name, target], cd: root, stderr_to_stdout: true) do
+    case run_recipe([@recipe, name, target], root) do
       {_out, 0} ->
         :ok
 
@@ -271,6 +272,18 @@ defmodule CmsHarness.WorkingCopies.Create do
   rescue
     # `just` is not on this machine. Not a failure — most projects do not use it.
     ErlangError -> :no_recipe
+  end
+
+  # A project's recipes choose their own Mix environment. Inheriting the
+  # daemon's MIX_ENV=harness made Metric Flow import config/harness.exs and
+  # left its promotion gate half-created. Use the same boundary as agent
+  # commands, including removal of the daemon's CMS_* identity variables.
+  defp run_recipe(args, root) do
+    System.cmd("just", args,
+      cd: root,
+      stderr_to_stdout: true,
+      env: Shell.scrubbed_env()
+    )
   end
 
   # Told apart from a recipe that ran and failed, because they deserve opposite

@@ -70,6 +70,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1674Spex do
 
       when_ "its turn ends with that file not compiling", context do
         HarnessHooks.land_analysis(context, "compiler", @broken_build)
+        :ok = Fixtures.drain_background_work()
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.coder)
         :ok = HarnessHooks.end_turn(context, context.coder)
 
         id = context.coder

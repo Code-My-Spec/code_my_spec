@@ -126,7 +126,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
                  Machine.send_message(agent.id, "explicit-3220", "Summarize current refund work")
 
         HeldProvider.await_request()
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: true}} = Machine.status(agent.id)
 
         {:ok,
          Map.merge(context, %{
@@ -174,7 +174,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
         {:reply, refused, _} = StartTask.execute(context.claim, context.frame)
         assert refused.isError, response_text(refused)
         assert response_text(refused) =~ ~r/block|answer/i
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         [request] = HeldProvider.seen()
         assert request =~ "Summarize current refund work"
         {:ok, context}

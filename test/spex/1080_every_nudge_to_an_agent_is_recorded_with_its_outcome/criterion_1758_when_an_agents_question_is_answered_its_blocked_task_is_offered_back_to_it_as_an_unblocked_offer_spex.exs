@@ -58,6 +58,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
 
         {:reply, started, _} = start_design(context, other)
         refute started.isError, response_text(started)
+        :ok = Fixtures.drain_background_work()
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.product_id)
         :ok = Fixtures.end_turn(context.scope, context.product_id, [])
         flush_transport()
         {:ok, Map.put(context, :other_task, extract_task_id!(started))}
@@ -115,6 +117,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
           EvaluateTask.execute(%{task_id: context.triage_task}, context.product_frame)
 
         refute evaluated.isError, response_text(evaluated)
+        :ok = Fixtures.drain_background_work()
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.product_id)
         :ok = Fixtures.end_turn(context.scope, context.product_id, [])
         :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}

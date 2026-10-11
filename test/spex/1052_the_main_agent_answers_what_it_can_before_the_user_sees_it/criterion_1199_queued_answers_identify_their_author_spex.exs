@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
         {:reply, conversation, _} =
           ReadAgentConversation.execute(%{agent_id: agent.id}, main_frame)
@@ -132,7 +132,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
       end
 
       then_ "no conversation delivery or model turn is needed for that attribution", context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
 
         {:reply, conversation, _} =

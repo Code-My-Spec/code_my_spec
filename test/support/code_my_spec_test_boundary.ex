@@ -29,6 +29,7 @@ defmodule CodeMySpecTest do
     deps: [
       CmsHarness,
       CmsHarnessTest,
+      CodeMySpecTest.MailboxWire,
       CodeMySpec,
       CodeMySpec.Agents,
       CodeMySpec.Embeddings,

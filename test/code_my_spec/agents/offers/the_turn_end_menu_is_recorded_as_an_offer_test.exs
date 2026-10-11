@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Configurations
@@ -120,7 +121,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
       {:ok, _} = FileSync.sync(scope, base_dir: tmp)
       story = story_fixture(scope)
 
-      {:ok, criterion} =
+      {:ok, _criterion} =
         AcceptanceCriteria.create_criterion(scope, story, %{
           description: "a step reports its provider",
           spec_path: @spex_path
@@ -163,7 +164,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
     end
   end
 
-  test "analysis findings pushed to an agent record an unlinked problems offer", ctx do
+  test "analysis findings link the problems offer to its durable mailbox message", ctx do
     agent = agent(ctx, "coding", true)
     scope = %{ctx.scope | active_working_copy_id: ctx.copy.id}
 
@@ -174,7 +175,9 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
     assert [offer] = Offers.list_for_agent(agent.id)
     assert {offer.kind, offer.subject_type, offer.subject_key} == {:problems, "analysis", "credo"}
-    assert offer.messages == []
+    assert [link] = offer.messages
+    assert [%{message_id: message_id}] = Mailbox.entries(scope, agent.id)
+    assert message_id == link.message_id
   end
 
   test "a clean run answered to its asker records no offer", ctx do

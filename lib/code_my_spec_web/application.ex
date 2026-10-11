@@ -239,7 +239,8 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
         {CodeMySpec.McpServers.Ga4Server, transport: :streamable_http},
         {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},
-        CodeMySpecWeb.Endpoint
+        CodeMySpecWeb.Endpoint,
+        when_serving(serving?, CodeMySpec.Agents.Mailbox.Reconciler)
       ]
       |> Enum.filter(& &1)
       |> children(env, serving?)

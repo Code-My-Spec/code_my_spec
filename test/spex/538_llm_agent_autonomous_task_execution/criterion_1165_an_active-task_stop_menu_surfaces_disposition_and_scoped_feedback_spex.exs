@@ -129,7 +129,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3105Spex do
         {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == context.tasks_before
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
         {:ok, context}
       end
@@ -165,7 +165,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3105Spex do
         refute text =~ context.other_story.title
         refute text =~ ~r/start_task[^\n]*entity_id/i
         refute text =~ "Task completed successfully"
-        assert {:ok, %{queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, status} = Machine.status(context.agent_id)
+        refute Map.has_key?(status, :queued)
         assert length(HeldProvider.seen()) <= 1
         {:ok, context}
       end

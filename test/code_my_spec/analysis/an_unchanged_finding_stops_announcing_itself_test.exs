@@ -32,7 +32,9 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Problems.Problem
@@ -96,6 +98,23 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
   end
 
   defp sweep(scope, problems, opts \\ []) do
+    # Earlier notifications have completed their model turn before another
+    # analysis report arrives. The recording wire does not supply that evidence.
+    waiting =
+      Repo.all(
+        from e in Mailbox.Entry,
+          join: a in Agent,
+          on: a.id == e.agent_id,
+          where: a.project_id == ^scope.active_project_id and e.state == :claimed,
+          select: e
+      )
+
+    for entry <- waiting do
+      {:ok, _} = Mailbox.register(scope, entry.agent_id, "report-engine")
+      {:ok, _} = Mailbox.consume(scope, entry.agent_id, entry.delivery_ref, "report-engine")
+      {:ok, _} = Mailbox.finish(scope, entry.agent_id, entry.delivery_ref, "report-engine")
+    end
+
     attrs = requested_by(%{source: "credo", kind: :full}, Keyword.get(opts, :requested_by))
 
     {:ok, run} = RunsRepository.start_run(scope, attrs)

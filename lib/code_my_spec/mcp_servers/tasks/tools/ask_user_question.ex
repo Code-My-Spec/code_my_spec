@@ -37,6 +37,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
 
     field :about, :string,
       doc: "`criteria` for a story's acceptance criteria or spec: it goes to product."
+
+    field :to, :string,
+      doc:
+        "`product` for criteria and spec, `main` for everything else (the default). " <>
+          "Either answers, hands it to the other, or takes it to the user."
   end
 
   @max_questions 4
@@ -179,7 +184,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
       # agent, which is story 1052's routing; a Claude Code session's goes
       # straight to the person, because there is nobody above it to route to.
       # One the asker marks `about: "criteria"` goes to product (8c91d5bc).
-      "holder" => MainAgent.holder_for(scope, frame.assigns[:agent_id], params[:about]),
+      "holder" =>
+        MainAgent.holder_for(scope, frame.assigns[:agent_id], params[:about], params[:to]),
       "session_external_id" => session_id_unless_agent(frame.assigns[:agent_id], scope)
     }
 

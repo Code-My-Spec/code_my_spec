@@ -35,6 +35,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   """
   use CodeMySpecSpex.Case, async: false
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
@@ -238,7 +239,12 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
         work_requested_at: nil
       })
 
-    :ok = CodeMySpec.Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_ended"})
+    :ok =
+      CodeMySpec.Agents.record_turn_event(
+        scope,
+        agent.id,
+        ChannelClient.encode_turn_event(CodeMySpecSpex.Fixtures.mailbox_turn_end(scope, agent.id))
+      )
   end
 
   defp on_entity("story", id), do: %{story_id: String.to_integer(id)}
