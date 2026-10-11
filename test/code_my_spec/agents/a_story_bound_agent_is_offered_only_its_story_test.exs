@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
@@ -203,9 +204,12 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
       (node.entity_type == "issue" and node.details["story_id"] == ctx.story.id)
   end
 
+  # Settled, so the graph read next includes the accepted issue: under load an
+  # unsettled read still offered qa_complete past the new submission node.
   defp accept(ctx, attrs) do
     issue = issue_fixture(ctx.scope, attrs)
     {:ok, issue} = Issues.accept_issue(ctx.scope, issue)
+    :ok = GraphWatcher.settle(ctx.scope)
     issue
   end
 
