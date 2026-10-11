@@ -149,7 +149,10 @@ defmodule CodeMySpecSpex.Story70.Criterion5659Spex do
             ] do
           spec_path = Fixtures.spec_file(Macro.underscore(module_name))
 
-          refute File.exists?(Path.join(context.harness.root, spec_path)),
+          refute CodeMySpec.Environments.file_exists?(
+                   CodeMySpec.Environments.Environment.new(:local, context.harness.root),
+                   spec_path
+                 ),
                  "expected no spec stub at #{spec_path} when proposal was rejected"
         end
 

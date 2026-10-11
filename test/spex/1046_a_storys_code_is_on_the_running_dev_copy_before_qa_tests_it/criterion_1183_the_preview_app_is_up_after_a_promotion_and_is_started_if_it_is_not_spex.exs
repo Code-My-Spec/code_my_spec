@@ -267,23 +267,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   # Designate this checkout as the one the application runs from, through the
   # page that owns the choice. `main` is "designated, never inferred", so there
-  # is no state to set behind the product's back. A fixture that already
-  # selected this copy as main needs no UI action.
+  # is no state to set behind the product's back.
   defp this_copy_is_the_running_one(context) do
-    case WorkingCopies.main(context.scope) do
-      %{id: id} when id == context.scope.active_working_copy_id ->
-        :ok
+    {:ok, view, _html} =
+      live(context.conn, "/app/projects/#{context.project.id}/working-copies")
 
-      _ ->
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/working-copies")
-
-        view
-        |> element(
-          "[data-test='designate-main-copy'][phx-value-id='#{context.scope.active_working_copy_id}']"
-        )
-        |> render_click()
-    end
+    view
+    |> element(
+      "[data-test='designate-main-copy'][phx-value-id='#{context.scope.active_working_copy_id}']"
+    )
+    |> render_click()
 
     assert WorkingCopies.main(context.scope).id == context.scope.active_working_copy_id
 
