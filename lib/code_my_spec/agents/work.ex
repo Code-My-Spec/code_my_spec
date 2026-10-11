@@ -549,18 +549,16 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   @doc """
-  The main agent's check-in turn only for actionable work or observed attention.
+  The main agent's check-in turn: one per cadence tick, with or without work.
 
   `render` builds the prompt from whether main's work offer stands — eligible
   graph work it has not declined past the damper. Admitted as `:cadence`, so
   only a running, continuous, idle main that is not waiting gets it; mid-turn
   it is skipped, not queued — the next tick comes round.
   """
-  def request_cadence_turn(scope, %Agent{} = agent, render, opts \\ [])
-      when is_function(render, 1) do
+  def request_cadence_turn(scope, %Agent{} = agent, render) when is_function(render, 1) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, :cadence),
-         true <- Keyword.get(opts, :attention?, false) or work_offered?(scope, current),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, :cadence) do
       turn_prompt = render.(work_offered?(scope, reserved))
 
@@ -585,7 +583,6 @@ defmodule CodeMySpec.Agents.Work do
           error
       end
     else
-      false -> {:ok, :no_work}
       hold -> not_admitted(hold)
     end
   end

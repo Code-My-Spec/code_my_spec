@@ -504,7 +504,7 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   @doc """
-  The cadence's tick: an admitted turn for a continuous main with work or attention, carrying the check-in and
+  The cadence's tick: one turn for a continuous main, carrying the check-in and
   its own work offer together, and the recovery check for everyone else.
 
   John: "we never want a non continuous main agent to get the nudge. Only a
@@ -549,14 +549,9 @@ defmodule CodeMySpec.Agents.Main do
   defp cadence_turn(scope, %Agent{} = main, digest, newly_stalled) do
     new_stalls = Enum.map(newly_stalled, & &1.agent_id)
 
-    Work.request_cadence_turn(
-      scope,
-      main,
-      fn work? ->
-        CheckInReport.render(digest, self: main.id, work?: work?, new_stalls: new_stalls)
-      end,
-      attention?: CheckInReport.needs_attention?(digest)
-    )
+    Work.request_cadence_turn(scope, main, fn work? ->
+      CheckInReport.render(digest, self: main.id, work?: work?, new_stalls: new_stalls)
+    end)
   end
 
   @doc """

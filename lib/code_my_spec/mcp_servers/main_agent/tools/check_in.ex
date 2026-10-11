@@ -49,7 +49,18 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CheckIn do
   #
   # The digest is still not *pushed* anywhere: this is a reply to whoever
   # asked, and no unconditional message goes to any agent.
-  defp deliver({:ok, report}), do: Response.text(Response.tool(), report)
+  defp deliver({:ok, report}) do
+    Response.text(
+      Response.tool(),
+      report <>
+        """
+
+        Recovery reconsidered eligible work for existing agents. Only runnable
+        agents may receive a new turn; no process was started or restarted, and
+        no unconditional digest message was sent to anyone.
+        """
+    )
+  end
 
   # A digest that could not be assembled has already raised a fault, and is
   # reported as the failure it is rather than as an empty, healthy fleet —

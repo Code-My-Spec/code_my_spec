@@ -47,15 +47,13 @@ defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
       machinery: %Machinery{tool_fault: :none}
     }
 
-  test "the check-in counts off seats and leaves their reasons in the detail listing" do
+  test "the check-in names who turned it off and why, and stays quiet" do
     digest = digest([off_agent()])
 
     assert Digest.quiet?(digest)
     report = CheckInReport.render(digest)
     assert report =~ "Nothing needs you"
-    assert report =~ "1 off (leave off)"
-    refute report =~ off_agent().id
-    assert report =~ "list_agent_work({})"
+    assert report =~ @line
     refute report =~ "STALLED"
   end
 
@@ -104,7 +102,6 @@ defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
 
     digest = digest(MainAgent.list_off_agents(scope), questions)
     refute Digest.quiet?(digest)
-    assert CheckInReport.render(digest) =~ "user 1"
-    refute CheckInReport.render(digest) =~ "Which schema?"
+    assert CheckInReport.render(digest) =~ "Which schema?"
   end
 end

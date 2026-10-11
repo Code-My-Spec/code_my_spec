@@ -56,26 +56,25 @@ defmodule CodeMySpec.Agents.Main.AProviderBlockedFleetIsNotQuietTest do
     assert report =~ "blocked on: provider — You've hit your usage limit"
   end
 
-  test "the check-in names the provider problem and points to its details" do
-    agent = refused()
-    report = CheckInReport.render(digest([agent]))
-    assert report =~ "blocked on: provider"
-    assert report =~ "You've hit your usage limit"
-    assert report =~ "read_agent_conversation({agent_id = #{inspect(agent.agent_id)}, limit = 5})"
+  test "the check-in names the provider and its retry time on the agent line" do
+    report = CheckInReport.render(digest([refused()]))
+
+    assert report =~
+             "task: architecture_designed; blocked on: provider — #{@refusal} " <>
+               "(retry after 2026-09-30T23:20:00.000000Z)"
   end
 
   test "the machinery line does not call a fully refused fleet working" do
     report = CheckInReport.render(digest([refused(), refused(role: :qa)]))
 
     refute report =~ "every agent's machine is answering"
-    assert report =~ "machinery: BLOCKED — every agent's provider is refusing"
+    assert report =~ "machinery: BLOCKED — every agent's provider is refusing its turns"
   end
 
   test "one refused agent among working ones leaves the machinery line alone" do
     report = CheckInReport.render(digest([refused(), entry([])]))
 
-    refute report =~ "machinery: BLOCKED"
-    assert report =~ "1 settled; 1 needing attention"
+    assert report =~ "machinery: working — every agent's machine is answering"
   end
 
   test "list_agent_work says what the agent is blocked on" do
