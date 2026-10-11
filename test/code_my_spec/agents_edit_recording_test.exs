@@ -115,31 +115,25 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
       Conversations.list_messages(conversation)
     end
 
-    defp transcript(scope, agent, message) do
-      :ok =
-        Agents.record_turn_event(scope, agent.id, %{"kind" => "transcript", "message" => message})
-    end
-
-    test "an assistant message is one row: its words and the calls it asked for" do
+    test "a call is recorded as a tool call, with all its arguments" do
       scope = full_scope_fixture()
       agent = running_agent(scope)
       content = String.duplicate("defmodule X do\nend\n", 500)
 
-      transcript(scope, agent, %{
-        "role" => "assistant",
-        "content" => [
-          %{"type" => "text", "text" => "Writing the module."},
-          %{
-            "type" => "tool_use",
-            "id" => "call_1",
-            "name" => "write",
-            "input" => %{"file_path" => "lib/example.ex", "content" => content}
-          }
-        ]
-      })
+      event = %{
+        "kind" => "tool_start",
+        "text" => "write lib/example.ex",
+        "tool" => %{
+          "id" => "call_1",
+          "name" => "write",
+          "path" => "lib/example.ex",
+          "input" => %{"file_path" => "lib/example.ex", "content" => content}
+        }
+      }
+
+      :ok = Agents.record_turn_event(scope, agent.id, event)
 
       assert [message] = messages_for(scope, agent)
-      assert Conversations.Message.text(message) == "Writing the module."
 
       assert [%{"id" => "call_1", "name" => "write", "arguments" => args}] = message.tool_calls,
              "the call was not written into the tool_calls column. Got: #{inspect(message)}"
@@ -152,50 +146,45 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
       scope = full_scope_fixture()
       agent = running_agent(scope)
       body = String.duplicate("line\n", 2_000)
+      read = %{"id" => "call_1", "name" => "read", "path" => "mix.exs", "input" => %{}}
+      write = %{"id" => "call_2", "name" => "write", "path" => "lib/x.ex", "input" => %{}}
 
-      transcript(scope, agent, %{
-        "role" => "user",
-        "content" => [
-          %{
-            "type" => "tool_result",
-            "tool_use_id" => "call_1",
-            "name" => "read",
-            "content" => body
-          },
-          %{
-            "type" => "tool_result",
-            "tool_use_id" => "call_2",
-            "name" => "write",
-            "content" => "write failed: permission denied",
-            "is_error" => true
-          }
-        ]
-      })
+      for {tool, ending} <- [
+            {read, %{"result" => body}},
+            {write, %{"result" => "permission denied", "error" => "permission denied"}}
+          ] do
+        :ok = Agents.record_turn_event(scope, agent.id, %{"kind" => "tool_start", "tool" => tool})
 
-      assert [read, write] = Enum.filter(messages_for(scope, agent), &(&1.role == :tool))
+        :ok =
+          Agents.record_turn_event(scope, agent.id, %{
+            "kind" => "tool_end",
+            "tool" => Map.merge(tool, ending)
+          })
+      end
 
-      assert {read.tool_call_id, Conversations.Message.text(read), read.tool_failed} ==
+      assert [read_row, write_row] = Enum.filter(messages_for(scope, agent), &(&1.role == :tool))
+
+      assert {read_row.tool_call_id, Conversations.Message.text(read_row), read_row.tool_failed} ==
                {"call_1", body, false},
              "a successful result was not kept whole, so a resume cannot carry on from it"
 
-      assert {write.tool_call_id, write.tool_failed} == {"call_2", true}
+      assert {write_row.tool_call_id, write_row.tool_failed} == {"call_2", true}
     end
 
-    test "the start and end of a call write nothing; the transcript does" do
+    test "what the agent said on its way to a call is recorded as its words" do
       scope = full_scope_fixture()
       agent = running_agent(scope)
-      tool = %{"id" => "call_1", "name" => "read", "path" => "mix.exs", "input" => %{}}
-
-      :ok = Agents.record_turn_event(scope, agent.id, %{"kind" => "tool_start", "tool" => tool})
 
       :ok =
         Agents.record_turn_event(scope, agent.id, %{
-          "kind" => "tool_end",
-          "tool" => Map.put(tool, "error", "boom")
+          "kind" => "assistant_message",
+          "text" => "Reading the config first."
         })
 
-      assert messages_for(scope, agent) == [],
-             "a call recorded at its start and again by the transcript appears twice"
+      assert [message] = messages_for(scope, agent)
+
+      assert {message.role, Conversations.Message.text(message)} ==
+               {:assistant, "Reading the config first."}
     end
   end
 

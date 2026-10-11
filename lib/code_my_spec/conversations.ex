@@ -379,60 +379,6 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
-  Records one message an agent's loop appended (`CmsHarness.Agents.Transcript`).
-
-  An assistant message is one row: its words and the calls it asked for. A
-  message of results is a row per result, paired to its call by id. Results
-  are kept whole and failed or not — this is what a restart resumes from.
-  """
-  def add_transcript_message(%Conversation{} = conversation, message, agent_role) do
-    case message do
-      %{"role" => "assistant", "content" => content} ->
-        add_assistant_message(conversation, content, agent_role)
-
-      %{"role" => "user", "content" => blocks} when is_list(blocks) ->
-        for %{"type" => "tool_result"} = result <- blocks do
-          add_tool_result(
-            conversation,
-            result["tool_use_id"],
-            result["name"] || "tool",
-            result["content"] || "",
-            failed?: result["is_error"] == true,
-            agent_role: agent_role
-          )
-        end
-
-        :ok
-
-      _other ->
-        :ok
-    end
-  end
-
-  defp add_assistant_message(conversation, content, agent_role) when is_binary(content),
-    do: add_assistant_message(conversation, [%{"type" => "text", "text" => content}], agent_role)
-
-  defp add_assistant_message(conversation, blocks, agent_role) when is_list(blocks) do
-    text = for(%{"type" => "text", "text" => t} <- blocks, do: t) |> Enum.join("\n")
-
-    calls =
-      for %{"type" => "tool_use"} = call <- blocks,
-          do: %{"id" => call["id"], "name" => call["name"], "arguments" => call["input"] || %{}}
-
-    if said_nothing?(text) and calls == [] do
-      {:ok, nil}
-    else
-      agent_turn(conversation, %{
-        role: :assistant,
-        agent_role: agent_role,
-        content: if(said_nothing?(text), do: [], else: parts_for(text)),
-        tool_calls: if(calls == [], do: nil, else: calls),
-        sender_id: "agent:#{agent_role}"
-      })
-    end
-  end
-
-  @doc """
   Ends the conversation early because the model would not stop.
 
   A silent stop is indistinguishable from a hang, so this is a turn the reader

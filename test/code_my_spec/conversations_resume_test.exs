@@ -338,18 +338,8 @@ defmodule CodeMySpec.ConversationsResumeTest do
          %{conversation: conversation} do
       said(conversation, "run the suite")
 
-      {:ok, _} =
-        Conversations.add_transcript_message(
-          conversation,
-          %{
-            "role" => "assistant",
-            "content" => [
-              %{"type" => "text", "text" => "Running it."},
-              %{"type" => "tool_use", "id" => "call-1", "name" => "bash", "input" => %{}}
-            ]
-          },
-          "main"
-        )
+      answered(conversation, "Running it.")
+      call(conversation, "call-1", "bash", %{})
 
       said(conversation, "The harness restarted part-way through your turn.")
 

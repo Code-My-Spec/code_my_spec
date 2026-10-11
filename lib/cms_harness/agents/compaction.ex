@@ -32,7 +32,6 @@ defmodule CmsHarness.Agents.Compaction do
   require Logger
 
   alias Alloy.Agent.State
-  alias CmsHarness.Agents.Transcript
 
   @impl true
   def call(:after_compaction, %State{} = state) do
@@ -46,7 +45,7 @@ defmodule CmsHarness.Agents.Compaction do
     reporter.(%{
       event: :compacted,
       turn: state.turn,
-      messages: Enum.map(State.messages(state), &Transcript.encode/1)
+      messages: Enum.map(State.messages(state), &as_turn/1)
     })
   rescue
     # An agent's work does not stop because the checkpoint could not be sent.
@@ -58,4 +57,40 @@ defmodule CmsHarness.Agents.Compaction do
   end
 
   defp report(_reporter, _state), do: :ok
+
+  # The wire shape, which is the same one a resume arrives in: the summary as
+  # text, and the calls and results after it as blocks, so an agent resumed
+  # from a checkpoint still holds the working it kept. Thinking is the
+  # provider's, signed for one request, and stays where it was produced.
+  defp as_turn(%Alloy.Message{role: role, content: text}) when is_binary(text),
+    do: %{"role" => to_string(role), "content" => text}
+
+  defp as_turn(%Alloy.Message{role: role, content: blocks}) do
+    %{"role" => to_string(role), "content" => Enum.flat_map(blocks, &block/1)}
+  end
+
+  defp block(%{type: "text", text: text}), do: [%{"type" => "text", "text" => text}]
+
+  defp block(%{type: "tool_use"} = call),
+    do: [
+      %{
+        "type" => "tool_use",
+        "id" => call.id,
+        "name" => call.name,
+        "input" => call[:input] || %{}
+      }
+    ]
+
+  defp block(%{type: "tool_result"} = result) do
+    [
+      %{
+        "type" => "tool_result",
+        "tool_use_id" => result.tool_use_id,
+        "content" => result[:content]
+      }
+      |> then(&if(result[:is_error], do: Map.put(&1, "is_error", true), else: &1))
+    ]
+  end
+
+  defp block(_other), do: []
 end

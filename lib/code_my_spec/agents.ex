@@ -2907,25 +2907,45 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A message the agent's loop appended, as the model has it: an assistant's
-  # words with the calls they asked for, or what those calls returned.
+  # A tool call is a tool call, not prose.
   #
-  # This is the transcript a restart resumes from, so it is everything — every
-  # call with its arguments, every result, failed or not. It replaced recording
-  # a call at `tool_start` and a result only when `tool_end` said it failed,
-  # which left a resumed agent knowing it had made calls and not what any of
-  # them said (issue `2d5b2d4d` for why calls are calls rather than prose).
-  defp write_turn_event(conversation, agent, %{"kind" => "transcript", "message" => message})
-       when is_map(message) do
-    Conversations.add_transcript_message(conversation, message, to_string(agent.role || :main))
+  # `Conversations.add_tool_call/5` is what `Chat.Runner` and the sprite
+  # recorder already write, and `chat_components` renders that `tool_calls`
+  # array as call blocks. Internal agents went through `add_agent_message/4`
+  # instead, so their calls arrived as ordinary chat messages carrying the tool
+  # name as prose and nothing else — no arguments, no pairing, and the
+  # `tool_calls` column unused. Issue `2d5b2d4d`.
+  defp write_turn_event(conversation, agent, %{"kind" => "tool_start", "tool" => tool})
+       when is_map(tool) do
+    Conversations.add_tool_call(
+      conversation,
+      tool["id"],
+      tool["name"],
+      tool["input"] || %{},
+      to_string(agent.role || :main)
+    )
+
     :ok
   end
 
-  # The start and end of a call are watched live (`record_edit/2` reads the
-  # start), and the transcript event above is what writes them down.
-  defp write_turn_event(_conversation, _agent, %{"kind" => kind})
-       when kind in ["tool_start", "tool_end"],
-       do: :ok
+  # What every call returned, paired to it, failed or not. This is the
+  # conversation a restart resumes from, and an agent that knows it made calls
+  # and not what they returned cannot carry its turn on.
+  defp write_turn_event(conversation, agent, %{"kind" => "tool_end", "tool" => tool})
+       when is_map(tool) do
+    failed? = is_binary(tool["error"]) and tool["error"] != ""
+
+    Conversations.add_tool_result(
+      conversation,
+      tool["id"],
+      tool["name"],
+      tool["result"] || tool["error"] || "",
+      failed?: failed?,
+      agent_role: to_string(agent.role || :main)
+    )
+
+    :ok
+  end
 
   # A step that said nothing is not a step.
   #
