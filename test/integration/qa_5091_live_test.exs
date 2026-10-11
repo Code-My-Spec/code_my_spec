@@ -33,12 +33,11 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    scope =
+      put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     Configurations.get_or_create(scope)
 

@@ -72,6 +72,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Widget
+  alias CodeMySpec.Resources
   alias CodeMySpec.Telemetry
   alias CodeMySpec.WorkingCopies
 
@@ -1115,34 +1116,21 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   # Same as ProvisioningLive.scope_for/2 — see the mount/3 comment above for
   # why this is its own copy rather than a shared import.
-  defp scope_for(%{active_project: project} = scope, nil),
-    do: {:ok, with_project_environment(scope, project)}
+  defp scope_for(%{active_project: %{} = project} = scope, nil),
+    do: {:ok, Resources.project_scope(scope, project)}
 
   defp scope_for(%{active_project: %{id: id} = project} = scope, id),
-    do: {:ok, with_project_environment(scope, project)}
+    do: {:ok, Resources.project_scope(scope, project)}
 
   defp scope_for(scope, project_id) do
     case Projects.get_project(scope, project_id) do
       {:ok, project} ->
-        {:ok,
-         %{scope | active_project: project, active_project_id: project.id}
-         |> with_project_environment(project)}
+        {:ok, Resources.project_scope(scope, project)}
 
       _ ->
         :error
     end
   end
-
-  defp with_project_environment(scope, nil), do: scope
-
-  defp with_project_environment(%{environment: nil} = scope, project) do
-    case LocalScope.for_local_project(project) do
-      {:ok, %{environment: env, cwd: cwd}} -> %{scope | environment: env, cwd: cwd}
-      _ -> scope
-    end
-  end
-
-  defp with_project_environment(scope, _project), do: scope
 
   # Resolve the checkout at the operation boundary; caller identity supplies
   # authorization, not the execution environment.

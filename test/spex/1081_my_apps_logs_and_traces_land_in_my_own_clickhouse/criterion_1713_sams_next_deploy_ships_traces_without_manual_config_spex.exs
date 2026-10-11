@@ -40,7 +40,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
         await_console_step(servers_view, :server)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         run_console_step(view, :telemetry)
         await_console_step(view, :telemetry)
@@ -76,7 +79,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
 
       then_ "its deploy configuration names the telemetry collector and the app's service name",
             context do
-        context.scope.environment
+        CodeMySpecSpex.Fixtures.fixture_environment(context.scope)
         |> Environments.read_file("config/deploy.yml")
         |> assert_deploy_config_names_telemetry()
 

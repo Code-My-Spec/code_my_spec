@@ -499,12 +499,16 @@ defmodule CodeMySpecSpex.Drill do
         {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_#{environment}", private)
         {:ok, public} = Sops.public_key(private)
 
-        discard_env_encrypted_to_another_key(scope.environment, environment, public)
+        discard_env_encrypted_to_another_key(
+          CodeMySpec.UsersFixtures.fixture_environment(scope),
+          environment,
+          public
+        )
 
         {environment, public}
       end)
 
-    :ok = Sops.write_config(scope.environment, recipients)
+    :ok = Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(scope), recipients)
 
     context
   end

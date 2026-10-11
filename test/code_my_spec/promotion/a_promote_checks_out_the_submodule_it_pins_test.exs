@@ -121,7 +121,7 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     {:ok, env} = InMemoryEnvironment.create(shell: script(overrides))
     :ok = Environments.register({:working_copy, running.id}, env)
     :ok = Environments.register({:working_copy, agent.id}, env)
-    scope = %{scope | active_working_copy_id: agent.id, environment: env}
+    scope = put_fixture_environment(%{scope | active_working_copy_id: agent.id}, env)
 
     story = story_fixture(scope)
 

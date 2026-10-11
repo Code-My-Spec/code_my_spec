@@ -12,7 +12,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposalTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.UsersFixtures
+  import CodeMySpec.UsersFixtures, only: [full_scope_fixture: 0, put_fixture_environment: 2]
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
@@ -93,7 +93,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposalTest do
     # Same shape `create_component` uses when it cannot write: hand back the
     # content rather than reporting success over a file that does not exist.
     test "returns the content inline when it cannot write" do
-      scope = %{full_scope_fixture() | environment: nil}
+      scope = full_scope_fixture() |> put_fixture_environment(nil)
 
       assert {:reply, response, _frame} = run(scope, %{confirm: true})
       assert response_text(response) =~ "Not Written"
@@ -110,14 +110,10 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposalTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    env = Environment.new(:local, tmp_dir)
+    scope = %{scope | active_project: project} |> put_fixture_environment(env)
 
-    Environments.ensure_dir(scope.environment, Path.dirname(Paths.proposal_path()))
+    Environments.ensure_dir(env, Path.dirname(Paths.proposal_path()))
 
     {scope, tmp_dir}
   end

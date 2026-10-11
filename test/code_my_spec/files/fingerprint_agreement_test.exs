@@ -26,7 +26,9 @@ defmodule CodeMySpec.Files.FingerprintAgreementTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+
+    scope =
+      put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, Environment.new(:local, tmp))
 
     File.mkdir_p!(Path.join(tmp, "lib/my_app"))
     File.write!(Path.join(tmp, @path), "defmodule MyApp.Accounts do\nend\n")

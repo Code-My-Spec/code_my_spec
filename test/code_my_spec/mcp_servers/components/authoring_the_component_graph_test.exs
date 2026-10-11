@@ -121,7 +121,7 @@ defmodule CodeMySpec.McpServers.Components.AuthoringTheComponentGraphTest do
     {:reply, _created, _} =
       CreateComponent.execute(
         %{name: "Billing", module_name: "MyApp.Billing", type: "context"},
-        %{ctx.frame | assigns: %{current_scope: %{ctx.scope | environment: nil}}}
+        %{ctx.frame | assigns: %{current_scope: put_fixture_environment(ctx.scope, nil)}}
       )
 
     assert [%{provenance: :authored}] = Components.list_dependencies(ctx.scope)

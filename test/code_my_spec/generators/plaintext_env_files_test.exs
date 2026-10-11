@@ -25,47 +25,67 @@ defmodule CodeMySpec.Generators.PlaintextEnvFilesTest do
     dir = CodeMySpec.TempFile.owned_dir("test")
     {_, 0} = System.cmd("git", ["init", "-q"], cd: dir)
 
-    scope = %Scope{active_project_id: nil, environment: Environment.new(:local, dir)}
-    %{scope: scope, dir: dir}
+    scope = %Scope{active_project_id: nil}
+    %{scope: scope, dir: dir, environment: Environment.new(:local, dir)}
   end
 
-  test "an .env not excluded from either git or docker still fails", %{scope: scope, dir: dir} do
+  test "an .env not excluded from either git or docker still fails", %{
+    scope: scope,
+    dir: dir,
+    environment: env
+  } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
 
-    assert DeployBoilerplate.plaintext_env_files(scope) == [".env"]
+    assert DeployBoilerplate.plaintext_env_files(scope, env) == [".env"]
   end
 
-  test "an .env gitignored but not dockerignored still fails", %{scope: scope, dir: dir} do
+  test "an .env gitignored but not dockerignored still fails", %{
+    scope: scope,
+    dir: dir,
+    environment: env
+  } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
     File.write!(Path.join(dir, ".gitignore"), ".env\n")
 
-    assert DeployBoilerplate.plaintext_env_files(scope) == [".env"]
+    assert DeployBoilerplate.plaintext_env_files(scope, env) == [".env"]
   end
 
-  test "an .env dockerignored but not gitignored still fails", %{scope: scope, dir: dir} do
+  test "an .env dockerignored but not gitignored still fails", %{
+    scope: scope,
+    dir: dir,
+    environment: env
+  } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
     File.write!(Path.join(dir, ".dockerignore"), ".env*\n")
 
-    assert DeployBoilerplate.plaintext_env_files(scope) == [".env"]
+    assert DeployBoilerplate.plaintext_env_files(scope, env) == [".env"]
   end
 
-  test "an .env excluded from both git and docker does not fail", %{scope: scope, dir: dir} do
+  test "an .env excluded from both git and docker does not fail", %{
+    scope: scope,
+    dir: dir,
+    environment: env
+  } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
     File.write!(Path.join(dir, ".gitignore"), ".env\n")
     File.write!(Path.join(dir, ".dockerignore"), ".env*\n")
 
-    assert DeployBoilerplate.plaintext_env_files(scope) == []
+    assert DeployBoilerplate.plaintext_env_files(scope, env) == []
   end
 
-  test "a .dockerignore wildcard pattern matches the real filename", %{scope: scope, dir: dir} do
+  test "a .dockerignore wildcard pattern matches the real filename", %{
+    scope: scope,
+    dir: dir,
+    environment: env
+  } do
     File.write!(Path.join(dir, ".env.local"), "SECRET=1\n")
     File.write!(Path.join(dir, ".gitignore"), ".env*\n")
     File.write!(Path.join(dir, ".dockerignore"), ".env*\n")
 
-    assert DeployBoilerplate.plaintext_env_files(scope) == []
+    assert DeployBoilerplate.plaintext_env_files(scope, env) == []
   end
 
-  test "no plaintext env files present is fine", %{scope: scope} do
-    assert DeployBoilerplate.plaintext_env_files(scope) == []
+  test "no plaintext env files present is fine", %{scope: scope, environment: env} do
+    assert DeployBoilerplate.plaintext_env_files(scope, env) == []
   end
 end

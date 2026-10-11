@@ -107,7 +107,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   describe "problems" do
     setup ctx do
       tmp = CodeMySpec.TempFile.owned_dir("test")
-      scope = %{ctx.scope | cwd: tmp, environment: Environment.new(:local, tmp)}
+      scope = put_fixture_environment(%{ctx.scope | cwd: tmp}, Environment.new(:local, tmp))
 
       Configurations.get_or_create(scope)
       {:ok, _} = Configurations.update(scope, %{spex: :block_all})

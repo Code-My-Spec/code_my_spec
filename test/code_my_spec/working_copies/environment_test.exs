@@ -9,7 +9,7 @@ defmodule CodeMySpec.WorkingCopies.EnvironmentTest do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
-  test "resolves the selected rooted copy and ignores stale scope environment and cwd" do
+  test "resolves the selected rooted copy and ignores stale project registration and cwd" do
     scope = full_scope_fixture()
     root = "/tmp/working-copy-environment-selected"
     {:ok, copy} = rooted_copy(scope, root)
@@ -19,7 +19,9 @@ defmodule CodeMySpec.WorkingCopies.EnvironmentTest do
     on_exit(fn -> Environments.unregister(key) end)
 
     stale = Environment.new(:local, "/tmp/stale-scope-environment")
-    scope = %{scope | active_working_copy_id: copy.id, environment: stale, cwd: "/tmp/stale-cwd"}
+    :ok = Environments.unregister(scope.active_project_id)
+    :ok = Environments.register(scope.active_project_id, stale)
+    scope = %{scope | active_working_copy_id: copy.id, cwd: "/tmp/stale-cwd"}
 
     assert WorkingCopies.environment(scope) == registered
   end

@@ -43,18 +43,18 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCallsFromItsOwnCopyTest do
     agent
   end
 
-  test "an agent named with no harness acts in its own copy, with its environment" do
-    scope = full_scope_fixture()
+  test "an agent named with no harness selects its own copy for environment resolution" do
+    scope = working_copy_scope_fixture()
     copy_id = scope.active_working_copy_id
     agent = agent_for(scope, copy_id)
 
-    conn = call(%{scope | active_working_copy_id: nil, environment: nil}, agent)
+    conn = call(%{scope | active_working_copy_id: nil}, agent)
 
     assert conn.assigns.agent_id == agent.id
     assert conn.assigns.current_scope.active_working_copy_id == copy_id
 
-    assert %Environment{} = conn.assigns.current_scope.environment,
-           "the agent's copy was named but carried no environment, so file tools still refuse"
+    assert %Environment{} = CodeMySpec.WorkingCopies.environment(conn.assigns.current_scope),
+           "the agent's rooted copy must resolve its own execution environment"
   end
 
   test "a named harness that is not the agent's stands, and the disagreement is logged" do

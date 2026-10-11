@@ -1185,6 +1185,9 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate mark_cli_first_connected(user), to: UsersFixtures
 
   # -- Environments --
+  defdelegate fixture_environment(scope), to: UsersFixtures
+  defdelegate put_fixture_environment(scope, env), to: UsersFixtures
+
   defdelegate memory_environment_fixture(opts \\ []), to: EnvironmentFixtures
   defdelegate local_environment_fixture(opts \\ []), to: EnvironmentFixtures
   defdelegate register_environment(project_id, env), to: Environments, as: :register
@@ -1335,7 +1338,7 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, env} = Environments.create(:memory, working_dir: root)
     :ok = Environments.register({:root, root}, env)
 
-    %{scope | active_working_copy_id: harness.id, cwd: root, environment: env}
+    %{scope | active_working_copy_id: harness.id, cwd: root}
   end
 
   @doc """
@@ -1365,7 +1368,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # disk, and what the server reads back goes over the wire.
     observed_env =
       case Keyword.get(opts, :observe_in) do
-        nil -> scope.environment
+        nil -> UsersFixtures.fixture_environment(scope)
         dir -> CodeMySpec.Environments.Environment.new(:local, dir)
       end
 
@@ -2726,7 +2729,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Files the harness scanned but could classify into no role."
   def unclassified_files(%Scope{} = scope),
-    do: Scanner.unclassified(scope.environment)
+    do: Scanner.unclassified(UsersFixtures.fixture_environment(scope))
 
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
@@ -5255,7 +5258,9 @@ defmodule CodeMySpecSpex.Fixtures do
     result
   end
 
-  defp at_head(%Scope{active_working_copy_id: id, environment: env}, opts) do
+  defp at_head(%Scope{active_working_copy_id: id} = scope, opts) do
+    env = WorkingCopies.environment(scope)
+
     if Keyword.get(opts, :at_head, false) do
       {:ok, %{root: root}} = CodeMySpec.WorkingCopies.fetch(id)
       {sha, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"], cd: root)

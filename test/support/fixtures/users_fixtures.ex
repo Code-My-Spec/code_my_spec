@@ -121,7 +121,7 @@ defmodule CodeMySpec.UsersFixtures do
     # Anchor the test scope's environment to an isolated tmp dir. With a nil
     # cwd, Environments.Local.resolve_path/2 falls through to the BEAM's
     # working directory — i.e. the project root — and any code path under
-    # test that writes through scope.environment leaks files into the live
+    # test that writes through an unrooted runtime leaks files into the live
     # tree (e.g. SpecStub.write_for_scope creating
     # .code_my_spec/spec/my_app/... which ComponentSync then re-projects
     # into the DB on the next sync).
@@ -142,8 +142,43 @@ defmodule CodeMySpec.UsersFixtures do
     # from, and how I broke eleven of story 1026's spex with the first version.
     tmp_dir = CodeMySpec.TempFile.owned_dir("full_scope")
 
-    user_scope_fixture(user, account, project)
-    |> Map.put(:environment, Environment.new(:local, tmp_dir))
+    scope = user_scope_fixture(user, account, project)
+    env = Environment.new(:local, tmp_dir)
+    :ok = CodeMySpec.Environments.register(project.id, env)
+    %{scope | cwd: tmp_dir}
+  end
+
+  @doc "The runtime explicitly registered by a test fixture, independent of Scope's fields."
+  def fixture_environment(scope) do
+    CodeMySpec.Environments.lookup_registered({:working_copy, scope.active_working_copy_id}) ||
+      CodeMySpec.Environments.lookup_registered({:root, scope.cwd}) ||
+      CodeMySpec.Environments.lookup_registered(scope.active_project_id)
+  end
+
+  @doc "Register a fixture runtime without storing it on Scope."
+  def put_fixture_environment(scope, nil) do
+    for key <- [
+          {:working_copy, scope.active_working_copy_id},
+          {:root, scope.cwd},
+          scope.active_project_id
+        ] do
+      :ok = CodeMySpec.Environments.unregister(key)
+    end
+
+    %{scope | active_working_copy_id: nil, cwd: nil}
+  end
+
+  def put_fixture_environment(scope, %Environment{} = env) do
+    case CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id) do
+      {:ok, _} when is_binary(env.cwd) ->
+        :ok = register_working_copy_environment(scope, env)
+
+      _ ->
+        :ok = CodeMySpec.Environments.unregister(scope.active_project_id)
+        :ok = CodeMySpec.Environments.register(scope.active_project_id, env)
+    end
+
+    %{scope | cwd: env.cwd}
   end
 
   @doc "Registers the selected working copy at an explicit environment root."
@@ -162,7 +197,7 @@ defmodule CodeMySpec.UsersFixtures do
   @doc "A full test scope whose selected working copy has a registered environment."
   def working_copy_scope_fixture(project_attrs \\ %{}) do
     scope = full_scope_fixture(project_attrs)
-    :ok = register_working_copy_environment(scope, scope.environment)
+    :ok = register_working_copy_environment(scope, fixture_environment(scope))
     scope
   end
 

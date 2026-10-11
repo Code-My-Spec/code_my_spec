@@ -60,14 +60,14 @@ defmodule CodeMySpec.Git.CLITest do
   end
 
   describe "explicit environment" do
-    test "an invalid selected copy refuses the stale scope environment" do
+    test "an invalid selected copy refuses the project runtime" do
       root = CodeMySpec.TempFile.owned_dir("git_invalid_selection")
       scope = full_scope_fixture(%{local_path: root})
 
       scope = %{
         scope
         | active_working_copy_id: Ecto.UUID.generate(),
-          environment: Environment.new(:local, root)
+          cwd: root
       }
 
       assert {:error, :no_environment} = CLI.pull(scope, root)
@@ -81,7 +81,7 @@ defmodule CodeMySpec.Git.CLITest do
       refute File.exists?(clone_path)
     end
 
-    test "pull uses the explicit environment instead of scope.environment" do
+    test "pull uses the explicit environment" do
       {scope, _token} = scope_with_github_integration()
       explicit_repo = temp_clone_path()
       stale_repo = temp_clone_path()
@@ -100,8 +100,6 @@ defmodule CodeMySpec.Git.CLITest do
         {_, 0} = System.cmd("git", ["init", "-q"], cd: repo)
         {_, 0} = System.cmd("git", ["remote", "add", "origin", remote], cd: repo)
       end
-
-      scope = %{scope | environment: Environment.new(:local, stale_repo)}
 
       assert {:error, :invalid_url} =
                CLI.pull(scope, explicit_repo, Environment.new(:local, explicit_repo))

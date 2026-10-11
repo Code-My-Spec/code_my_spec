@@ -13,9 +13,8 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal do
   produces it from the database instead, which is the one source that already
   agrees with the spec stubs the graph is built from.
 
-  Writes through the scope's environment, so it works against a remote harness
-  the same way `create_component`'s stub writing does — the server holds no
-  checkout and does not need one.
+  Writes through the environment for the selected working copy, including a
+  remote harness when the server does not hold the checkout.
 
   Not automatic. Regenerating discards whatever the file said, and a proposal
   under active edit is worth more than one that matches the database, so the
@@ -29,9 +28,11 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal do
   alias CodeMySpec.Architecture.ProposalProjector
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Paths
+  alias CodeMySpec.WorkingCopies
 
   schema do
     field :confirm, :boolean,
@@ -62,12 +63,18 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal do
          "architecture and any unexecuted edits in it are lost."}
 
   defp write(scope) do
+    env = project_environment(scope)
     content = ProposalProjector.project(scope)
 
     with :ok <- describes_something(scope, content) do
-      do_write(scope, content)
+      do_write(env, content)
     end
   end
+
+  defp project_environment(%{active_working_copy_id: nil, active_project: project}),
+    do: LocalScope.environment(project)
+
+  defp project_environment(scope), do: WorkingCopies.environment(scope)
 
   # A proposal with no contexts, written over one that had them, is worse than
   # no proposal: it is a document that confidently describes an empty
@@ -103,8 +110,8 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal do
     end
   end
 
-  defp do_write(scope, content) do
-    case Environments.write_file(scope.environment, Paths.proposal_path(), content) do
+  defp do_write(env, content) do
+    case Environments.write_file(env, Paths.proposal_path(), content) do
       :ok ->
         text("""
         # Proposal Regenerated

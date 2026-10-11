@@ -42,11 +42,11 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
 
   describe "deploy" do
     test "run refuses instead of shipping nothing and calling it done", ctx do
-      # `environment: nil` short-circuits `deploy_ready/1` past the readiness
+      # An invalid selected-copy id leaves no runtime for `deploy_ready/1` to inspect.
       # audit (357ce21a) — not a workaround, the same bypass that gate uses
       # for a scope with no checkout to read. What is under test here is
       # `deploy_environments/3`'s empty-list guard, which sits after it.
-      scope = %{ctx.scope | active_working_copy_id: Ecto.UUID.generate(), environment: nil}
+      scope = %{ctx.scope | active_working_copy_id: Ecto.UUID.generate()}
 
       assert {:error, reason} = Steps.run(:deploy, scope, environments: [])
       assert reason =~ "no environment is permitted"

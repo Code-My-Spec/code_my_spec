@@ -3,7 +3,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   The requirement checkers against a scope with no environment.
 
   That is the light harness: the server holds no working copy. These two used to
-  stat and read files through `scope.environment` and so could never return true
+  stat and read files through `fixture_environment(scope)` and so could never return true
   there — an agent wrote the persona research and the architecture proposal,
   watched both sync, and was told they were missing on every re-evaluation. It
   spent a drill working a requirement that could not be satisfied.
@@ -34,7 +34,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
 
   setup do
     scope = full_scope_fixture()
-    %{scope: %{scope | environment: nil}}
+    %{scope: put_fixture_environment(scope, nil)}
   end
 
   defp sync(scope, path, role, errors \\ %{}) do
@@ -182,7 +182,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   end
 
   # `path_exists` reached the disk until now: it consulted the preloader's file
-  # map and, failing that, statted `scope.environment`. On the light harness
+  # map and, failing that, statted `fixture_environment(scope)`. On the light harness
   # that environment is nil, so the six requirements using it could report
   # satisfied on a laptop and unsatisfied on the server for the same project at
   # the same instant — the answer depended on which process was asked.

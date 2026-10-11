@@ -21,7 +21,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
     scope = working_copy_scope_fixture()
     env = Environment.new(:local, tmp_dir)
     :ok = register_working_copy_environment(scope, env)
-    %{scope | environment: env}
+    put_fixture_environment(scope, env)
   end
 
   defp create_story_with_component(scope, opts \\ %{}) do

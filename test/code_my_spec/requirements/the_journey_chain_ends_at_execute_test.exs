@@ -9,6 +9,8 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
   """
   use CodeMySpecSpex.Case, async: false
 
+  import CodeMySpec.UsersFixtures, only: [fixture_environment: 1, put_fixture_environment: 2]
+
   alias CodeMySpec.AgentTasks.Release
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
@@ -59,7 +61,10 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
     end
 
     test "completes QA's journey chain", ctx do
-      assert Environments.glob(ctx.scope.environment, "test/journeys/*_test.exs") in [[], nil]
+      assert Environments.glob(fixture_environment(ctx.scope), "test/journeys/*_test.exs") in [
+               [],
+               nil
+             ]
 
       for name <- ~w(qa_journey_plan qa_journey_execute) do
         assert Fixtures.requirement_satisfied?(ctx.scope, name, :project, ctx.project.id),
@@ -79,7 +84,7 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
       {:ok, ready} = Release.command(ctx.scope, %{})
       refute ready =~ "the user journeys come first"
 
-      :ok = Environments.delete_file(ctx.scope.environment, Paths.qa_journey_result())
+      :ok = Environments.delete_file(fixture_environment(ctx.scope), Paths.qa_journey_result())
       {:ok, refused} = Release.command(ctx.scope, %{})
       assert refused =~ "the user journeys come first"
     end

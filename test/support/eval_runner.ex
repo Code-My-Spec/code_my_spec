@@ -360,7 +360,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   # nothing to compute one from, which is the state being measured.
   defp bare_world do
     %Scope{} = scope = fresh_scope()
-    root = scope.environment.cwd
+    root = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
     scope = %Scope{scope | cwd: root}
     File.mkdir_p!(Path.join(root, ".code_my_spec"))
 
@@ -372,12 +372,12 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   defp full_satisfaction_world do
     %Scope{} = scope = fresh_scope()
-    root = scope.environment.cwd
+    root = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
     scope = %Scope{scope | cwd: root}
 
     context = %{
       scope: scope,
-      environment: scope.environment,
+      environment: CodeMySpec.UsersFixtures.fixture_environment(scope),
       project: scope.active_project
     }
 

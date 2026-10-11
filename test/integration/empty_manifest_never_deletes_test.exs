@@ -9,7 +9,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
   snapshot and `Files.delete_removed/2` removed every row whose path was not in
   it — which was all of them.
 
-  That ran on the server, where `scope.environment` is a `Harness` with nothing
+  That ran on the server, where `CodeMySpec.UsersFixtures.fixture_environment(scope)` is a `Harness` with nothing
   local to walk, on the `get_next_requirement` path:
 
       17:22:25  sent 3936 observations for …/phx-new-generator
@@ -49,7 +49,10 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
       scope = harness_scope()
 
       assert {:error, :not_supported_on_harness} =
-               Scanner.observe(scope.environment, Files.read_model(scope))
+               Scanner.observe(
+                 CodeMySpec.UsersFixtures.fixture_environment(scope),
+                 Files.read_model(scope)
+               )
     end
 
     test "does not delete the rows a harness already reported" do
@@ -176,19 +179,18 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    scope =
+      put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     {scope, tmp_dir}
   end
 
   defp harness_scope do
     scope = full_scope_fixture()
-    %{scope | cwd: nil, environment: Environment.new(:harness, nil)}
+    %{scope | cwd: nil}
   end
 
   defp write_impl(tmp_dir, module_path, module_name) do

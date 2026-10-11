@@ -9,7 +9,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
   alias CodeMySpec.Repo
 
   setup do
-    %{scope: %{full_scope_fixture() | environment: nil, cwd: nil}}
+    %{scope: put_fixture_environment(full_scope_fixture(), nil)}
   end
 
   test "stored call evidence creates an edge without reopening source files", %{scope: scope} do
@@ -129,7 +129,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    other_scope = %{full_scope_fixture() | environment: nil, cwd: nil}
+    other_scope = put_fixture_environment(full_scope_fixture(), nil)
     other_billing = component(other_scope, "MyApp.Billing")
     other_accounts = component(other_scope, "MyApp.Accounts")
 

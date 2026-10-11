@@ -66,7 +66,7 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
       |> Enum.map(&{&1.source_component.module_name, &1.target_component.module_name})
 
   setup do
-    scope = %{full_scope_fixture() | environment: nil, cwd: nil}
+    scope = put_fixture_environment(full_scope_fixture(), nil)
 
     accounts =
       component_fixture(scope, %{
@@ -236,7 +236,7 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
       valid: true
     })
 
-    stale_scope = %{ctx.scope | environment: Environment.new(:local, "/missing/stale/root")}
+    stale_scope = %{ctx.scope | cwd: "/missing/stale/root"}
 
     assert {:ok, _} =
              ComponentSync.sync_from_files(stale_scope,

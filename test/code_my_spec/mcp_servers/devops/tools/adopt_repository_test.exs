@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
 
     scope = full_scope_fixture()
     _ = github_integration_fixture(scope.user)
-    scope = %{scope | environment: Environment.new(:local, working_dir)}
+    scope = put_fixture_environment(scope, Environment.new(:local, working_dir))
 
     %{scope: scope, project: scope.active_project, bare_dir: bare_dir}
   end
@@ -83,7 +83,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepositoryTest do
       scope: scope,
       bare_dir: bare_dir
     } do
-      working_dir = scope.environment.cwd
+      working_dir = fixture_environment(scope).cwd
 
       # A checkout that already has history, on a non-"main" default branch —
       # the shape of a real, pre-existing project rather than a fresh one.

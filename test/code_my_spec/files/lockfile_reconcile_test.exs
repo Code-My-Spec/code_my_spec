@@ -156,13 +156,8 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
 
     write_mix_lock(tmp_dir, lock_content)
 
-    {%{
-       scope
-       | active_project: project,
-         active_working_copy_id: main_copy_id,
-         cwd: tmp_dir,
-         environment: Environment.new(:local, tmp_dir)
-     }, tmp_dir}
+    scope = %{scope | active_project: project, active_working_copy_id: main_copy_id}
+    {put_fixture_environment(scope, Environment.new(:local, tmp_dir)), tmp_dir}
   end
 
   defp designated_copy_id(_scope, copy, false), do: copy.id

@@ -6,7 +6,7 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
   Found live against MarketMySpec: `run_provisioning_step(step: "deploy")`
   reported every boilerplate artifact missing — Dockerfile, .sops.yaml, both
   encrypted envs, bin/deploy, all of it — despite every one of them being
-  real, committed, and pushed. `Generators.audit/2`'s existence checks only
+  real, committed, and pushed. `Generators.audit/3`'s existence checks only
   ever asked a directoryless environment, which can never answer honestly
   for a harness-scoped call. They did not need to ask that at all: this
   project's own file sync (`CodeMySpec.Files`) already had the answer,
@@ -43,7 +43,7 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
 
   defp directoryless_scope do
     scope = full_scope_fixture()
-    %{scope | environment: Environment.new(:local, nil)}
+    %{scope | active_working_copy_id: Ecto.UUID.generate()}
   end
 
   defp sync(scope, path, role \\ :config) do
@@ -97,7 +97,7 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
         sync(scope, path)
       end
 
-      findings = Generators.audit(scope, @router)
+      findings = Generators.audit(scope, @router, Environment.new(:local, nil))
 
       assert Enum.any?(findings, &match?({:missing_file, %{key: :dockerfile}}, &1)),
              "expected the genuinely-unsynced Dockerfile to still read as missing, got #{inspect(findings)}"
@@ -107,7 +107,11 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
       scope = directoryless_scope()
       sync(scope, ".env")
 
-      assert {:plaintext_env_file, ".env"} in Generators.audit(scope, @router)
+      assert {:plaintext_env_file, ".env"} in Generators.audit(
+               scope,
+               @router,
+               Environment.new(:local, nil)
+             )
     end
   end
 end

@@ -28,7 +28,7 @@ defmodule CodeMySpec.Analysis.RecordedOutputReplayTest do
     scope = %{full_scope_fixture() | cwd: @cwd}
     :ok = register_working_copy_environment(scope, env)
 
-    %{scope: %{scope | environment: conflicting_env}, env: env}
+    %{scope: scope, env: env}
   end
 
   defp run(scope, env, source) do
@@ -50,16 +50,16 @@ defmodule CodeMySpec.Analysis.RecordedOutputReplayTest do
     assert local_calls() == 0
   end
 
-  test "the selected working copy recording wins over the scope environment recording",
+  test "the selected working copy recording wins over the project runtime recording",
        %{scope: scope, env: env} do
     selected_env = InMemoryEnvironment.record_output(env, "spex", @spex_green)
     :ok = Environments.unregister({:working_copy, scope.active_working_copy_id})
     :ok = Environments.register({:working_copy, scope.active_working_copy_id}, selected_env)
 
     conflicting_env =
-      InMemoryEnvironment.record_output(scope.environment, "spex", "/missing.jsonl")
+      InMemoryEnvironment.record_output(fixture_environment(scope), "spex", "/missing.jsonl")
 
-    scope = %{scope | environment: conflicting_env}
+    :ok = Environments.register(scope.active_project_id, conflicting_env)
 
     {:ok, run} = RunsRepository.start_run(scope, %{source: "spex", kind: :full, args: %{}})
 

@@ -99,7 +99,6 @@ defmodule CodeMySpec do
       CodeMySpec.StaticAnalysis,
       CodeMySpec.StoryReconcile,
       CodeMySpec.Tags,
-      CodeMySpec.TaskHelp,
       CodeMySpec.TaskOwner,
       CodeMySpec.TempFile,
       CodeMySpec.Tests,

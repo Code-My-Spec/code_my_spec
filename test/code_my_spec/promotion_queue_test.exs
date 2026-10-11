@@ -439,7 +439,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     clean_runs_at(ctx, a.commit)
 
     entry = queue(ctx, a)
-    stale_scope = %{ctx.scope | environment: Environment.new(:harness, "/wrong/remote/root")}
+    stale_scope = %{ctx.scope | cwd: "/wrong/remote/root"}
     :ok = PromotionQueue.ensure_worker(stale_scope)
 
     assert {:ok, %{status: :landed}} = settle(entry)

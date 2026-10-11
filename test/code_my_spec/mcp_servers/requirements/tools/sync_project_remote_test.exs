@@ -59,11 +59,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
   end
 
   setup do
-    working_copy_id = "harness-#{System.unique_integer([:positive])}"
+    scope = full_scope_fixture()
+    remote_root = "/somewhere/on/another/machine"
+    scope = put_fixture_environment(scope, %Environment{type: :harness, cwd: remote_root})
 
     %{
-      scope: %{full_scope_fixture() | active_working_copy_id: working_copy_id},
-      working_copy_id: working_copy_id
+      scope: scope,
+      working_copy_id: scope.active_working_copy_id
     }
   end
 
@@ -74,13 +76,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
     test "a cwd it cannot scan asks the harness rather than failing", ctx do
       _pid = registered_channel(ctx.working_copy_id)
 
-      scope = %{
-        ctx.scope
-        | cwd: "/somewhere/on/another/machine",
-          environment: %Environment{type: :harness, cwd: "/somewhere/on/another/machine"}
-      }
-
-      {response, text} = run(scope)
+      {response, text} = run(%{ctx.scope | cwd: "/somewhere/on/another/machine"})
 
       refute response.isError,
              "`Sync failed: {:cannot_scan, :not_supported_on_harness}` reads as a broken " <>

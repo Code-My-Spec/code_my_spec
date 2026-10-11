@@ -8,7 +8,7 @@ defmodule CodeMySpec.McpServers.EnvironmentResolutionTest do
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.WorkingCopies
 
-  test "a selected checkout resolves independently of the environment on scope" do
+  test "a selected checkout resolves independently of the scope cwd" do
     scope = full_scope_fixture()
     {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
     {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/mcp-selected-checkout")
@@ -17,10 +17,10 @@ defmodule CodeMySpec.McpServers.EnvironmentResolutionTest do
     on_exit(fn -> Environments.unregister({:working_copy, copy.id}) end)
     stale = Environment.new(:local, "/tmp/stale-scope")
 
-    frame = %{assigns: %{current_scope: %{scope | environment: stale}}}
+    frame = %{assigns: %{current_scope: %{scope | cwd: stale.cwd}}}
     assert Validators.mcp_environment(frame) == expected
 
-    assert Validators.mcp_environment(%{assigns: %{current_scope: %{scope | environment: nil}}}) ==
+    assert Validators.mcp_environment(%{assigns: %{current_scope: %{scope | cwd: nil}}}) ==
              expected
   end
 

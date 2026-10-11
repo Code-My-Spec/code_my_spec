@@ -30,15 +30,19 @@ defmodule CodeMySpec.Provisioning.DeployReadinessAppNameTest do
       scope = provisioning_scope_fixture(%{module_name: "SomethingStale"})
 
       :ok =
-        Environments.write_file(scope.environment, "mix.exs", """
-        defmodule MarketMySpec.MixProject do
-          use Mix.Project
+        Environments.write_file(
+          CodeMySpec.UsersFixtures.fixture_environment(scope),
+          "mix.exs",
+          """
+          defmodule MarketMySpec.MixProject do
+            use Mix.Project
 
-          def project do
-            [app: :market_my_spec, version: "0.1.0"]
+            def project do
+              [app: :market_my_spec, version: "0.1.0"]
+            end
           end
-        end
-        """)
+          """
+        )
 
       assert {:error, reason} = Steps.run(:deploy, scope, [])
 

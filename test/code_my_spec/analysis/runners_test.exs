@@ -51,7 +51,7 @@ defmodule CodeMySpec.Analysis.RunnersTest do
     end
 
     test "a direct runner call without any runtime refuses to execute", %{scope: scope} do
-      scope = %{scope | cwd: nil, environment: nil}
+      scope = put_fixture_environment(scope, nil)
 
       assert {:error, :no_environment} = Runners.run("compiler", scope, [], [])
     end

@@ -20,7 +20,7 @@ defmodule CodeMySpec.Files.ComponentSyncWithoutADiskTest do
 
   setup do
     scope = full_scope_fixture()
-    %{scope: %{scope | environment: nil}}
+    %{scope: put_fixture_environment(scope, nil)}
   end
 
   defp scanned_code(scope, path, module_name) do

@@ -4,7 +4,7 @@ defmodule CodeMySpec.PromotionTest do
 
   Every spec in story 1046 builds `Environment.new(:local, root)` and drives a
   real checkout on the machine running the suite. Production does not look like
-  that: a project's checkout is on someone else's machine, `scope.environment`
+  that: a project's checkout is on someone else's machine, `fixture_environment(scope)`
   is a harness environment, and `Environments.Harness.cmd/4` answers
   `{:error, :not_supported_on_harness}` — it carries file operations to the
   disk, not commands.
@@ -43,7 +43,7 @@ defmodule CodeMySpec.PromotionTest do
     end
 
     test "a harness that is not connected is reported, not crashed into" do
-      scope = %{full_scope_fixture() | environment: Environment.new(:harness, nil)}
+      scope = put_fixture_environment(full_scope_fixture(), Environment.new(:harness, nil))
 
       assert {:error, %{reason: reason}} =
                Runner.restart(scope, "/somewhere", Ecto.UUID.generate())

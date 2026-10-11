@@ -41,7 +41,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsPromptTest do
     {:ok, story} = Stories.set_story_component(scope, story, component.id)
 
     # No environment: the light-harness scope. This is the case under test.
-    %{scope: %{scope | environment: nil, cwd: nil}, story: story, component: component}
+    %{scope: put_fixture_environment(scope, nil), story: story, component: component}
   end
 
   defp prompt(scope, story) do

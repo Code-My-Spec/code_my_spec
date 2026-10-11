@@ -144,50 +144,69 @@ defmodule CodeMySpec.ResourcesTest do
       {:ok, project} =
         Projects.update_project(scope, scope.active_project, %{local_path: checkout})
 
-      # What a browser-session scope actually looks like — `Scope.for_user/1`
-      # never populates `environment`.
-      web_scope = %{scope | environment: nil}
+      :ok = CodeMySpec.Environments.unregister(project.id)
+
+      # A browser-session scope selects no working copy.
+      web_scope = %{scope | active_working_copy_id: nil}
 
       resolved = Resources.project_scope(web_scope, project)
 
-      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+      assert resolved.cwd == checkout
       assert resolved.active_project_id == project.id
+      assert resolved.active_working_copy_id == nil
     end
 
     test "leaves the environment nil for a project with no reachable checkout anywhere, rather than guessing one",
          %{scope: scope} do
       {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: nil})
+      :ok = CodeMySpec.Environments.unregister(project.id)
 
-      web_scope = %{scope | environment: nil}
+      web_scope = %{scope | active_working_copy_id: nil}
 
       resolved = Resources.project_scope(web_scope, project)
 
-      assert resolved.environment == nil
+      assert resolved.cwd == nil
       assert resolved.active_project_id == project.id
     end
 
-    test "a harness-typed scope still re-derives :local from the project's checkout, unaffected by this fix",
+    test "a selected working copy belonging to the target project supplies its root",
          %{scope: scope} do
-      checkout = CodeMySpec.TempFile.owned_dir("test")
+      checkout = CodeMySpec.TempFile.owned_dir("selected-copy")
 
       {:ok, project} =
-        Projects.update_project(scope, scope.active_project, %{local_path: checkout})
+        Projects.update_project(scope, scope.active_project, %{local_path: nil})
 
-      harness_scope = %{
-        scope
-        | environment: Environment.new(:harness, "/wherever/the/harness/runs")
-      }
+      project_scope = %{scope | active_project_id: project.id}
 
-      resolved = Resources.project_scope(harness_scope, project)
+      {:ok, copy} =
+        WorkingCopies.issue(project_scope, nil,
+          root: checkout,
+          device: device_fixture(project_scope)
+        )
 
-      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+      {:ok, copy} = WorkingCopies.report_root(copy, checkout)
+
+      resolved = Resources.project_scope(%{scope | active_working_copy_id: copy.id}, project)
+
+      assert resolved.cwd == checkout
+      assert resolved.active_working_copy_id == copy.id
     end
 
-    test "a scope that already carries a real environment keeps it, e.g. an MCP/CLI caller",
+    test "a selected but unrooted copy remains selected instead of falling back to local_path",
          %{scope: scope} do
-      resolved = Resources.project_scope(scope, scope.active_project)
+      local_path = CodeMySpec.TempFile.owned_dir("local-project-path")
 
-      assert resolved.environment == scope.environment
+      {:ok, project} =
+        Projects.update_project(scope, scope.active_project, %{local_path: local_path})
+
+      scoped = %{scope | active_project_id: project.id}
+      {:ok, copy} = WorkingCopies.issue(scoped, nil, device: device_fixture(scoped))
+
+      resolved = Resources.project_scope(%{scope | active_working_copy_id: copy.id}, project)
+
+      assert resolved.active_working_copy_id == copy.id
+      assert resolved.cwd == nil
+      assert WorkingCopies.environment(resolved) == nil
     end
 
     # Found live: a project onboarded outside the usual local_path-setting
@@ -206,14 +225,9 @@ defmodule CodeMySpec.ResourcesTest do
       :ok = CodeMySpec.Environments.register(project.id, Environment.new(:local, checkout))
       on_exit(fn -> CodeMySpec.Environments.unregister(project.id) end)
 
-      harness_scope = %{
-        scope
-        | environment: Environment.new(:harness, "/wherever/the/harness/runs")
-      }
+      resolved = Resources.project_scope(%{scope | active_working_copy_id: nil}, project)
 
-      resolved = Resources.project_scope(harness_scope, project)
-
-      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+      assert resolved.cwd == checkout
     end
 
     # Found live against Broken Oaths' real project: never onboarded through
@@ -235,15 +249,11 @@ defmodule CodeMySpec.ResourcesTest do
 
       {:ok, working_copy} = WorkingCopies.report_root(working_copy, checkout)
 
-      harness_scope = %{
-        scope
-        | environment: Environment.new(:harness, "/wherever/the/harness/runs"),
-          active_working_copy_id: working_copy.id
-      }
+      resolved =
+        Resources.project_scope(%{scope | active_working_copy_id: working_copy.id}, project)
 
-      resolved = Resources.project_scope(harness_scope, project)
-
-      assert %Environment{type: :local, cwd: ^checkout} = resolved.environment
+      assert resolved.cwd == checkout
+      assert resolved.active_working_copy_id == working_copy.id
     end
 
     # The connected copy only answers for its *own* project. A caller bound to
@@ -267,15 +277,11 @@ defmodule CodeMySpec.ResourcesTest do
       # local_path is the only honest answer here, never the caller's checkout.
       other_project = project_fixture(scope, %{local_path: other_checkout})
 
-      harness_scope = %{
-        scope
-        | environment: Environment.new(:harness, "/wherever/the/harness/runs"),
-          active_working_copy_id: working_copy.id
-      }
+      resolved =
+        Resources.project_scope(%{scope | active_working_copy_id: working_copy.id}, other_project)
 
-      resolved = Resources.project_scope(harness_scope, other_project)
-
-      assert %Environment{type: :local, cwd: ^other_checkout} = resolved.environment
+      assert resolved.cwd == other_checkout
+      assert resolved.active_working_copy_id == nil
     end
   end
 

@@ -65,8 +65,7 @@ defmodule CodeMySpec.LocalScope do
            active_account_id: project.account_id,
            active_project: project,
            active_project_id: project.id,
-           cwd: env.cwd,
-           environment: env
+           cwd: env.cwd
          }}
     end
   end

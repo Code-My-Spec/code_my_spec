@@ -49,7 +49,7 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
       component_fixture(scope, %{name: "Widgets", module_name: "CodeMySpec.Widgets"})
 
     # No environment: exactly the light harness server's situation.
-    %{scope: %{scope | environment: nil, cwd: nil}, component: component}
+    %{scope: put_fixture_environment(scope, nil), component: component}
   end
 
   test "a full sync that could not read a spec does not delete its component", %{
@@ -69,7 +69,7 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
     # Refusing outright would take the whole sync down for one bad file. The
     # rule is "do not prune", not "do not sync".
     scope = full_scope_fixture()
-    scope = %{scope | environment: nil, cwd: nil}
+    scope = put_fixture_environment(scope, nil)
 
     unreadable_spec!(scope, ".code_my_spec/spec/code_my_spec/anything.spec.md")
 

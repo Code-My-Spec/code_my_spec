@@ -571,7 +571,7 @@ defmodule CodeMySpec.ProvisioningTest do
 
     test "a step that shells out names the missing environment instead of crashing",
          %{scope: scope} do
-      scope = %{scope | active_working_copy_id: Ecto.UUID.generate(), environment: nil}
+      scope = %{scope | active_working_copy_id: Ecto.UUID.generate()}
 
       halted =
         for key <- [:repository, :deploy, :backups] do

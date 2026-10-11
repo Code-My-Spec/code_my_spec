@@ -4,14 +4,15 @@ defmodule CodeMySpec.AgentTasks.EnvironmentTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
 
-  test "the selected working copy environment wins over a stale scope environment" do
+  test "the selected working copy environment wins over a stale project runtime" do
     scope = working_copy_scope_fixture()
-    expected_cwd = scope.environment.cwd
+    expected_cwd = fixture_environment(scope).cwd
     stale_root = CodeMySpec.TempFile.owned_dir("stale_scope_environment")
-    scope = %{scope | environment: Environment.new(:local, stale_root)}
+    :ok = Environments.register(scope.active_project_id, Environment.new(:local, stale_root))
 
     assert %Environment{cwd: cwd} = AgentTasks.environment(scope)
     assert cwd == expected_cwd

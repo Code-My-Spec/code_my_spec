@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3596Spex do
 
         :ok =
           CodeMySpec.Environments.write_file(
-            other.environment,
+            CodeMySpecSpex.Fixtures.fixture_environment(other),
             "lib/reservations/booking.ex",
             "defmodule Reservations.Booking do end"
           )

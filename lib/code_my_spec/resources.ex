@@ -49,7 +49,6 @@ defmodule CodeMySpec.Resources do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
@@ -63,7 +62,6 @@ defmodule CodeMySpec.Resources do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @type report :: %{
           status: :healthy | :unhealthy,
@@ -476,130 +474,52 @@ defmodule CodeMySpec.Resources do
     end)
   end
 
-  # An MCP call arriving over a harness connection carries that harness's own
-  # `environment` — `%Environment{type: :harness}`, correct for addressing
-  # *this session's* working copy (analysis, hooks) but not a general command
-  # runner: `CmsHarness.Environments.Harness.cmd/4` is a stub that always
-  # returns `{:error, :not_supported_on_harness}`. Provisioning steps that
-  # shell out (the repository push, most concretely) crashed on it —
-  # `String.trim(:error)`, the stub's return value pattern-matched as if it
-  # were `{output, status}` — rather than failing cleanly, because nothing
-  # upstream expects `cmd/4` to disagree with its own declared contract.
-  #
-  # Provisioning has always run against the project's own checkout, regardless
-  # of which session asked for it to run. Re-deriving `:local` here, the same
-  # way `LocalScope.for_local_project/2` does, is what makes an MCP-invoked run
-  # behave like the button on the page instead of like whichever connection
-  # issued it.
   @doc """
-  A scope acting as `project`, with an `environment` real commands can run in.
+  A caller scope acting as `project`, retaining only a working copy that
+  belongs to that project.
 
-  Public because `project_scope/2` is the one place this coercion lives —
-  anything that needs to run a provisioning-shaped action (a step, or a
-  generator write) against a specific project from an MCP call should build
-  its scope through this rather than re-deriving `:local` itself.
+  Execution environments are resolved by the action that needs them. This
+  function preserves caller identity and makes cross-project selection safe.
   """
   @spec project_scope(Scope.t(), Project.t()) :: Scope.t()
-  # Always re-derived for the *target* project rather than trusting the
-  # calling scope's own environment — a harness bound to project A iterating
-  # over project B must not run B's steps against A's checkout, which is what
-  # made this a separate branch from "keep what's already there" in the first
-  # place. But re-deriving used to mean `project.local_path` alone, which
-  # missed a project onboarded outside the usual local_path-setting flow
-  # (adopted, no persisted column) even while a harness was live-registered
-  # for it right now. `LocalScope.for_local_project/1` checks that registration
-  # first and falls back to `local_path` only if nothing answers, so this
-  # gets the same live-checkout preference the nil-environment clause below
-  # already has.
-  def project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
-    environment = harness_environment(scope.active_working_copy_id, project)
-
-    %Scope{
-      scope
-      | active_project: project,
-        active_project_id: project.id,
-        environment: environment
-    }
-  end
-
-  # A scope built from an HTTP session — `/app/resources`' own button, unlike
-  # `ProvisioningLive`'s — carries no environment at all: `Scope.for_user/1`
-  # never sets one. Left alone, every shelling-out step (repository push,
-  # deploy, backups) hit `is_nil(env(scope))` and errored with "no working
-  # environment" on every run this page started — even for a project whose
-  # checkout is real, current, and sitting right where `local_path` says.
-  # The persisted `:repository` row (a step re-verified on every run,
-  # deliberately — see `verify(:repository, …)`) then flipped from `:done` to
-  # `:error`, and the checklist read that as a fresh "Missing" (issue a2ea10a8).
-  #
-  # `ProvisioningLive.with_project_environment/2` already solved this for the
-  # per-project setup page by resolving through `LocalScope.for_local_project/2` —
-  # which checks a live-registered harness before falling back to
-  # `project.local_path`, so a currently-connected checkout wins over a stale
-  # column. This mirrors it so the account-wide "Run setup" button gets the
-  # same real environment instead of running blind.
-  #
-  # A project truly reachable nowhere (no registration, no `local_path`) still
-  # falls through with `environment: nil`, and the shelling-out steps still
-  # name that plainly rather than guessing — there is nothing to adopt here,
-  # only somewhere real to look first.
-  def project_scope(%Scope{environment: nil} = scope, project) do
-    case LocalScope.for_local_project(project) do
-      {:ok, %{environment: environment, cwd: cwd}} ->
-        %Scope{
+  def project_scope(%Scope{} = scope, %Project{id: project_id} = project) do
+    case matching_working_copy(scope.active_working_copy_id, project_id) do
+      {:ok, %{id: copy_id, root: root}} ->
+        %{
           scope
           | active_project: project,
-            active_project_id: project.id,
-            environment: environment,
-            cwd: cwd
+            active_project_id: project_id,
+            active_working_copy_id: copy_id,
+            cwd: root
         }
 
-      {:error, _reason} ->
-        %Scope{scope | active_project: project, active_project_id: project.id}
+      :error ->
+        %{
+          scope
+          | active_project: project,
+            active_project_id: project_id,
+            active_working_copy_id: nil,
+            cwd: local_cwd(project)
+        }
     end
   end
 
-  def project_scope(%Scope{} = scope, project) do
-    %Scope{scope | active_project: project, active_project_id: project.id}
-  end
-
-  # The caller's own connected working copy is the most specific answer there
-  # is to "where is this project's checkout" — more specific than
-  # `local_path`, which nothing sets for a project that has only ever been
-  # reached through its own harness connection and never through any other
-  # onboarding flow. `LocalScope.for_local_project/1`'s own registry check is
-  # spex-test-only (`CodeMySpec.Environments.register/2`'s own doc says so),
-  # so in production it always missed and fell straight to `local_path` —
-  # `nil` for a project like this, raising deep inside `Environments.Local.
-  # cmd/4` instead of ever finding the checkout that is live and connected
-  # right now. Confirmed live against Broken Oaths' real project: a harness
-  # joined with a known root, `local_path` empty, and `adopt_repository`
-  # died on "this environment has no working directory."
-  #
-  # Only trusted when the connected copy actually names *this* project,
-  # never a caller bound to project A iterating over project B — using A's
-  # checkout for B's steps is exactly the bug the surrounding clause exists
-  # to prevent, and a stale or wrong working-copy id must fall through to
-  # the same fallback a caller with none at all gets, not silently borrow
-  # the wrong root.
-  defp harness_environment(working_copy_id, %Project{id: project_id} = project)
-       when is_binary(working_copy_id) do
-    case WorkingCopies.fetch(working_copy_id) do
-      {:ok, %WorkingCopy{project_id: ^project_id, root: root}}
-      when is_binary(root) and root != "" ->
-        Environment.new(:local, root)
+  defp matching_working_copy(copy_id, project_id) when is_binary(copy_id) do
+    case WorkingCopies.fetch(copy_id) do
+      {:ok, %{id: ^copy_id, project_id: ^project_id} = copy} ->
+        {:ok, copy}
 
       _ ->
-        fallback_environment(project)
+        :error
     end
   end
 
-  defp harness_environment(_working_copy_id, project), do: fallback_environment(project)
+  defp matching_working_copy(_copy_id, _project_id), do: :error
 
-  defp fallback_environment(project) do
-    case LocalScope.for_local_project(project) do
-      {:ok, %{environment: environment}} -> environment
-      {:error, _reason} -> Environment.new(:local, project.local_path)
+  defp local_cwd(project) do
+    case LocalScope.environment(project) do
+      %{cwd: cwd} -> cwd
+      _ -> nil
     end
   end
 

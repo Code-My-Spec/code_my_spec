@@ -156,9 +156,7 @@ defmodule CodeMySpec.Analysis.FsRequestChannelDeathTest do
     test "a restart whose channel died is still recognised as a lost acknowledgement" do
       id = a_channel_that_dies_with({:shutdown, :draining})
 
-      scope = %CodeMySpec.Users.Scope{
-        environment: %CodeMySpec.Environments.Environment{type: :harness}
-      }
+      scope = %CodeMySpec.Users.Scope{}
 
       assert {:error, reason} = Runner.restart(scope, "/anywhere", id)
 

@@ -160,7 +160,11 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       {:ok, project} =
         Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-      scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
+      scope =
+        CodeMySpec.UsersFixtures.put_fixture_environment(
+          %{scope | active_project: project},
+          Environment.new(:local, tmp_dir)
+        )
 
       external_id = "manual-test-#{System.unique_integer([:positive])}"
       {:ok, session} = Sessions.find_or_create_session(scope, external_id)
@@ -210,12 +214,11 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    scope =
+      put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     {scope, tmp_dir}
   end

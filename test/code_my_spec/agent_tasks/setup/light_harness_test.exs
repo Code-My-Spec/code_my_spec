@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
   The setup steps on a scope with no environment.
 
   That is not an edge case — it is the light harness's normal shape. The server
-  holds no working copy, so `scope.environment` is nil and every step that
+  holds no working copy, so `fixture_environment(scope)` is nil and every step that
   reaches for a disk finds nothing there.
 
   Both behaviours below were found by an agent, in a container, mid-drill,
@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
   setup do
     scope = full_scope_fixture()
     # Explicit, because it is the property under test: no working copy here.
-    %{scope: %{scope | environment: nil}}
+    %{scope: put_fixture_environment(scope, nil)}
   end
 
   defp sync_file(scope, path, role) do

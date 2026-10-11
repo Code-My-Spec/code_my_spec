@@ -12,7 +12,8 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The project's own :server step refuses to create infrastructure nobody linked", criterion: 1136 do
+  spex "The project's own :server step refuses to create infrastructure nobody linked",
+    criterion: 1136 do
     scenario "an unlinked environment's server step never asks the provider to create anything" do
       given_ "Hetzner is connected but this project has never linked a server", context do
         CodeMySpecSpex.Fixtures.connect_hetzner(context.scope)
@@ -39,7 +40,7 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
       when_ "the project's devops agent runs the :server step through the real MCP tool",
             context do
         frame = %Anubis.Server.Frame{
-          assigns: %{current_scope: %{context.scope | environment: context.environment}}
+          assigns: %{current_scope: context.scope}
         }
 
         {:reply, response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)

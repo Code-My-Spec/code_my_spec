@@ -160,7 +160,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
     test "uses the explicit environment when the scope carries a stale one" do
       {scope, tmp_dir} = setup_project()
       wrong_dir = CodeMySpec.TempFile.owned_dir("wrong-environment")
-      stale_scope = %{scope | environment: Environment.new(:local, wrong_dir)}
+      stale_scope = %{scope | cwd: wrong_dir}
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
       assert {:ok, result} =
@@ -181,7 +181,7 @@ defmodule CodeMySpec.Files.FileSyncTest do
       before = Files.list_files(scope)
 
       assert {:error, {:cannot_scan, :no_environment}} =
-               FileSync.sync(%{scope | environment: nil}, environment: nil)
+               FileSync.sync(put_fixture_environment(scope, nil), environment: nil)
 
       assert Files.list_files(scope) == before
     end
@@ -695,12 +695,11 @@ defmodule CodeMySpec.Files.FileSyncTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    scope =
+      put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     # Spec-file validation is gated on `require_specs`, which a fresh project
     # now defaults off — without this the "invalid spec file" cases validate

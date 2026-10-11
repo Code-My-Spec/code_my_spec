@@ -53,7 +53,7 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
     """)
 
     assert :ok =
-             Pipeline.compile(%{scope | cwd: nil, environment: nil},
+             Pipeline.compile(put_fixture_environment(scope, nil),
                environment: environment,
                compile_output_file: output_file
              )
@@ -61,7 +61,7 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
     assert File.read!(Path.join(cwd, "compiled-in-explicit-environment")) == "yes"
   end
 
-  test "QA validator reads from the selected environment, not scope.environment", %{
+  test "QA validator reads from the selected environment, not fixture_environment(scope)", %{
     scope: scope
   } do
     path = ".code_my_spec/qa/1012/brief.md"
@@ -79,8 +79,8 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
     .code_my_spec/qa/1012/result.md
     """
 
-    File.mkdir_p!(Path.dirname(Path.join(scope.environment.cwd, path)))
-    File.write!(Path.join(scope.environment.cwd, path), local_content)
+    File.mkdir_p!(Path.dirname(Path.join(fixture_environment(scope).cwd, path)))
+    File.write!(Path.join(fixture_environment(scope).cwd, path), local_content)
 
     {1, [file]} =
       Files.upsert_files(scope, [

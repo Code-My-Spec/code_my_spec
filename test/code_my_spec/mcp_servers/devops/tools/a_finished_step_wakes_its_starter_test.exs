@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
 
     working_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, working_dir)}
+    scope = put_fixture_environment(scope, Environment.new(:local, working_dir))
     {:ok, _} = Projects.update_project(scope, scope.active_project, %{domain: "example.com"})
 
     {:ok, agent} =

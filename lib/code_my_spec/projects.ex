@@ -7,7 +7,6 @@ defmodule CodeMySpec.Projects do
     top_level?: true,
     deps: [
       CodeMySpec.Auth,
-      CodeMySpec.Environments,
       CodeMySpec.GitHub,
       CodeMySpec.Oauth,
       CodeMySpec.Repo,
@@ -17,7 +16,6 @@ defmodule CodeMySpec.Projects do
     exports: :all
 
   import Ecto.Query, warn: false
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -257,8 +255,7 @@ defmodule CodeMySpec.Projects do
          active_account_id: config["account_id"],
          active_project: project,
          active_project_id: project.id,
-         cwd: project_root,
-         environment: Environment.new(:local, project_root)
+         cwd: project_root
        }}
     end
   end

@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     on_exit(fn -> InMemoryEnvironment.destroy(env) end)
 
     scope = working_copy_scope_fixture()
-    scope = %{scope | environment: env}
+    scope = put_fixture_environment(scope, env)
     :ok = register_working_copy_environment(scope, env)
     %{scope: scope, tmp_dir: env.cwd}
   end
@@ -63,7 +63,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "marks phase 1 as SKIP when journey plan exists", %{scope: scope, task: task} do
-      write_file!(scope.environment, ".code_my_spec/qa/journey_plan.md", """
+      write_file!(fixture_environment(scope), ".code_my_spec/qa/journey_plan.md", """
       # Journey Plan
       ## Journeys
       ### Registration Flow
@@ -76,7 +76,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "marks phase 2 as SKIP when journey result exists", %{scope: scope, task: task} do
-      write_file!(scope.environment, ".code_my_spec/qa/journey_result.md", """
+      write_file!(fixture_environment(scope), ".code_my_spec/qa/journey_result.md", """
       # Journey Result
       ## Status
       pass
@@ -89,7 +89,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "references QA plan path when it exists", %{scope: scope, task: task} do
-      write_file!(scope.environment, ".code_my_spec/qa/plan.md", """
+      write_file!(fixture_environment(scope), ".code_my_spec/qa/plan.md", """
       # QA Plan
       ## App Overview
       Phoenix app on port 4000.
@@ -110,7 +110,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "notes existing journey tests when present", %{scope: scope, task: task} do
-      write_file!(scope.environment, "test/journeys/registration_test.exs", """
+      write_file!(fixture_environment(scope), "test/journeys/registration_test.exs", """
       defmodule MyAppWeb.Journeys.RegistrationTest do
         use MyAppWeb.FeatureCase, async: false
       end

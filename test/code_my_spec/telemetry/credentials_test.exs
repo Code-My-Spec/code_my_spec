@@ -12,7 +12,7 @@ defmodule CodeMySpec.Telemetry.CredentialsTest do
   test "publication encrypts owner credentials and preserves the scoped platform reader" do
     directory = CodeMySpec.TempFile.owned_dir("test")
     environment = Environment.new(:local, directory)
-    scope = %{full_scope_fixture() | environment: environment}
+    scope = put_fixture_environment(full_scope_fixture(), environment)
     {:ok, {public, private}} = Sops.generate_key()
     assert :ok = Sops.write_config(environment, %{"prod" => public})
     assert {:ok, _} = Steps.import_age_key(scope, "prod", private)

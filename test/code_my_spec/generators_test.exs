@@ -74,31 +74,29 @@ defmodule CodeMySpec.GeneratorsTest do
     write(dir, "config/runtime.exs", good_runtime())
   end
 
-  describe "audit/2 on a fully generated project" do
+  describe "audit/3 on a fully generated project" do
     test "reports nothing missing", %{env: env, dir: dir} do
       deployable_project(dir)
 
       assert Generators.audit_environment(env, @router) == []
-      assert Generators.deploy_ready?(%CodeMySpec.Users.Scope{environment: env}, @router)
+      assert Generators.deploy_ready?(%CodeMySpec.Users.Scope{}, @router, env)
     end
   end
 
   describe "audit/3 with an explicit environment" do
-    test "uses the supplied environment even when the scope contains a stale one", %{
+    test "uses the supplied environment independently of caller scope", %{
       env: env,
       dir: dir
     } do
       deployable_project(dir)
-      stale_dir = CodeMySpec.TempFile.owned_dir("stale-generator-environment")
-      stale_env = Environment.new(:local, stale_dir)
-      scope = %CodeMySpec.Users.Scope{environment: stale_env}
+      scope = %CodeMySpec.Users.Scope{}
 
       assert Generators.audit(scope, @router, env) == []
     end
 
     test "uses the supplied environment when the scope has none", %{env: env, dir: dir} do
       deployable_project(dir)
-      scope = %CodeMySpec.Users.Scope{environment: nil}
+      scope = %CodeMySpec.Users.Scope{}
 
       assert Generators.audit(scope, @router, env) == []
     end
@@ -291,7 +289,7 @@ defmodule CodeMySpec.GeneratorsTest do
   # (see `CodeMySpec.Provisioning.Steps.app_path/1`). `CmsHarness.Sync` runs
   # this exact check where the files really are and reports the verdict onto
   # `project.health_route_status`; these prove the reported status is what
-  # `audit/2` trusts once one exists, over whatever the (unreachable) files
+  # `audit/3` trusts once one exists, over whatever the (unreachable) files
   # actually contain.
   describe "a reported health_route_status" do
     test "ok wins even over a router that would otherwise fail", %{env: env, dir: dir} do
@@ -304,44 +302,40 @@ defmodule CodeMySpec.GeneratorsTest do
       """)
 
       scope = %CodeMySpec.Users.Scope{
-        environment: env,
         active_project: %{health_route_status: "ok"}
       }
 
-      assert Generators.audit(scope, @router) == []
+      assert Generators.audit(scope, @router, env) == []
     end
 
     test "no_health_route wins even over a router that actually has one", %{env: env, dir: dir} do
       deployable_project(dir)
 
       scope = %CodeMySpec.Users.Scope{
-        environment: env,
         active_project: %{health_route_status: "no_health_route"}
       }
 
-      assert {:no_health_route, @router} in Generators.audit(scope, @router)
+      assert {:no_health_route, @router} in Generators.audit(scope, @router, env)
     end
 
     test "health_route_piped wins the same way", %{env: env, dir: dir} do
       deployable_project(dir)
 
       scope = %CodeMySpec.Users.Scope{
-        environment: env,
         active_project: %{health_route_status: "health_route_piped"}
       }
 
-      assert {:health_route_piped, @router} in Generators.audit(scope, @router)
+      assert {:health_route_piped, @router} in Generators.audit(scope, @router, env)
     end
 
     test "no report yet falls back to reading the file directly", %{env: env, dir: dir} do
       deployable_project(dir)
 
       scope = %CodeMySpec.Users.Scope{
-        environment: env,
         active_project: %{health_route_status: nil}
       }
 
-      assert Generators.audit(scope, @router) == []
+      assert Generators.audit(scope, @router, env) == []
     end
   end
 

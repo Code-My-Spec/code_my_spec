@@ -28,7 +28,7 @@ defmodule CodeMySpec.Validation.ASpexFindingWithNoLocationDoesNotBlockTest do
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
     environment = Environment.new(:local, tmp)
-    scope = %{full_scope_fixture() | cwd: tmp, environment: environment}
+    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
     :ok = register_working_copy_environment(scope, environment)
 
     Configurations.get_or_create(scope)

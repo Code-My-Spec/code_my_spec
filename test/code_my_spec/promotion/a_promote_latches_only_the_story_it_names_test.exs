@@ -86,7 +86,11 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     {:ok, env} = InMemoryEnvironment.create(shell: script())
     :ok = Environments.register({:working_copy, running.id}, env)
     :ok = Environments.register({:working_copy, agent.id}, env)
-    %{scope: %{scope | active_working_copy_id: agent.id, environment: env}, running: running}
+
+    %{
+      scope: put_fixture_environment(%{scope | active_working_copy_id: agent.id}, env),
+      running: running
+    }
   end
 
   # A spec file linked to the story on the promoting copy, red or green there.

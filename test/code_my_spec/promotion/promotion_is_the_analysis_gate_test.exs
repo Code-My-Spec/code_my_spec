@@ -127,7 +127,7 @@ defmodule CodeMySpec.Promotion.PromotionIsTheAnalysisGateTest do
     {:ok, env} = InMemoryEnvironment.create(shell: script(git))
     :ok = Environments.register({:working_copy, running.id}, env)
     :ok = Environments.register({:working_copy, agent.id}, env)
-    %{scope: %{scope | active_working_copy_id: agent.id, environment: env}}
+    %{scope: put_fixture_environment(%{scope | active_working_copy_id: agent.id}, env)}
   end
 
   defp dispatched_sources do

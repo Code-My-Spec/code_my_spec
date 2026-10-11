@@ -514,11 +514,29 @@ defmodule CodeMySpec.Provisioning.Builder do
     poll_image_ready(list_images, scope, image_id, architecture, label, opts, attempts, interval)
   end
 
-  defp poll_image_ready(_list_images, _scope, image_id, _architecture, _label, _opts, 0, _interval) do
+  defp poll_image_ready(
+         _list_images,
+         _scope,
+         image_id,
+         _architecture,
+         _label,
+         _opts,
+         0,
+         _interval
+       ) do
     {:error, {:image_not_ready, image_id}}
   end
 
-  defp poll_image_ready(list_images, scope, image_id, architecture, label, opts, attempts, interval) do
+  defp poll_image_ready(
+         list_images,
+         scope,
+         image_id,
+         architecture,
+         label,
+         opts,
+         attempts,
+         interval
+       ) do
     selector = "#{label}=#{architecture}"
 
     case list_images.(scope, label_selector: selector) do
@@ -646,16 +664,17 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
-  # `Remote.ssh_deliver/2`'s own default is the stronger property (no GitHub
-  # credential anywhere near the builder) and stays untouched whenever there
-  # is a real environment to archive from. A harness-only project's
-  # `scope.environment` is not one — same shape `Steps.head_commit/1` and
-  # `commit_generated_configuration/1` already fall back for — so this is the
-  # one place that falls back to a different property instead of a fact to
-  # report: there is no string that answers "here is the source tree".
-  defp with_deliver(opts, _server, %{environment: %{cwd: cwd}}) when is_binary(cwd), do: opts
-
   defp with_deliver(opts, server, scope) do
+    case Keyword.get(opts, :env) do
+      %{cwd: cwd} when is_binary(cwd) and cwd != "" ->
+        opts
+
+      _ ->
+        github_delivery(opts, server, scope)
+    end
+  end
+
+  defp github_delivery(opts, server, scope) do
     case github_source(scope) do
       {:ok, repo, token} ->
         opts

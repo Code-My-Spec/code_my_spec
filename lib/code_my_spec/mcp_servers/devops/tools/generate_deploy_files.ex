@@ -19,9 +19,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Generators.DeployArtifacts
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Provisioning.{Registry, Steps}
   alias CodeMySpec.Resources
+  alias CodeMySpec.WorkingCopies
 
   schema do
   end
@@ -38,8 +40,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
 
   defp generate(scope, project) do
     project_scope = Resources.project_scope(scope, project)
+    environment = project_environment(project_scope, project)
 
-    DeployArtifacts.generate(project_scope.environment,
+    DeployArtifacts.generate(environment,
       app: DeployArtifacts.otp_app_name(project),
       host: project.domain || "example.com",
       owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
@@ -50,6 +53,12 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
       uat_registry: registry_address(project_scope, "uat")
     )
   end
+
+  defp project_environment(%{active_working_copy_id: copy_id} = scope, _project)
+       when is_binary(copy_id),
+       do: WorkingCopies.environment(scope)
+
+  defp project_environment(_scope, project), do: LocalScope.environment(project)
 
   # The registry `:server` actually provisions, not ghcr.io — a generated
   # `image:` composed from `owner`/`app` names a path this registry never
@@ -92,7 +101,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles do
   defp reply({:ok, []}, frame), do: {:reply, ok("Every deploy file is already in place."), frame}
 
   defp reply({:ok, written}, frame),
-    do: {:reply, ok("Wrote #{length(written)} file(s):\n" <> Enum.map_join(written, "\n", &"  - #{&1}")), frame}
+    do:
+      {:reply,
+       ok("Wrote #{length(written)} file(s):\n" <> Enum.map_join(written, "\n", &"  - #{&1}")),
+       frame}
 
   defp reply({:error, reason}, frame), do: {:reply, error(reason), frame}
 

@@ -69,7 +69,10 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
       "defmodule MyApp.MixProject do\n  def project, do: [app: :my_app]\nend\n"
     )
 
-    %{scope: %{scope | environment: env, cwd: tmp_dir}, tmp_dir: tmp_dir}
+    %{
+      scope: CodeMySpec.UsersFixtures.put_fixture_environment(%{scope | cwd: tmp_dir}, env),
+      tmp_dir: tmp_dir
+    }
   end
 
   test "every artifact a requirement gates on survives a real sync", %{scope: scope} do

@@ -27,7 +27,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryWithoutADiskTest do
         description: "As a user, I want to capture a task so that I do not lose it."
       })
 
-    %{scope: %{scope | environment: nil, cwd: nil}, story: story}
+    %{scope: put_fixture_environment(scope, nil), story: story}
   end
 
   test "renders a prompt rather than raising", %{scope: scope, story: story} do

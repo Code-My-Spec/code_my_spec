@@ -2219,7 +2219,7 @@ defmodule CodeMySpecSpex.Case do
       :code_my_spec,
       :provisioning_step_opts,
       Keyword.merge(previous,
-        run: Fixtures.fleet_runner(scope.environment, ssh_key_path: key),
+        run: Fixtures.fleet_runner(Fixtures.fixture_environment(scope), ssh_key_path: key),
         # The fleet box carries no private network address, so the registry
         # publishes on loopback there. `serve_one_registry/5` uses `put_new`,
         # which is what lets this stand.
@@ -2864,7 +2864,7 @@ defmodule CodeMySpecSpex.Case do
 
     context
     |> Map.put(:environment, env)
-    |> Map.put(:scope, %{scope | environment: env, cwd: env.cwd})
+    |> Map.put(:scope, Fixtures.put_fixture_environment(scope, env))
   end
 
   @doc """
@@ -2924,7 +2924,7 @@ defmodule CodeMySpecSpex.Case do
 
     context
     |> Map.put(:environment, env)
-    |> Map.put(:scope, %{scope | environment: env, cwd: env.cwd})
+    |> Map.put(:scope, Fixtures.put_fixture_environment(scope, env))
   end
 
   @doc """
@@ -6410,7 +6410,7 @@ defmodule CodeMySpecSpex.Case do
       user
       |> Fixtures.user_scope_fixture(account, project)
       |> Map.put(:cwd, stub_dir)
-      |> Map.put(:environment, env)
+      |> Fixtures.put_fixture_environment(env)
 
     Fixtures.register_environment({:root, stub_dir}, env)
     Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, stub_dir}) end)

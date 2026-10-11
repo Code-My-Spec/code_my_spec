@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedbackTest do
 
   defp create_scope(context) do
     scope = working_copy_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, context.tmp_dir)}
+    scope = put_fixture_environment(scope, Environment.new(:local, context.tmp_dir))
     :ok = register_working_copy_environment(scope, Environment.new(:local, context.tmp_dir))
     %{scope: scope}
   end

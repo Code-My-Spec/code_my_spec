@@ -74,7 +74,7 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     a_harness(copy.id)
     {:ok, env} = InMemoryEnvironment.create(shell: script(status))
-    scope = %{scope | active_working_copy_id: copy.id, environment: env}
+    scope = put_fixture_environment(%{scope | active_working_copy_id: copy.id}, env)
     :ok = Environments.register({:working_copy, copy.id}, env)
     %{scope: scope, story: story_fixture(scope)}
   end

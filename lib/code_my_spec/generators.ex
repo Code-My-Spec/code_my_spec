@@ -57,38 +57,22 @@ defmodule CodeMySpec.Generators do
           | {:missing_release_module, String.t()}
 
   @doc """
-  Whether a project carries everything a deploy needs.
+  Whether a project carries everything a deploy needs in `environment`.
 
   ## Examples
 
-      iex> deploy_ready?(scope, "lib/my_app_web/router.ex")
+      iex> deploy_ready?(scope, "lib/my_app_web/router.ex", environment)
       true
   """
-  @spec deploy_ready?(Scope.t(), String.t()) :: boolean()
-  def deploy_ready?(%Scope{} = scope, router_path) do
-    audit(scope, router_path) == []
-  end
-
-  @doc """
-  Everything the project is missing or has configured in a way that will not
-  deploy, in reporting order.
-
-  Returns `[]` for a project the setup routine can proceed against.
-
-  ## Examples
-
-      iex> audit(scope, "lib/my_app_web/router.ex")
-      [{:missing_file, %{key: :dockerfile, ...}}]
-  """
-  @spec audit(Scope.t(), String.t()) :: [finding()]
-  def audit(%Scope{environment: env} = scope, router_path) when not is_nil(env),
-    do: audit(scope, router_path, env)
+  @spec deploy_ready?(Scope.t(), String.t(), Environments.Environment.t() | nil) :: boolean()
+  def deploy_ready?(%Scope{} = scope, router_path, environment),
+    do: audit(scope, router_path, environment) == []
 
   @doc """
   Audits a project using an explicitly supplied environment.
 
   The scope supplies project identity and synced file evidence; filesystem
-  checks use `environment` directly, without consulting `scope.environment`.
+  checks use `environment` directly, independently of caller identity.
   """
   @spec audit(Scope.t(), String.t(), Environments.Environment.t() | nil) :: [finding()]
   def audit(%Scope{} = scope, router_path, environment) do
@@ -196,7 +180,7 @@ defmodule CodeMySpec.Generators do
   # `router_path` is always `lib/<app>_web/router.ex`, by the same convention
   # `DeployArtifacts.router/1` writes it and every caller here builds it — so
   # the release module's path is derivable rather than a second argument every
-  # caller of `audit/2` would need to thread through.
+  # caller of `audit/3` would need to thread through.
   defp release_module_path(router_path) do
     case String.split(router_path, "_web/router.ex", parts: 2) do
       [app_dir, ""] -> "#{app_dir}/release.ex"

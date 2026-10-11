@@ -47,7 +47,7 @@ defmodule CodeMySpec.Files.ASyncLeavesAuthoredRecordsAloneTest do
       |> Enum.map(&{&1.source_component.module_name, &1.target_component.module_name})
 
   setup do
-    scope = %{full_scope_fixture() | environment: nil, cwd: nil}
+    scope = put_fixture_environment(full_scope_fixture(), nil)
     web = component_fixture(scope, %{name: "Web", module_name: @web})
     accounts = component_fixture(scope, %{name: "Accounts", module_name: @accounts})
     spec!(scope, @web)

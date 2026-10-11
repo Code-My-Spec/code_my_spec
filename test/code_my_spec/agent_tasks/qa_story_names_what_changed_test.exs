@@ -20,10 +20,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryNamesWhatChangedTest do
   setup do
     scope = working_copy_scope_fixture()
 
-    scope = %{
-      scope
-      | environment: Environment.new(:local, CodeMySpec.TempFile.owned_dir("qa_changed"))
-    }
+    scope =
+      put_fixture_environment(
+        scope,
+        Environment.new(:local, CodeMySpec.TempFile.owned_dir("qa_changed"))
+      )
 
     story = story_fixture(scope, %{title: "Stripe connect"})
     %{scope: scope, story: story, task: %{story_id: story.id}}

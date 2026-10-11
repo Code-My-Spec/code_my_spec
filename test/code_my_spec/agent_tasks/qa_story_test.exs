@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("qa_story")
     scope = working_copy_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
     :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
@@ -53,7 +53,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   end
 
   defp create_qa_plan(context) do
-    write_qa_plan(context.scope.environment)
+    write_qa_plan(fixture_environment(context.scope))
     context
   end
 
@@ -299,8 +299,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     test "same prompt regardless of existing artifacts", %{scope: scope, task: task, story: story} do
       assert {:ok, prompt_before} = QaStory.command(scope, task)
 
-      write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.number)
+      write_qa_plan(fixture_environment(scope))
+      write_story_brief(fixture_environment(scope), story.number)
 
       assert {:ok, prompt_after} = QaStory.command(scope, task)
       assert prompt_before == prompt_after
@@ -350,7 +350,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       scope: scope,
       task: task
     } do
-      write_file!(scope.environment, ".code_my_spec/qa/plan.md", """
+      write_file!(fixture_environment(scope), ".code_my_spec/qa/plan.md", """
       # QA Plan
 
       ## App Overview
@@ -369,7 +369,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_qa_plan(scope.environment)
+      write_qa_plan(fixture_environment(scope))
 
       # With plan valid but no brief, should get brief phase feedback
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
@@ -395,7 +395,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number, """
+      write_story_brief(fixture_environment(scope), story.number, """
       # QA Brief
 
       ## Tool
@@ -429,7 +429,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # completion path. A brief with no result is a fine intermediate
       # state — the agent finished planning and either ran the tests in
       # the BEAM/browser or aborted (issue a15c252b).
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
     end
@@ -439,9 +439,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result
 
       ## Status
@@ -466,9 +466,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result
 
       ## Status
@@ -493,8 +493,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_story_result(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_story_result(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
     end
@@ -504,9 +504,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result: Story #{story.number}
 
       ## Status
@@ -555,8 +555,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -573,8 +573,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -591,15 +591,15 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
       issues_first = Issues.list_by_story(scope, story.id)
 
       # Write a new result and run evaluate again
-      write_result_with_issues(scope.environment, story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
       issues_second = Issues.list_by_story(scope, story.id)
@@ -621,8 +621,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -637,9 +637,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result: Story #{story.number}
 
       ## Status

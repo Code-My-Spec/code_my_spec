@@ -55,7 +55,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       kickoff_context =
         ProjectStateFixtures.apply_project_kickoff(%{
           scope: scope,
-          environment: scope.environment
+          environment: fixture_environment(scope)
         })
 
       scope = kickoff_context.scope
@@ -109,7 +109,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       kickoff_context =
         ProjectStateFixtures.apply_project_kickoff(%{
           scope: scope,
-          environment: scope.environment
+          environment: fixture_environment(scope)
         })
 
       scope = kickoff_context.scope
@@ -140,7 +140,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       {:ok, _} =
         CodeMySpec.ArchitectureFixtures.with_executed_proposal(
           scope,
-          scope.environment,
+          fixture_environment(scope),
           proposal
         )
 
@@ -178,7 +178,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       # architecture_designed is unsatisfied while its only prerequisite
       # (qa_integration_plan) is satisfied — i.e. genuinely actionable.
       kickoff_context =
-        %{scope: scope, environment: scope.environment}
+        %{scope: scope, environment: fixture_environment(scope)}
         |> ProjectStateFixtures.apply_project_setup_steps()
         |> ProjectStateFixtures.apply_technical_strategy()
         |> ProjectStateFixtures.apply_code_generation()
@@ -239,7 +239,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       kickoff_context =
         ProjectStateFixtures.apply_project_kickoff(%{
           scope: scope,
-          environment: scope.environment
+          environment: fixture_environment(scope)
         })
 
       scope = kickoff_context.scope
@@ -544,7 +544,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       kickoff_context =
         ProjectStateFixtures.apply_project_kickoff(%{
           scope: scope,
-          environment: scope.environment
+          environment: fixture_environment(scope)
         })
 
       scope = kickoff_context.scope
@@ -601,7 +601,9 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
   defp qa_complete_node(scope, story) do
     scope
     |> RequirementGraph.compute_all()
-    |> Enum.find(&(&1.entity_type == "story" and &1.entity_id == story.id and &1.name == "qa_complete"))
+    |> Enum.find(
+      &(&1.entity_type == "story" and &1.entity_id == story.id and &1.name == "qa_complete")
+    )
   end
 
   # -- Helpers --
@@ -611,12 +613,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    scope =
+      put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     # Graph-shape tests need the full spec -> review -> test -> implementation
     # chain; a fresh project defaults to spex and code only.

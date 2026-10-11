@@ -28,8 +28,7 @@ defmodule CodeMySpec.Users.Scope do
             active_project: nil,
             active_project_id: nil,
             active_working_copy_id: nil,
-            cwd: nil,
-            environment: nil
+            cwd: nil
 
   @type t :: %__MODULE__{
           user: struct() | nil,
@@ -39,7 +38,6 @@ defmodule CodeMySpec.Users.Scope do
           active_project: struct() | nil,
           active_project_id: binary() | nil,
           active_working_copy_id: binary() | nil,
-          cwd: String.t() | nil,
-          environment: struct() | nil
+          cwd: String.t() | nil
         }
 end

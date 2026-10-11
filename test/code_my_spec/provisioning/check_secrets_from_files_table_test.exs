@@ -5,7 +5,7 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
 
   Reported live against MarketMySpec: `check_secrets/2` read
   `envs/prod.enc.env` via `Environments.file_exists?/2` against
-  `scope.environment` — unreachable for a project connected only through a
+  `CodeMySpec.UsersFixtures.fixture_environment(scope)` — unreachable for a project connected only through a
   harness (it resolves to `Environment.new(:local, project.local_path)`,
   `local_path: nil`) — so it reported every required secret missing
   regardless of what the file actually contained.
@@ -34,9 +34,9 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
   # shape a harness-only project's `Environment.new(:local, project.
   # local_path)` takes when `local_path` is nil. Distinct from `nil` itself,
   # which is a different, earlier-guarded failure (`no_environment_message/0`).
-  defp unreachable(%{active_working_copy_id: id} = scope) do
-    :ok = Environments.unregister({:working_copy, id})
-    %{scope | environment: Environment.new(:local, nil)}
+  defp unreachable(scope) do
+    scope = CodeMySpec.UsersFixtures.put_fixture_environment(scope, Environment.new(:local, nil))
+    %{scope | active_working_copy_id: nil}
   end
 
   defp sync_env_file(scope, content) do

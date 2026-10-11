@@ -20,7 +20,7 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("specs_ready_note")
     environment = Environment.new(:local, tmp)
-    scope = %{full_scope_fixture() | cwd: tmp, environment: environment}
+    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
     :ok = register_working_copy_environment(scope, environment)
 
     Configurations.get_or_create(scope)

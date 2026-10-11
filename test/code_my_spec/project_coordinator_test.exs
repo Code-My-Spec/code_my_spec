@@ -30,7 +30,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
   test "prompt generation uses the explicit environment despite stale scope state" do
     root = CodeMySpec.TempFile.owned_dir("coordinator_explicit_environment")
     env = Environment.new(:local, root)
-    scope = %{full_scope_fixture() | environment: nil}
+    scope = put_fixture_environment(full_scope_fixture(), nil)
     component = %{module_name: "Sample.Accounts"}
     session = %{project: scope.active_project}
 
@@ -46,11 +46,17 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
     assert File.read!(Path.join(root, file_path)) == "prompt"
   end
 
-  test "prompt generation resolves and uses the selected working copy" do
+  test "prompt generation resolves and uses the selected working copy despite stale project runtime" do
     scope = working_copy_scope_fixture()
-    selected_root = scope.environment.cwd
+    selected_root = fixture_environment(scope).cwd
     stale_root = CodeMySpec.TempFile.owned_dir("coordinator_stale_environment")
-    scope = %{scope | environment: Environment.new(:local, stale_root)}
+
+    :ok =
+      CodeMySpec.Environments.register(
+        scope.active_project_id,
+        Environment.new(:local, stale_root)
+      )
+
     component = %{module_name: "Sample.Accounts"}
 
     assert {:ok, [%{file_path: file_path}]} =
@@ -68,11 +74,13 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
   test "an invalid selected working copy does not fall back to the stale scope environment" do
     root = CodeMySpec.TempFile.owned_dir("coordinator_invalid_selection")
     stale = Environment.new(:local, root)
+    full_scope = full_scope_fixture()
+    :ok = CodeMySpec.Environments.register(full_scope.active_project_id, stale)
 
     scope = %{
-      full_scope_fixture()
+      full_scope
       | active_working_copy_id: "missing-working-copy",
-        environment: stale
+        cwd: root
     }
 
     assert {:error, :no_environment} =
@@ -102,7 +110,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
     stale_root = CodeMySpec.TempFile.owned_dir("coordinator_cleanup_stale")
     selected = Environment.new(:local, selected_root)
     stale = Environment.new(:local, stale_root)
-    scope = %{full_scope_fixture() | environment: stale}
+    scope = put_fixture_environment(full_scope_fixture(), stale)
     status_dir = "prompts"
     prompt_path = Path.join(status_dir, "accounts_valid_task.md")
     problem_path = Path.join(status_dir, "accounts_valid_task_problems.md")
@@ -130,7 +138,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
   test "complete orchestration keeps its success result with no environment" do
     root = CodeMySpec.TempFile.owned_dir("coordinator_no_environment_completion")
-    scope = %{full_scope_fixture() | environment: Environment.new(:local, root)}
+    scope = put_fixture_environment(full_scope_fixture(), Environment.new(:local, root))
     status_dir = "prompts"
     prompt_path = Path.join(status_dir, "accounts_valid_task.md")
     File.mkdir_p!(Path.dirname(Path.join(root, prompt_path)))

@@ -60,7 +60,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
     File.write!(Path.join(tmp, "README.md"), "# cms-live-proof\n")
 
     scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp)}
+    scope = CodeMySpec.UsersFixtures.put_fixture_environment(scope, Environment.new(:local, tmp))
 
     %Integration{}
     |> Integration.changeset(%{
@@ -326,7 +326,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
     refute prod == uat, "both environments got the same key — the whole point is that they differ"
 
     # And the isolation actually holds against real sops, not just in theory.
-    env = scope.environment
+    env = CodeMySpec.UsersFixtures.fixture_environment(scope)
     assert :ok = Sops.put_secret(env, "prod", "PROBE", "prod-only", prod)
 
     assert {:ok, %{"PROBE" => "prod-only"}} = Sops.decrypt(env, "prod", prod)
@@ -352,10 +352,10 @@ defmodule CodeMySpec.LiveProvisioningTest do
     {:ok, key} = ProjectSecrets.fetch_value(scope, "age_private_key_prod")
 
     assert {:ok, %{"CMS_REFRESH_SECRET" => ^secret}} =
-             Sops.decrypt(scope.environment, "prod", key)
+             Sops.decrypt(CodeMySpec.UsersFixtures.fixture_environment(scope), "prod", key)
 
     plaintext =
-      scope.environment.cwd
+      CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
       |> Path.join("**/*")
       |> Path.wildcard()
       |> Enum.filter(&(File.regular?(&1) && File.read!(&1) =~ secret))

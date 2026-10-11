@@ -7,6 +7,10 @@ defmodule CodeMySpec.LocalScopeTest do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Users.Scope
 
+  test "scope has no environment field" do
+    refute Map.has_key?(%Scope{}, :environment)
+  end
+
   test "root registration takes precedence over project registration" do
     root = "/tmp/local-scope-root"
     project = project("/tmp/project-path")

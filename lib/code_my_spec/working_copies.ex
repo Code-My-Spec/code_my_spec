@@ -458,27 +458,17 @@ defmodule CodeMySpec.WorkingCopies do
     do: GraphInputs.announce(scope, "WorkingCopies", [], :project_wide)
 
   @doc """
-  Point a scope at a harness: which checkout, where it is, and how to reach it.
+  Select a working copy and its recorded root without attaching a runtime.
 
-  All three, together, because the third is the one that gets forgotten.
-  `HarnessProjectChannel` set every field and MCP requests set only
-  `active_working_copy_id` — so a tool invoked over `/mcp/harness` knew exactly which
-  working copy it was talking about and had no way to read or write a byte of
-  it. `regenerate_proposal` surfaced it by trying: the transport is fine, the
-  harness implements every op, and the call failed with `:no_environment`
-  because the scope carried none.
-
-  `cwd` is the harness's own recorded root rather than anything the request
-  said. A request that could name its own directory would be back to resolving
-  a working copy by path, which is what addressing by id replaced.
+  Callers that need filesystem access resolve `environment/1` at the operation
+  boundary. The scope carries the copy identity, not its execution adapter.
   """
   @spec put_scope(Scope.t(), WorkingCopy.t()) :: Scope.t()
   def put_scope(%Scope{} = scope, %WorkingCopy{} = harness) do
     %{
       scope
       | active_working_copy_id: harness.id,
-        cwd: harness.root || scope.cwd,
-        environment: Environment.new(:harness, harness.root, ref: %{"harness_id" => harness.id})
+        cwd: harness.root || scope.cwd
     }
   end
 
@@ -502,8 +492,8 @@ defmodule CodeMySpec.WorkingCopies do
 
   For sweeps that act on "every project's main checkout" rather than one
   project at a time — `reconcile_lockfile/1`'s periodic backstop is the
-  first caller. Each scope is independently usable: `environment` is a
-  `:harness` environment addressed by that copy's own id, so a read against
+  first caller. Each scope selects its own copy; `environment/1` resolves a
+  runtime addressed by that copy's own id, so a read against
   one that happens to be offline right now fails on its own and does not
   take the rest of the sweep down with it.
   """

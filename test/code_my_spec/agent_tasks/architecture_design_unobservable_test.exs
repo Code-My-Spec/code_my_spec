@@ -57,13 +57,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
     setup do
       tmp = CodeMySpec.TempFile.owned_dir("test")
 
-      scope = %{
-        working_copy_scope_fixture()
-        | cwd: tmp,
-          environment: Environment.new(:local, tmp)
-      }
-
-      :ok = register_working_copy_environment(scope, scope.environment)
+      scope = put_fixture_environment(working_copy_scope_fixture(), Environment.new(:local, tmp))
       %{scope: scope}
     end
 

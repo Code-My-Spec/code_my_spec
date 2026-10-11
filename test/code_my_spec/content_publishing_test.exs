@@ -79,7 +79,7 @@ defmodule CodeMySpec.ContentPublishingTest do
       )
 
       scope = full_scope_fixture(%{content_source_path: tmp_dir})
-      scope = %{scope | environment: nil}
+      scope = put_fixture_environment(scope, nil)
 
       assert {:ok, %{success: 1, error: 0}} =
                ContentPublishing.sync(scope, Environment.new(:local, tmp_dir))

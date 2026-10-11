@@ -25,7 +25,7 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
     # never reaches the decision it means to exercise.
     tmp = CodeMySpec.TempFile.owned_dir("blocking_on_recorded_findings")
     environment = Environment.new(:local, tmp)
-    scope = %{full_scope_fixture() | cwd: tmp, environment: environment}
+    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
     :ok = register_working_copy_environment(scope, environment)
 
     Configurations.get_or_create(scope)
