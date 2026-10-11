@@ -54,6 +54,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Agents.Transcript
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
   alias CmsHarness.Project.ChannelClient
@@ -1011,7 +1012,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).
-       |> Keyword.put(:middleware, [Compaction, ToolResults])
+       # `Transcript` last, so a result goes up as the text `ToolResults` made it.
+       |> Keyword.put(:middleware, [Compaction, ToolResults, Transcript])
        # A code-mode tool called directly came back as a bare "Unknown tool",
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
@@ -1049,7 +1051,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # How the compaction middleware reaches the agent it is running
          # inside. Middleware is a module rather than a closure, and the thing
          # it has to report to is per-agent.
-         on_compaction: compaction_reporter(opts)
+         on_compaction: reporter(opts),
+         # How `Transcript` sends each message the loop appends, the same way.
+         on_transcript: reporter(opts)
        })
        |> Keyword.put(:messages, resumed(Keyword.get(opts, :messages)))}
     end
@@ -1131,13 +1135,14 @@ defmodule CmsHarness.Agents.Engine.Impl do
     ArgumentError -> block
   end
 
-  # A compaction, on its way to whoever keeps this agent's transcript.
+  # A compaction or a message, on its way to whoever keeps this agent's
+  # transcript.
   #
-  # The same `on_event` every step goes through, so a checkpoint travels the
-  # route that is already known to work rather than a second one beside it.
-  # Nothing to report to means nothing to report — an agent nobody is keeping
-  # the transcript of has nothing to resume from either.
-  defp compaction_reporter(opts) do
+  # The same `on_event` every step goes through, so both travel the route that
+  # is already known to work rather than a second one beside it. Nothing to
+  # report to means nothing to report — an agent nobody is keeping the
+  # transcript of has nothing to resume from either.
+  defp reporter(opts) do
     case {Keyword.get(opts, :on_event), Keyword.get(opts, :agent_id)} do
       {report, agent_id} when is_function(report, 2) and is_binary(agent_id) ->
         fn envelope -> report.(agent_id, envelope) end

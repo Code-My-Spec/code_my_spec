@@ -84,7 +84,6 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Agents.Main, as: MainAgent
-  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.ModelSetting
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Presence
@@ -736,80 +735,39 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  The agents among `agents` a restart caught mid-turn, each with the id of the
-  message that turn was answering (nil when none was recorded).
-
-  Read before `account_for_interrupted_turns/2`, which clears the turn and
-  writes the notice this would otherwise find.
-  """
-  @spec interrupted_turns([Agent.t()]) :: %{Ecto.UUID.t() => Ecto.UUID.t() | nil}
-  def interrupted_turns(agents) when is_list(agents) do
-    for %Agent{turn_started_at: %DateTime{} = at} = agent <- agents, into: %{} do
-      {agent.id, starter_id(Conversations.turn_starter(agent.id, at))}
-    end
-  end
-
-  defp starter_id(%{id: id}), do: id
-  defp starter_id(nil), do: nil
-
-  @doc """
-  Tell every agent a restart touched what happened to it.
+  Clear what a restart left behind on each agent's row.
 
   Called when a harness asks what it should be running, which is the only
   moment this side sees a restart at all — the application going down is not an
   event the server observes.
 
-  Every agent is told now, but the two halves of what it is told differ —
-  rule `841a5f79`. An agent that *was* mid-turn cannot infer any of this on its
-  own. Its thread ends part-way through a tool call and then jumps, and the
-  two readings available to it — "the tool never answered, so wait" and "I
-  already did this" — are both wrong and neither is recoverable from the
-  transcript. Rule `0a06befe` decided the turn is discarded rather than
-  resumed; this is where the agent finds that out.
+  The conversation as recorded is what an agent resumes with. A stopped agent
+  comes back stopped and is told nothing. One caught mid-turn comes back
+  holding every call it made and every result it got, and carries on
+  (`Mailbox.carry_on/2`) before anything queued for it is delivered.
 
-  An idle agent lost nothing, so `interrupted_notice/0`'s wording would be
-  actively wrong for it — there is no in-flight work to carry on from or
-  double-check. It gets a shorter notice instead, plus its own menu: startup
-  hands an agent its system prompt and its stop-hook menu together, and a
-  restart is a message to an agent that already exists, so it gets the same
-  menu rather than silence until its next natural turn.
-
-  Written before the launch request is hydrated, so the notice is part of the
-  history the agent comes back holding rather than something it would have to
-  re-read the page to see. `turn_started_at` is cleared in the same pass for
-  the interrupted case, for the reason `restart_agent/2` already clears it:
-  left set, `list_agent_work` and every check-in go on reporting a turn that
-  opened before a process that no longer exists (`4078e7bf`). Any open
-  reservation is dropped for every agent, for the same reason.
+  `turn_started_at` is cleared for the mid-turn case, for the reason
+  `restart_agent/2` already clears it: left set, `list_agent_work` and every
+  check-in go on reporting a turn that opened before a process that no longer
+  exists (`4078e7bf`). Any open reservation is dropped for every agent, for the
+  same reason.
   """
   @spec account_for_interrupted_turns(Scope.t(), [Agent.t()]) :: :ok
   def account_for_interrupted_turns(%Scope{} = scope, agents) when is_list(agents) do
     Enum.each(agents, &account_for_interrupted_turn(scope, &1))
   end
 
-  defp account_for_interrupted_turn(scope, %Agent{turn_started_at: nil} = agent) do
-    with {:ok, conversation} <- open_conversation(scope, agent) do
-      conversation
-      |> Conversations.add_message(:operator, idle_restart_notice(scope, agent), "operator")
-      |> Offers.record(agent, :resume, {"restart", nil})
-    end
-
-    drop_dead_reservation(scope, agent)
-  end
+  defp account_for_interrupted_turn(scope, %Agent{turn_started_at: nil} = agent),
+    do: drop_dead_reservation(scope, agent)
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
-    with {:ok, conversation} <- open_conversation(scope, agent) do
-      conversation
-      |> Conversations.add_message(:operator, interrupted_notice(), "operator")
-      |> Offers.record(agent, :resume, {"restart", nil})
-    end
-
     AgentsRepository.update_agent(scope, agent, %{
       turn_started_at: nil,
       work_request_id: nil,
       work_requested_at: nil
     })
 
+    {:ok, _} = Mailbox.carry_on(scope, agent.id)
     :ok
   end
 
@@ -821,39 +779,6 @@ defmodule CodeMySpec.Agents do
   defp drop_dead_reservation(scope, agent) do
     AgentsRepository.update_agent(scope, agent, %{work_request_id: nil, work_requested_at: nil})
     :ok
-  end
-
-  defp interrupted_notice do
-    """
-    The harness restarted while you were part-way through a turn.
-
-    That turn was discarded rather than resumed, so whatever it had in flight
-    did not finish and was not recorded. The last step written to this thread
-    is the last thing that is known to have happened.
-
-    This is a statement about the turn, not about the working copy: uncommitted
-    edits on disk are not part of a turn and are not restored with one. If you
-    had uncommitted changes, check `git status` before assuming they survived.
-
-    Carry on from the turns already here. Do not assume work you cannot see
-    recorded above was completed — if you are unsure whether something landed,
-    check rather than redo it.
-    """
-  end
-
-  # Nothing of the agent's own turn was interrupted, so the notice says only
-  # that machinery it does not own cycled — but that is a narrower claim than
-  # "nothing was lost" once said outright: a restart has been observed to
-  # discard uncommitted edits left on disk from an earlier, already-finished
-  # turn, and this notice fires whether or not any exist (`d2908c58`).
-  # `Menu.render/4` answers "" when nothing is live for this agent, which is
-  # the right shape here too — a restart with no work behind it should read as
-  # a couple of short lines, not that plus an empty section.
-  defp idle_restart_notice(scope, agent) do
-    "The harness restarted. No turn of yours was interrupted — but if you had " <>
-      "uncommitted changes on disk, check `git status`: a restart is not known " <>
-      "to preserve them.\n" <>
-      Menu.render(scope, agent.continuous == true, agent.role, agent)
   end
 
   # Starting a `main` agent is what the cadence exists to look after, so it is
@@ -2982,51 +2907,25 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A tool call is a tool call, not prose.
+  # A message the agent's loop appended, as the model has it: an assistant's
+  # words with the calls they asked for, or what those calls returned.
   #
-  # `Conversations.add_tool_call/5` is what `Chat.Runner` and the sprite
-  # recorder already write, and `chat_components` renders that `tool_calls`
-  # array as call blocks. Internal agents went through `add_agent_message/4`
-  # instead, so their calls arrived as ordinary chat messages carrying the tool
-  # name as prose and nothing else — no arguments, no pairing, and the
-  # `tool_calls` column unused. Issue `2d5b2d4d`.
-  defp write_turn_event(conversation, agent, %{"kind" => "tool_start", "tool" => tool})
-       when is_map(tool) do
-    Conversations.add_tool_call(
-      conversation,
-      tool["id"],
-      tool["name"],
-      tool["input"] || %{},
-      to_string(agent.role || :main)
-    )
-
+  # This is the transcript a restart resumes from, so it is everything — every
+  # call with its arguments, every result, failed or not. It replaced recording
+  # a call at `tool_start` and a result only when `tool_end` said it failed,
+  # which left a resumed agent knowing it had made calls and not what any of
+  # them said (issue `2d5b2d4d` for why calls are calls rather than prose).
+  defp write_turn_event(conversation, agent, %{"kind" => "transcript", "message" => message})
+       when is_map(message) do
+    Conversations.add_transcript_message(conversation, message, to_string(agent.role || :main))
     :ok
   end
 
-  # The end of a call is worth its own row only when it failed.
-  #
-  # `tool_end` carries the error and no result text, so a success has nothing to
-  # record that the call itself did not already say — and writing one anyway is
-  # what put every call in the transcript twice.
-  defp write_turn_event(conversation, agent, %{"kind" => "tool_end", "tool" => tool})
-       when is_map(tool) do
-    case tool["error"] do
-      error when is_binary(error) and error != "" ->
-        Conversations.add_tool_result(
-          conversation,
-          tool["id"],
-          tool["name"],
-          error,
-          failed?: true,
-          agent_role: to_string(agent.role || :main)
-        )
-
-      _ ->
-        :ok
-    end
-
-    :ok
-  end
+  # The start and end of a call are watched live (`record_edit/2` reads the
+  # start), and the transcript event above is what writes them down.
+  defp write_turn_event(_conversation, _agent, %{"kind" => kind})
+       when kind in ["tool_start", "tool_end"],
+       do: :ok
 
   # A step that said nothing is not a step.
   #

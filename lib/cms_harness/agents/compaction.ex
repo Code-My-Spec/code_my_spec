@@ -32,6 +32,7 @@ defmodule CmsHarness.Agents.Compaction do
   require Logger
 
   alias Alloy.Agent.State
+  alias CmsHarness.Agents.Transcript
 
   @impl true
   def call(:after_compaction, %State{} = state) do
@@ -45,7 +46,7 @@ defmodule CmsHarness.Agents.Compaction do
     reporter.(%{
       event: :compacted,
       turn: state.turn,
-      messages: Enum.map(State.messages(state), &as_turn/1)
+      messages: Enum.map(State.messages(state), &Transcript.encode/1)
     })
   rescue
     # An agent's work does not stop because the checkpoint could not be sent.
@@ -57,11 +58,4 @@ defmodule CmsHarness.Agents.Compaction do
   end
 
   defp report(_reporter, _state), do: :ok
-
-  # The wire shape, which is the same one a resume arrives in. Text only, and
-  # the summary is text — the tool calls compaction dropped are not worth
-  # putting back on the way out.
-  defp as_turn(message) do
-    %{"role" => to_string(message.role), "content" => Alloy.Message.text(message)}
-  end
 end

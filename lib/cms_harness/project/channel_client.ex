@@ -1973,6 +1973,11 @@ defmodule CmsHarness.Project.ChannelClient do
     }
   end
 
+  # A message the loop appended, already in wire shape (`Agents.Transcript`).
+  def encode_turn_event(%{event: :transcript, message: message}) do
+    %{"kind" => "transcript", "message" => message}
+  end
+
   def encode_turn_event(envelope) do
     %{
       "kind" => to_string(Map.get(envelope, :event, "step")),

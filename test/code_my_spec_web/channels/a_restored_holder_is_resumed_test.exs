@@ -1,7 +1,8 @@
 defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
   @moduledoc """
-  A continuous agent a harness restart brings back holding a task gets a turn
-  to finish it, and the turn names the task (0d3b800d).
+  An agent a harness restart caught mid-turn carries that turn on; a
+  continuous agent it brings back idle but holding a task gets a turn to
+  finish it, and the turn names the task (0d3b800d).
 
   Driven through the harness's own restart exchange: `agents_to_restore`, then
   the `agents_present` report, which is what sweeps the copy.
@@ -111,8 +112,18 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
     report_present(socket, agents)
   end
 
-  test "a restored continuous agent holding a task is woken to resume it, by name", ctx do
+  test "a restored agent caught mid-turn carries the turn on", ctx do
     agent = holder(ctx.scope, %{turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)})
+
+    restart(ctx.socket, [agent])
+
+    agent_id = agent.id
+    assert_receive {:agent_dispatch, ^agent_id, _ref, prompt}, 5_000
+    assert prompt =~ "Carry on from your last step"
+  end
+
+  test "a restored continuous agent left holding a task is woken to resume it, by name", ctx do
+    agent = holder(ctx.scope, %{})
     task = Agent.active_task(agent)
 
     restart(ctx.socket, [agent])
@@ -129,8 +140,8 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
            """
   end
 
-  test "a restored agent that is not continuous is not woken", ctx do
-    idle = holder(ctx.scope, %{continuous: false, turn_started_at: DateTime.utc_now()})
+  test "a restored agent that is not continuous and was not mid-turn is not woken", ctx do
+    idle = holder(ctx.scope, %{continuous: false})
     control = holder(ctx.scope, %{})
 
     restart(ctx.socket, [idle, control])
@@ -175,7 +186,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
                    """
   end
 
-  describe "a turn the restart discarded (5a977f41)" do
+  describe "a turn the restart cut (5a977f41)" do
     defp mid_turn(scope, attrs, said) do
       {:ok, agent} =
         AgentsRepository.create_agent(scope, %{
@@ -212,16 +223,17 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
       agent
     end
 
-    test "is offered again with the message it was answering", ctx do
+    test "carries on rather than being handed its message again", ctx do
       agent = mid_turn(ctx.scope, %{}, "Rename the export columns, then run the suite.")
 
       restart(ctx.socket, [agent])
 
       agent_id = agent.id
-      assert_receive {:work_turn_requested, ^agent_id, _ref, prompt}, 5_000
+      assert_receive {:agent_dispatch, ^agent_id, _ref, prompt}, 5_000
+      assert prompt =~ "Carry on from your last step"
 
-      assert prompt =~ "Rename the export columns, then run the suite.",
-             "the restored agent's turn did not carry the message its discarded turn answered:\n#{prompt}"
+      refute prompt =~ "Rename the export columns",
+             "the message was delivered a second time; it is already in the conversation"
     end
 
     test "reaches an agent out of the loop that was answering a person", ctx do
@@ -230,8 +242,8 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
       restart(ctx.socket, [agent])
 
       agent_id = agent.id
-      assert_receive {:work_turn_requested, ^agent_id, _ref, prompt}, 5_000
-      assert prompt =~ "Escalate f247c90f."
+      assert_receive {:agent_dispatch, ^agent_id, _ref, prompt}, 5_000
+      assert prompt =~ "Carry on from your last step"
     end
 
     test "reaches an agent whose work offers are damped", ctx do
@@ -249,8 +261,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
       restart(ctx.socket, [agent])
 
       agent_id = agent.id
-      assert_receive {:work_turn_requested, ^agent_id, _ref, prompt}, 5_000
-      assert prompt =~ "Carry on with the task."
+      assert_receive {:agent_dispatch, ^agent_id, _ref, _prompt}, 5_000
     end
 
     test "an agent that was idle is not handed an old message", ctx do
@@ -282,6 +293,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
 
       agent_id = agent.id
       refute_received {:work_turn_requested, ^agent_id, _ref, _prompt}
+      refute_received {:agent_dispatch, ^agent_id, _ref, _prompt}
     end
   end
 end

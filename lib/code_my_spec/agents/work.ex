@@ -15,7 +15,6 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -57,116 +56,10 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   @resume_prompt "Your last turn ended without finishing — the harness restarted " <>
-                   "under it, so whatever it had in flight was discarded and never " <>
-                   "recorded. You still hold the task below. Nothing is wrong with it " <>
+                   "under it. You still hold the task below. Nothing is wrong with it " <>
                    "and nothing has been decided about it; pick it back up from where " <>
                    "the thread leaves off, and dispose of it as usual when the work is " <>
                    "done. If you cannot tell how far it got, re-check rather than assume."
-
-  @doc """
-  Give back the turns a harness restart discarded (5a977f41).
-
-  `Agents.account_for_interrupted_turns/2` tells an agent its turn was
-  discarded, but only as history — and every agent then sat idle: a continuous
-  coder resuming a task and a main agent acting on an instruction were both
-  still idle twelve minutes after v2.0.296's restart. Holding a task, waiting
-  on a tap-out or damped on its last offer, none of them is reached by
-  `consider_copy/4` or `resume_held_tasks/2`.
-
-  So the message the discarded turn was answering is delivered again, as a
-  turn. `:own_reply` — the restart is the agent's own work coming back, not
-  new work — which reaches a waiting or non-continuous agent and never an off
-  one. `interrupted` is `Agents.interrupted_turns/1`'s answer from the restore
-  this reconnect follows.
-  """
-  @spec redeliver_interrupted_turns(Scope.t(), %{Ecto.UUID.t() => Ecto.UUID.t() | nil}) :: :ok
-  def redeliver_interrupted_turns(scope, interrupted) when is_map(interrupted) do
-    Enum.each(interrupted, fn {agent_id, starter_id} ->
-      case AgentsRepository.fetch_agent(scope, agent_id) do
-        {:ok, agent} -> redeliver(scope, agent, starter_id)
-        _gone -> :ok
-      end
-    end)
-  end
-
-  # With nothing recorded there is no message to give back, so only an agent in
-  # the loop is told to carry on: a non-continuous one is woken by a person or
-  # its own reply, and neither is on the thread.
-  defp redeliver(_scope, %Agent{continuous: continuous}, nil) when continuous != true, do: :ok
-
-  defp redeliver(scope, agent, starter_id) do
-    with :ok <- Wake.allow?(scope, agent, :own_reply),
-         {:ok, {reserved, ref}} <- reserve_interrupted(scope, agent.id) do
-      turn_prompt = redeliver_prompt(starter_id) <> held_task_line(reserved)
-
-      offered =
-        reserved
-        |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, :resume, {"restart", nil})
-
-      case Transport.request_work_turn(
-             reserved.working_copy_id,
-             reserved,
-             ref,
-             turn_prompt,
-             5_000
-           ) do
-        {:ok, :started} ->
-          {:ok, ref}
-
-        _error ->
-          Offers.undelivered(offered)
-          release(scope, reserved.id, ref)
-      end
-    end
-  end
-
-  @redelivered "The harness restarted part-way through your last turn, and that turn " <>
-                 "was discarded — the notice above says what that means. "
-
-  defp redeliver_prompt(starter_id) do
-    case starter_id && Repo.get(Message, starter_id) do
-      %Message{} = starter ->
-        @redelivered <>
-          "This is the message it was answering, delivered again. Pick it up from what " <>
-          "the thread shows was already done:\n\n" <> Message.text(starter)
-
-      _none ->
-        @redelivered <> "Carry on from what the thread shows was already done."
-    end
-  end
-
-  # The task the turn was working, when it holds one — what `resume_held_tasks/2`
-  # would have named, since this turn is taken in its place.
-  defp held_task_line(agent) do
-    case Agent.active_task(agent) do
-      nil -> ""
-      task -> "\n\n" <> task_line(task)
-    end
-  end
-
-  # Holding a task does not fence this out, as it fences `reserve/2`: the
-  # discarded turn may have been working one.
-  defp reserve_interrupted(scope, id) do
-    Repo.transaction(fn ->
-      agent =
-        Repo.one(
-          from(a in Agent,
-            where:
-              a.id == ^id and a.project_id == ^scope.active_project_id and
-                a.account_id == ^scope.active_account_id,
-            lock: "FOR UPDATE"
-          )
-        )
-
-      if agent && takes_redelivery?(agent), do: reserve(agent), else: :not_runnable
-    end)
-  end
-
-  defp takes_redelivery?(agent) do
-    present?(agent) and is_nil(agent.turn_started_at) and
-      not reservation_open?(agent) and not is_nil(agent.working_copy_id)
-  end
 
   @doc """
   Offer a turn to agents left holding a task with no turn open.

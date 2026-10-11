@@ -869,25 +869,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       |> Agents.list_on_duty()
       |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
 
-    # Before hydrating, not after. An agent that was mid-turn is told here what
-    # became of that turn, and hydration is what reads the conversation into
-    # the launch request — so writing first is what makes the notice part of
-    # the history the agent comes back holding, rather than a line it would
-    # only find by re-reading the page.
-    # Kept for the sweep that follows the re-registration, which is when the
-    # agents are back to take the turns this restart discarded (5a977f41).
-    interrupted = Agents.interrupted_turns(running)
     :ok = Agents.account_for_interrupted_turns(scope, running)
 
     tools = ToolRegistry.registry()
     agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
 
-    {:reply, {:ok, %{"agents" => agents}},
-     assign(
-       socket,
-       :interrupted_turns,
-       Map.merge(socket.assigns[:interrupted_turns] || %{}, interrupted)
-     )}
+    {:reply, {:ok, %{"agents" => agents}}, socket}
   end
 
   # One step an agent took, written to its conversation as it arrives.
@@ -1094,13 +1081,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp sweep(socket) do
     scope = socket.assigns.scope
     copy_id = scope.active_working_copy_id
-    interrupted = socket.assigns[:interrupted_turns] || %{}
 
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      # First, so a turn the restart discarded is handed back before anything
-      # else is offered in its place (5a977f41).
-      Agents.Work.redeliver_interrupted_turns(scope, interrupted)
-
       Agents.Work.consider_copy(scope, copy_id, :harness_reconnected)
 
       # And the agents `consider_copy/4` cannot reach: a restart discards the
