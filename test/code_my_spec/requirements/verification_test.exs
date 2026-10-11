@@ -28,6 +28,89 @@ defmodule CodeMySpec.Requirements.VerificationTest do
     refute Verification.clean?(Map.put(@clean, :actionable_disagree, 1))
   end
 
+  test "ready for QA status wording collapses only when the commit agrees" do
+    live =
+      requirement(%{
+        "status" => "Certified ready for QA at abc123",
+        "qa_ready_commit" => "abc123"
+      })
+
+    checker =
+      requirement(%{
+        "status" => "qa_ready_commit is set",
+        "qa_ready_commit" => "abc123"
+      })
+
+    live = %{live | name: "ready_for_qa"}
+    checker = %{checker | name: "ready_for_qa"}
+
+    assert Verification.behavior(live) == Verification.behavior(checker)
+    assert Verification.stored(live) == Verification.stored(checker)
+
+    different_commit = %{
+      checker
+      | details: %{"status" => "qa_ready_commit is set", "qa_ready_commit" => "def456"}
+    }
+
+    assert Verification.changed_fields(
+             Verification.behavior(live),
+             Verification.behavior(different_commit)
+           ) == [:details]
+  end
+
+  test "ready for QA meaningful status and waiting changes remain visible" do
+    base =
+      requirement(%{
+        "status" => "qa_ready_commit is set",
+        "qa_ready_commit" => "abc123"
+      })
+
+    base = %{base | name: "ready_for_qa"}
+
+    changed_status = %{
+      base
+      | details: %{"status" => "QA certification revoked", "qa_ready_commit" => "abc123"}
+    }
+
+    waiting = %{
+      base
+      | details: %{
+          "status" => "qa_ready_commit is set",
+          "qa_ready_commit" => "abc123",
+          "waiting_on" => "approval"
+        }
+    }
+
+    assert Verification.changed_fields(
+             Verification.behavior(base),
+             Verification.behavior(changed_status)
+           ) == [:details]
+
+    assert Verification.changed_fields(
+             Verification.behavior(base),
+             Verification.behavior(waiting)
+           ) == [:details]
+  end
+
+  test "the QA status wording exception does not apply to other requirement names" do
+    live =
+      requirement(%{
+        "status" => "Certified ready for QA at abc123",
+        "qa_ready_commit" => "abc123"
+      })
+
+    checker =
+      requirement(%{
+        "status" => "qa_ready_commit is set",
+        "qa_ready_commit" => "abc123"
+      })
+
+    assert Verification.changed_fields(
+             Verification.behavior(live),
+             Verification.behavior(checker)
+           ) == [:details]
+  end
+
   test "waiting and execution changes are behavior changes" do
     ready = requirement(%{})
     waiting = %{ready | details: %{"waiting_on" => "answer"}}

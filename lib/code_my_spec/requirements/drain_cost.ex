@@ -209,10 +209,10 @@ defmodule CodeMySpec.Requirements.DrainCost do
       {result, extra} = fun.()
       emit(Map.merge(meta, extra), counter, System.monotonic_time() - started)
       result
-    rescue
-      error ->
+    catch
+      kind, reason ->
         emit(Map.put(meta, :raised, true), counter, System.monotonic_time() - started)
-        reraise error, __STACKTRACE__
+        :erlang.raise(kind, reason, __STACKTRACE__)
     after
       :telemetry.detach(handler_id)
     end

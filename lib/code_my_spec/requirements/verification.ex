@@ -26,14 +26,14 @@ defmodule CodeMySpec.Requirements.Verification do
   def behavior(node) do
     node
     |> Map.take(@behavior_fields)
-    |> Map.put(:details, details(node.details))
+    |> Map.put(:details, details(node.details, node.name))
   end
 
   @doc "The persisted inputs to rehydration, excluding storage and freshness stamps."
   def stored(node) do
     node
     |> Map.take(@stored_fields)
-    |> Map.put(:details, details(node.details))
+    |> Map.put(:details, details(node.details, Map.get(node, :name)))
   end
 
   @doc "Fields responsible for a disagreement, in a deterministic order."
@@ -45,6 +45,26 @@ defmodule CodeMySpec.Requirements.Verification do
   end
 
   # Use exactly the representation jsonb can preserve, including nested keys,
-  # atom values and timestamps. List order remains meaningful.
-  defp details(value), do: value |> Kernel.||(%{}) |> Jason.encode!() |> Jason.decode!()
+  # atom values and timestamps. List order remains meaningful. One pair of
+  # ready_for_qa writers describes the same commit with different status prose;
+  # retain the explicit commit and collapse only those known equivalent forms.
+  defp details(value, "ready_for_qa") do
+    value = value |> Kernel.||(%{}) |> Jason.encode!() |> Jason.decode!()
+
+    case value do
+      %{"status" => status, "qa_ready_commit" => commit}
+      when is_binary(commit) and commit != "" ->
+        if status == "qa_ready_commit is set" or
+             status == "Certified ready for QA at #{commit}" do
+          Map.put(value, "status", "qa_ready_commit is set")
+        else
+          value
+        end
+
+      _ ->
+        value
+    end
+  end
+
+  defp details(value, _name), do: value |> Kernel.||(%{}) |> Jason.encode!() |> Jason.decode!()
 end

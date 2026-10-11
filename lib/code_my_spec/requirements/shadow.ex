@@ -1034,12 +1034,51 @@ defmodule CodeMySpec.Requirements.Shadow do
     issue_held =
       for {nil, nil, issue, _t, _s, name} <- held, not is_nil(issue), into: MapSet.new(), do: name
 
-    covered?(issue_held, Map.get(defined, :issue, MapSet.new(["submitted"]))) and
+    entity_coverage?(held, Map.get(defined, :entities)) and
+      covered?(issue_held, Map.get(defined, :issue, MapSet.new(["submitted"]))) and
       covered?(story_held, defined.story) and covered?(project_held, defined.project) and
       component_definitions_covered?(component_held, defined.component)
   end
 
   def definitions_covered?(%Scope{}, _defined), do: true
+
+  @doc "Entities whose persisted node membership differs from the current template."
+  def incomplete_entities(%Scope{active_project_id: project_id} = scope, expected) do
+    {component_ids, story_ids} = entity_ids(project_id)
+
+    held =
+      event_target()
+      |> scoped(project_id, component_ids, story_ids)
+      |> where(^copy_filter(Projection.vantage(scope)))
+      |> select(
+        [n],
+        {n.component_id, n.story_id, n.issue_id, n.owner_component_type, n.node_scope, n.name}
+      )
+      |> Repo.all()
+
+    mismatched_entities(held, expected)
+  end
+
+  defp entity_coverage?(_held, nil), do: true
+  defp entity_coverage?(held, expected), do: MapSet.size(mismatched_entities(held, expected)) == 0
+
+  defp mismatched_entities(held, expected) do
+    actual =
+      Enum.reduce(held, %{}, fn
+        {component, nil, nil, _type, _scope, name}, acc when not is_nil(component) ->
+          Map.update(acc, {"component", component}, MapSet.new([name]), &MapSet.put(&1, name))
+
+        {nil, story, nil, _type, _scope, name}, acc when not is_nil(story) ->
+          Map.update(acc, {"story", story}, MapSet.new([name]), &MapSet.put(&1, name))
+
+        _project, acc ->
+          acc
+      end)
+
+    (Map.keys(actual) ++ Map.keys(expected))
+    |> Enum.filter(&(Map.get(actual, &1, MapSet.new()) != Map.get(expected, &1, MapSet.new())))
+    |> MapSet.new()
+  end
 
   defp component_definitions_covered?(held, defined) do
     Enum.all?(held, fn {type, names} ->

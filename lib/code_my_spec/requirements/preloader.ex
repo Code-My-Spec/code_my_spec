@@ -22,6 +22,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -433,9 +434,10 @@ defmodule CodeMySpec.Requirements.Preloader do
   for `Projection.rehydrate/2` to place a stored row — it reads
   `components_by_id` and `stories` — so the event path can rebuild edges over
   the rows it already holds. Not enough for any verdict, on purpose: nothing
-  here reads a file, a problem or a criterion.
+  here reads file contents, problems or criteria. File membership is needed
+  to exclude discovered components absent from this checkout's story edges.
 
-  Four queries. `ShadowProjector.reproject_topology/2` used to call `load/2`
+  Five queries. `ShadowProjector.reproject_topology/2` used to call `load/2`
   for this on every narrow drain — the whole project, ~50 queries and the
   largest phase of a pass, to compare one fingerprint that had not moved.
   """
@@ -443,7 +445,17 @@ defmodule CodeMySpec.Requirements.Preloader do
   def topology_context(%Scope{active_project_id: project_id} = scope) do
     components = project_components(project_id)
 
+    file_component_ids =
+      File
+      |> where([f], f.project_id == ^project_id and not is_nil(f.component_id))
+      |> scope_to_harness(files_copy(scope))
+      |> select([f], f.component_id)
+      |> distinct(true)
+      |> Repo.all()
+      |> MapSet.new()
+
     %{
+      file_component_ids: file_component_ids,
       components: components,
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
@@ -641,44 +653,27 @@ defmodule CodeMySpec.Requirements.Preloader do
   end
 
   @doc """
-  One component's family, for a consumer computing only that family.
-
-  The family is the unit, because `component_families/1` decides top-level from
-  nested by asking whether each component's parent is in the set it was given,
-  and `expand_component_families/2` groups by `parent_component_id || id`. So
-  the family of a component is its root — itself, or its parent — plus every
-  component sharing that root. Two queries rather than the project's 1138 rows.
-
-  That grouping is also what makes the narrow set safe to hand to
-  `component_families/1`: the root is present, so its children classify as
-  nested, and the root itself classifies as top-level exactly as it would in a
-  whole-project context — its own parent, if it has one, is outside the set and
-  therefore not a container here, which is the same answer `load/1` gives on
-  this project's shape (measured: 0 components nested below the second level).
+  One component's template family, with the ancestor context needed to preserve
+  whether each component is a top-level template owner or a child emitted by
+  its parent. A child nested below a context cannot be computed alone: omitting
+  the context makes `component_families/1` promote it to top-level and changes
+  its definition metadata.
 
   No problems are loaded: no component requirement reads them (28d72f8a).
   """
   @spec load_component_family(Scope.t(), Ecto.UUID.t()) :: {:ok, context()}
   def load_component_family(%Scope{active_project_id: project_id} = scope, id)
       when is_binary(project_id) do
-    root =
-      Repo.one(
-        from(c in Component,
-          where: c.id == ^id and c.project_id == ^project_id,
-          select: coalesce(c.parent_component_id, c.id)
-        )
-      )
-
-    {:ok, family_context(scope, root)}
+    lineage = component_context_lineage(project_id, id)
+    ids = Enum.uniq([id | lineage])
+    {:ok, family_context(scope, ids)}
   end
 
-  defp family_context(_scope, nil), do: narrow_context([])
-
-  defp family_context(%Scope{active_project_id: project_id} = scope, root) do
+  defp family_context(%Scope{active_project_id: project_id} = scope, ids) do
     family =
       Component
       |> where([c], c.project_id == ^project_id)
-      |> where([c], c.id == ^root or c.parent_component_id == ^root)
+      |> where([c], c.id in ^ids or c.parent_component_id in ^ids)
       |> preload([:dependencies, :child_components])
       |> Repo.all()
 
@@ -698,6 +693,44 @@ defmodule CodeMySpec.Requirements.Preloader do
       children_by_parent: Enum.group_by(family, & &1.parent_component_id),
       files_by_component: Enum.group_by(files, & &1.component_id)
     })
+  end
+
+  # Keep walking only through ancestors that own child templates. A component
+  # below a non-container parent is top-level in the full graph, so that parent
+  # is irrelevant to its template. Context ancestors are included so the same
+  # component_families/1 classification holds at every level of a nested path.
+  defp component_context_lineage(project_id, component_id, seen \\ MapSet.new()) do
+    if MapSet.member?(seen, component_id) do
+      []
+    else
+      seen = MapSet.put(seen, component_id)
+
+      component_context_lineage_step(project_id, component_id, seen)
+    end
+  end
+
+  defp component_context_lineage_step(project_id, component_id, seen) do
+    parent_id =
+      Repo.one(
+        from(c in Component,
+          where: c.id == ^component_id and c.project_id == ^project_id,
+          select: c.parent_component_id
+        )
+      )
+
+    with id when not is_nil(id) <- parent_id,
+         type when is_binary(type) <-
+           Repo.one(
+             from(c in Component,
+               where: c.id == ^id and c.project_id == ^project_id,
+               select: c.type
+             )
+           ),
+         true <- RequirementsRegistry.has_children?(type) do
+      [id | component_context_lineage(project_id, id, seen)]
+    else
+      _ -> []
+    end
   end
 
   defp rules_by_story(project_id) do
