@@ -56,7 +56,9 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     :ok = HarnessRegistry.register_executor(copy.id, "copy-harness", @copy)
     {:ok, env} = InMemoryEnvironment.create(shell: clean_shell())
-    scope = %{scope | active_working_copy_id: copy.id, environment: env}
+    :ok = CodeMySpec.Environments.unregister({:working_copy, copy.id})
+    :ok = CodeMySpec.Environments.register({:working_copy, copy.id}, env)
+    scope = %{scope | active_working_copy_id: copy.id}
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
     %{scope: scope, copy_id: copy.id}
   end

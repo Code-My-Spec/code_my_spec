@@ -68,7 +68,9 @@ defmodule CodeMySpec.AgentTasks.IssueFixTest do
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     a_harness(copy.id)
     {:ok, env} = InMemoryEnvironment.create(shell: script(status))
-    scope = %{scope | active_working_copy_id: copy.id, environment: env}
+    :ok = CodeMySpec.Environments.unregister({:working_copy, copy.id})
+    :ok = CodeMySpec.Environments.register({:working_copy, copy.id}, env)
+    scope = %{scope | active_working_copy_id: copy.id}
     %{scope: scope, issue: issue_fixture(scope, %{status: :accepted})}
   end
 
