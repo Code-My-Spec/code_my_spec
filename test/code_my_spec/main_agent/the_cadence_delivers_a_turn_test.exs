@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
   @moduledoc """
   The cadence is for a continuous main only (John): each tick gives it exactly
-  one turn, work or no work, carrying the check-in and its own work offer.
+  one admitted turn only for work or attention, carrying a compact check-in.
 
   `2c34da87`: the tick fired and no turn arrived. Then step 4b held the
   non-continuous push, so nothing arrived for anyone; this is the converged
@@ -133,25 +133,24 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
 
       prompt = turn(main)
       assert prompt =~ "Check-in."
-      assert prompt =~ "#{main.id} (main) — you"
+      refute prompt =~ main.id
       assert prompt =~ "start_task"
       refute prompt =~ "The first is:"
       refute_received {:agent_message, _id, _text}
     end
 
-    test "with no work still gets the check-in as its one turn", ctx do
+    test "with no work leaves its conversation and model untouched", ctx do
       main = agent(ctx.scope, "main")
       assert Work.claimable_work(ctx.scope, main) == []
       settled(ctx.scope)
 
       tick(ctx.scope)
 
-      prompt = turn(main)
-      assert prompt =~ "Check-in."
-      refute prompt =~ "start_task"
+      refute_received {:work_turn_requested, _id, _ref, _prompt}
+      refute_received {:agent_message, _id, _text}
     end
 
-    test "whose offer the damper holds gets the check-in without it", ctx do
+    test "whose offer the damper holds does not get an empty check-in", ctx do
       ctx = kickoff(ctx)
       main = agent(ctx.scope, "main")
       offer = Work.offer_fingerprint(ctx.scope, main, Work.claimable_work(ctx.scope, main))
@@ -164,9 +163,8 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
 
       tick(ctx.scope)
 
-      prompt = turn(main)
-      assert prompt =~ "Check-in."
-      refute prompt =~ "start_task"
+      refute_received {:work_turn_requested, _id, _ref, _prompt}
+      refute_received {:agent_message, _id, _text}
     end
 
     test "mid-turn gets no second turn", ctx do
@@ -208,7 +206,7 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
 
       prompt = turn(main)
       assert prompt =~ "Needs you:"
-      assert prompt =~ "a1b2c3d4 (new) — STALLED"
+      assert prompt =~ "a1b2c3d4 (new): STALLED"
       refute_received {:wake, %{event: :teammate_stalled}}
     end
 
@@ -300,12 +298,13 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
 
       text = CheckInReport.render(digest, self: "me", work?: true, new_stalls: [])
 
-      assert text =~ "question q-main_agent from the coding agent asker: Ask main_agent?"
-      assert text =~ "answer_notification"
-      assert text =~ "s1 on working copy copy-s1 — STALLED"
-      assert text =~ "me (main) — you"
-      assert text =~ "s1 (coding) — stalled, above"
-      assert text =~ "questions waiting on others: 1"
+      assert text =~ "question q-main_agent: Decision needed"
+      refute text =~ "Ask main_agent?"
+      assert text =~ "list_notifications({})"
+      assert text =~ "coding agent s1: STALLED"
+      refute text =~ "me (main) — you"
+      assert text =~ ~s|read_agent_conversation({agent_id = "s1", limit = 5})|
+      assert text =~ "questions waiting on others: user 1; product 0"
 
       order =
         Enum.map(["Needs you:", "Your work:", "agents:", "questions waiting"], &pos(text, &1))
@@ -320,7 +319,7 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
       assert text =~ "Nothing needs you"
       refute text =~ "Needs you:"
       refute text =~ "Your work:"
-      assert text =~ "questions: none open."
+      assert length(String.split(text, "\n")) == 1
     end
 
     defp pos(text, needle) do

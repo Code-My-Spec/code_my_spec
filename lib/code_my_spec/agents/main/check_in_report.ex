@@ -1,229 +1,179 @@
 defmodule CodeMySpec.Agents.Main.CheckInReport do
   @moduledoc """
-  The check-in, as the main agent reads it.
+  A compact check-in from the same domain facts as the fleet detail tools.
 
-  One message carrying what every agent is doing, what is under them, and what
-  is waiting — so the wake-up is an answer rather than an instruction to go and
-  assemble one. Criterion 3332: a bare "time to check in" costs a turn before
-  anything is known, seventy-two times a day, on the machine that is also
-  running the agents.
-
-  ## Here rather than beside the tool mappers
-
-  It reads the same structs `list_agent_work` and `check_machinery` render, and
-  it is tempting to compose it from their output. It cannot: those live in
-  `McpServers`, which depends on this context and not the other way round. The
-  dependency is the right way round — a check-in is something the main agent
-  does, not something an MCP tool does — so the words are written here.
-
-  What must not drift is the *facts*, and they cannot: both read the same
-  structs. Two documents describing one fleet in two voices is fine; two
-  describing it with different contents would not be.
-
-  ## It says out loud when it found nothing
-
-  "Nothing needs you" is a different sentence from an empty report, and the
-  difference is criterion 3333's whole subject: a digest that could not be built
-  is also empty, and only one of the two is good news.
+  Names only agents needing attention. Settled/off seats and questions held by
+  someone else are counts; valid read calls lead to the underlying evidence.
+  Rendering suggests no answer or lifecycle change on main's behalf.
   """
 
-  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Main.Machinery
   alias CodeMySpec.Agents.Main.OpenQuestion
 
-  @work_offer "Your work: eligible work is waiting. Call get_next_requirement to see it, " <>
-                "then claim it with start_task. Nothing has been selected or assigned for you."
+  @work_offer "Your work: eligible work is waiting. Call get_next_requirement, then " <>
+                "claim with start_task; nothing has been selected or assigned for you."
 
-  @doc """
-  The whole check-in as one message: what waits on main first — questions it
-  answers, stalled teammates, a machinery fault, its own work — then the fleet.
+  @doc "Whether the digest has a decision or investigation for main, not merely a waiting user."
+  def needs_attention?(%Digest{failed: reason}) when is_binary(reason), do: true
 
-  The cadence's turn (`MainAgent.cadence_check_in/3`) passes:
+  def needs_attention?(%Digest{} = digest) do
+    Enum.any?(digest.questions, &(&1.holder == "main_agent")) or
+      Enum.any?(attention_agents(digest), &(not waiting_elsewhere?(&1, digest.questions))) or
+      not is_nil(machinery_alarm(digest))
+  end
 
-    * `:self` — main's own id, so its line reads "you".
-    * `:work?` — main's work offer stands, so the turn carries it.
-    * `:new_stalls` — ids that stalled since the last tick, marked new.
-  """
   @spec render(Digest.t(), keyword()) :: String.t()
-  def render(%Digest{} = digest, opts \\ []) do
+  def render(digest, opts \\ [])
+
+  def render(%Digest{failed: reason}, _opts) when is_binary(reason),
+    do: "Check-in FAILED: #{summary(reason)} — run_script: check_machinery({})"
+
+  def render(%Digest{} = digest, opts) do
+    render_digest(
+      digest,
+      opts,
+      not needs_attention?(digest) and not Keyword.get(opts, :work?, false)
+    )
+  end
+
+  defp render_digest(digest, _opts, true) do
+    waiting = length(attention_agents(digest))
+
+    "Check-in. #{quiet_verdict(digest.requirements)} " <>
+      "#{length(digest.work) - waiting} settled; #{waiting} waiting; #{length(digest.off)} off " <>
+      "(leave off). run_script: list_agent_work({}); list_agents({}). " <>
+      question_counts(digest.questions) <> " " <> requirements(digest.requirements)
+  end
+
+  defp render_digest(digest, opts, false) do
     {mine, others} = Enum.split_with(digest.questions, &(&1.holder == "main_agent"))
-    stalled = Digest.stalled(digest)
-    alarm = machinery_alarm(digest.machinery, digest.work)
-    needs = needs(mine, stalled, Keyword.get(opts, :new_stalls, []), alarm)
+    attention = attention_agents(digest)
+    new_stalls = Keyword.get(opts, :new_stalls, [])
+    needs = Enum.map(mine, &question_line/1) ++ Enum.map(attention, &agent_line(&1, new_stalls))
+    needs = needs ++ List.wrap(machinery_alarm(digest))
 
     [
-      "Check-in. " <> verdict(digest, needs),
-      needs_block(needs, mine),
+      "Check-in.",
+      needs_block(needs),
       work(Keyword.get(opts, :work?, false)),
-      agents(digest.work, Keyword.get(opts, :self), MapSet.new(stalled, & &1.agent_id)) <>
-        off(digest.off),
-      if(alarm, do: nil, else: machinery(digest.machinery)),
-      questions(others, mine),
-      "`list_agent_work` and `check_machinery` have the detail behind any of this."
+      "agents: #{length(digest.work) - length(attention)} settled; #{length(attention)} needing attention; " <>
+        "#{length(digest.off)} off (leave off). run_script: list_agent_work({}); list_agents({})",
+      question_counts(others),
+      requirements(digest.requirements)
     ]
     |> Enum.reject(&is_nil/1)
-    |> Enum.join("\n\n")
+    |> Enum.join("\n")
   end
 
-  defp verdict(digest, needs) do
-    cond do
-      Digest.quiet?(digest) -> "Nothing needs you — every agent is working or has nothing to do."
-      needs != [] -> "Some of this needs you."
-      true -> "Nothing is waiting on you, but not every agent is settled — see below."
-    end
-  end
+  defp quiet_verdict({:unavailable, _}), do: "Requirement progress could not be read."
+  defp quiet_verdict(_requirements), do: "Nothing needs you."
 
-  defp needs(mine, stalled, new_stalls, alarm) do
-    Enum.map(mine, &mine_line/1) ++
-      Enum.map(stalled, &stall_line(&1, &1.agent_id in new_stalls)) ++ List.wrap(alarm)
-  end
-
-  defp needs_block([], _mine), do: nil
-
-  defp needs_block(needs, mine) do
-    "Needs you:\n" <>
-      Enum.map_join(needs, "\n", &("- " <> &1)) <> answer_hint(mine)
-  end
-
-  # From the work prompt: the tool is code mode, and naming the wrong one cost a
-  # main agent its turn (see `Work`'s `@prompt`).
-  defp answer_hint([]), do: ""
-
-  defp answer_hint(_mine),
-    do:
-      "\nRead questions with `run_script` calling list_notifications; answer each with " <>
-        "`answer_notification` so the answer is recorded and reaches the asker."
-
-  defp mine_line(%OpenQuestion{} = question) do
-    "question #{question.id} from #{asker(question)}: " <>
-      Enum.join(OpenQuestion.texts(question), "; ")
-  end
-
-  defp asker(%OpenQuestion{agent_id: nil}), do: "a session"
-
-  defp asker(%OpenQuestion{} = question),
-    do: "the #{question.agent_role} agent #{question.agent_id}#{root(question.working_copy_root)}"
-
-  defp stall_line(%AgentWork{} = entry, new?) do
-    "the #{entry.role} agent #{entry.agent_id} on working copy #{entry.working_copy_id}" <>
-      "#{root(entry.working_copy_root)}#{if new?, do: " (new)", else: ""} — " <>
-      AgentWork.unclaimed_work(entry)
-  end
-
-  defp root(nil), do: ""
-  defp root(path), do: " (#{path})"
-
+  defp needs_block([]), do: "Nothing is waiting on main."
+  defp needs_block(lines), do: "Needs you:\n" <> Enum.map_join(lines, "\n", &("- " <> &1))
   defp work(true), do: @work_offer
   defp work(false), do: nil
 
-  defp agents([], _self, _stalled), do: "agents: none running."
+  defp attention_agents(digest) do
+    stalled = MapSet.new(Digest.stalled(digest), & &1.agent_id)
 
-  defp agents(work, self, stalled) do
-    "agents: #{length(work)} running\n" <>
-      Enum.map_join(work, "\n", &agent_line(&1, self, stalled))
+    Enum.filter(digest.work, fn entry ->
+      MapSet.member?(stalled, entry.agent_id) or entry.problems != [] or
+        entry.blocked_reasons != [] or entry.task_status == :blocked or
+        entry.agent_status in [:starting, :pending] or
+        AgentWork.toolless?(entry) or AgentWork.provider_blocked?(entry) or
+        AgentWork.timing_out?(entry)
+    end)
   end
 
-  defp agent_line(%AgentWork{agent_id: id} = entry, id, _stalled),
-    do: "  #{id} (#{entry.role}) — you"
-
-  defp agent_line(%AgentWork{agent_id: id} = entry, _self, stalled) do
-    if MapSet.member?(stalled, id),
-      do: "  #{id} (#{entry.role}) — stalled, above",
-      else: agent_line(entry)
-  end
-
-  # Printed so an off seat is not read as an empty one to staff (39af5611).
-  defp off([]), do: ""
-
-  defp off(agents) do
-    "\nagents off: #{length(agents)} — leave them off unless you mean to turn one on\n" <>
-      Enum.map_join(agents, "\n", &"  #{&1.id} (#{&1.role}) — #{Agent.describe_off(&1)}")
-  end
-
-  # Enough to decide whether to look closer, and no more. The full per-agent
-  # view is `list_agent_work`, named above — a check-in that reproduced it would
-  # be a wall of text seventy-two times a day, and the one agent that needed
-  # attention would be somewhere in the middle of it.
-  defp agent_line(%AgentWork{} = entry) do
-    "  #{entry.agent_id} (#{entry.role}) — #{doing(entry)}#{provider(entry)}" <>
-      "#{timeouts(entry)}; last said #{moment(entry.last_said_at)}"
-  end
-
-  defp timeouts(%AgentWork{} = entry) do
-    case AgentWork.turn_timeouts(entry) do
-      nil -> ""
-      run -> "; " <> run
-    end
-  end
-
-  defp provider(%AgentWork{} = entry) do
-    if AgentWork.provider_blocked?(entry),
-      do: "; blocked on: " <> AgentWork.provider_block(entry),
-      else: ""
-  end
-
-  defp doing(%AgentWork{task_name: nil} = entry) do
-    cond do
-      AgentWork.toolless?(entry) -> "cannot work, its machine reports no tools"
-      entry.idle? -> "nothing to do"
-      true -> AgentWork.unclaimed_work(entry)
-    end
-  end
-
-  # A blocked task holds only itself, so the queue beside it still counts.
-  defp doing(%AgentWork{task_status: :blocked, idle?: false} = entry),
-    do: "task: #{entry.task_name} [blocked]; " <> AgentWork.unclaimed_work(entry)
-
-  defp doing(%AgentWork{} = entry), do: "task: #{entry.task_name}"
-
-  # A machine answering is not an agent working: when every provider refuses,
-  # nothing runs whatever the machines say (044599cc).
-  # A fault is something main acts on, so it leads; a healthy line is fleet state.
-  defp machinery_alarm(machinery, work) do
-    cond do
-      work != [] and Enum.all?(work, &AgentWork.provider_blocked?/1) ->
-        "machinery: BLOCKED — every agent's provider is refusing its turns; nothing " <>
-          "can run until it accepts them again."
-
-      match?(%Machinery{tool_fault: fault} when fault != :none, machinery) ->
-        machinery(machinery)
-
-      true ->
-        nil
-    end
-  end
-
-  defp machinery(nil), do: "machinery: not read."
-
-  defp machinery(%Machinery{tool_fault: :none}),
-    do: "machinery: working — every agent's machine is answering."
-
-  defp machinery(%Machinery{tool_fault: :machine}),
-    do:
-      "machinery: FAULTY — every agent on this project is on a machine reporting no " <>
-        "tools. One fault underneath them; restarting agents will not reach it."
-
-  defp machinery(%Machinery{tool_fault: {:agents, ids}}),
-    do: "machinery: working, but these agents cannot call tools: " <> Enum.join(ids, ", ")
-
-  # Main's own are under "Needs you"; these are the ones waiting on others.
-  defp questions([], []), do: "questions: none open."
-  defp questions([], _mine), do: nil
-
-  defp questions(others, _mine) do
-    "questions waiting on others: #{length(others)}\n" <>
-      Enum.map_join(others, "\n", &question_line/1)
+  defp waiting_elsewhere?(entry, questions) do
+    Enum.any?(questions, &(&1.agent_id == entry.agent_id and &1.holder != "main_agent")) and
+      entry.problems == [] and not AgentWork.toolless?(entry) and
+      not AgentWork.provider_blocked?(entry) and not AgentWork.timing_out?(entry) and
+      entry.agent_status not in [:starting, :pending]
   end
 
   defp question_line(%OpenQuestion{} = question) do
-    "  #{Enum.join(OpenQuestion.texts(question), "; ")} (#{holder(question.holder)})"
+    text = question.title || "Decision needed"
+    "#{question.kind} #{question.id}: #{summary(text)} — run_script: list_notifications({})"
   end
 
-  defp holder("product_agent"), do: "waiting on the product agent"
-  defp holder(_holder), do: "waiting on the user"
+  defp agent_line(entry, new_stalls) do
+    "#{entry.role} agent #{entry.agent_id}#{new_mark(entry.agent_id in new_stalls)}: " <>
+      agent_reason(entry) <>
+      " — run_script: read_agent_conversation({agent_id = " <>
+      inspect(entry.agent_id) <> ", limit = 5})"
+  end
 
-  defp moment(nil), do: "never"
-  defp moment(at), do: DateTime.to_iso8601(at)
+  defp new_mark(true), do: " (new)"
+  defp new_mark(false), do: ""
+
+  defp agent_reason(entry) do
+    cond do
+      AgentWork.toolless?(entry) ->
+        "cannot call tools"
+
+      AgentWork.provider_blocked?(entry) ->
+        "blocked on: " <> summary(AgentWork.provider_block(entry))
+
+      AgentWork.timing_out?(entry) ->
+        AgentWork.turn_timeouts(entry)
+
+      entry.blocked_reasons != [] or entry.task_status == :blocked ->
+        "blocked; inspect the waiting work"
+
+      entry.agent_status in [:starting, :pending] ->
+        "starting; inspect startup progress"
+
+      entry.problems != [] ->
+        "#{length(entry.problems)} checkout problems"
+
+      true ->
+        "STALLED: unclaimed work; inspect before intervening"
+    end
+  end
+
+  defp machinery_alarm(%Digest{work: [_ | _] = work} = digest) do
+    case Enum.all?(work, &AgentWork.provider_blocked?/1) do
+      true ->
+        "machinery: BLOCKED — every agent's provider is refusing; run_script: check_machinery({})"
+
+      false ->
+        machinery_alarm(digest.machinery)
+    end
+  end
+
+  defp machinery_alarm(%Digest{machinery: machinery}), do: machinery_alarm(machinery)
+  defp machinery_alarm(nil), do: nil
+  defp machinery_alarm(%Machinery{tool_fault: :none}), do: nil
+
+  defp machinery_alarm(%Machinery{tool_fault: :machine}),
+    do: "machinery: FAULTY — shared tool fault; run_script: check_machinery({})"
+
+  defp machinery_alarm(%Machinery{tool_fault: {:agents, ids}}),
+    do: "machinery: #{length(ids)} agents cannot call tools; run_script: check_machinery({})"
+
+  defp question_counts([]), do: "questions: none waiting on user or product."
+
+  defp question_counts(questions) do
+    counts = Enum.frequencies_by(questions, & &1.holder)
+
+    "questions waiting on others: user #{Map.get(counts, "user", 0)}; " <>
+      "product #{Map.get(counts, "product_agent", 0)}. run_script: list_notifications({})"
+  end
+
+  defp requirements(%{total: total, satisfied: satisfied}),
+    do:
+      "Requirements: #{satisfied}/#{total} satisfied. run_script: list_requirements({status = \"unsatisfied\", summary = true})"
+
+  defp requirements({:unavailable, reason}),
+    do:
+      "Requirements: unavailable — #{summary(reason)}. run_script: list_requirements({status = \"unsatisfied\", summary = true})"
+
+  defp requirements(nil),
+    do:
+      "Requirements: unavailable. run_script: list_requirements({status = \"unsatisfied\", summary = true})"
+
+  defp summary(text), do: text |> String.replace(~r/\s+/, " ") |> String.slice(0, 160)
 end
