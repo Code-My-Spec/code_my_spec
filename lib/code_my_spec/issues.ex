@@ -417,6 +417,20 @@ defmodule CodeMySpec.Issues do
   @spec assigned_to_copy(Scope.t(), Ecto.UUID.t()) :: Issue.t() | nil
   defdelegate assigned_to_copy(scope, working_copy_id), to: IssuesRepository
 
+  @doc """
+  Stamps `issue` ready for QA at `commit` — the commit `Promotion.certify/3`
+  passed at. The only writer of `qa_ready_commit`; `IssueFix` reads it.
+  """
+  @spec set_qa_ready(Scope.t(), Issue.t(), String.t(), DateTime.t()) ::
+          {:ok, Issue.t()} | {:error, term()}
+  def set_qa_ready(%Scope{} = scope, %Issue{} = issue, commit, at \\ DateTime.utc_now())
+      when is_binary(commit) do
+    with {:ok, updated} <- IssuesRepository.update_qa_ready_commit(issue, commit, at) do
+      broadcast(scope, {:updated, updated})
+      {:ok, updated}
+    end
+  end
+
   @doc "Record the commit an issue's fix landed on main at."
   @spec record_fix_landed(Scope.t(), Issue.t(), String.t()) :: {:ok, Issue.t()} | {:error, term()}
   def record_fix_landed(%Scope{} = scope, %Issue{} = issue, commit) do
