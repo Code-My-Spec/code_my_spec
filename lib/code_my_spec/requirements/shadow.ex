@@ -373,23 +373,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   # RETURNING a row it leaves unchanged, so `write/3` has to know what this
   # write still covers from its own input rather than from that result.
   defp existing_rows(target, covered, working_copy_id) do
-    story_ids = for {"story", id} <- covered, do: id
-
-    issue_ids =
-      target
-      |> where([n], not is_nil(n.issue_id))
-      |> where(
-        [n],
-        n.issue_id in subquery(
-          from(i in CodeMySpec.Issues.Issue, where: i.story_id in ^story_ids, select: i.id)
-        ) or fragment("(?->>'story_id')::bigint", n.details) in ^story_ids
-      )
-      |> where(^copy_filter(working_copy_id))
-      |> select([n], n.issue_id)
-      |> Repo.all()
-
-    (Enum.to_list(covered) ++ Enum.map(issue_ids, &{"issue", &1}))
-    |> Enum.uniq()
+    covered
     |> Enum.group_by(fn {type, _id} -> type end, fn {_type, id} -> id end)
     |> Enum.flat_map(fn {entity_type, owner_ids} ->
       owner_ids
@@ -422,15 +406,6 @@ defmodule CodeMySpec.Requirements.Shadow do
         entity_type: ^entity_type
       })
 
-  defp select_existing(query, "issue" = entity_type),
-    do:
-      select(query, [n], %{
-        id: n.id,
-        name: n.name,
-        owner_id: n.issue_id,
-        entity_type: ^entity_type
-      })
-
   defp select_existing(query, "project" = entity_type),
     do:
       select(query, [n], %{
@@ -449,7 +424,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   defp owners_filter("component", ids), do: dynamic([n], n.component_id in ^ids)
-  defp owners_filter("issue", ids), do: dynamic([n], n.issue_id in ^ids)
   defp owners_filter("story", ids), do: dynamic([n], n.story_id in ^ids)
   defp owners_filter("project", ids), do: dynamic([n], n.project_id in ^ids)
 
@@ -458,9 +432,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   # other way; the predicates are literals here, not interpolation.
   defp conflict_target("component"),
     do: {:unsafe_fragment, "(component_id, name, working_copy_id) WHERE component_id IS NOT NULL"}
-
-  defp conflict_target("issue"),
-    do: {:unsafe_fragment, "(issue_id, name, working_copy_id) WHERE issue_id IS NOT NULL"}
 
   defp conflict_target("story"),
     do: {:unsafe_fragment, "(story_id, name, working_copy_id) WHERE story_id IS NOT NULL"}
@@ -504,9 +475,9 @@ defmodule CodeMySpec.Requirements.Shadow do
   @doc """
   Settle one requirement across every entity of a type, then the exceptions.
 
-  What a set-based handler writes. `story_issues_triaged` uses a grouped query
-  naming stories that carry incoming issues; every other story is triaged
-  *by absence*, and there is no list of them to iterate. So the default
+  What a set-based handler writes. `story_issues_resolved` is one grouped query
+  naming the few stories that carry an unresolved issue; every other story is
+  resolved *by absence*, and there is no list of them to iterate. So the default
   goes on with one `UPDATE`, and the named few are corrected after.
 
   Two statements for a population of any size, which is the whole reason a
@@ -650,9 +621,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp project_predicate("component"),
     do: "EXISTS (SELECT 1 FROM components c WHERE c.id = n.component_id AND c.project_id = $7)"
 
-  defp project_predicate("issue"),
-    do: "EXISTS (SELECT 1 FROM issues i WHERE i.id = n.issue_id AND i.project_id = $7)"
-
   defp project_predicate("story"),
     do: "EXISTS (SELECT 1 FROM stories s WHERE s.id = n.story_id AND s.project_id = $7)"
 
@@ -711,7 +679,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   defp owner_column("component"), do: "component_id"
-  defp owner_column("issue"), do: "issue_id"
   defp owner_column("story"), do: "story_id"
   defp owner_column("project"), do: "project_id"
 
@@ -1017,27 +984,33 @@ defmodule CodeMySpec.Requirements.Shadow do
       event_target()
       |> scoped(project_id, component_ids, story_ids)
       |> where(^copy_filter(Projection.vantage(scope)))
-      |> select(
-        [n],
-        {n.component_id, n.story_id, n.issue_id, n.owner_component_type, n.node_scope, n.name}
-      )
+      |> select([n], {n.component_id, n.story_id, n.owner_component_type, n.node_scope, n.name})
       |> Repo.all()
       |> Enum.uniq()
 
     story_held =
-      for {nil, story, nil, _t, _s, name} <- held, not is_nil(story), into: MapSet.new(), do: name
+      for {nil, story, _t, _s, name} <- held, not is_nil(story), into: MapSet.new(), do: name
 
-    project_held = for {nil, nil, nil, _t, _s, name} <- held, into: MapSet.new(), do: name
+    project_held = for {nil, nil, _t, _s, name} <- held, into: MapSet.new(), do: name
 
-    component_held = component_definition_names(held)
-
-    issue_held =
-      for {nil, nil, issue, _t, _s, name} <- held, not is_nil(issue), into: MapSet.new(), do: name
+    component_held =
+      held
+      |> Enum.filter(fn {component, _story, _type, node_scope, _name} ->
+        not is_nil(component) and node_scope in ["parent", "self"]
+      end)
+      |> Enum.group_by(fn {_c, _s, type, _scope, _name} -> type end, fn {_c, _s, _t, _scope, name} ->
+        name
+      end)
+      |> Map.new(fn {type, names} -> {type, MapSet.new(names)} end)
 
     entity_coverage?(held, Map.get(defined, :entities)) and
-      covered?(issue_held, Map.get(defined, :issue, MapSet.new(["submitted"]))) and
       covered?(story_held, defined.story) and covered?(project_held, defined.project) and
-      component_definitions_covered?(component_held, defined.component)
+      Enum.all?(component_held, fn {type, names} ->
+        case Map.fetch(defined.component, type) do
+          {:ok, expected} -> covered?(names, expected)
+          :error -> true
+        end
+      end)
   end
 
   def definitions_covered?(%Scope{}, _defined), do: true
@@ -1050,10 +1023,7 @@ defmodule CodeMySpec.Requirements.Shadow do
       event_target()
       |> scoped(project_id, component_ids, story_ids)
       |> where(^copy_filter(Projection.vantage(scope)))
-      |> select(
-        [n],
-        {n.component_id, n.story_id, n.issue_id, n.owner_component_type, n.node_scope, n.name}
-      )
+      |> select([n], {n.component_id, n.story_id, n.owner_component_type, n.node_scope, n.name})
       |> Repo.all()
 
     mismatched_entities(held, expected)
@@ -1065,10 +1035,10 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp mismatched_entities(held, expected) do
     actual =
       Enum.reduce(held, %{}, fn
-        {component, nil, nil, _type, _scope, name}, acc when not is_nil(component) ->
+        {component, nil, _type, _scope, name}, acc when not is_nil(component) ->
           Map.update(acc, {"component", component}, MapSet.new([name]), &MapSet.put(&1, name))
 
-        {nil, story, nil, _type, _scope, name}, acc when not is_nil(story) ->
+        {nil, story, _type, _scope, name}, acc when not is_nil(story) ->
           Map.update(acc, {"story", story}, MapSet.new([name]), &MapSet.put(&1, name))
 
         _project, acc ->
@@ -1078,27 +1048,6 @@ defmodule CodeMySpec.Requirements.Shadow do
     (Map.keys(actual) ++ Map.keys(expected))
     |> Enum.filter(&(Map.get(actual, &1, MapSet.new()) != Map.get(expected, &1, MapSet.new())))
     |> MapSet.new()
-  end
-
-  defp component_definitions_covered?(held, defined) do
-    Enum.all?(held, fn {type, names} ->
-      case Map.fetch(defined, type) do
-        {:ok, expected} -> covered?(names, expected)
-        :error -> true
-      end
-    end)
-  end
-
-  defp component_definition_names(held) do
-    held
-    |> Enum.filter(fn {component, _story, _issue, _type, node_scope, _name} ->
-      not is_nil(component) and node_scope in ["parent", "self"]
-    end)
-    |> Enum.group_by(fn {_c, _s, _i, type, _scope, _name} -> type end, fn {_c, _s, _i, _t, _scope,
-                                                                           name} ->
-      name
-    end)
-    |> Map.new(fn {type, names} -> {type, MapSet.new(names)} end)
   end
 
   # No rows of the type is not a mismatch: the vantage may hold no such
@@ -1148,7 +1097,7 @@ defmodule CodeMySpec.Requirements.Shadow do
     |> where(^copy_filter(working_copy_id))
     |> Repo.all()
     |> Map.new(fn row ->
-      {{row.component_id, row.story_id, row.project_id, row.issue_id, row.name},
+      {{row.component_id, row.story_id, row.project_id, row.name},
        {Verification.stored(row), row.checked_at}}
     end)
   end
@@ -1159,12 +1108,6 @@ defmodule CodeMySpec.Requirements.Shadow do
     from(n in source,
       where:
         n.component_id in ^component_ids or n.story_id in ^story_ids or
-          n.issue_id in subquery(
-            from(i in CodeMySpec.Issues.Issue,
-              where: i.project_id == ^project_id and i.story_id in ^story_ids,
-              select: i.id
-            )
-          ) or
           n.project_id == ^project_id
     )
   end
@@ -1172,7 +1115,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   # Every row owned by an entity of this type, whichever entity. The sweep's
   # first half — "this requirement is satisfied unless something said otherwise".
   defp owner_filter("component", id), do: dynamic([n], n.component_id == ^id)
-  defp owner_filter("issue", id), do: dynamic([n], n.issue_id == ^id)
   defp owner_filter("story", id), do: dynamic([n], n.story_id == ^id)
   defp owner_filter("project", id), do: dynamic([n], n.project_id == ^id)
 
@@ -1200,7 +1142,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   defp owner_field("component"), do: :component_id
-  defp owner_field("issue"), do: :issue_id
   defp owner_field("story"), do: :story_id
   defp owner_field("project"), do: :project_id
 
@@ -1230,12 +1171,11 @@ defmodule CodeMySpec.Requirements.Shadow do
     "#{answer.satisfied}@#{checked_at && NaiveDateTime.to_time(checked_at)}"
   end
 
-  defp key_label({component_id, story_id, project_id, issue_id, name}) do
+  defp key_label({component_id, story_id, project_id, name}) do
     owner =
       cond do
         component_id -> "component:#{String.slice(component_id, 0, 8)}"
         story_id -> "story:#{story_id}"
-        issue_id -> "issue:#{issue_id}"
         project_id -> "project"
         true -> "?"
       end
@@ -1308,12 +1248,12 @@ defmodule CodeMySpec.Requirements.Shadow do
       nodes_src
       |> scoped(project_id, component_ids, story_ids)
       |> where(^copy_filter(working_copy_id))
-      |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.issue_id, n.name})
+      |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.name})
       |> Repo.all()
 
     key_by_id =
-      Map.new(rows, fn {id, component_id, story_id, proj_id, issue_id, name} ->
-        {id, owner_key(component_id, story_id, proj_id, issue_id, name)}
+      Map.new(rows, fn {id, component_id, story_id, proj_id, name} ->
+        {id, owner_key(component_id, story_id, proj_id, name)}
       end)
 
     ids = Map.keys(key_by_id)
@@ -1376,24 +1316,21 @@ defmodule CodeMySpec.Requirements.Shadow do
     event_target()
     |> scoped(project_id, component_ids, story_ids)
     |> where(^copy_filter(working_copy_id))
-    |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.issue_id, n.name})
+    |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.name})
     |> Repo.all()
-    |> Map.new(fn {id, component_id, story_id, proj_id, issue_id, name} ->
-      {owner_key(component_id, story_id, proj_id, issue_id, name), id}
+    |> Map.new(fn {id, component_id, story_id, proj_id, name} ->
+      {owner_key(component_id, story_id, proj_id, name), id}
     end)
   end
 
   # `entity_id` as text on both sides: a component's is a uuid and a story's is
   # a bigint, and the shadow stores the pair rather than pointing at a row.
-  defp owner_key(component_id, _story, _project, _issue, name) when not is_nil(component_id),
+  defp owner_key(component_id, _story, _project, name) when not is_nil(component_id),
     do: {"component", component_id, name}
 
-  defp owner_key(_component, story_id, _project, _issue, name) when not is_nil(story_id),
+  defp owner_key(_component, story_id, _project, name) when not is_nil(story_id),
     do: {"story", to_string(story_id), name}
 
-  defp owner_key(_component, _story, _project, issue_id, name) when not is_nil(issue_id),
-    do: {"issue", issue_id, name}
-
-  defp owner_key(_component, _story, project_id, _issue, name),
+  defp owner_key(_component, _story, project_id, name),
     do: {"project", project_id, name}
 end

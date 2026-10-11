@@ -182,9 +182,10 @@ defmodule CodeMySpec.Agents.Agent do
     field :working_copy_id, Ecto.UUID
     field :account_id, Ecto.UUID
 
-    # Coding and QA on a copy share their active story. Explicit issue-bag
-    # assignment clears it for the whole team. `stories.working_copy_id`
-    # records checkout reservations, separately from promotion history.
+    # The story and epic this agent works on (a31f1cd6). Its own, not its
+    # copy's: the coder and QA on one copy can hold different stories, and one
+    # switching does not move the other. `stories.working_copy_id` stays the
+    # checkout reservation.
     field :story_id, :id
     field :epic_id, Ecto.UUID
 

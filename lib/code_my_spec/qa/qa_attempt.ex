@@ -9,7 +9,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
 
   # A leaf so the requirement graph can read attempts (`Qa.Verdict`) without
   # depending on `Qa`, which sits above it.
-  use Boundary, top_level?: true, deps: [CodeMySpec.Qa.StoryReview], exports: :all
+  use Boundary, top_level?: true, deps: [], exports: :all
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -32,6 +32,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
           tools_used: [String.t()] | nil,
           parent_attempt_id: Ecto.UUID.t() | nil,
           submitted_at: DateTime.t() | nil,
+          wait: {:issue, Ecto.UUID.t()} | {:not_blocking, atom(), [struct()]} | nil,
           invalidations: [Invalidation.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -39,26 +40,27 @@ defmodule CodeMySpec.Qa.QaAttempt do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "qa_attempts" do
-    belongs_to(:review, CodeMySpec.Qa.StoryReview, type: :binary_id)
-    field(:review_started_at, :utc_datetime_usec)
-    field(:review_certified_at, :utc_datetime_usec)
-    field(:stale, :boolean, default: false)
-    field(:status, Ecto.Enum, values: @statuses)
-    field(:issue_ids, {:array, :binary_id}, default: [])
-    field(:agent_id, :string)
-    field(:task_id, :string)
+    field :status, Ecto.Enum, values: @statuses
+    field :issue_ids, {:array, :binary_id}, default: []
+    field :agent_id, :string
+    field :task_id, :string
     # 257a6a15: self-reported, not independently verified — same trust level
     # as the scenario prose beside it. Nil for attempts that predate the
     # field, not an empty list, so "reported nothing" and "never asked" stay
     # distinguishable.
-    field(:tools_used, {:array, :string})
-    field(:submitted_at, :utc_datetime_usec)
-    embeds_many(:scenarios, Scenario, on_replace: :delete)
-    embeds_many(:evidence, Evidence, on_replace: :delete)
+    field :tools_used, {:array, :string}
+    field :submitted_at, :utc_datetime_usec
+    # What the submitting task now waits on, set by `QaAttempts.submit/2` and
+    # never stored: `{:issue, id}`, or `{:not_blocking, threshold, issues}` when
+    # no named issue is open at the project's fix threshold.
+    field :wait, :any, virtual: true
 
-    belongs_to(:story, Story)
-    belongs_to(:parent_attempt, __MODULE__, type: :binary_id)
-    has_many(:invalidations, Invalidation)
+    embeds_many :scenarios, Scenario, on_replace: :delete
+    embeds_many :evidence, Evidence, on_replace: :delete
+
+    belongs_to :story, Story
+    belongs_to :parent_attempt, __MODULE__, type: :binary_id
+    has_many :invalidations, Invalidation
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -68,10 +70,6 @@ defmodule CodeMySpec.Qa.QaAttempt do
   def changeset(attempt \\ %__MODULE__{}, attrs) do
     attempt
     |> cast(attrs, [
-      :review_id,
-      :review_started_at,
-      :review_certified_at,
-      :stale,
       :story_id,
       :status,
       :issue_ids,

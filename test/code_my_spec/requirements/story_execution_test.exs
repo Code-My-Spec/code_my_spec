@@ -3,7 +3,7 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
 
   alias CodeMySpec.Requirements.{Requirement, StoryExecution}
 
-  @story_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist ready_for_qa story_promoted qa_complete story_issues_triaged)
+  @story_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist ready_for_qa story_promoted qa_complete story_issues_resolved story_issues_triaged)
 
   defp fixture do
     story = %{
@@ -123,26 +123,6 @@ defmodule CodeMySpec.Requirements.StoryExecutionTest do
   # edge. Story 1084's coder read "blocked" on other stories' bdd_specs_exist.
   describe "a bound read" do
     defp bound(ctx), do: Map.put(ctx, :seeds, :local)
-
-    test "only the assigned story's issue submission is offered before readiness" do
-      {story, ctx, nodes} = fixture()
-      nodes = Enum.map(nodes, &unsatisfy(&1, "ready_for_qa"))
-
-      own = %{
-        node("issue", "own-fix", "submitted", false)
-        | details: %{"story_id" => story.id},
-          role: :coding,
-          satisfied_by: CodeMySpec.AgentTasks.SubmitStoryIssue
-      }
-
-      other = %{own | entity_id: "other-fix", details: %{"story_id" => 2}}
-      readiness = Enum.find(nodes, &(&1.name == "ready_for_qa"))
-      edges = [%{from: key(own), to: key(readiness)}]
-      result = StoryExecution.from_graph(story, [own, other | nodes], edges, bound(ctx), :coding)
-      assert own in result.actionable
-      refute other in result.actionable
-      refute readiness in result.actionable
-    end
 
     test "another story's unmet node does not hold the bound story" do
       {story, ctx, nodes} = fixture()

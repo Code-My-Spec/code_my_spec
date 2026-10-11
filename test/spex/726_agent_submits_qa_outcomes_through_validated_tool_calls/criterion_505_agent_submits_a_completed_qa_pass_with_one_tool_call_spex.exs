@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
-  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,17 +33,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
         {:ok, context}
       end
 
-      given_ "a filed nonblocking observation belongs to this story", context do
-        finding =
-          Fixtures.issue_fixture(context.scope, %{
-            story_id: context.story.id,
-            severity: :low,
-            status: :dismissed
-          })
-
-        {:ok, Map.put(context, :finding, finding)}
-      end
-
       when_ "the agent calls submit_qa_result with task_id, status, scenarios, and one issue_id",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
@@ -58,7 +46,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
                 %{name: "happy", status: "pass", observation: "all good"},
                 %{name: "boundary", status: "pass", observation: "boundary held"}
               ],
-              issue_ids: [context.finding.id]
+              issue_ids: [Ecto.UUID.generate()]
             },
             frame
           )

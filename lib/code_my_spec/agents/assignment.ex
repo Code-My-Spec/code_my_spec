@@ -97,12 +97,10 @@ defmodule CodeMySpec.Agents.Assignment do
   defp fan_out(scope, copy_id, story_id) do
     result =
       Repo.transaction(fn ->
-        lock_project(scope)
         team = lock_team(scope, copy_id)
         if team == [], do: Repo.rollback(:no_team)
 
         story = reserve(scope, copy_id, story_id)
-        clear_issue_bag(scope, copy_id, story)
         new_id = story && story.id
         before = team |> Enum.map(& &1.story_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
@@ -119,44 +117,6 @@ defmodule CodeMySpec.Agents.Assignment do
       if before != [new_id], do: WorkingCopies.announce_selection(scope)
       {:ok, new_id}
     end
-  end
-
-  defp clear_issue_bag(_scope, _copy_id, nil), do: :ok
-
-  defp clear_issue_bag(scope, copy_id, _story),
-    do: IssueAssignment.clear_for_story(scope, copy_id)
-
-  defp lock_project(scope) do
-    Repo.one!(
-      from p in CodeMySpec.Projects.Project,
-        where: p.id == ^scope.active_project_id,
-        select: p.id,
-        lock: "FOR UPDATE"
-    )
-  end
-
-  @doc "Release story work when the locked team switches to an issue bag."
-  def clear_for_issues(scope, copy_id) do
-    team = lock_team(scope, copy_id)
-
-    for agent <- team,
-        task <- TaskOwner.tasks(agent),
-        not is_nil(task.story_id) and is_nil(task.issue_id),
-        task.status in [:active, :prepared, :blocked] do
-      {:ok, _} = TaskOwner.complete_task(scope, agent, task.id, :cancelled)
-    end
-
-    story_ids =
-      Repo.all(
-        from s in Stories.Story,
-          where: s.project_id == ^scope.active_project_id and s.working_copy_id == ^copy_id,
-          select: s.id
-      )
-
-    WorkingCopies.release_stories(scope, copy_id, story_ids)
-
-    from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
-    |> Repo.update_all(set: [story_id: nil, team_free_at: nil])
   end
 
   @doc """
@@ -177,7 +137,6 @@ defmodule CodeMySpec.Agents.Assignment do
   def advance(%Scope{} = scope, copy_id, from_id, to_id) do
     with :ok <- feature_copy(scope, copy_id) do
       Repo.transaction(fn ->
-        lock_project(scope)
         team = lock_team(scope, copy_id)
         still_on? = team != [] and Enum.all?(team, &(&1.story_id == from_id))
         move(scope, copy_id, to_id, landed?(scope, from_id) and still_on?)

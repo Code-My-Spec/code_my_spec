@@ -12,10 +12,8 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Configurations
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
-  alias CodeMySpec.Issues
   alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
@@ -204,12 +202,6 @@ defmodule CodeMySpec.Requirements.Preloader do
           criteria_by_story: criteria_by_story(story_ids),
           personas_by_story: personas_by_story(story_ids),
           qa_latest_by_story: qa_latest_by_story(story_ids),
-          qa_submission_snapshots:
-            Issues.story_submission_snapshots(
-              scope,
-              story_ids,
-              Configurations.fix_issues_min_severity(scope)
-            ),
           delegated_inputs: delegated_inputs(project_id, working_copy_id),
           # Once per load rather than once per story's `deploy`, and in the
           # context so `Freshness.story/2` sees setup completing.
@@ -231,7 +223,6 @@ defmodule CodeMySpec.Requirements.Preloader do
        files_by_project: all_files,
        files_by_path: Map.new(all_files, &{&1.path, &1}),
        issues_by_story: shared.issues_by_story,
-       story_issues: shared.story_issues,
        components: components,
        components_by_id: Map.new(components, &{&1.id, &1}),
        children_by_parent: Enum.group_by(components, & &1.parent_component_id),
@@ -241,7 +232,6 @@ defmodule CodeMySpec.Requirements.Preloader do
        criteria_by_story: rest.criteria_by_story,
        personas_by_story: rest.personas_by_story,
        qa_latest_by_story: rest.qa_latest_by_story,
-       qa_submission_snapshots: rest.qa_submission_snapshots,
        uat_deploy_by_story: shared.uat_deploy_by_story,
        delegated_inputs: rest.delegated_inputs,
        setup_missing: rest.setup_missing
@@ -376,7 +366,6 @@ defmodule CodeMySpec.Requirements.Preloader do
     %{
       components: project_components(project_id),
       issues_by_story: issue_stamps_by_story(project_id),
-      story_issues: project_story_issues(project_id),
       rules_by_story: rules_by_story(project_id),
       questions_by_story: questions_by_story(project_id),
       uat_deploy_by_story: uat_deploy_by_story(project_id)
@@ -459,17 +448,8 @@ defmodule CodeMySpec.Requirements.Preloader do
       components: components,
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
-      story_issues: project_story_issues(project_id),
       stories: project_stories(project_id, scope.active_working_copy_id)
     }
-  end
-
-  defp project_story_issues(project_id) do
-    Repo.all(
-      from(i in CodeMySpec.Issues.Issue,
-        where: i.project_id == ^project_id and not is_nil(i.story_id)
-      )
-    )
   end
 
   defp project_stories(project_id, working_copy_id) do
@@ -574,16 +554,6 @@ defmodule CodeMySpec.Requirements.Preloader do
     [story]
     |> narrow_context()
     |> Map.put(:files_by_story, %{story.id => files})
-    |> Map.put(:story_issues, Issues.list_story_submissions(scope, story.id))
-    |> Map.put(:qa_latest_by_story, qa_latest_by_story([story.id]))
-    |> Map.put(
-      :qa_submission_snapshots,
-      Issues.story_submission_snapshots(
-        scope,
-        [story.id],
-        Configurations.fix_issues_min_severity(scope)
-      )
-    )
   end
 
   # Only the keys this load actually fills, and that is a safety property rather
@@ -781,9 +751,9 @@ defmodule CodeMySpec.Requirements.Preloader do
   # port to the SQLite side.
   defp qa_latest_by_story(story_ids) do
     QaAttempt
-    |> where([a], a.story_id in ^story_ids and not a.stale)
-    |> order_by([a], desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id)
-    |> preload([:invalidations, :review])
+    |> where([a], a.story_id in ^story_ids)
+    |> order_by([a], desc: a.inserted_at, desc: a.id)
+    |> preload(:invalidations)
     |> Repo.all()
     |> Enum.group_by(& &1.story_id)
     |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
@@ -989,8 +959,29 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
-  # Story-local stamps cover triage and inherited submission state. Moving an
-  # issue invalidates both its old and new story without dirtying every story.
+  # The issues attributed to each story, so a story's fingerprint carries its
+  # own and not the project's.
+  #
+  # `delegated_inputs/2` keeps collecting `issues` project-wide, and correctly:
+  # `issues_triaged` and `issues_resolved` ask about the queue as a whole. They
+  # are project nodes, which `recompute_stale/3` rebuilds unconditionally every
+  # pass, so they never read a story's fingerprint. Hashing the project's list
+  # into every story's fingerprint therefore bought nothing and cost every
+  # story — one issue, 973 of 2086 requirements and 137 of 137 stories, measured
+  # on dev 2026-09-14.
+  #
+  # The only story-level reader is `IssuesChecker.story_resolved?/2`, and it
+  # already draws this line: "Only issues QA attributed to the story count. An
+  # issue with no `story_id` is the project queue's problem, not this story's."
+  # So an unattributed issue belongs to no group here, which is the same
+  # statement.
+  #
+  # Stamps rather than a filtered count, for the reason the module's header
+  # gives: `story_resolved?/2` reads status and severity, and a key naming the
+  # fields this module happens to know about goes stale the first time that
+  # checker reads one more. `{id, updated_at}` covers a status moving from
+  # incoming to accepted, a severity being raised, and a re-attribution — which
+  # moves both the story that lost it and the story that gained it.
   defp issue_stamps_by_story(project_id) do
     Repo.all(
       from(i in "issues",

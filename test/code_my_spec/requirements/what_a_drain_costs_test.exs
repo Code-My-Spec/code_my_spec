@@ -101,7 +101,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
       # against a kind without. `story_created` falls back because handlers
       # settle rows and cannot create them, so its drain is a recompute wearing
       # the event label — which is exactly what applying is supposed to beat.
-      create_story(scope, title: "Subject", description: "creation falls back")
+      story = create_story(scope, title: "Subject", description: "creation falls back")
       settle(scope)
 
       fell_back =
@@ -119,7 +119,8 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
             CodeMySpec.Issues.create_issue(scope, %{
               title: "moves one verdict",
               description: "and the graph knows how to apply it",
-              severity: :high
+              severity: :high,
+              story_id: story.id
             })
 
           {:ok, _} = CodeMySpec.Issues.accept_issue(scope, issue)
@@ -140,14 +141,15 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
 
     test "a drain that moves nothing writes nothing", ctx do
       scope = ctx.scope
-      create_story(scope, title: "Settled", description: "and then left alone")
+      story = create_story(scope, title: "Settled", description: "and then left alone")
       settle(scope)
 
       {:ok, issue} =
         CodeMySpec.Issues.create_issue(scope, %{
           title: "applied once",
           description: "and then applied again with the same answer",
-          severity: :high
+          severity: :high,
+          story_id: story.id
         })
 
       {:ok, _} = CodeMySpec.Issues.accept_issue(scope, issue)

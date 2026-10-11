@@ -8,7 +8,6 @@ defmodule CodeMySpec.AgentTasks do
     deps: [
       CodeMySpec.PromotionQueue,
       CodeMySpec.Stories,
-      CodeMySpec.TaskOwner,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,
       CodeMySpec.BddSpecs,

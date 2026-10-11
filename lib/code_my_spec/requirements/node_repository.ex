@@ -69,10 +69,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   @spec story_progress(integer(), Ecto.UUID.t() | nil) :: {non_neg_integer(), non_neg_integer()}
   def story_progress(story_id, working_copy_id) do
     Node
-    |> where(
-      [n],
-      n.story_id == ^story_id or n.issue_id in subquery(issue_ids_for_stories([story_id]))
-    )
+    |> where([n], n.story_id == ^story_id)
     |> at_copy(working_copy_id)
     |> select([n], {filter(count(n.id), n.satisfied), count(n.id)})
     |> Repo.one()
@@ -116,9 +113,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
               select: c.id
             )
           ) or
-          n.issue_id in subquery(
-            from(i in CodeMySpec.Issues.Issue, where: i.project_id == ^project_id, select: i.id)
-          ) or
           n.story_id in subquery(
             from(s in "stories",
               where: s.project_id == type(^project_id, :binary_id),
@@ -129,8 +123,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
         details: n.details,
         project_id: n.project_id,
         component_id: n.component_id,
-        story_id: n.story_id,
-        issue_id: n.issue_id
+        story_id: n.story_id
       }
     )
     |> where(^copy_filter(Projection.vantage(scope)))
@@ -143,7 +136,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
       # went back to naming `technical_strategy` without saying what held it.
       to_string(row.project_id) in wanted or
         to_string(row.component_id) in wanted or
-        to_string(row.story_id) in wanted or to_string(row.issue_id) in wanted
+        to_string(row.story_id) in wanted
     end)
     |> case do
       %{details: details} -> details
@@ -255,7 +248,12 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     %{components: component_ids, stories: story_ids} = visited
 
     Shadow.pass_target()
-    |> where(^departed_owner_filter(project_id, component_ids, story_ids))
+    |> where(
+      [n],
+      n.component_id in ^component_ids or n.story_id in ^story_ids or
+        n.project_id == ^project_id or
+        n.story_id in subquery(parked_story_ids(project_id))
+    )
     # And only this copy's rows. Without it, one checkout syncing would treat
     # every other checkout's nodes as departed and delete them — the same
     # overwrite this change exists to stop, arriving as a reap instead of a
@@ -268,18 +266,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
       [] -> :ok
       ids -> Shadow.pass_target() |> where([n], n.id in ^ids) |> Repo.delete_all()
     end
-  end
-
-  defp departed_owner_filter(project_id, component_ids, story_ids) do
-    dynamic(
-      [n],
-      n.component_id in ^component_ids or n.story_id in ^story_ids or
-        n.project_id == ^project_id or
-        n.story_id in subquery(parked_story_ids(project_id)) or
-        n.issue_id in subquery(issue_ids_for_stories(story_ids)) or
-        n.issue_id in subquery(issue_ids_for_stories(parked_story_ids(project_id))) or
-        (not is_nil(n.issue_id) and fragment("(?->>'story_id')::bigint", n.details) in ^story_ids)
-    )
   end
 
   # Stories that are not released, whose rows are departed whoever was visited.
@@ -301,12 +287,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   # delete live rows. "This story is not released" is true regardless of what
   # the pass was looking at, which makes it safe on a full pass and a narrow one
   # alike.
-  defp issue_ids_for_stories(%Ecto.Query{} = query),
-    do: from(i in CodeMySpec.Issues.Issue, where: i.story_id in subquery(query), select: i.id)
-
-  defp issue_ids_for_stories(ids),
-    do: from(i in CodeMySpec.Issues.Issue, where: i.story_id in ^ids, select: i.id)
-
   defp parked_story_ids(project_id) do
     from(s in CodeMySpec.Stories.Story,
       where: s.project_id == ^project_id and s.ready_for_dev == false,
@@ -497,11 +477,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
       {:component_id,
        {:unsafe_fragment, "(component_id, name, working_copy_id) WHERE component_id IS NOT NULL"}}
 
-  defp owner("issue"),
-    do:
-      {:issue_id,
-       {:unsafe_fragment, "(issue_id, name, working_copy_id) WHERE issue_id IS NOT NULL"}}
-
   defp owner("story"),
     do:
       {:story_id,
@@ -543,13 +518,12 @@ defmodule CodeMySpec.Requirements.NodeRepository do
 
     component_ids = entity_ids(nodes, "component")
     story_ids = entity_ids(nodes, "story")
-    issue_ids = entity_ids(nodes, "issue")
 
     Shadow.pass_target()
     |> where([n], n.name in ^names)
     |> where(
       [n],
-      n.component_id in ^component_ids or n.story_id in ^story_ids or n.issue_id in ^issue_ids or
+      n.component_id in ^component_ids or n.story_id in ^story_ids or
         n.project_id == ^project_id
     )
     # This copy's rows only. `{entity_type, entity_id, name}` stopped
@@ -558,10 +532,10 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     # built against an arbitrary checkout's node ids — silently, and only under
     # concurrency.
     |> where(^copy_filter(working_copy_id))
-    |> select([n], {n.component_id, n.story_id, n.project_id, n.issue_id, n.name, n.id})
+    |> select([n], {n.component_id, n.story_id, n.project_id, n.name, n.id})
     |> Repo.all()
-    |> Map.new(fn {component_id, story_id, proj_id, issue_id, name, id} ->
-      {key_for(component_id, story_id, proj_id, issue_id, name), id}
+    |> Map.new(fn {component_id, story_id, proj_id, name, id} ->
+      {key_for(component_id, story_id, proj_id, name), id}
     end)
   end
 
@@ -569,14 +543,11 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     nodes |> Enum.filter(&(&1.entity_type == entity_type)) |> Enum.map(& &1.entity_id)
   end
 
-  defp key_for(component_id, _story, _project, _issue, name) when not is_nil(component_id),
+  defp key_for(component_id, _story, _project, name) when not is_nil(component_id),
     do: {"component", component_id, name}
 
-  defp key_for(_component, story_id, _project, _issue, name) when not is_nil(story_id),
+  defp key_for(_component, story_id, _project, name) when not is_nil(story_id),
     do: {"story", story_id, name}
 
-  defp key_for(_component, _story, _project, issue_id, name) when not is_nil(issue_id),
-    do: {"issue", issue_id, name}
-
-  defp key_for(_component, _story, project_id, _issue, name), do: {"project", project_id, name}
+  defp key_for(_component, _story, project_id, name), do: {"project", project_id, name}
 end

@@ -39,7 +39,7 @@ defmodule CodeMySpec.Agents.ARetiredAgentReleasesItsTasksTest do
     TaskOwner.add_task(scope, owner, %{
       id: Ecto.UUID.generate(),
       status: status,
-      requirement_name: "ready_for_qa",
+      requirement_name: "story_issues_resolved",
       project_id: scope.active_project_id,
       started_at: DateTime.utc_now()
     })

@@ -73,44 +73,39 @@ defmodule CodeMySpec.Issues.Issue do
   @primary_key {:id, :binary_id, autogenerate: true}
 
   schema "issues" do
-    field(:title, :string)
-    field(:severity, Ecto.Enum, values: @severities)
-    field(:scope, Ecto.Enum, values: @scopes, default: :app)
-    field(:description, :string)
-    field(:status, Ecto.Enum, values: @statuses, default: :incoming)
-    field(:category, Ecto.Enum, values: @categories)
-    field(:resolution, :string)
-    field(:source, :string)
-    field(:story_id, :integer)
-    belongs_to(:story, CodeMySpec.Stories.Story, define_field: false)
-    field(:source_path, :string)
-    field(:project_id, :binary_id)
-    field(:account_id, :binary_id)
+    field :title, :string
+    field :severity, Ecto.Enum, values: @severities
+    field :scope, Ecto.Enum, values: @scopes, default: :app
+    field :description, :string
+    field :status, Ecto.Enum, values: @statuses, default: :incoming
+    field :category, Ecto.Enum, values: @categories
+    field :resolution, :string
+    field :source, :string
+    field :story_id, :integer
+    belongs_to :story, CodeMySpec.Stories.Story, define_field: false
+    field :source_path, :string
+    field :project_id, :binary_id
+    field :account_id, :binary_id
 
     # The working copy this was raised from. `nil` for issues raised before this
     # existed, and for anything filed through the web UI, which has no checkout.
-    field(:working_copy_id, :binary_id)
+    field :working_copy_id, :binary_id
     # The copy whose team is currently bound to this issue (distinct from
     # `working_copy_id`, which copy raised it). Set by `AssignIssueToWorkingCopy`.
-    field(:assigned_working_copy_id, :binary_id)
+    field :assigned_working_copy_id, :binary_id
     # Whose turn it is on an assigned issue (story 1091): the coder's until
     # it submits a fix, QA's until it submits a non-passing attempt, and the
     # coder's again to promote once QA passes it (`:promote`). Read by
     # `Agents.IssueWork` rather than `Agents` reaching into `Qa`'s attempts,
     # which would cycle back (`Qa` already depends on `Agents`).
-    field(:awaiting_role, Ecto.Enum, values: [:coding, :qa, :promote])
+    field :awaiting_role, Ecto.Enum, values: [:coding, :qa, :promote]
     # The commit the fix landed on main at, through the promotion queue. An
     # issue resolves once this is set and its QA has passed.
-    field(:story_submission_ref, :binary_id)
-    field(:story_submission_revision, :string)
-    field(:story_submission_evidence, :string)
-    field(:story_submitted_at, :utc_datetime_usec)
-    field(:story_submission_history, {:array, :map}, default: [])
-    field(:landed_commit, :string)
-    field(:synced_from_server, :boolean, default: false)
+    field :landed_commit, :string
+    field :synced_from_server, :boolean, default: false
     # A list of attachment maps, e.g. a widget-reported screenshot copied into
     # our S3 bucket: %{"type" => "screenshot", "s3_key" => ..., "content_type" => ...}.
-    field(:attachments, {:array, :map}, default: [])
+    field :attachments, {:array, :map}, default: []
 
     timestamps(type: :utc_datetime_usec)
   end

@@ -299,7 +299,7 @@ defmodule CodeMySpec.Agents.Menu do
   # wrong end. Nothing closes a task except `evaluate_task`, and an agent that
   # starts work without finishing it leaves the old row active — the product
   # agent on the war-epic copy was holding seven when this was written, the
-  # oldest task (then named `story_issues_resolved`) on story 904 and the newest
+  # oldest `story_issues_resolved` on story 904 and the newest
   # `three_amigos_complete` on story 994, which was the one it was mid-thought
   # on. Naming the oldest would send it back to work it had already moved past.
   #

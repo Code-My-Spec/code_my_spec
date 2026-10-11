@@ -1,10 +1,27 @@
 defmodule CodeMySpecSpex.PromotionHelpers do
   @moduledoc """
-  Promotion fixtures with distinct running, candidate, and gate checkouts.
+  The two checkouts a promotion actually meets, and the door it is driven through.
 
-  Candidates are certified at their actual revision. Scenarios that merge
-  independent main work answer the gate explicitly before checking the
-  requesting agent's landing notification.
+  Here for the reason `WorkingCopyHelpers` gives for itself: "a helper copied
+  eight times is a parsing bug fixed seven times and missed once". Story 1046
+  went past eight some time ago — `a_promotable_project/1` is currently written
+  out in fourteen of its criteria, identically, and the five criteria added on
+  2026-09-12 would have made nineteen.
+
+  The existing fourteen are deliberately left alone rather than migrated in the
+  same change that adds new ones. Moving them is a mechanical edit across files
+  another session was rewriting the same evening, and a spec suite is the worst
+  place to find out that two people edited the same fixture from different
+  directions. They should move; not in the commit that introduces this.
+
+  ## Why two real checkouts
+
+  A promotion that merges into the tree it is promoting *from* is not a
+  promotion, and a fixture built on one repository cannot tell those apart. So
+  this makes a checkout with `main` and a worktree of it on a story branch —
+  which is also the arrangement on John's own machine, where nine worktrees hang
+  off one checkout and every one of tonight's promotion defects lived in the gap
+  between them.
   """
 
   import ExUnit.Assertions
@@ -20,7 +37,6 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
   alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -71,17 +87,6 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     story
   end
 
-  defp qa(%{agent_root: root} = context, story, :passed) do
-    :ok =
-      StoryIssueBag.certify(
-        context.scope,
-        story.id,
-        head_of(context, root)
-      )
-
-    {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
-  end
-
   defp qa(context, story, :passed),
     do: {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
@@ -94,7 +99,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   and `:scope` repointed at the agent's copy — which is the scope a promoting
   agent actually holds.
   """
-  def a_promotable_project(context, opts \\ []) do
+  def a_promotable_project(context) do
     stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1046-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
@@ -128,14 +133,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_out, 0} =
       git(context, running_root, ["worktree", "add", "-b", "story/war", agent_root, "main"])
 
-    {running, running_socket} =
-      join_working_copy_socket(
-        context,
-        running_root,
-        "the checkout the dev app runs in",
-        Keyword.take(opts, [:app_verbs])
-      )
-
+    running = join_working_copy(context, running_root, "the checkout the dev app runs in")
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
     context = a_gate_copy(context, running_root)
 
@@ -152,7 +150,6 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     |> Map.put(:running_root, running_root)
     |> Map.put(:agent_root, agent_root)
     |> Map.put(:running, running)
-    |> Map.put(:running_socket, running_socket)
     |> Map.put(:agent, agent)
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
   end
@@ -160,8 +157,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   # The queue's worker outlives the scenario under the application's
   # supervisor; stopped so a batch left gating does not reach for a sandbox
   # that is gone.
-  @doc false
-  def stop_the_queue_on_exit(project_id) do
+  defp stop_the_queue_on_exit(project_id) do
     ExUnit.Callbacks.on_exit(fn ->
       case Registry.lookup(CodeMySpec.PromotionQueue.Registry, project_id) do
         [{pid, _}] -> DynamicSupervisor.terminate_child(CodeMySpec.PromotionQueue.Supervisor, pid)

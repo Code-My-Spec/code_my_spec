@@ -9,20 +9,11 @@ defmodule CodeMySpec.Qa.Verdict do
 
   use Boundary,
     top_level?: true,
-    deps: [
-      CodeMySpec.Qa.QaAttempt,
-      CodeMySpec.Qa.StoryReview,
-      CodeMySpec.Issues,
-      CodeMySpec.Configurations,
-      CodeMySpec.Repo,
-      CodeMySpec.Users.Scope
-    ],
+    deps: [CodeMySpec.Qa.QaAttempt, CodeMySpec.Repo, CodeMySpec.Users.Scope],
     exports: :all
 
   import Ecto.Query
 
-  alias CodeMySpec.Configurations
-  alias CodeMySpec.Issues
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -37,16 +28,15 @@ defmodule CodeMySpec.Qa.Verdict do
   @spec complete_check(Scope.t(), map()) :: {boolean(), map()}
   def complete_check(%Scope{active_project_id: nil}, _story), do: verdict(false)
 
-  def complete_check(%Scope{active_project_id: project_id} = scope, story) do
+  def complete_check(%Scope{active_project_id: project_id}, story) do
     QaAttempt
     |> where([a], a.story_id == ^story.id)
     |> join(:inner, [a], s in assoc(a, :story), on: s.project_id == ^project_id)
-    |> where([a], not a.stale)
-    |> order_by([a], desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id)
+    |> order_by([a], desc: a.inserted_at, desc: a.id)
     |> limit(1)
     |> preload(:invalidations)
     |> Repo.one()
-    |> valid_for_story?(scope, story)
+    |> passed?(story.qa_ready_at)
     |> verdict()
   end
 
@@ -62,10 +52,7 @@ defmodule CodeMySpec.Qa.Verdict do
   def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
     case ctx[:qa_latest_by_story] do
       latest when is_map(latest) ->
-        latest
-        |> Map.get(story.id)
-        |> valid_for_story?(scope, story, ctx[:qa_submission_snapshots])
-        |> verdict()
+        latest |> Map.get(story.id) |> passed?(story.qa_ready_at) |> verdict()
 
       _ ->
         complete_check(scope, story)
@@ -93,52 +80,16 @@ defmodule CodeMySpec.Qa.Verdict do
   @spec complete?(Scope.t(), integer()) :: boolean()
   def complete?(%Scope{active_project_id: nil}, _story_id), do: false
 
-  def complete?(%Scope{active_project_id: project_id} = scope, story_id) do
-    story =
-      Repo.one(
-        from(s in "stories",
-          where: s.id == ^story_id and s.project_id == type(^project_id, :binary_id),
-          select: %{
-            id: s.id,
-            qa_ready_at: type(s.qa_ready_at, :utc_datetime_usec),
-            qa_ready_commit: s.qa_ready_commit
-          }
-        )
-      )
-
-    case story do
-      nil -> false
-      story -> elem(complete_check(scope, story), 0)
-    end
+  def complete?(%Scope{active_project_id: project_id}, story_id) do
+    QaAttempt
+    |> where([a], a.story_id == ^story_id)
+    |> join(:inner, [a], s in assoc(a, :story), on: s.project_id == ^project_id)
+    |> order_by([a], desc: a.inserted_at, desc: a.id)
+    |> limit(1)
+    |> preload(:invalidations)
+    |> Repo.one()
+    |> passed?()
   end
-
-  defp valid_for_story?(attempt, scope, story, snapshots \\ nil) do
-    if passed?(attempt, story.qa_ready_at) do
-      attempt = Repo.preload(attempt, :review)
-
-      case attempt.review do
-        %{certified_revision: revision, submissions: submissions} ->
-          revision == story.qa_ready_commit and
-            submissions == current_snapshot(scope, story.id, snapshots)
-
-        _ ->
-          false
-      end
-    else
-      false
-    end
-  end
-
-  defp current_snapshot(_scope, story_id, snapshots) when is_map(snapshots),
-    do: Map.get(snapshots, story_id, %{})
-
-  defp current_snapshot(scope, story_id, _snapshots),
-    do:
-      Issues.story_submission_snapshot(
-        scope,
-        story_id,
-        Configurations.fix_issues_min_severity(scope)
-      )
 
   @doc """
   Whether an attempt counts as a QA pass.
@@ -147,16 +98,7 @@ defmodule CodeMySpec.Qa.Verdict do
   `invalidations` must be empty as well as the status being `:pass`.
   """
   @spec passed?(QaAttempt.t() | nil) :: boolean()
-  def passed?(%QaAttempt{
-        status: :pass,
-        invalidations: [],
-        stale: false,
-        review_id: id,
-        review_started_at: %DateTime{},
-        review_certified_at: %DateTime{}
-      })
-      when is_binary(id), do: true
-
+  def passed?(%QaAttempt{status: :pass, invalidations: []}), do: true
   def passed?(_), do: false
 
   @doc """
@@ -166,14 +108,12 @@ defmodule CodeMySpec.Qa.Verdict do
   (criterion 1902); a pass from before that stamp answered a question the
   story is no longer asking, so it must not keep `qa_complete` satisfied
   (issue 2e7ed919). `qa_ready_at: nil` means the story has never been
-  certified ready for QA, so no recorded attempt can qualify.
+  certified ready for QA, so there is nothing to be stale against -- this
+  is not the check that should say no.
   """
   @spec passed?(QaAttempt.t() | nil, DateTime.t() | nil) :: boolean()
   def passed?(attempt, qa_ready_at), do: passed?(attempt) and fresh?(attempt, qa_ready_at)
 
-  defp fresh?(_attempt, nil), do: false
-  defp fresh?(%{review_certified_at: nil}, _qa_ready_at), do: false
-
-  defp fresh?(attempt, qa_ready_at),
-    do: DateTime.compare(attempt.review_certified_at, qa_ready_at) == :eq
+  defp fresh?(_attempt, nil), do: true
+  defp fresh?(attempt, qa_ready_at), do: DateTime.compare(attempt.inserted_at, qa_ready_at) != :lt
 end

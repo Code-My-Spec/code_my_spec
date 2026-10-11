@@ -93,13 +93,14 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
 
   describe "an issue filed against the active story" do
     setup ctx do
-      %{story_issue: accept(ctx, %{story_id: ctx.story.id})}
+      accept(ctx, %{story_id: ctx.story.id})
+      :ok
     end
 
     test "is offered, and the project-level issues_resolved is not", ctx do
       names = names(ctx, ctx.coding)
 
-      assert "submitted" in names
+      assert "story_issues_resolved" in names
       refute "issues_resolved" in names
     end
 
@@ -107,7 +108,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
       claimable = Work.claimable_work(ctx.scope, ctx.coding)
       text = Slice.next(ctx, %{agent_id: ctx.coding.id})
 
-      assert text =~ "submitted"
+      assert text =~ "story_issues_resolved"
       refute text =~ ~r/\bissues_resolved \(/
       assert Enum.all?(claimable, &story_work?(ctx, &1))
       assert text =~ "Remaining: #{length(claimable) - 1}"
@@ -126,9 +127,9 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
           ctx,
           StartTask,
           %{
-            requirement_name: "submitted",
-            entity_type: "issue",
-            entity_id: ctx.story_issue.id
+            requirement_name: "story_issues_resolved",
+            entity_type: "story",
+            entity_id: to_string(ctx.story.number)
           },
           %{agent_id: ctx.coding.id}
         )
@@ -179,9 +180,9 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
       accept(ctx, %{story_id: ctx.story.id})
 
       refute "qa_complete" in names(ctx, ctx.qa),
-             "an issue submission is unsatisfied and qa_complete waits on it"
+             "story_issues_resolved is unsatisfied and qa_complete waits on it"
 
-      assert "submitted" in names(ctx, ctx.coding)
+      assert "story_issues_resolved" in names(ctx, ctx.coding)
     end
   end
 
@@ -199,8 +200,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
 
   defp story_work?(ctx, node) do
     (node.entity_type == "story" and to_string(node.entity_id) == to_string(ctx.story.id)) or
-      node.entity_type == "component" or
-      (node.entity_type == "issue" and node.details["story_id"] == ctx.story.id)
+      node.entity_type == "component"
   end
 
   defp accept(ctx, attrs) do

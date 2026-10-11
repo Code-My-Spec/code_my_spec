@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story1070.Criterion3535Spex do
   of application defects — which reads as the harness being broken when it is
   not, and hides the ones that are.
 
-  `app` is also where the requirement graph reads from: story issue submission readiness
+  `app` is also where the requirement graph reads from: `story_issues_resolved`
   gates a story on the accepted issues filed against it, so a defect filed as
   `framework` leaves the story looking clean and ships.
 

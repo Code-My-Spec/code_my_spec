@@ -18,7 +18,6 @@ defmodule CodeMySpec.Requirements.Registry do
   """
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Requirements.RequirementDefinition
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -77,7 +76,6 @@ defmodule CodeMySpec.Requirements.Registry do
   """
   @spec get_requirements(Component.t() | Story.t() | Project.t()) :: [RequirementDefinition.t()]
   def get_requirements(%Component{type: type}), do: get_requirements_for_type(type)
-  def get_requirements(%Issue{}), do: RequirementDefinitionData.story_issue_graph()
   def get_requirements(%Story{}), do: get_story_requirements()
   def get_requirements(%Project{}), do: get_project_requirements()
 end

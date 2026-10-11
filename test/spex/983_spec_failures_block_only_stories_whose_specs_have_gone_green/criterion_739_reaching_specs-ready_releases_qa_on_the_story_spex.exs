@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
   Criterion 739 — Being certified ready for QA releases QA on the story.
 
   The ready-for-QA gate sits in front of `qa_complete` (via
-  story issue submission readiness). Completing its task certifies the copy and stamps
+  `story_issues_resolved`). Completing its task certifies the copy and stamps
   the commit, and the stamp is what opens the gate.
   """
 

@@ -90,7 +90,6 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       # Not a requirement in the graph at all (story 1091) — the calculator
       # has no definition to read, so the done signal has to come from here.
       CodeMySpec.AgentTasks.IssueFix,
-      CodeMySpec.AgentTasks.SubmitStoryIssue,
       # The ready-for-QA gate SETS `qa_ready_commit` as a side effect of
       # certifying. The calculator can only read the stamp, so without this the
       # stop hook would evaluate the field, find it unset, and block forever.

@@ -16,9 +16,22 @@ defmodule CodeMySpec.Requirements.Profiles do
   profile is a query. Neither is a new query per requirement, which is what a
   handler-per-requirement design quietly becomes.
 
-  Profiles settle fixed requirements across the project. Story-owned issue
-  submission nodes are projected with their story family because accepting or
-  dismissing an issue changes both membership and edges.
+  ## Set-based, always
+
+  A profile answers for the whole project, not for one entity. That is what lets
+  a handler settle `story_issues_resolved` for every story with one query and
+  two writes rather than one query per story — and it is why the population size
+  stops mattering.
+
+  ## Each requirement keeps the filters it already had
+
+  A profile calls the same functions the checkers call. `issues_triaged` and
+  `issues_resolved` read through `list_by_status_and_min_severity/3`, which
+  applies `exclude_framework_unless_vendor/2` and
+  `exclude_other_copies_stories/2`; `story_issues_resolved` reads through the
+  story variant, which applies neither. They are three reads in one profile
+  rather than one read serving three, precisely because collapsing them would
+  change what two of the requirements mean.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -66,6 +79,7 @@ defmodule CodeMySpec.Requirements.Profiles do
       threshold: threshold,
       incoming: Issues.list_triageable(scope, threshold),
       accepted: Issues.list_by_status_and_min_severity(scope, :accepted, threshold),
+      unresolved_by_story: Issues.unresolved_by_story(scope, threshold),
       incoming_by_story: Issues.incoming_by_story(scope)
     }
   end
@@ -199,22 +213,16 @@ defmodule CodeMySpec.Requirements.Profiles do
   # reason: deciding what counts as a pass is the Qa context's judgement, and
   # `status == :pass and invalidations == []` written here would be a second
   # copy of it.
-  def load(%Scope{active_project_id: project_id} = scope, :qa) do
+  def load(%Scope{active_project_id: project_id}, :qa) do
     story_ids = Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
 
     %{
-      submission_snapshots:
-        Issues.story_submission_snapshots(
-          scope,
-          story_ids,
-          Configurations.fix_issues_min_severity(scope)
-        ),
       latest_by_story:
         Repo.all(
           from(a in QaAttempt,
-            where: a.story_id in ^story_ids and not a.stale,
-            order_by: [desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id],
-            preload: [:invalidations, :review]
+            where: a.story_id in ^story_ids,
+            order_by: [desc: a.inserted_at, desc: a.id],
+            preload: :invalidations
           )
         )
         |> Enum.group_by(& &1.story_id)

@@ -27,25 +27,15 @@ defmodule CodeMySpec.AgentTasks.QaStoryWithoutADiskTest do
         description: "As a user, I want to capture a task so that I do not lose it."
       })
 
-    {_, id, session} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
-
-    %{
-      scope: %{scope | environment: nil, cwd: nil},
-      story: story,
-      task: CodeMySpec.TaskOwner.find_task(session, id)
-    }
+    %{scope: %{scope | environment: nil, cwd: nil}, story: story}
   end
 
-  test "renders a prompt rather than raising", %{scope: scope, task: task} do
-    assert {:ok, prompt} = QaStory.command(scope, task)
+  test "renders a prompt rather than raising", %{scope: scope, story: story} do
+    assert {:ok, prompt} = QaStory.command(scope, %{story_id: story.id})
     assert is_binary(prompt) and prompt != ""
   end
 
-  test "names the story's spec files, read from the sync", %{
-    scope: scope,
-    story: story,
-    task: task
-  } do
+  test "names the story's spec files, read from the sync", %{scope: scope, story: story} do
     path = "test/spex/#{story.id}_capture_a_task/criterion_1_a_task_is_captured_spex.exs"
 
     Repo.insert!(%FileRecord{
@@ -58,7 +48,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryWithoutADiskTest do
       validation_errors: %{}
     })
 
-    assert {:ok, prompt} = QaStory.command(scope, task)
+    assert {:ok, prompt} = QaStory.command(scope, %{story_id: story.id})
 
     assert prompt =~ path,
            "the QA agent is told which spex cover the story; that list comes " <>

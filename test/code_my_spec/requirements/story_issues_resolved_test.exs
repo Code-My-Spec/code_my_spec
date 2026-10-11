@@ -1,5 +1,47 @@
-defmodule CodeMySpec.Requirements.StorySubmissionGraphTest do
-  @moduledoc "Story submissions fan into shared readiness without an aggregate fix task."
+defmodule CodeMySpec.Requirements.StoryIssuesResolvedTest do
+  @moduledoc """
+  The per-story issue gate, and the template-id collision that placing it
+  exposed.
+
+  `story_issues_resolved` sits ahead of `qa_complete` so known blockers on a
+  story are cleared before QA spends a pass on it. It reads only issues
+  attributed to that story — the project queue is the end-of-cycle
+  `issues_resolved` node's business, and a gate that waited on it could not be
+  passed by whoever owns the story.
+
+  It used to sit after `qa_complete`, on the reasoning that it is about what a
+  story's own QA pass raised. The checker never read it that way —
+  `IssuesChecker.story_resolved?/2` counts any accepted issue carrying the
+  `story_id`, whoever filed it — so an issue could land before QA ran, block the
+  QA agent's task, and be unreachable, because the node that clears it was gated
+  behind the QA it was preventing. Broken Oaths story 947, 2026-09-23. The fix
+  moved it to depend on `story_promoted` instead.
+
+  Story 1003, revised 2026-09-28: `story_promoted` moved again, to
+  *depend on* `qa_complete` (story 1108 gave every copy its own app, so QA no
+  longer needs the story's code on main first) — leaving this node's
+  prerequisite at `story_promoted` would have closed the same cycle the
+  2026-09-23 fix broke, one hop later. Repointed straight to `ready_for_qa`:
+  the checker was never reading the edge for its own safety anyway, so nothing
+  is lost by offering the work as soon as specs are green. (`problems_resolved`
+  sat beside it until 28d72f8a moved analyzer findings to the promote gate.)
+
+  Whether the story's own copy is actually serving is deliberately *not* a
+  graph node: a `qa_target_serving` node ahead of `qa_complete` was tried and
+  reverted the same day (Harness, session 4298eb) — `QaStory`'s own dispatch
+  already calls `AppTransport.ensure_app_running/2` live and, on anything
+  short of `"serving"`, still hands out the task with a prompt telling the
+  agent to investigate. A graph-level refusal that redirected to
+  `PromoteWork` instead would have let an agent stamp `promoted_version`
+  before `qa_complete` was ever satisfied — the exact ordering story 1003
+  exists to prevent. See criterion 1169's spex for the corrected behavior.
+
+  The old order's stated property survives every move: a story still cannot
+  release carrying a blocker its own QA pass raised, because this node is in
+  `StoryExecution.@completion_names` and an issue filed afterwards takes the
+  story back out of completion whenever it arrives. Ordering decides when work
+  is offered, not what counts as done.
+  """
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
@@ -8,7 +50,6 @@ defmodule CodeMySpec.Requirements.StorySubmissionGraphTest do
   alias CodeMySpec.Issues
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.RequirementDefinitionData
-  alias CodeMySpec.Requirements.StoryIssueGraph
   alias CodeMySpec.Stories
 
   describe "story_graph template ids" do
@@ -29,13 +70,15 @@ defmodule CodeMySpec.Requirements.StorySubmissionGraphTest do
       end
     end
 
-    test "the static story chain retains triage, readiness, QA and promotion" do
+    test "the chain runs triaged → resolved → ready_for_qa → qa_complete → promotion" do
       template = RequirementDefinitionData.story_graph()
       by_name = Map.new(template, &{&1.name, &1})
       id_of = fn name -> by_name[name].id end
 
-      refute Map.has_key?(by_name, "story_issues_resolved")
-      assert id_of.("story_issues_triaged") in by_name["ready_for_qa"].prerequisites
+      assert by_name["story_issues_resolved"].prerequisites == [id_of.("story_issues_triaged")]
+
+      assert by_name["ready_for_qa"].prerequisites ==
+               [id_of.("bdd_specs_exist"), id_of.("story_issues_resolved")]
 
       refute Map.has_key?(by_name, "problems_resolved"),
              "28d72f8a: analyzer findings are the promote gate's job, not a QA prerequisite"
@@ -65,64 +108,67 @@ defmodule CodeMySpec.Requirements.StorySubmissionGraphTest do
     end
   end
 
-  describe "individual submission branches" do
+  describe "story_resolved?/2" do
     setup do
       scope = full_scope_fixture()
       {:ok, story} = Stories.create_story(scope, story_attrs("Story under test"))
       %{scope: scope, story: story}
     end
 
-    test "each accepted blocking issue fans from triage into shared readiness", ctx do
-      first = accept!(ctx.scope, ctx.story.id, "Broken save", :high)
-      second = accept!(ctx.scope, ctx.story.id, "Broken login", :critical)
-      config = %{fix_issues_min_severity: :medium}
-      graph_ctx = %{story_issues: [first, second]}
-      nodes = StoryIssueGraph.nodes(ctx.story, graph_ctx, config)
-      assert MapSet.new(nodes, & &1.entity_id) == MapSet.new([first.id, second.id])
-      assert Enum.all?(nodes, &(&1.name == "submitted" and not &1.satisfied))
-      edges = StoryIssueGraph.edges(ctx.story, graph_ctx, config)
-
-      for issue <- [first, second] do
-        assert %{
-                 from: {"story", ctx.story.id, "story_issues_triaged"},
-                 to: {"issue", issue.id, "submitted"}
-               } in edges
-
-        assert %{
-                 from: {"issue", issue.id, "submitted"},
-                 to: {"story", ctx.story.id, "ready_for_qa"}
-               } in edges
-      end
+    test "satisfied when the story carries no accepted issues", %{scope: scope, story: story} do
+      assert {true, _} = IssuesChecker.story_resolved?(scope, story)
     end
 
-    test "other stories, explicit bags, low severity and untriaged issues do not become submissions",
-         ctx do
-      {:ok, other} = Stories.create_story(ctx.scope, story_attrs("Other story"))
-      other_issue = accept!(ctx.scope, other.id, "Other", :high)
-      low = accept!(ctx.scope, ctx.story.id, "Cosmetic", :low)
-      pending = accept!(ctx.scope, ctx.story.id, "Pending triage", :high)
-      pending = %{pending | status: :incoming}
-      bag = accept!(ctx.scope, ctx.story.id, "Explicit bag", :high)
-      bag = %{bag | assigned_working_copy_id: Ecto.UUID.generate()}
-      graph_ctx = %{story_issues: [other_issue, low, pending, bag]}
+    test "unsatisfied while an accepted issue names the story", %{scope: scope, story: story} do
+      accept!(scope, story.id, "Save button does nothing", :high)
 
-      assert StoryIssueGraph.nodes(ctx.story, graph_ctx, %{fix_issues_min_severity: :medium}) ==
-               []
-
-      assert StoryIssueGraph.edges(ctx.story, graph_ctx, %{fix_issues_min_severity: :medium}) ==
-               []
+      assert {false, details} = IssuesChecker.story_resolved?(scope, story)
+      assert details.reason =~ "1 unresolved"
     end
 
-    test "the graph reports recorded submission identity and clears on rework", ctx do
-      issue = accept!(ctx.scope, ctx.story.id, "Fix", :high)
-      ref = Ecto.UUID.generate()
-      submitted = %{issue | story_submission_ref: ref, story_submission_revision: "abc"}
-      config = %{fix_issues_min_severity: :medium}
-      assert [node] = StoryIssueGraph.nodes(ctx.story, %{story_issues: [submitted]}, config)
-      assert node.satisfied
-      assert node.details["submission_ref"] == ref
-      assert [pending] = StoryIssueGraph.nodes(ctx.story, %{story_issues: [issue]}, config)
-      refute pending.satisfied
+    test "an issue on another story does not gate this one", %{scope: scope, story: story} do
+      {:ok, other} = Stories.create_story(scope, story_attrs("Some other story"))
+      accept!(scope, other.id, "Unrelated defect", :critical)
+
+      assert {true, _} = IssuesChecker.story_resolved?(scope, story)
+    end
+
+    test "an issue with no story does not gate — that is the project queue's job", %{
+      scope: scope,
+      story: story
+    } do
+      accept!(scope, nil, "Nobody attributed this", :critical)
+
+      assert {true, _} = IssuesChecker.story_resolved?(scope, story)
+    end
+
+    test "resolving the issue satisfies the gate", %{scope: scope, story: story} do
+      issue = accept!(scope, story.id, "Save button does nothing", :high)
+      assert {false, _} = IssuesChecker.story_resolved?(scope, story)
+
+      {:ok, _} = Issues.resolve_issue(scope, issue, "Wired the handler")
+      assert {true, _} = IssuesChecker.story_resolved?(scope, story)
+    end
+
+    test "below the configured threshold, an issue is tracked but does not gate", %{
+      scope: scope,
+      story: story
+    } do
+      accept!(scope, story.id, "Label is slightly off", :low)
+
+      assert {true, _} = IssuesChecker.story_resolved?(scope, story)
+    end
+
+    test "raising the threshold to :high drops a medium from the gating set", %{
+      scope: scope,
+      story: story
+    } do
+      accept!(scope, story.id, "Medium defect", :medium)
+      assert {false, _} = IssuesChecker.story_resolved?(scope, story)
+
+      {:ok, _} = Configurations.update(scope, %{fix_issues_min_severity: :high})
+
+      assert {true, _} = IssuesChecker.story_resolved?(scope, story)
     end
   end
 
@@ -187,12 +233,12 @@ defmodule CodeMySpec.Requirements.StorySubmissionGraphTest do
 
     test "attaches an unattributed app issue and gates the story", %{scope: scope, story: story} do
       {:ok, issue} = Issues.create_issue(scope, app_issue("Broken save"))
-      assert Issues.story_submission_snapshot(scope, story.id) == %{}
+      assert {true, _} = IssuesChecker.story_resolved?(scope, story)
 
       assert 1 == Issues.attribute_to_story(scope, [issue.id], story.id)
 
       {:ok, _} = Issues.accept_issue(scope, Issues.get_issue!(scope, issue.id))
-      assert Issues.story_submission_snapshot(scope, story.id) == %{issue.id => nil}
+      assert {false, _} = IssuesChecker.story_resolved?(scope, story)
     end
 
     test "leaves framework findings to the project queue", %{scope: scope, story: story} do

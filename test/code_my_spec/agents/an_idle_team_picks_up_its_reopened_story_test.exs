@@ -62,11 +62,11 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
     |> Enum.map(&{&1.name, to_string(&1.entity_id)})
   end
 
-  defp start(ctx, agent, issue) do
+  defp start(ctx, agent, name) do
     Slice.call(
       ctx,
       StartTask,
-      %{requirement_name: "submitted", entity_type: "issue", entity_id: issue.id},
+      %{requirement_name: name, entity_type: "story", entity_id: to_string(ctx.story.number)},
       %{agent_id: agent.id}
     )
   end
@@ -79,7 +79,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
       issue = reopen(ctx)
       story_id = to_string(ctx.story.id)
 
-      assert {"submitted", issue.id} in offered(ctx, ctx.coding),
+      assert {"story_issues_resolved", story_id} in offered(ctx, ctx.coding),
              "the idle coder is offered the reopened story's issue work"
 
       coding_id = ctx.coding.id
@@ -94,33 +94,15 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
 
       Work.release(ctx.scope, coding_id, ref)
 
-      start(ctx, ctx.coding, issue)
+      start(ctx, ctx.coding, "story_issues_resolved")
 
       assert reload(ctx.coding).story_id == ctx.story.id
       assert reload(ctx.qa).story_id == ctx.story.id, "the whole team takes the story"
 
       coding = reload(ctx.coding)
       [task] = Enum.filter(coding.tasks || [], &(&1.status == :active))
-
-      {:ok, _} =
-        Issues.submit_story_issue(ctx.scope, issue, %{revision: "fix-sha", evidence: "fixed"})
-
+      {:ok, _} = Issues.resolve_issue(ctx.scope, issue, "fixed")
       {:ok, _} = CodeMySpec.TaskOwner.complete_task(ctx.scope, coding, task.id)
-
-      refute {"story_promoted", story_id} in offered(ctx, ctx.coding),
-             "a changed fix must be reviewed before another promotion"
-
-      story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
-      {:ok, _} = CodeMySpec.Stories.set_qa_ready(ctx.scope, story, "fix-sha")
-      {_, qa_task_id, _} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(ctx.scope, story: story)
-
-      {:ok, _} =
-        CodeMySpec.Qa.submit_qa_result(ctx.scope, %{
-          task_id: qa_task_id,
-          status: :pass,
-          issue_ids: [],
-          scenarios: [%{name: "Fix reviewed", status: :pass, observation: "fixed"}]
-        })
 
       assert {"story_promoted", story_id} in offered(ctx, ctx.coding),
              "after the fix, the story goes back to promote"
@@ -130,10 +112,6 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
 
       story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
       at = DateTime.add(DateTime.utc_now(), 1)
-
-      {:ok, _} =
-        CodeMySpec.Qa.complete_reviewed_story_issues(ctx.scope, story, "landed-sha", "fix-sha")
-
       {:ok, _} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.16", at: at)
 
       Slice.assert_active(Slice.next(ctx, %{agent_id: ctx.coding.id}), ctx, "complete")

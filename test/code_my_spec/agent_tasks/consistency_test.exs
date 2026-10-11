@@ -3,18 +3,6 @@ defmodule CodeMySpec.AgentTasks.ConsistencyTest do
 
   alias CodeMySpec.AgentTasks.{Evaluator, StartAgentTask}
 
-  test "story submissions start through the authorized graph task route" do
-    assert StartAgentTask.session_type_map()["submit_story_issue"] ==
-             CodeMySpec.AgentTasks.SubmitStoryIssue
-
-    assert {:error, instructions} =
-             StartAgentTask.run(nil, %{session_type: "submit_story_issue"})
-
-    assert instructions =~ "start_task"
-    assert instructions =~ "requirement_name submitted"
-    assert instructions =~ "entity_type issue"
-  end
-
   test "every value in @session_type_map exports command/2" do
     missing =
       StartAgentTask.session_type_map()

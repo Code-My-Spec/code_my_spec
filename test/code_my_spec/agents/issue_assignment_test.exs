@@ -60,9 +60,6 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   defp linked_story(true, scope), do: CodeMySpec.StoriesFixtures.story_fixture(scope)
   defp linked_story(false, _scope), do: nil
 
-  defp story_id(nil), do: nil
-  defp story_id(story), do: story.id
-
   for {linked?, criterion} <- [{true, 2079}, {false, 2080}] do
     @linked linked?
     @tag criterion: criterion
@@ -70,7 +67,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       copy_id = copy(ctx.scope)
       previous = CodeMySpec.StoriesFixtures.story_fixture(ctx.scope)
       target = linked_story(@linked, ctx.scope)
-      target_id = story_id(target)
+      target_id = target && target.id
       {:ok, issue} = Issues.update_issue(ctx.scope, ctx.issue, %{story_id: target_id})
 
       team =
@@ -93,11 +90,10 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       for member <- team do
         updated = reload(member)
         assert updated.issue_id == issue.id
-        assert updated.story_id == nil
+        assert updated.story_id == target_id
       end
 
-      assert WorkingCopies.team_story_id(copy_id) == nil
-      assert Issues.get_issue(ctx.scope, issue.id).story_id == target_id
+      assert WorkingCopies.team_story_id(copy_id) == target_id
 
       destination = copy(ctx.scope)
 
@@ -112,10 +108,10 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
       for member <- destination_team do
         assert reload(member).issue_id == issue.id
-        assert reload(member).story_id == nil
+        assert reload(member).story_id == target_id
       end
 
-      assert WorkingCopies.team_story_id(destination) == nil
+      assert WorkingCopies.team_story_id(destination) == target_id
       assert Enum.all?(team, &is_nil(reload(&1).issue_id))
     end
   end

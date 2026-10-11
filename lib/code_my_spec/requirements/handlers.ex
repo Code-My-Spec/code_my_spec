@@ -120,9 +120,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     # whether a story projects at all, and handlers settle rows rather than
     # writing them.
     "story_changed" => [:stories, :links, :issues],
-    # A reviewed failure can return issue submissions and clear certification.
-    # This event is emitted after the outer QA transaction commits.
-    "qa_attempt_submitted" => [:qa, :issues, :stories],
+    "qa_attempt_submitted" => [:qa],
     # A component appearing, going or changing moves `architecture_designed`
     # — the orphan rule reads the component set — and that is settled here
     # from the `:architecture` profile. The component's *own* rows are not:
@@ -143,20 +141,11 @@ defmodule CodeMySpec.Requirements.Handlers do
   # `ShadowProjector.apply_handlers/2` drops an invalidation beside a handled
   # event as answered; for these it keeps it, so the entities the event named
   # still go through `compute_entity/4`.
-  @partial ~w(component_created component_changed component_deleted issue_created issue_accepted issue_dismissed issue_resolved issue_updated qa_attempt_submitted)
+  @partial ~w(component_created component_changed component_deleted)
 
   @doc "The handled kinds whose fallback marks still apply."
   @spec partial_kinds() :: [String.t()]
   def partial_kinds, do: @partial
-
-  @doc "Story issue events can change node membership; project issue events only settle verdicts."
-  def partial_event?(%{kind: "issue_created", payload: %{"status" => "incoming"}}), do: false
-
-  def partial_event?(%{kind: "issue_" <> _, payload: payload}) do
-    not is_nil(Map.get(payload || %{}, "story_id"))
-  end
-
-  def partial_event?(%{kind: kind}), do: kind in @partial
 
   # Handled kinds that can move the shape the edges are drawn from — a
   # dependency declared, a story relinked to another component — without
@@ -213,6 +202,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   @requirement_profiles %{
     "issues_triaged" => [:issues],
     "issues_resolved" => [:issues],
+    "story_issues_resolved" => [:issues],
     "story_issues_triaged" => [:issues],
     "ready_for_qa" => [:stories],
     "implementation_file" => [:files],
@@ -382,6 +372,31 @@ defmodule CodeMySpec.Requirements.Handlers do
         %{status: "No unresolved #{profile.threshold}+ issues"},
         %{reason: "#{length(profile.accepted)} unresolved #{profile.threshold}+ issues"}
       )
+
+  defp settle("story_issues_resolved", %{issues: profile}, _scope) do
+    %{
+      entity_type: "story",
+      name: "story_issues_resolved",
+      default: true,
+      default_details:
+        details(%{status: "No unresolved #{profile.threshold}+ issues on this story"}),
+      except:
+        Enum.map(profile.unresolved_by_story, fn {story_id, issues} ->
+          %{
+            entity_type: "story",
+            entity_id: story_id,
+            name: "story_issues_resolved",
+            satisfied: false,
+            details:
+              details(%{
+                reason:
+                  "#{length(issues)} unresolved #{profile.threshold}+ issue(s) on this story",
+                issues: Enum.map(issues, &"#{&1.severity}: #{&1.title}")
+              })
+          }
+        end)
+    }
+  end
 
   defp settle("story_issues_triaged", %{issues: profile}, _scope) do
     %{
@@ -583,13 +598,13 @@ defmodule CodeMySpec.Requirements.Handlers do
   # a later `:partial` overrides an earlier pass, and an invalidated pass is not
   # one. Default unsatisfied, because a story with no attempt at all is the
   # common state and reads identically to one whose latest attempt failed.
-  defp settle("qa_complete", %{qa: profile, stories: stories}, scope),
+  defp settle("qa_complete", %{qa: profile, stories: stories}, _scope),
     do: %{
       entity_type: "story",
       name: "qa_complete",
       default: false,
       default_details: details(elem(Verdict.verdict(false), 1)),
-      except: qa_passes(profile, stories, scope)
+      except: qa_passes(profile, stories)
     }
 
   # The rollups. One call to the requirement's own checker, which is a narrowed
@@ -862,19 +877,19 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
-  # Use the same review identity check as the ordinary graph computation.
-  defp qa_passes(profile, %{stories: stories}, scope) do
-    ctx = %{qa_latest_by_story: profile.latest_by_story}
+  # Only the passes. The default already says what every other story's latest
+  # attempt amounts to, and says it identically.
+  #
+  # `Verdict.passed?/2` also requires the attempt to postdate the story's
+  # current `qa_ready_at`, the same rule the per-entity read applies via
+  # `Verdict.complete_check/3` -- see its own doc for why.
+  defp qa_passes(profile, %{stories: stories}) do
+    qa_ready_at_by_story = Map.new(stories, &{&1.id, &1.qa_ready_at})
 
-    ctx =
-      case Map.fetch(profile, :submission_snapshots) do
-        {:ok, snapshots} -> Map.put(ctx, :qa_submission_snapshots, snapshots)
-        :error -> ctx
-      end
-
-    for story <- stories,
-        {true, detail} <- [Verdict.complete_check(scope, story, ctx)] do
-      change("story", story.id, "qa_complete", true, detail)
+    for {story_id, attempt} <- profile.latest_by_story,
+        Verdict.passed?(attempt, Map.get(qa_ready_at_by_story, story_id)) do
+      {true, detail} = Verdict.verdict(true)
+      change("story", story_id, "qa_complete", true, detail)
     end
   end
 end

@@ -3,7 +3,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   Story 1046 — A story's code is on the running dev copy before QA tests it.
 
   Harness's wedge check, requested after story 1003's reorder moved several
-  edges in one sitting (individual issue `submitted`, `problems_resolved`,
+  edges in one sitting (`story_issues_resolved`, `problems_resolved`,
   `qa_complete`, `code_on_running_copy`, `deploy`). `problems_resolved` has
   since gone (28d72f8a): analyzer findings are the promote gate's job. A
   graph that long is a poor place to trust to instinct that every state along
@@ -16,8 +16,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   requirement actually blocking it — never "no work available".
 
   1. Not certified for QA — `ready_for_qa` unsatisfied → `ReadyForQa`.
-  2. An accepted issue open — individual issue `submitted` unsatisfied →
-     `SubmitStoryIssue`.
+  2. An accepted issue open — `story_issues_resolved` unsatisfied →
+     `FixStoryIssues`.
   3. QA not yet run — `qa_complete` unsatisfied → `QaStory`.
   4. QA passed but not promoted — `story_promoted` unsatisfied →
      `PromoteWork`.
@@ -113,17 +113,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
         {:ok, _accepted} = Issues.accept_issue(context.scope, issue)
 
-        {:ok, context |> Map.put(:issue_story, story) |> Map.put(:story_issue, issue)}
+        {:ok, Map.put(context, :issue_story, story)}
       end
 
-      then_ "the issue-blocked story is offered SubmitStoryIssue", context do
+      then_ "the issue-blocked story is offered FixStoryIssues", context do
         text = ask_for_next_work(context, context.issue_story.number)
 
-        assert text =~ "SubmitStoryIssue",
+        assert text =~ "FixStoryIssues",
                "a story with an open accepted issue should be offered the " <>
-                 "task that submits its fix. Got: #{text}"
+                 "task that resolves it. Got: #{text}"
 
-        assert text =~ context.story_issue.id
         refute no_work?(text), "the story read no actionable work. Got: #{text}"
 
         {:ok, context}
@@ -248,7 +247,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   # Every story below the first shares the same "ready for QA" shape: linked
   # to the shared component, three-amigos sealed, its own BDD spec file
   # written, specs enforced and evaluated, clear of any issue. Rebuilt per
-  # story rather than shared, because individual issue `submitted` reads *this*
+  # story rather than shared, because `story_issues_resolved` reads *this*
   # story's own state — one shared "ready" story mutated five times would make each
   # `then_` a statement about the last mutation, not about the state it
   # claims to test.

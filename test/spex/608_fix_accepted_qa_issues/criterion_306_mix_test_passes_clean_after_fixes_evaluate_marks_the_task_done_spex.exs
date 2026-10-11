@@ -1,0 +1,91 @@
+defmodule CodeMySpecSpex.Story608.Criterion5392Spex do
+  @moduledoc """
+  Story 608 — Fix accepted QA issues
+  Criterion 5392 — mix test passes clean after fixes, evaluate marks
+  the task done.
+
+  Rule 4 (happy path): once every accepted issue has been resolved
+  and tests are clean, evaluate marks the fix-issues task done and
+  the requirement graph advances past `issues_resolved`.
+
+  Surface: `start_task` for `issues_resolved`, then the stop-hook
+  drives evaluate. The "no unresolved medium+ issues" precondition
+  is established by leaving every issue at :resolved status (the
+  output state of a clean fix loop) — the spec then checks that the
+  graph advances, which is the agent-visible signal that the work
+  is accepted.
+  """
+
+  use CodeMySpecSpex.Case
+
+  import CodeMySpecSpex.SharedGivens
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpecSpex.HarnessHooks
+
+  alias CodeMySpecSpex.Fixtures
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  spex "Clean state after fixes evaluates as valid", criterion: 306 do
+    scenario "mix test passes clean after fixes, evaluate marks the task done" do
+      given_ "the project has one issue, already resolved (no unresolved medium+ remain)",
+             context do
+        # Output state of a successful fix loop: every accepted issue
+        # has been transitioned to :resolved with a resolution attached.
+        Fixtures.issue_fixture(context.scope, %{
+          severity: :high,
+          status: :resolved,
+          resolution: "Fixed in lib/foo.ex; mix test passes.",
+          title: "Already-resolved issue"
+        })
+
+        {:ok, context}
+      end
+
+      given_ :fix_issues_task_started
+
+      when_ "the agent fires the stop hook on the active fix-issues task",
+            context do
+        response =
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
+
+        {:ok, Map.put(context, :stop_response, response)}
+      end
+
+      then_ "the stop hook let the agent stop rather than sending it back", context do
+        # The half of this scenario's own title — "evaluate marks the task
+        # done" — that nothing asserted. Everything below it is a refute
+        # against a *different* call's output, and a refute holds when the
+        # hook errored, when it blocked, and when the requirement was never
+        # offered in the first place.
+        assert is_map(context.stop_response),
+               "expected a stop-hook response to read, got: #{inspect(context.stop_response)}"
+
+        refute inspect(context.stop_response) =~ ~r/unresolved/i,
+               "expected the fix-issues task to evaluate clean, got: " <>
+                 inspect(context.stop_response)
+
+        {:ok, context}
+      end
+
+      then_ "the graph advances past issues_resolved", context do
+        # When the stop hook completes the task, the next
+        # get_next_requirement call must surface a different requirement
+        # (or an all-satisfied marker) — never issues_resolved again.
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        body = response_text(response)
+
+        refute body =~ "issues_resolved",
+               "expected the graph to advance past issues_resolved once all accepted issues are resolved, got: #{body}"
+
+        {:ok, context}
+      end
+    end
+  end
+end

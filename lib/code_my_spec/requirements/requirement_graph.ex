@@ -39,7 +39,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
-  alias CodeMySpec.Requirements.StoryIssueGraph
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
@@ -520,7 +519,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # of the question.
   defp template_edges(scope, ctx, config) do
     component_template_edges(ctx, config) ++
-      Enum.flat_map(ctx.stories, &story_template_edges(&1, ctx, config)) ++
+      Enum.flat_map(ctx.stories, &story_template_edges(&1, config)) ++
       project_template_edges(scope, config)
   end
 
@@ -536,10 +535,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp story_template_edges(story, ctx, config) do
+  defp story_template_edges(story, config) do
     template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
     id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
-    build_template_edges(template, id_map) ++ StoryIssueGraph.edges(story, ctx, config)
+    build_template_edges(template, id_map)
   end
 
   # The generators one side at a time, for `Edges`.
@@ -589,7 +588,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     one = %{stories: [story]}
 
     %{
-      template: story_template_edges(story, ctx, config),
+      template: story_template_edges(story, config),
       kickoff: kickoff,
       exit: exit,
       project: project_to_story_edges(one) ++ story_to_project_edges(one)
@@ -1000,7 +999,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> MapSet.reject(&MapSet.member?(current, &1))
   end
 
-  defp entity_key(%{entity_type: "issue", details: %{"story_id" => id}}), do: {"story", id}
   defp entity_key(node), do: {node.entity_type, node.entity_id}
 
   # Only the lists are narrowed. The by-id maps stay whole because the
@@ -2059,7 +2057,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Map.update(acc, edge.from, [edge.to], &[edge.to | &1])
       end)
 
-    entity_of = Map.new(nodes, fn n -> {node_key(n), entity_key(n)} end)
+    entity_of = Map.new(nodes, fn n -> {node_key(n), {n.entity_type, n.entity_id}} end)
 
     nodes
     |> Enum.filter(&seed?(&1, seeds))
@@ -2085,14 +2083,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def seed?(%{entity_type: "component", entity_id: id}, {:story, _story_id, ids}),
     do: MapSet.member?(ids, id)
 
-  def seed?(%{entity_type: "issue", details: %{"story_id" => id}}, {:story, story_id, _ids}),
-    do: id == story_id
-
   def seed?(_node, {:story, _story_id, _ids}), do: false
   def seed?(_node, _seeds), do: true
 
   defp block_from_seed(seed, acc, outgoing, entity_of, role_names) do
-    seed_entity = entity_key(seed)
+    seed_entity = {seed.entity_type, seed.entity_id}
     seeds_own_role = MapSet.member?(role_names, seed.name)
 
     outgoing
@@ -3283,6 +3278,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, edges} =
       Enum.flat_map_reduce(ctx.stories, [], fn story, all_edges ->
         files = Map.get(ctx.files_by_story, story.id, [])
+        id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
 
         # Stamped once per story rather than once per requirement: every
         # requirement of a story reads the same slice of the context, so they
@@ -3316,8 +3312,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             }
           end)
 
-        nodes = nodes ++ StoryIssueGraph.nodes(story, ctx, config, fingerprint)
-        edges = story_template_edges(story, ctx, config)
+        edges = build_template_edges(template, id_map)
         {nodes, all_edges ++ edges}
       end)
 
@@ -3499,20 +3494,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     rank = if story, do: story_rank(story), else: {999, 0}
     {1, rank, story_req_depth(name)}
   end
-
-  defp priority_sort_key(
-         %{entity_type: "issue", details: %{"story_id" => id}},
-         stories,
-         comp,
-         order
-       ),
-       do:
-         priority_sort_key(
-           %{entity_type: "story", entity_id: id, name: "ready_for_qa"},
-           stories,
-           comp,
-           order
-         )
 
   defp priority_sort_key(
          %{entity_type: "component", entity_id: id},

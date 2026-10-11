@@ -84,21 +84,6 @@ defmodule CodeMySpec.PromotionQueue do
   end
 
   defp waited(_queued, {:landed, report}), do: report
-
-  defp waited(
-         _queued,
-         {:ok, %Entry{status: :landed, result: %{"assignment_held" => true}} = done}
-       ),
-       do:
-         {:error,
-          %{
-            landed: true,
-            assignment_held: true,
-            landed_commit: done.result["head"],
-            reason: outcome_text(done),
-            queue_outcome: done
-          }}
-
   defp waited(_queued, {:ok, %Entry{status: :landed} = done}), do: {:ok, %{queue_outcome: done}}
 
   defp waited(_queued, {:ok, done}),
@@ -245,12 +230,6 @@ defmodule CodeMySpec.PromotionQueue do
 
   @doc "What became of an entry, in a sentence."
   @spec outcome_text(Entry.t()) :: String.t()
-  def outcome_text(
-        %Entry{status: :landed, result: %{"assignment_held" => true} = result} = entry
-      ),
-      do:
-        "#{describe(entry)} landed on main, but story completion and assignment release are held. #{result["reason"]} Do not re-merge this candidate."
-
   def outcome_text(%Entry{status: :landed, result: result} = entry),
     do: "#{describe(entry)} landed on main#{version(result)}."
 

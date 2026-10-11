@@ -145,7 +145,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
 
   @doc """
   Incoming issues on each story, any severity, grouped by story — what
-  `story_issues_triaged` reads for each story.
+  `story_issues_triaged` reads, set-based like `unresolved_by_story/2`.
   """
   @spec incoming_by_story(Scope.t()) :: %{integer() => [Issue.t()]}
   def incoming_by_story(%Scope{} = scope) do
@@ -203,6 +203,34 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     end
   end
 
+  @doc """
+  Every story carrying an unresolved issue at or above the threshold, grouped.
+
+  The set-based form of `list_by_story_status_and_min_severity/4`: the same
+  three filters — project, `:accepted`, severity — with the story narrowing
+  removed, so one query answers `story_issues_resolved` for every story at once
+  instead of one query per story.
+
+  Deliberately the same filters and no others. The project-level readers add
+  `exclude_framework_unless_vendor/2` and `exclude_other_copies_stories/2`; the
+  story-level one does not, and a grouped query that quietly added them would
+  disagree with the checker for vendored framework issues.
+
+  A story absent from the result has none, which is what makes this settle the
+  satisfied direction too.
+  """
+  @spec unresolved_by_story(Scope.t(), atom()) :: %{integer() => [Issue.t()]}
+  def unresolved_by_story(%Scope{} = scope, min_severity) do
+    Issue
+    |> by_project(scope.active_project.id)
+    |> by_status(:accepted)
+    |> by_min_severity(min_severity)
+    |> where([i], not is_nil(i.story_id))
+    |> ordered_by_severity()
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
   @doc "Resolved issues in a project, keyed by id — for callers holding only the id."
   def resolved_in_project(project_id) when is_binary(project_id) do
     from(i in Issue,
@@ -216,6 +244,16 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     Issue
     |> by_project(scope.active_project.id)
     |> by_story(story_id)
+    |> ordered_by_severity()
+    |> Repo.all()
+  end
+
+  def list_by_story_status_and_min_severity(%Scope{} = scope, story_id, status, min_severity) do
+    Issue
+    |> by_project(scope.active_project.id)
+    |> by_story(story_id)
+    |> by_status(status)
+    |> by_min_severity(min_severity)
     |> ordered_by_severity()
     |> Repo.all()
   end
@@ -555,9 +593,8 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   # inventing a constraint nobody asked for.
   defp story_elsewhere?(story_id, project_id) when is_binary(project_id) do
     Repo.exists?(
-      from(s in "stories",
+      from s in "stories",
         where: s.id == ^story_id and s.project_id != type(^project_id, :binary_id)
-      )
     )
   end
 
@@ -725,13 +762,16 @@ defmodule CodeMySpec.Issues.IssuesRepository do
       {:error, Changeset.change(issue) |> Changeset.add_error(:id, "does not exist")}
   end
 
-  @doc "Most recent inherited fix submission per story, using its immutable submission timestamp."
-  def latest_story_submissions(project_id, story_ids) when is_list(story_ids) do
+  @doc """
+  The most recently resolved issue on each of `story_ids`, as
+  `%{story_id => {issue_id, resolved_at}}`. There is no resolution timestamp,
+  so `updated_at` stands in: it is the resolution unless the issue was edited
+  again afterwards, which reads as a later resolution.
+  """
+  def latest_resolutions(project_id, story_ids) when is_list(story_ids) do
     from(i in Issue,
-      where: i.project_id == ^project_id and i.story_id in ^story_ids,
-      where: is_nil(i.assigned_working_copy_id) and not is_nil(i.story_submitted_at),
-      where: i.status in [:accepted, :resolved],
-      select: {i.story_id, i.id, i.story_submitted_at}
+      where: i.project_id == ^project_id and i.story_id in ^story_ids and i.status == :resolved,
+      select: {i.story_id, i.id, i.updated_at}
     )
     |> Repo.all()
     |> Enum.group_by(&elem(&1, 0), fn {_story_id, id, at} -> {id, at} end)

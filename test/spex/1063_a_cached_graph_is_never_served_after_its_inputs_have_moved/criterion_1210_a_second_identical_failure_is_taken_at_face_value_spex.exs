@@ -23,11 +23,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
-  alias CodeMySpecSpex.Fixtures.StoryIssueBag
-  alias CodeMySpecSpex.StorySliceHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -46,27 +42,10 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
 
         submit(context, context.task_id, "fail")
 
-        # The failed review closes its task. Triage and submit the fix before
-        # capturing another review; the second result still cites the same
-        # issue and observation. Settle these prerequisite events before the
-        # baseline so the assertion isolates the second failed review.
-        context = StorySliceHelpers.activate(context)
-        coding = Enum.find(context.team, &(&1.role == :coding))
-        StorySliceHelpers.call(context, AcceptIssue, %{issue_id: issue.id, category: "bug"})
-
-        StorySliceHelpers.call(
-          context,
-          SubmitStoryIssue,
-          %{
-            issue_id: issue.id,
-            revision: String.duplicate("b", 40),
-            evidence: "Submitted the attempted fix and verified its regression test."
-          },
-          %{agent_id: coding.id}
-        )
-
-        :ok = StoryIssueBag.certify(context.scope, context.story.id, String.duplicate("b", 40))
-
+        # A task completes when it is submitted against, so a second attempt
+        # needs a second task on the same story. Submitting twice against one
+        # task is refused, which would make this scenario vacuous - the graph
+        # cannot move for an attempt that was never recorded.
         {_story, second_task_id, _session} =
           CodeMySpecSpex.Fixtures.qa_story_task_fixture(context.scope, story: context.story)
 

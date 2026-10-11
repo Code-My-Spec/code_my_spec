@@ -68,7 +68,6 @@ defmodule CodeMySpec.Requirements.StoryGraph do
       graph.nodes
       |> Enum.filter(fn node ->
         (node.entity_type == "story" and node.entity_id == story_id) or
-          (node.entity_type == "issue" and node.details["story_id"] == story_id) or
           (node.entity_type == "component" and MapSet.member?(component_ids, node.entity_id))
       end)
       |> MapSet.new(&key/1)

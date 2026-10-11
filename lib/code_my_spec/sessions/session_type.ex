@@ -22,7 +22,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.FixBddSpecs,
     AgentTasks.ReadyForQa,
     AgentTasks.FixIssues,
-    AgentTasks.SubmitStoryIssue,
+    AgentTasks.FixStoryIssues,
     AgentTasks.IssueFix,
     AgentTasks.IssuePromote,
     AgentTasks.IssueQa,
@@ -49,16 +49,9 @@ defmodule CodeMySpec.Sessions.SessionType do
 
   @type t :: atom()
 
-  @impl true
   @spec type() :: :string
   def type, do: :string
 
-  # Tasks are JSON embeds. Use the persisted representation so historical
-  # task types reach load/1 instead of the strict validation for new input.
-  @impl true
-  def embed_as(_format), do: :dump
-
-  @impl true
   @spec cast(binary() | atom()) :: {:ok, t()} | :error
 
   def cast(module) when is_atom(module) and module in @valid_types do
@@ -83,7 +76,6 @@ defmodule CodeMySpec.Sessions.SessionType do
     ArgumentError -> :error
   end
 
-  @impl true
   @spec load(binary()) :: {:ok, t()} | :error
   def load(data) when is_binary(data) do
     # Tolerant load: convert the DB string to an atom whether or not
@@ -117,7 +109,6 @@ defmodule CodeMySpec.Sessions.SessionType do
   def valid_type?(module) when is_atom(module), do: module in @valid_types
   def valid_type?(_), do: false
 
-  @impl true
   @spec dump(atom()) :: {:ok, binary()} | :error
   def dump(module) when is_atom(module), do: {:ok, Atom.to_string(module)}
   def dump(_), do: :error

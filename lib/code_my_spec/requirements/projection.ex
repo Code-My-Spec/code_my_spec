@@ -315,16 +315,10 @@ defmodule CodeMySpec.Requirements.Projection do
     component_ids = Enum.map(ctx.components, & &1.id)
     story_ids = Enum.map(ctx.stories, & &1.id)
 
-    issue_ids =
-      ctx
-      |> Map.get(:story_issues, [])
-      |> Enum.filter(&(&1.story_id in story_ids))
-      |> Enum.map(& &1.id)
-
     source
     |> where(
       [n],
-      n.component_id in ^component_ids or n.story_id in ^story_ids or n.issue_id in ^issue_ids or
+      n.component_id in ^component_ids or n.story_id in ^story_ids or
         n.project_id == ^project_id
     )
     |> where(^copy_filter(working_copy_id))
@@ -396,11 +390,6 @@ defmodule CodeMySpec.Requirements.Projection do
     %{req | parent_entity_id: parent_id, parent_entity_name: parent_name}
   end
 
-  defp with_parent(req, "issue", issue, _definition, ctx) do
-    story = Enum.find(ctx.stories, &(&1.id == issue.story_id))
-    %{req | parent_entity_id: issue.story_id, parent_entity_name: story && story.title}
-  end
-
   defp with_parent(req, "story", story, _definition, _ctx),
     do: %{req | parent_entity_id: story.project_id}
 
@@ -410,13 +399,6 @@ defmodule CodeMySpec.Requirements.Projection do
     case Map.get(ctx.components_by_id, id) do
       nil -> :error
       component -> {:ok, "component", component}
-    end
-  end
-
-  defp entity_for(%Node{issue_id: id}, ctx) when not is_nil(id) do
-    case Enum.find(Map.get(ctx, :story_issues, []), &(&1.id == id)) do
-      nil -> :error
-      issue -> {:ok, "issue", issue}
     end
   end
 
@@ -462,7 +444,6 @@ defmodule CodeMySpec.Requirements.Projection do
   end
 
   defp entity_id(row, "component"), do: row.component_id
-  defp entity_id(row, "issue"), do: row.issue_id
   defp entity_id(row, "story"), do: row.story_id
   defp entity_id(row, "project"), do: row.project_id
 

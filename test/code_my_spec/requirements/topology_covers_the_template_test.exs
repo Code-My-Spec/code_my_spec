@@ -45,13 +45,6 @@ defmodule CodeMySpec.Requirements.TopologyCoversTheTemplateTest do
            "config decides which definitions exist, so it still has to move the shape"
   end
 
-  test "the fix severity threshold changes the story issue branches" do
-    medium = Freshness.topology(ctx(), %{devops: :off, fix_issues_min_severity: :medium})
-    high = Freshness.topology(ctx(), %{devops: :off, fix_issues_min_severity: :high})
-
-    refute medium == high
-  end
-
   # metric_flow, 2026-09-27: a config row predating the devops column loads
   # nil. The graph kept `deploy` for it while devops_status called it off, and
   # the main agent was offered deploy work it could not do.

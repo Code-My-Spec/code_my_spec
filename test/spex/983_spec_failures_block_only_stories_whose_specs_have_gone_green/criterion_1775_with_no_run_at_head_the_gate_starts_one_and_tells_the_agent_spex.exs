@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1775Spex do
     scenario "nothing has analysed the copy's HEAD" do
       given_ "a coding agent holding the task on a copy never analysed", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context, qa: :not_passed)
+        story = a_promotable_story(context)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 

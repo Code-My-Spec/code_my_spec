@@ -1,12 +1,12 @@
 defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   @moduledoc """
-  A queued story promotion reports a confirmed restart with the originating
-  agent's identity. Once the story has landed, confirmation is informational:
-  an agent without an open promotion task must not receive another work turn.
+  `promote` answers "restart dispatched, not yet confirmed". An in-app agent
+  that decides to wait for the confirmation has to be told when it arrives —
+  on metric_flow (2026-09-27) it only reached web.log and the agent sat idle.
 
-  Driven through the promote tool to cover caller identity propagation across
-  the queue and the detached deployment. PromotionNoticeRoutingTest covers
-  delivery to agents that still hold an open promotion task.
+  Driven through the `promote` tool, because the agent id lives on the tool
+  call's frame: that is the only place that knows who received the first
+  answer.
   """
 
   use CodeMySpecTest.DataCase, async: false
@@ -19,7 +19,6 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
@@ -37,21 +36,6 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
 
     RecordingAgentTransport.listen()
-
-    test = self()
-    handler = {__MODULE__, test}
-
-    :ok =
-      :telemetry.attach(
-        handler,
-        [:code_my_spec, :promotion, :report],
-        fn _event, _measurements, meta, _config ->
-          send(test, {:promotion_report, meta.agent_id, meta.what, meta.text, self()})
-        end,
-        nil
-      )
-
-    on_exit(fn -> :telemetry.detach(handler) end)
 
     # The message is sent from the detached restart task.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
@@ -71,6 +55,11 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     git!(running_root, ["config", "user.email", "spex@example.com"])
     git!(running_root, ["config", "user.name", "Spex"])
     File.write!(Path.join(running_root, "app.ex"), "defmodule App do\nend\n")
+
+    File.write!(Path.join(running_root, "justfile"), """
+    restart:
+        @echo "up"
+    """)
 
     git!(running_root, ["add", "-A"])
     git!(running_root, ["commit", "-q", "-m", "base"])
@@ -99,34 +88,11 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     copy
   end
 
-  # Restart uses the working copy's registered app transport, not its justfile.
-  defp a_running_harness(copy, commit) do
-    test = self()
-
-    pid =
-      spawn_link(fn ->
-        :ok = HarnessRegistry.register_executor(copy.id, "test-harness", copy.root)
-        send(test, :harness_registered)
-
-        receive do
-          {:"$gen_call", from, {:restart_app, _request}} ->
-            GenServer.reply(from, {:ok, %{status: "serving", url: "http://test", commit: commit}})
-            send(test, :restart_served)
-
-          :stop ->
-            :ok
-        end
-      end)
-
-    on_exit(fn -> send(pid, :stop) end)
-    assert_receive :harness_registered, 2_000
-  end
-
   defp ready_to_promote do
     scope = full_scope_fixture()
     {running_root, agent_root, gate_root} = a_project_whose_restart_succeeds()
 
-    running_copy = a_copy(scope, running_root, "the checkout the dev app runs in")
+    a_copy(scope, running_root, "the checkout the dev app runs in")
     agent_copy = a_copy(scope, agent_root, "the coding agent's copy")
     gate_copy = a_copy(scope, gate_root, Worker.gate_label())
     on_exit(fn -> stop_worker(scope.active_project_id) end)
@@ -151,6 +117,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
     scope = %{scope | active_working_copy_id: agent_copy.id}
     story = story_fixture(scope)
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     {_n, _} =
       Files.upsert_files(scope, [
@@ -164,14 +131,6 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
       ])
 
     head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
-    a_running_harness(running_copy, head)
-
-    story
-    |> Ecto.Changeset.change(qa_ready_commit: head, qa_ready_at: DateTime.utc_now())
-    |> CodeMySpec.Repo.update!()
-
-    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
-
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
 
     # A lone candidate level with main is its own batch commit, gated there.
@@ -184,28 +143,25 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     {scope, agent, running_root, %{story_number: story.number}}
   end
 
-  test "a confirmed restart retains caller identity without waking a free agent" do
+  test "a confirmed restart is messaged to the agent that called promote" do
     {scope, agent, running_root, params} = ready_to_promote()
     frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
     assert {:reply, _response, _frame} = Promote.execute(params, frame)
-    assert_receive :restart_served, 5_000
 
     agent_id = agent.id
 
-    assert_receive {:promotion_report, ^agent_id, "restart confirmation", message, deployment},
-                   5_000
+    # The queue tells it the candidate landed first; the confirmation follows.
+    message = confirmation(agent_id, running_root)
 
-    # All synchronous telemetry handlers must finish before checking suppression.
-    monitor = Process.monitor(deployment)
-    assert_receive {:DOWN, ^monitor, :process, ^deployment, _reason}, 5_000
-    assert message =~ "from your promotion is confirmed:"
+    assert message, """
+    The restart was confirmed and nothing reached the agent. It was told
+    "dispatched, not yet confirmed" and has no other way to learn the outcome.
+    """
+
     assert message =~ running_root
-    assert settled?()
 
-    # Story landing frees the team; only an open promotion task may receive
-    # a confirmation. Failures still follow their separate correction path.
-    refute_received {:agent_dispatch, ^agent_id, _ref, ^message}
+    assert settled?()
   end
 
   test "a promote with no agent behind it messages nobody" do
@@ -213,11 +169,31 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     frame = %Frame{assigns: %{current_scope: scope}}
 
     assert {:reply, _response, _frame} = Promote.execute(params, frame)
-    assert_receive :restart_served, 5_000
 
     assert settled?()
     refute_received {:agent_dispatch, _, _, _}
   end
+
+  # The deployment's outcome, whichever way it went: the message that names
+  # the running checkout. The queue's "landed" notice comes before it.
+  defp confirmation(agent_id, running_root) do
+    receive do
+      {:agent_dispatch, ^agent_id, _ref, message} ->
+        confirmation(
+          message,
+          message =~ running_root and message =~ "confirmed",
+          agent_id,
+          running_root
+        )
+    after
+      30_000 -> nil
+    end
+  end
+
+  defp confirmation(message, true, _agent_id, _running_root), do: message
+
+  defp confirmation(_message, false, agent_id, running_root),
+    do: confirmation(agent_id, running_root)
 
   defp settled?(remaining \\ 100)
   defp settled?(0), do: false

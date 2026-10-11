@@ -34,7 +34,7 @@ defmodule CodeMySpec.AgentPerformance.Stage do
     AgentTasks.StartImplementation,
     AgentTasks.LinkStoryComponent,
     AgentTasks.FixIssues,
-    AgentTasks.SubmitStoryIssue,
+    AgentTasks.FixStoryIssues,
     AgentTasks.IssueFix
   ]
 

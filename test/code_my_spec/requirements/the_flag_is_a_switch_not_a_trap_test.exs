@@ -263,7 +263,7 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
       GraphInputs.subscribe(scope.active_project_id)
 
       # An observation that moves exactly one verdict on the event side —
-      # an issue submission node appears unsatisfied — and is
+      # `story_issues_resolved` on this story goes true → false — and is
       # *not* followed by an explicit projector settle. The read is what has
       # to do that.
       {:ok, issue} =
@@ -281,13 +281,13 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
       verdict =
         Enum.find(
           nodes,
-          &(&1.entity_type == "issue" and &1.entity_id == issue.id and
-              &1.name == "submitted")
+          &(&1.entity_type == "story" and &1.entity_id == story.id and
+              &1.name == "story_issues_resolved")
         )
 
       assert verdict,
              """
-             the read served no `submitted` for the issue, so nothing below is about a verdict
+             the read served no `story_issues_resolved` for the story, so nothing below is about a verdict
 
              vantage: #{inspect(scope.active_working_copy_id)}  served: #{length(nodes)} node(s)
              story rows served: #{inspect(nodes |> Enum.filter(&(&1.entity_type == "story")) |> Enum.map(&{&1.entity_id, &1.name}))}
@@ -295,7 +295,7 @@ defmodule CodeMySpec.Requirements.TheFlagIsASwitchNotATrapTest do
 
       refute verdict.satisfied,
              """
-             Inverted, a read was served `submitted: true` after an
+             Inverted, a read was served `story_issues_resolved: true` after an
              issue was accepted against the story.
 
              The read is served from the projector's table, so it has to settle

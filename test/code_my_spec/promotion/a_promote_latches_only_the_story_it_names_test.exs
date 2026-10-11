@@ -12,7 +12,6 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
-  import CodeMySpec.QaFixtures
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -147,12 +146,6 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     named = story_fixture(scope, %{title: "Named"})
     with_spex(scope, named, false)
 
-    named
-    |> Ecto.Changeset.change(qa_ready_commit: @agent_head, qa_ready_at: DateTime.utc_now())
-    |> CodeMySpec.Repo.update!()
-
-    {:ok, _} = passed_qa_attempt(scope, story_id: named.id)
-
     latched_elsewhere = story_fixture(scope, %{title: "Already latched", specs_ready: true})
     with_spex(scope, latched_elsewhere, false)
 
@@ -218,13 +211,6 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
 
       story = story_fixture(scope, %{title: "Worked on main"})
       with_spex(scope, story, false)
-
-      story
-      |> Ecto.Changeset.change(qa_ready_commit: @head, qa_ready_at: DateTime.utc_now())
-      |> CodeMySpec.Repo.update!()
-
-      {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
-
       other = story_fixture(scope, %{title: "Also green on main"})
       with_spex(scope, other, false)
       certified(project)

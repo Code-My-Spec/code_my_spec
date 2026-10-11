@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
 
   spex "A story belongs to the project, so its change reaches every checkout", criterion: 1415 do
     scenario "A story changing reaches every checkout" do
-      given_(:synced_context_component)
+      given_ :synced_context_component
 
       given_ "a story that is not linked to anything yet", context do
         story =

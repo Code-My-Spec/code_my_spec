@@ -252,9 +252,6 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
       content = File.read!(prompt_path)
       assert content =~ "User Authentication"
-      assert content =~ "start_task"
-      assert content =~ "qa_complete"
-      refute Repo.get_by(CodeMySpec.Qa.StoryReview, story_id: story.id)
     end
 
     test "includes prompt file paths in orchestration prompt", %{scope: scope} do

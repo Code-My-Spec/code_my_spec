@@ -47,20 +47,9 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
     """
     # Fix Issue #{issue.id}
 
-    **#{issue.title}** [#{issue.severity}] — scope: #{issue.scope}
+    **#{issue.title}** [#{issue.severity}]
 
     #{issue.description}
-
-    Work in the issue's scope: app defects change application code; QA defects
-    repair the test tooling; docs defects correct documentation; framework
-    defects belong to the framework rather than an application workaround.
-    Add or repair regression coverage. Do not skip tests, mark them pending,
-    or silence failures to make validation pass. Preserve the original behavior
-    assertion unless product explicitly changes the requirement.
-
-    Record the changed files, exact commit revision, fix evidence and validation
-    results on this issue with `update_issue` before submitting it for QA.
-    QA must be able to inspect what changed and what was verified.
 
     Make the fix and commit it, then call `evaluate_task` with task_id "#{task.id}".
     Completing this task hands the fix to QA — it does not resolve the issue. \

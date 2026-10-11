@@ -26,7 +26,6 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
-  import CodeMySpec.QaFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -122,7 +121,7 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   # `Runner.decode_app_result/1` — neither a lost acknowledgement nor a
   # timeout, so it classifies as a genuine failure.
   defp answer_app_down(socket, verb) do
-    assert_push(^verb, %{"ref" => ref}, 5_000)
+    assert_push ^verb, %{"ref" => ref}, 5_000
 
     reply_ref =
       push(socket, verb <> "_result", %{
@@ -203,12 +202,6 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
     story = a_story_with_linked_spex(scope)
     head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
-
-    story
-    |> Ecto.Changeset.change(qa_ready_commit: head, qa_ready_at: DateTime.utc_now())
-    |> CodeMySpec.Repo.update!()
-
-    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     assert {:ok, %{merged: "story/x"}} =
              Promotion.promote(scope, story.number, notify: agent.id)

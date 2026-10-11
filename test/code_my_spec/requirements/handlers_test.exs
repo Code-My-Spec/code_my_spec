@@ -21,7 +21,6 @@ defmodule CodeMySpec.Requirements.HandlersTest do
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.Requirement
-  alias CodeMySpec.Requirements.RequirementGraph
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -72,26 +71,23 @@ defmodule CodeMySpec.Requirements.HandlersTest do
       assert sw.default == satisfied
       assert sw.default_details == details
 
-      # Dynamic issue topology is supplied by the story family, not an
-      # aggregate sweep. The accepted issue contributes its own pending gate.
-      assert is_nil(sweep(ctx.scope, "story_issues_resolved"))
-      {nodes, _edges} = RequirementGraph.compute_graph(ctx.scope)
+      # And the story, through the grouped read rather than a per-story query.
+      story_sweep = sweep(ctx.scope, "story_issues_resolved")
+      named = Enum.find(story_sweep.except, &(&1.entity_id == story.id))
 
-      submitted =
-        Enum.find(
-          nodes,
-          &(&1.entity_type == "issue" and &1.entity_id == issue.id and &1.name == "submitted")
-        )
+      {story_satisfied, story_details} =
+        normalized(IssuesChecker.story_resolved?(ctx.scope, %{id: story.id}))
 
-      assert submitted
-      refute submitted.satisfied
-      assert submitted.details["story_id"] == story.id
+      refute story_satisfied, "the fixture did not produce an unresolved story"
+      assert named, "the grouped read did not name the story carrying the issue"
+      assert named.satisfied == story_satisfied
+      assert named.details == story_details
     end
 
     test "a story with no issues is satisfied by absence, not by a query", ctx do
       clean = create_story(ctx.scope, title: "Clean", description: "no issues")
 
-      story_sweep = sweep(ctx.scope, "story_issues_triaged")
+      story_sweep = sweep(ctx.scope, "story_issues_resolved")
 
       # The whole point of the sweep: a story the profile did not name takes the
       # default, so one grouped query settles every story rather than one query
@@ -99,7 +95,7 @@ defmodule CodeMySpec.Requirements.HandlersTest do
       assert story_sweep.default == true
       refute Enum.any?(story_sweep.except, &(&1.entity_id == clean.id))
 
-      {satisfied, details} = normalized(IssuesChecker.story_triaged?(ctx.scope, %{id: clean.id}))
+      {satisfied, details} = normalized(IssuesChecker.story_resolved?(ctx.scope, %{id: clean.id}))
       assert satisfied
       assert story_sweep.default_details == details
     end

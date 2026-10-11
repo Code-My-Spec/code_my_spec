@@ -1,7 +1,7 @@
-defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
+defmodule CodeMySpec.Promotion.AFixResolvedAfterPromotionIsPromotedAgainTest do
   @moduledoc """
   1f8028a1: issue b4e19491 on metric_flow's story 8 (stamped 0.1.15) was fixed
-  on a feature copy and submitted. The stamp said the story was promoted, every
+  on a feature copy and resolved. The stamp said the story was promoted, every
   requirement read satisfied, and nothing offered the promote that would carry
   the fix to main.
   """
@@ -12,7 +12,6 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
   alias CodeMySpec.Promotion.RunningCopy
   alias CodeMySpec.Requirements.RequirementGraph
@@ -24,21 +23,7 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
     scope = full_scope_fixture()
     {:ok, main} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, _} = Staffing.designate_main(scope, main.id)
-    story = story_fixture(scope)
-    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "feature", device: device_fixture(scope))
-
-    {:ok, _} =
-      AgentsRepository.create_agent(scope, %{
-        engine: :alloy,
-        provider: "zai",
-        role: :coding,
-        status: :running,
-        working_copy: "/tmp/promote-submission",
-        working_copy_id: copy.id,
-        story_id: story.id
-      })
-
-    %{scope: %{scope | active_working_copy_id: copy.id}, story: story}
+    %{scope: scope, story: story_fixture(scope)}
   end
 
   defp promote(scope, story, at) do
@@ -46,13 +31,10 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
     story
   end
 
-  defp submit(scope, story) do
+  defp resolve(scope, story) do
     issue = issue_fixture(scope, %{story_id: story.id})
     {:ok, issue} = Issues.accept_issue(scope, issue)
-
-    {:ok, issue} =
-      Issues.submit_story_issue(scope, issue, %{revision: "fix-sha", evidence: "fixed"})
-
+    {:ok, issue} = Issues.resolve_issue(scope, issue, "fixed")
     issue
   end
 
@@ -62,9 +44,9 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
     {RunningCopy.running_copy_check(scope, story), promoted[story.id]}
   end
 
-  test "a fix submitted after the last promotion needs promoting again", ctx do
+  test "a fix resolved after the last promotion needs promoting again", ctx do
     story = promote(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), -3600))
-    issue = submit(ctx.scope, story)
+    issue = resolve(ctx.scope, story)
 
     {check, swept} = verdicts(ctx.scope, story)
     assert check == swept
@@ -75,15 +57,15 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
 
   test "promoting again carries it", ctx do
     story = promote(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), -3600))
-    submit(ctx.scope, story)
+    resolve(ctx.scope, story)
 
     story = promote(ctx.scope, story, DateTime.add(DateTime.utc_now(), 1))
 
     assert {{true, _}, {true, _}} = verdicts(ctx.scope, story)
   end
 
-  test "a fix submitted before the promotion is already on main", ctx do
-    submit(ctx.scope, ctx.story)
+  test "a fix resolved before the promotion is already on main", ctx do
+    resolve(ctx.scope, ctx.story)
     story = promote(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), 1))
 
     assert {{true, _}, {true, _}} = verdicts(ctx.scope, story)
@@ -92,13 +74,11 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
   # The verdict above is the mechanism; this is the issue's own claim, that
   # nobody is offered the promote. It asks the graph, which is what an offer
   # reads, rather than `RunningCopy` directly.
-  test "the graph reads story_promoted unsatisfied once the fix is submitted", ctx do
+  test "the graph reads story_promoted unsatisfied once the fix is resolved", ctx do
     story = promote(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), -3600))
+    assert [{true, _}] = story_promoted(ctx.scope, story), "a stamped story with no fix is satisfied"
 
-    assert [{true, _}] = story_promoted(ctx.scope, story),
-           "a stamped story with no fix is satisfied"
-
-    issue = submit(ctx.scope, story)
+    issue = resolve(ctx.scope, story)
 
     assert [{false, details}] = story_promoted(ctx.scope, story)
     assert details["reason"] =~ issue.id
