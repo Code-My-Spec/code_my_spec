@@ -516,7 +516,6 @@ defmodule CodeMySpec.Agents.Work do
          :ok <- admit(scope, current, event),
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
-         {:delivery_retry, false} <- {:delivery_retry, delivery_just_failed?(current, offer)},
          {:ok, {reserved, ref}} <- reserve(scope, current.id, event),
          :ok <- still_offered(scope, reserved, ref, subject) do
       turn_prompt = offer_prompt(scope, reserved, subject)
@@ -550,13 +549,11 @@ defmodule CodeMySpec.Agents.Work do
         error ->
           Offers.undelivered(offered)
           release(scope, reserved.id, ref)
-          suppress_offer(scope, reserved, offer)
           error
       end
     else
       :none -> {:ok, :not_runnable}
       :stale -> {:ok, :not_runnable}
-      {:delivery_retry, true} -> {:ok, :not_runnable}
       true -> {:ok, :offer_declined}
       hold -> not_admitted(hold)
     end
@@ -663,51 +660,6 @@ defmodule CodeMySpec.Agents.Work do
   def record_decline(scope, %Agent{} = agent, turn_started_at \\ nil) do
     AgentsRepository.update_agent(scope, agent, decline_attrs(scope, agent, turn_started_at))
   end
-
-  @doc """
-  Pace the retry of work whose dispatch did not land.
-
-  A turn that cannot be delivered never becomes a turn, so the agent never ends
-  one and `record_decline/3` — which fires on the turn-ended path — never runs.
-  Nothing else damps it either: `release/3` clears the reservation, which puts
-  the agent straight back into `runnable_state?/3`, and the next observation
-  offers it the same work again.
-
-  So an agent whose machine is unreachable spins on the *server* side, with no
-  agent involved at all. Measured 2026-09-22: main agent `d632ee86` on a
-  checkout whose harness was not connected recorded 130 undelivered prompts a
-  minute for nine minutes, each one logging "nothing registered for working
-  copy", while the transcript filled with turns that never happened.
-
-  Retrying an unreachable machine six times an hour is diagnosis, twice a second
-  is a denial of service against our own database — so the retry is paced.
-
-  But a failure is *not a refusal*, and pacing it through the refusal streak was
-  a bug: `already_declined?/3` read the stamp as "the agent said no", so the
-  work went quiet for the whole decline window and the agent was never offered
-  it again once its machine *was* reachable. Continuous agents sat idle after
-  restarts for exactly this reason. This records the failure in its own fields,
-  so the refusal path and the ladder never see it, and the window is short
-  because a machine coming up is a matter of minutes, not a decision to reverse.
-  """
-  def suppress_offer(scope, %Agent{} = agent, fingerprint) do
-    AgentsRepository.update_agent(scope, agent, %{
-      delivery_failed_offer: fingerprint,
-      delivery_failed_at: DateTime.utc_now()
-    })
-  end
-
-  # A dispatch that did not land, to the same offer, moments ago. Paced rather
-  # than permanent: the moment the window passes the work is offered again.
-  @delivery_retry_after_seconds 60
-
-  defp delivery_just_failed?(%{delivery_failed_offer: failed, delivery_failed_at: at}, offer)
-       when not is_nil(failed) and failed == offer do
-    not is_nil(at) and
-      DateTime.diff(DateTime.utc_now(), at) < @delivery_retry_after_seconds
-  end
-
-  defp delivery_just_failed?(_agent, _offer), do: false
 
   # One more repeat of the same offer, or the start of a new streak.
   defp streak(%{declined_offer: same, declined_offer_count: n}, same) when is_integer(n),
@@ -1160,8 +1112,8 @@ defmodule CodeMySpec.Agents.Work do
   # believed it had escalated four times in six minutes, and every turn read
   # "no change".
   # A refusal the agent gave. A *delivery* failure is a different fact and is
-  # not this: it is paced at the retry (`delivery_just_failed?/2`), not folded
-  # in here. Folding it in damped every reader -- the cadence's `work?` and the
+  # not this: it is recorded as an undelivered offer, not folded in here.
+  # Folding it in damped every reader -- the cadence's `work?` and the
   # wake that tells an agent about new work -- for an offer that was merely
   # undeliverable once, which is how devops work stopped reaching main
   # (criterion 1185) after a first attempt missed.
