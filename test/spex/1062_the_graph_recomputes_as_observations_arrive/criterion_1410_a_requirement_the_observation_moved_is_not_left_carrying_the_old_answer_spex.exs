@@ -38,17 +38,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3493Spex do
 
   ## Why an accepted issue
 
-  One observation, three requirements, at two grains:
-
-    * `issues_triaged` — the project's, false while anything is untriaged
-    * `issues_resolved` — the project's, false while anything accepted is open
-    * `story_issues_resolved` — this story's
-
-  Accepting is the act that moves all three at once: it takes the issue out of
-  the untriaged queue and puts it into the unresolved one, and the story it is
-  attributed to picks it up. A system that settled the project's two and left
-  the story's, or the story's and left the project's, satisfies "the graph
-  responded to the observation" and is still wrong about the project.
+  Acceptance clears this story's triage gate and introduces an unsatisfied
+  issue submission node feeding story readiness. The separate project issue
+  branch stays unchanged: story work is not copied into that bag.
 
   ## What it observes
 
@@ -110,59 +102,36 @@ defmodule CodeMySpecSpex.Story1062.Criterion3493Spex do
         {:ok, Map.put(context, :after, read_settled_graph(context))}
       end
 
-      then_ "the queue it left is reported empty", context do
-        assert satisfaction_of(context.after, "issues_triaged") == true,
-               """
-               An issue was accepted and `issues_triaged` still reports an
-               untriaged queue.
+      then_ "the story's triage queue is reported empty", context do
+        assert satisfaction_of(context.after, "story_issues_triaged", "story", context.story_id) ==
+                 true
 
-               Accepting is what takes an issue out of that queue. A graph that
-               does not notice goes on telling the product agent there is
-               triage waiting, and the agent that goes looking finds nothing —
-               which is the state this rule exists to make impossible.
-
-               before: #{inspect(satisfaction_of(context.before, "issues_triaged"))}
-               after:  #{inspect(satisfaction_of(context.after, "issues_triaged"))}
-               """
+        assert satisfaction_of(context.before, "story_issues_triaged", "story", context.story_id) ==
+                 false
 
         {:ok, context}
       end
 
-      then_ "and the queue it joined is reported open", context do
-        assert satisfaction_of(context.after, "issues_resolved") == false,
-               """
-               An issue was accepted and `issues_resolved` still reports
-               nothing outstanding.
+      then_ "the accepted issue introduces its unfinished submission", context do
+        assert satisfaction_of(context.after, "submitted", "issue", context.issue_id) == false
 
-               This is the half that fails quietly. The same observation moved
-               both project requirements, and a system that settled the one it
-               knew about leaves this one saying the project is clean while an
-               accepted issue sits open against it.
-
-               before: #{inspect(satisfaction_of(context.before, "issues_resolved"))}
-               after:  #{inspect(satisfaction_of(context.after, "issues_resolved"))}
-               """
+        refute Enum.any?(
+                 context.before["nodes"],
+                 &(&1["entity_type"] == "issue" and &1["entity_id"] == context.issue_id)
+               )
 
         {:ok, context}
       end
 
-      then_ "and the story it was attributed to carries it", context do
-        after_story =
-          satisfaction_of(context.after, "story_issues_resolved", "story", context.story_id)
+      then_ "the project rollup includes the work without assigning it separately", context do
+        assert satisfaction_of(context.before, "issues_resolved") == true
+        assert satisfaction_of(context.after, "issues_resolved") == false
 
-        assert after_story == false,
-               """
-               An accepted issue is open against this story and its
-               `story_issues_resolved` still reads satisfied.
-
-               The grain the observation reaches is the point. Settling the
-               project's two requirements and leaving the story's is a graph
-               that is right about the project and wrong about the work — it
-               hands this story to a coding agent with a finding open on it.
-
-               before: #{inspect(satisfaction_of(context.before, "story_issues_resolved", "story", context.story_id))}
-               after:  #{inspect(after_story)}
-               """
+        refute Enum.any?(
+                 context.after["nodes"],
+                 &(&1["entity_type"] == "issue" and &1["entity_id"] == context.issue_id and
+                     &1["name"] in ["assigned", "completed"])
+               )
 
         {:ok, context}
       end

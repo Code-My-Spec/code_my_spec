@@ -147,8 +147,10 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
 
     ## Accepting puts it on the graph — so link it
 
-    `story_issues_resolved` is per-story. An unlinked issue gates nothing and
-    reaches no agent.
+    An accepted blocking story issue becomes an individual `submitted` node
+    for the team assigned to that story. All its fixes feed shared story QA;
+    coding submits fixes, and passing QA followed by promotion completes them.
+    Unlinked issues belong to the separate project issue-assignment workflow.
 
     Ask which story's promise the defect breaks, and pass `story_number` **on the
     `accept_issue` call** — `accepted → accepted` is rejected, so a missed link

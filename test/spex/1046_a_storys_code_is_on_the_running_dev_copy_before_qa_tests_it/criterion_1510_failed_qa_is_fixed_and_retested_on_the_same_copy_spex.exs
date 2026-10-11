@@ -3,19 +3,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   Story 1046 — A story's code is on the running dev copy before QA tests it.
   Criterion 1510 — Failed QA is fixed and retested on the same copy.
 
-  Rule (story 1003, Three Amigos, phase 2 of story 1108): a QA fail files an
-  issue and blocks the open task on it
-  (`CodeMySpec.Qa.QaAttempts.wait_on_filed_issues/3`,
-  `TaskOwner.block_task/5`); resolving the issue releases the block
-  (`TaskOwner.blocker_resolved/4`, called from the `resolve_issue` tool)
-  and the story is offered QA again. Nothing in that cycle moves the story
-  to a different working copy — `own_copy_app_url_line/1` resolves the
-  agent's own app from `scope.active_working_copy_id`, which the fail/fix
-  cycle never touches. This is the part story 1108 actually changed: under
-  the old order QA tested main, so "the same copy" was not a distinct claim
-  from "QA ran at all." Now every copy runs its own app, so a fail-then-retry
-  has somewhere else it could have silently drifted to, and this is the
-  proof that it doesn't.
+  Failed QA finishes its review task. Coding submits the story issue fix,
+  the story is certified again, and QA opens a fresh review on the same copy.
+  The issue remains unresolved until the reviewed story lands; submission,
+  rather than premature resolution, releases the next QA pass.
   """
 
   use CodeMySpecSpex.Case
@@ -23,10 +14,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -41,8 +32,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
     criterion: 1510 do
     scenario "the retry addresses the same copy the failure was recorded on" do
       given_ "a story ready for QA on its own copy", context do
+        context = CodeMySpecSpex.StorySliceHelpers.main_copy(context)
         context = a_registered_copy(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
+        context = CodeMySpecSpex.StorySliceHelpers.activate(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
         {:ok, context}
       end
@@ -58,12 +51,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
             story_id: context.story.id
           })
 
-        # `resolve_issue` only transitions `accepted` → `resolved` — the
-        # ordinary triage step between a QA finding and a fix, taken here so
-        # the later `resolve_issue` call has a real precondition to act on.
-        {:ok, issue} = Issues.accept_issue(context.scope, issue)
-
         response = submit_result(context, task_id, "fail", [issue.id])
+        refute response.isError, response_text(response)
+        {:ok, issue} = Issues.accept_issue(context.scope, issue)
 
         {:ok,
          context
@@ -84,8 +74,26 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
         {:ok, context}
       end
 
-      when_ "the issue is resolved", context do
-        {:ok, Map.put(context, :resolve_response, resolve_issue(context, context.issue.id))}
+      when_ "coding submits the fixed issue and the story is certified again", context do
+        {:ok, submitted} =
+          Issues.submit_story_issue(context.scope, context.issue, %{
+            revision: String.duplicate("b", 40),
+            evidence: "Fixed the defect and verified its regression test on this copy."
+          })
+
+        assert submitted.status == :accepted
+        refute is_nil(submitted.story_submission_ref)
+
+        context = CodeMySpecSpex.FullSatisfactionFixtures.apply_qa_readiness_transition(context)
+
+        :ok =
+          StoryIssueBag.certify(
+            context.scope,
+            context.story.id,
+            String.duplicate("b", 40)
+          )
+
+        {:ok, context}
       end
 
       then_ "QA is offered again, on the same copy that recorded the failure", context do
@@ -96,14 +104,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
                  "back to main or a different copy. Got: #{prompt}"
 
         refute task_id == context.first_task_id,
-               "resubmitting should open a fresh task, not resurrect the failed one — " <>
-                 "resolve_issue reported: #{response_text(context.resolve_response)}"
+               "resubmitting should open a fresh task, not resurrect the failed one"
 
         {:ok, context |> Map.put(:second_prompt, prompt) |> Map.put(:second_task_id, task_id)}
       end
 
       when_ "the fix is retested and passes", context do
         response = submit_result(context, context.second_task_id, "pass", [])
+        refute response.isError, response_text(response)
 
         {:ok, Map.put(context, :pass_response, response)}
       end
@@ -157,7 +165,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
         )
       end)
 
-    assert_push "ensure_app_running", %{"ref" => ref}, 5_000
+    assert_push("ensure_app_running", %{"ref" => ref}, 5_000)
 
     reply_ref =
       Phoenix.ChannelTest.push(context.copy_socket, "ensure_app_running_result", %{
@@ -195,15 +203,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
         },
         frame
       )
-
-    response
-  end
-
-  defp resolve_issue(context, issue_id) do
-    frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-
-    {:reply, response, _frame} =
-      ResolveIssue.execute(%{issue_id: issue_id, resolution: "Fixed the reported defect."}, frame)
 
     response
   end

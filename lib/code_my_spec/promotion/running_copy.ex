@@ -170,38 +170,32 @@ defmodule CodeMySpec.Promotion.RunningCopy do
       {version, nil} when is_binary(version) ->
         {true, %{status: "Promoted at version #{version}"}}
 
-      {version, {issue_id, resolved_at}} when is_binary(version) ->
-        fix_not_promoted(version, issue_id, resolved_at)
+      {version, {issue_id, submitted_at}} when is_binary(version) ->
+        fix_not_promoted(version, issue_id, submitted_at)
 
       _ ->
         not_yet_promoted(copy)
     end
   end
 
-  # 1f8028a1: a fix resolved after the story's last promotion. The stamp alone
-  # said the story was promoted, so issue b4e19491's fix on metric_flow's
-  # feature copy was resolved, every requirement read satisfied, and nothing
-  # ever offered the promote that would carry it to main.
-  #
-  # Read from rows, not git: whether the copy has commits main lacks is asked
-  # live by `promote`, and nothing here may move on a restart (ccedd2e7).
-  # `specs_ready_at` is the time of the story's last promotion — every promote
-  # naming it writes it — so promoting again satisfies this.
+  # A submitted story fix after the last promotion requires a fresh shared QA
+  # pass and another landing. Its submission timestamp is stable when the issue
+  # is edited or ultimately resolved by promotion.
   defp unshipped_fix(entity) do
-    with {_issue_id, resolved_at} = fix <- Map.get(entity, :fix),
+    with {_issue_id, submitted_at} = fix <- Map.get(entity, :fix),
          %DateTime{} = promoted_at <- Map.get(entity, :specs_ready_at),
-         :gt <- DateTime.compare(resolved_at, promoted_at) do
+         :gt <- DateTime.compare(submitted_at, promoted_at) do
       fix
     else
       _ -> nil
     end
   end
 
-  defp fix_not_promoted(version, issue_id, resolved_at) do
+  defp fix_not_promoted(version, issue_id, submitted_at) do
     {false,
      %{
        reason:
-         "issue #{issue_id} on this story was resolved at #{DateTime.to_iso8601(resolved_at)}, " <>
+         "issue #{issue_id} on this story was submitted at #{DateTime.to_iso8601(submitted_at)}, " <>
            "after its last promotion (version #{version}), so its fix is not on main yet. " <>
            "Promote this story again by completing its story_promoted task.",
        promoted: false
@@ -218,7 +212,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
     case stamped_ids do
       [] -> %{}
-      ids -> Issues.latest_resolutions(project_id, ids)
+      ids -> Issues.latest_story_submissions(project_id, ids)
     end
   end
 

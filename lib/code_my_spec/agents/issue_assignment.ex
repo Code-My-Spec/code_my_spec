@@ -4,8 +4,8 @@ defmodule CodeMySpec.Agents.IssueAssignment do
 
   `Issue.assigned_working_copy_id` is bag membership; the teammates' `issue_id`
   is a shared priority. The first assignment establishes that priority and its
-  story binding. Additional assignments preserve it. Coding and QA select
-  their eligible work independently from the bag.
+  exclusive issue-work assignment. Additional assignments preserve the priority.
+  Coding and QA select their eligible work independently from the bag.
 
   Moving an issue transfers its open tasks to the matching role. Removing or
   completing the priority selects remaining work; only completing the final
@@ -34,24 +34,34 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   def assign(%Scope{} = scope, issue_id, working_copy_id, opts \\ []) do
     with issue when not is_nil(issue) <- Issues.get_issue(scope, issue_id),
          :ok <- in_project(scope, working_copy_id) do
-      case {working_copy_id, Keyword.get(opts, :rework, false)} do
-        {nil, true} ->
-          {:error, "Corrections require an assigned working copy."}
+      result =
+        case {working_copy_id, Keyword.get(opts, :rework, false)} do
+          {nil, true} ->
+            {:error, "Corrections require an assigned working copy."}
 
-        {nil, false} ->
-          transaction(scope, issue.id, &clear_binding(scope, &1))
+          {nil, false} ->
+            transaction(scope, issue.id, &clear_binding(scope, &1))
 
-        {copy_id, true} ->
-          transaction(scope, issue.id, &request_corrections(scope, &1, copy_id, opts))
+          {copy_id, true} ->
+            transaction(scope, issue.id, &request_corrections(scope, &1, copy_id, opts))
 
-        {copy_id, false} ->
-          transaction(scope, issue.id, &fan_out(scope, &1, copy_id))
-      end
+          {copy_id, false} ->
+            transaction(scope, issue.id, &fan_out(scope, &1, copy_id))
+        end
+
+      announce_assignment(scope, result)
     else
       nil -> {:error, :not_found}
       error -> error
     end
   end
+
+  defp announce_assignment(scope, {:ok, _issue} = result) do
+    WorkingCopies.announce_selection(scope)
+    result
+  end
+
+  defp announce_assignment(_scope, error), do: error
 
   @doc "Open issues owned by this working copy, independently of its active priority."
   def bag(%Scope{active_project_id: project_id}, copy_id) when is_binary(copy_id) do
@@ -65,6 +75,32 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   end
 
   def bag(_scope, _copy_id), do: []
+
+  @doc "Clear the issue bag when the locked team switches to story work."
+  def clear_for_story(scope, copy_id) do
+    team = lock_team(scope, copy_id)
+
+    issues =
+      Repo.all(
+        from i in Issues.Issue,
+          where:
+            i.project_id == ^scope.active_project_id and i.assigned_working_copy_id == ^copy_id
+      )
+
+    for agent <- team,
+        task <- TaskOwner.tasks(agent),
+        not is_nil(task.issue_id),
+        task.status in [:active, :prepared, :blocked] do
+      {:ok, _} = TaskOwner.complete_task(scope, agent, task.id, :cancelled)
+    end
+
+    Enum.each(issues, fn issue ->
+      {:ok, _} = Issues.set_assigned_working_copy(scope, issue, nil)
+    end)
+
+    from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
+    |> Repo.update_all(set: [issue_id: nil])
+  end
 
   @doc "Prioritize an issue already in the team's bag; never changes bag ownership."
   def prioritize(scope, copy_id, issue_id) do
@@ -177,6 +213,8 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     existing = bag(scope, working_copy_id) |> Enum.reject(&(&1.id == issue.id))
     validate_bag(issue, existing)
 
+    Assignment.clear_for_issues(scope, working_copy_id)
+    new_team = lock_team(scope, working_copy_id)
     old_team = lock_team(scope, issue.assigned_working_copy_id)
     move_tasks(old_team, new_team, issue.id)
     if issue.assigned_working_copy_id != working_copy_id, do: release_issue(old_team, issue.id)
@@ -184,7 +222,7 @@ defmodule CodeMySpec.Agents.IssueAssignment do
     case Issues.set_assigned_working_copy(scope, issue, working_copy_id) do
       {:ok, updated} ->
         # First assignment establishes focus. Further assignments only grow
-        # the bag, leaving the current story/focus intact.
+        # the bag, leaving the current issue priority intact.
         if existing == [] or Enum.all?(new_team, &is_nil(&1.issue_id)),
           do: bind(new_team, updated)
 
@@ -265,7 +303,7 @@ defmodule CodeMySpec.Agents.IssueAssignment do
 
   defp bind(new_team, issue) do
     from(a in Agent, where: a.id in ^Enum.map(new_team, & &1.id))
-    |> Repo.update_all(set: [issue_id: issue.id, story_id: issue.story_id, team_free_at: nil])
+    |> Repo.update_all(set: [issue_id: issue.id, story_id: nil, team_free_at: nil])
   end
 
   @doc """

@@ -23,9 +23,10 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
   alias CodeMySpec.Stories
 
   schema do
-    field :story_number, :integer,
+    field(:story_number, :integer,
       required: true,
       doc: "Story number whose QA history you want to read"
+    )
   end
 
   @impl true
@@ -76,6 +77,8 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
     agent_id:   #{attempt.agent_id || "(unknown)"}
     submitted_at: #{attempt.submitted_at}
     parent_attempt_id: #{attempt.parent_attempt_id || "none"}
+    stale: #{attempt.stale}
+    #{render_review(attempt.review)}
     scenarios (#{length(attempt.scenarios)}):
     #{render_scenarios(attempt.scenarios)}
     issue_ids: #{render_issue_ids(attempt.issue_ids)}
@@ -83,6 +86,16 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
     """
     |> String.trim_trailing()
   end
+
+  defp render_review(%{
+         certified_revision: revision,
+         submissions: submissions,
+         started_at: started_at
+       }) do
+    "reviewed_revision: #{revision}\nreview_started_at: #{started_at}\nreviewed_submissions: #{Jason.encode!(submissions)}"
+  end
+
+  defp render_review(_), do: "review: (not recorded)"
 
   defp render_scenarios([]), do: "  (none)"
 
@@ -107,7 +120,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
   defp render_invalidation(%{invalidations: invalidations})
        when is_list(invalidations) and invalidations != [] do
     Enum.map_join(invalidations, "", fn inv ->
-      "\ninvalidated at #{inv.invalidated_at} by user #{inv.invalidated_by_user_id}\n  reason: #{inv.reason}"
+      "\ninvalidated at #{inv.invalidated_at} by user #{inv.invalidated_by_user_id}\n  reason: #{inv.reason}\n  cause: #{inv.cause || "manual"}; actor: #{inv.actor_id || inv.invalidated_by_user_id}; submission: #{inv.submission_ref}"
     end)
   end
 

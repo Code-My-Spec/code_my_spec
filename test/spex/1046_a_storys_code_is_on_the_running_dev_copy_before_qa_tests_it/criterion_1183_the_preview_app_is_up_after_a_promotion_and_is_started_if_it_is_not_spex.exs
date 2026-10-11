@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -77,7 +78,17 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
     scenario "the agent is working on the running copy and nothing is serving it" do
       given_ "an agent working on the checkout the application runs from", context do
         context = a_running_copy(context)
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
+        {head, 0} = git(context, context.running_root, ["rev-parse", "HEAD"])
+
+        :ok =
+          StoryIssueBag.certify(
+            context.scope,
+            story.id,
+            String.trim(head)
+          )
+
+        {:ok, _} = CodeMySpecSpex.Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
         CodeMySpecSpex.Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex),
           at_head: true
@@ -98,6 +109,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
       when_ "the agent promotes", context do
         response = promote(context, context.story.number)
+        text = response_text(response)
+
+        assert text =~ "Restarted" or text =~ "serving",
+               "Promotion refused before deployment: #{text}"
+
         answer_deployment(context.running_socket, context.running_root)
         {:ok, Map.put(context, :response, response)}
       end

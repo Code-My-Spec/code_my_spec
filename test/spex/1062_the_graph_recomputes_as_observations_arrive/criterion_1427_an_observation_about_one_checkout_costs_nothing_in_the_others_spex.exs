@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3518Spex do
 
   spex "A drain settles the checkouts its observation named", criterion: 1427 do
     scenario "a finding is recorded on one of two checkouts" do
-      given_ :synced_context_component
+      given_(:synced_context_component)
 
       given_ "a second checkout of the same project", context do
         second_root = CodeMySpec.TempFile.owned_dir("test")

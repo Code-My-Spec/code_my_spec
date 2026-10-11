@@ -28,7 +28,6 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Personas
   alias CodeMySpec.Qa
-  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions
   alias CodeMySpec.Requirements.{BddRulesChecker, Preloader}
   alias CodeMySpec.Stories
@@ -155,6 +154,7 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
   # per story, so a stale earlier pass must not be what either path reads.
   describe "Qa.complete_check agrees across both forms" do
     defp both_qa(scope, story) do
+      story = Stories.get_story!(scope, story.id)
       {Qa.complete_check(scope, story), Qa.complete_check(scope, story, ctx!(scope))}
     end
 
@@ -253,20 +253,14 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
     })
   end
 
-  # Built through `QaAttempt.changeset/2` rather than `Qa.submit_qa_result/2`,
-  # which resolves the story from a task and would need a session and an active
-  # task to exist. The changeset still applies — `scenarios` is a required
-  # non-empty embed — so these are real attempts, just not submitted ones. What
-  # is under test is which attempt each path reads, not how one is recorded.
-  defp attempt!(_scope, story, status) do
-    %QaAttempt{}
-    |> QaAttempt.changeset(%{
-      story_id: story.id,
-      status: status,
-      agent_id: "test",
-      submitted_at: DateTime.utc_now(),
-      scenarios: [%{name: "the only scenario", status: status, observation: "seen"}]
-    })
-    |> Repo.insert!()
+  # Fixture results still carry the immutable input review required by QA.
+  defp attempt!(scope, story, status) do
+    {:ok, attempt} =
+      CodeMySpec.QaFixtures.passed_qa_attempt(scope,
+        story_id: story.id,
+        scenarios: [%{name: "the only scenario", status: status, observation: "seen"}]
+      )
+
+    attempt |> Ecto.Changeset.change(status: status) |> Repo.update!()
   end
 end

@@ -227,7 +227,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_working_copies
     list_rules list_questions withdraw_question
     check_answer list_user_questions
-    list_issues get_issue create_issue resolve_issue update_issue
+    list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks clear_problems list_problems

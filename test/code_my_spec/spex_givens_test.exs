@@ -255,7 +255,11 @@ defmodule CodeMySpec.SpexGivensTest do
   # runs over its real channel; the issue helpers drive the issue tools a
   # team's agents call. `two_queued_together` is a spex-local builder made of
   # the above.
+  # Story issue-bag builders establish a real staffed story via SetActiveStory,
+  # or a real promotable checkout with submitted fixes and captured passing QA.
+  # Name only these builders: Bag.evidence/0 and Bag.revision/0 are accessors.
   @establishes ~w(
+    Bag.team( Bag.promotable(
     promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
     the_gate_answers an_issue_assigned_to_the_team the_coder_fixes_it
     qa_passes_it the_coder_promotes_it two_queued_together

@@ -5,12 +5,12 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
   Bring a project's story graph current with what its checkout has shown.
 
       mix cms.reconcile_status --root <checkout>                     # dry run: prints the plan
-      mix cms.reconcile_status --root <checkout> --apply             # stamps
+      mix cms.reconcile_status --root <checkout> --apply             # applies the plan
       mix cms.reconcile_status --root <checkout> --apply --unpark    # and releases parked stories
 
-  Stamps stories whose latest QA attempt passed ready for QA, and with
-  `--unpark` releases parked stories that are QA-passed. Never leaves a stamp
-  cleared: what a release clears is put back. The project comes from the checkout's
+  With `--unpark`, releases parked stories whose captured QA review still
+  matches their certified revision and submitted issue bag. Preserves that
+  exact certification; never infers QA readiness from checkout HEAD. The project comes from the checkout's
   `.code_my_spec/config.yml`; see `CodeMySpec.StoryReconcile` for the rules.
   """
 
@@ -19,7 +19,7 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
   alias CodeMySpec.Projects
   alias CodeMySpec.StoryReconcile
 
-  @shortdoc "Latch, stamp and un-park stories from analysis and QA results"
+  @shortdoc "Release QA-reviewed stories while preserving certified evidence"
 
   def run(args) do
     {opts, _, _} =
@@ -104,10 +104,6 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
   end
 
   defp qa_counts(counts), do: ", already stamped #{counts.already}"
-
-  defp qa_line(%{source: :head} = item),
-    do:
-      "story #{item.story.number}: #{item.before} -> #{item.after} (HEAD; QA attempts record no commit)"
 
   defp qa_line(item),
     do:

@@ -6,6 +6,7 @@ defmodule CodeMySpec.Qa.Invalidation do
   The original QaAttempt is preserved; this row marks it as invalidated.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -24,11 +25,15 @@ defmodule CodeMySpec.Qa.Invalidation do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "qa_invalidations" do
-    field :reason, :string
-    field :invalidated_at, :utc_datetime_usec
+    field(:cause, :string)
+    field(:actor_id, :string)
+    field(:issue_id, :binary_id)
+    field(:submission_ref, :string)
+    field(:reason, :string)
+    field(:invalidated_at, :utc_datetime_usec)
 
-    belongs_to :qa_attempt, QaAttempt, type: :binary_id
-    belongs_to :invalidated_by_user, User, foreign_key: :invalidated_by_user_id
+    belongs_to(:qa_attempt, QaAttempt, type: :binary_id)
+    belongs_to(:invalidated_by_user, User, foreign_key: :invalidated_by_user_id)
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -37,7 +42,16 @@ defmodule CodeMySpec.Qa.Invalidation do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(invalidation \\ %__MODULE__{}, attrs) do
     invalidation
-    |> cast(attrs, [:qa_attempt_id, :invalidated_by_user_id, :reason, :invalidated_at])
+    |> cast(attrs, [
+      :qa_attempt_id,
+      :invalidated_by_user_id,
+      :reason,
+      :invalidated_at,
+      :cause,
+      :actor_id,
+      :issue_id,
+      :submission_ref
+    ])
     |> validate_required([:qa_attempt_id, :reason, :invalidated_at])
     |> validate_reason_non_empty()
     |> foreign_key_constraint(:invalidated_by_user_id)
