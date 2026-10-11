@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
   end
 
   spex "A role's claim rate reflects the offers its agents actually claimed",
-       criterion: 2013 do
+    criterion: 2013 do
     scenario "agents in the coding role were offered work over a period" do
       given_ "one coding agent frees a task and a second coding agent claims it", context do
         {:ok, main_copy} =
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
         {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
 
         reply = join_working_copy(context, "/tmp/spex-2013", "the checkout")
-        scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+        scope = Fixtures.in_memory_copy(context, reply.working_copy_id)
 
         ComponentHelpers.create(scope,
           name: "Example2013",
@@ -84,7 +84,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
-              entity_id: Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
+              entity_id:
+                Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
             },
             first_frame
           )
@@ -101,6 +102,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             working_copy: "/tmp/spex-2013",
             continuous: true
           )
+
         second_frame = %Frame{assigns: %{current_scope: scope, agent_id: second.id}}
 
         {:reply, resp2, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
@@ -114,7 +116,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
-              entity_id: Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
+              entity_id:
+                Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
             },
             second_frame
           )

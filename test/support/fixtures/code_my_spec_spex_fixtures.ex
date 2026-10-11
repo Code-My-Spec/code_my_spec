@@ -5363,6 +5363,18 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The scope on `copy_id`, with that copy reading the fixture's in-memory
+  runtime (`context.environment`) rather than a checkout. For a spex that joins
+  a copy and keeps its files in memory.
+  """
+  @spec in_memory_copy(map(), Ecto.UUID.t()) :: Scope.t()
+  def in_memory_copy(%{scope: scope, environment: env}, copy_id) do
+    :ok = Environments.unregister({:working_copy, copy_id})
+    :ok = Environments.register({:working_copy, copy_id}, env)
+    %{scope | active_working_copy_id: copy_id}
+  end
+
+  @doc """
   Stamp a completed analysis run per source.
 
   `tests_passing` / `spex_passing` require a completed run in the analysis

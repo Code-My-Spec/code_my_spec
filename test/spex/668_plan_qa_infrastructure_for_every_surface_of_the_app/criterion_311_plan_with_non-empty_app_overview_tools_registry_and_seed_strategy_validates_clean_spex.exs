@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,6 +29,10 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
   spex "QA setup evaluate accepts plans with all required sections non-empty", criterion: 311 do
     scenario "Plan with non-empty App Overview, Tools Registry, and Seed Strategy validates clean" do
       given_ :qa_setup_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "a complete plan exists at .code_my_spec/qa/plan.md", context do
         :ok =

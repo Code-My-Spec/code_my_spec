@@ -113,8 +113,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3240Spex do
   # has rather than by naming `CodeMySpec.Users.Scope`, which this boundary may
   # not reach.
   defp scan_as(context, working_copy_id) do
-    context.scope
-    |> Map.put(:active_working_copy_id, working_copy_id)
+    context
+    |> CodeMySpecSpex.Fixtures.in_memory_copy(working_copy_id)
     |> CodeMySpecSpex.Fixtures.scan_working_copy()
   end
 end

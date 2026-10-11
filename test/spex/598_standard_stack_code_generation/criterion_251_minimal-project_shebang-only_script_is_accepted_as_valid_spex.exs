@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5302Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,6 +31,10 @@ defmodule CodeMySpecSpex.Story598.Criterion5302Spex do
       end
 
       given_ :code_generation_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "code_generation.sh contains only a shebang and a no-generators comment",
              context do
