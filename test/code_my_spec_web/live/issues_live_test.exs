@@ -337,5 +337,61 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       assert reloaded_html =~ "Assigned to"
       assert reloaded_html =~ WorkingCopies.display_name(copy)
     end
+
+    test "reassigning from the page moves the issue to the new working copy", %{
+      project: project,
+      conn: conn,
+      scope: scope,
+      issue: issue
+    } do
+      {:ok, issue} = Issues.accept_issue(scope, issue)
+
+      {:ok, copy_a} =
+        WorkingCopies.issue(scope, nil, device: DevicesFixtures.device_fixture(scope))
+
+      {:ok, _} =
+        AgentsRepository.create_agent(scope, %{
+          engine: :alloy,
+          provider: "zai",
+          working_copy: "/tmp/reassign-a",
+          role: :coding,
+          status: :running,
+          working_copy_id: copy_a.id
+        })
+
+      {:ok, copy_b} =
+        WorkingCopies.issue(scope, nil, device: DevicesFixtures.device_fixture(scope))
+
+      {:ok, _} =
+        AgentsRepository.create_agent(scope, %{
+          engine: :alloy,
+          provider: "zai",
+          working_copy: "/tmp/reassign-b",
+          role: :coding,
+          status: :running,
+          working_copy_id: copy_b.id
+        })
+
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
+
+      html_a =
+        live_view
+        |> form("[data-test='issue-assignment-form']", %{"working_copy_id" => copy_a.id})
+        |> render_submit()
+
+      assert html_a =~ "Issue assigned."
+      assert html_a =~ WorkingCopies.display_name(copy_a)
+
+      html_b =
+        live_view
+        |> form("[data-test='issue-assignment-form']", %{"working_copy_id" => copy_b.id})
+        |> render_submit()
+
+      assert html_b =~ "Issue assigned."
+      assert html_b =~ WorkingCopies.display_name(copy_b)
+
+      assert Issues.get_issue!(scope, issue.id).assigned_working_copy_id == copy_b.id
+      refute Issues.get_issue!(scope, issue.id).assigned_working_copy_id == copy_a.id
+    end
   end
 end
