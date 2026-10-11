@@ -41,12 +41,14 @@ defmodule CodeMySpecSpex.Story1030.Criterion1587Spex do
   @absence_timeout 250
 
   spex "A copy on a different device never shares another device's tunnel",
-       criterion: 1587 do
+    criterion: 1587 do
     scenario "a copy on a machine of its own asks for a preview" do
       given_ "main is onboarded, on its own device, and holds a tunnel", context do
         :ok = Environments.register(context.project.id, context.environment)
 
         reply = join_working_copy(context, "/workspace/main", "main")
+
+        :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
 
         :ok =
           Environments.write_file(
@@ -116,7 +118,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion1587Spex do
         assert saved.preview_tunnel_id == nil,
                "the copy holds a tunnel id despite being refused one"
 
-        refute_receive {:cloudflare, _}, @absence_timeout,
+        refute_receive {:cloudflare, _},
+                       @absence_timeout,
                        "Cloudflare was reached for a copy this criterion says should " <>
                          "never share — nothing should have been asked of it at all"
 

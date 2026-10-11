@@ -1416,6 +1416,22 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The project with no checkout anywhere: every working copy loses its root, so
+  none is a candidate host. The fixture scope's own copy is rooted, which is a
+  harness running somewhere as far as placing a new copy is concerned.
+  """
+  @spec without_checkouts(Scope.t()) :: :ok
+  def without_checkouts(%Scope{active_project_id: project_id}) do
+    {_, _} =
+      Repo.update_all(
+        from(w in WorkingCopy, where: w.project_id == ^project_id),
+        set: [root: nil]
+      )
+
+    :ok
+  end
+
+  @doc """
   Name the checkout a reader gets when it names none.
 
   `Projection.vantage/1` resolves a scope with no checkout to the project's

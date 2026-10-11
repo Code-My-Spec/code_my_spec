@@ -42,6 +42,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion3094Spex do
   spex "An agent asks for a working copy and gets one it can work in", criterion: 1156 do
     scenario "A copy I cannot have is refused, not half-made" do
       given_ "a project with no harness running anywhere", context do
+        :ok = CodeMySpecSpex.Fixtures.without_checkouts(context.scope)
         before = WorkingCopies.list_harnesses(context.scope)
 
         {:ok, Map.put(context, :before, length(before))}

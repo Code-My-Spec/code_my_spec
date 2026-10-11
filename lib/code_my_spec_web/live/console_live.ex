@@ -2028,7 +2028,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       path: "/",
       expect: "<html",
       site_url: site_url(scope.active_project.domain),
-      environment: operation_environment(scope)
+      runtime: operation_environment(scope)
     ]
   end
 

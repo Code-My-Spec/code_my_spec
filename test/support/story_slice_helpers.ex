@@ -95,7 +95,8 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
       )
 
     {:ok, _} = WorkingCopies.designate_main(context.scope, copy.id)
-    main_scope = %{context.scope | active_working_copy_id: copy.id}
+    {:ok, _} = WorkingCopies.report_root(copy, context.scope.cwd)
+    main_scope = scope_for_copy(context, copy.id, context.scope.cwd)
     main = Fixtures.running_agent(main_scope, role: "main")
     Map.merge(context, %{main_copy: copy, main_scope: main_scope, main: main})
   end

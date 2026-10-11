@@ -1299,7 +1299,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp publish_content(scope, opts) do
-    opts = Keyword.put_new_lazy(opts, :environment, fn -> env(scope) end)
+    # `:environment` in step opts is the deployment's name, not a file runtime.
+    opts = Keyword.put_new_lazy(opts, :runtime, fn -> env(scope) end)
 
     case ContentPublishing.run(scope, opts) do
       %{state: :rendered} = result ->

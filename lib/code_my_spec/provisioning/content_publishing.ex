@@ -83,7 +83,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
   `opts`:
     * `:path` — the path to fetch back (e.g. `"/blog/hello-world"`), required
     * `:expect` — a string that must appear in the rendered body, required
-    * `:environment` — the environment whose content source should be synced
+    * `:runtime` — the file runtime whose content source should be synced
       into the snapshot before publishing; required when syncing content
     * `:publish` / `:fetch` — injection points for tests
     * `:sync` — optional arity-1 sync callback for tests
@@ -96,7 +96,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
 
     sync =
       Keyword.get(opts, :sync, fn sync_scope ->
-        CodeMySpec.ContentPublishing.sync(sync_scope, Keyword.get(opts, :environment))
+        CodeMySpec.ContentPublishing.sync(sync_scope, Keyword.get(opts, :runtime))
       end)
 
     # `verify_render/2` is handled in a `case` rather than as another `with`

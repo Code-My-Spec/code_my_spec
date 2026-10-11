@@ -138,6 +138,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1169Spex do
   end
 
   defp this_copy_is_the_running_one(context) do
+    :ok =
+      CodeMySpecSpex.Fixtures.designate_main(context.scope, context.scope.active_working_copy_id)
+
     assert WorkingCopies.main(context.scope).id == context.scope.active_working_copy_id
     context
   end

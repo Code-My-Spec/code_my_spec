@@ -45,7 +45,13 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
   def given_a_main_checkout(context, label, opts \\ []) do
     copy = CodeMySpec.TempFile.dir(label)
     File.mkdir_p!(copy)
-    {joined, socket} = join_working_copy_socket(context, copy, "the main checkout", opts)
+    # The project already has the fixture's own checkout, so this join is not
+    # the first and is not main. A preview address is only recorded for the main
+    # copy, so the checkout joins, is designated, and then rejoins on the same
+    # copy and device announcing what it reports.
+    device = %{device_id: CodeMySpecSpex.Fixtures.device_fixture(context.scope).id}
+    first_opts = opts |> Keyword.drop([:preview_url]) |> Keyword.merge(Map.to_list(device))
+    {joined, socket} = join_working_copy_socket(context, copy, "the main checkout", first_opts)
 
     {:ok, _live, _html} =
       live(
@@ -55,6 +61,16 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
 
     designate_main_copy(context, joined.working_copy_id)
 
+    {joined, socket} =
+      rejoin_reporting(
+        context,
+        socket,
+        copy,
+        joined,
+        Keyword.put(first_opts, :working_copy_id, joined.working_copy_id),
+        opts
+      )
+
     # The socket is kept because a restart is driven over it. Joining a second
     # time for the same checkout is refused, correctly — two harnesses on one
     # copy share a `_build` — so the socket has to come from the join that made
@@ -63,6 +79,22 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
     |> Map.put(:copy, copy)
     |> Map.put(:copy_id, joined.working_copy_id)
     |> Map.put(:harness_socket, socket)
+  end
+
+  defp rejoin_reporting(context, socket, copy, joined, join_opts, opts) do
+    if Keyword.has_key?(opts, :preview_url) do
+      Process.unlink(socket.channel_pid)
+      Phoenix.ChannelTest.close(socket)
+
+      join_working_copy_socket(
+        context,
+        copy,
+        "the main checkout",
+        Keyword.put(join_opts, :preview_url, opts[:preview_url])
+      )
+    else
+      {joined, socket}
+    end
   end
 
   @doc """
