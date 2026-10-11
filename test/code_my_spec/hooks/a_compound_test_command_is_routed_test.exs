@@ -49,6 +49,16 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
     assert log =~ "mix test/spex routed (shape: piped, redirected)"
   end
 
+  # Claude Code asks a person before any `rm` of a path it cannot resolve, so a
+  # routed run that cleaned up a `mktemp` file was denied whenever nobody was
+  # at the prompt.
+  test "a routed run removes nothing" do
+    command = routed(decide("mix spex test/spex/1080_story > out.txt 2>&1"))
+
+    refute command =~ ~r/\brm\b/
+    refute command =~ "mktemp"
+  end
+
   test "a test after cd into this copy is routed, and the cd is kept" do
     command = routed(decide("cd /w/copy/apps/web && mix test test/a_test.exs", "/w/copy"))
 
