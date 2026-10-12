@@ -256,7 +256,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
   end
 
   defp promoted_at(%Story{promoted_version: nil}), do: nil
-  defp promoted_at(%Story{updated_at: at}), do: at
+  defp promoted_at(%Story{} = story), do: story.promoted_at || story.updated_at
 
   defp released_at([], %Story{inserted_at: at}), do: at
 
