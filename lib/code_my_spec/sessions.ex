@@ -186,7 +186,11 @@ defmodule CodeMySpec.Sessions do
   # A component-scoped task (entity_type "component" on start_task) never
   # carries story_id -- component_id is the only ref it has -- so
   # component_id is matched too, or a story's build-stage work (almost
-  # always component-scoped) would never be found at all.
+  # always component-scoped) would never be found at all. That fallback is
+  # restricted to tasks with no story_id of their own: a component shared by
+  # several stories (common) otherwise pulls each sibling story's own
+  # story-scoped tasks -- QA rounds, issue fixes -- into every other
+  # sibling's cycle time too (issue 9c2107a6).
   @spec list_tasks_for_story(Scope.t(), integer(), Ecto.UUID.t() | nil) :: [map()]
   def list_tasks_for_story(%Scope{} = scope, story_id, component_id \\ nil)
       when is_integer(story_id) do
@@ -195,11 +199,14 @@ defmodule CodeMySpec.Sessions do
     |> Enum.flat_map(fn session ->
       session.tasks
       |> List.wrap()
-      |> Enum.filter(
-        &(&1.story_id == story_id or (not is_nil(component_id) and &1.component_id == component_id))
-      )
+      |> Enum.filter(&own_or_unattributed?(&1, story_id, component_id))
       |> Enum.map(&Map.from_struct/1)
     end)
+  end
+
+  defp own_or_unattributed?(task, story_id, component_id) do
+    task.story_id == story_id or
+      (is_nil(task.story_id) and not is_nil(component_id) and task.component_id == component_id)
   end
 
   @doc "Find an active session by external conversation ID (Claude session ID)."

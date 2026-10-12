@@ -4,6 +4,8 @@ defmodule CodeMySpec.AgentPerformance.CycleTimeTest do
   alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
+  alias CodeMySpec.TaskOwner
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -90,5 +92,75 @@ defmodule CodeMySpec.AgentPerformance.CycleTimeTest do
 
     assert cycle_time.stages[:qa] <= cycle_time.total_seconds,
            "a stage's time exceeds the story's own total release-to-promotion time"
+  end
+
+  test "a story's cycle time ignores another story's own tasks even when they share a component",
+       context do
+    shared_component_id = Ecto.UUID.generate()
+    now = DateTime.utc_now()
+
+    {:ok, story_a} =
+      Stories.create_story(context.scope, %{
+        title: "Story A on a shared component",
+        description: "Should see only its own tasks in its cycle time."
+      })
+
+    {:ok, story_a} =
+      story_a |> Story.changeset(%{component_id: shared_component_id}) |> CodeMySpec.Repo.update()
+
+    {:ok, story_b} =
+      Stories.create_story(context.scope, %{
+        title: "Story B on the same shared component",
+        description: "Its own QA task must not leak into story A's cycle time."
+      })
+
+    {:ok, story_b} =
+      story_b |> Story.changeset(%{component_id: shared_component_id}) |> CodeMySpec.Repo.update()
+
+    # Story A's own build task: component-scoped, no story_id of its own --
+    # the legitimate use of the component_id fallback.
+    agent_a = Fixtures.running_agent(context.scope, role: "coding")
+
+    {:ok, _agent_a} =
+      TaskOwner.add_task(context.scope, agent_a, %{
+        id: Ecto.UUID.generate(),
+        status: :active,
+        requirement_name: "implementation_file",
+        session_type: CodeMySpec.AgentTasks.ComponentCode,
+        component_id: shared_component_id,
+        started_at: DateTime.add(now, -1800, :second)
+      })
+
+    # Story B's own QA task: tagged with story B's own story_id, far older
+    # than story A's whole life. Sharing the same component must not pull
+    # it into story A's task list.
+    agent_b = Fixtures.running_agent(context.scope, role: "qa")
+
+    {:ok, _agent_b} =
+      TaskOwner.add_task(context.scope, agent_b, %{
+        id: Ecto.UUID.generate(),
+        status: :active,
+        requirement_name: "qa_complete",
+        session_type: CodeMySpec.AgentTasks.QaStory,
+        component_id: shared_component_id,
+        story_id: story_b.id,
+        started_at: DateTime.add(now, -100 * 3600, :second)
+      })
+
+    {:ok, story_a} =
+      story_a
+      |> Story.changeset(%{
+        promoted_version: "0.1.0",
+        promoted_at: DateTime.add(now, -900, :second)
+      })
+      |> CodeMySpec.Repo.update()
+
+    cycle_time = CycleTime.story(context.scope, story_a)
+
+    assert cycle_time.total_seconds == 900,
+           "story B's much older task leaked into story A's release-to-promotion window"
+
+    assert Map.get(cycle_time.stages, :qa, 0) == 0,
+           "story B's own QA task was attributed to story A because they share a component"
   end
 end
