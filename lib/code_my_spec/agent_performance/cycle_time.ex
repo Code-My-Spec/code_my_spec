@@ -54,14 +54,15 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   @spec story(Scope.t(), Story.t(), [map()] | nil) :: t()
   def story(%Scope{} = scope, %Story{} = story, tasks) do
     tasks = tasks || all_tasks(scope, story.id, story.component_id)
+    as_of = promoted_at(story) || DateTime.utc_now()
 
     %{
       status: status(story, tasks),
       released_at: released_at(tasks, story),
       promoted_at: promoted_at(story),
       total_seconds: total_seconds(tasks, story),
-      stages: stage_seconds(tasks),
-      blocked: Enum.flat_map(tasks, &blocked_spans/1)
+      stages: stage_seconds(tasks, as_of),
+      blocked: Enum.flat_map(tasks, &blocked_spans(&1, as_of))
     }
   end
 
@@ -130,29 +131,33 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
     end
   end
 
-  defp stage_seconds(tasks) do
+  defp stage_seconds(tasks, as_of) do
     tasks
     |> Enum.group_by(&Stage.of(&1.session_type))
     |> Map.new(fn {stage, stage_tasks} ->
-      {stage, Enum.sum(Enum.map(stage_tasks, &active_seconds/1))}
+      {stage, Enum.sum(Enum.map(stage_tasks, &active_seconds(&1, as_of)))}
     end)
   end
 
   # A task's own active time: wall time open, minus whatever of that was
-  # spent blocked on a person rather than worked.
-  defp active_seconds(%{started_at: nil}), do: 0
+  # spent blocked on a person rather than worked. `as_of` bounds an open
+  # task's end to the story's own promotion rather than to real time, so a
+  # task left open on a finished story cannot accrue time past when the
+  # story was actually promoted (issue: a stage reading hours beyond the
+  # story's own total).
+  defp active_seconds(%{started_at: nil}, _as_of), do: 0
 
-  defp active_seconds(task) do
-    finished = task.completed_at || DateTime.utc_now()
+  defp active_seconds(task, as_of) do
+    finished = task.completed_at || as_of
     total = DateTime.diff(finished, task.started_at)
-    blocked = task |> blocked_spans() |> Enum.map(& &1.seconds) |> Enum.sum()
+    blocked = task |> blocked_spans(as_of) |> Enum.map(& &1.seconds) |> Enum.sum()
     max(total - blocked, 0)
   end
 
-  defp blocked_spans(%{blocked_at: nil}), do: []
+  defp blocked_spans(%{blocked_at: nil}, _as_of), do: []
 
-  defp blocked_spans(task) do
-    ended = task.blocker_resolved_at || DateTime.utc_now()
+  defp blocked_spans(task, as_of) do
+    ended = task.blocker_resolved_at || as_of
 
     [
       %{

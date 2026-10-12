@@ -405,7 +405,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <span :if={@cycle_time.status == :in_flight}>Still running</span>
       <span :if={@cycle_time.status == :finished}>Total: {hours(@cycle_time.total_seconds)}</span>
       <div :for={stage <- Stage.names()} data-test="stage" data-stage={stage}>
-        {stage}: {hours(Map.get(@cycle_time.stages, stage, 0))}
+        {stage}: {hours(Map.get(@cycle_time.stages, stage))}
       </div>
     </div>
     """
