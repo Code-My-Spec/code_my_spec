@@ -31,8 +31,8 @@ defmodule CodeMySpec.AgentPerformance.Page do
   import Ecto.Query
 
   alias CodeMySpec.AgentPerformance.AgentTurn
+  alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.AgentPerformance.OfferHealth
-  alias CodeMySpec.AgentPerformance.Stage
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Main, as: MainAgent
@@ -68,7 +68,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
     %{
       stories: stories,
       agents: agents,
-      reports: reports(stories, tasks, agents, attempts, messages, turns),
+      reports: reports(scope, stories, tasks, agents, attempts, messages, turns),
       teams: teams(agents, stories, attempts),
       summary: summary(scope, agents, stories, messages)
     }
@@ -103,9 +103,22 @@ defmodule CodeMySpec.AgentPerformance.Page do
   # `CycleTime.story/2` reads a story's tasks off its sessions and, separately,
   # off its agents -- two whole listings per story. Both are project-wide reads
   # underneath, so they are read once here and grouped by story.
+  #
+  # A task's own story_id, when it has one, is the only story it belongs to
+  # -- grouping by story_id alone would otherwise put a component-scoped
+  # task (never given a story_id, see `StartTask.build_entity_refs/2`) under
+  # key `nil`, where no real story's `Map.get(tasks, story.id, [])` could
+  # ever reach it. Such a task's only reference is its component, which can
+  # be shared by several stories, so it counts toward every story sharing
+  # that component -- never toward a sibling's own, separately story_id'd
+  # tasks (issue 9c2107a6).
   defp project_tasks(scope, stories, agents) do
     story_ids = MapSet.new(stories, & &1.id)
-    component_ids = stories |> Enum.map(& &1.component_id) |> Enum.reject(&is_nil/1) |> MapSet.new()
+
+    component_to_story_ids =
+      stories
+      |> Enum.reject(&is_nil(&1.component_id))
+      |> Enum.group_by(& &1.component_id, & &1.id)
 
     session_tasks =
       from(s in Session, where: s.project_id == ^scope.active_project_id)
@@ -113,14 +126,21 @@ defmodule CodeMySpec.AgentPerformance.Page do
       |> Enum.flat_map(& &1.tasks)
 
     (session_tasks ++ Enum.flat_map(agents, & &1.tasks))
-    |> Enum.filter(&relevant_task?(&1, story_ids, component_ids))
-    |> Enum.group_by(& &1.story_id)
+    |> Enum.flat_map(&task_story_pairs(&1, story_ids, component_to_story_ids))
+    |> Enum.group_by(fn {story_id, _task} -> story_id end, fn {_story_id, task} -> task end)
   end
 
-  defp relevant_task?(task, story_ids, component_ids) do
-    (not is_nil(task.story_id) and MapSet.member?(story_ids, task.story_id)) or
-      (not is_nil(task.component_id) and MapSet.member?(component_ids, task.component_id))
+  defp task_story_pairs(%{story_id: story_id} = task, story_ids, _component_to_story_ids)
+       when not is_nil(story_id) do
+    if MapSet.member?(story_ids, story_id), do: [{story_id, task}], else: []
   end
+
+  defp task_story_pairs(%{component_id: component_id} = task, _story_ids, component_to_story_ids)
+       when not is_nil(component_id) do
+    component_to_story_ids |> Map.get(component_id, []) |> Enum.map(&{&1, task})
+  end
+
+  defp task_story_pairs(_task, _story_ids, _component_to_story_ids), do: []
 
   defp project_attempts(%Scope{active_project_id: nil}), do: []
 
@@ -223,7 +243,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
 
   # -- per-story reports, off those reads ---------------------------------
 
-  defp reports(stories, tasks, agents, attempts, messages, turns) do
+  defp reports(scope, stories, tasks, agents, attempts, messages, turns) do
     attempts_by_story = Enum.group_by(attempts, & &1.story_id)
     turns_by_story = Enum.group_by(turns, & &1.story_id)
     interventions_by_story = interventions_by_story(agents, messages)
@@ -233,78 +253,13 @@ defmodule CodeMySpec.AgentPerformance.Page do
 
       {story.id,
        %{
-         cycle_time: cycle_time(story, story_tasks),
+         cycle_time: CycleTime.story(scope, story, story_tasks),
          qa_rounds: qa_rounds(Map.get(attempts_by_story, story.id, [])),
          interventions: Map.get(interventions_by_story, story.id, []),
          tokens: tokens(Map.get(turns_by_story, story.id, []))
        }}
     end)
   end
-
-  # `CycleTime.story/2`'s answer, from the grouping this already has.
-  defp cycle_time(story, tasks) do
-    promoted_at = promoted_at(story)
-
-    %{
-      status: if(is_nil(story.promoted_version), do: :in_flight, else: :finished),
-      released_at: released_at(tasks, story),
-      promoted_at: promoted_at,
-      total_seconds: total_seconds(tasks, story, promoted_at),
-      stages: stage_seconds(tasks),
-      blocked: Enum.flat_map(tasks, &blocked_spans/1)
-    }
-  end
-
-  defp promoted_at(%Story{promoted_version: nil}), do: nil
-  defp promoted_at(%Story{} = story), do: story.promoted_at || story.updated_at
-
-  defp released_at([], %Story{inserted_at: at}), do: at
-
-  defp released_at(tasks, _story) do
-    tasks |> Enum.map(& &1.started_at) |> Enum.reject(&is_nil/1) |> Enum.min(DateTime, fn -> nil end)
-  end
-
-  defp total_seconds([], _story, _promoted_at), do: nil
-
-  defp total_seconds(tasks, story, promoted_at) do
-    case released_at(tasks, story) do
-      nil -> nil
-      from -> DateTime.diff(promoted_at || DateTime.utc_now(), from)
-    end
-  end
-
-  defp stage_seconds(tasks) do
-    tasks
-    |> Enum.group_by(&Stage.of(&1.session_type))
-    |> Map.new(fn {stage, stage_tasks} -> {stage, Enum.sum(Enum.map(stage_tasks, &active_seconds/1))} end)
-  end
-
-  defp active_seconds(%{started_at: nil}), do: 0
-
-  defp active_seconds(task) do
-    finished = task.completed_at || DateTime.utc_now()
-    total = DateTime.diff(finished, task.started_at)
-    blocked = task |> blocked_spans() |> Enum.map(& &1.seconds) |> Enum.sum()
-    max(total - blocked, 0)
-  end
-
-  defp blocked_spans(%{blocked_at: nil}), do: []
-
-  defp blocked_spans(task) do
-    ended = task.blocker_resolved_at || DateTime.utc_now()
-
-    [
-      %{
-        cause: task.blocker_type,
-        waiting_on: waiting_on(task.blocker_type),
-        seconds: DateTime.diff(ended, task.blocked_at),
-        resolved?: not is_nil(task.blocker_resolved_at)
-      }
-    ]
-  end
-
-  defp waiting_on(:issue), do: :another_team
-  defp waiting_on(_cause), do: :user
 
   # `QaRounds.story/2`'s answer, from the story's slice of the project's
   # attempts. That function reverses `Qa.list_qa_attempts/2`'s newest-first
