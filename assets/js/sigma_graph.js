@@ -173,7 +173,8 @@ export const SigmaGraph = {
     data.edges.forEach(e => {
       if (!seenEdges.has(e.key) && graph.hasNode(e.source) && graph.hasNode(e.target)) {
         seenEdges.add(e.key)
-        const attrs = { ...e.attributes, color: t.baseContent }
+        // A cycle edge stays red: it is the one edge colour that carries meaning.
+        const attrs = { ...e.attributes, color: e.attributes?.cycle ? t.error : t.baseContent }
         graph.addEdgeWithKey(e.key, e.source, e.target, attrs)
       }
     })
