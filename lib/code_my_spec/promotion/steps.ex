@@ -844,7 +844,8 @@ defmodule CodeMySpec.Promotion.Steps do
 
     for repo <- Application.get_env(app, :ecto_repos, []) do
       config = repo.config()
-      if reason = refusal.(Mix.env(), config[:database]), do: Mix.raise(reason)
+      env = String.to_atom(System.get_env("MIX_ENV") || "dev")
+      if reason = refusal.(env, config[:database]), do: Mix.raise(reason)
       {:ok, _} = repo.__adapter__().ensure_all_started(config, :temporary)
 
       case repo.__adapter__().storage_down(Keyword.put(config, :force_drop, true)) do
