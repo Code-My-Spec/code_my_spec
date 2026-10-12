@@ -313,7 +313,7 @@ defmodule CodeMySpec.Architecture.BoundaryGraph do
         source: from,
         target: to,
         attributes: %{
-          size: 0.5 + :math.log2(weight) / 2,
+          size: 1 + :math.log2(weight) / 2,
           weight: weight,
           cycle: cycle?,
           label: "#{weight}"

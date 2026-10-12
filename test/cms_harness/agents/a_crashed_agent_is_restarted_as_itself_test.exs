@@ -42,9 +42,15 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
     assert_receive {:agent_liveness, :down, ^id, ^root, :killed}, 2_000
   end
 
+  # The engine is registered before its `init` runs, and `init` is what asks
+  # Liveness to watch it. Killing it before that watch lands is reported as
+  # `:noproc`, not `:killed`. So wait for `init` (a system call is answered only
+  # after it) and then for Liveness to have taken the watch it cast.
   defp restarted(id, root) do
     assert_receive {:agent_liveness, :up, ^id, ^root, nil}, 2_000
     {:ok, pid} = State.whereis(id)
+    _ = :sys.get_state(pid)
+    _ = Liveness.present(root)
     pid
   end
 

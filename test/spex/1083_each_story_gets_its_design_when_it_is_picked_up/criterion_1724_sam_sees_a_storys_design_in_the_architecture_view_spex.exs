@@ -72,11 +72,11 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
         {:ok, Map.merge(context, %{component: component, story: story})}
       end
 
-      when_ "Sam opens the architecture view's component graph", context do
-        # The default tab draws boundaries, not components; the components tab
-        # is where each one, the story's new one among them, is drawn.
+      when_ "Sam opens the architecture view's namespace hierarchy", context do
+        # The default tab draws boundaries, not components; the namespace tab
+        # lists each component, the story's new one among them.
         {:ok, architecture_live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/architecture/components")
+          live(context.conn, "/app/projects/#{context.project.id}/architecture/namespaces")
 
         {:ok, Map.merge(context, %{architecture_live: architecture_live, html: html})}
       end

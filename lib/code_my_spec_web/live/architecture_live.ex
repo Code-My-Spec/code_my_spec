@@ -8,7 +8,6 @@ defmodule CodeMySpecWeb.ArchitectureLive do
   alias CodeMySpec.Architecture
   alias CodeMySpec.Architecture.BoundaryGraph
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.GraphProjector
 
   @impl true
   def mount(_params, _session, socket) do
@@ -37,9 +36,6 @@ defmodule CodeMySpecWeb.ArchitectureLive do
 
   defp compute_view(:dependency_graph, scope),
     do: {:dependency_graph, BoundaryGraph.build(scope)}
-
-  defp compute_view(:components_graph, scope),
-    do: {:components_graph, GraphProjector.components_graph(scope)}
 
   defp compute_view(:overview, scope),
     do:
@@ -75,13 +71,6 @@ defmodule CodeMySpecWeb.ArchitectureLive do
           Boundaries
         </.link>
         <.link
-          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/components")}
-          role="tab"
-          class={["tab", @live_action == :components_graph && "tab-active"]}
-        >
-          Components
-        </.link>
-        <.link
           patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/overview")}
           role="tab"
           class={["tab", @live_action == :overview && "tab-active"]}
@@ -99,38 +88,19 @@ defmodule CodeMySpecWeb.ArchitectureLive do
 
       <div :if={match?({:dependency_graph, _}, @view)}>
         <.boundary_summary summary={elem(@view, 1).summary} />
+        <p class="text-sm text-base-content/60 mb-2">
+          ⌘/Ctrl-scroll or pinch to zoom; drag, or two fingers on a phone, to pan.
+        </p>
         <div
           id="sigma-graph"
           phx-hook="SigmaGraph"
           data-graph={Jason.encode!(Map.delete(elem(@view, 1), :summary))}
           phx-update="ignore"
           class="rounded-box border border-base-300 bg-base-200"
-          style="width: 100%; height: 80vh;"
+          style="position: relative; overflow: hidden; width: 100%; height: 80vh;"
         >
         </div>
-      </div>
-
-      <div :if={match?({:components_graph, _}, @view)}>
-        <div class="flex flex-wrap gap-4 text-sm mb-4">
-          <span class="flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied
-          </span>
-          <span class="flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable
-          </span>
-          <span class="flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked
-          </span>
-        </div>
-        <div
-          id="sigma-components-graph"
-          phx-hook="SigmaGraph"
-          data-graph={Jason.encode!(elem(@view, 1))}
-          phx-update="ignore"
-          class="rounded-box border border-base-300 bg-base-200"
-          style="width: 100%; height: 80vh;"
-        >
-        </div>
+        <div id="sigma-graph-debug" phx-update="ignore"></div>
       </div>
 
       <div :if={match?({:overview, _}, @view)}>
