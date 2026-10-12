@@ -72,4 +72,19 @@ defmodule CmsHarness.AppInstance.Runner.LocalMainPortTest do
 
     assert Local.declared_port(content, "PORT") == nil
   end
+
+  test "a commented-out port, like Phoenix's HTTPS example, is not a declaration" do
+    content = """
+    config :my_app, MyAppWeb.Endpoint,
+      http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4050")]
+
+    #     https: [
+    #       port: 4001,
+    #       cipher_suite: :strong
+    #     ]
+    """
+
+    assert Local.declared_port(content, "PORT") == 4050
+    assert Local.declared_port(content, "HTTPS_PORT") == nil
+  end
 end
