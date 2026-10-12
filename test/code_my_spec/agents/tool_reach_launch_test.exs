@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Agents.ToolReachLaunchTest do
   use ExUnit.Case, async: true
 
+  alias CmsHarness.Agents.Engine.Impl
   alias CodeMySpec.Agents.{Agent, LaunchRequest, ToolIndex, ToolSets}
   alias CodeMySpec.McpServers.ToolRegistry
 
@@ -27,7 +28,7 @@ defmodule CodeMySpec.Agents.ToolReachLaunchTest do
     assert carried == ToolIndex.carried(ToolRegistry.registry())
     assert "run_script" in carried
 
-    assert CmsHarness.Agents.Engine.Impl.tools(direct_tools: carried)
+    assert Impl.tools(direct_tools: carried)
            |> Enum.map(& &1.name())
            |> Enum.member?("run_script")
   end

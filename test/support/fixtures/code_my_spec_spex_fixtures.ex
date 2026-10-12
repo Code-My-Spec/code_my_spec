@@ -125,6 +125,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Mailbox, as: AgentMailbox
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Analysis.Reconciler
@@ -148,6 +149,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Mail.Email
   alias CodeMySpec.Mail.Mailbox
   alias CodeMySpec.Mail.ResendClient
+  alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Cloudflare
   alias CodeMySpec.Provisioning.Credentials
@@ -3174,7 +3176,7 @@ defmodule CodeMySpecSpex.Fixtures do
     request
     |> Map.put_new(
       "direct_tools",
-      CodeMySpec.Agents.ToolIndex.carried(CodeMySpec.McpServers.ToolRegistry.registry())
+      ToolIndex.carried(ToolRegistry.registry())
     )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
