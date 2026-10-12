@@ -13,9 +13,6 @@ defmodule CodeMySpecSpex.Story1117.Criterion2131Spex do
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
-  # Channels, and the Working Copies page, are both on the cloud endpoint.
-  @endpoint CodeMySpecWeb.Endpoint
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
