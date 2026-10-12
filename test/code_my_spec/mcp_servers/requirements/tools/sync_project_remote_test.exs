@@ -23,12 +23,14 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
+  import CodeMySpec.StoriesFixtures
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
 
   defp run(scope) do
@@ -106,6 +108,31 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
                "reply that implied otherwise would send the agent to re-read a graph " <>
                "that has not moved yet, and read as the rescan having failed."
     end
+  end
+
+  # The event projection moves rows that exist and creates none, so a story
+  # coming back into the graph had no requirements until something
+  # recomputed (stories 1046 and 1092 at 0/0, 2026-10-12).
+  describe "the requirement graph" do
+    test "a story with no requirement rows has them after a sync", ctx do
+      _pid = registered_channel(ctx.working_copy_id)
+      story = story_fixture(ctx.scope)
+      assert requirements_of(ctx.scope, story) =~ "0/0 satisfied"
+
+      {_response, text} = run(%{ctx.scope | cwd: nil})
+
+      assert text =~ "requirement graph was recomputed"
+      refute requirements_of(ctx.scope, story) =~ "0/0 satisfied"
+    end
+  end
+
+  defp requirements_of(scope, story) do
+    frame = %Frame{assigns: %{current_scope: scope}}
+
+    {:reply, response, _frame} =
+      ShowStoryRequirements.execute(%{story_number: story.number}, frame)
+
+    Enum.map_join(Response.to_protocol(response)["content"], "\n", & &1["text"])
   end
 
   describe "when no harness is registered" do
