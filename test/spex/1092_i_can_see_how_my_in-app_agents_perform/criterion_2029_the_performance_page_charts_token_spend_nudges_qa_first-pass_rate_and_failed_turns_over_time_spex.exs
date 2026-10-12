@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2029Spex do
   end
 
   spex "The performance page's chart carries token spend, nudges, QA first-pass rate and failed turns",
-       criterion: 2029 do
+    criterion: 2029 do
     scenario "the performance page is opened" do
       given_ "a project with the performance page available", context do
         # given: already true — `setup :setup_active_project` creates it.
@@ -34,7 +34,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2029Spex do
       end
 
       when_ "I look at the performance page", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 

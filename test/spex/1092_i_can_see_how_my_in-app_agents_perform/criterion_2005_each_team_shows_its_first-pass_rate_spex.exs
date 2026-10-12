@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   end
 
   spex "A team's first-pass rate is the share of its stories QA passed on the first attempt",
-       criterion: 2005 do
+    criterion: 2005 do
     scenario "a team whose stories went to QA over a period" do
       given_ "one story that passed QA first time and one that took two rounds", context do
         {:ok, main_copy} =
@@ -45,9 +45,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
         reply = join_working_copy(context, "/tmp/spex-2005", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
-        clean = qa_a_story(scope, "Passed first time", [
-          %{status: "pass", note: "all good"}
-        ])
+        clean =
+          qa_a_story(scope, "Passed first time", [
+            %{status: "pass", note: "all good"}
+          ])
 
         reworked =
           qa_a_story(scope, "Took two rounds", [
@@ -63,7 +64,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
       end
 
       when_ "I look at the team", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 
@@ -92,7 +94,11 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
 
     {:reply, started, _frame} =
       StartTask.execute(
-        %{requirement_name: "qa_complete", entity_type: "story", entity_id: to_string(story.number)},
+        %{
+          requirement_name: "qa_complete",
+          entity_type: "story",
+          entity_id: to_string(story.number)
+        },
         asking
       )
 

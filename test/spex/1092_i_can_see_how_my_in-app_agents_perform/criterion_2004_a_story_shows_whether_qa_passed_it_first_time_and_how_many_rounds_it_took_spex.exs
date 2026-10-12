@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
   end
 
   spex "A story that failed QA before passing shows every round and no first-time pass",
-       criterion: 2004 do
+    criterion: 2004 do
     scenario "a story that failed QA twice before passing" do
       given_ "a story QA'd three times, failing the first two rounds", context do
         {:ok, main_copy} =
@@ -90,7 +90,11 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         {:reply, started, _frame} =
           StartTask.execute(
-            %{requirement_name: "qa_complete", entity_type: "story", entity_id: to_string(story.number)},
+            %{
+              requirement_name: "qa_complete",
+              entity_type: "story",
+              entity_id: to_string(story.number)
+            },
             asking
           )
 
@@ -115,7 +119,9 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
             %{
               task_id: task_id,
               status: "fail",
-              scenarios: [%{name: "save", status: "fail", observation: "save button does nothing"}],
+              scenarios: [
+                %{name: "save", status: "fail", observation: "save button does nothing"}
+              ],
               issue_ids: [issue_1_id]
             },
             asking
@@ -138,7 +144,11 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         {:reply, resumed_1, _frame} =
           StartTask.execute(
-            %{requirement_name: "qa_complete", entity_type: "story", entity_id: to_string(story.number)},
+            %{
+              requirement_name: "qa_complete",
+              entity_type: "story",
+              entity_id: to_string(story.number)
+            },
             asking
           )
 
@@ -185,7 +195,11 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         {:reply, resumed_2, _frame} =
           StartTask.execute(
-            %{requirement_name: "qa_complete", entity_type: "story", entity_id: to_string(story.number)},
+            %{
+              requirement_name: "qa_complete",
+              entity_type: "story",
+              entity_id: to_string(story.number)
+            },
             asking
           )
 
@@ -208,7 +222,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
       end
 
       when_ "I look at its performance", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 

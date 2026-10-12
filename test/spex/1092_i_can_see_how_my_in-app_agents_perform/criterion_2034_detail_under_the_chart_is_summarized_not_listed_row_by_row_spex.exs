@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
   end
 
   spex "The chart's detail is a summary, not a row for each nudge",
-       criterion: 2034 do
+    criterion: 2034 do
     scenario "a story received three separate nudges" do
       given_ "a released story with an agent nudged three separate times", context do
         {:ok, main_copy} =
@@ -70,7 +70,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
       end
 
       when_ "I look at the performance page", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 

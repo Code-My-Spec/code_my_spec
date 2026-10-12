@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2031Spex do
   end
 
   spex "A story's start and its promotion appear on the chart as events, not as chart lines",
-       criterion: 2031 do
+    criterion: 2031 do
     scenario "a story started this week and was promoted this week" do
       given_ "a story that started and was then promoted", context do
         context = a_promotable_project(context)
@@ -48,7 +48,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2031Spex do
       end
 
       when_ "I look at the performance page", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 

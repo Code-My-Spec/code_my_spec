@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2030Spex do
   end
 
   spex "With no range chosen, the chart defaults to the last 7 days in hourly buckets",
-       criterion: 2030 do
+    criterion: 2030 do
     scenario "the performance page is opened with no filters" do
       given_ "a project with the performance page available", context do
         # given: already true — `setup :setup_active_project` creates it.
@@ -30,7 +30,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2030Spex do
       end
 
       when_ "I look at the performance page", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 

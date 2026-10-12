@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2032Spex do
   end
 
   spex "Narrowing the chart to one working copy shows only that working copy's totals",
-       criterion: 2032 do
+    criterion: 2032 do
     scenario "two working copies each recorded their own turn" do
       given_ "two working copies, each with their own recorded turn", context do
         copy_a = join_working_copy(context, "/tmp/spex-2032-a", "team A")
@@ -66,10 +66,11 @@ defmodule CodeMySpecSpex.Story1092.Criterion2032Spex do
       when_ "I narrow the chart to team A's working copy", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
 
-        html =
-          index
-          |> element("form[data-test='performance-filter']")
-          |> render_change(%{"working_copy_id" => context.working_copy_id, "story_id" => ""})
+        index
+        |> element("form[data-test='performance-filter']")
+        |> render_change(%{"working_copy_id" => context.working_copy_id, "story_id" => ""})
+
+        html = render_async(index)
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2052Spex do
   end
 
   spex "John narrows the chart to one working copy without leaving the page",
-       criterion: 2052 do
+    criterion: 2052 do
     scenario "a project with two working copies, each with their own recorded turn" do
       given_ "John is looking at the agent performance view for a project with two working copies",
              context do
@@ -74,10 +74,11 @@ defmodule CodeMySpecSpex.Story1092.Criterion2052Spex do
       end
 
       when_ "he picks one of them from the controls on the page", context do
-        html =
-          context.index
-          |> element("form[data-test='performance-filter']")
-          |> render_change(%{"working_copy_id" => context.working_copy_id, "story_id" => ""})
+        context.index
+        |> element("form[data-test='performance-filter']")
+        |> render_change(%{"working_copy_id" => context.working_copy_id, "story_id" => ""})
+
+        html = render_async(context.index)
 
         {:ok, Map.put(context, :html, html)}
       end

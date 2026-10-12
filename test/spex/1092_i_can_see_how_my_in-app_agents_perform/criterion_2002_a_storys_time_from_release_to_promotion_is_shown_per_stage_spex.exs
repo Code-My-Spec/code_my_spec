@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2002Spex do
   end
 
   spex "A promoted story's total release-to-promotion time is broken down by stage",
-       criterion: 2002 do
+    criterion: 2002 do
     scenario "a story a team took from release to promotion" do
       given_ "a story released an hour before its team promoted it", context do
         context = a_promotable_project(context)
@@ -43,7 +43,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2002Spex do
       end
 
       then_ "I see its total time from release to promotion", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
 
         assert html =~ context.story.title,
                "the promoted story does not appear in the performance report at all"

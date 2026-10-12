@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
   end
 
   spex "Restarting the agent working a story counts the restart against that story",
-       criterion: 2008 do
+    criterion: 2008 do
     scenario "the user restarted an agent while it worked a story" do
       given_ "a released story with a coding agent working it", context do
         # Story work happens on feature copies, never the main one
@@ -93,7 +93,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
       end
 
       then_ "the restart is counted as a manual intervention on that story", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
 
         assert html =~ context.story.title and html =~ "restart",
                "the agent's restart is not shown as a manual intervention against the story it was working"

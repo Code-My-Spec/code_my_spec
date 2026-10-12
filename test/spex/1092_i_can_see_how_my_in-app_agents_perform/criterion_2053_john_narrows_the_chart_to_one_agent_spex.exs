@@ -71,15 +71,17 @@ defmodule CodeMySpecSpex.Story1092.Criterion2053Spex do
       end
 
       when_ "he picks one agent from the controls on the page", context do
-        html =
-          context.index
-          |> element("form[data-test='performance-filter']")
-          |> render_change(%{"agent_id" => context.agent_id})
+        context.index
+        |> element("form[data-test='performance-filter']")
+        |> render_change(%{"agent_id" => context.agent_id})
+
+        html = render_async(context.index)
 
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "the chart and its detail show that agent's turns, failures and token use only", context do
+      then_ "the chart and its detail show that agent's turns, failures and token use only",
+            context do
         assert context.html =~ "300 tokens",
                "the picked agent's own token total (300) is not shown once the chart is narrowed to it"
 

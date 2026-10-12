@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
   end
 
   spex "A role's claim rate reflects the offers its agents actually claimed",
-       criterion: 2013 do
+    criterion: 2013 do
     scenario "agents in the coding role were offered work over a period" do
       given_ "one coding agent frees a task and a second coding agent claims it", context do
         {:ok, main_copy} =
@@ -84,7 +84,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
-              entity_id: Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
+              entity_id:
+                Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
             },
             first_frame
           )
@@ -101,6 +102,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             working_copy: "/tmp/spex-2013",
             continuous: true
           )
+
         second_frame = %Frame{assigns: %{current_scope: scope, agent_id: second.id}}
 
         {:reply, resp2, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
@@ -114,7 +116,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
-              entity_id: Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
+              entity_id:
+                Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
             },
             second_frame
           )
@@ -125,7 +128,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
       end
 
       when_ "I look at offer health", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 

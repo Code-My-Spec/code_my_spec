@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2012Spex do
   end
 
   spex "A team's promoted stories over a week are counted as its throughput",
-       criterion: 2012 do
+    criterion: 2012 do
     scenario "two teams promoted stories over a week" do
       given_ "one story promoted this week", context do
         context = a_promotable_project(context)
@@ -51,7 +51,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2012Spex do
       end
 
       then_ "I see how many stories and issue fixes each team landed for that week", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
 
         assert html =~ context.agent.working_copy_id,
                "the promoting team's own identity is not shown"
