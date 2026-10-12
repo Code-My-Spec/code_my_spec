@@ -30,7 +30,9 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.Agents.Engine
+  alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.CodeMode.Catalog
+  alias CodeMySpec.McpServers.ToolRegistry
 
   # Excluded from scripts *and* deliberately not carried, each for a reason that
   # is about this agent rather than about scripts.
@@ -59,7 +61,7 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
   }
 
   defp carried do
-    []
+    [direct_tools: ToolIndex.carried(ToolRegistry.registry())]
     |> Engine.tools()
     |> Enum.map(& &1.name())
     |> MapSet.new()

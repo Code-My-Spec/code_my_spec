@@ -13,7 +13,10 @@ defmodule CmsHarness.Agents.Engine.UnknownToolMessageTest do
         ToolRegistry.registry()
       )
 
-  defp direct_names, do: Enum.map(Impl.tools([]), & &1.name())
+  defp direct_names,
+    do:
+      Enum.map(Impl.tools(direct_tools: ToolIndex.carried(ToolRegistry.registry())), & &1.name())
+
   defp answer(name), do: Impl.unknown_tool_message(name, reach(), direct_names())
 
   test "a granted scriptable tool is sent to run_script" do

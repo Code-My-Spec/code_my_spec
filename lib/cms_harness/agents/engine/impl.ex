@@ -58,8 +58,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
   alias CmsHarness.Project.ChannelClient
-  alias CodeMySpec.Agents.ToolIndex
-  alias CodeMySpec.McpServers.ToolRegistry
 
   @registry CmsHarness.Registry
 
@@ -880,20 +878,21 @@ defmodule CmsHarness.Agents.Engine.Impl do
   `turn_off_agent` and the rest) is not here: it is scriptable, and granted to
   main alone.
 
-  One list for the index and the engine: the direct tools are
-  `ToolIndex.carried/1`, each resolved to `CmsHarness.Agents.Tools.<Name>` by
-  its MCP name. Two hand-kept lists drifted: the index named `health` and
-  `promote_sync` and this answered `Unknown tool` (1a7b1e4c).
+  One list for the index and the engine: the direct tools are the launch
+  request's `direct_tools` (`ToolIndex.carried/1` on the server), each resolved
+  to `CmsHarness.Agents.Tools.<Name>` by its MCP name. Two hand-kept lists
+  drifted: the index named `health` and `promote_sync` and this answered
+  `Unknown tool` (1a7b1e4c).
   """
   @spec tools(keyword()) :: [module()]
-  def tools(_opts) do
+  def tools(opts) do
     [
       Alloy.Tool.Core.Read,
       Alloy.Tool.Core.Write,
       Alloy.Tool.Core.Edit,
       CmsHarness.Agents.Tools.Bash
     ] ++
-      Enum.map(ToolIndex.carried(ToolRegistry.registry()), &direct_tool/1)
+      Enum.map(Keyword.get(opts, :direct_tools) || [], &direct_tool/1)
   end
 
   @doc false

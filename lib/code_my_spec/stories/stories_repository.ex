@@ -723,4 +723,61 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     Map.put(map, actual_key, value)
   end
+
+  @doc """
+  Release these stories' reservations on this copy.
+
+  A team switching or clearing its story frees the old one for another copy to
+  take (John, a31f1cd6): reserving on the way in and never releasing is how a
+  copy came to pin every story it had ever been pointed at — story 1027 stuck on
+  a main checkout on 2026-09-21. The caller leaves out whatever an agent on the
+  copy still holds.
+  """
+  @spec release_stories(Scope.t(), Ecto.UUID.t(), [integer()]) :: non_neg_integer()
+  def release_stories(_scope, _copy_id, []), do: 0
+
+  def release_stories(%Scope{} = scope, copy_id, story_ids) do
+    {count, _} =
+      Story
+      |> where([s], s.working_copy_id == ^copy_id and s.id in ^story_ids)
+      |> where([s], s.project_id == ^scope.active_project_id)
+      |> where([s], s.account_id == ^scope.active_account_id)
+      |> Repo.update_all(set: [working_copy_id: nil])
+
+    count
+  end
+
+  @doc """
+  Reserve a story for a checkout so work on it can be selected there: ready for
+  development, and unassigned or already this checkout's. An unassigned story
+  is assigned here. Locks the story row, so call it inside the transaction
+  that records the selection.
+  """
+  @spec reserve_story(Scope.t(), Ecto.UUID.t(), term()) ::
+          {:ok, Story.t()} | {:error, :not_found | :story_not_ready | :story_assigned_elsewhere}
+  def reserve_story(%Scope{} = scope, copy_id, story_id) do
+    with {:ok, id} <- Ecto.Type.cast(:id, story_id),
+         %Story{} = story <-
+           Story
+           |> where([s], s.id == ^id and s.project_id == ^scope.active_project_id)
+           |> where([s], s.account_id == ^scope.active_account_id)
+           |> lock("FOR UPDATE")
+           |> Repo.one() do
+      cond do
+        not story.ready_for_dev ->
+          {:error, :story_not_ready}
+
+        story.working_copy_id not in [nil, copy_id] ->
+          {:error, :story_assigned_elsewhere}
+
+        is_nil(story.working_copy_id) ->
+          story |> Story.changeset(%{working_copy_id: copy_id}) |> Repo.update()
+
+        true ->
+          {:ok, story}
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
 end

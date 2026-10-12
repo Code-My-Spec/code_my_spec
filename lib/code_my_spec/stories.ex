@@ -123,6 +123,17 @@ defmodule CodeMySpec.Stories do
   defp graph_entities({_verb, %{id: id}}) when not is_nil(id), do: [{"story", id}, :project]
   defp graph_entities(_message), do: []
 
+  @doc "Release these stories' reservations on this copy. See `StoriesRepository.release_stories/3`."
+  @spec release_stories(Scope.t(), Ecto.UUID.t(), [integer()]) :: non_neg_integer()
+  def release_stories(scope, copy_id, story_ids),
+    do: StoriesRepository.release_stories(scope, copy_id, story_ids)
+
+  @doc "Reserve a story for a checkout. See `StoriesRepository.reserve_story/3`."
+  @spec reserve_story(Scope.t(), Ecto.UUID.t(), term()) ::
+          {:ok, Story.t()} | {:error, :not_found | :story_not_ready | :story_assigned_elsewhere}
+  def reserve_story(scope, copy_id, story_id),
+    do: StoriesRepository.reserve_story(scope, copy_id, story_id)
+
   @doc """
   Returns the list of stories.
 

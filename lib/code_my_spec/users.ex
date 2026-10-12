@@ -9,7 +9,6 @@ defmodule CodeMySpec.Users do
       CodeMySpec.Analytics,
       CodeMySpec.ClientUsers.ClientUser,
       CodeMySpec.Environments,
-      CodeMySpec.Integrations,
       CodeMySpec.Mailer,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope
@@ -140,30 +139,15 @@ defmodule CodeMySpec.Users do
   defp maybe_put(payload, key, value), do: Map.put(payload, key, value)
 
   @doc """
-  Finds an existing user by OAuth provider identity or email, or registers a new one.
-
-  Lookup order:
-  1. Integration with matching provider + provider_user_id → existing user
-  2. User with matching email → auto-link
-  3. No match → create new auto-confirmed user (no password)
+  Finds the user with this email, or registers a new auto-confirmed one with
+  no password, for an OAuth sign-in no integration already names.
+  `Integrations.find_or_register_oauth_user/3` tries the provider identity
+  first. A new user dispatches `:sign_up` as `oauth_<provider>`.
 
   Returns `{:ok, user, :existing | :new}`.
   """
-  def find_or_register_oauth_user(
-        provider,
-        %{provider_user_id: provider_user_id, email: email},
-        opts \\ []
-      ) do
-    alias CodeMySpec.Integrations.IntegrationRepository
-
-    result =
-      case IntegrationRepository.find_user_id_by_provider_identity(provider, provider_user_id) do
-        user_id when is_integer(user_id) ->
-          {:ok, get_user!(user_id), :existing}
-
-        nil ->
-          find_or_register_by_email(email)
-      end
+  def find_or_register_oauth_email(provider, email, opts \\ []) do
+    result = find_or_register_by_email(email)
 
     with {:ok, user, :new} <- result do
       payload =

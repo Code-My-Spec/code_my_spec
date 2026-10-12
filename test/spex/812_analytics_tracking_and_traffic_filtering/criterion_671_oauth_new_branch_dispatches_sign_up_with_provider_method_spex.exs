@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6508Spex do
 
   Test-subscriber pattern: `Fixtures.attach_ga_test_subscriber/1` registers
   this test process to receive every GA Measurement Protocol payload as
-  `{:ga_measurement_protocol, payload}`. We drive `Users.find_or_register_oauth_user/2`
+  `{:ga_measurement_protocol, payload}`. We drive `Integrations.find_or_register_oauth_user/2`
   directly — the same code path the OAuth callback controller invokes — and
   assert the MP payload arrives with the correct method param.
 
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6508Spex do
         {:ok, Map.put(context, :oauth_attrs, attrs)}
       end
 
-      when_ "Users.find_or_register_oauth_user creates a new user for that identity",
+      when_ "Integrations.find_or_register_oauth_user creates a new user for that identity",
             context do
         {:ok, user, :new} = Fixtures.find_or_register_oauth_user(:github, context.oauth_attrs)
         {:ok, Map.put(context, :user, user)}

@@ -5,8 +5,8 @@ defmodule CodeMySpec.McpServers.StoryRefsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
-  alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.Requirements.Directives
   alias CodeMySpec.Stories
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -48,7 +48,7 @@ defmodule CodeMySpec.McpServers.StoryRefsTest do
       nodes = [story_node(a.id), story_node(to_string(b.id)), story_node(c.id)]
 
       text =
-        RequirementsMapper.format_story_execution(
+        Directives.format_story_execution(
           StoryRefs.number_execution(scope, %{
             status: :ready,
             story: nil,
