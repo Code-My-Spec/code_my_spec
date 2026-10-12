@@ -7,7 +7,6 @@ defmodule CodeMySpec.Projects do
     top_level?: true,
     deps: [
       CodeMySpec.Auth,
-      CodeMySpec.GitHub,
       CodeMySpec.Oauth,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
@@ -694,55 +693,5 @@ defmodule CodeMySpec.Projects do
     true = project.account_id == scope.active_account_id
 
     Project.changeset(project, attrs, scope)
-  end
-
-  @doc """
-  Creates a GitHub repository for the project.
-
-  ## Parameters
-  - `scope` - User scope for multi-tenant isolation and GitHub authentication
-  - `project` - The project to create a repo for
-  - `repo_type` - Either :code_repo or :docs_repo
-  - `repo_suffix` - Suffix to append to project name (e.g., "-code", "-docs")
-
-  ## Examples
-
-      iex> create_github_repo(scope, project, :code_repo, "-code")
-      {:ok, "https://github.com/username/my-project-code"}
-
-      iex> create_github_repo(scope, project, :docs_repo, "-docs")
-      {:ok, "https://github.com/username/my-project-docs"}
-
-      iex> create_github_repo(scope, project, :code_repo, "-code")
-      {:error, :github_not_connected}
-  """
-  def create_github_repo(%Scope{} = scope, %Project{} = project, repo_type, attrs, repo_suffix)
-      when repo_type in [:code_repo, :docs_repo] do
-    # Sanitize project name for GitHub (replace spaces with hyphens, lowercase)
-    sanitized_name =
-      (project.name || attrs["name"])
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9-_]/, "-")
-      |> String.replace(~r/-+/, "-")
-      |> String.trim("-")
-
-    repo_name = sanitized_name <> repo_suffix
-
-    repo_attrs = %{
-      name: repo_name,
-      description: project.description || "Repository for #{project.name}",
-      private: true
-    }
-
-    case CodeMySpec.GitHub.create_repository(scope, repo_attrs) do
-      {:ok, %{"html_url" => url}} ->
-        {:ok, url}
-
-      {:error, :github_not_connected} ->
-        {:error, :github_not_connected}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
   end
 end

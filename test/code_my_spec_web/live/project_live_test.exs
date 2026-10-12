@@ -139,43 +139,6 @@ defmodule CodeMySpecWeb.ProjectLiveTest do
     end
   end
 
-  describe "Form - GitHub Repository Creation" do
-    test "creates code repository when create button clicked", %{conn: conn} do
-      {:ok, form_live, _html} = live(conn, ~p"/app/projects/new")
-
-      # Fill in project name
-      form_live
-      |> form("#project-form", project: %{name: "Test Project", description: "Test desc"})
-      |> render_change()
-
-      # Mock GitHub integration would be needed for this to pass
-      # This demonstrates the expected user interaction
-      assert has_element?(form_live, "button", "Create")
-    end
-
-    test "creates docs repository when create button clicked", %{conn: conn} do
-      {:ok, form_live, _html} = live(conn, ~p"/app/projects/new")
-
-      # Fill in project name
-      form_live
-      |> form("#project-form", project: %{name: "Test Project", description: "Test desc"})
-      |> render_change()
-
-      # Mock GitHub integration would be needed for this to pass
-      # This demonstrates the expected user interaction
-      assert has_element?(form_live, "button", "Create")
-    end
-
-    test "create buttons are disabled when project name is empty", %{conn: conn} do
-      {:ok, form_live, _html} = live(conn, ~p"/app/projects/new")
-
-      html = render(form_live)
-
-      # Buttons should be disabled when name is empty
-      assert html =~ "disabled"
-    end
-  end
-
   describe "Form - preview origins modal" do
     setup [:create_project]
 
@@ -252,19 +215,6 @@ defmodule CodeMySpecWeb.ProjectLiveTest do
 
       updated = CodeMySpec.Projects.get_project!(scope, project.id)
       refute "github.com" in updated.preview_extra_frame_origins
-    end
-  end
-
-  describe "Form - GitHub Repository Creation on existing project" do
-    setup [:create_project]
-
-    test "shows error when GitHub not connected", %{conn: conn, project: project} do
-      {:ok, form_live, _html} = live(conn, ~p"/app/projects/#{project}/edit")
-
-      # Click create button without GitHub integration
-      html = render_click(form_live, "create_code_repo")
-
-      assert html =~ "Please connect your GitHub account first"
     end
   end
 end
