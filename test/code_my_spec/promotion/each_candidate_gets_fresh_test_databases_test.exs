@@ -9,7 +9,6 @@ defmodule CodeMySpec.Promotion.EachCandidateGetsFreshTestDatabasesTest do
 
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Support.InMemoryEnvironment
-  alias Mix.Tasks.Cms.DropTestDatabase
 
   @gate "/w/gate"
 
@@ -34,7 +33,7 @@ defmodule CodeMySpec.Promotion.EachCandidateGetsFreshTestDatabasesTest do
              Steps.reset_test_databases(env, @gate, ["ha", "has", "haa"])
 
     for partition <- ["ha", "has", "haa"] do
-      assert_received {:mix, @gate, ["cms.drop_test_database"], env}
+      assert_received {:mix, @gate, ["run", "--no-start", "-e", _script], env}
       assert {"MIX_ENV", "test"} in env
       assert {"MIX_TEST_PARTITION", partition} in env
     end
@@ -50,25 +49,38 @@ defmodule CodeMySpec.Promotion.EachCandidateGetsFreshTestDatabasesTest do
     refute_received {:mix, @gate, _, _}, "the next database was dropped after one failed"
   end
 
-  describe "the drop task" do
-    test "drops a partition's test database under MIX_ENV=test" do
-      assert DropTestDatabase.droppable([database: "code_my_spec_testh1a2b3c4a"], :test) == :ok
+  # It runs in the project's own VM, so any project's gate can run it: a task
+  # of ours once failed every other project's gate (2026-10-12).
+  test "the drop needs nothing the project does not already have" do
+    env = a_gate(fn _opts -> {"dropped\n", 0} end)
+    {:ok, _} = Steps.reset_test_databases(env, @gate, ["ha"])
+    assert_received {:mix, @gate, ["run", "--no-start", "-e", script], _env}
+    refute script =~ "cms."
+    assert script =~ ":ecto_repos"
+  end
+
+  describe "what the drop refuses" do
+    setup do
+      {refusal, _} = Code.eval_string(Steps.refusal_source())
+      %{refusal: refusal}
+    end
+
+    test "a partition's test database under MIX_ENV=test is dropped", %{refusal: refusal} do
+      assert refusal.(:test, "code_my_spec_testh1a2b3c4a") == nil
     end
 
     # `CMS_DRILL_DB` points the test config at the shared development database.
-    test "refuses the development database even under MIX_ENV=test" do
-      assert {:error, reason} = DropTestDatabase.droppable([database: "code_my_spec_dev"], :test)
-      assert reason =~ "not named as a test database"
+    test "the development database is refused even under MIX_ENV=test", %{refusal: refusal} do
+      assert refusal.(:test, "code_my_spec_dev") =~ "not named as a test database"
     end
 
     # A child with MIX_ENV scrubbed once acted on dev (2026-08-13).
-    test "drops nothing outside MIX_ENV=test" do
-      assert {:error, reason} = DropTestDatabase.droppable([database: "code_my_spec_test"], :dev)
-      assert reason =~ "MIX_ENV=dev"
+    test "nothing is dropped outside MIX_ENV=test", %{refusal: refusal} do
+      assert refusal.(:dev, "code_my_spec_test") =~ "MIX_ENV=dev"
     end
 
-    test "refuses a database the repo cannot name" do
-      assert {:error, _} = DropTestDatabase.droppable([], :test)
+    test "a database the repo cannot name is refused", %{refusal: refusal} do
+      assert refusal.(:test, nil) =~ "not named as a test database"
     end
   end
 end

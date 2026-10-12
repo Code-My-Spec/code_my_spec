@@ -800,16 +800,60 @@ defmodule CodeMySpec.Promotion.Steps do
     end)
   end
 
-  # `MIX_ENV` is given, and the task also refuses anything but a test database
-  # in its own VM: an environment with it scrubbed once acted on dev.
+  # Run in the project's own VM, so it works for any project: whatever Ecto repos
+  # it configures, and none means nothing to drop. A task of our own here once
+  # failed every other project's gate, which has no such task (2026-10-12).
+  #
+  # `MIX_ENV` is given, and the script still refuses anything but a test
+  # database: an environment with it scrubbed once acted on dev, and
+  # `CMS_DRILL_DB` points our test config at `code_my_spec_dev`.
   defp drop_test_database(env, root, partition) do
     env
-    |> Environments.cmd("mix", ["cms.drop_test_database"],
+    |> Environments.cmd("mix", ["run", "--no-start", "-e", drop_script()],
       cd: root,
       stderr_to_stdout: true,
       env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", partition}]
     )
     |> normalize()
+  end
+
+  @refusal """
+  fn env, database ->
+    cond do
+      env != :test ->
+        "refusing to drop a database from MIX_ENV=\#{env}; only :test drops one"
+
+      not (is_binary(database) and String.contains?(database, "_test")) ->
+        "refusing to drop \#{inspect(database)}: not named as a test database"
+
+      true ->
+        nil
+    end
+  end
+  """
+
+  @doc "Why a VM in `env` may not drop `database`, as script source; nil means it may."
+  @spec refusal_source() :: String.t()
+  def refusal_source, do: @refusal
+
+  # Forced: a run the gate abandoned can still hold connections to it.
+  defp drop_script do
+    """
+    refusal = #{@refusal}
+    app = Mix.Project.config()[:app]
+
+    for repo <- Application.get_env(app, :ecto_repos, []) do
+      config = repo.config()
+      if reason = refusal.(Mix.env(), config[:database]), do: Mix.raise(reason)
+      {:ok, _} = repo.__adapter__().ensure_all_started(config, :temporary)
+
+      case repo.__adapter__().storage_down(Keyword.put(config, :force_drop, true)) do
+        :ok -> IO.puts("dropped \#{config[:database]}")
+        {:error, :already_down} -> IO.puts("\#{config[:database]} was already gone")
+        {:error, reason} -> Mix.raise("could not drop \#{config[:database]}: \#{inspect(reason)}")
+      end
+    end
+    """
   end
 
   # No merge in progress is the ordinary case, not a failure.
