@@ -156,6 +156,12 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     await_app_result(event, ref, timeout)
   end
 
+  @doc "Push one of the app verbs with a payload of the caller's choosing — a `tunnel`, say — and wait for its `_result`."
+  def push_app_event_with(event, payload, timeout \\ 5_000) do
+    ref = FakeServer.push_app_event(event, payload)
+    await_app_result(event, ref, timeout)
+  end
+
   @doc "Push one of the app verbs marked `main: true`, the way `HarnessProjectChannel.put_main/2` does for the designated copy."
   def push_app_event_as_main(event, timeout \\ 5_000) do
     ref = FakeServer.push_app_event(event, %{"main" => true})
