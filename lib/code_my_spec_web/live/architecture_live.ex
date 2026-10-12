@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.ArchitectureLive do
   @moduledoc """
-  Architecture views: dependency graph, component overview, and namespace
-  hierarchy. Each view is a separate live_action, navigated via tabs.
+  Architecture views: the boundary graph and the namespace hierarchy. Each
+  view is a separate live_action, navigated via tabs.
   """
   use CodeMySpecWeb, :live_view
 
@@ -37,11 +37,6 @@ defmodule CodeMySpecWeb.ArchitectureLive do
   defp compute_view(:dependency_graph, scope),
     do: {:dependency_graph, BoundaryGraph.build(scope)}
 
-  defp compute_view(:overview, scope),
-    do:
-      {:overview,
-       Architecture.generate_overview(Components.list_components_with_dependencies(scope))}
-
   defp compute_view(:namespaces, scope),
     do:
       {:namespaces,
@@ -71,13 +66,6 @@ defmodule CodeMySpecWeb.ArchitectureLive do
           Boundaries
         </.link>
         <.link
-          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/overview")}
-          role="tab"
-          class={["tab", @live_action == :overview && "tab-active"]}
-        >
-          Component Overview
-        </.link>
-        <.link
           patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/namespaces")}
           role="tab"
           class={["tab", @live_action == :namespaces && "tab-active"]}
@@ -101,12 +89,6 @@ defmodule CodeMySpecWeb.ArchitectureLive do
         >
         </div>
         <div id="sigma-graph-debug" phx-update="ignore"></div>
-      </div>
-
-      <div :if={match?({:overview, _}, @view)}>
-        <div class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">
-          {md_html(elem(@view, 1))}
-        </div>
       </div>
 
       <div :if={match?({:namespaces, _}, @view)}>

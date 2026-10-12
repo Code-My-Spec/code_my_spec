@@ -72,22 +72,13 @@ defmodule CodeMySpecSpex.Story1084.Criterion2093Spex do
       end
 
       then_ "the last authored and observed evidence is retained", context do
-        section = billing_section(context)
-        accounts_marker = dependency_marker(section, "Accounts")
-        notifications_marker = dependency_marker(section, "Notifications")
+        deps = billing_deps(context)
 
-        assert accounts_marker, "expected the authored Accounts dependency: #{section}"
+        assert deps["Accounts"] == %{"planned" => true, "in_code" => true},
+               "expected Accounts to remain planned, with its last observation: #{inspect(deps)}"
 
-        assert accounts_marker =~ "planned",
-               "expected Accounts to remain planned: #{accounts_marker}"
-
-        assert accounts_marker =~ "in code",
-               "expected the last Accounts observation: #{accounts_marker}"
-
-        assert notifications_marker, "expected the last Notifications observation: #{section}"
-
-        assert notifications_marker =~ "in code",
-               "expected Notifications to remain marked in code: #{notifications_marker}"
+        assert %{"in_code" => true} = deps["Notifications"],
+               "expected Notifications to remain marked in code: #{inspect(deps)}"
 
         {:ok, context}
       end
@@ -112,57 +103,27 @@ defmodule CodeMySpecSpex.Story1084.Criterion2093Spex do
       end
 
       then_ "the observed-only edge clears while the authored plan remains", context do
-        section = billing_section(context)
-        accounts_marker = dependency_marker(section, "Accounts")
+        deps = billing_deps(context)
 
-        assert accounts_marker, "expected the authored Accounts edge to remain: #{section}"
+        assert deps["Accounts"] == %{"planned" => true, "in_code" => false},
+               "expected Accounts to remain planned, its code marker cleared: #{inspect(deps)}"
 
-        assert accounts_marker =~ "planned",
-               "expected Accounts to remain planned: #{accounts_marker}"
-
-        refute accounts_marker =~ "in code",
-               "expected the no-call source to clear Accounts' code marker: #{accounts_marker}"
-
-        refute section =~ "Notifications",
-               "expected the observed-only Notifications edge to disappear: #{section}"
+        refute Map.has_key?(deps, "Notifications"),
+               "expected the observed-only Notifications edge to disappear: #{inspect(deps)}"
 
         {:ok, context}
       end
     end
   end
 
-  defp billing_section(context) do
-    {:ok, _view, html} =
-      live(context.conn, "/app/projects/#{context.project.id}/architecture/overview")
+  # get_component's dependencies for Billing, keyed relative to the app.
+  defp billing_deps(context) do
+    app = ComponentGraphHelpers.app(context)
 
-    component_section(html, "Billing")
-  end
-
-  defp component_section(html, name) do
-    {_, _, prose_children} =
-      html |> Floki.parse_document!() |> Floki.find(".prose") |> List.first()
-
-    start_idx =
-      Enum.find_index(prose_children, fn
-        {"h3", _, _} = node -> Floki.text(node) == name
-        _ -> false
-      end)
-
-    prose_children
-    |> Enum.drop(start_idx + 1)
-    |> Enum.take_while(fn
-      {tag, _, _} -> tag not in ["h2", "h3"]
-      _ -> true
+    context
+    |> ComponentGraphHelpers.dependencies("#{app}.Billing")
+    |> Map.new(fn {module, evidence} ->
+      {String.replace_prefix(module, app <> ".", ""), evidence}
     end)
-    |> Floki.text()
   end
-
-  defp dependency_marker(section_text, module_name) do
-    ~r/#{Regex.escape(module_name)}[^()]*\(([^)]*)\)/
-    |> Regex.run(section_text)
-    |> marker_from_match()
-  end
-
-  defp marker_from_match([_, marker]), do: marker
-  defp marker_from_match(_), do: nil
 end
