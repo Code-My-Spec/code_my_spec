@@ -108,13 +108,21 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   # The earliest task opened against the story, as a proxy for "released":
   # nothing on `Story` stamps the moment `ready_for_dev` flipped, and the
   # first unit of real work starting is the closest thing on record to it.
-  defp released_at([], %Story{inserted_at: at}), do: at
-
-  defp released_at(tasks, _story) do
+  #
+  # Restricted to tasks carrying this story's own story_id: `tasks` can also
+  # hold a shared component's own tasks (no story_id of their own, see
+  # `Sessions.list_tasks_for_story/3`), and a component reused across many
+  # stories' builds has one earliest such task that predates all of them --
+  # anchoring on it pinned every sibling story to the same Total (issue
+  # 04830e20). That shared fallback still flows into `stage_seconds/2`'s
+  # build-stage time, which legitimately counts a component's own shared
+  # work; it is just not this story's own release moment.
+  defp released_at(tasks, %Story{id: story_id, inserted_at: inserted_at}) do
     tasks
+    |> Enum.filter(&(&1.story_id == story_id))
     |> Enum.map(& &1.started_at)
     |> Enum.reject(&is_nil/1)
-    |> Enum.min(DateTime, fn -> nil end)
+    |> Enum.min(DateTime, fn -> inserted_at end)
   end
 
   # New promotions carry a permanent timestamp; retain the legacy estimate
