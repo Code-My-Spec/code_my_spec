@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2150Spex do
       end
 
       then_ "the call's whole result comes back alongside the message", ctx do
-        request = H.after_the_tool_call()
+        request = H.after_the_tool_call(ctx)
         assert request =~ H.note(), "the tool call was cut short: #{request}"
         assert request =~ "CHANGE-OF-PLAN"
         {:ok, ctx}

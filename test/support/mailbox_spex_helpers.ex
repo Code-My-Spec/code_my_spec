@@ -68,11 +68,16 @@ defmodule CodeMySpecSpex.MailboxHelpers do
     before = length(HeldProvider.seen())
     HeldProvider.release_with_tool_call("read", %{"file_path" => ctx.note_path})
     await(fn -> length(HeldProvider.seen()) > before end)
-    ctx
+    Map.put(ctx, :after_the_tool_call, before)
   end
 
-  @doc "What the agent's model was sent in the request after `boundary/1`."
-  def after_the_tool_call, do: List.last(HeldProvider.seen())
+  @doc """
+  What the agent's model was sent in the request after `boundary/1`.
+
+  By position, not the latest: once the turn ends, a queued message starts the
+  next turn, and its request can land before this is read.
+  """
+  def after_the_tool_call(ctx), do: Enum.at(HeldProvider.seen(), ctx.after_the_tool_call)
 
   @doc "Send through `message_agent`, as main or the operator does."
   def message(ctx, text, opts \\ []) do

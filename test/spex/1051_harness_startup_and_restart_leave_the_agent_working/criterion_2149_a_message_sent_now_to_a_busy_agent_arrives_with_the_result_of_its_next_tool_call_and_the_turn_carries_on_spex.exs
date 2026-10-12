@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2149Spex do
       end
 
       then_ "the model's next request carries the tool's result and the message", ctx do
-        request = H.after_the_tool_call()
+        request = H.after_the_tool_call(ctx)
         assert request =~ H.note(), "the tool call's result is missing: #{request}"
         assert request =~ "STOP-AND-MERGE-MAIN", "the message sent now never reached the model"
         {:ok, ctx}

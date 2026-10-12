@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2153Spex do
       end
 
       then_ "the request after the call does not carry it", ctx do
-        refute H.after_the_tool_call() =~ "WAIT-FOR-THE-END"
+        refute H.after_the_tool_call(ctx) =~ "WAIT-FOR-THE-END"
         {:ok, ctx}
       end
 

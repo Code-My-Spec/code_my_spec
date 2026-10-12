@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2154Spex do
       end
 
       then_ "the model's next request carries his message", ctx do
-        assert H.after_the_tool_call() =~ "FROM-THE-COCKPIT"
+        assert H.after_the_tool_call(ctx) =~ "FROM-THE-COCKPIT"
         {:ok, ctx}
       end
     end
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2154Spex do
       end
 
       then_ "the model's next request carries it", ctx do
-        assert H.after_the_tool_call() =~ "FROM-MAIN"
+        assert H.after_the_tool_call(ctx) =~ "FROM-MAIN"
         {:ok, ctx}
       end
     end
