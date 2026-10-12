@@ -134,25 +134,78 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   defp stage_seconds(tasks, as_of) do
     tasks
     |> Enum.group_by(&Stage.of(&1.session_type))
-    |> Map.new(fn {stage, stage_tasks} ->
-      {stage, Enum.sum(Enum.map(stage_tasks, &active_seconds(&1, as_of)))}
-    end)
+    |> Map.new(fn {stage, stage_tasks} -> {stage, active_union_seconds(stage_tasks, as_of)} end)
   end
 
-  # A task's own active time: wall time open, minus whatever of that was
-  # spent blocked on a person rather than worked. `as_of` bounds an open
-  # task's end to the story's own promotion rather than to real time, so a
-  # task left open on a finished story cannot accrue time past when the
-  # story was actually promoted (issue: a stage reading hours beyond the
-  # story's own total).
-  defp active_seconds(%{started_at: nil}, _as_of), do: 0
+  # A stage's active time is the wall-clock span its own tasks actually
+  # covered, not the sum of each task's own span: several never-completed
+  # task records for one stage -- a QA round reopened across harness
+  # restarts, say -- can each span most of the story's own life. Bounding
+  # each to `as_of` keeps any one of them from running past the story's
+  # promotion, but summing their spans still double-counts whatever
+  # wall-clock time they overlap, so the union is taken instead (issue: a
+  # stage reading hours beyond the story's own total).
+  defp active_union_seconds(tasks, as_of) do
+    tasks
+    |> Enum.flat_map(&active_intervals(&1, as_of))
+    |> merge_intervals()
+    |> Enum.reduce(0, fn {from, to}, acc -> acc + DateTime.diff(to, from) end)
+  end
 
-  defp active_seconds(task, as_of) do
+  # A task's own active time as intervals: its open-to-close span with
+  # whatever of it was spent blocked on a person cut out.
+  defp active_intervals(%{started_at: nil}, _as_of), do: []
+
+  defp active_intervals(task, as_of) do
     finished = task.completed_at || as_of
-    total = DateTime.diff(finished, task.started_at)
-    blocked = task |> blocked_spans(as_of) |> Enum.map(& &1.seconds) |> Enum.sum()
-    max(total - blocked, 0)
+    subtract_intervals({task.started_at, finished}, blocked_intervals(task, as_of))
   end
+
+  defp blocked_intervals(%{blocked_at: nil}, _as_of), do: []
+  defp blocked_intervals(task, as_of), do: [{task.blocked_at, task.blocker_resolved_at || as_of}]
+
+  # Cuts `holes` out of `interval`, each assumed to fall inside it -- true
+  # here since a task's own blocked span is always within its own
+  # open-to-close span.
+  defp subtract_intervals(interval, []), do: [interval]
+
+  defp subtract_intervals({from, to}, holes) do
+    {cursor, pieces} =
+      holes
+      |> Enum.sort_by(fn {h_from, _h_to} -> h_from end, DateTime)
+      |> Enum.reduce({from, []}, fn {h_from, h_to}, {cursor, pieces} ->
+        pieces =
+          if DateTime.compare(cursor, h_from) == :lt,
+            do: [{cursor, h_from} | pieces],
+            else: pieces
+
+        {later(cursor, h_to), pieces}
+      end)
+
+    pieces = if DateTime.compare(cursor, to) == :lt, do: [{cursor, to} | pieces], else: pieces
+    Enum.reverse(pieces)
+  end
+
+  defp later(a, b), do: if(DateTime.compare(a, b) == :gt, do: a, else: b)
+
+  # Overlapping or touching intervals become one, so a stage's covered
+  # wall-clock time is counted once whatever tasks contributed to it.
+  defp merge_intervals(intervals) do
+    intervals
+    |> Enum.sort_by(fn {from, _to} -> from end, DateTime)
+    |> Enum.reduce([], fn {from, to}, acc -> merge_into(acc, from, to) end)
+    |> Enum.reverse()
+  end
+
+  defp merge_into([{prev_from, prev_to} | rest], from, to) do
+    if DateTime.compare(from, prev_to) != :gt do
+      [{prev_from, later(prev_to, to)} | rest]
+    else
+      [{from, to}, {prev_from, prev_to} | rest]
+    end
+  end
+
+  defp merge_into([], from, to), do: [{from, to}]
 
   defp blocked_spans(%{blocked_at: nil}, _as_of), do: []
 
