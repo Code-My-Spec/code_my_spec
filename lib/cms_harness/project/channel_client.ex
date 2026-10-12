@@ -1711,16 +1711,11 @@ defmodule CmsHarness.Project.ChannelClient do
            &Steps.contained(Environment.new(:local, &1), &1, base, commits)
          )
 
+  # Healed like an analyzer run: a candidate that moves `mix.lock` leaves the
+  # gate's `deps/` behind it, and mix refuses every command, the reset's first
+  # among them, until something fetches (2026-10-12, the queue wedged).
   defp apply_promotion("promotion_reset_test_databases", %{"root" => root}),
-    do:
-      with_served_root(
-        root,
-        &Steps.reset_test_databases(
-          Environment.new(:local, &1),
-          &1,
-          CmsHarness.TestDatabase.partitions(&1)
-        )
-      )
+    do: with_served_root(root, &reset_test_databases/1)
 
   defp apply_promotion("promotion_changed", %{"root" => root, "from" => from, "to" => to}),
     do: with_served_root(root, &Steps.changed(Environment.new(:local, &1), &1, from, to))
@@ -1747,6 +1742,24 @@ defmodule CmsHarness.Project.ChannelClient do
   # server names the running copy's path and is trusted to know it, but "trusted
   # to know it" and "may name any path on this machine" are different powers and
   # only the first one is wanted.
+  defp reset_test_databases(root) do
+    env = Environment.new(:local, root)
+
+    reset = fn ->
+      Steps.reset_test_databases(env, root, CmsHarness.TestDatabase.partitions(root))
+    end
+
+    env
+    |> CmsHarness.Analysis.heal(fn -> reset_as_text(reset.()) end)
+    |> reset_as_map()
+  end
+
+  defp reset_as_text({:error, %{reason: reason}}), do: {:error, reason}
+  defp reset_as_text(result), do: result
+
+  defp reset_as_map({:error, reason}) when is_binary(reason), do: {:error, %{reason: reason}}
+  defp reset_as_map(result), do: result
+
   defp with_served_root(root, fun) do
     if root in CmsHarness.Projects.list() do
       fun.(root)

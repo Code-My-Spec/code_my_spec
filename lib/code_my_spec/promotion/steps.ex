@@ -848,7 +848,9 @@ defmodule CodeMySpec.Promotion.Steps do
       if reason = refusal.(env, config[:database]), do: Mix.raise(reason)
       {:ok, _} = repo.__adapter__().ensure_all_started(config, :temporary)
 
-      case repo.__adapter__().storage_down(Keyword.put(config, :force_drop, true)) do
+      # A drop waits on a checkpoint, which ran past Postgrex's 15-second
+      # default on a loaded machine (2026-10-12).
+      case repo.__adapter__().storage_down(Keyword.merge(config, force_drop: true, timeout: 120_000)) do
         :ok -> IO.puts("dropped \#{config[:database]}")
         {:error, :already_down} -> IO.puts("\#{config[:database]} was already gone")
         {:error, reason} -> Mix.raise("could not drop \#{config[:database]}: \#{inspect(reason)}")
