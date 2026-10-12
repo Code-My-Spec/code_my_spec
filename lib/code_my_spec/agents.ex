@@ -2794,7 +2794,9 @@ defmodule CodeMySpec.Agents do
   defp reoffer_failed_turn(conversation, agent, failure) do
     request = Conversations.last_request_text(conversation)
 
-    if is_binary(request) and String.starts_with?(request, @failed_turn) do
+    # Trimmed: a notice re-sent with a leading space passed as a new request and
+    # nested inside itself (2026-10-12).
+    if is_binary(request) and String.starts_with?(String.trim_leading(request), @failed_turn) do
       Conversations.add_message(
         conversation,
         :operator,
@@ -2819,7 +2821,8 @@ defmodule CodeMySpec.Agents do
     """
     #{@failed_turn}#{failure}
 
-    Nothing from it was carried out. The request was:
+    What it did before it failed is above, and may have taken effect; check \
+    before redoing any of it. The request was:
 
     #{request}
 

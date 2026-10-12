@@ -97,14 +97,18 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # property of the caller, and it governs how long *it* waits — `awaiting` —
   # not how long the agent works.
   #
-  # Thirty minutes because a browser QA pass is minutes of real waiting: pages
-  # load, LiveViews settle, and 150 steps of that is not four minutes. It is a
-  # ceiling on a runaway, not a budget.
+  # No wall-clock ceiling on a turn (John, 2026-10-12). A thirty-minute one cut
+  # a coder's legitimate test runs off, told it nothing was carried out, and
+  # re-sent the same request into the same wait. Each tool call has its own
+  # limit, `@max_turns` bounds a runaway, and a turn is recorded as it goes.
   #
-  # A ceiling on a runaway, not a budget. The engine owns this deadline:
-  # a GenServer call timeout alone does not stop Alloy's running turn.
-  # Queue advancement requires a result or confirmed execution shutdown.
-  @turn_timeout :timer.minutes(30)
+  # Alloy still wants a number for the whole loop, so this is one nobody meets.
+  @loop_deadline :timer.hours(24)
+
+  # What Alloy would otherwise hand each HTTP request as its receive timeout:
+  # whatever is left of the loop's deadline, so a request that went quiet would
+  # wait out the day.
+  @request_idle_timeout :timer.minutes(10)
 
   @type start_opts :: [
           agent_id: String.t(),
@@ -513,11 +517,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
     announce_turn_start(state, ref)
 
     task = Task.async(fn -> run_turn(state, message, :infinity) end)
-    timer = Process.send_after(self(), {:turn_ceiling, task.ref}, @turn_timeout)
 
     %{
       task: task,
-      timer: timer,
       checkpoint: checkpoint,
       message: message,
       awaiting: awaiting,
@@ -525,11 +527,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
     }
   end
 
-  # Losing the waiting task does not establish that execution stopped. The
-  # deadline and abnormal waiter exits both require confirmed Alloy shutdown
-  # before a replacement can consume another mailbox message.
+  # Losing the waiting task does not establish that execution stopped. An
+  # abnormal waiter exit requires confirmed Alloy shutdown before a replacement
+  # can consume another mailbox message.
   def abort_turn(state, reason) do
-    Process.cancel_timer(state.turn.timer)
     Process.unlink(state.alloy)
 
     case Execution.stop(state.alloy) do
@@ -568,8 +569,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   def settle(state, result) do
-    Process.cancel_timer(state.turn.timer)
-
     :ok =
       Keeper.remember(state.agent_id, %{messages: Server.messages(state.alloy), in_flight: nil})
 
@@ -976,7 +975,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
              base_url: Keyword.get(opts, :base_url),
              # Machine-local, like `on_stop` and `on_event`: it is a function,
              # so it cannot cross the wire and nothing on the wire sets it.
-             req_options: Keyword.get(opts, :req_options),
+             req_options:
+               Keyword.put_new(
+                 Keyword.get(opts, :req_options) || [],
+                 :receive_timeout,
+                 @request_idle_timeout
+               ),
              # The subprocess providers (`claude-code`, `openai-codex`) run
              # in it instead of their default of a fresh temp dir per call.
              working_copy: working_copy
@@ -1010,7 +1014,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # Alloy bounds the whole loop by this and gives each request what is left
        # of it as its receive timeout; its two-minute default starved an HTTP
        # agent's request to a second once its tools had spent the rest.
-       |> Keyword.put(:timeout_ms, @turn_timeout)
+       |> Keyword.put(:timeout_ms, @loop_deadline)
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).
