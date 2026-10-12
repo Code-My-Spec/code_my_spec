@@ -71,6 +71,16 @@ defmodule CodeMySpec.SpexGivensTest do
   # credential — four drives, none of which the block naming it could perform
   # any other way.
   #
+  # Story 1117's `MachineTunnelHelpers`, each a helper whose whole body is the
+  # drive: `serving_copy`/`idle_copy`/`rejoin` join `harness_project` from a
+  # named machine and report the app over the socket; `turn_on`/`turn_off`/
+  # `offboard` call the share, unshare and offboard tools; `cloudflare_fails`
+  # and `existing_tunnel` set the fake Cloudflare's state — the provider seam,
+  # by `Req.Test.stub`'s precedent. `johns_mac` is the spex's own premise:
+  # starts that Cloudflare, gives it the dev tunnel, and records the tunnel on
+  # an announced machine through `Fixtures`. `push_app_event_with` is
+  # `push_app_event` with a payload.
+  #
   # `machine_out_of_reach` is a transport seam, listed by the same precedent as
   # `Req.Test.stub` and `stage_`. A block saying "this agent's tools cannot be
   # resolved at launch" has made its precondition true in the only way
@@ -295,6 +305,8 @@ defmodule CodeMySpec.SpexGivensTest do
     Projects.ensure_started await_connected SlotHolder.
     Application.put_env
     app_instance_rig push_app_event push_app_event_as_main
+    johns_mac( serving_copy( idle_copy( rejoin( turn_on( turn_off( offboard(
+    cloudflare_fails( existing_tunnel( push_app_event_with
     set_idle_timeout install_app_instance_runner
     coding_work_waiting offered_work coder_holding_a_task handed_the_menu
     team_on_a_story issue_accepted qa_plan_missing
