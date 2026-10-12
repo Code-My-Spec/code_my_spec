@@ -11,18 +11,22 @@ defmodule CodeMySpec.Architecture.BoundaryGraph do
 
   Laid out top to bottom by depth — a boundary sits one layer below the
   deepest boundary that calls it — so the longest chain is the number of
-  layers. A cycle is a strongly connected group of boundaries; its members
-  share a layer and its edges are flagged.
+  layers. A wide layer wraps into rows, each boundary placed under the
+  callers above it, and each layer takes its own colour. A cycle is a
+  strongly connected group of boundaries; its members share a layer and its
+  nodes and edges are red.
   """
 
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Users.Scope
 
-  @layer_gap 220
-  @column_gap 260
-  @node_color "#64748b"
+  @layer_gap 260
+  @row_gap 140
+  @column_gap 220
+  @row_width 8
   @cycle_color "#ef4444"
+  @edge_alpha 0.15
 
   @type t :: %{
           nodes: [map()],
@@ -62,9 +66,10 @@ defmodule CodeMySpec.Architecture.BoundaryGraph do
     longest = longest_chain(graph, layers, group_of)
 
     %{
-      nodes: nodes(graph.nodes, layers, sizes, group_of, cyclic),
+      nodes: nodes(graph.nodes, layers, sizes, group_of, cyclic, weights),
       edges: edges(weights, group_of, cyclic),
       layout: "preset",
+      edge_alpha: @edge_alpha,
       summary: %{
         boundaries: length(graph.nodes),
         edges: map_size(weights),
@@ -219,35 +224,85 @@ defmodule CodeMySpec.Architecture.BoundaryGraph do
     if above, do: walk_up(above, layers, callers, [above | chain]), else: chain
   end
 
-  defp nodes(names, layers, sizes, group_of, cyclic) do
-    names
-    |> Enum.group_by(&layers[&1])
-    |> Enum.flat_map(fn {layer, members} ->
-      members = Enum.sort(members)
-      offset = (length(members) - 1) * @column_gap / 2
+  # Layer by layer from the top, so every caller is placed before the
+  # boundaries it calls; each boundary sits at the mean x of its callers.
+  defp nodes(names, layers, sizes, group_of, cyclic, weights) do
+    callers = Enum.group_by(Map.keys(weights), &elem(&1, 1), &elem(&1, 0))
+    deepest = layers |> Map.values() |> Enum.max(fn -> 0 end)
 
-      members
-      |> Enum.with_index()
-      |> Enum.map(fn {name, column} ->
-        in_cycle? = MapSet.member?(cyclic, group_of[name])
+    {placed, _xs, _top} =
+      names
+      |> Enum.group_by(&layers[&1])
+      |> Enum.sort()
+      |> Enum.reduce({[], %{}, 0}, fn {layer, members}, {placed, xs, top} ->
+        rows =
+          members
+          |> Enum.sort_by(&{barycenter(&1, callers, xs), &1})
+          |> Enum.chunk_every(@row_width)
 
-        %{
-          key: name,
-          attributes: %{
-            label: short(name),
-            x: column * @column_gap - offset,
-            y: -layer * @layer_gap,
-            size: 6 + :math.sqrt(Map.get(sizes, name, 1)),
-            color: if(in_cycle?, do: @cycle_color, else: @node_color),
-            type: "circle",
-            layer: layer,
-            modules: Map.get(sizes, name, 0),
-            in_cycle: in_cycle?
-          }
-        }
+        positions =
+          for {row, r} <- Enum.with_index(rows), {name, column} <- Enum.with_index(row) do
+            # Alternate rows shift half a column so edges pass between nodes.
+            offset = (length(row) - 1) * @column_gap / 2 - rem(r, 2) * @column_gap / 2
+            {name, layer, column * @column_gap - offset, top + r * @row_gap}
+          end
+
+        xs = Enum.reduce(positions, xs, fn {name, _, x, _}, xs -> Map.put(xs, name, x) end)
+        {placed ++ positions, xs, top + (length(rows) - 1) * @row_gap + @layer_gap}
       end)
+
+    Enum.map(placed, fn {name, layer, x, y} ->
+      in_cycle? = MapSet.member?(cyclic, group_of[name])
+
+      %{
+        key: name,
+        attributes: %{
+          label: short(name),
+          x: x,
+          y: -y,
+          size: 6 + :math.sqrt(Map.get(sizes, name, 1)),
+          color: if(in_cycle?, do: @cycle_color, else: layer_color(layer, deepest)),
+          type: "circle",
+          layer: layer,
+          modules: Map.get(sizes, name, 0),
+          in_cycle: in_cycle?
+        }
+      }
     end)
   end
+
+  defp barycenter(name, callers, xs) do
+    case callers |> Map.get(name, []) |> Enum.flat_map(&List.wrap(xs[&1])) do
+      [] -> 0.0
+      placed -> Enum.sum(placed) / length(placed)
+    end
+  end
+
+  # Cyan at the top through blue and violet to pink; red stays for cycles.
+  defp layer_color(layer, deepest) do
+    hsl_hex(190 + 140 * layer / max(deepest, 1), 0.65, 0.5)
+  end
+
+  defp hsl_hex(h, s, l) do
+    c = (1 - abs(2 * l - 1)) * s
+    x = c * (1 - abs(:math.fmod(h / 60, 2) - 1))
+    m = l - c / 2
+
+    {r, g, b} =
+      cond do
+        h < 60 -> {c, x, 0}
+        h < 120 -> {x, c, 0}
+        h < 180 -> {0, c, x}
+        h < 240 -> {0, x, c}
+        h < 300 -> {x, 0, c}
+        true -> {c, 0, x}
+      end
+
+    "#" <> Enum.map_join([r, g, b], &hex_byte(round((&1 + m) * 255)))
+  end
+
+  defp hex_byte(v),
+    do: v |> Integer.to_string(16) |> String.pad_leading(2, "0") |> String.downcase()
 
   defp edges(weights, group_of, cyclic) do
     for {{from, to}, weight} <- weights do
@@ -258,7 +313,7 @@ defmodule CodeMySpec.Architecture.BoundaryGraph do
         source: from,
         target: to,
         attributes: %{
-          size: 1 + :math.log2(weight),
+          size: 0.5 + :math.log2(weight) / 2,
           weight: weight,
           cycle: cycle?,
           label: "#{weight}"

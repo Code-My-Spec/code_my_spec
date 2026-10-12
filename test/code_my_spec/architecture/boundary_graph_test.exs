@@ -68,12 +68,50 @@ defmodule CodeMySpec.Architecture.BoundaryGraphTest do
     refute edge(graph, "App.Web", "App.Accounts").attributes.cycle
   end
 
+  test "each layer takes its own colour, a cycle stays red", %{graph: graph} do
+    assert color(graph, "App.Web") != color(graph, "App.Repo")
+    assert color(graph, "App.Accounts") == "#ef4444"
+    assert graph.edge_alpha < 1
+  end
+
+  test "a wide layer wraps into rows of eight, no two boundaries in one spot" do
+    scope = full_scope_fixture()
+    callees = for i <- 1..12, do: "App.Leaf#{i}"
+
+    for name <- ["App.Top" | callees] do
+      scanned_file(scope, name, "defmodule #{name} do\n  use Boundary\nend\n")
+    end
+
+    top = component(scope, "App.Top")
+
+    for name <- callees do
+      {:ok, _} =
+        Components.create_dependency(scope, %{
+          source_component_id: top.id,
+          target_component_id: component(scope, name).id,
+          provenance: :discovered,
+          in_code: true
+        })
+    end
+
+    graph = BoundaryGraph.build(scope)
+    leaves = Enum.filter(graph.nodes, &(&1.key in callees))
+    rows = Enum.group_by(leaves, & &1.attributes.y)
+
+    assert map_size(rows) == 2
+    assert rows |> Map.values() |> Enum.map(&length/1) |> Enum.sort() == [4, 8]
+
+    assert graph.nodes |> Enum.map(&{&1.attributes.x, &1.attributes.y}) |> Enum.uniq() |> length() ==
+             13
+  end
+
   test "a project whose scan recorded no declarations says so" do
     assert %{summary: %{declarations_recorded: false, boundaries: 0}} =
              BoundaryGraph.build(full_scope_fixture())
   end
 
   defp edge(graph, from, to), do: Enum.find(graph.edges, &(&1.source == from and &1.target == to))
+  defp color(graph, key), do: Enum.find(graph.nodes, &(&1.key == key)).attributes.color
   defp layer(graph, key), do: Enum.find(graph.nodes, &(&1.key == key)).attributes.layer
 
   defp component(scope, module_name) do
