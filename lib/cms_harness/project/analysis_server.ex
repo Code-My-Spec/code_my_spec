@@ -538,7 +538,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp run_with_slot(project, entry, parent) do
     requested_at = System.monotonic_time(:millisecond)
 
-    case AnalysisSlots.acquire() do
+    case AnalysisSlots.acquire(AnalysisSlots.lane(entry.source, entry.args)) do
       :ok ->
         waited_ms = System.monotonic_time(:millisecond) - requested_at
         send(parent, {:slot_acquired, entry.run_id, waited_ms})
