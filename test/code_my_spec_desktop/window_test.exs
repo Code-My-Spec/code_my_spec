@@ -2,8 +2,8 @@ defmodule CodeMySpecDesktop.WindowTest do
   # Not async: sets CMS_BROWSER, which is process-global.
   use ExUnit.Case, async: false
 
+  alias CodeMySpec.Utils.Browser
   alias CodeMySpecDesktop.Application, as: DesktopApp
-  alias CodeMySpecDesktop.Browser
 
   setup do
     previous = System.get_env("CMS_BROWSER")

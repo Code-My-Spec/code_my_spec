@@ -21,9 +21,11 @@ defmodule CodeMySpecWeb.IntegrationsController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Integrations
+  alias CodeMySpec.Integrations.{DesktopClients, OAuthHandoff}
   alias CodeMySpec.UserPreferences
+  alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users.Scope
-  alias CodeMySpecDesktop.{Browser, Identity, OAuthClients, OAuthHandoff}
+  alias CodeMySpec.Utils.Browser
   alias CodeMySpecWeb.UserAuth
 
   require Logger
@@ -66,7 +68,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
     with :ok <- prepare_desktop_client(provider),
          {:ok, %{url: url, session_params: session_params}} <-
            Integrations.authorize_url(provider) do
-      if Identity.active?(),
+      if DesktopUser.active?(),
         do: hand_to_browser(conn, provider, url, session_params),
         else:
           conn
@@ -115,7 +117,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
 
   # The desktop window cannot run the provider's page (Google refuses OAuth in
   # an embedded webview), and the browser that does has its own cookies, so the
-  # flow waits server-side under its state (CodeMySpecDesktop.OAuthHandoff).
+  # flow waits server-side under its state (CodeMySpec.Integrations.OAuthHandoff).
   defp hand_to_browser(conn, provider, url, session_params) do
     :ok =
       OAuthHandoff.park(%{session_params: session_params, provider: provider, flow: :integration})
@@ -128,10 +130,10 @@ defmodule CodeMySpecWeb.IntegrationsController do
   end
 
   # Resend has no shared desktop client: each install registers its own the
-  # first time it connects (CodeMySpecDesktop.OAuthClients).
+  # first time it connects (CodeMySpec.Integrations.DesktopClients).
   defp prepare_desktop_client(:resend) do
-    if Identity.active?() do
-      with {:ok, _client_id} <- OAuthClients.ensure_resend(), do: :ok
+    if DesktopUser.active?() do
+      with {:ok, _client_id} <- DesktopClients.ensure_resend(), do: :ok
     else
       :ok
     end
@@ -140,7 +142,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
   defp prepare_desktop_client(_provider), do: :ok
 
   defp pending_flow(conn, params) do
-    with true <- Identity.active?(),
+    with true <- DesktopUser.active?(),
          {:ok, flow} <- OAuthHandoff.claim(params["state"]) do
       {flow.provider, flow.session_params, flow.flow}
     else

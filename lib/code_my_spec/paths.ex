@@ -4,7 +4,8 @@ defmodule CodeMySpec.Paths do
 
   All paths are relative to the project root directory. Every module that needs
   to reference a .code_my_spec/spec/status/architecture/knowledge path should use this
-  module instead of hardcoding strings.
+  module instead of hardcoding strings. `local_state_dir/0` is the one
+  exception: this machine's state, outside any project.
   """
 
   use Boundary, top_level?: true, deps: [], exports: :all
@@ -17,6 +18,19 @@ defmodule CodeMySpec.Paths do
 
   @doc "The root resource directory (`.code_my_spec`)."
   def base_dir, do: @base_dir
+
+  @doc """
+  This machine's state dir: `~/.codemyspec`, or beside `CMS_PROJECT_DIR` on a
+  workspace (`CmsHarness.Config.local_state_dir/0` says why).
+  """
+  @spec local_state_dir() :: String.t()
+  def local_state_dir do
+    case System.get_env("CMS_PROJECT_DIR") do
+      dir when is_binary(dir) and dir != "" -> Path.dirname(dir)
+      _ -> "~/.codemyspec"
+    end
+    |> Path.expand()
+  end
 
   # ============================================================================
   # Top-level directories

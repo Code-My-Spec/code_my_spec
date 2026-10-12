@@ -1,4 +1,4 @@
-defmodule CodeMySpecDesktop.Browser do
+defmodule CodeMySpec.Utils.Browser do
   @moduledoc """
   Opens the user's default browser at the desktop app, once, as the last
   child of the tree (so the Endpoint is listening). `CMS_NO_BROWSER` skips it.

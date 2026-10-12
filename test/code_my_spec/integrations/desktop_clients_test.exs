@@ -1,4 +1,4 @@
-defmodule CodeMySpecDesktop.OAuthClientsTest do
+defmodule CodeMySpec.Integrations.DesktopClientsTest do
   @moduledoc """
   The desktop connects integrations with clients made for an app that keeps no
   server secret, each redirecting to this machine (bb8bc042).
@@ -7,7 +7,7 @@ defmodule CodeMySpecDesktop.OAuthClientsTest do
   use ExUnit.Case, async: false
 
   alias CodeMySpec.Integrations
-  alias CodeMySpecDesktop.OAuthClients
+  alias CodeMySpec.Integrations.DesktopClients
 
   setup do
     dir = Path.join(System.tmp_dir!(), "oauth_clients_#{System.unique_integer([:positive])}")
@@ -45,7 +45,7 @@ defmodule CodeMySpecDesktop.OAuthClientsTest do
   defp stub_registration(client_id) do
     test = self()
 
-    Req.Test.stub(OAuthClients, fn conn ->
+    Req.Test.stub(DesktopClients, fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test, {:registered, Jason.decode!(body)})
       Req.Test.json(Plug.Conn.put_status(conn, 201), %{"client_id" => client_id})
@@ -53,13 +53,13 @@ defmodule CodeMySpecDesktop.OAuthClientsTest do
   end
 
   test "Cloudflare connects with the public client and a loopback redirect" do
-    :ok = OAuthClients.configure()
+    :ok = DesktopClients.configure()
 
     {:ok, %{url: url}} = Integrations.authorize_url(:cloudflare)
     params = query(url)
 
     assert params["client_id"] == "public-cloudflare-id"
-    assert params["redirect_uri"] == OAuthClients.redirect_uri()
+    assert params["redirect_uri"] == DesktopClients.redirect_uri()
     assert params["redirect_uri"] =~ ~r"^http://127\.0\.0\.1:\d+/callback$"
   end
 
@@ -74,26 +74,26 @@ defmodule CodeMySpecDesktop.OAuthClientsTest do
       })
     end)
 
-    :ok = OAuthClients.configure()
+    :ok = DesktopClients.configure()
 
     {:ok, %{url: url}} = Integrations.authorize_url(:google)
 
     assert query(url)["client_id"] == "desktop-google-id"
-    assert query(url)["redirect_uri"] == OAuthClients.redirect_uri()
+    assert query(url)["redirect_uri"] == DesktopClients.redirect_uri()
   end
 
   test "Resend registers this install's public client once, then reuses it", %{dir: dir} do
     stub_registration("install-client")
 
-    assert {:ok, "install-client"} = OAuthClients.ensure_resend()
+    assert {:ok, "install-client"} = DesktopClients.ensure_resend()
 
     assert_received {:registered,
                      %{"token_endpoint_auth_method" => "none", "redirect_uris" => [uri]}}
 
-    assert uri == OAuthClients.redirect_uri()
+    assert uri == DesktopClients.redirect_uri()
     assert File.exists?(Path.join(dir, "resend_client.json"))
 
-    assert {:ok, "install-client"} = OAuthClients.ensure_resend()
+    assert {:ok, "install-client"} = DesktopClients.ensure_resend()
     refute_received {:registered, _}
 
     {:ok, %{url: url}} = Integrations.authorize_url(:resend)
@@ -108,7 +108,7 @@ defmodule CodeMySpecDesktop.OAuthClientsTest do
 
     stub_registration("new-client")
 
-    assert {:ok, "new-client"} = OAuthClients.ensure_resend()
+    assert {:ok, "new-client"} = DesktopClients.ensure_resend()
     assert_received {:registered, _}
   end
 end

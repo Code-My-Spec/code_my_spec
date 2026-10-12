@@ -12,10 +12,10 @@ defmodule CodeMySpecWeb.UserLive.SettingsDesktopGitHubTest do
 
   alias CodeMySpec.Integrations
   alias CodeMySpec.Integrations.Providers.GitHub.DeviceAuth
-  alias CodeMySpecDesktop.Identity
+  alias CodeMySpec.UserPreferences.DesktopUser
 
   setup %{conn: conn} do
-    user = user_fixture(%{email: Identity.email()})
+    user = user_fixture(%{email: DesktopUser.email()})
     previous = Application.get_env(:code_my_spec, :env)
     Application.put_env(:code_my_spec, :env, :desktop)
     on_exit(fn -> Application.put_env(:code_my_spec, :env, previous) end)

@@ -757,7 +757,7 @@ defmodule CodeMySpecWeb.Router do
 
   # The desktop app's loopback redirect (http://127.0.0.1:<port>/callback), the
   # one path Cloudflare's public client accepts. The provider is whichever flow
-  # the returned state was parked under (CodeMySpecDesktop.OAuthHandoff).
+  # the returned state was parked under (CodeMySpec.Integrations.OAuthHandoff).
   scope "/", CodeMySpecWeb do
     pipe_through :browser
 
