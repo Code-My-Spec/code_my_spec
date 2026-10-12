@@ -1385,6 +1385,13 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  def handle_message(_topic, "cancel_analysis", payload, socket) do
+    root = socket.assigns.project.root
+    reason = Map.get(payload, "reason") || "cancelled by the server"
+    AnalysisServer.cancel(root, reason)
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "rescan", _payload, socket) do
     Logger.info("[CmsHarness] server asked for a rescan of #{socket.assigns.project.root}")
 

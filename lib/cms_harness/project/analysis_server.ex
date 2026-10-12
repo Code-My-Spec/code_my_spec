@@ -79,6 +79,26 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   @doc """
+  Stop everything this project's queue holds: the run under way is killed, and
+  it and every run queued behind it are answered as superseded, with `reason`.
+
+  The promotion gate asks for this when a batch leaves its copy. A batch
+  ejected on its first finding left the rest of its analyzers running, and the
+  next batch reset the tree and test databases underneath them: an exunit run
+  hung for its full thirty minutes, holding a machine-wide slot every other
+  copy's runs waited on (2026-10-12).
+
+  Answered rather than dropped, like every other way a run ends here.
+  """
+  @spec cancel(String.t(), String.t()) :: non_neg_integer()
+  def cancel(root, reason) when is_binary(reason) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
+      [{pid, _}] -> GenServer.call(pid, {:cancel, reason}, 5_000)
+      [] -> 0
+    end
+  end
+
+  @doc """
   Test seam: block until the queue is empty. Not used in production — the
   server learns a run finished by being told, not by anyone waiting.
   """
@@ -161,6 +181,32 @@ defmodule CmsHarness.Project.AnalysisServer do
   # will answer them.
   def handle_call(:in_flight, _from, state) do
     {:reply, held_run_ids(state), state}
+  end
+
+  def handle_call({:cancel, reason}, _from, state) do
+    held = Enum.reject([state.running | state.queue], &is_nil/1)
+
+    if running = state.running do
+      Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), running.task.pid)
+      Process.demonitor(running.task.ref, [:flush])
+    end
+
+    for entry <- held, run_id <- [entry.run_id | Map.get(entry, :tied_run_ids, [])] do
+      ChannelClient.deliver_analysis_result(state.project.root, %{
+        "run_id" => run_id,
+        "source" => entry.source,
+        "status" => "superseded",
+        "error" => reason
+      })
+    end
+
+    if held != [] do
+      Logger.info(
+        "[CmsHarness] cancelled #{length(held)} analyzer run(s) for #{state.project.root}: #{reason}"
+      )
+    end
+
+    {:reply, length(held), clear_running(%{state | queue: []})}
   end
 
   def handle_call(:status, _from, state) do

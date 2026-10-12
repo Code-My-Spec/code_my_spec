@@ -810,6 +810,29 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
+  Stop the runs a working copy's harness holds, running or queued.
+
+  Each is answered as superseded with `reason`, so its row closes as a run that
+  did not finish rather than a failure. For a copy whose runs belong to work
+  that has ended, like a promotion batch that left the gate. Nothing registered
+  for the copy has nothing to stop.
+  """
+  @spec cancel_on(Scope.t(), String.t()) :: :ok | {:error, term()}
+  def cancel_on(%Scope{active_working_copy_id: nil}, _reason), do: :ok
+
+  def cancel_on(%Scope{active_working_copy_id: working_copy_id}, reason)
+      when is_binary(reason) do
+    case remote_executor(%Scope{active_working_copy_id: working_copy_id}) do
+      {:ok, channel} ->
+        send(channel, {:cancel_analysis, reason})
+        :ok
+
+      :none ->
+        {:error, {:harness_not_registered, %{working_copy_id: working_copy_id}}}
+    end
+  end
+
+  @doc """
   Close out every `:running` run for the project as failed.
 
   Called when a harness's channel goes, and again when a new one joins. Both are
