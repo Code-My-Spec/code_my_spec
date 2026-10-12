@@ -178,10 +178,15 @@ defmodule CodeMySpec.AgentPerformance.PageTest do
     refute report_a.cycle_time.total_seconds == report_b.cycle_time.total_seconds,
            "both siblings' Total are pinned to the same shared component task"
 
-    # The shared component's own task time still counts toward each
-    # story's build stage -- only released_at is restricted to the
-    # story's own tasks.
-    assert report_a.cycle_time.stages[:build] >= 1000 * 3600
-    assert report_b.cycle_time.stages[:build] >= 1000 * 3600
+    # The shared component's own task time counts toward each story's
+    # build stage, but clamped to that story's own [released_at, as_of]
+    # window -- the ancient task predates both windows entirely, so each
+    # story's build stage reads exactly its own total, not the ancient
+    # task's full, unclamped span (issue 9c2107a6).
+    assert report_a.cycle_time.stages[:build] == 3600
+    assert report_b.cycle_time.stages[:build] == 7200
+
+    assert report_a.cycle_time.stages[:build] <= report_a.cycle_time.total_seconds
+    assert report_b.cycle_time.stages[:build] <= report_b.cycle_time.total_seconds
   end
 end

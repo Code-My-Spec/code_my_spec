@@ -2,6 +2,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTimeTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.AgentPerformance.CycleTime
+  alias CodeMySpec.AgentPerformance.Stage
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.TaskOwner
@@ -251,11 +252,16 @@ defmodule CodeMySpec.AgentPerformance.CycleTimeTest do
     refute cycle_time_a.total_seconds == cycle_time_b.total_seconds,
            "both siblings' Total are pinned to the same shared component task"
 
-    # The shared component's own task time still counts toward each
-    # story's build stage -- only released_at is restricted to the
-    # story's own tasks.
-    assert cycle_time_a.stages[:build] >= 1000 * 3600
-    assert cycle_time_b.stages[:build] >= 1000 * 3600
+    # The shared component's own task time counts toward each story's
+    # build stage, but clamped to that story's own [released_at, as_of]
+    # window -- the ancient task predates both windows entirely, so each
+    # story's build stage reads exactly its own total, not the ancient
+    # task's full, unclamped span (issue 9c2107a6).
+    assert cycle_time_a.stages[:build] == 3600
+    assert cycle_time_b.stages[:build] == 7200
+
+    assert cycle_time_a.stages[:build] <= cycle_time_a.total_seconds
+    assert cycle_time_b.stages[:build] <= cycle_time_b.total_seconds
   end
 
   test "a task's own completed_at past the story's promotion does not inflate its stage",
@@ -299,5 +305,119 @@ defmodule CodeMySpec.AgentPerformance.CycleTimeTest do
 
     assert cycle_time.stages[:qa] <= cycle_time.total_seconds,
            "a stage's time exceeds the story's own total release-to-promotion time"
+  end
+
+  test "every stage stays within its own story's total, across every way one can run past it",
+       context do
+    shared_component_id = Ecto.UUID.generate()
+    now = DateTime.utc_now()
+
+    # Shape 1, a component-scoped task (no story_id of its own, matched
+    # only via component_id): an ancient build task on the shared
+    # component, predating both siblings' own release by a wide margin.
+    ancient_agent = Fixtures.running_agent(context.scope, role: "coding")
+
+    {:ok, _ancient_agent} =
+      TaskOwner.add_task(context.scope, ancient_agent, %{
+        id: Ecto.UUID.generate(),
+        status: :active,
+        requirement_name: "implementation_file",
+        session_type: CodeMySpec.AgentTasks.ComponentCode,
+        component_id: shared_component_id,
+        started_at: DateTime.add(now, -2000 * 3600, :second)
+      })
+
+    # Shape 2, sibling stories sharing that component.
+    {:ok, story_a} =
+      Stories.create_story(context.scope, %{
+        title: "Story A: shared component, own build, QA completed late",
+        description: "Combines all three shapes QA found on this issue."
+      })
+
+    {:ok, story_a} =
+      story_a |> Story.changeset(%{component_id: shared_component_id}) |> CodeMySpec.Repo.update()
+
+    {:ok, story_b} =
+      Stories.create_story(context.scope, %{
+        title: "Story B: shares the same component, nothing else unusual",
+        description: "Its own total must differ from story A's."
+      })
+
+    {:ok, story_b} =
+      story_b |> Story.changeset(%{component_id: shared_component_id}) |> CodeMySpec.Repo.update()
+
+    agent_a_build = Fixtures.running_agent(context.scope, role: "coding")
+
+    {:ok, _agent_a_build} =
+      TaskOwner.add_task(context.scope, agent_a_build, %{
+        id: Ecto.UUID.generate(),
+        status: :active,
+        requirement_name: "implementation_file",
+        session_type: CodeMySpec.AgentTasks.ComponentCode,
+        component_id: shared_component_id,
+        story_id: story_a.id,
+        started_at: DateTime.add(now, -2 * 3600, :second)
+      })
+
+    # Shape 3, the story-1008 shape: a QA task stamped completed_at AFTER
+    # its own story's promotion.
+    agent_a_qa = Fixtures.running_agent(context.scope, role: "qa")
+
+    {:ok, _agent_a_qa} =
+      TaskOwner.add_task(context.scope, agent_a_qa, %{
+        id: Ecto.UUID.generate(),
+        status: :active,
+        requirement_name: "qa_complete",
+        session_type: CodeMySpec.AgentTasks.QaStory,
+        component_id: shared_component_id,
+        story_id: story_a.id,
+        started_at: DateTime.add(now, -5400, :second),
+        completed_at: DateTime.add(now, 2 * 3600, :second)
+      })
+
+    agent_b_build = Fixtures.running_agent(context.scope, role: "coding")
+
+    {:ok, _agent_b_build} =
+      TaskOwner.add_task(context.scope, agent_b_build, %{
+        id: Ecto.UUID.generate(),
+        status: :active,
+        requirement_name: "implementation_file",
+        session_type: CodeMySpec.AgentTasks.ComponentCode,
+        component_id: shared_component_id,
+        story_id: story_b.id,
+        started_at: DateTime.add(now, -5 * 3600, :second)
+      })
+
+    {:ok, story_a} =
+      story_a
+      |> Story.changeset(%{promoted_version: "0.1.0", promoted_at: now})
+      |> CodeMySpec.Repo.update()
+
+    {:ok, story_b} =
+      story_b
+      |> Story.changeset(%{promoted_version: "0.1.0", promoted_at: now})
+      |> CodeMySpec.Repo.update()
+
+    cycle_time_a = CycleTime.story(context.scope, story_a)
+    cycle_time_b = CycleTime.story(context.scope, story_b)
+
+    refute cycle_time_a.total_seconds == cycle_time_b.total_seconds,
+           "sibling totals are pinned to the same shared component task"
+
+    for stage <- Stage.names() do
+      assert Map.get(cycle_time_a.stages, stage, 0) <= cycle_time_a.total_seconds,
+             "story A's #{stage} stage exceeds its own total"
+
+      assert Map.get(cycle_time_b.stages, stage, 0) <= cycle_time_b.total_seconds,
+             "story B's #{stage} stage exceeds its own total"
+    end
+
+    # The three shapes actually fired, not just happened to stay under by
+    # being empty: story A's qa stage reflects its late-completing task
+    # (clamped, not dropped), and both siblings' build stages reflect the
+    # shared ancient task (clamped, not dropped).
+    assert cycle_time_a.stages[:qa] > 0
+    assert cycle_time_a.stages[:build] > 0
+    assert cycle_time_b.stages[:build] > 0
   end
 end

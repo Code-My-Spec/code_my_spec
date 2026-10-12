@@ -54,14 +54,15 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   @spec story(Scope.t(), Story.t(), [map()] | nil) :: t()
   def story(%Scope{} = scope, %Story{} = story, tasks) do
     tasks = tasks || all_tasks(scope, story.id, story.component_id)
+    released_at = released_at(tasks, story)
     as_of = promoted_at(story) || DateTime.utc_now()
 
     %{
       status: status(story, tasks),
-      released_at: released_at(tasks, story),
+      released_at: released_at,
       promoted_at: promoted_at(story),
       total_seconds: total_seconds(tasks, story),
-      stages: stage_seconds(tasks, as_of),
+      stages: stage_seconds(tasks, released_at, as_of),
       blocked: Enum.flat_map(tasks, &blocked_spans(&1, as_of))
     }
   end
@@ -139,45 +140,61 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
     end
   end
 
-  defp stage_seconds(tasks, as_of) do
+  defp stage_seconds(tasks, released_at, as_of) do
     tasks
     |> Enum.group_by(&Stage.of(&1.session_type))
-    |> Map.new(fn {stage, stage_tasks} -> {stage, active_union_seconds(stage_tasks, as_of)} end)
+    |> Map.new(fn {stage, stage_tasks} ->
+      {stage, active_union_seconds(stage_tasks, released_at, as_of)}
+    end)
   end
 
   # A stage's active time is the wall-clock span its own tasks actually
   # covered, not the sum of each task's own span: several never-completed
   # task records for one stage -- a QA round reopened across harness
-  # restarts, say -- can each span most of the story's own life. Bounding
-  # each to `as_of` keeps any one of them from running past the story's
-  # promotion, but summing their spans still double-counts whatever
+  # restarts, say -- can each span most of the story's own life. Clamping
+  # each to the story's own window keeps any one of them from running
+  # outside it, but summing their spans still double-counts whatever
   # wall-clock time they overlap, so the union is taken instead (issue: a
   # stage reading hours beyond the story's own total).
-  defp active_union_seconds(tasks, as_of) do
+  defp active_union_seconds(tasks, released_at, as_of) do
     tasks
-    |> Enum.flat_map(&active_intervals(&1, as_of))
+    |> Enum.flat_map(&active_intervals(&1, released_at, as_of))
     |> merge_intervals()
     |> Enum.reduce(0, fn {from, to}, acc -> acc + DateTime.diff(to, from) end)
   end
 
-  # A task's own active time as intervals: its open-to-close span with
-  # whatever of it was spent blocked on a person cut out.
-  #
-  # `finished` clamps to `as_of` even when `completed_at` is present: a
-  # task can be stamped completed after its own story's promotion (a QA
-  # round whose `completed_at` lands days after `promoted_at`), and
-  # trusting that recorded timestamp as-is put the stage past the story's
-  # own total just like the no-completed_at case this already guarded
-  # against (issue 9c2107a6).
-  defp active_intervals(%{started_at: nil}, _as_of), do: []
+  # A task's own active time as intervals, clamped on both ends to the
+  # story's own [released_at, as_of] window -- not just its open end.
+  # Un-clamped, either edge can put a stage past the story's own total
+  # (issue 9c2107a6): a task can start before this story's own release (a
+  # shared component's older task, see `released_at/2`'s own fallback), or
+  # its `completed_at` can land after this story's own promotion (a QA
+  # round stamped completed days after `promoted_at`). Both are clamped
+  # the same way the no-completed_at case already was; a task whose own
+  # window falls entirely outside the story's contributes nothing.
+  defp active_intervals(%{started_at: nil}, _released_at, _as_of), do: []
 
-  defp active_intervals(task, as_of) do
+  defp active_intervals(task, released_at, as_of) do
+    start = later(task.started_at, released_at)
     finished = earlier(task.completed_at || as_of, as_of)
-    subtract_intervals({task.started_at, finished}, blocked_intervals(task, as_of))
+
+    if DateTime.compare(start, finished) == :lt do
+      subtract_intervals({start, finished}, blocked_intervals(task, start, finished))
+    else
+      []
+    end
   end
 
-  defp blocked_intervals(%{blocked_at: nil}, _as_of), do: []
-  defp blocked_intervals(task, as_of), do: [{task.blocked_at, task.blocker_resolved_at || as_of}]
+  defp blocked_intervals(%{blocked_at: nil}, _from, _to), do: []
+
+  defp blocked_intervals(task, from, to) do
+    blocked_from = later(task.blocked_at, from)
+    blocked_to = earlier(task.blocker_resolved_at || to, to)
+
+    if DateTime.compare(blocked_from, blocked_to) == :lt,
+      do: [{blocked_from, blocked_to}],
+      else: []
+  end
 
   # Cuts `holes` out of `interval`, each assumed to fall inside it -- true
   # here since a task's own blocked span is always within its own
