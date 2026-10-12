@@ -241,7 +241,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp build_in_gate_copy(state, entries, base) do
     with {:ok, gate} <- gate_copy(state.scope),
          gate_scope = scope_for(state.scope, gate),
-         :ok <- gate_quiet(gate_scope, state.gate_wait_since),
+         :ok <- gate_quiet(gate_scope, gate_wait_since(state)),
          environment = WorkingCopies.environment(gate_scope),
          {:ok, built} <-
            Runner.build_batch(
@@ -305,6 +305,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
+  # Read rather than matched: a worker running when this field was added holds
+  # a state without it, and a code reload hands that state to this code
+  # (KeyError, 2026-10-12).
+  defp gate_wait_since(state), do: Map.get(state, :gate_wait_since)
+
   defp waited_out?(nil), do: false
 
   defp waited_out?(since),
@@ -315,13 +320,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     Logger.info("[PromotionQueue] waiting for the gate copy's runs to stop before building")
 
     state =
-      cancel_timer(%{
-        state
-        | phase: :idle,
-          batch: nil,
-          reserved_entries: [],
-          gate_wait_since: state.gate_wait_since || System.monotonic_time(:millisecond)
-      })
+      %{state | phase: :idle, batch: nil, reserved_entries: []}
+      |> Map.put(:gate_wait_since, gate_wait_since(state) || System.monotonic_time(:millisecond))
+      |> cancel_timer()
 
     {:noreply, %{state | timer: Process.send_after(self(), :next, @gate_wait_ms)}}
   end
@@ -374,13 +375,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     send(self(), :gate)
 
     {:noreply,
-     recheck_later(%{
-       state
-       | phase: :gating,
-         batch: batch,
-         reserved_entries: [],
-         gate_wait_since: nil
-     })}
+     %{state | phase: :gating, batch: batch, reserved_entries: []}
+     |> Map.put(:gate_wait_since, nil)
+     |> recheck_later()}
   end
 
   defp could_not_build(state, reason) do
