@@ -18,7 +18,10 @@ defmodule CmsHarness.Agents.Engine.TheIndexNamesWhatTheEngineCarriesTest do
 
     [_, listed] = Regex.run(~r/\*\*Called directly:\*\* ([^\n]+)/, index)
 
-    carried = Impl.tools([]) |> Enum.map(& &1.name()) |> Enum.reject(&(&1 in @core))
+    carried =
+      Impl.tools(direct_tools: ToolIndex.carried(ToolRegistry.registry()))
+      |> Enum.map(& &1.name())
+      |> Enum.reject(&(&1 in @core))
 
     assert Enum.sort(String.split(listed, ", ")) == Enum.sort(carried)
   end

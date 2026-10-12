@@ -60,8 +60,6 @@ defmodule CmsHarness do
       CodeMySpec.Hooks,
       # `CmsHarness.Application` installs the harness's log handler.
       CodeMySpec.Logging,
-      # `ToolRegistry.registry/0`, what `ToolIndex.carried/1` reads.
-      CodeMySpec.McpServers,
       # `cms migrate` (`CmsHarness.Migrate`) — a separate one-shot boot, not
       # the harness.
       CodeMySpec.Migration,

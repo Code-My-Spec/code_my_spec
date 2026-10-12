@@ -30,6 +30,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.AgentHarness,
       CodeMySpec.AgentTasks,
       CodeMySpec.Agents,
+      # `launch_agent/1` names the carried tools the way the channel's launch does.
+      CodeMySpec.McpServers,
       CodeMySpec.Analysis,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
@@ -3170,6 +3172,10 @@ defmodule CodeMySpecSpex.Fixtures do
     callbacks = mailbox_callbacks(request["agent_id"])
 
     request
+    |> Map.put_new(
+      "direct_tools",
+      CodeMySpec.Agents.ToolIndex.carried(CodeMySpec.McpServers.ToolRegistry.registry())
+    )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
     |> CmsHarness.Agents.launch()
