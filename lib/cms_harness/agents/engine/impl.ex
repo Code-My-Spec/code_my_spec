@@ -1159,26 +1159,38 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   # Nil until the engine has minted its generation: validation builds these
   # options too, and there is no turn to deliver into.
+  #
+  # Through the engine, built here in its `init/1`: the middleware runs in the
+  # Alloy process, and the channel refuses a mailbox request from anything but
+  # the agent's engine. Asked directly, every take came back `:stale_engine`,
+  # read as nothing sent, and a message sent now waited for the turn's end.
   defp send_now_taker(opts) do
     with agent_id when is_binary(agent_id) <- Keyword.get(opts, :agent_id),
          generation when is_binary(generation) <- Keyword.get(opts, :generation) do
-      take = Keyword.get(opts, :on_send_now) || take_over_channel(opts)
-      fn -> take.(agent_id, generation) end
+      case Keyword.get(opts, :on_send_now) do
+        take when is_function(take, 2) -> fn -> take.(agent_id, generation) end
+        nil -> ask_engine(self())
+      end
     else
       _ -> nil
     end
   end
 
-  defp take_over_channel(opts) do
-    working_copy = Keyword.fetch!(opts, :working_copy)
+  defp ask_engine(engine), do: fn -> take_from(engine) end
 
-    fn agent_id, generation ->
-      ChannelClient.mailbox(working_copy, %{
-        "operation" => "take_send_now",
-        "agent_id" => agent_id,
-        "generation" => generation
-      })
-    end
+  defp take_from(engine) do
+    GenServer.call(engine, :take_send_now, 20_000)
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
+  @doc "The messages sent now to this agent mid-turn, asked of the server as its engine."
+  def take_send_now(state) do
+    ChannelClient.mailbox(state.working_copy, %{
+      "operation" => "take_send_now",
+      "agent_id" => state.agent_id,
+      "generation" => state.generation
+    })
   end
 
   defp require_opt(opts, key) do

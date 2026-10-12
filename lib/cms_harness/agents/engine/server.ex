@@ -53,6 +53,12 @@ defmodule CmsHarness.Agents.Engine.Server do
     end
   end
 
+  # The send-now middleware runs in the Alloy process, and the channel takes a
+  # mailbox request only from the agent's engine, so the engine asks for it.
+  def handle_call(:take_send_now, _from, state) do
+    {:reply, Impl.take_send_now(state), state}
+  end
+
   def handle_call(:alloy, _from, state) do
     {:reply, {:ok, state.alloy}, state}
   end
