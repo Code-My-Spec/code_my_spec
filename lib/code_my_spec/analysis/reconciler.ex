@@ -81,7 +81,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
         RunsRepository.prune(scope, run.source)
         # Re-evaluating tasks and pushing to the user's phone answer this event
-        # (`Validation.RunReconciled`, `Notifications.AnalysisPush`); Analysis
+        # (`AgentTasks.RunReconciled`, `Notifications.AnalysisPush`); Analysis
         # sits below both.
         :telemetry.execute(
           [:code_my_spec, :analysis, :run_reconciled],

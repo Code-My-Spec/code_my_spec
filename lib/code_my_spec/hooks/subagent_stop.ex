@@ -12,7 +12,7 @@ defmodule CodeMySpec.Hooks.SubagentStop do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
-  alias CodeMySpec.Validation.TaskEvaluator
+  alias CodeMySpec.AgentTasks.TaskEvaluator
 
   @spec handle(CodeMySpec.Users.Scope.t(), map()) :: {pos_integer(), map()}
   def handle(scope, params) do

@@ -16,7 +16,7 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Notifications.AnalysisPush
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation.RunReconciled
+  alias CodeMySpec.AgentTasks.RunReconciled
 
   @impl true
   def start(_type, args) do

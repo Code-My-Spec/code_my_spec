@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Validation.ATaskWhoseStoryIsGoneTest do
+defmodule CodeMySpec.AgentTasks.ATaskWhoseStoryIsGoneTest do
   @moduledoc """
   A task pointing at a deleted story is cancelled, not failed on forever.
 
@@ -29,7 +29,7 @@ defmodule CodeMySpec.Validation.ATaskWhoseStoryIsGoneTest do
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Validation.TaskEvaluator
+  alias CodeMySpec.AgentTasks.TaskEvaluator
 
   # A number no story on this project has. `Sessions.Task.story_id` is the
   # durable story *number*, not the row id.

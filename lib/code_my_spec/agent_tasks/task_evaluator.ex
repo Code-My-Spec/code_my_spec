@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Validation.TaskEvaluator do
+defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   @moduledoc """
   Evaluates agent tasks against their requirements.
 
@@ -300,7 +300,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
       :ok
   end
 
-  # Agents answers this (`Agents.Events`); Validation sits below Agents.
+  # Agents answers this (`Agents.Events`); AgentTasks sits below Agents.
   defp nudge(scope, copy_id, except_agent_id) do
     :telemetry.execute([:code_my_spec, :tasks, :completed], %{}, %{
       scope: scope,

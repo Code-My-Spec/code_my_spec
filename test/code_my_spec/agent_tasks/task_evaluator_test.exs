@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Validation.TaskEvaluatorTest do
+defmodule CodeMySpec.AgentTasks.TaskEvaluatorTest do
   @moduledoc """
   What a stop says when a checker could not look.
 
@@ -12,7 +12,7 @@ defmodule CodeMySpec.Validation.TaskEvaluatorTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation.TaskEvaluator
+  alias CodeMySpec.AgentTasks.TaskEvaluator
 
   @harness "d1c8f8f5-13e5-4827-865e-55a081f988a6"
 
