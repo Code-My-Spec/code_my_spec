@@ -39,19 +39,13 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
     request = socket.assigns.request
     answers = Notifications.collect_answers(request.questions, params)
 
-    case Notifications.answer_question_request(request.id, answers) do
-      {:ok, updated} ->
-        {:noreply, socket |> assign(request: updated) |> put_flash(:info, "Answer sent")}
+    outcome = Notifications.answer_question_request(request.id, answers)
+    {kind, message} = ChatComponents.answer_flash(outcome)
 
-      {:error, {:already_resolved, _}} ->
-        {:noreply,
-         socket
-         |> assign(request: Notifications.get_question_request(request.id))
-         |> put_flash(:info, "Already answered")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed: #{inspect(reason)}")}
-    end
+    {:noreply,
+     socket
+     |> assign(request: Notifications.get_question_request(request.id))
+     |> put_flash(kind, message)}
   end
 
   @impl true

@@ -38,32 +38,26 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   for the reason above: it is the only component whose refresh cannot come
   from its own parent's next render.
 
-  ## Summary first, full form on click
+  ## Summary in the panel, the form in a modal
 
   The panel lists compact rows — icon, title, one line of body — the same
   shape `NotificationLive.Index` already uses for "Pending". Clicking a row
-  is the only way to reach the full form; `@expanded` names at most one
-  request at a time, and submitting always collapses back to the list. This
-  matches the standalone inbox's own two-step shape (list, then a page to
-  answer on) without the navigation — expanding swaps content inside the one
-  card already on screen rather than opening a second surface.
+  opens that request's full form in a modal over the page; `@expanded` names
+  at most one request, and submitting, the backdrop, the close button or
+  Escape closes it. The form used to expand inside the panel, which is a
+  `w-96` box held open only by `:focus-within`, and a long question with
+  three described options did not fit in it.
 
-  ## Why a resolved item is never removed mid-panel
-
-  The panel opens via a plain daisyUI `dropdown`/`dropdown-content` pair —
-  `:focus-within`, no JS, no server round trip to open it. Submitting an item
-  legitimately drops it from `@pending` (it is no longer pending) and that is
-  fine here specifically because the row that had focus — the submit button,
-  inside the expanded form — goes with it deliberately, the same as a modal
-  closing after its own action completes. What must never happen is an
-  *unrelated* pending item disappearing as a side effect of one submit;
-  `load/1` only ever removes items the server now says are resolved.
+  The modal is daisyUI's `modal modal-open`, rendered by the server when
+  `@expanded` names a pending item, so it needs no JS of its own. A request
+  resolved elsewhere leaves `@pending` on the next refresh and its modal goes
+  with it; `load/1` only ever removes items the server says are resolved.
 
   ## Why a flash, not an inline "sent" banner
 
   `ChatComponents.question/1`'s "Answer sent" banner makes sense on its own
-  page, where the page is the whole context. Inside a dropdown that is about
-  to collapse (the item leaves `@pending` the moment it resolves), a banner
+  page, where the page is the whole context. Inside a modal that is about
+  to close (the item leaves `@pending` the moment it resolves), a banner
   nobody stays to read is wasted; the flash relayed through `NotificationsHook`
   (see below) says the same thing where the user's eyes already are once the
   panel closes.
@@ -116,8 +110,9 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     case find(socket, id) do
       %QuestionRequest{} = request ->
         answers = Notifications.collect_answers(request.questions, params)
-        _ = Notifications.answer_question_request(request.id, answers)
-        {:noreply, socket |> flash(:info, "Answer sent.") |> collapse() |> load()}
+        outcome = Notifications.answer_question_request(request.id, answers)
+        {kind, message} = ChatComponents.answer_flash(outcome)
+        {:noreply, socket |> flash(kind, message) |> close_unless_refused(outcome) |> load()}
 
       _ ->
         {:noreply, socket}
@@ -151,6 +146,10 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
 
   defp collapse(socket), do: assign(socket, :expanded, nil)
 
+  # A refused answer keeps its modal open, so the person can fix it there.
+  defp close_unless_refused(socket, {:error, :empty_answer}), do: socket
+  defp close_unless_refused(socket, _outcome), do: collapse(socket)
+
   defp find(socket, id), do: Enum.find(socket.assigns.pending, &(&1.id == id))
 
   defp load(socket) do
@@ -165,10 +164,11 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   end
 
   def render(assigns) do
+    assigns = assign(assigns, :open, Enum.find(assigns.pending, &(&1.id == assigns.expanded)))
+
     ~H"""
     <div id={@id} class="dropdown dropdown-end">
       <label
-        id={trigger_id(@id)}
         tabindex="0"
         role="button"
         class="btn btn-ghost btn-sm tooltip tooltip-left"
@@ -198,13 +198,7 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
         <p :if={@pending == []} class="text-center text-sm opacity-60 py-6">
           Nothing waiting on you.
         </p>
-        <.notification_item
-          :for={item <- @pending}
-          item={item}
-          target={@myself}
-          expanded={@expanded}
-          dropdown_id={@id}
-        />
+        <.summary_row :for={item <- @pending} item={item} target={@myself} />
         <.link
           navigate={~p"/app/notifications"}
           class="link link-primary block border-t border-base-300 pt-2 text-center text-xs"
@@ -212,50 +206,56 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
           View all
         </.link>
       </div>
+      <.request_modal :if={@open} id={"#{@id}-modal"} item={@open} target={@myself} />
     </div>
     """
   end
 
+  attr :id, :string, required: true
   attr :item, :any, required: true
   attr :target, :any, required: true
-  attr :expanded, :any, required: true
-  attr :dropdown_id, :string, required: true
 
-  defp notification_item(assigns) do
+  defp request_modal(assigns) do
     ~H"""
-    <.summary_row
-      :if={@expanded != @item.id}
-      item={@item}
-      target={@target}
-      dropdown_id={@dropdown_id}
-    />
-    <div :if={@expanded == @item.id}>
+    <div
+      id={@id}
+      class="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      data-test="notification-modal"
+      phx-window-keydown={JS.push("collapse", target: @target)}
+      phx-key="Escape"
+    >
+      <div class="modal-box max-w-lg max-h-[85dvh] overflow-y-auto p-0">
+        <button
+          type="button"
+          phx-click={JS.push("collapse", target: @target)}
+          class="btn btn-ghost btn-sm btn-circle absolute right-2 top-2 z-10"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+        <.expanded_form item={@item} target={@target} />
+      </div>
       <button
         type="button"
-        phx-click={
-          JS.push("collapse", target: @target) |> JS.focus(to: "##{trigger_id(@dropdown_id)}")
-        }
-        class="btn btn-ghost btn-xs -ml-1 mb-1"
+        class="modal-backdrop"
+        phx-click={JS.push("collapse", target: @target)}
+        aria-label="Close"
       >
-        <.icon name="hero-chevron-left" class="size-4" /> Back
       </button>
-      <.expanded_form item={@item} target={@target} />
     </div>
     """
   end
 
   attr :item, :any, required: true
   attr :target, :any, required: true
-  attr :dropdown_id, :string, required: true
 
   defp summary_row(assigns) do
     ~H"""
     <button
       type="button"
-      phx-click={
-        JS.push("expand", value: %{"id" => @item.id}, target: @target)
-        |> JS.focus(to: "##{trigger_id(@dropdown_id)}")
-      }
+      phx-click={JS.push("expand", value: %{"id" => @item.id}, target: @target)}
       data-test="notification-summary"
       data-id={@item.id}
       class="card card-compact bg-base-100 hover:bg-base-200 transition-colors w-full text-left border border-primary/40"
@@ -272,16 +272,6 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     </button>
     """
   end
-
-  # A plain `phx-click="expand"` swaps the clicked summary row for the
-  # expanded form on the very next render — the whole point of this
-  # interaction. Since the panel only stays open via CSS `:focus-within`, a
-  # click that removes the element holding focus drops focus to nothing and
-  # the *entire panel* snaps shut, hiding every other pending item along with
-  # it. `JS.focus/2` runs client-side as part of the same click, ahead of the
-  # server round trip that will remove the button, moving focus to the one
-  # element in this component that is never removed: the bell that opens it.
-  defp trigger_id(dropdown_id), do: "#{dropdown_id}-trigger"
 
   defp expanded_form(%{item: %QuestionRequest{}} = assigns) do
     ~H"""
@@ -312,13 +302,14 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   defp summary_title(%QuestionRequest{title: title, questions: questions}),
     do: title || first_question(questions)
 
-  defp summary_title(%PermissionRequest{tool_name: tool_name}), do: "Claude Code: #{tool_name}"
+  defp summary_title(%PermissionRequest{tool_name: tool_name}),
+    do: "#{tool_name} needs your approval"
 
   defp summary_body(%QuestionRequest{questions: questions}), do: first_question(questions)
   defp summary_body(%PermissionRequest{} = request), do: tool_summary(request)
 
   defp first_question([%{"question" => q} | _]) when is_binary(q), do: q
-  defp first_question(_), do: "Claude Code has a question"
+  defp first_question(_), do: "A question for you"
 
   defp tool_summary(%{tool_input: %{"command" => cmd}}), do: cmd
   defp tool_summary(%{tool_input: %{"file_path" => path}}), do: path

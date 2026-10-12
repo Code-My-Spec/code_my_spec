@@ -34,7 +34,7 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     {:ok, _view, html} = live(conn, ~p"/app/notifications")
 
     assert html =~ "Which database?"
-    assert html =~ "Claude Code: Bash"
+    assert html =~ "Bash needs your approval"
     assert html =~ "rm -rf node_modules"
     assert html =~ "Pending"
   end
@@ -121,7 +121,7 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
   defp retry(false, error, stacktrace, _fun, _deadline), do: reraise(error, stacktrace)
 
   describe "answering from the dropdown, without navigating" do
-    test "a summary expands on click, submitting answers it and flashes", %{
+    test "a summary opens its form in a modal, submitting answers it and flashes", %{
       conn: conn,
       user: user
     } do
@@ -135,12 +135,11 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
 
       view |> element("[data-test='notification-summary']") |> render_click()
 
-      assert view
-             |> element("#notification-dropdown [data-test='question-form']")
-             |> has_element?()
+      assert has_element?(view, "[data-test='notification-modal'] [data-test='question-form']")
+      refute has_element?(view, ".dropdown-content [data-test='question-form']")
 
       view
-      |> form("#notification-dropdown [data-test='question-form']", %{"q_0" => "Yes"})
+      |> form("[data-test='notification-modal'] [data-test='question-form']", %{"q_0" => "Yes"})
       |> render_submit()
 
       # The flash travels through `NotificationsHook`'s own `handle_info` — a
@@ -149,24 +148,58 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
       # asserting once.
       eventually(fn -> assert render(view) =~ "Answer sent." end)
 
-      refute view
-             |> element("#notification-dropdown [data-test='question-form']")
-             |> has_element?()
+      refute has_element?(view, "[data-test='notification-modal']")
     end
 
-    test "a permission summary expands, and approving it flashes", %{conn: conn, user: user} do
+    test "an empty answer keeps the modal open and says why", %{conn: conn, user: user} do
+      question = create_question(user.id, "Ship today?")
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+      view |> element("[data-test='notification-summary']") |> render_click()
+
+      view
+      |> form("[data-test='notification-modal'] [data-test='question-form']", %{"q_0" => ""})
+      |> render_submit()
+
+      eventually(fn -> assert render(view) =~ "Pick an option or type an answer first." end)
+      assert has_element?(view, "[data-test='notification-modal'] [data-test='question-form']")
+      assert %{status: "pending"} = Notifications.get_question_request(question.id)
+    end
+
+    test "the modal closes without answering", %{conn: conn, user: user} do
+      question = create_question(user.id, "Ship today?")
+
+      {:ok, view, _html} = live(conn, ~p"/app/notifications")
+      view |> element("[data-test='notification-summary']") |> render_click()
+
+      view
+      |> element("[data-test='notification-modal'] button[aria-label='Close'].btn")
+      |> render_click()
+
+      refute has_element?(view, "[data-test='notification-modal']")
+      assert %{status: "pending"} = Notifications.get_question_request(question.id)
+    end
+
+    test "a permission summary opens in a modal, and approving it flashes", %{
+      conn: conn,
+      user: user
+    } do
       create_permission(user.id)
 
       {:ok, view, _html} = live(conn, ~p"/app/notifications")
 
       view |> element("[data-test='notification-summary']") |> render_click()
 
-      assert view
-             |> element("#notification-dropdown [data-test='permission-request']")
-             |> has_element?()
+      assert has_element?(
+               view,
+               "[data-test='notification-modal'] [data-test='permission-request']"
+             )
 
       view
-      |> element("#notification-dropdown [data-test='permission-request'] button", "Approve")
+      |> element(
+        "[data-test='notification-modal'] [data-test='permission-request'] button",
+        "Approve"
+      )
       |> render_click()
 
       eventually(fn -> assert render(view) =~ "Approved." end)
