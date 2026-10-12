@@ -77,6 +77,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.StoryProgress
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
+  alias Phoenix.LiveView.JS
 
   import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
 
@@ -730,6 +731,42 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     </button>
     """
   end
+
+  attr :message, :any, required: true
+
+  # One line until asked: a brief can run to a screen, and the queue sits above
+  # the composer. Toggled client-side so a patch does not fold it back up.
+  defp queued_text(assigns) do
+    assigns =
+      assign(assigns,
+        id: "queued-#{assigns.message.delivery_ref}",
+        text: Message.text(assigns.message)
+      )
+
+    ~H"""
+    <div class="flex min-w-0 flex-1 items-baseline gap-2">
+      <span id={@id} data-test="queued-message-text" class="min-w-0 flex-1 truncate">
+        {@text}
+      </span>
+      <button
+        :if={long?(@text)}
+        type="button"
+        data-test="queued-message-read-more"
+        class="link link-hover shrink-0 opacity-70"
+        phx-click={
+          JS.toggle_class("truncate whitespace-pre-wrap break-words", to: "##{@id}")
+          |> JS.toggle(to: "##{@id}-more")
+          |> JS.toggle(to: "##{@id}-less")
+        }
+      >
+        <span id={"#{@id}-more"}>Read more</span>
+        <span id={"#{@id}-less"} class="hidden">Show less</span>
+      </button>
+    </div>
+    """
+  end
+
+  defp long?(text), do: String.contains?(text, "\n") or String.length(text) > 100
 
   attr :message, :any, required: true
 
@@ -2292,9 +2329,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             />
           </div>
         </details>
-        <span :if={run == []} class="min-w-0 whitespace-pre-wrap break-words">
-          {Message.text(message)}
-        </span>
+        <.queued_text :if={run == []} message={message} />
         <span class="opacity-60">
           {message.delivery_diagnostic || mailbox_label(message.mailbox_state)}
         </span>
