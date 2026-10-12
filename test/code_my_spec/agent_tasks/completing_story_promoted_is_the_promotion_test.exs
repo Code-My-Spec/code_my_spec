@@ -164,8 +164,12 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     %{scope: scope, copy: copy, coder: coder, story: story, task: %{story_id: story.id}}
   end
 
-  # Promotion comes after QA; a story QA has not passed is refused.
-  defp qa(scope, story, :passed), do: {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
+  # Promotion comes after QA; a story QA has not passed is refused. Certified
+  # at the copy's HEAD, since promotion asks at the candidate commit.
+  defp qa(scope, story, :passed) do
+    {:ok, _} = Stories.set_qa_ready(scope, story, @head)
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
+  end
   defp qa(_scope, _story, :not_passed), do: :ok
 
   defp queued(scope) do

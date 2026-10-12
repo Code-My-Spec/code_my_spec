@@ -230,8 +230,15 @@ defmodule CmsHarness.Agents do
     fn agent_id, envelope ->
       warn_on_tool_failure(agent_id, envelope)
       ChannelClient.report_turn_event(working_copy, agent_id, envelope)
+      report_head_at_turn_end(working_copy, envelope)
     end
   end
+
+  # Agents commit inside a turn, and a commit moves no file a sync watches.
+  defp report_head_at_turn_end(root, %{event: :turn_ended}) when is_binary(root),
+    do: CmsHarness.Sync.report_head(root)
+
+  defp report_head_at_turn_end(_root, _envelope), do: :ok
 
   # A tool call that failed, said out loud on the machine.
   #

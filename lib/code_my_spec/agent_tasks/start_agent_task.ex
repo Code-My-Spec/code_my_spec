@@ -289,7 +289,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     with {:ok, owner} <- TaskOwner.add_task(scope, session, attrs) do
       task = TaskOwner.find_task(owner, attrs.id)
 
-      case Qa.capture_story_review(scope, task) do
+      case Qa.capture_story_review(scope, owner, task) do
         {:ok, _} ->
           {:ok, task}
 
@@ -310,7 +310,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp qa_topic_task(scope, session, story, task) do
-    case Qa.capture_story_review(scope, task) do
+    case Qa.capture_story_review(scope, session, task) do
       {:ok, _} ->
         {:ok, task}
 

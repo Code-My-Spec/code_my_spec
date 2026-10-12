@@ -200,6 +200,24 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
+  @doc """
+  The paths that differ between `from` and `to` on the scope's checkout — what
+  certification reads to decide whether a QA pass carries forward. `nil` when
+  they cannot be read, which carries nothing.
+  """
+  @spec changed_paths(Scope.t(), String.t() | nil, String.t()) :: [String.t()] | nil
+  def changed_paths(_scope, nil, _to), do: nil
+
+  def changed_paths(%Scope{} = scope, from, to) do
+    with {:ok, copy} <- promoting_copy(scope, nil),
+         {:ok, %{paths: paths}} when is_list(paths) <-
+           Runner.changed(copy_environment(scope, copy), copy.root, from, to, copy.id) do
+      paths
+    else
+      _ -> nil
+    end
+  end
+
   defp story_to_promote(_scope, nil), do: {:ok, nil}
 
   defp story_to_promote(scope, number) do
@@ -575,7 +593,8 @@ defmodule CodeMySpec.Promotion do
         {:error,
          %{
            reason:
-             "Story #{story.number} needs QA of its current submitted work at candidate #{expected_revision} before promotion."
+             "Story #{story.number} needs QA of its current submitted work at candidate #{expected_revision} before promotion.",
+           qa_not_current: true
          }}
     end
   end

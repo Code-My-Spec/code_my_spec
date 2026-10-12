@@ -4136,8 +4136,9 @@ defmodule CodeMySpecSpex.Fixtures do
         ]
       })
 
-    {:ok, _review} =
-      CodeMySpec.Qa.capture_story_review(scope, %{id: task_id, story_id: story.id})
+    task = Enum.find(session.tasks, &(&1.id == task_id))
+    {:ok, _review} = CodeMySpec.Qa.capture_story_review(scope, session, task)
+    session = Sessions.get_session(scope, session.id)
 
     {story, task_id, session}
   end

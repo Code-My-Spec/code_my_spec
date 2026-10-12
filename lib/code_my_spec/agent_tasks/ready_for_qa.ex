@@ -24,6 +24,7 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   """
 
   alias CodeMySpec.Promotion
+  alias CodeMySpec.Qa
   alias CodeMySpec.Stories
 
   # The step that makes the story's specs pass, not one that waits for them:
@@ -48,8 +49,9 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   # 1870). Agents handed the full prompt re-did the certification from scratch,
   # up to 170s and two dozen calls, for a stamp that was already there.
   defp already(story, commit) do
-    "Story #{story.number} is already certified ready for QA at #{commit}. There is " <>
-      "nothing to do: complete this task with `evaluate_task`."
+    "Story #{story.number} is certified ready for QA at #{commit}. Complete this task " <>
+      "with `evaluate_task`: it stands if that is still your HEAD, and re-certifies " <>
+      "there if it is not."
   end
 
   @doc "The stamp alone, certifying nothing. See the moduledoc."
@@ -64,13 +66,13 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   Complete the task: certify the copy at HEAD and stamp the story. `owner` is
   who is completing it; an agent we run is answered when pending runs land.
   """
+  # Certified means at a commit: a stamp the branch has moved past is not a
+  # certification of what is there now, so completing re-certifies at HEAD
+  # rather than reading the old stamp back.
   def evaluate(scope, task, owner) do
     case story_for(scope, task) do
       nil ->
         no_story()
-
-      %{qa_ready_commit: commit} = story when is_binary(commit) ->
-        stamp_verdict(story)
 
       story ->
         scope |> Promotion.certify(story, notify: agent_id(owner)) |> certified(scope, story)
@@ -87,8 +89,15 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
 
   # A clean certifying run stamps the story: every red spex refuses it at
   # certification, so clean means every criterion's spex is green.
+  defp certified({:ok, %{head: head}}, _scope, %{qa_ready_commit: head} = story),
+    do: stamp_verdict(story)
+
+  # A new commit is certified on its own merits. The QA it still needs is the
+  # pass the story already has, if nothing QA exercises changed since the commit
+  # that pass reviewed (John, 2026-10-11); otherwise a fresh one.
   defp certified({:ok, %{head: head}}, scope, story) do
-    {:ok, stamped} = Stories.set_qa_ready(scope, story, head)
+    reviewed = Qa.carry(story, Promotion.changed_paths(scope, story.qa_reviewed_commit, head))
+    {:ok, stamped} = Stories.set_qa_ready(scope, story, head, DateTime.utc_now(), reviewed)
     stamp_verdict(stamped)
   end
 

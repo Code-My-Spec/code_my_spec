@@ -239,15 +239,12 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert task.story_id == story.id
       assert task.requirement_name == "qa_complete"
       assert task.status == :active
-      assert CodeMySpec.Repo.get_by(CodeMySpec.Qa.StoryReview, task_id: task.id)
+      assert task.review_commit == "reviewed-revision",
+             "the task started without recording the certification it reviews"
       assert {:ok, _prompt, _} = StartAgentTask.run(scope, args)
       repeated = CodeMySpec.Sessions.get_by_external_id(scope, external)
       assert [same] = CodeMySpec.TaskOwner.tasks(repeated)
       assert same.id == task.id
-    end
-
-    test "a prompt cannot start a review without task identity", %{scope: scope, story: story} do
-      assert {:error, :story_review_task_required} = QaStory.command(scope, %{story_id: story.id})
     end
 
     test "a topic that is not a story id says so", %{scope: scope} do

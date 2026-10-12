@@ -1704,6 +1704,9 @@ defmodule CmsHarness.Project.ChannelClient do
            &Steps.contained(Environment.new(:local, &1), &1, base, commits)
          )
 
+  defp apply_promotion("promotion_changed", %{"root" => root, "from" => from, "to" => to}),
+    do: with_served_root(root, &Steps.changed(Environment.new(:local, &1), &1, from, to))
+
   defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
     merge = %{
       before: payload["before"],

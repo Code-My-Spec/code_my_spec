@@ -32,7 +32,7 @@ defmodule CodeMySpec.AgentTasks.ASupersededStoryReviewIsReplacedTest do
     }
 
     {:ok, qa} = TaskOwner.add_task(context.scope, qa, task)
-    {:ok, _} = Qa.capture_story_review(context.scope, task)
+    {:ok, _} = Qa.capture_story_review(context.scope, qa, task)
     Map.merge(context, %{coding: coding, qa: qa, old_task: task})
   end
 

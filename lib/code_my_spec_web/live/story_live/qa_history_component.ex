@@ -47,9 +47,16 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
     showing_form? = assigns.invalidating_attempt_id == to_string(assigns.attempt.id)
 
     review =
-      case Map.get(assigns.attempt, :review) do
-        %{certified_revision: _} = value -> value
-        _ -> nil
+      case Map.get(assigns.attempt, :reviewed_commit) do
+        commit when is_binary(commit) ->
+          %{
+            commit: commit,
+            started_at: assigns.attempt.review_started_at,
+            submissions: assigns.attempt.reviewed_submissions || %{}
+          }
+
+        _ ->
+          nil
       end
 
     assigns =
@@ -81,7 +88,7 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
           Historical result — does not approve the current work.
         </div>
         <div :if={@review} data-role="qa-reviewed-work" class="text-xs text-base-content/70">
-          Reviewed revision: <code>{@review.certified_revision}</code>
+          Reviewed revision: <code>{@review.commit}</code>
           <div>Review started: {format_dt(@review.started_at)}</div>
           <div :for={{issue_id, ref} <- @review.submissions}>
             Issue <code>{issue_id}</code>: submission <code>{ref}</code>

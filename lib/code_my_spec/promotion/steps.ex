@@ -500,6 +500,13 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
+  @doc """
+  The paths that differ between `from` and `to` in the checkout at `root`:
+  what certification reads to decide whether a QA pass carries forward.
+  `{:ok, %{paths: paths}}`; `paths` is `nil` when they cannot be read.
+  """
+  def changed(env, root, from, to), do: {:ok, %{paths: changed_between(env, root, from, to)}}
+
   # What the merge brought in, which `Promotion` reads to choose a reload or a
   # restart. `nil` when it cannot be read, which restarts.
   defp changed_between(_env, _root, same, same), do: []

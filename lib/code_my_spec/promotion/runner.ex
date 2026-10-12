@@ -123,6 +123,20 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.merge(env, root, branch) end
       )
 
+  @doc "The paths that differ between `from` and `to` at `root` (`Steps.changed/4`)."
+  @spec changed(Environment.t() | nil, String.t(), String.t(), String.t(), Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def changed(environment, root, from, to, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_changed",
+        %{"root" => root, "from" => from, "to" => to},
+        @git_timeout,
+        fn env -> Steps.changed(env, root, from, to) end
+      )
+
   @doc "The checkout at `root`'s HEAD and current version, moving nothing."
   @spec current(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
   def current(environment, root, copy_id),

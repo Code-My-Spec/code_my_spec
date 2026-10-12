@@ -96,6 +96,15 @@ defmodule CodeMySpec.Sessions.Task do
     field :blocked_reason, :string
     field :evaluation_feedback, :string
     field :evaluation_feedback_count, :integer, default: 0
+
+    # A story QA task's review, captured when it starts (`Qa.StoryReviews`):
+    # the certification it is testing and the story's submitted issue fixes.
+    # Its result is copied onto the attempt, so the pass records what it saw
+    # even if the story is re-certified while it runs.
+    field :review_commit, :string
+    field :review_certified_at, :utc_datetime_usec
+    field :review_submissions, :map
+    field :review_started_at, :utc_datetime_usec
   end
 
   @doc """
@@ -139,7 +148,11 @@ defmodule CodeMySpec.Sessions.Task do
       :blocker_resolved_at,
       :blocked_reason,
       :evaluation_feedback,
-      :evaluation_feedback_count
+      :evaluation_feedback_count,
+      :review_commit,
+      :review_certified_at,
+      :review_submissions,
+      :review_started_at
     ])
     |> validate_required([:id, :status])
     |> put_id_if_missing()

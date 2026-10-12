@@ -214,7 +214,7 @@ defmodule CodeMySpec.Requirements.Profiles do
           from(a in QaAttempt,
             where: a.story_id in ^story_ids and not a.stale,
             order_by: [desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id],
-            preload: [:invalidations, :review]
+            preload: [:invalidations]
           )
         )
         |> Enum.group_by(& &1.story_id)

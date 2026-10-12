@@ -348,6 +348,17 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
+  def list_certified_on_copy(%Scope{} = scope, working_copy_id) when is_binary(working_copy_id) do
+    Story
+    |> where(
+      [s],
+      s.project_id == ^scope.active_project_id and s.working_copy_id == ^working_copy_id and
+        not is_nil(s.qa_ready_commit) and is_nil(s.promoted_version)
+    )
+    |> order_by([s], desc: s.qa_ready_at, asc: s.id)
+    |> Repo.all()
+  end
+
   @doc """
   A story by its durable number rather than its id — what a human reads off
   the page and the URL is expected to carry (1ab62ffd).

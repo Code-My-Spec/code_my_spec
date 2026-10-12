@@ -556,6 +556,14 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       {:error, %{landed: true} = reason} ->
         hold_landed(state, batch.entries, batch.head, reason)
 
+      # Only its team can fix this — the QA it needs is not at its commit — so
+      # retrying it changes nothing. Re-queued, it went back to the head of the
+      # queue and was refused again every cycle, holding every candidate behind
+      # it (2026-10-11).
+      {:error, %{qa_not_current: true} = reason} ->
+        Enum.each(batch.entries, &eject(state.scope, &1, reason.reason))
+        next(idle(state))
+
       {:error, reason} ->
         # Main moved under the batch (a direct promotion landed) or the merge
         # was refused: nothing landed, so the candidates are gated again on

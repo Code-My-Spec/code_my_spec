@@ -476,35 +476,20 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   defp analysis_endpoint(_scope, _served_by), do: :error
 
-  # A bare `curl` can't hand back the analyzer's own pass/fail as its own exit
-  # code — curl exits 0 for any HTTP request it completed, tests failed or
-  # not. That is why the response used to carry a footer line spelling out
-  # the exit status in the body: nothing else was reading it. It also meant
-  # `mix test` never looked like `mix test` again — the whole point of
-  # routing it was to be invisible, and a footer the agent had never seen
-  # from a real test run was the opposite of that.
+  # One plain `curl`, no `sh -c`. The server answers a failing run 422 with the
+  # tool's output, and `--fail-with-body` prints that body and exits nonzero,
+  # so the run reads as `mix test` would: output, then pass or fail.
   #
-  # So the two are split by the script instead of read by the agent: `-w`
-  # appends one last line, the HTTP status and the run's `x-exit-status`
-  # header, and the script prints everything before it and exits with the
-  # tool's own status, as `mix test` would have. A harness that sends no
-  # header is read by HTTP status: 0 on 200, else 1.
-  #
-  # No temp file. It used to go through `mktemp` and `rm -f "$t"`, and Claude
-  # Code's removal guard cannot resolve `$t`, so every routed run waited on a
-  # person to approve it and was denied when nobody did.
+  # It used to be a `sh -c` script that split an appended status line off the
+  # body to exit with the tool's own code. Claude Code's removal guard cannot
+  # read inside a `-c` script, so it refused every routed run in auto mode
+  # unless a person approved it (2026-10-11).
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
     url = "http://localhost:#{port}#{path(endpoint)}"
 
-    script =
-      "nl='\n'; o=$(curl -sS -w '\\n%{http_code} %header{x-exit-status}' " <>
-        "-X POST '#{url}' -H 'Content-Type: application/json' " <>
-        header(endpoint) <>
-        "--data #{shell_quote(payload)}); " <>
-        ~S|printf '%s\n' "${o%"$nl"*}"; set -- ${o##*"$nl"}; [ -n "$2" ] && exit "$2"; [ "$1" = 200 ]|
-
-    "sh -c " <> shell_quote(script)
+    "curl -sS --fail-with-body -X POST '#{url}' -H 'Content-Type: application/json' " <>
+      header(endpoint) <> "--data #{shell_quote(payload)}"
   end
 
   defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"

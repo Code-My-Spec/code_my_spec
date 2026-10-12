@@ -36,7 +36,6 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Qa.Invalidations,
       CodeMySpec.Qa.Invalidation,
-      CodeMySpec.Qa.StoryReview,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Configurations,
       CodeMySpec.Environments,
@@ -62,7 +61,12 @@ defmodule CodeMySpec.Qa do
     to: CodeMySpec.Qa.StoryReviews,
     as: :current_pass?
 
-  defdelegate capture_story_review(scope, task), to: CodeMySpec.Qa.StoryReviews, as: :capture
+  defdelegate carry(story, changed), to: CodeMySpec.Qa.StoryReviews
+  defdelegate product_change?(paths), to: CodeMySpec.Qa.StoryReviews
+
+  defdelegate capture_story_review(scope, owner, task),
+    to: CodeMySpec.Qa.StoryReviews,
+    as: :capture
 
   defdelegate complete_reviewed_story_issues(scope, story, landed_commit, expected_revision),
     to: CodeMySpec.Qa.StoryReviews,

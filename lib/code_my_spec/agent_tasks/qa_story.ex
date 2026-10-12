@@ -47,9 +47,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   Build the full QA prompt for a story. Returns `{:ok, prompt_text}`.
   """
   def command(scope, task) do
-    with {:ok, story_id} <- get_story_id(scope, task),
-         {:ok, _review} <-
-           CodeMySpec.Qa.capture_story_review(scope, %{id: Map.get(task, :id), story_id: story_id}) do
+    # The review is captured where the task is started (`StartAgentTask`,
+    # `start_task`), which hold its owner; building the prompt records nothing.
+    with {:ok, story_id} <- get_story_id(scope, task) do
       env = CodeMySpec.AgentTasks.environment(scope)
       story = Stories.get_story!(scope, story_id)
       ensure_qa_dirs(env, story.number)

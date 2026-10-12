@@ -42,10 +42,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1962Spex do
     scenario "one spex failure of the copy's own holds the whole promotion" do
       given_ "a story branch with committed work, ready to promote", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context)
-
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
+
+        # Certified and QA'd at the commit it promotes.
+        story = a_promotable_story(context)
 
         {:ok, Map.put(context, :story, story)}
       end
@@ -102,10 +103,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1962Spex do
     scenario "a warning-severity credo finding promotes nothing" do
       given_ "a story branch with committed work, ready to promote", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context)
-
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
+
+        # Certified and QA'd at the commit it promotes.
+        story = a_promotable_story(context)
 
         {:ok, Map.put(context, :story, story)}
       end

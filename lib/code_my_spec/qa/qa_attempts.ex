@@ -42,13 +42,14 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
     with :ok <- validate_findings_path(params) do
       Repo.transaction(fn ->
-        with {:ok, {story_id, agent_id}} <- resolve_task_info(scope, task_id),
-             {:ok, review, current?} <- StoryReviews.fetch(scope, task_id, story_id),
+        with {:ok, {story_id, agent_id, task}} <- resolve_task_info(scope, task_id),
+             {:ok, review, current?} <- StoryReviews.fetch(scope, task, story_id),
              parent_attempt_id <- find_latest_attempt_id(story_id),
              attrs <- build_attrs(params, story_id, agent_id, task_id, parent_attempt_id),
              attrs <-
                Map.merge(attrs, %{
-                 review_id: review.id,
+                 reviewed_commit: review.commit,
+                 reviewed_submissions: review.submissions,
                  review_started_at: review.started_at,
                  review_certified_at: review.certified_at,
                  stale: not current?
@@ -232,7 +233,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> by_story(story_id)
     |> by_project(scope)
     |> order_by([a], desc: a.inserted_at, desc: a.id)
-    |> preload([:invalidations, :review])
+    |> preload([:invalidations])
     |> Repo.all()
   end
 
@@ -279,7 +280,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
     QaAttempt
     |> by_project(scope)
     |> order_by([a], desc: a.submitted_at, desc: a.id)
-    |> preload([:story, :invalidations, :review])
+    |> preload([:story, :invalidations])
     |> Repo.all()
     |> maybe_drop_invalidated(include_invalidated)
     |> maybe_collapse_to_latest(include_older)
@@ -384,7 +385,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
             {:error, {:issue_task_requires_issue_submission, issue_id}}
 
           story_id = task_field(task, :story_id) ->
-            {:ok, {story_id, owner_of(task, task_id, agents)}}
+            {:ok, {story_id, owner_of(task, task_id, agents), task}}
 
           true ->
             {:error, :task_has_no_story}

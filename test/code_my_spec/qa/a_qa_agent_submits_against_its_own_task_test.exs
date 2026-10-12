@@ -64,8 +64,18 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
       })
       |> Repo.update()
 
-    {:ok, _review} = Qa.capture_story_review(scope, %{id: task_id, story_id: story.id})
+    {:ok, _review} = capture(scope, agent.id, task_id)
     %{scope: scope, story: story, agent: agent, task_id: task_id}
+  end
+
+  # The task as its agent holds it now, so a capture sees what earlier ones
+  # recorded on it.
+  defp held_task(agent_id, task_id),
+    do: Agent |> Repo.get!(agent_id) |> Map.fetch!(:tasks) |> Enum.find(&(&1.id == task_id))
+
+  defp capture(scope, agent_id, task_id) do
+    agent = Repo.get!(Agent, agent_id)
+    Qa.capture_story_review(scope, agent, held_task(agent_id, task_id))
   end
 
   defp attrs(task_id, status) do
@@ -119,7 +129,7 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
     })
     |> Repo.update!()
 
-    assert {:ok, _} = Qa.capture_story_review(ctx.scope, %{id: task_id, story_id: ctx.story.id})
+    assert {:ok, _} = capture(ctx.scope, ctx.agent.id, task_id)
     assert {:ok, _} = Qa.submit_qa_result(ctx.scope, attrs(task_id, :pass))
     assert Qa.story_review_current?(ctx.scope, ctx.story.id)
 
@@ -185,13 +195,12 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
              )
 
     assert {:error, :story_issues_not_triaged} =
-             Qa.capture_story_review(ctx.scope, %{
+             Qa.capture_story_review(ctx.scope, ctx.agent, %{
                id: Ecto.UUID.generate(),
                story_id: ctx.story.id
              })
 
-    assert {:ok, _} =
-             Qa.capture_story_review(ctx.scope, %{id: ctx.task_id, story_id: ctx.story.id})
+    assert {:ok, _} = capture(ctx.scope, ctx.agent.id, ctx.task_id)
 
     assert Qa.qa_complete?(ctx.scope, ctx.story.id)
     assert {:ok, _} = CodeMySpec.Issues.dismiss_issue(ctx.scope, issue, "Not a defect")
@@ -219,7 +228,11 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
     {:ok, attempt} = CodeMySpec.QaFixtures.passed_qa_attempt(ctx.scope, story_id: ctx.story.id)
 
     attempt
-    |> Ecto.Changeset.change(review_id: nil, review_started_at: nil, review_certified_at: nil)
+    |> Ecto.Changeset.change(
+      reviewed_commit: nil,
+      review_started_at: nil,
+      review_certified_at: nil
+    )
     |> Repo.update!()
 
     refute Qa.qa_complete?(ctx.scope, ctx.story.id)
@@ -237,17 +250,39 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
     assert stored.id == attempt.id
   end
 
+  test "a pass carried to a new certification counts there, and only there", ctx do
+    {:ok, _attempt} = Qa.submit_qa_result(ctx.scope, attrs(ctx.task_id, :pass))
+    story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+    reviewed = {story.qa_ready_commit, story.qa_ready_at}
+
+    {:ok, _} =
+      CodeMySpec.Stories.set_qa_ready(
+        ctx.scope,
+        story,
+        "test-only-commit",
+        DateTime.utc_now(),
+        reviewed
+      )
+
+    assert Qa.qa_complete?(ctx.scope, story.id)
+    assert Qa.story_review_current?(ctx.scope, story.id, "test-only-commit")
+
+    refute Qa.story_review_current?(ctx.scope, story.id, "reviewed-revision"),
+           "promotion asks at the candidate, and the story is no longer certified there"
+
+    {:ok, _} = CodeMySpec.Stories.set_qa_ready(ctx.scope, story, "product-commit")
+    refute Qa.qa_complete?(ctx.scope, story.id)
+  end
+
   test "resuming a superseded task requires a fresh QA task", ctx do
-    {:ok, original} =
-      Qa.capture_story_review(ctx.scope, %{id: ctx.task_id, story_id: ctx.story.id})
+    {:ok, original} = capture(ctx.scope, ctx.agent.id, ctx.task_id)
 
     ctx.story |> Ecto.Changeset.change(qa_ready_commit: "newer-revision") |> Repo.update!()
 
-    assert {:error, :qa_review_superseded} =
-             Qa.capture_story_review(ctx.scope, %{id: ctx.task_id, story_id: ctx.story.id})
+    assert {:error, :qa_review_superseded} = capture(ctx.scope, ctx.agent.id, ctx.task_id)
 
-    assert Repo.get!(CodeMySpec.Qa.StoryReview, original.id).certified_revision ==
-             "reviewed-revision"
+    assert original.commit == "reviewed-revision"
+    assert held_task(ctx.agent.id, ctx.task_id).review_commit == "reviewed-revision"
   end
 
   # Who did the QA. `TaskOwner.activate_task/4` sets `task.agent_id` on its

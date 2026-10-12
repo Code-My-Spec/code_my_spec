@@ -156,6 +156,24 @@ defmodule CodeMySpec.TaskOwner do
     end)
   end
 
+  @doc "Record what a story QA task is reviewing (`Qa.StoryReviews.capture/3`)."
+  def record_review(scope, owner, task_id, review) when is_map(review) do
+    locked_update(scope, owner, fn current ->
+      case find_task(current, task_id) do
+        nil ->
+          {:error, :task_not_found}
+
+        _ ->
+          update_embedded_task(current, task_id, %{
+            review_commit: review.commit,
+            review_certified_at: review.certified_at,
+            review_submissions: review.submissions,
+            review_started_at: review.started_at
+          })
+      end
+    end)
+  end
+
   @doc "Clear evaluation feedback for only the named attempt."
   def clear_task_feedback(scope, owner, task_id) do
     locked_update(scope, owner, fn current ->
