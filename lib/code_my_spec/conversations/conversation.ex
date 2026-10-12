@@ -8,8 +8,10 @@ defmodule CodeMySpec.Conversations.Conversation do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import Ecto.Query
 
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Repo
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -84,6 +86,25 @@ defmodule CodeMySpec.Conversations.Conversation do
     |> unique_constraint([:account_id, :project_id, :session_external_id],
       name: :conversations_account_project_session_index
     )
+  end
+
+  @doc """
+  The ids of these agents' conversations, keyed by agent.
+
+  A caller holding agent ids and wanting their messages used to hand them to a
+  query that joined `conversations` to find the same rows this answers
+  directly, on the column that query filtered by (issue b118c546).
+
+  Keyed rather than listed: the caller's next read is by conversation, and its
+  answer has to say whose each row is -- the same thing the join was for.
+  """
+  @spec ids_for_agents([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => Ecto.UUID.t()}
+  def ids_for_agents([]), do: %{}
+
+  def ids_for_agents(agent_ids) do
+    from(c in __MODULE__, where: c.agent_id in ^agent_ids, select: {c.id, c.agent_id})
+    |> Repo.all()
+    |> Map.new()
   end
 
   @doc """

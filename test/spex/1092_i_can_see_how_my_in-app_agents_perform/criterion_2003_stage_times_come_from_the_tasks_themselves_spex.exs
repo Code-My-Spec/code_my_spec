@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
   end
 
   spex "A build stage's time comes from its own tasks opening and closing, not from the release clock",
-       criterion: 2003 do
+    criterion: 2003 do
     scenario "a story's tasks each opened and closed during its build, one of them waiting on a person" do
       given_ "a released story whose build task waited on a tap-out for half an hour", context do
         reply = join_working_copy(context, "/tmp/spex-2003", "the checkout")
@@ -96,7 +96,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
       end
 
       when_ "its cycle time is shown", context do
-        {:ok, index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, context |> Map.put(:index, index) |> Map.put(:html, html)}
       end
 
@@ -104,7 +105,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
         assert context.html =~ "build",
                "the story's performance has no build stage at all"
 
-        build_stage = context.index |> element("[data-test='stage'][data-stage='build']") |> render()
+        build_stage =
+          context.index |> element("[data-test='stage'][data-stage='build']") |> render()
 
         refute build_stage =~ "2h",
                "the build stage's time matches the hours since release rather than the task's own, much shorter, open-to-close span"

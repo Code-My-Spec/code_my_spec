@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2007Spex do
   end
 
   spex "A tap-out nobody ever decided is shown as a lapsed decision, not a resolved one",
-       criterion: 2007 do
+    criterion: 2007 do
     scenario "a tap-out that expired with nobody deciding it" do
       given_ "a tap-out aged well past any recovery window, still undecided", context do
         reply = join_working_copy(context, "/tmp/spex-2007", "the checkout")
@@ -47,7 +47,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2007Spex do
       end
 
       when_ "blocked time is shown", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 

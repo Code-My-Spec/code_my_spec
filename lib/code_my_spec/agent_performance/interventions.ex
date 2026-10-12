@@ -18,8 +18,13 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
   nothing durable records which story an agent held in the past.
   """
 
+  alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Conversation
+  alias CodeMySpec.Conversations.Message
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -45,6 +50,47 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
     end
   end
 
+  @doc """
+  The same interventions `for_agent/2` answers, for every one of `agent_ids`,
+  in one query rather than one per agent.
+
+  The `for_scope/2` read below asks this: one `find_or_create` plus one
+  `list_messages` per agent is what made the performance page cost a query per
+  agent on top of a query per story (issue 844907e0 -- 13k queries against 166
+  stories, several seconds of the join before issue 5d359bb3's `assign_async`).
+  A conversation belongs to an agent, so the messages of all of them are one
+  `conversation_messages` read grouped by `agent_id`, which is what
+  `conversation_messages` already carries -- no join back through
+  `conversations` needed.
+
+  Reading rather than creating: `for_scope/2` narrows over agents that already
+  exist, and an agent with no conversation has no interventions to report, so
+  the `find_or_create` half of `for_agent/2` was writing rows only to find
+  nothing in them.
+  """
+  @spec for_agents(Scope.t(), [String.t()]) :: %{String.t() => [intervention()]}
+  def for_agents(%Scope{} = _scope, []), do: %{}
+
+  def for_agents(%Scope{} = _scope, agent_ids) do
+    agent_ids
+    |> Conversation.ids_for_agents()
+    |> intervention_messages()
+  end
+
+  # The conversations of these agents, then those conversations' interventions:
+  # two reads that do not join back through `conversations` to reach an id this
+  # already has, and the second carries the text of only the few messages this
+  # module counts rather than every message of every agent (issue b118c546).
+  defp intervention_messages(conversations) do
+    conversations
+    |> Map.keys()
+    |> Message.interventions(limit_per_agent: @large_limit)
+    |> Repo.all()
+    |> Enum.map(&Map.put(&1, :agent_id, Map.fetch!(conversations, &1.conversation_id)))
+    |> Enum.group_by(& &1.agent_id)
+    |> Map.new(fn {agent_id, messages} -> {agent_id, Enum.flat_map(messages, &classify/1)} end)
+  end
+
   defp classify(%{role: :operator, sender_id: "operator"} = message),
     do: [%{at: message.inserted_at, kind: :nudge, reason: reason_text(message)}]
 
@@ -66,6 +112,81 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
     |> Agents.list_agents()
     |> Enum.filter(&(&1.story_id == story.id))
     |> Enum.flat_map(&for_agent(scope, &1.id))
+  end
+
+  @doc """
+  Interventions across every agent matching `filter` -- every agent in the
+  project when `filter` is empty. The chart's narrowing (story 1092
+  criteria 2032-2034): a `story_id` or `working_copy_id` picks out the
+  agents that count, the same way `story/2` and `project_level/1` each
+  pick out their own slice.
+  """
+  @spec for_scope(Scope.t(), %{
+          optional(:story_id) => integer(),
+          optional(:working_copy_id) => Ecto.UUID.t(),
+          optional(:agent_id) => Ecto.UUID.t()
+        }) :: [intervention()]
+  def for_scope(%Scope{} = scope, filter \\ %{}) do
+    agents =
+      scope
+      |> Agents.list_agents()
+      |> filter_agents(filter)
+
+    messages = for_agents(scope, Enum.map(agents, & &1.id))
+
+    agents
+    |> Enum.flat_map(fn agent ->
+      messages
+      |> Map.get(agent.id, [])
+      |> attach(agent)
+    end)
+    |> since_story_start(scope, filter)
+  end
+
+  # Use the same boundary as the chart's story_start event. An agent's
+  # conversation can contain messages from before it began this story.
+  defp since_story_start(interventions, scope, %{story_id: story_id})
+       when not is_nil(story_id) do
+    case Stories.get_story(scope, story_id) do
+      %Story{} = story ->
+        filter_since(interventions, CycleTime.story(scope, story).released_at)
+
+      nil ->
+        []
+    end
+  end
+
+  defp since_story_start(interventions, _scope, _filter), do: interventions
+
+  defp filter_since(_interventions, nil), do: []
+
+  defp filter_since(interventions, started_at) do
+    Enum.filter(interventions, &(DateTime.compare(&1.at, started_at) != :lt))
+  end
+
+  # `for_agent/2` answers the interventions of one agent without saying which
+  # agent they belong to -- the caller knew, because it asked for one. The
+  # batch above asks once for every agent at a time, so the answer has to carry
+  # it, and `for_scope/2` is where the two fields are put back on.
+  defp attach(interventions, agent),
+    do: Enum.map(interventions, &Map.put(&1, :agent_id, agent.id))
+
+  # Every narrowing key applies, not just the first whose clause matches: the
+  # page offers working copy, story and agent together, and picking an agent
+  # after a copy must count the nudges of that agent on that copy, not all of
+  # the agent's or all of the copy's.
+  defp filter_agents(agents, filter) do
+    agents
+    |> narrow(&(&1.story_id == &2), :story_id, filter)
+    |> narrow(&(&1.id == &2), :agent_id, filter)
+    |> narrow(&(&1.working_copy_id == &2), :working_copy_id, filter)
+  end
+
+  defp narrow(agents, match?, key, filter) do
+    case Map.get(filter, key) do
+      nil -> agents
+      value -> Enum.filter(agents, &match?.(&1, value))
+    end
   end
 
   @doc """

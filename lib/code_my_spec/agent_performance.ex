@@ -13,9 +13,11 @@ defmodule CodeMySpec.AgentPerformance do
   """
 
   alias CodeMySpec.AgentPerformance.BlockedTime
+  alias CodeMySpec.AgentPerformance.Chart
   alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.AgentPerformance.Interventions
   alias CodeMySpec.AgentPerformance.OfferHealth
+  alias CodeMySpec.AgentPerformance.Page
   alias CodeMySpec.AgentPerformance.QaRounds
   alias CodeMySpec.AgentPerformance.Reliability
   alias CodeMySpec.AgentPerformance.Throughput
@@ -118,6 +120,14 @@ defmodule CodeMySpec.AgentPerformance do
     QaRounds.team_first_pass_rate(scope, working_copy_id, since)
   end
 
+  @doc """
+  Every agent this project has, for the page's agent filter (criteria 2051,
+  2053). The page reaches agents through this context rather than `Agents`
+  directly, the same way it reaches stories through `list_stories/1`.
+  """
+  @spec list_agents(Scope.t()) :: [CodeMySpec.Agents.Agent.t()]
+  def list_agents(%Scope{} = scope), do: Agents.list_agents(scope)
+
   @doc "Every story this project holds, for building a performance report over all of them."
   @spec list_stories(Scope.t()) :: [Story.t()]
   def list_stories(%Scope{} = scope) do
@@ -126,4 +136,33 @@ defmodule CodeMySpec.AgentPerformance do
       stories when is_list(stories) -> stories
     end
   end
+
+  @doc """
+  The whole page, read in a fixed number of queries (issue 844907e0).
+
+  `Index.load/1` reads through this rather than asking `story_report/2` and
+  `team_first_pass_rate/3` once per story and per team: those still answer what
+  they always answered, and still cost a query each, which is fine for one
+  story and ~13,000 queries for a project of 166.
+  """
+  @spec page(Scope.t()) :: Page.page()
+  def page(%Scope{} = scope), do: Page.load(scope)
+
+  @doc "Every agent this project has, for the page's agent filter and summary (criteria 2051, 2053)."
+  @spec page_agents(Scope.t()) :: [CodeMySpec.Agents.Agent.t()]
+  def page_agents(%Scope{} = scope), do: Page.list_agents(scope)
+
+  @doc """
+  The performance page's chart option, ready for `Jason.encode!/1` and the
+  page's EChart hook: token spend, nudges, QA first-pass rate and failed
+  turns bucketed hourly over the last 7 days, with story starts and
+  promotions as events (criteria 2029-2031). `filter` narrows to one
+  working copy or one story (criteria 2032-2033); omit for the project.
+  """
+  @spec chart_option(Scope.t(), Chart.filter()) :: map()
+  def chart_option(%Scope{} = scope, filter \\ %{}), do: Chart.option(scope, filter)
+
+  @doc "Tokens spent and nudges served under the chart, summarized rather than listed row by row (criterion 2034)."
+  @spec chart_detail(Scope.t(), Chart.filter()) :: Chart.detail()
+  def chart_detail(%Scope{} = scope, filter \\ %{}), do: Chart.detail(scope, filter)
 end
