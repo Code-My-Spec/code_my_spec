@@ -407,6 +407,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <div :for={stage <- Stage.names()} data-test="stage" data-stage={stage}>
         {stage}: {hours(Map.get(@cycle_time.stages, stage))}
       </div>
+      <p data-test="stage-overlap-note" class="text-xs text-base-content/60">
+        Stages can overlap, so they may add up to more than the total.
+      </p>
     </div>
     """
   end
