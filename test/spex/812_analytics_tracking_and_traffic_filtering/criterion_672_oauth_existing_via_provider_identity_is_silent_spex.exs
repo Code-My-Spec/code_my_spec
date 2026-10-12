@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6509Spex do
 
   Telemetry-subscriber pattern for the negative assertion. When an
   existing (provider, provider_user_id) integration is mapped to a
-  user, `Users.find_or_register_oauth_user/2` returns
+  user, `Integrations.find_or_register_oauth_user/2` returns
   `{:ok, user, :existing}`. Returning users must never re-fire
   `:sign_up`, or GA double-counts signups on every subsequent login.
 

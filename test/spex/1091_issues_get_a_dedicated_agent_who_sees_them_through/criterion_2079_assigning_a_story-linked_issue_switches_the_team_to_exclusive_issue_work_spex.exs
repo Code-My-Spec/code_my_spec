@@ -12,7 +12,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion2079Spex do
   alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -21,7 +20,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2079Spex do
   setup :setup_active_project
 
   spex "Assigning a story-linked issue switches the team to exclusive issue work",
-       criterion: 2079 do
+    criterion: 2079 do
     scenario "a story-linked issue takes the team off its story and its queued reservation" do
       given_ "a team holds a story and has a second story queued behind it", context do
         context = context |> Slice.main_copy() |> Slice.base() |> Slice.child()
@@ -35,7 +34,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2079Spex do
             description: "Reserved on this copy, not yet active."
           )
 
-        {:ok, _} = WorkingCopies.reserve_story(context.scope, copy_id, second.id)
+        {:ok, _} = Stories.reserve_story(context.scope, copy_id, second.id)
 
         issue =
           Fixtures.issue_fixture(context.scope, %{

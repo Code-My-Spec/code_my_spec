@@ -2,6 +2,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
+  alias CodeMySpec.Requirements.Directives
 
   defmodule FakeTaskWithOrchestrate do
     def dispatch(node) do
@@ -54,7 +55,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
         reason: nil
       }
 
-      text = RequirementsMapper.format_story_execution(execution)
+      text = Directives.format_story_execution(execution)
       assert text =~ "# Story 686: Selected story"
       assert text =~ "Status: ready"
       assert text =~ "Wave: 1 requirement(s)"
@@ -70,7 +71,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       node = build_node(%{name: "bdd_specs_exist", entity_type: "story", entity_id: 802})
 
       text =
-        RequirementsMapper.format_story_execution(%{
+        Directives.format_story_execution(%{
           status: :ready,
           story: %{id: 802, number: 686, title: "Selected story"},
           actionable: [node],
@@ -90,7 +91,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
             {:unavailable, nil}
           ] do
         text =
-          RequirementsMapper.format_story_execution(%{
+          Directives.format_story_execution(%{
             status: status,
             story: story,
             actionable: [],
@@ -110,7 +111,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
 
     test "completion names the story and leaves assignment to its caller" do
       text =
-        RequirementsMapper.format_story_execution(%{
+        Directives.format_story_execution(%{
           status: :complete,
           story: %{id: 802, number: 686, title: "Selected story"},
           actionable: [],
@@ -328,7 +329,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
           orchestrated_by: nil
         })
 
-      text = RequirementsMapper.format_next_requirements([project_gate, orchestrated])
+      text = Directives.format_next_requirements([project_gate, orchestrated])
 
       assert text =~ "issues_triaged",
              "expected the project gate to survive an active orchestration group, got:\n#{text}"
@@ -355,7 +356,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
           entity_name: "Some unrelated story"
         })
 
-      text = RequirementsMapper.format_next_requirements([unrelated_story, orchestrated])
+      text = Directives.format_next_requirements([unrelated_story, orchestrated])
 
       refute text =~ "bdd_specs_exist",
              "expected unrelated story work to stay suppressed so the active context keeps focus"
@@ -376,7 +377,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
           entity_number: 12
         })
 
-      text = RequirementsMapper.format_next_requirements([project_gate, story])
+      text = Directives.format_next_requirements([project_gate, story])
 
       assert text =~ "architecture_designed"
       assert text =~ "bdd_specs_exist"

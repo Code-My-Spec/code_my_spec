@@ -110,7 +110,7 @@ defmodule CodeMySpec.Agents.Assignment do
         |> Repo.update_all(set: team_attrs(story))
 
         still_held = held_on_copy(scope, copy_id)
-        WorkingCopies.release_stories(scope, copy_id, (before -- [new_id]) -- still_held)
+        Stories.release_stories(scope, copy_id, (before -- [new_id]) -- still_held)
 
         {before, new_id}
       end)
@@ -153,7 +153,7 @@ defmodule CodeMySpec.Agents.Assignment do
           select: s.id
       )
 
-    WorkingCopies.release_stories(scope, copy_id, story_ids)
+    Stories.release_stories(scope, copy_id, story_ids)
 
     from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
     |> Repo.update_all(set: [story_id: nil, team_free_at: nil])
@@ -208,7 +208,7 @@ defmodule CodeMySpec.Agents.Assignment do
   defp reserve(_scope, _copy_id, nil), do: nil
 
   defp reserve(scope, copy_id, story_id) do
-    case WorkingCopies.reserve_story(scope, copy_id, story_id) do
+    case Stories.reserve_story(scope, copy_id, story_id) do
       {:ok, story} -> story
       {:error, reason} -> Repo.rollback(reason)
     end
@@ -304,7 +304,7 @@ defmodule CodeMySpec.Agents.Assignment do
       from(a in Agent, where: a.id in ^Enum.map(matching, & &1.id))
       |> Repo.update_all(set: [story_id: nil])
 
-      WorkingCopies.release_stories(scope, copy_id, [story.id])
+      Stories.release_stories(scope, copy_id, [story.id])
       finish_idle_team(scope, copy_id, matching != [])
     else
       false
@@ -475,6 +475,50 @@ defmodule CodeMySpec.Agents.Assignment do
       {:ok, _id} -> :ok
       {:error, :main_copy} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Move one story to another working copy, wherever it is now.
+
+  `EpicDispatch.place/3` moves every story in an epic at once; this is the
+  one-story counterpart `stories.working_copy_id` has never had (ae4e748f).
+  `Stories.reserve_story/3` only *claims* an unassigned story, and `WorkingCopies.offboard/2`
+  releases every story a copy holds, discarding the copy with it -- neither
+  takes one story from a copy that still has others.
+
+  Refuses onto a target with no checkout on disk, and refuses to take a
+  story out from under the copy whose team has it as the active story
+  (`WorkingCopies.team_story_id/1`) unless `force: true` is given -- that is the case
+  worth making loud rather than silent, since it would mean the team there
+  is mid-work on it.
+  """
+  @spec move_story(Scope.t(), term(), Ecto.UUID.t(), keyword()) ::
+          {:ok, Stories.Story.t()} | {:error, :not_found | :no_checkout | :story_active_elsewhere}
+  def move_story(
+        %Scope{active_project_id: project_id} = scope,
+        story_id,
+        target_copy_id,
+        opts \\ []
+      )
+      when is_binary(project_id) do
+    force? = Keyword.get(opts, :force, false)
+
+    with {:ok, id} <- Ecto.Type.cast(:id, story_id),
+         %{project_id: ^project_id} = story <- Stories.get_story(scope, id),
+         {:ok, %{project_id: ^project_id} = target} <- WorkingCopies.fetch(target_copy_id) do
+      cond do
+        is_nil(target.root) or WorkingCopies.missing?(target) ->
+          {:error, :no_checkout}
+
+        not force? and WorkingCopies.team_story_id(story.working_copy_id) == story.id ->
+          {:error, :story_active_elsewhere}
+
+        true ->
+          Stories.update_story(scope, story, %{working_copy_id: target.id})
+      end
+    else
+      _ -> {:error, :not_found}
     end
   end
 end

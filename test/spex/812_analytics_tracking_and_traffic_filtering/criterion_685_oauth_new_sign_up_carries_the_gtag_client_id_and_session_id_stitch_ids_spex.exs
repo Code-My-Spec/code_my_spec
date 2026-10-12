@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6540Spex do
   GaClientId plug writes the parsed client_id + session_id (from the _ga and
   _ga_<container> cookies the browser carries through the provider round-trip)
   into the session. The controller threads them into
-  `Users.find_or_register_oauth_user/3`, which merges them into the sign_up
+  `Integrations.find_or_register_oauth_user/3`, which merges them into the sign_up
   MP payload.
 
   Test-subscriber pattern (like 6508): we call find_or_register_oauth_user/3

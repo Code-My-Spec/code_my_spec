@@ -2,7 +2,7 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
   @moduledoc """
   Selecting a copy's story: since a31f1cd6 it goes to the copy's team, through
   `Agents.assign_team/3`, and the copy records none of its own. The
-  reservation rules (`WorkingCopies.reserve_story/3`) are what this holds.
+  reservation rules (`Stories.reserve_story/3`) are what this holds.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -13,6 +13,7 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
 

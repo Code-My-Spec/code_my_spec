@@ -20,7 +20,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
 
   use CodeMySpecWeb, :controller
 
-  alias CodeMySpec.{Integrations, Users}
+  alias CodeMySpec.Integrations
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.Scope
   alias CodeMySpecDesktop.{Browser, Identity, OAuthClients, OAuthHandoff}
@@ -183,7 +183,7 @@ defmodule CodeMySpecWeb.IntegrationsController do
          {:ok, %{user: normalized_user, token: token}} <-
            Integrations.handle_login_callback(provider, params, session_params),
          {:ok, user, status} <-
-           Users.find_or_register_oauth_user(provider, normalized_user, ga_opts) do
+           Integrations.find_or_register_oauth_user(provider, normalized_user, ga_opts) do
       scope = UserPreferences.scope_for(user)
 
       Integrations.save_integration(scope, provider, token, normalized_user)

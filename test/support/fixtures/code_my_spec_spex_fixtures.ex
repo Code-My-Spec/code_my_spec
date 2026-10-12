@@ -1182,8 +1182,8 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defdelegate google_integration_fixture(user, attrs \\ %{}), to: IntegrationsFixtures
 
-  defdelegate find_or_register_oauth_user(provider, attrs), to: Users
-  defdelegate find_or_register_oauth_user(provider, attrs, opts), to: Users
+  defdelegate find_or_register_oauth_user(provider, attrs), to: CodeMySpec.Integrations
+  defdelegate find_or_register_oauth_user(provider, attrs, opts), to: CodeMySpec.Integrations
 
   defdelegate dispatch_analytics_event(event, payload), to: CodeMySpec.Analytics, as: :dispatch
 

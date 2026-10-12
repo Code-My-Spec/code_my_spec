@@ -33,6 +33,7 @@ defmodule CodeMySpec.Integrations do
       CodeMySpec.Encrypted.Binary,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
+      CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],
     exports: :all
@@ -41,6 +42,7 @@ defmodule CodeMySpec.Integrations do
   alias CodeMySpec.Integrations.{Integration, IntegrationRepository}
   alias CodeMySpec.Integrations.Providers.ApiKey
   alias CodeMySpec.Repo
+  alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
 
   @providers %{
@@ -570,4 +572,25 @@ defmodule CodeMySpec.Integrations do
   defp parse_scopes(scope) when is_binary(scope), do: String.split(scope, ~r/[,\s]+/, trim: true)
   defp parse_scopes(scopes) when is_list(scopes), do: scopes
   defp parse_scopes(_), do: []
+
+  @doc """
+  Finds the user an OAuth sign-in belongs to, or registers one.
+
+  Lookup order:
+  1. Integration with matching provider + provider_user_id → existing user
+  2. User with matching email → auto-link
+  3. No match → create new auto-confirmed user (no password)
+
+  Returns `{:ok, user, :existing | :new}`.
+  """
+  def find_or_register_oauth_user(
+        provider,
+        %{provider_user_id: provider_user_id, email: email},
+        opts \\ []
+      ) do
+    case IntegrationRepository.find_user_id_by_provider_identity(provider, provider_user_id) do
+      user_id when is_integer(user_id) -> {:ok, Users.get_user!(user_id), :existing}
+      nil -> Users.find_or_register_oauth_email(provider, email, opts)
+    end
+  end
 end

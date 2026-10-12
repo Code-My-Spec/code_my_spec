@@ -26,9 +26,8 @@ defmodule CodeMySpec.AgentHarness do
     * `route_to_lane/4` — deliver an event (work, human chat, `wake`, `abort`) to
       one lane's own channel, which `push`es it down its socket.
 
-  Its own top-level Boundary: the `WorkSource` reuses the `McpServers`
-  requirement-resolution path (as `get_next_requirement` does), which the plain
-  `CodeMySpec` boundary may not reference.
+  Its own top-level Boundary. The `WorkSource` renders work with
+  `Requirements.Directives`, the same text `get_next_requirement` returns.
   """
 
   use Boundary,
@@ -36,7 +35,6 @@ defmodule CodeMySpec.AgentHarness do
     deps: [
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
-      CodeMySpec.McpServers,
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Repo,

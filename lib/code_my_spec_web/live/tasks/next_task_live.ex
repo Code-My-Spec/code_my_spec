@@ -8,9 +8,8 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
 
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.McpServers.Requirements.RequirementsMapper
-  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Directives
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution
 
@@ -61,7 +60,7 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
     markdown =
       case RequirementGraph.next_actionable(scope) do
         [] -> nothing_left(scope)
-        nodes -> RequirementsMapper.format_next_requirements(StoryRefs.number_nodes(scope, nodes))
+        nodes -> Directives.format_next_requirements(Directives.number_nodes(scope, nodes))
       end
 
     assign(socket, markdown: markdown)
