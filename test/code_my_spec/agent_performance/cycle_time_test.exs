@@ -257,4 +257,47 @@ defmodule CodeMySpec.AgentPerformance.CycleTimeTest do
     assert cycle_time_a.stages[:build] >= 1000 * 3600
     assert cycle_time_b.stages[:build] >= 1000 * 3600
   end
+
+  test "a task's own completed_at past the story's promotion does not inflate its stage",
+       context do
+    {:ok, story} =
+      Stories.create_story(context.scope, %{
+        title: "Promoted while its own QA task's completed_at lagged behind",
+        description: "A QA task recorded as completed after the story's own promotion."
+      })
+
+    now = DateTime.utc_now()
+    released_at = DateTime.add(now, -10 * 3600, :second)
+    promoted_at = DateTime.add(now, -5 * 3600, :second)
+
+    {:ok, story} =
+      story
+      |> Story.changeset(%{promoted_version: "0.1.0", promoted_at: promoted_at})
+      |> CodeMySpec.Repo.update()
+
+    # completed_at is stamped two hours AFTER the story's own promotion --
+    # not nil, so the old fallback (`task.completed_at || as_of`) would
+    # trust it as-is, letting the qa stage run past the story's own total
+    # (issue 9c2107a6).
+    late_completed_qa_task = %{
+      session_type: CodeMySpec.AgentTasks.QaStory,
+      started_at: released_at,
+      completed_at: DateTime.add(now, 2 * 3600, :second),
+      story_id: story.id,
+      component_id: nil,
+      blocked_at: nil,
+      blocker_resolved_at: nil,
+      blocker_type: nil
+    }
+
+    cycle_time = CycleTime.story(context.scope, story, [late_completed_qa_task])
+
+    assert cycle_time.total_seconds == 5 * 3600
+
+    assert cycle_time.stages[:qa] == 5 * 3600,
+           "a task's own completed_at past the story's promotion is not clamped to it"
+
+    assert cycle_time.stages[:qa] <= cycle_time.total_seconds,
+           "a stage's time exceeds the story's own total release-to-promotion time"
+  end
 end

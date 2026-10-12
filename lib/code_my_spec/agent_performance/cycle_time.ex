@@ -162,10 +162,17 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
 
   # A task's own active time as intervals: its open-to-close span with
   # whatever of it was spent blocked on a person cut out.
+  #
+  # `finished` clamps to `as_of` even when `completed_at` is present: a
+  # task can be stamped completed after its own story's promotion (a QA
+  # round whose `completed_at` lands days after `promoted_at`), and
+  # trusting that recorded timestamp as-is put the stage past the story's
+  # own total just like the no-completed_at case this already guarded
+  # against (issue 9c2107a6).
   defp active_intervals(%{started_at: nil}, _as_of), do: []
 
   defp active_intervals(task, as_of) do
-    finished = task.completed_at || as_of
+    finished = earlier(task.completed_at || as_of, as_of)
     subtract_intervals({task.started_at, finished}, blocked_intervals(task, as_of))
   end
 
@@ -195,6 +202,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   end
 
   defp later(a, b), do: if(DateTime.compare(a, b) == :gt, do: a, else: b)
+  defp earlier(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
 
   # Overlapping or touching intervals become one, so a stage's covered
   # wall-clock time is counted once whatever tasks contributed to it.
