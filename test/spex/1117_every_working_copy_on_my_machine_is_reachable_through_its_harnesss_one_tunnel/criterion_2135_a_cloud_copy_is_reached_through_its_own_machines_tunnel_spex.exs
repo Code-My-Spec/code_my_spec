@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2135Spex do
 
   defp johns_mac(context) do
     cf = cloudflare()
-    mac = machine()
+    mac = machine(context)
     existing_tunnel(cf, @dev_tunnel, @dev_routes)
 
     :ok =
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2135Spex do
     scenario "each machine's copy is carried by that machine's tunnel" do
       given_ "John has a copy on his Mac and a copy on a cloud box", context do
         context = johns_mac(context)
-        cloud = machine()
+        cloud = machine(context)
         on_mac = serving_copy(context, "/workspace/mac", context.mac, "http://127.0.0.1:41351")
         on_cloud = serving_copy(context, "/workspace/cloud", cloud, "http://127.0.0.1:41352")
 

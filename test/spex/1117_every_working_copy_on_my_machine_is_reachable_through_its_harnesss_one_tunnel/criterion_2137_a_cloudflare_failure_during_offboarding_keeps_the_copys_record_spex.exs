@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2137Spex do
 
   defp johns_mac(context) do
     cf = cloudflare()
-    mac = machine()
+    mac = machine(context)
     existing_tunnel(cf, @dev_tunnel, @dev_routes)
 
     :ok =

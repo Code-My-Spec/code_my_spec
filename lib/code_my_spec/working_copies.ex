@@ -847,36 +847,12 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   @doc """
-  Another working copy on the same project and device that already holds a
-  preview tunnel — the one `PreviewTunnel.ensure/1` shares rather than
-  duplicates (criterion 1586).
-
-  `nil` device_id never matches anything, including another `nil`: a copy
-  that has not yet reported which machine it is on cannot be assumed to
-  share one with anything else — two such copies could as easily be on two
-  different laptops that both onboarded before their harness ever connected.
-  That absence of a match is exactly criterion 1587: a copy on a different
-  device gets `:error` here and `PreviewTunnel.ensure/1` refuses to share
-  rather than guessing.
+  Whether any working copy still names `tunnel_id` as the tunnel carrying its
+  address — what decides a replaced tunnel may be deleted (story 1117).
   """
-  @spec tunnel_sibling(WorkingCopy.t()) :: {:ok, WorkingCopy.t()} | :error
-  def tunnel_sibling(%WorkingCopy{project_id: project_id, device_id: device_id, id: id})
-      when is_binary(project_id) and is_binary(device_id) do
-    query =
-      from w in WorkingCopy,
-        where: w.project_id == ^project_id,
-        where: w.device_id == ^device_id,
-        where: w.id != ^id,
-        where: not is_nil(w.preview_tunnel_id) and not is_nil(w.preview_tunnel_secret),
-        limit: 1
-
-    case Repo.one(query) do
-      nil -> :error
-      sibling -> {:ok, sibling}
-    end
-  end
-
-  def tunnel_sibling(%WorkingCopy{}), do: :error
+  @spec tunnel_in_use?(String.t()) :: boolean()
+  def tunnel_in_use?(tunnel_id) when is_binary(tunnel_id),
+    do: Repo.exists?(from w in WorkingCopy, where: w.preview_tunnel_id == ^tunnel_id)
 
   @doc """
   Where this project's preview answers, or nothing.

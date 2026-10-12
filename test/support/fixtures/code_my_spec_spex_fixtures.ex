@@ -41,6 +41,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Configurations,
       CodeMySpec.Conversations,
       CodeMySpec.Deploys,
+      CodeMySpec.Devices,
       CodeMySpec.Environments,
       CodeMySpec.Epics,
       CodeMySpec.Events,
@@ -1465,6 +1466,46 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{
         default_working_copy_id: working_copy_id
+      })
+
+    :ok
+  end
+
+  @doc """
+  A machine that already runs a tunnel before the scenario starts — this Mac's
+  dev tunnel, today (story 1117). The device is announced the way its harness
+  would, then its tunnel recorded. State that predates the scenario, which is
+  what makes it a fixture rather than a step.
+  """
+  @spec record_machine_tunnel(Scope.t(), Ecto.UUID.t(), map()) :: :ok
+  def record_machine_tunnel(
+        %Scope{} = scope,
+        device_id,
+        %{tunnel_id: _, tunnel_secret: _} = tunnel
+      ) do
+    {:ok, _device} =
+      CodeMySpec.Devices.announce(scope, device_id, %{kind: :local, hostname: "johns-mac"})
+
+    {:ok, _device} = CodeMySpec.Devices.record_tunnel(device_id, tunnel)
+    :ok
+  end
+
+  @doc """
+  A main copy still holding the per-project tunnel it was given before story
+  1117: the old model, recorded on the copy itself.
+  """
+  @spec record_project_tunnel(Scope.t(), Ecto.UUID.t(), map()) :: :ok
+  def record_project_tunnel(%Scope{} = _scope, working_copy_id, %{
+        tunnel_id: id,
+        tunnel_secret: secret
+      }) do
+    {:ok, copy} = WorkingCopies.fetch(working_copy_id)
+
+    {:ok, _copy} =
+      WorkingCopies.record_preview_tunnel(copy, %{
+        preview_url: PreviewAddress.url(copy.id),
+        preview_tunnel_id: id,
+        preview_tunnel_secret: secret
       })
 
     :ok

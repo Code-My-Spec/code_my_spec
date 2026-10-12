@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   """
 
   import ExUnit.Assertions
+  require Phoenix.ChannelTest
   # `live/2` falls back to `get/2` when the page is not already a LiveView, so
   # it has to be in scope or the call does not compile.
   import Phoenix.ConnTest, only: [get: 2]
@@ -30,6 +31,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   alias CodeMySpec.McpServers.Stories.Tools.ShareCopyApp
   alias CodeMySpec.McpServers.Stories.Tools.UnshareCopyApp
   alias CodeMySpec.Workspaces.PreviewTunnel
+  alias Req.Test
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -57,9 +59,9 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
         }
       end)
 
-    Req.Test.set_req_test_to_shared()
-    ExUnit.Callbacks.on_exit(&Req.Test.set_req_test_to_private/0)
-    Req.Test.stub(PreviewTunnel, &respond(&1, agent))
+    Test.set_req_test_to_shared()
+    ExUnit.Callbacks.on_exit(&Test.set_req_test_to_private/0)
+    Test.stub(PreviewTunnel, &respond(&1, agent))
     agent
   end
 
@@ -139,17 +141,17 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
 
   defp respond(conn, agent) do
     if Agent.get(agent, & &1.fail) do
-      Req.Test.json(conn, %{
+      Test.json(conn, %{
         "success" => false,
         "errors" => [%{"code" => 10_000, "message" => "Cloudflare is unavailable"}],
         "result" => nil
       })
     else
-      route(conn.method, String.split(conn.request_path, "/", trim: true), conn, agent)
+      route(conn.method, api_path(conn.request_path), conn, agent)
     end
   end
 
-  defp route("POST", [_, "accounts", _, "cfd_tunnel"], conn, agent) do
+  defp route("POST", ["accounts", _, "cfd_tunnel"], conn, agent) do
     body = json_body(conn)
 
     id =
@@ -163,7 +165,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     ok(conn, %{"id" => id, "name" => body["name"]})
   end
 
-  defp route("DELETE", [_, "accounts", _, "cfd_tunnel", id], conn, agent) do
+  defp route("DELETE", ["accounts", _, "cfd_tunnel", id], conn, agent) do
     Agent.update(agent, fn state ->
       %{state | tunnels: Map.delete(state.tunnels, id), deleted: [id | state.deleted]}
     end)
@@ -171,12 +173,12 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     ok(conn, %{"id" => id})
   end
 
-  defp route("GET", [_, "accounts", _, "cfd_tunnel", id, "configurations"], conn, agent) do
+  defp route("GET", ["accounts", _, "cfd_tunnel", id, "configurations"], conn, agent) do
     ingress = agent |> tunnels() |> Map.get(id, %{ingress: []}) |> Map.fetch!(:ingress)
     ok(conn, %{"config" => %{"ingress" => ingress}})
   end
 
-  defp route("PUT", [_, "accounts", _, "cfd_tunnel", id, "configurations"], conn, agent) do
+  defp route("PUT", ["accounts", _, "cfd_tunnel", id, "configurations"], conn, agent) do
     ingress = json_body(conn)["config"]["ingress"]
 
     Agent.update(agent, fn state ->
@@ -191,14 +193,14 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     ok(conn, %{})
   end
 
-  defp route("POST", [_, "zones", _, "dns_records"], conn, agent) do
+  defp route("POST", ["zones", _, "dns_records"], conn, agent) do
     body = json_body(conn)
 
     taken? =
       agent |> Agent.get(& &1.records) |> Enum.any?(fn {_, r} -> r.name == body["name"] end)
 
     if taken? do
-      Req.Test.json(conn, %{
+      Test.json(conn, %{
         "success" => false,
         "errors" => [%{"code" => 81_053, "message" => "record already exists"}],
         "result" => nil
@@ -215,7 +217,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     end
   end
 
-  defp route("GET", [_, "zones", _, "dns_records"], conn, agent) do
+  defp route("GET", ["zones", _, "dns_records"], conn, agent) do
     name = Plug.Conn.fetch_query_params(conn).query_params["name"]
 
     found =
@@ -226,7 +228,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     ok(conn, found)
   end
 
-  defp route("PATCH", [_, "zones", _, "dns_records", id], conn, agent) do
+  defp route("PATCH", ["zones", _, "dns_records", id], conn, agent) do
     content = json_body(conn)["content"]
 
     Agent.update(agent, fn state ->
@@ -236,7 +238,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     ok(conn, %{"id" => id})
   end
 
-  defp route("DELETE", [_, "zones", _, "dns_records", id], conn, agent) do
+  defp route("DELETE", ["zones", _, "dns_records", id], conn, agent) do
     Agent.update(agent, fn state -> %{state | records: Map.delete(state.records, id)} end)
     ok(conn, %{"id" => id})
   end
@@ -248,8 +250,16 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     )
   end
 
+  # Cloudflare's paths start `/client/v4`; routes are written from after it.
+  defp api_path(path) do
+    case String.split(path, "/", trim: true) do
+      ["client", "v4" | rest] -> rest
+      other -> other
+    end
+  end
+
   defp ok(conn, result),
-    do: Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => result})
+    do: Test.json(conn, %{"success" => true, "errors" => [], "result" => result})
 
   defp json_body(conn) do
     {:ok, body, _conn} = Plug.Conn.read_body(conn)
@@ -296,6 +306,19 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
 
   @doc "The same copy rejoining, the way a restarted harness does. Answers the join reply."
   def rejoin(context, copy) do
+    # A restarted harness's old connection is gone before the new one joins;
+    # joining beside it is refused, correctly, as a second harness on the copy.
+    channel = copy.socket.channel_pid
+    monitor = Process.monitor(channel)
+    Process.unlink(channel)
+    Phoenix.ChannelTest.close(copy.socket)
+
+    receive do
+      {:DOWN, ^monitor, :process, ^channel, _reason} -> :ok
+    after
+      2_000 -> flunk("the copy's old harness connection did not close")
+    end
+
     {reply, socket} =
       join_working_copy_socket(context, copy.root, Path.basename(copy.root),
         device_id: copy.device_id,
@@ -327,8 +350,8 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   @doc "The hostname a copy's address has, whatever the tool replied."
   def address_host(copy), do: "preview-#{copy.id}.codemyspec.com"
 
-  @doc "A fresh device id, standing in for a machine."
-  def machine, do: Ecto.UUID.generate()
+  @doc "A machine, announced the way its harness announces itself at boot. Answers its device id."
+  def machine(context), do: CodeMySpecSpex.Fixtures.device_fixture(context.scope).id
 
   # ── The developer's tools ──
 

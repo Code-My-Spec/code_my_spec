@@ -41,35 +41,26 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   credential rather than on what Cloudflare reports, because "a tunnel with
   this name exists" is not the same as "we can still speak for it".
 
-  ## Sharing a tunnel across a device (criteria 1586/1587)
+  ## One tunnel per machine (story 1117)
 
   Every connector attached to a tunnel has to be able to satisfy every one of
-  its ingress rules, because Cloudflare has no notion of which connector is
-  near which hostname's target — it hands the request to whichever connector
-  answers. That is sound for two copies on *one* machine (either one's
-  `cloudflared` can dial `http://localhost:<the other's port>` just fine) and
-  unsound across two: a connector on a different machine cannot reach a port
-  that only exists on the first one. So a copy shares main's tunnel only when
-  `WorkingCopies.tunnel_sibling/1` finds one on its own device (1586), and
-  gets a plain refusal otherwise (1587) rather than something that looks
-  provisioned and silently cannot be reached.
+  its routes, because Cloudflare hands a request to whichever connector
+  answers. That is sound for every copy on *one* machine — the machine's
+  connector can dial any local port — and unsound across two. So the tunnel
+  belongs to the device: each copy on a machine gets a route on that machine's
+  tunnel, and a copy on another machine gets one on its own machine's tunnel.
 
-  Sharing adds this copy's hostname to the tunnel's *ingress list* rather than
-  running a second `cloudflared`, and only main's connector needs to be
-  running at all — see `CmsHarness` main-only tunnel gating (the stray-second-
-  connector fix). That list is mutated through Cloudflare's remote tunnel
-  configuration endpoint, which `cloudflared` only reads once a tunnel's
-  `config_src` is `"cloudflare"` instead of `"local"`. Every tunnel this
-  module creates today still has `config_src: "local"` — flipping an
-  already-serving tunnel to remote config live is a one-time, watched change,
-  not something this module performs on its own. Until that switch happens,
-  `add_ingress/4` reaches the API and gets back whatever Cloudflare already
-  holds; a copy sharing an unconverted tunnel is recorded correctly and simply
-  is not reachable yet.
+  Routes live in Cloudflare (`config_src: "cloudflare"`) and are edited through
+  the API (`add_ingress/4`, `remove_ingress/3`), under `TunnelIngressLock`, so
+  giving one copy an address or taking it away never restarts the connector
+  carrying the others. A machine's existing tunnel — the dev tunnel carrying
+  dev.codemyspec.com and *.astralbi.com — is adopted as its machine tunnel
+  rather than replaced, so those hostnames' DNS never moves.
   """
 
   require Logger
 
+  alias CodeMySpec.Devices
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Workspaces.PreviewAddress
@@ -146,10 +137,12 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   alone is a decision for the caller, not this function.
   """
   @spec stored_credentials(WorkingCopy.t()) :: {:ok, credentials()} | :error
-  def stored_credentials(%WorkingCopy{
-        preview_tunnel_id: id,
-        preview_tunnel_secret: secret
-      } = copy)
+  def stored_credentials(
+        %WorkingCopy{
+          preview_tunnel_id: id,
+          preview_tunnel_secret: secret
+        } = copy
+      )
       when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
     {:ok,
      %{
@@ -164,64 +157,126 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   def stored_credentials(%WorkingCopy{}), do: :error
 
   @doc """
-  The tunnel serving this working copy's preview, making it exist if it does
-  not.
+  The tunnel a copy's harness should run: its machine's, once the machine
+  holds one (story 1117), else a main copy's own per-project tunnel, which it
+  keeps running until it moves. Read-only, like `stored_credentials/1`.
+
+  Every copy on a machine is handed the same tunnel, and the harness keeps one
+  connector per tunnel, so a machine runs one however many copies it carries.
+  """
+  @spec machine_credentials(WorkingCopy.t()) :: {:ok, credentials()} | :error
+  def machine_credentials(%WorkingCopy{device_id: device_id} = copy) do
+    case Devices.tunnel(device_id) do
+      {:ok, %{tunnel_id: id, tunnel_secret: secret}} ->
+        {:ok,
+         %{
+           hostname: PreviewAddress.host(copy.id),
+           tunnel_id: id,
+           tunnel_secret: secret,
+           account_tag: account_tag() || "",
+           embedder: embedder()
+         }}
+
+      :error ->
+        if copy.main, do: stored_credentials(copy), else: :error
+    end
+  end
+
+  @doc """
+  Give a working copy its address on its machine's tunnel, making the tunnel
+  exist if the machine has none (story 1117).
+
+  One tunnel per machine, whatever the project: every copy on a device gets a
+  route on that device's tunnel to its own app, and a DNS record pointing its
+  address at the tunnel. The harness on the machine runs one connector for it.
+  A copy on another machine is routed through that machine's tunnel, never
+  this one's — a connector cannot reach a port on a different box.
 
   Returns everything the checkout needs to run it, and records the address on
   the working copy so the panel has something to frame.
 
-  Idempotent: a copy that already holds a tunnel gets the same one back, and
-  the DNS record is re-asserted rather than assumed — a record deleted by hand
-  in the dashboard should heal on the next call rather than stay broken until
-  somebody notices the frame is blank.
+  Idempotent: the route and the DNS record are re-asserted rather than assumed.
+  A copy moving off a tunnel of its own (the per-project model this replaces)
+  retires that tunnel once nothing references it.
   """
   @spec ensure(WorkingCopy.t()) :: {:ok, credentials()} | {:error, term()}
-  def ensure(%WorkingCopy{main: true} = copy), do: provision(copy)
-
-  # Every other copy is eligible only once it has something of its own to
-  # point a preview at (story 1108's `app_url`) — a bare worktree still gets
-  # `:not_the_main_copy` below, unchanged from before 1586/1587 existed.
-  def ensure(%WorkingCopy{app_url: url} = copy) when is_binary(url) and url != "" do
-    case WorkingCopies.tunnel_sibling(copy) do
-      {:ok, sibling} -> share(copy, sibling)
-      :error -> {:error, :no_tunnel_on_this_device}
-    end
-  end
-
-  def ensure(%WorkingCopy{}), do: {:error, :not_the_main_copy}
-
-  # Main always creates or reuses a tunnel of its own — unchanged from before
-  # 1586/1587, just given a name now that `ensure/1` has a second path.
-  defp provision(%WorkingCopy{} = copy) do
-    # Checked here as well as in `record_preview_tunnel/2`, and the order is the
-    # whole point. Refusing only at the write would create the tunnel and the
-    # DNS record first and reject them afterwards — leaving a real tunnel in the
-    # account that nothing holds the secret for and no code path will ever
-    # mention again. The write's refusal guards the row; this one guards the
-    # account.
-    with {:ok, account} <- account_id(),
-         {:ok, tunnel} <- tunnel_for(copy, account),
+  def ensure(%WorkingCopy{} = copy) do
+    with :ok <- eligible(copy),
+         {:ok, account} <- account_id(),
+         {:ok, tunnel} <- machine_tunnel(copy, account),
          host = PreviewAddress.host(copy.id),
+         :ok <- route(account, tunnel.tunnel_id, host, copy),
          :ok <- point(host, tunnel.tunnel_id),
          {:ok, _copy} <- record(copy, host, tunnel) do
+      retire_replaced(copy.preview_tunnel_id, tunnel.tunnel_id, account)
       {:ok, Map.merge(tunnel, %{hostname: host, account_tag: account, embedder: embedder()})}
     end
   end
 
-  # The device-sharing path (1586): reuse the sibling's tunnel outright — its
-  # id and secret, not a new tunnel — and add this copy's own hostname to its
-  # ingress rather than running a second `cloudflared`.
-  defp share(%WorkingCopy{} = copy, %WorkingCopy{
-         preview_tunnel_id: id,
-         preview_tunnel_secret: secret
-       }) do
-    with {:ok, account} <- account_id(),
-         host = PreviewAddress.host(copy.id),
-         :ok <- add_ingress(account, id, host, copy.app_url),
-         :ok <- point(host, id),
-         {:ok, _copy} <- record(copy, host, %{tunnel_id: id, tunnel_secret: secret}) do
-      {:ok,
-       %{tunnel_id: id, tunnel_secret: secret, hostname: host, account_tag: account, embedder: embedder()}}
+  # Main is eligible before its app first serves (onboarding asks for its
+  # address up front); any other copy once it has an app to point at.
+  defp eligible(%WorkingCopy{main: true}), do: :ok
+  defp eligible(%WorkingCopy{app_url: url}) when is_binary(url) and url != "", do: :ok
+  defp eligible(%WorkingCopy{}), do: {:error, :not_the_main_copy}
+
+  # A route needs somewhere to send traffic. Main asked for its address at
+  # onboarding has no app yet; it gets its route when it is shared again with
+  # an app serving.
+  defp route(account, tunnel_id, host, %WorkingCopy{app_url: url})
+       when is_binary(url) and url != "",
+       do: add_ingress(account, tunnel_id, host, url)
+
+  defp route(_account, _tunnel_id, _host, %WorkingCopy{}), do: :ok
+
+  # The machine's tunnel, or a new one recorded on the machine. A copy that
+  # names no machine keeps the per-copy tunnel it always had.
+  defp machine_tunnel(%WorkingCopy{device_id: device_id}, account) when is_binary(device_id) do
+    case Devices.tunnel(device_id) do
+      {:ok, tunnel} ->
+        {:ok, tunnel}
+
+      :error ->
+        with {:ok, tunnel} <- create("machine-" <> device_id, account),
+             {:ok, _device} <- Devices.record_tunnel(device_id, tunnel) do
+          {:ok, tunnel}
+        end
+    end
+  end
+
+  defp machine_tunnel(%WorkingCopy{} = copy, account), do: tunnel_for(copy, account)
+
+  # The per-project tunnel a copy held before it moved, deleted once no copy
+  # still names it. Best-effort: a tunnel Cloudflare will not delete yet (a
+  # connector still attached) costs nothing but an idle record, and must not
+  # take the copy's new address down with it.
+  defp retire_replaced(nil, _current, _account), do: :ok
+  defp retire_replaced(same, same, _account), do: :ok
+
+  defp retire_replaced(previous, _current, account) do
+    if WorkingCopies.tunnel_in_use?(previous) do
+      :ok
+    else
+      case delete_tunnel(account, previous) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning(
+            "[PreviewTunnel] could not delete replaced tunnel #{previous}: #{inspect(reason)}"
+          )
+
+          :ok
+      end
+    end
+  end
+
+  defp delete_tunnel(account, tunnel_id) do
+    with {:ok, token} <- token() do
+      case delete("#{@api}/accounts/#{account}/cfd_tunnel/#{tunnel_id}", token) do
+        {:ok, %{"success" => true}} -> :ok
+        {:ok, body} -> {:error, {:cloudflare, body}}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -233,20 +288,19 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     {:ok, %{tunnel_id: id, tunnel_secret: secret}}
   end
 
-  defp tunnel_for(%WorkingCopy{} = copy, account), do: create(copy, account)
+  defp tunnel_for(%WorkingCopy{} = copy, account), do: create("preview-" <> copy.id, account)
 
-  # 32 bytes, base64, generated here rather than left to Cloudflare. Supplying
-  # it is what makes `config_src: "local"` possible — the tunnel is configured
-  # by the credentials file the checkout holds, not by a dashboard record we
-  # would then have to keep in step with the app's own port.
-  defp create(%WorkingCopy{} = copy, account) do
+  # 32 bytes, base64, generated here rather than left to Cloudflare: the
+  # secret is what the harness's connector authenticates with, and Cloudflare
+  # never hands it back after creation.
+  #
+  # `config_src: "cloudflare"` — the tunnel's routes live in Cloudflare and are
+  # edited through the API (`add_ingress/4`), so a copy gaining or losing an
+  # address never restarts the connector carrying every other one.
+  defp create(name, account) do
     secret = 32 |> :crypto.strong_rand_bytes() |> Base.encode64()
 
-    body = %{
-      name: "preview-" <> copy.id,
-      tunnel_secret: secret,
-      config_src: "local"
-    }
+    body = %{name: name, tunnel_secret: secret, config_src: "cloudflare"}
 
     case post("#{@api}/accounts/#{account}/cfd_tunnel", body) do
       {:ok, %{"result" => %{"id" => id}}} ->
@@ -294,8 +348,6 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   find out.
   """
   @spec release(WorkingCopy.t()) :: :ok | {:error, term()}
-  def release(%WorkingCopy{main: true}), do: :ok
-
   def release(%WorkingCopy{preview_tunnel_id: id, preview_tunnel_secret: secret} = copy)
       when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
     host = PreviewAddress.host(copy.id)

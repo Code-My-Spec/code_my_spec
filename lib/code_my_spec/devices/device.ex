@@ -45,6 +45,8 @@ defmodule CodeMySpec.Devices.Device do
           kind: atom() | nil,
           account_id: Ecto.UUID.t() | nil,
           last_seen_at: DateTime.t() | nil,
+          preview_tunnel_id: String.t() | nil,
+          preview_tunnel_secret: String.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -85,6 +87,12 @@ defmodule CodeMySpec.Devices.Device do
     field :load, :map
     field :load_reported_at, :utc_datetime_usec
 
+    # The one tunnel this machine's harness runs, carrying every address of
+    # every working copy on it (story 1117). The secret is returned once, at
+    # creation, so it is kept here, encrypted.
+    field :preview_tunnel_id, :string
+    field :preview_tunnel_secret, CodeMySpec.Encrypted.Binary
+
     timestamps(type: :utc_datetime)
   end
 
@@ -107,6 +115,22 @@ defmodule CodeMySpec.Devices.Device do
     # what the machine is comes back as an error somebody can read instead of a
     # `not_null_violation` on a column name.
     |> validate_required([:kind])
+  end
+
+  @doc "Record the tunnel this machine's harness runs — id and secret together, or neither."
+  def tunnel_changeset(device, attrs) do
+    device
+    |> cast(attrs, [:preview_tunnel_id, :preview_tunnel_secret])
+    |> validate_tunnel_pair()
+  end
+
+  defp validate_tunnel_pair(changeset) do
+    id = get_field(changeset, :preview_tunnel_id)
+    secret = get_field(changeset, :preview_tunnel_secret)
+
+    if is_nil(id) == is_nil(secret),
+      do: changeset,
+      else: add_error(changeset, :preview_tunnel_secret, "a tunnel id and its secret go together")
   end
 
   @doc """
