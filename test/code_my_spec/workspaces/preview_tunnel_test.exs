@@ -91,12 +91,13 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     assert creds.account_tag == "test-account"
 
     assert_receive {:cloudflare, "/client/v4/accounts/test-account/cfd_tunnel", create}
-    assert create["name"] == "preview-" <> copy.id
 
-    assert create["config_src"] == "local",
-           "cloudflared is configured by the credentials file the checkout holds. " <>
-             "Remote config would put the app's own port in a dashboard record we " <>
-             "would then have to keep in step with it."
+    assert create["name"] == "machine-" <> copy.device_id,
+           "the tunnel belongs to the machine, which every copy on it shares (story 1117)"
+
+    assert create["config_src"] == "cloudflare",
+           "routes live in Cloudflare and are edited through the API, so giving one copy " <>
+             "an address never restarts the connector carrying every other one"
 
     assert_receive {:cloudflare, "/client/v4/zones/test-zone/dns_records", record}
     assert record["content"] == @tunnel_id <> ".cfargotunnel.com"
@@ -240,8 +241,14 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     Test.json(conn, %{"success" => false, "errors" => [%{"code" => 81_053}]})
   end
 
-  describe "sharing a device's tunnel (criteria 1586/1587)" do
+  describe "a machine's one tunnel (story 1117)" do
     setup %{copy: main} do
+      {:ok, _device} =
+        CodeMySpec.Devices.record_tunnel(main.device_id, %{
+          tunnel_id: @tunnel_id,
+          tunnel_secret: "main-secret"
+        })
+
       {:ok, main} =
         WorkingCopies.record_preview_tunnel(main, %{
           preview_url: PreviewAddress.url(main.id),
@@ -256,7 +263,12 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       Test.stub(PreviewTunnel, &shared_cloudflare_response(&1, test_pid, ingress, dns_lookup))
     end
 
-    defp shared_cloudflare_response(%{request_path: "/" <> _ = path} = conn, test_pid, ingress, dns_lookup) do
+    defp shared_cloudflare_response(
+           %{request_path: "/" <> _ = path} = conn,
+           test_pid,
+           ingress,
+           dns_lookup
+         ) do
       configurations_response(
         String.contains?(path, "/configurations"),
         conn,
@@ -304,12 +316,22 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       Test.json(conn, %{"success" => true, "errors" => [], "result" => %{}})
     end
 
+    defp dns_response(false, %{method: "POST"} = conn, test_pid, _dns_lookup) do
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:tunnel_created, Jason.decode!(body)})
+
+      Test.json(conn, %{
+        "success" => true,
+        "errors" => [],
+        "result" => %{"id" => "other-machine-tunnel"}
+      })
+    end
+
     defp dns_response(false, conn, _test_pid, _dns_lookup) do
       Test.json(conn, %{"success" => false, "errors" => [%{"code" => 9_999}]})
     end
 
-    # Criterion 1586.
-    test "a second copy on main's own device shares main's tunnel", %{
+    test "a second copy on the same machine is routed on the machine's tunnel", %{
       scope: scope,
       main: main
     } do
@@ -331,6 +353,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert creds.hostname == PreviewAddress.host(sibling.id)
 
       assert_receive {:put_config, %{"config" => %{"ingress" => ingress}}}
+
       assert %{"hostname" => host, "service" => "http://127.0.0.1:41234"} =
                Enum.find(ingress, &(&1["hostname"] == PreviewAddress.host(sibling.id)))
 
@@ -348,8 +371,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert saved.preview_url == PreviewAddress.url(sibling.id)
     end
 
-    # Criterion 1587.
-    test "a copy on a different device never shares another device's tunnel", %{
+    test "a copy on another machine is routed on its own machine's tunnel, never this one's", %{
       scope: scope
     } do
       stub_shared_cloudflare(self(), [])
@@ -363,13 +385,13 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
           url: "http://127.0.0.1:51234"
         })
 
-      assert {:error, :no_tunnel_on_this_device} = PreviewTunnel.ensure(elsewhere)
+      assert {:ok, creds} = PreviewTunnel.ensure(elsewhere)
 
-      refute_receive {:put_config, _}, @absence_timeout
-      refute_receive {:dns_record, _}, @absence_timeout
+      refute creds.tunnel_id == @tunnel_id,
+             "a connector on this machine cannot reach a port on the other one"
 
-      {:ok, saved} = WorkingCopies.fetch(elsewhere.id)
-      assert saved.preview_tunnel_id == nil
+      assert creds.tunnel_id == "other-machine-tunnel"
+      assert_receive {:tunnel_created, %{"name" => "machine-" <> _}}, @arrival_timeout
     end
 
     test "an unreachable copy is refused, not silently shared with no address", %{
@@ -400,7 +422,10 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       host = PreviewAddress.host(sibling.id)
 
-      stub_shared_cloudflare(self(), [%{"hostname" => host, "service" => "http://127.0.0.1:41234"}])
+      stub_shared_cloudflare(self(), [
+        %{"hostname" => host, "service" => "http://127.0.0.1:41234"}
+      ])
+
       assert {:ok, _} = PreviewTunnel.ensure(sibling)
       assert_receive {:put_config, _}, @arrival_timeout
       {:ok, sibling} = WorkingCopies.fetch(sibling.id)
@@ -443,7 +468,10 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       host = PreviewAddress.host(sibling.id)
 
-      stub_shared_cloudflare(self(), [%{"hostname" => host, "service" => "http://127.0.0.1:41234"}])
+      stub_shared_cloudflare(self(), [
+        %{"hostname" => host, "service" => "http://127.0.0.1:41234"}
+      ])
+
       assert {:ok, _} = PreviewTunnel.ensure(sibling)
       assert_receive {:put_config, _}, @arrival_timeout
       {:ok, sibling} = WorkingCopies.fetch(sibling.id)
@@ -457,10 +485,26 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert saved.preview_tunnel_id == nil
     end
 
-    test "release/1 does nothing to main's own tunnel", %{main: main} do
+    test "release/1 takes main's own address off too, leaving the machine's tunnel", %{main: main} do
+      host = PreviewAddress.host(main.id)
+
+      stub_shared_cloudflare(
+        self(),
+        [
+          %{"hostname" => host, "service" => "http://127.0.0.1:4000"},
+          %{"service" => "http_status:404"}
+        ],
+        []
+      )
+
       assert :ok = PreviewTunnel.release(main)
+
+      assert_receive {:put_config, %{"config" => %{"ingress" => ingress}}}, @arrival_timeout
+      refute Enum.any?(ingress, &(&1["hostname"] == host))
+
       {:ok, saved} = WorkingCopies.fetch(main.id)
-      assert saved.preview_tunnel_id == @tunnel_id
+      assert saved.preview_url == nil
+      assert {:ok, %{tunnel_id: @tunnel_id}} = CodeMySpec.Devices.tunnel(main.device_id)
     end
   end
 

@@ -31,6 +31,7 @@ defmodule CodeMySpec.Files do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.LiveCopies
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Files.SpecBinding
   alias CodeMySpec.Repo
@@ -62,6 +63,35 @@ defmodule CodeMySpec.Files do
       strict?: false
     }
   end
+
+  @doc """
+  The `use Boundary` declarations in the project's code, as the scan recorded
+  them: `%{"module", "top_level", "classify_to"}` each.
+
+  Read from the main copy's implementation files, the same checkouts whose code
+  says which components exist (`LiveCopies.speaking_ids/1`). A file scanned
+  before declarations were recorded has none until its next scan.
+  """
+  @spec boundary_declarations(Scope.t()) :: [map()]
+  def boundary_declarations(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    copies = LiveCopies.speaking_ids(project_id)
+
+    File
+    |> where([f], f.project_id == ^project_id and f.role == :implementation)
+    |> where([f], f.working_copy_id in ^copies)
+    |> select([f], f.validation_errors)
+    |> Repo.all()
+    |> Enum.flat_map(&declared_boundaries/1)
+    |> Enum.uniq_by(& &1["module"])
+  end
+
+  def boundary_declarations(%Scope{}), do: []
+
+  defp declared_boundaries(%{"data" => %{"dependency_evidence" => %{"boundaries" => list}}})
+       when is_list(list),
+       do: list
+
+  defp declared_boundaries(_), do: []
 
   # Every path each component conventionally owns, pointing back at it.
   #

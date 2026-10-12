@@ -277,4 +277,38 @@ defmodule CodeMySpec.Files.DependencyEvidenceTest do
     assert error["source_hash"] ==
              :crypto.hash(:sha256, "defmodule Broken do\n") |> Base.encode16(case: :lower)
   end
+
+  test "a use Boundary declaration is recorded with its options, per module" do
+    result =
+      DependencyEvidence.extract("""
+      defmodule App.Accounts do
+        use Boundary, top_level?: true, deps: [App.Repo], exports: :all
+        defmodule Tasks do
+          use Boundary, classify_to: App
+        end
+      end
+      defmodule App.Plain do
+        use GenServer
+      end
+      """)
+
+    assert result["boundaries"] == [
+             %{"module" => "App.Accounts", "top_level" => true, "classify_to" => nil},
+             %{"module" => "App.Accounts.Tasks", "top_level" => false, "classify_to" => "App"}
+           ]
+  end
+
+  test "interpolation and Erlang calls are static, not dynamic" do
+    result =
+      DependencyEvidence.extract("""
+      defmodule App.Label do
+        def label(env), do: "env/\#{env}"
+        def lookup(key), do: :ets.lookup(:t, key)
+      end
+      """)
+
+    assert result["unresolved"] == []
+    assert {"Kernel", "call"} in Enum.map(result["references"], &{&1["target"], &1["kind"]})
+    assert {":ets", "call"} in Enum.map(result["references"], &{&1["target"], &1["kind"]})
+  end
 end

@@ -6,6 +6,7 @@ defmodule CodeMySpecWeb.ArchitectureLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Architecture
+  alias CodeMySpec.Architecture.BoundaryGraph
   alias CodeMySpec.Components
   alias CodeMySpec.Requirements.GraphProjector
 
@@ -35,85 +36,143 @@ defmodule CodeMySpecWeb.ArchitectureLive do
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp compute_view(:dependency_graph, scope),
-    do: {:dependency_graph, GraphProjector.components_graph(scope)}
+    do: {:dependency_graph, BoundaryGraph.build(scope)}
+
+  defp compute_view(:components_graph, scope),
+    do: {:components_graph, GraphProjector.components_graph(scope)}
 
   defp compute_view(:overview, scope),
-    do: {:overview, Architecture.generate_overview(Components.list_components_with_dependencies(scope))}
+    do:
+      {:overview,
+       Architecture.generate_overview(Components.list_components_with_dependencies(scope))}
 
   defp compute_view(:namespaces, scope),
-    do: {:namespaces, Architecture.generate_namespace_hierarchy(Components.list_components_with_dependencies(scope))}
+    do:
+      {:namespaces,
+       Architecture.generate_namespace_hierarchy(
+         Components.list_components_with_dependencies(scope)
+       )}
 
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
+
+    <div :if={!@error && @project}>
+      <div class="mb-6">
+        <h1 class="text-3xl font-bold">Architecture</h1>
+        <p class="text-base-content/60 mt-1">Structural views of the project's components.</p>
       </div>
 
-      <div :if={!@error && @project}>
-        <div class="mb-6">
-          <h1 class="text-3xl font-bold">Architecture</h1>
-          <p class="text-base-content/60 mt-1">Structural views of the project's components.</p>
-        </div>
+      <div role="tablist" class="tabs tabs-bordered mb-6">
+        <.link
+          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture")}
+          role="tab"
+          class={["tab", @live_action == :dependency_graph && "tab-active"]}
+        >
+          Boundaries
+        </.link>
+        <.link
+          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/components")}
+          role="tab"
+          class={["tab", @live_action == :components_graph && "tab-active"]}
+        >
+          Components
+        </.link>
+        <.link
+          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/overview")}
+          role="tab"
+          class={["tab", @live_action == :overview && "tab-active"]}
+        >
+          Component Overview
+        </.link>
+        <.link
+          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/namespaces")}
+          role="tab"
+          class={["tab", @live_action == :namespaces && "tab-active"]}
+        >
+          Namespace Hierarchy
+        </.link>
+      </div>
 
-        <div role="tablist" class="tabs tabs-bordered mb-6">
-          <.link
-            patch={path(@socket, ~p"/app/projects/#{@slug}/architecture")}
-            role="tab"
-            class={["tab", @live_action == :dependency_graph && "tab-active"]}
-          >
-            Dependency Graph
-          </.link>
-          <.link
-            patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/overview")}
-            role="tab"
-            class={["tab", @live_action == :overview && "tab-active"]}
-          >
-            Component Overview
-          </.link>
-          <.link
-            patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/namespaces")}
-            role="tab"
-            class={["tab", @live_action == :namespaces && "tab-active"]}
-          >
-            Namespace Hierarchy
-          </.link>
-        </div>
-
-        <div :if={match?({:dependency_graph, _}, @view)}>
-          <div class="flex flex-wrap gap-4 text-sm mb-4">
-            <span class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied
-            </span>
-            <span class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable
-            </span>
-            <span class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked
-            </span>
-          </div>
-          <div
-            id="sigma-graph"
-            phx-hook="SigmaGraph"
-            data-graph={Jason.encode!(elem(@view, 1))}
-            phx-update="ignore"
-            class="rounded-box border border-base-300 bg-base-200"
-            style="width: 100%; height: 80vh;"
-          >
-          </div>
-        </div>
-
-        <div :if={match?({:overview, _}, @view)}>
-          <div class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">
-            {md_html(elem(@view, 1))}
-          </div>
-        </div>
-
-        <div :if={match?({:namespaces, _}, @view)}>
-          <pre class="bg-base-200 border border-base-300 rounded-box p-4 overflow-x-auto text-sm">{elem(@view, 1)}</pre>
+      <div :if={match?({:dependency_graph, _}, @view)}>
+        <.boundary_summary summary={elem(@view, 1).summary} />
+        <div
+          id="sigma-graph"
+          phx-hook="SigmaGraph"
+          data-graph={Jason.encode!(Map.delete(elem(@view, 1), :summary))}
+          phx-update="ignore"
+          class="rounded-box border border-base-300 bg-base-200"
+          style="width: 100%; height: 80vh;"
+        >
         </div>
       </div>
+
+      <div :if={match?({:components_graph, _}, @view)}>
+        <div class="flex flex-wrap gap-4 text-sm mb-4">
+          <span class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked
+          </span>
+        </div>
+        <div
+          id="sigma-components-graph"
+          phx-hook="SigmaGraph"
+          data-graph={Jason.encode!(elem(@view, 1))}
+          phx-update="ignore"
+          class="rounded-box border border-base-300 bg-base-200"
+          style="width: 100%; height: 80vh;"
+        >
+        </div>
+      </div>
+
+      <div :if={match?({:overview, _}, @view)}>
+        <div class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">
+          {md_html(elem(@view, 1))}
+        </div>
+      </div>
+
+      <div :if={match?({:namespaces, _}, @view)}>
+        <pre class="bg-base-200 border border-base-300 rounded-box p-4 overflow-x-auto text-sm">{elem(@view, 1)}</pre>
+      </div>
+    </div>
     """
   end
 
+  attr :summary, :map, required: true
+
+  # The claims the graph makes, stated so they can be checked against it.
+  defp boundary_summary(assigns) do
+    ~H"""
+    <div data-test="boundary-summary" class="text-sm text-base-content/70 mb-4 space-y-1">
+      <p :if={!@summary.declarations_recorded} class="text-warning">
+        No `use Boundary` declarations recorded yet — they arrive with the next full scan.
+      </p>
+      <p>
+        <span data-test="boundary-count">{@summary.boundaries} boundaries</span>, <span data-test="boundary-edges">{@summary.edges} dependencies between them</span>,
+        <span data-test="boundary-depth">{@summary.depth} deep</span>
+        <span :if={@summary.unowned_modules > 0}>
+          · {@summary.unowned_modules} modules under no boundary
+        </span>
+      </p>
+      <p :if={@summary.longest_chain != []} data-test="boundary-longest-chain" class="break-words">
+        Longest chain: {Enum.join(@summary.longest_chain, " → ")}
+      </p>
+      <p :if={@summary.cycles == []} data-test="boundary-cycles">No cycles.</p>
+      <div :if={@summary.cycles != []} data-test="boundary-cycles" class="text-error">
+        {length(@summary.cycles)} cycle(s), drawn in red:
+        <ul class="list-disc ml-5">
+          <li :for={cycle <- @summary.cycles}>{Enum.join(cycle, " ↔ ")}</li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
 end

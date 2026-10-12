@@ -4,9 +4,9 @@ defmodule CmsHarness.AppInstanceTunnelTest do
   app." `AppInstance` is told a serving copy's tunnel credentials fresh on
   every `ensure_app_running`/`restart_app`, the same "told, never remembered"
   wire `HarnessProjectChannel.put_main/2` already uses for `main` itself —
-  see that module's `put_tunnel/2` for why only a confirmed-main copy is
-  ever told one, and `CmsHarness.AppInstance`'s own `ensure_tunnel/3` for
-  the harness-side half of the same rule.
+  since story 1117 every copy on a machine is told the machine's one tunnel,
+  and `CmsHarness.AppInstance`'s own `ensure_tunnel/3` holds whatever it is
+  handed — the runner keeps one connector per tunnel.
 
   Same rig story 1108's own criteria use: a real `ChannelClient` against
   `CmsHarnessTest.FakeServer`, `AppInstance` behind a scripted
@@ -38,8 +38,12 @@ defmodule CmsHarness.AppInstanceTunnelTest do
     end
   end
 
-  defp tunnel_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:start_tunnel, _}, &1))
-  defp stop_tunnel_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:stop_tunnel, _}, &1))
+  defp tunnel_calls,
+    do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:start_tunnel, _}, &1))
+
+  defp stop_tunnel_calls,
+    do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:stop_tunnel, _}, &1))
+
   defp launch_calls, do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
 
   describe "a confirmed-main copy told a tunnel" do
@@ -74,13 +78,24 @@ defmodule CmsHarness.AppInstanceTunnelTest do
       push_with(%{"main" => true, "tunnel" => other})
 
       assert length(tunnel_calls()) == 2
+
       assert length(stop_tunnel_calls()) == 1,
              "the old tunnel was left running instead of being stopped before the new one started"
     end
   end
 
-  describe "a copy demoted from main" do
-    test "stops the tunnel it was holding" do
+  describe "a copy handed the machine's tunnel (story 1117)" do
+    test "runs it whether or not it is main" do
+      app_instance_rig(database_exists?: true)
+
+      push_with(%{"main" => false, "tunnel" => @tunnel})
+
+      assert [{:start_tunnel, [%{tunnel_id: "tunnel-1"}, _origin]}] = tunnel_calls(),
+             "every copy on a machine is handed the machine's one tunnel; the runner " <>
+               "keeps one connector per tunnel, so a copy that is not main runs it too"
+    end
+
+    test "handed none on a later request, leaves the shared connector running" do
       app_instance_rig(database_exists?: true)
 
       push_with(%{"main" => true, "tunnel" => @tunnel})
@@ -88,23 +103,9 @@ defmodule CmsHarness.AppInstanceTunnelTest do
 
       push_with(%{"main" => false}, "restart_app")
 
-      assert length(stop_tunnel_calls()) == 1,
-             "a demoted main kept its old tunnel running — exactly the stray-connector shape this project has already shipped one fix for"
-    end
-  end
-
-  describe "a non-main copy" do
-    test "is never told to run a tunnel, even one sent to it directly" do
-      app_instance_rig(database_exists?: true)
-
-      # Not a real production shape (the channel never sends `tunnel` without
-      # `main: true` — see `HarnessProjectChannel.put_tunnel/2`) — this is
-      # `AppInstance`'s own defense in depth, exercised directly.
-      push_with(%{"main" => false, "tunnel" => @tunnel})
-
-      assert tunnel_calls() == [],
-             "a non-main copy started a tunnel of its own — criterion 1586/1587's whole " <>
-               "premise is that only main ever runs a connector"
+      assert stop_tunnel_calls() == [],
+             "one copy losing its tunnel stopped the connector that carries every other " <>
+               "copy's address on the machine"
     end
   end
 
@@ -124,7 +125,10 @@ defmodule CmsHarness.AppInstanceTunnelTest do
 
       push_with(%{"main" => true, "tunnel" => @tunnel})
 
-      assert [{:launch, [_root, _port, _https, _db, _log, true, true, "preview-main.codemyspec.com"]}] =
+      assert [
+               {:launch,
+                [_root, _port, _https, _db, _log, true, true, "preview-main.codemyspec.com"]}
+             ] =
                launch_calls()
     end
 

@@ -18,6 +18,7 @@ defmodule CodeMySpec.Files.DependencyEvidence do
           refs: MapSet.new(),
           unresolved: MapSet.new(),
           modules: MapSet.new(),
+          boundaries: MapSet.new(),
           imported?: false
         }
 
@@ -29,7 +30,8 @@ defmodule CodeMySpec.Files.DependencyEvidence do
           "source_hash" => hash,
           "modules" => evidence.modules |> Enum.sort(),
           "references" => sorted_refs(evidence.refs),
-          "unresolved" => sorted_unresolved(evidence.unresolved)
+          "unresolved" => sorted_unresolved(evidence.unresolved),
+          "boundaries" => Enum.sort_by(evidence.boundaries, & &1["module"])
         }
 
       {:error, {location, error, token}} ->
@@ -40,6 +42,7 @@ defmodule CodeMySpec.Files.DependencyEvidence do
           "modules" => [],
           "references" => [],
           "unresolved" => [],
+          "boundaries" => [],
           "parse_error" => %{
             "line" => location[:line] || 1,
             "column" => location[:column],
@@ -133,6 +136,7 @@ defmodule CodeMySpec.Files.DependencyEvidence do
   defp walk({kind, meta, args}, current, aliases, state)
        when kind in [:use, :import, :require] do
     state = record_target(kind, args, meta, current, aliases, state)
+    state = record_boundary(kind, args, current, aliases, state)
     state = if kind == :import, do: %{state | imported?: true}, else: state
     {_, state} = walk_children(args, current, aliases, state)
     {aliases, state}
@@ -314,6 +318,34 @@ defmodule CodeMySpec.Files.DependencyEvidence do
 
   defp record_target(_, _, _, _, _, state), do: state
 
+  # A module's `use Boundary` declaration, as data: which modules are boundaries
+  # is the architecture the compiler enforces, and the graph of it is drawn
+  # from these. `deps` are not read — the edges come from what the code calls.
+  defp record_boundary(:use, [target | rest], current, aliases, state) when is_binary(current) do
+    case resolve_module(target, current, aliases) do
+      "Boundary" ->
+        opts = boundary_opts(rest)
+
+        declaration = %{
+          "module" => current,
+          "top_level" => Keyword.get(opts, :top_level?) == true,
+          "classify_to" => resolve_module(Keyword.get(opts, :classify_to), current, aliases)
+        }
+
+        %{state | boundaries: MapSet.put(state.boundaries, declaration)}
+
+      _ ->
+        state
+    end
+  end
+
+  defp record_boundary(_, _, _, _, state), do: state
+
+  defp boundary_opts([opts]) when is_list(opts),
+    do: Enum.filter(opts, &match?({key, _} when is_atom(key), &1))
+
+  defp boundary_opts(_), do: []
+
   defp alias_binding([target | opts], current, aliases) do
     resolved = resolve_module(target, current, aliases)
 
@@ -354,7 +386,20 @@ defmodule CodeMySpec.Files.DependencyEvidence do
   end
 
   defp resolve_module({:__MODULE__, _, _}, current, _aliases), do: current
-  defp resolve_module(atom, _current, _aliases) when is_atom(atom), do: nil
+  # A module written as a literal atom is static, not dynamic: string
+  # interpolation expands to `Kernel.to_string/1` with `Kernel` as the atom
+  # `:"Elixir.Kernel"`, and an Erlang call names `:ets`. Calling these dynamic
+  # marked 997 of 1,302 files uncertain, which kept every stale edge out of
+  # them alive (2026-10-12).
+  defp resolve_module(atom, _current, _aliases) when atom in [nil, true, false], do: nil
+
+  defp resolve_module(atom, _current, _aliases) when is_atom(atom) do
+    case Atom.to_string(atom) do
+      "Elixir." <> name -> name
+      name -> ":" <> name
+    end
+  end
+
   defp resolve_module(_, _, _), do: nil
 
   defp module_name(ast, current, aliases), do: resolve_module(ast, current, aliases)

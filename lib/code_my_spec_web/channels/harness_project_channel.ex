@@ -1307,20 +1307,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The harness holds the tunnel, not the app it launches (2026-09-29, John:
   # "the harness should hold the tunnel, not the generated app" — an app
-  # restart no longer needs to bounce cloudflared with it). Same "told fresh,
-  # never remembered" reasoning as `put_main/2`: main-ness can be
-  # redesignated, and only the copy confirmed main *right now* may ever be
-  # told to run a connector — a stale cached answer here is a stray
-  # connector, the exact hazard this project has already shipped a fix for
-  # once. Read straight from the row rather than `socket.assigns.harness`,
-  # which was only ever guaranteed fresh at join.
-  #
-  # A sibling sharing another copy's tunnel (criterion 1586) holds the same
-  # `preview_tunnel_id`/`secret` on its own row — `stored_credentials/1` alone
-  # cannot tell the two apart, which is exactly why the `main: true` guard is
-  # here and not there. It must never run a connector of its own; its
-  # hostname reaches the shared tunnel through main's, over the ingress rule
-  # the server already manages via Cloudflare's API.
+  # restart no longer needs to bounce cloudflared with it). Told fresh, never
+  # remembered: read straight from the row rather than `socket.assigns.harness`,
+  # which was only ever guaranteed fresh at join, so a machine that gains or
+  # changes its tunnel is reflected on the next request. See `tunnel_for/1`.
   defp put_tunnel(request, socket) do
     case WorkingCopies.fetch(socket.assigns.harness.id) do
       {:ok, copy} ->
@@ -1334,16 +1324,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
-  # The one place that decides whether a copy holds a tunnel and what its
-  # credentials are — shared by `put_tunnel/2` (the long-lived
-  # `ensure_app_running`/`restart_app` path) and the join reply below, so the
-  # two can never compute a different answer for the same copy. `nil` for
-  # anything but the designated main, and for main itself the moment
-  # `PreviewTunnel.stored_credentials/1` finds nothing DB-backed for it (this
-  # repo's own main today — its dev tunnel is still `config/dev.exs`'s
-  # hardcoded bootstrap).
-  defp tunnel_for(%{main: true} = copy) do
-    case PreviewTunnel.stored_credentials(copy) do
+  # The one place that decides which tunnel a copy's harness runs — shared by
+  # `put_tunnel/2` (the long-lived `ensure_app_running`/`restart_app` path) and
+  # the join reply, so the two can never compute a different answer for the
+  # same copy. Every copy on a machine is handed that machine's one tunnel
+  # (story 1117); the harness keeps one connector per tunnel, so the machine
+  # runs one however many copies it carries. `nil` when there is none to run.
+  defp tunnel_for(copy) do
+    case PreviewTunnel.machine_credentials(copy) do
       {:ok, creds} ->
         %{
           "hostname" => creds.hostname,
@@ -1356,8 +1344,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         nil
     end
   end
-
-  defp tunnel_for(_copy), do: nil
 
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 
