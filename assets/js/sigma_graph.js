@@ -60,10 +60,31 @@ function themeColors() {
   }
 }
 
-function withAlpha(hex, alpha) {
-  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
-  if (!m || alpha == null) return hex
-  return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})`
+// Perceived lightness of a #rrggbb colour, 0..1.
+function lightness(hex) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "")
+  if (!m) return 0
+  const [r, g, b] = [m[1], m[2], m[3]].map(v => parseInt(v, 16) / 255)
+  return 0.299 * r + 0.587 * g + 0.114 * b
+}
+
+// Faint edges that read on either background. Sigma blends as if colours were
+// premultiplied, which washes a translucent dark line on a light background
+// out to nothing, so the faintness is mixed in here and the colour is opaque:
+// the theme's neutral over a light base, its base-content over a dark one.
+function edgeTone(t, alpha) {
+  if (alpha == null) return t.baseContent
+  const light = lightness(t.base100) > 0.5
+  const tone = light ? t.neutral : t.baseContent
+  return mix(t.base100, tone, Math.min(1, alpha * 3))
+}
+
+// `amount` of `over` laid on `base`, both #rrggbb.
+function mix(base, over, amount) {
+  const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
+  if (!/^#[0-9a-f]{6}$/i.test(base) || !/^#[0-9a-f]{6}$/i.test(over)) return over
+  const [b, o] = [rgb(base), rgb(over)]
+  return "#" + b.map((v, i) => Math.round(v + (o[i] - v) * amount).toString(16).padStart(2, "0")).join("")
 }
 
 // GraphProjector emits hex colors; remap them to the active theme's semantic tokens.
@@ -176,7 +197,7 @@ export const SigmaGraph = {
     // Add edges (deduplicate by key). Force edges to base-content so they're
     // visible on dark themes — t.neutral/t.secondary land near-black here.
     // A graph may ask for faint edges so dense crossings don't bury the nodes.
-    const edgeColor = withAlpha(t.baseContent, data.edge_alpha)
+    const edgeColor = edgeTone(t, data.edge_alpha)
     const seenEdges = new Set()
     data.edges.forEach(e => {
       if (!seenEdges.has(e.key) && graph.hasNode(e.source) && graph.hasNode(e.target)) {
@@ -231,15 +252,31 @@ export const SigmaGraph = {
     const camera = this.sigma.getCamera()
     camera.setState({ ratio: 1.3 })
 
+    // The page scrolls past the graph. A plain wheel and a one-finger touch
+    // never reach sigma (it listens on its canvas inside this element); zoom
+    // and pan are a modified wheel, a mouse drag, or two fingers.
+    if (!this.scrollGuard) {
+      const wheel = e => { if (!e.ctrlKey && !e.metaKey) e.stopPropagation() }
+      const touch = e => { if (e.touches.length < 2) e.stopPropagation() }
+      this.scrollGuard = { wheel, touchstart: touch, touchmove: touch }
+      for (const [type, fn] of Object.entries(this.scrollGuard))
+        this.el.addEventListener(type, fn, { capture: true, passive: true })
+    }
+
     // Debug panel — themed
     let debugPanel = document.getElementById("graph-debug")
     if (!debugPanel) {
       debugPanel = document.createElement("details")
       debugPanel.id = "graph-debug"
       debugPanel.className = "bg-base-200 text-base-content border-t border-base-300"
-      debugPanel.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;padding:8px 16px;font-family:ui-monospace,monospace;font-size:11px;z-index:9999"
+      // In the page under the graph when it gives the panel a home, so the
+      // page's one scroll carries it; pinned to the window otherwise.
+      const home = document.getElementById(`${this.el.id}-debug`)
+      debugPanel.style.cssText = home
+        ? "margin-top:8px;padding:8px 16px;font-family:ui-monospace,monospace;font-size:11px;overflow-x:auto"
+        : "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;padding:8px 16px;font-family:ui-monospace,monospace;font-size:11px;z-index:9999"
       debugPanel.innerHTML = `<summary style="cursor:pointer;opacity:0.7;margin-bottom:8px">Graph Debug (${data.nodes.length} nodes, ${data.edges.length} edges)</summary><div id="graph-debug-metrics" style="margin-bottom:8px"></div><pre id="graph-debug-content" style="margin:0"></pre>`
-      document.body.appendChild(debugPanel)
+      ;(document.getElementById(`${this.el.id}-debug`) || document.body).appendChild(debugPanel)
     }
     const metricsEl = document.getElementById("graph-debug-metrics")
     if (metricsEl && this.lastMetrics) {

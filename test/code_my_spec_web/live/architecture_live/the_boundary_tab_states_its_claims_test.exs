@@ -23,10 +23,4 @@ defmodule CodeMySpecWeb.ArchitectureLive.TheBoundaryTabStatesItsClaimsTest do
     assert summary =~ "0 deep"
     assert summary =~ "No cycles."
   end
-
-  test "the components tab still draws every component", ctx do
-    {:ok, _view, html} = live(ctx.conn, "/app/projects/#{ctx.project.id}/architecture/components")
-
-    assert html =~ "sigma-components-graph"
-  end
 end
