@@ -8,6 +8,8 @@ defmodule CmsHarness.Agents.Shell do
   harness (the same leak that sent spex harnesses to the real server).
   """
 
+  alias CmsHarness.Agents.Engine.Execution
+
   @doc "Runs a command without a deadline, returning its output and exit status."
   @spec run(String.t(), String.t() | nil) :: {String.t(), non_neg_integer()}
   def run(command, dir) do
@@ -30,7 +32,17 @@ defmodule CmsHarness.Agents.Shell do
           System.cmd("bash", ["-rc", command], opts)
         end)
 
-      result = Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill)
+      {result, cleanup} =
+        case Task.yield(task, timeout) do
+          nil ->
+            cleanup = Execution.stop(task.pid)
+            Task.shutdown(task, :brutal_kill)
+            {nil, cleanup}
+
+          result ->
+            {result, nil}
+        end
+
       {_, output} = StringIO.contents(capture)
 
       case result do
@@ -41,12 +53,18 @@ defmodule CmsHarness.Agents.Shell do
           {:error, "Executor crashed: #{inspect(reason)}\n#{output}"}
 
         nil ->
-          {:error, "Command timed out after #{timeout}ms. Partial output follows:\n#{output}"}
+          {:error,
+           "Command timed out after #{timeout}ms. #{cleanup_status(cleanup)}\nPartial output follows:\n#{output}"}
       end
     after
       StringIO.close(capture)
     end
   end
+
+  defp cleanup_status(:ok), do: "Local command subprocess termination confirmed."
+
+  defp cleanup_status({:error, reason}),
+    do: "Local command subprocess termination unconfirmed: #{inspect(reason)}."
 
   @doc "Unsets every variable that describes the harness rather than the project."
   @spec scrubbed_env() :: [{String.t(), nil}]

@@ -5,7 +5,7 @@ defmodule CmsHarness.Agents.Tools.Bash do
   An agent's `mix test`/`mix spex` is routed through its copy's analysis
   service, as a Claude Code agent's is by the PreToolUse hook: the run is
   recorded and serialized with the copy's others. A routed run gets a suite's
-  deadline rather than the 10s default.
+  deadline rather than the 10s default only when no timeout is requested.
   """
   @behaviour Alloy.Tool
 
@@ -25,20 +25,29 @@ defmodule CmsHarness.Agents.Tools.Bash do
 
   @impl true
   def execute(input, context) do
-    timeout =
-      case input["timeout"] do
-        value when is_integer(value) and value > 0 -> value
-        _ -> 10_000
-      end
-
     dir = Map.get(context, :working_directory)
 
     case routed(input["command"], dir, Map.get(context, :working_copy_id)) do
       {:routed, command, _what} ->
-        Shell.run(command, dir, max(timeout, PreToolUse.rewrite_timeout_ms()))
+        case Shell.run(command, dir, timeout(input, PreToolUse.rewrite_timeout_ms())) do
+          {:error, "Command timed out" <> _ = message} ->
+            {:error,
+             message <>
+               "\nServer-side analysis outcome is unknown; stopping the HTTP client does not cancel the analyzer. Do not retry until its execution state is confirmed."}
+
+          result ->
+            result
+        end
 
       :pass ->
-        Shell.run(input["command"], dir, timeout)
+        Shell.run(input["command"], dir, timeout(input, 10_000))
+    end
+  end
+
+  defp timeout(input, default) do
+    case input["timeout"] do
+      value when is_integer(value) and value > 0 -> value
+      _ -> default
     end
   end
 
