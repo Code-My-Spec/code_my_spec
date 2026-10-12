@@ -345,10 +345,15 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   def rewrite_timeout_ms, do: @rewrite_timeout_ms
 
   defp route_segment(%{cd: cd, source: source, args: args}, root, port, endpoint) do
-    if cd == nil or inside?(cd, root),
+    if (cd == nil or inside?(cd, root)) and not expands?(args),
       do: {:ok, build_curl(port, endpoint, source, args)},
       else: :pass
   end
+
+  # The shell expands `$f` and backticks; the curl's JSON carries them as
+  # written. `f=…; mix spex $f` was routed as a run of the file `$f`, which
+  # found nothing and answered green (2026-10-12).
+  defp expands?(args), do: Enum.any?(args, &String.contains?(&1, ["$", "`"]))
 
   # Paths only: the server deciding for a proxied copy cannot see its disk. A
   # relative `cd` is taken from the session's directory, which is in the copy.

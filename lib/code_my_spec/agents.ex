@@ -2274,6 +2274,10 @@ defmodule CodeMySpec.Agents do
           {:ok, :started | :queued, Conversations.Message.t()} | {:error, term()}
   def dispatch_message(scope, id, text, event, timeout \\ @message_timeout_ms)
 
+  def dispatch_message(%Scope{} = scope, id, text, event, opts)
+      when is_binary(text) and is_list(opts),
+      do: dispatch_message(scope, id, text, event, @message_timeout_ms, opts)
+
   def dispatch_message(%Scope{} = scope, id, text, event, timeout) when is_binary(text),
     do: dispatch_message(scope, id, text, event, timeout, [])
 
@@ -2293,7 +2297,8 @@ defmodule CodeMySpec.Agents do
              ref,
              event,
              {:instruction, {"message", subject}},
-             Keyword.get(opts, :sender_id, "operator")
+             Keyword.get(opts, :sender_id, "operator"),
+             Keyword.take(opts, [:send_now])
            ) do
       result =
         deliver_recorded(agent, admission, timeout)
@@ -2322,14 +2327,23 @@ defmodule CodeMySpec.Agents do
 
   # Commit message, offer and mailbox identity together, before any transport
   # work or acknowledgement. Held notifications remain visible as failed offers.
-  defp record_admission(agent, conversation, text, ref, event, offer, sender_id \\ "operator") do
+  defp record_admission(
+         agent,
+         conversation,
+         text,
+         ref,
+         event,
+         offer,
+         sender_id \\ "operator",
+         admit_opts \\ []
+       ) do
     result =
       Repo.transaction(fn ->
         case record_sent(conversation, text, ref, :queued, sender_id) do
           {:ok, message} ->
             offered = record_offer({:ok, message}, agent, offer)
 
-            {message, admission} = admit_if_allowed(agent, message, event, offered)
+            {message, admission} = admit_if_allowed(agent, message, event, offered, admit_opts)
 
             {message, offered, admission}
 
@@ -2350,10 +2364,10 @@ defmodule CodeMySpec.Agents do
     result
   end
 
-  defp admit_if_allowed(agent, message, event, offered) do
+  defp admit_if_allowed(agent, message, event, offered, admit_opts) do
     case Wake.allow?(agent_scope(agent), agent, event) do
       :ok ->
-        Mailbox.admit(agent, message, event)
+        Mailbox.admit(agent, message, event, admit_opts)
         {message, :ok}
 
       hold ->
@@ -2484,6 +2498,15 @@ defmodule CodeMySpec.Agents do
           {:ok, Conversations.Message.t()} | {:error, term()}
   def withdraw_message(%Scope{} = scope, id, ref) when is_binary(ref),
     do: Mailbox.withdraw(scope, id, ref)
+
+  @doc """
+  Let a message already waiting for the turn to end into the running turn, at
+  its next tool boundary (story 1051). A message the agent has already taken is
+  refused as delivered.
+  """
+  @spec send_now(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  def send_now(%Scope{} = scope, id, ref) when is_binary(ref),
+    do: Mailbox.send_now(scope, id, ref)
 
   @doc """
   Write one step an agent took to the conversation it belongs to.

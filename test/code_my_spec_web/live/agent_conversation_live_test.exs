@@ -189,6 +189,40 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert doc |> Floki.find("[data-test='agent-withdraw-message']") |> length() == 2
     end
 
+    test "a long queued message shows one line, with Read more", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      for text <- ["Short note.", "Stop the spex loop.\nThen merge local main and report."] do
+        {:ok, message} =
+          Conversations.add_message(conversation, :operator, text, "operator", [],
+            delivery: :pending,
+            delivery_ref: Ecto.UUID.generate()
+          )
+
+        Mailbox.admit(agent, message, :operator_message)
+      end
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='queued-message-text'].truncate", "Short note.")
+
+      assert has_element?(
+               view,
+               "[data-test='queued-message-text'].truncate",
+               "Then merge local main"
+             )
+
+      assert view
+             |> render()
+             |> Floki.parse_document!()
+             |> Floki.find("[data-test='queued-message-read-more']")
+             |> length() == 1
+    end
+
     test "a pending routine notice stays withdrawable and collapses after delivery", %{
       conn: conn,
       scope: scope,

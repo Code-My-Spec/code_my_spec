@@ -206,6 +206,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # Agents are given work by role rather than spawned on request, so what one
   # needs of another is a message, not a handle on its lifecycle.
   component(CodeMySpec.McpServers.Agents.Tools.MessageAgent)
+  component(CodeMySpec.McpServers.Agents.Tools.WithdrawMessage)
   component(CodeMySpec.McpServers.Analysis.Tools.AwaitAnalysis)
   component(CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge)
   component(CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge)

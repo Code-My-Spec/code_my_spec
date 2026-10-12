@@ -59,6 +59,13 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
     refute command =~ "mktemp"
   end
 
+  # The curl carries `$f` as written, so it was a run of the file `$f` — which
+  # found nothing and answered green (2026-10-12).
+  test "a segment whose args the shell would expand is not routed" do
+    assert decide("f=test/a_test.exs; mix spex $f > out.txt 2>&1") == %{}
+    assert decide("mix test `cat files.txt` 2>&1 | tail -5") == %{}
+  end
+
   # Claude Code's removal guard cannot read inside a `sh -c` script, so it
   # refused every routed run in auto mode (2026-10-11).
   test "a routed run is one plain curl, not a shell script" do

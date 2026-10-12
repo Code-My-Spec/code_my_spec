@@ -15,6 +15,10 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
   Wait only for admission: an idle agent starts, and a busy agent queues the
   message for its next turn boundary. The response arrives in the agent's
   conversation. Queuing does not count as delivery when judging its Offer.
+
+  `send_now` lets the message into a busy agent's running turn at its next
+  tool boundary instead (story 1051). A queued message's id is in the reply,
+  so `withdraw_message` can take it back until the agent has it.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -32,16 +36,25 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
     field :message, :string,
       required: true,
       doc: "What to tell the agent — an instruction, a question, or the next piece of work"
+
+    field :send_now, :boolean,
+      doc:
+        "Reach a busy agent at its next tool call, inside its running turn, instead of " <>
+          "when the turn ends. Nothing is cancelled."
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          :ok <- reachable(scope, frame.assigns[:agent_id], agent_id(params)),
-         {:ok, reply} <- Agents.message_agent(scope, agent_id(params), message(params)) do
+         {:ok, reply, sent} <-
+           Agents.dispatch_message(scope, agent_id(params), message(params), :operator_message,
+             send_now: MapAccess.get(params, :send_now) == true
+           ) do
       response =
         agent_id(params)
         |> AgentsMapper.replied(reply)
+        |> withdrawable(reply, sent)
         |> with_pending_question(scope, frame.assigns[:agent_id], agent_id(params))
 
       {:reply, response, frame}
@@ -100,6 +113,16 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
       "A message does not answer it: answer it with `answer_notification` (through " <>
       "`run_script`) so it is recorded and reaches the agent."
   end
+
+  defp withdrawable(response, :queued, sent),
+    do:
+      Response.text(
+        response,
+        "Message id: #{sent.delivery_ref}. Take it back with `withdraw_message` " <>
+          "until the agent has it."
+      )
+
+  defp withdrawable(response, _reply, _sent), do: response
 
   defp agent_id(params), do: MapAccess.get(params, :agent_id)
   defp message(params), do: MapAccess.get(params, :message)
