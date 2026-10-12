@@ -20,7 +20,7 @@ the agent works on the first un-skipped phase.
 
 - `.code_my_spec/qa/plan.md` (if present) — app overview, tools registry,
   auth strategy, seed strategy. Produced upstream by `qa_setup`.
-- `show_architecture_overview` — system components and dependencies.
+- `show_namespace_hierarchy` — the system's components as a namespace tree.
   Helps scope which surfaces to journey.
 - Stories summary (written by `command/2` to
   `.code_my_spec/qa/stories_summary.md`) — full descriptions and

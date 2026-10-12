@@ -337,6 +337,13 @@ defmodule CodeMySpec.Architecture.NamespaceProjectorTest do
       refute result =~ "Validator"
     end
 
+    test "a node max_depth cuts off counts the components hidden below it" do
+      result = NamespaceProjector.project(deep_hierarchy_components(), max_depth: 3)
+
+      assert result =~ "Sync [context] Sync subcontext (+3)"
+      refute result =~ "Components [context] Component context (+"
+    end
+
     test "respects filter_prefix to show only matching namespace subtree" do
       components = components_with_shared_prefix()
       result = NamespaceProjector.project(components, filter_prefix: "CodeMySpec.Components")

@@ -126,7 +126,7 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
 
       The component, its parent context and what it depends on are records: read
       the component with `get_component` (module_name `#{component.module_name}`), and
-      the wider picture with `show_architecture_overview`. The linked story's BDD spex
+      the wider picture with `show_namespace_hierarchy`. The linked story's BDD spex
       (under `test/spex/<story_number>_*/`) are the contract for its behaviour.
 
       Test Rules:

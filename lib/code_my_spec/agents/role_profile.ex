@@ -140,7 +140,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @qa_tools ~w(
     message_agent
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
-    show_component_requirements show_architecture_overview
+    show_component_requirements show_namespace_hierarchy
     list_requirements show_requirement list_personas get_persona
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue update_issue
     list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
@@ -222,7 +222,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @coding_tools ~w(
     message_agent
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
-    show_component_requirements show_architecture_overview get_component
+    show_component_requirements show_namespace_hierarchy get_component
     create_component update_component validate_dependency_graph set_story_component
     add_dependency remove_dependency
     list_requirements show_requirement
@@ -281,7 +281,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     propose_epic tag_stories list_project_tags analyze_stories
     set_story_component create_component update_component delete_component
     add_dependency remove_dependency
-    validate_dependency_graph execute_proposal show_architecture_overview get_component
+    validate_dependency_graph execute_proposal show_namespace_hierarchy get_component
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
     list_notifications answer_notification escalate_question withdraw_question search_answers
     check_answer list_user_questions
