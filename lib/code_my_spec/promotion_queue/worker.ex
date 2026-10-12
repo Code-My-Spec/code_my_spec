@@ -232,14 +232,18 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp build_in_gate_copy(state, entries, base) do
     with {:ok, gate} <- gate_copy(state.scope),
          gate_scope = scope_for(state.scope, gate),
+         environment = WorkingCopies.environment(gate_scope),
          {:ok, built} <-
            Runner.build_batch(
-             WorkingCopies.environment(gate_scope),
+             environment,
              gate.root,
              base,
              Enum.map(entries, & &1.commit),
              gate.id
-           ) do
+           ),
+         # Each candidate's analyzers start on databases its own migrations
+         # build: an ejected one left its schema there for the next (2026-10-11).
+         {:ok, _} <- Runner.reset_test_databases(environment, gate.root, gate.id) do
       merged = MapSet.new(built.merged)
       conflicted = MapSet.new(built.conflicted, & &1.commit)
 
