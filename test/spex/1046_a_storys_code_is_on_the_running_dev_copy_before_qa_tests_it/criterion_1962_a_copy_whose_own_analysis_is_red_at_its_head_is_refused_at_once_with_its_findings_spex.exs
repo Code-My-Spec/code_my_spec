@@ -22,11 +22,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1962Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
-  import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
+  alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -42,10 +42,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1962Spex do
     scenario "one spex failure of the copy's own holds the whole promotion" do
       given_ "a story branch with committed work, ready to promote", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context)
-
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
+
+        # Certified and QA'd at the commit it promotes.
+        story = a_promotable_story(context)
 
         {:ok, Map.put(context, :story, story)}
       end
@@ -102,10 +103,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1962Spex do
     scenario "a warning-severity credo finding promotes nothing" do
       given_ "a story branch with committed work, ready to promote", context do
         context = a_promotable_project(context)
-        story = a_promotable_story(context)
-
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
+
+        # Certified and QA'd at the commit it promotes.
+        story = a_promotable_story(context)
 
         {:ok, Map.put(context, :story, story)}
       end
@@ -191,8 +193,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion1962Spex do
 
     _ = out
 
-    running = join_working_copy(context, running_root, "the checkout the dev app runs in")
-    agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    running =
+      PromotionHelpers.join_main_working_copy(
+        context,
+        running_root,
+        "the checkout the dev app runs in"
+      )
+
+    agent =
+      PromotionHelpers.join_local_working_copy(
+        context,
+        agent_root,
+        "the coding agent's copy"
+      )
 
     # The running checkout joined first and so holds the designation: the
     # project's first checkout to report a root becomes its main copy

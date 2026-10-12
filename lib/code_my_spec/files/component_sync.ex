@@ -28,24 +28,33 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Environments
-  alias CodeMySpec.Files.{ComponentExtract, File, LiveCopies}
+  alias CodeMySpec.Files.{ComponentExtract, DependencyEvidence, File, LiveCopies}
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @type sync_result :: %{
           all_components: [Component.t()],
-          changed_component_ids: [Ecto.UUID.t()]
+          changed_component_ids: [Ecto.UUID.t()],
+          dependency_observation: map()
         }
+
+  defp environment(scope, opts) do
+    case Keyword.fetch(opts, :environment) do
+      {:ok, env} -> env
+      :error -> WorkingCopies.environment(scope)
+    end
+  end
 
   @doc """
   Sync components from File records.
 
   ## Options
-  - `:base_dir` — accepted for backwards compatibility, ignored. File content
-    is read via `scope.environment` so the dispatcher can route to in-memory
-    implementations for tests.
+  - `:environment` — the filesystem environment to read, resolved from the
+    active working copy when omitted.
+  - `:base_dir` — accepted for backwards compatibility, ignored.
   - `:changed_paths` — when provided, only process files matching these paths (incremental sync)
   - `:removed_module_names` — module names named by implementation files that
     were just removed (see `removed_module_names/1`). An incremental sync never
@@ -58,6 +67,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     _ = Keyword.get(opts, :base_dir)
     changed_paths = Keyword.get(opts, :changed_paths)
     removed_module_names = Keyword.get(opts, :removed_module_names, [])
+    env = environment(scope, opts)
     start = System.monotonic_time(:millisecond)
 
     # Only main's code says what exists — a feature copy's unpromoted module and
@@ -69,11 +79,11 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     code =
       live_files
-      |> Enum.map(&parse_impl_file(&1, scope.environment))
+      |> Enum.map(&parse_impl_file(&1, env))
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq_by(& &1.module_name)
 
-    do_sync(scope, code, live_files, is_list(changed_paths), start, removed_module_names)
+    do_sync(scope, code, live_files, is_list(changed_paths), start, removed_module_names, env)
   end
 
   @doc """
@@ -118,7 +128,7 @@ defmodule CodeMySpec.Files.ComponentSync do
     File |> where([f], f.project_id == ^project_id and f.role == :implementation) |> Repo.all()
   end
 
-  defp do_sync(scope, code, live_files, incremental?, start, removed_module_names) do
+  defp do_sync(scope, code, live_files, incremental?, start, removed_module_names, env) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     existing_components = Components.list_components(scope)
@@ -138,7 +148,8 @@ defmodule CodeMySpec.Files.ComponentSync do
     |> Enum.reject(&Map.has_key?(existing_map, &1.module_name))
     |> then(&update_parent_relationships(scope, &1, component_map))
 
-    sync_discovered_dependencies(scope, live_files, component_map, incremental?)
+    dependency_observation =
+      sync_discovered_dependencies(scope, live_files, component_map, incremental?, env)
 
     cond do
       not incremental? ->
@@ -166,7 +177,8 @@ defmodule CodeMySpec.Files.ComponentSync do
     {:ok,
      %{
        all_components: synced_components,
-       changed_component_ids: changed_component_ids
+       changed_component_ids: changed_component_ids,
+       dependency_observation: dependency_observation
      }}
   end
 
@@ -297,44 +309,156 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # -- Discovered dependencies --
 
-  # A dependency code itself names, by `alias` crossing contexts. Only a full
-  # sync recomputes this: an incremental sync touches one changed file and
-  # cannot tell whether some *other* live file still names a pair it did not
-  # touch, so it leaves `in_code` as it found it.
-  defp sync_discovered_dependencies(_scope, _live_files, _component_map, true), do: :ok
+  @doc """
+  Inspect dependency reconciliation without changing records. Evidence belongs to
+  the scanned file, so a server without the checkout can report the same answer.
+  Unreadable or unparsable files make removal unsafe; positive evidence remains
+  usable. Authored edges remain authored even when code stops using them.
+  """
+  def dependency_report(%Scope{} = scope, opts \\ []) do
+    env = environment(scope, opts)
+    components = Components.list_components(scope)
+    component_map = Map.new(components, &{&1.module_name, &1})
+    files = scope |> query_files(nil) |> live_only(scope.active_project_id)
+    observations = dependency_observations(scope, files, component_map, env)
+    existing = Components.list_dependencies(scope)
 
-  defp sync_discovered_dependencies(scope, live_files, component_map, false) do
-    by_id = Map.new(Map.values(component_map), &{&1.id, &1})
-
-    found =
-      live_files
-      |> Enum.flat_map(&dependency_pairs(&1, scope.environment, component_map, by_id))
-      |> MapSet.new()
-
-    reconcile_discovered_dependencies(scope, found)
+    Map.merge(observations, %{
+      additions:
+        Enum.reject(observations.pairs, fn pair ->
+          Enum.any?(existing, &({&1.source_component_id, &1.target_component_id} == pair))
+        end),
+      removals:
+        Enum.filter(existing, fn edge ->
+          removable_observation?(edge, observations) and edge.provenance == :discovered and
+            stale_in_code?(edge, observations.pairs)
+        end)
+    })
   end
 
-  # The source is the file's own module; targets are whatever it `alias`es
-  # that both name an existing component and sit in a different context. A
-  # name `alias` names that no component matches (an external lib, a typo)
-  # resolves to nothing and is silently dropped — the same posture
-  # `parse_impl_file_from_disk/2` takes on a file with no `defmodule`.
-  defp dependency_pairs(%File{path: path}, env, component_map, by_id) do
-    with {:ok, content} <- Environments.read_file(env, path),
-         name when is_binary(name) <- ComponentExtract.extract_defmodule(content),
-         %Component{} = source <- Map.get(component_map, name) do
-      content
-      |> ComponentExtract.extract_aliases()
-      |> Enum.map(&Map.get(component_map, &1))
-      |> Enum.reject(fn target ->
-        is_nil(target) or target.id == source.id or
-          owning_context_id(source, by_id) == owning_context_id(target, by_id)
-      end)
-      |> Enum.map(&{source.id, &1.id})
+  defp sync_discovered_dependencies(_scope, _files, _component_map, true, _env),
+    do: %{status: :deferred, unavailable: [], unresolved: []}
+
+  defp sync_discovered_dependencies(scope, files, component_map, false, env) do
+    observation = dependency_observations(scope, files, component_map, env)
+    reconcile_discovered_dependencies(scope, observation)
+
+    if observation.unavailable != [] do
+      Logger.warning(
+        "[Files.ComponentSync] dependency removal deferred: " <>
+          "#{length(observation.unavailable)} files have unavailable evidence"
+      )
+    end
+
+    %{
+      status: observation_status(observation),
+      unavailable: observation.unavailable,
+      unresolved: observation.unresolved
+    }
+  end
+
+  defp dependency_observations(_scope, [], _component_map, _env),
+    do: %{
+      pairs: MapSet.new(),
+      evidence: [],
+      unavailable: [%{reason: :no_source_snapshot}],
+      unresolved: []
+    }
+
+  defp dependency_observations(_scope, files, component_map, env) do
+    by_id = Map.new(Map.values(component_map), &{&1.id, &1})
+
+    Enum.reduce(
+      files,
+      %{pairs: MapSet.new(), evidence: [], unavailable: [], unresolved: []},
+      fn file, acc ->
+        case dependency_evidence(file, env) do
+          %{"status" => "ok", "references" => references} = evidence ->
+            pairs = Enum.flat_map(references, &evidence_pair(&1, component_map, by_id))
+
+            location = %{
+              path: file.path,
+              working_copy_id: file.working_copy_id,
+              source_hash: evidence["source_hash"]
+            }
+
+            %{
+              acc
+              | pairs: MapSet.union(acc.pairs, MapSet.new(pairs)),
+                evidence: [Map.put(location, :observation, evidence) | acc.evidence],
+                unresolved:
+                  Enum.map(evidence["unresolved"] || [], &Map.put(&1, "file", file.path)) ++
+                    acc.unresolved
+            }
+
+          unavailable ->
+            %{
+              acc
+              | unavailable: [
+                  %{path: file.path, working_copy_id: file.working_copy_id, reason: unavailable}
+                  | acc.unavailable
+                ]
+            }
+        end
+      end
+    )
+    |> Map.put(:uncertain_source_ids, MapSet.new())
+    |> then(fn observation ->
+      uncertain =
+        observation.unresolved
+        |> Enum.map(&Map.get(component_map, &1["source"]))
+        |> Enum.reject(&is_nil/1)
+        |> MapSet.new(& &1.id)
+
+      %{observation | uncertain_source_ids: uncertain}
+    end)
+  end
+
+  defp observation_status(%{unavailable: [_ | _]}), do: :incomplete
+  defp observation_status(%{unresolved: [_ | _]}), do: :partial
+  defp observation_status(_), do: :observed
+
+  defp removable_observation?(edge, observation) do
+    observation.unavailable == [] and
+      not MapSet.member?(
+        Map.get(observation, :uncertain_source_ids, MapSet.new()),
+        edge.source_component_id
+      )
+  end
+
+  defp dependency_evidence(%File{validation_errors: errors, path: path}, environment) do
+    case stored_component_data(errors) do
+      %{"dependency_evidence" => %{"version" => 1} = evidence} ->
+        evidence
+
+      _ when is_nil(environment) ->
+        %{error: :no_environment}
+
+      _ ->
+        case Environments.read_file(environment, path) do
+          {:ok, source} -> DependencyEvidence.extract(source)
+          {:error, reason} -> %{error: reason}
+        end
+    end
+  end
+
+  defp evidence_pair(
+         %{"source" => source_name, "target" => target_name, "kind" => kind},
+         component_map,
+         by_id
+       )
+       when kind in ["call", "struct"] do
+    with %Component{} = source <- Map.get(component_map, source_name),
+         %Component{} = target <- Map.get(component_map, target_name),
+         false <- source.id == target.id,
+         false <- owning_context_id(source, by_id) == owning_context_id(target, by_id) do
+      [{source.id, target.id}]
     else
       _ -> []
     end
   end
+
+  defp evidence_pair(_reference, _component_map, _by_id), do: []
 
   # A context names itself; anything else climbs to the nearest ancestor that
   # does, the same reach `ConventionalPaths` and `format_context_section`
@@ -358,7 +482,9 @@ defmodule CodeMySpec.Files.ComponentSync do
   # An `:authored` row is never deleted here — a planned edge outlives the
   # code catching up to it, same as `cleanup_removed/2` never prunes an
   # authored component.
-  defp reconcile_discovered_dependencies(scope, found) do
+  defp reconcile_discovered_dependencies(scope, observation) do
+    found = observation.pairs
+
     existing =
       scope
       |> Components.list_dependencies()
@@ -384,7 +510,7 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     existing
     |> Map.values()
-    |> Enum.filter(&stale_in_code?(&1, found))
+    |> Enum.filter(&(removable_observation?(&1, observation) and stale_in_code?(&1, found)))
     |> Enum.each(&retire_discovered_dependency(scope, &1))
   end
 

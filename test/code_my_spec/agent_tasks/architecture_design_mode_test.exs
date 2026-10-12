@@ -29,7 +29,14 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignModeTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+
+    scope =
+      put_fixture_environment(
+        %{working_copy_scope_fixture() | cwd: tmp},
+        Environment.new(:local, tmp)
+      )
+
+    :ok = register_working_copy_environment(scope, fixture_environment(scope))
 
     %{scope: scope, tmp: tmp}
   end

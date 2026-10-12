@@ -47,7 +47,8 @@ defmodule CodeMySpec.AgentTasks.Release do
   #
   # Journey *results*, not the plan: a plan says the walkthrough was designed,
   # a result says somebody walked it.
-  defp journeys_complete?(%Scope{environment: env}) do
+  defp journeys_complete?(scope) do
+    env = CodeMySpec.AgentTasks.environment(scope)
     match?({:ok, _}, Environments.read_file(env, Paths.qa_journey_result()))
   end
 
@@ -149,7 +150,8 @@ defmodule CodeMySpec.AgentTasks.Release do
   # only so a fast unit test can let real `git` run (a real repo, a real tag)
   # while faking `gh` — no network, no GitHub account, in an `async: true`
   # test. Every real caller gets `Environments.cmd/4` for both.
-  defp unreleased_story_numbers(%Scope{environment: env} = scope, opts) do
+  defp unreleased_story_numbers(%Scope{} = scope, opts) do
+    env = CodeMySpec.AgentTasks.environment(scope)
     deployed = deployed_story_numbers(scope)
     released = published_release_manifest(env, opts)
 

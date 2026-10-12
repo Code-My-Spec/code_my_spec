@@ -42,7 +42,12 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
+
+    scope =
+      CodeMySpec.UsersFixtures.put_fixture_environment(
+        provisioning_scope_fixture(),
+        Environment.new(:local, tmp)
+      )
 
     {:ok, project} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})

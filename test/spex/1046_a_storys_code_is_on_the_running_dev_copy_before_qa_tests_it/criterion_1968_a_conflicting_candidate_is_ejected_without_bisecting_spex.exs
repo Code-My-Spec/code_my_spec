@@ -46,9 +46,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1968Spex do
           war(":second")
         )
 
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        {:ok, context}
       end
 
       given_ "the first agent's work has landed", context do

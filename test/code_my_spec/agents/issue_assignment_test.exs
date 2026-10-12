@@ -17,6 +17,9 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
+  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias CodeMySpec.McpServers.Issues.Tools.SetActiveIssue
+  alias CodeMySpec.McpServers.Issues.Tools.UnassignIssue
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
@@ -53,6 +56,86 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   end
 
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
+
+  defp linked_story(true, scope), do: CodeMySpec.StoriesFixtures.story_fixture(scope)
+  defp linked_story(false, _scope), do: nil
+
+  defp story_id(nil), do: nil
+  defp story_id(story), do: story.id
+
+  for {linked?, criterion} <- [{true, 2079}, {false, 2080}] do
+    @linked linked?
+    @tag criterion: criterion
+    test "issue assignment replaces the whole team's story binding (linked: #{linked?})", ctx do
+      copy_id = copy(ctx.scope)
+      previous = CodeMySpec.StoriesFixtures.story_fixture(ctx.scope)
+      target = linked_story(@linked, ctx.scope)
+      target_id = story_id(target)
+      {:ok, issue} = Issues.update_issue(ctx.scope, ctx.issue, %{story_id: target_id})
+
+      team =
+        for role <- [:coding, :qa] do
+          agent(ctx.scope, role, copy_id)
+          |> Ecto.Changeset.change(story_id: previous.id)
+          |> Repo.update!()
+        end
+
+      frame = %Frame{assigns: %{current_scope: ctx.scope}}
+
+      {:reply, response, _} =
+        AssignIssueToWorkingCopy.execute(
+          %{issue_id: issue.id, working_copy_id: copy_id},
+          frame
+        )
+
+      refute response.isError
+
+      for member <- team do
+        updated = reload(member)
+        assert updated.issue_id == issue.id
+        assert updated.story_id == nil
+      end
+
+      assert WorkingCopies.team_story_id(copy_id) == nil
+      assert Issues.get_issue(ctx.scope, issue.id).story_id == target_id
+
+      destination = copy(ctx.scope)
+
+      destination_team =
+        for role <- [:coding, :qa] do
+          agent(ctx.scope, role, destination)
+          |> Ecto.Changeset.change(story_id: previous.id)
+          |> Repo.update!()
+        end
+
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, issue.id, destination)
+
+      for member <- destination_team do
+        assert reload(member).issue_id == issue.id
+        assert reload(member).story_id == nil
+      end
+
+      assert WorkingCopies.team_story_id(destination) == nil
+      assert Enum.all?(team, &is_nil(reload(&1).issue_id))
+    end
+  end
+
+  test "reassigning to the same copy preserves a blocked issue task exactly", ctx do
+    copy_id = copy(ctx.scope)
+    qa = agent(ctx.scope, :qa, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+    {:ok, qa} =
+      TaskOwner.add_task(ctx.scope, reload(qa), %{
+        status: :blocked,
+        requirement_name: "qa_complete",
+        issue_id: ctx.issue.id,
+        session_type: CodeMySpec.AgentTasks.IssueQa
+      })
+
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    assert reload(qa).tasks == qa.tasks
+  end
 
   test "main can request corrections after a completed fix without a failed QA attempt", ctx do
     copy_id = copy(ctx.scope)
@@ -385,6 +468,178 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       assert :ok = IssueAssignment.free(ctx.scope, bound)
 
       assert reload_issue(ctx.issue.id).assigned_working_copy_id == nil
+    end
+  end
+
+  describe "project issue bags" do
+    @tag criterion: 2081
+    test "additive assignment, explicit priority, and role-specific claims", ctx do
+      copy_id = copy(ctx.scope)
+      coding = agent(ctx.scope, :coding, copy_id)
+      qa = agent(ctx.scope, :qa, copy_id)
+      second = issue_fixture(ctx.scope, %{status: :accepted})
+      {:ok, first} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy_id)
+      assert reload(coding).issue_id == first.id
+      assert reload(qa).issue_id == first.id
+      assert length(Agents.assigned_issues(ctx.scope, copy_id)) == 2
+      {:ok, _} = Issues.set_awaiting_role(ctx.scope, first, :qa)
+
+      assert Enum.map(
+               Agents.Work.work_for(ctx.scope, :coding, reload(coding)).actionable,
+               & &1.entity_id
+             ) == [second.id]
+
+      assert Enum.map(Agents.Work.work_for(ctx.scope, :qa, reload(qa)).actionable, & &1.entity_id) ==
+               [first.id]
+
+      # A non-priority bag member must be claimable through the real task tool.
+      frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
+
+      {:reply, response, _} =
+        StartTask.execute(
+          %{requirement_name: "fix_issue", entity_type: "issue", entity_id: second.id},
+          frame
+        )
+
+      refute response.isError
+      assert Enum.any?(reload(coding).tasks, &(&1.issue_id == second.id and &1.status == :active))
+      {:ok, _} = Agents.prioritize_issue(ctx.scope, copy_id, second.id)
+      assert reload(coding).issue_id == second.id
+      assert reload(qa).issue_id == second.id
+      assert length(Agents.assigned_issues(ctx.scope, copy_id)) == 2
+    end
+
+    test "priority tool refuses issues outside the bag", ctx do
+      copy_id = copy(ctx.scope)
+      coding = agent(ctx.scope, :coding, copy_id)
+      frame = %Frame{assigns: %{current_scope: ctx.scope}}
+
+      {:reply, response, _} =
+        SetActiveIssue.execute(
+          %{working_copy_id: copy_id, issue_id: ctx.issue.id},
+          frame
+        )
+
+      assert response.isError
+      assert reload(coding).issue_id == nil
+    end
+
+    @tag criterion: 2082
+    test "finishing one issue retains the bag; only finishing the last frees the team", ctx do
+      copy_id = copy(ctx.scope)
+      coding = agent(ctx.scope, :coding, copy_id)
+      qa = agent(ctx.scope, :qa, copy_id)
+      main_copy = copy(ctx.scope)
+      {:ok, _} = WorkingCopies.designate_main(ctx.scope, main_copy)
+      main = agent(ctx.scope, :main, main_copy)
+      :ok = AgentPresence.absent(main)
+      second = issue_fixture(ctx.scope, %{status: :accepted})
+      {:ok, first} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+      {:ok, second} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy_id)
+      :ok = IssueAssignment.free(ctx.scope, first)
+      assert reload(coding).issue_id == second.id
+      assert reload(qa).issue_id == second.id
+      assert reload(coding).team_free_at == nil
+      assert Agents.Offers.list_for_agent(main.id) == []
+      :ok = IssueAssignment.free(ctx.scope, second)
+      assert reload(coding).issue_id == nil
+      assert reload(coding).team_free_at != nil
+      assert [%{status: :undelivered}] = Agents.Offers.list_for_agent(main.id)
+      assert Agents.assigned_issues(ctx.scope, copy_id) == []
+      assert reload(qa).issue_id == nil
+      :ok = IssueAssignment.free(ctx.scope, second)
+      assert length(Agents.Offers.list_for_agent(main.id)) == 1
+    end
+
+    test "moving the priority preserves both bags and selects remaining work", ctx do
+      old_copy = copy(ctx.scope)
+      new_copy = copy(ctx.scope)
+      old = agent(ctx.scope, :coding, old_copy)
+      new = agent(ctx.scope, :coding, new_copy)
+      second = issue_fixture(ctx.scope, %{status: :accepted})
+      third = issue_fixture(ctx.scope, %{status: :accepted})
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, old_copy)
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, old_copy)
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, third.id, new_copy)
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, new_copy)
+      assert reload(old).issue_id == second.id
+      assert reload(new).issue_id == third.id
+      assert Enum.map(Agents.assigned_issues(ctx.scope, old_copy), & &1.id) == [second.id]
+      assert length(Agents.assigned_issues(ctx.scope, new_copy)) == 2
+    end
+
+    test "unassign tool removes one issue without disturbing the other", ctx do
+      copy_id = copy(ctx.scope)
+      coding = agent(ctx.scope, :coding, copy_id)
+      second = issue_fixture(ctx.scope, %{status: :accepted})
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy_id)
+      frame = %Frame{assigns: %{current_scope: ctx.scope}}
+
+      {:reply, response, _} =
+        UnassignIssue.execute(%{issue_id: ctx.issue.id}, frame)
+
+      refute response.isError
+      assert reload(coding).issue_id == second.id
+      assert Enum.map(Agents.assigned_issues(ctx.scope, copy_id), & &1.id) == [second.id]
+    end
+
+    test "completing a non-priority issue preserves active work", ctx do
+      copy_id = copy(ctx.scope)
+      coding = agent(ctx.scope, :coding, copy_id)
+      second = issue_fixture(ctx.scope, %{status: :accepted})
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+      {:ok, second} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy_id)
+
+      {:ok, _} =
+        TaskOwner.add_task(ctx.scope, reload(coding), %{
+          status: :active,
+          requirement_name: "promote_issue",
+          issue_id: second.id
+        })
+
+      :ok = IssueAssignment.free(ctx.scope, second)
+      assert reload(coding).issue_id == ctx.issue.id
+      assert reload(coding).team_free_at == nil
+      assert [%{status: :completed, issue_id: id}] = reload(coding).tasks
+      assert id == second.id
+    end
+
+    test "unassign refuses open work without losing it", ctx do
+      copy_id = copy(ctx.scope)
+      coding = agent(ctx.scope, :coding, copy_id)
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+
+      {:ok, holding} =
+        TaskOwner.add_task(ctx.scope, reload(coding), %{
+          status: :active,
+          requirement_name: "fix_issue",
+          issue_id: ctx.issue.id
+        })
+
+      assert {:error, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, nil)
+      assert reload(coding).tasks == holding.tasks
+      assert reload(coding).issue_id == ctx.issue.id
+      assert Issues.get_issue(ctx.scope, ctx.issue.id).assigned_working_copy_id == copy_id
+    end
+
+    test "bag listing excludes other copies and includes assignment and stage", ctx do
+      copy_id = copy(ctx.scope)
+      agent(ctx.scope, :coding, copy_id)
+      {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+      issue_fixture(ctx.scope, %{status: :accepted})
+      frame = %Frame{assigns: %{current_scope: ctx.scope}}
+
+      {:ok, [row]} =
+        ListIssues.script_result(
+          %{working_copy_id: copy_id, severity: "all"},
+          frame
+        )
+
+      assert row["id"] == ctx.issue.id
+      assert row["assigned_working_copy_id"] == copy_id
+      assert row["awaiting_role"] == "coding"
     end
   end
 

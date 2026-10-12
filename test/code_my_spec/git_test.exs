@@ -1,13 +1,58 @@
+defmodule CodeMySpec.GitTest.LegacyImpl do
+  @behaviour CodeMySpec.Git.Behaviour
+
+  def clone(_scope, _repo_url, path), do: {:ok, path}
+  def pull(_scope, _path), do: :ok
+end
+
 defmodule CodeMySpec.GitTest do
-  use CodeMySpecTest.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.{UsersFixtures, IntegrationsFixtures}
   import Mox
 
   alias CodeMySpec.Git
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Users.Scope
 
   setup :verify_on_exit!
+
+  describe "explicit environment API compatibility" do
+    setup do
+      original = Application.get_env(:code_my_spec, :git_impl_module)
+      Application.put_env(:code_my_spec, :git_impl_module, CodeMySpec.GitTest.LegacyImpl)
+
+      on_exit(fn ->
+        Application.put_env(:code_my_spec, :git_impl_module, original)
+      end)
+
+      :ok
+    end
+
+    test "does not discard the environment when an implementation only supports legacy arities" do
+      scope = %Scope{user: user_fixture()}
+
+      assert {:error, :environment_not_supported} =
+               Git.clone(scope, "https://github.com/test/repo.git", "/tmp/test", nil)
+
+      assert {:error, :environment_not_supported} = Git.pull(scope, "/tmp/test", nil)
+    end
+
+    test "rejects the test adapter's explicit environment call instead of treating it as opts" do
+      scope = %Scope{user: user_fixture()}
+      Application.put_env(:code_my_spec, :git_impl_module, CodeMySpec.Support.TestAdapter)
+
+      refute function_exported?(CodeMySpec.Support.TestAdapter, :clone, 4)
+
+      assert {:error, :environment_not_supported} =
+               Git.clone(
+                 scope,
+                 "https://github.com/test/repo.git",
+                 "/tmp/test",
+                 Environment.new(:local, "/tmp")
+               )
+    end
+  end
 
   # ============================================================================
   # Unit Tests (Mocked)
@@ -123,12 +168,13 @@ defmodule CodeMySpec.GitTest do
 
       # Test clone
       test_repo = "https://github.com/Code-My-Spec/test_phoenix_project.git"
-      assert {:ok, ^clone_path} = Git.clone(scope, test_repo, clone_path)
+      environment = Environment.new(:local, System.tmp_dir!())
+      assert {:ok, ^clone_path} = Git.clone(scope, test_repo, clone_path, environment)
       assert File.exists?(clone_path)
       assert File.exists?(Path.join(clone_path, "mix.exs"))
 
       # Test pull
-      assert :ok = Git.pull(scope, clone_path)
+      assert :ok = Git.pull(scope, clone_path, environment)
 
       # Cleanup
       File.rm_rf!(clone_path)

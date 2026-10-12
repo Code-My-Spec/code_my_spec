@@ -60,6 +60,12 @@ function themeColors() {
   }
 }
 
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (!m || alpha == null) return hex
+  return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})`
+}
+
 // GraphProjector emits hex colors; remap them to the active theme's semantic tokens.
 function remapColor(hex, t) {
   switch ((hex || "").toLowerCase()) {
@@ -169,11 +175,14 @@ export const SigmaGraph = {
 
     // Add edges (deduplicate by key). Force edges to base-content so they're
     // visible on dark themes — t.neutral/t.secondary land near-black here.
+    // A graph may ask for faint edges so dense crossings don't bury the nodes.
+    const edgeColor = withAlpha(t.baseContent, data.edge_alpha)
     const seenEdges = new Set()
     data.edges.forEach(e => {
       if (!seenEdges.has(e.key) && graph.hasNode(e.source) && graph.hasNode(e.target)) {
         seenEdges.add(e.key)
-        const attrs = { ...e.attributes, color: t.baseContent }
+        // A cycle edge stays red: it is the one edge colour that carries meaning.
+        const attrs = { ...e.attributes, color: e.attributes?.cycle ? t.error : edgeColor }
         graph.addEdgeWithKey(e.key, e.source, e.target, attrs)
       }
     })

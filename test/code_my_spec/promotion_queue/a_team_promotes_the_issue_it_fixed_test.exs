@@ -49,7 +49,13 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
 
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a team", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, root)
-    scope = %{scope | active_working_copy_id: copy.id}
+
+    scope =
+      put_fixture_environment(
+        %{scope | active_working_copy_id: copy.id},
+        CodeMySpec.Environments.Environment.new(:local, root)
+      )
+
     on_exit(fn -> stop_worker(scope.active_project_id) end)
 
     coding = agent(scope, :coding, copy.id)
@@ -113,6 +119,12 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
   test "the promote task queues the issue it names", ctx do
     task = %{issue_id: ctx.passed.id}
 
+    assert {:error, %{reason: reason}} =
+             PromotionQueue.enqueue(ctx.scope, nil, issue_id: ctx.passed.id)
+
+    assert reason =~ ctx.waiting.id
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.waiting.id, nil)
+
     assert {:ok, :pending, text} = IssuePromote.evaluate(ctx.scope, task, ctx.coding)
     refute text =~ ctx.waiting.id
 
@@ -121,6 +133,10 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
   end
 
   test "a promote naming nothing takes the issue waiting to be promoted", ctx do
+    assert {:error, %{reason: reason}} = PromotionQueue.promote(ctx.scope, nil)
+    assert reason =~ ctx.waiting.id
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.waiting.id, nil)
+
     assert {:ok, %{queued: entry}} = PromotionQueue.promote(ctx.scope, nil)
     assert entry.subject_id == ctx.passed.id
   end

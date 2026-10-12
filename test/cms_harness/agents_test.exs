@@ -39,6 +39,8 @@ defmodule CmsHarness.AgentsTest do
         # not get one is a different failure, tested separately.
         "api_key" => "not-a-real-key",
         "working_copy" => root,
+        "on_register" => fn _, _ -> :ok end,
+        "on_consume" => fn _, _, _ -> :ok end,
         "role" => "coding"
       },
       overrides

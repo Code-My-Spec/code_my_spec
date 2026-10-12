@@ -1,0 +1,10 @@
+# Serial validation holds
+
+Main manages durable project-scoped coordination through `validation_hold` in `run_script`. Creating or authorizing a hold does not launch analysis. Each hold records its owner, reason, affected copies, exact source and argument list, authorized copy, bound run, next recipient, terminal evidence and handoff history. One open hold is allowed per project.
+
+1. `action = 'create'` records `reason`, `affected_copy_ids` and `next_agent_id`. The caller's main-agent identity owns the record. Existing runs or a gating promotion prevent creating a new serial hold. Supplying `run_id` adopts a single existing active project run into the hold without executing it again; its copy must be among the affected copies.
+2. `action = 'authorize'` with `hold_id`, `authorized_copy_id`, `source`, `args` and `next_agent_id` records one exact authorization. An explicit ordinary analyzer request consumes it; mismatched requests and duplicate starts are refused before dispatch.
+3. A completed run, including a nonzero exit, records its outcome and pushes a handoff notice to main. Execution ownership is released, but the hold waits for main to record the next authorization or `action = 'release'`. A failure is never reported as a validation pass. No terminal event starts another run.
+4. A restart or unconfirmed failure keeps the hold `unknown`. Main cannot release it or authorize another run. After actual termination is verified, `action = 'confirm_termination'` records `termination_evidence` and permits a handoff. A timeout alone is not evidence. Confirming termination never claims validation passed.
+
+`action = 'list'` recovers the durable records after a restart or missed notification. History retains prior outcomes when the next authorization is recorded. Notifications do not require polling. Promotion workers subscribe to hold changes, reserve gating ownership before building, and resume queued candidates when a hold is explicitly released. This coordination does not change analyzer results or certification gates.

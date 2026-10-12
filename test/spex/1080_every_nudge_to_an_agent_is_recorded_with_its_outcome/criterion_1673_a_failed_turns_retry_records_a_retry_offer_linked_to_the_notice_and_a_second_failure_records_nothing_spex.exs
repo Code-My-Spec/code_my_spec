@@ -63,7 +63,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1673Spex do
         context = Map.put(context, :agent, asked_and_started(context))
         :ok = report_turn_failed(context, context.agent, @failure)
         _notice = retry_notice(context)
+        :ok = Fixtures.drain_background_work()
         :ok = Fixtures.put_agent_mid_turn(context.scope, context.agent)
+        flush_retry_dispatches(context.agent)
         {:ok, context}
       end
 
@@ -81,6 +83,16 @@ defmodule CodeMySpecSpex.Story1080.Criterion1673Spex do
 
         {:ok, context}
       end
+    end
+  end
+
+  # A retried wire acknowledgement has the same durable identity and is not
+  # another offer or execution. Discard wire copies after consuming the retry.
+  defp flush_retry_dispatches(agent_id) do
+    receive do
+      {:agent_dispatch, ^agent_id, _ref, _message} -> flush_retry_dispatches(agent_id)
+    after
+      0 -> :ok
     end
   end
 

@@ -17,9 +17,14 @@ defmodule CodeMySpecSpex.ProjectBuilderTest do
 
   setup do
     scope = CodeMySpec.UsersFixtures.full_scope_fixture()
-    {:ok, env} = CodeMySpec.Environments.create(:memory, working_dir: "/memfs/pb-#{System.unique_integer([:positive])}")
+
+    {:ok, env} =
+      CodeMySpec.Environments.create(:memory,
+        working_dir: "/memfs/pb-#{System.unique_integer([:positive])}"
+      )
+
     on_exit(fn -> CodeMySpec.Environments.destroy(env) end)
-    %{scope: %{scope | environment: env}, env: env}
+    %{scope: CodeMySpec.UsersFixtures.put_fixture_environment(scope, env), env: env}
   end
 
   defp synced_paths(scope) do

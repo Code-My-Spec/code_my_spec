@@ -41,19 +41,33 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
 
   setup do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture() |> Map.put(:environment, Environment.new(:local, tmp_dir))
+
+    scope =
+      working_copy_scope_fixture() |> put_fixture_environment(Environment.new(:local, tmp_dir))
+
+    :ok = register_working_copy_environment(scope, fixture_environment(scope))
 
     File.mkdir_p!(Path.join(tmp_dir, Paths.releases_dir()))
 
-    {_, 0} = Environments.cmd(scope.environment, "git", ["init", "-q"])
+    {_, 0} = Environments.cmd(fixture_environment(scope), "git", ["init", "-q"])
 
     {_, 0} =
-      Environments.cmd(scope.environment, "git", ["config", "user.email", "test@example.com"])
+      Environments.cmd(fixture_environment(scope), "git", [
+        "config",
+        "user.email",
+        "test@example.com"
+      ])
 
-    {_, 0} = Environments.cmd(scope.environment, "git", ["config", "user.name", "Test"])
+    {_, 0} = Environments.cmd(fixture_environment(scope), "git", ["config", "user.name", "Test"])
 
     {_, 0} =
-      Environments.cmd(scope.environment, "git", ["commit", "--allow-empty", "-q", "-m", "root"])
+      Environments.cmd(fixture_environment(scope), "git", [
+        "commit",
+        "--allow-empty",
+        "-q",
+        "-m",
+        "root"
+      ])
 
     {:ok, root: tmp_dir, scope: scope}
   end
@@ -99,7 +113,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     # literal small ids.
     longer = "#{story.number}9"
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{longer}\n")
-    tag(scope.environment, "1.0.0")
+    tag(fixture_environment(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
 
@@ -114,7 +128,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   } do
     story = deploy_story!(scope)
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(scope.environment, "1.0.0")
+    tag(fixture_environment(scope), "1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end
@@ -125,7 +139,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     assert story.id != story.number
 
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
-    tag(scope.environment, "1.0.0")
+    tag(fixture_environment(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
     assert message =~ ~r/\bstory_#{story.number}\b/
@@ -149,7 +163,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   } do
     story = deploy_story!(scope)
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(scope.environment, "1.0.0")
+    tag(fixture_environment(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(1))
     assert message =~ "story_#{story.number}"
@@ -161,7 +175,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   } do
     story = deploy_story!(scope)
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(scope.environment, "v1.0.0")
+    tag(fixture_environment(scope), "v1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end
@@ -179,7 +193,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     shorter = String.slice(to_string(story.number), 0..-2//1)
 
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{shorter}\n")
-    tag(scope.environment, "1.0.0")
+    tag(fixture_environment(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
     assert message =~ "story_#{story.number}"
@@ -196,7 +210,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     story = StoriesFixtures.story_fixture(scope)
     {:ok, _} = Deploys.record(scope, story.id, "uat")
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(scope.environment, "1.0.0")
+    tag(fixture_environment(scope), "1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end

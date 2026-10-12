@@ -401,6 +401,7 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
   defp entity_label(:project, _), do: "Project"
   defp entity_label(:story, name), do: "Story: #{name}"
   defp entity_label(:component, name), do: "Component: #{name}"
+  defp entity_label(:issue, name), do: "Issue: #{name}"
   defp entity_label(_, _), do: "Other"
 
   # ---------------------------------------------------------------------------

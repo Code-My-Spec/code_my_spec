@@ -33,6 +33,11 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion do
       required: true,
       doc: "Why this is the user's call and not yours. They read it."
 
+    field :to, :string,
+      doc:
+        "`user` (the default) to escalate; `main` or `product` to hand it to the other " <>
+          "answerer instead, without the user seeing it."
+
     field :as, :string,
       doc:
         "The same question as a choice about their product. Put it in their words when " <>
@@ -42,15 +47,22 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion do
   @impl true
   def execute(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
-         {:ok, question} <-
-           MainAgent.escalate_question(scope, question_id(params), reason(params),
-             as: MapAccess.get(params, :as)
-           ) do
+         {:ok, question} <- move(scope, params, MapAccess.get(params, :to)) do
       {:reply, MainAgentMapper.escalated(question), frame}
     else
       {:error, reason} -> {:reply, MainAgentMapper.error(reason), frame}
     end
   end
+
+  # Criterion 2123: main and product hand questions to each other sideways.
+  defp move(scope, params, to) when to in ["main", "product"],
+    do: MainAgent.hand_question(scope, question_id(params), to, reason(params))
+
+  defp move(scope, params, _to),
+    do:
+      MainAgent.escalate_question(scope, question_id(params), reason(params),
+        as: MapAccess.get(params, :as)
+      )
 
   defp question_id(params), do: MapAccess.get(params, :question_id)
   defp reason(params), do: MapAccess.get(params, :reason)

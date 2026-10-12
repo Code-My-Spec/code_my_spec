@@ -6,12 +6,14 @@ defmodule CodeMySpecSpex.Story1051.Criterion3209Spex do
   Rule: An agent is told about a restart only when something of its own was in
   flight.
 
-  The agent is the reader here, not a person. It comes back holding the turns
-  on its thread and nothing else, and the turn it was part-way through is gone
-  — which is what rule `0a06befe` says must happen. That is survivable only if
-  the thread says so. Without a line, the agent's own transcript ends mid-tool-
-  call and then jumps, and the only readings available to it are "the tool
-  never answered" or "I already did this".
+  The agent is the reader here, not a person. It comes back holding its
+  conversation as recorded, every call and result included, and carries the
+  turn on — rule `0a06befe`. It still has to be told why its thread jumps: a
+  call cut off by the restart has no result, and without a line the only
+  readings available are "the tool never answered" or "I already did this".
+
+  What it is told waits as a pending message until its engine takes it, ahead
+  of anything else queued for it, so the whole of what was sent is read.
 
   Both halves are asserted separately because they fail separately. A line
   saying the harness restarted, with nothing about the work, tells the agent
@@ -40,7 +42,8 @@ defmodule CodeMySpecSpex.Story1051.Criterion3209Spex do
     :ok
   end
 
-  spex "An agent is told about a restart only when something of its own was in flight", criterion: 1191 do
+  spex "An agent is told about a restart only when something of its own was in flight",
+    criterion: 1191 do
     scenario "An interrupted agent is told what happened to its work" do
       given_ "an agent waiting on a tool result", context do
         context = given_a_feature_checkout(context, "spex_3209")
@@ -57,13 +60,13 @@ defmodule CodeMySpecSpex.Story1051.Criterion3209Spex do
          context
          |> Map.put(:agent_id, agent_id)
          |> Map.put(:path, path)
-         |> Map.put(:before, transcript(context, path))}
+         |> Map.put(:before, told(context, path))}
       end
 
       when_ "the harness restarts", context do
         restart_harness(context.harness_socket)
 
-        {:ok, Map.put(context, :after, transcript(context, context.path))}
+        {:ok, Map.put(context, :after, told(context, context.path))}
       end
 
       then_ "a line in its conversation says the harness restarted", context do
@@ -98,10 +101,9 @@ defmodule CodeMySpecSpex.Story1051.Criterion3209Spex do
 
                That is the half it cannot infer. "The harness restarted" is
                visible from the gap; what the agent needs is whether the work
-               it had open survived, and the answer — that a turn in progress
-               is discarded and it picks up from the turns already recorded —
-               is a decision this project made rather than anything the agent
-               can read off its own thread.
+               it had open survived, and the answer — that the turn carries on
+               from its last recorded step — is a decision this project made
+               rather than anything the agent can read off its own thread.
 
                #{context.after}
                """

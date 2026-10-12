@@ -27,7 +27,9 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+
+    scope =
+      put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, Environment.new(:local, tmp))
 
     Configurations.get_or_create(scope)
     {:ok, _} = Configurations.update(scope, %{spex: :block_all})

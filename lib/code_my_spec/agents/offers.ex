@@ -55,10 +55,10 @@ defmodule CodeMySpec.Agents.Offers do
     resume: "resume/1",
     retry: "retry/1",
     answer: "answer/1",
-    unblocked: "unblocked/2",
-    denial: "denial/1",
+    unblocked: "unblocked/3",
+    denial: "denial/2",
     check_in: "check_in/1",
-    stalled: "stalled/1",
+    stalled: "stalled/2",
     team_free: "team_free/1",
     instruction: "instruction/1"
   }
@@ -123,6 +123,16 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   def record(_recorded, _agent, _kind, _subject), do: nil
+
+  @doc "Whether this agent has an open offer of `kind` right now."
+  @spec open_of_kind?(String.t(), Offer.kind()) :: boolean()
+  def open_of_kind?(agent_id, kind) when is_binary(agent_id) and is_atom(kind) do
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.kind == ^kind and o.status == :open)
+    |> Repo.exists?()
+  end
+
+  def open_of_kind?(_agent_id, _kind), do: false
 
   @doc """
   Every open offer on this agent is superseded, not just one of a given kind
@@ -218,7 +228,7 @@ defmodule CodeMySpec.Agents.Offers do
   @doc """
   This project's offers, newest first, with their agent and linked messages.
 
-  Filters, all optional: `:agent_id`, `:kind`, `:status`, `:since` (a
+  Filters, all optional: `:agent_id`, `:working_copy_id`, `:kind`, `:status`, `:since` (a
   `DateTime`, on `inserted_at`), and `:limit` (default #{@default_limit}).
   """
   @spec list(Scope.t(), keyword()) :: [Offer.t()]
@@ -257,6 +267,9 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp filter({:agent_id, id}, query) when is_binary(id), do: where(query, [o], o.agent_id == ^id)
+
+  defp filter({:working_copy_id, id}, query) when is_binary(id),
+    do: where(query, [o], o.working_copy_id == ^id)
 
   defp filter({:kind, kind}, query) when is_atom(kind) and not is_nil(kind),
     do: where(query, [o], o.kind == ^kind)
@@ -417,18 +430,20 @@ defmodule CodeMySpec.Agents.Offers do
   def ladder(key), do: Map.get(@ladders, key)
 
   @doc "Record one escalation for a repeated operator instruction; never withhold delivery."
-  def take_instruction_attention(%Offer{kind: :instruction} = offer) do
+  def take_instruction_attention(%Offer{kind: :instruction} = offer, record_notice)
+      when is_function(record_notice, 0) do
     serialized(offer.agent_id, fn ->
       same = same_subject(offer.agent_id, :instruction, offer.subject_type, offer.subject_key)
       repeated? = Repo.aggregate(same, :count) > 1
-      reported? = Repo.exists?(where(same, [o], o.next_step == "told_main"))
+
+      reported? =
+        same
+        |> Repo.all()
+        |> Enum.any?(&instruction_notice_pending_or_delivered?/1)
 
       case {repeated?, reported?} do
         {true, false} ->
-          Repo.update_all(where(Offer, [o], o.id == ^offer.id),
-            set: [next_step: "told_main", updated_at: DateTime.utc_now()]
-          )
-
+          record_notice.()
           true
 
         _ ->
@@ -437,7 +452,42 @@ defmodule CodeMySpec.Agents.Offers do
     end)
   end
 
-  def take_instruction_attention(_offer), do: false
+  def take_instruction_attention(_offer, _record_notice), do: false
+
+  @doc "Bind an escalation to its recorded notice; submission is not confirmed delivery."
+  def instruction_notice(%Offer{} = offer, result) do
+    step =
+      case result do
+        {:ok, %Message{id: id}} -> "main_notice:" <> id
+        {:error, _} -> "main_notice_failed"
+      end
+
+    Repo.update_all(where(Offer, [o], o.id == ^offer.id),
+      set: [next_step: step, updated_at: DateTime.utc_now()]
+    )
+
+    :ok
+  end
+
+  defp instruction_notice_pending_or_delivered?(%Offer{next_step: "main_notice:" <> id} = offer) do
+    case Repo.get(Message, id) do
+      %Message{delivery: :delivered} ->
+        Repo.update_all(where(Offer, [o], o.id == ^offer.id),
+          set: [next_step: "told_main", updated_at: DateTime.utc_now()]
+        )
+
+        true
+
+      %Message{delivery: :pending} ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp instruction_notice_pending_or_delivered?(%Offer{next_step: "told_main"}), do: true
+  defp instruction_notice_pending_or_delivered?(_offer), do: false
 
   @doc """
   How many ignored offers hold requirement work back from an agent: the length
@@ -447,7 +497,8 @@ defmodule CodeMySpec.Agents.Offers do
 
   @doc """
   Decline an open offer with a reason (criterion 1738): `offer_id`, or the
-  agent's newest open offer when nil. Answers the declined offer.
+  agent's newest delivered open offer when nil. Pending, failed and withdrawn
+  deliveries cannot be declined. Unlinked legacy offers remain eligible.
   """
   @spec reject(Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, Offer.t()} | {:error, :not_found}
@@ -506,9 +557,8 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp open_offer(agent_id, nil) do
-    Offer
-    |> where([o], o.agent_id == ^agent_id and o.status == :open)
-    |> order_by([o], desc: o.inserted_at)
+    rejectable_offers(agent_id)
+    |> order_by([o], desc: o.inserted_at, desc: o.id)
     |> limit(1)
     |> Repo.one()
   end
@@ -516,11 +566,28 @@ defmodule CodeMySpec.Agents.Offers do
   defp open_offer(agent_id, offer_id) do
     case Ecto.UUID.cast(offer_id) do
       {:ok, id} ->
-        Repo.one(where(Offer, [o], o.id == ^id and o.agent_id == ^agent_id and o.status == :open))
+        Repo.one(where(rejectable_offers(agent_id), [o], o.id == ^id))
 
       :error ->
         nil
     end
+  end
+
+  defp rejectable_offers(agent_id) do
+    linked = from(link in OfferMessage, select: link.offer_id)
+
+    delivered =
+      from(link in OfferMessage,
+        join: message in Message,
+        on: message.id == link.message_id,
+        where: is_nil(message.delivery) or message.delivery == :delivered,
+        select: link.offer_id
+      )
+
+    from(offer in Offer,
+      where: offer.agent_id == ^agent_id and offer.status == :open,
+      where: offer.id not in subquery(linked) or offer.id in subquery(delivered)
+    )
   end
 
   @doc """
@@ -793,7 +860,7 @@ defmodule CodeMySpec.Agents.Offers do
   # An undelivered offer was never made, so it does not count.
   defp attempt(same) do
     last_claimed =
-      Repo.one(from o in same, where: o.status == :claimed, select: max(o.inserted_at))
+      Repo.one(from(o in same, where: o.status == :claimed, select: max(o.inserted_at)))
 
     since =
       if last_claimed, do: where(same, [o], o.inserted_at > ^last_claimed), else: same

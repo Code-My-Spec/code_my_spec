@@ -36,7 +36,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   document spec from the registry. Returns `{:ok, prompt}`.
   """
   def command(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     routers = list_routers(env)
     existing_plan = read_existing_plan(env)

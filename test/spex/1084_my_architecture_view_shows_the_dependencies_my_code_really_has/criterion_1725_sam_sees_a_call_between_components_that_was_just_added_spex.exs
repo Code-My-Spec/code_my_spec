@@ -25,6 +25,8 @@ defmodule CodeMySpecSpex.Story1084.Criterion1725Spex do
           defmodule Billing do
             @moduledoc false
             alias Accounts
+
+            def charge(order), do: Accounts.fetch(order)
           end
           """)
 
@@ -43,8 +45,12 @@ defmodule CodeMySpecSpex.Story1084.Criterion1725Spex do
         section = component_section(context.html, "Billing")
 
         marker = dependency_marker(section, "Accounts")
-        assert marker, "expected a dependency marker next to Accounts in Billing's section: #{section}"
-        assert marker =~ "in code", "expected Accounts to be marked as a code dependency, got: #{marker}"
+
+        assert marker,
+               "expected a dependency marker next to Accounts in Billing's section: #{section}"
+
+        assert marker =~ "in code",
+               "expected Accounts to be marked as a code dependency, got: #{marker}"
 
         {:ok, context}
       end

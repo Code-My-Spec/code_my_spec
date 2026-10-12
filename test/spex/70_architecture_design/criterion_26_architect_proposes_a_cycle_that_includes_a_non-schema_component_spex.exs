@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5309Spex do
       end
 
       given_ "a live harness serves the checkout", context do
-        {:ok, HarnessHooks.ensure_live_harness(context)}
+        {:ok, HarnessHooks.ensure_live_harness(context, environment: :in_memory)}
       end
 
       given_ "the agent has signalled session start", context do

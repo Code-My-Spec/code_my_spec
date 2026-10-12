@@ -7,9 +7,6 @@ defmodule CodeMySpec.Projects do
     top_level?: true,
     deps: [
       CodeMySpec.Auth,
-      CodeMySpec.ClientUsers.ClientUser,
-      CodeMySpec.Environments,
-      CodeMySpec.GitHub,
       CodeMySpec.Oauth,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
@@ -18,8 +15,6 @@ defmodule CodeMySpec.Projects do
     exports: :all
 
   import Ecto.Query, warn: false
-  alias CodeMySpec.ClientUsers.ClientUser
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -253,36 +248,18 @@ defmodule CodeMySpec.Projects do
   def scope_from_local_config(project_root) when is_binary(project_root) do
     with {:ok, config} <- read_local_config(project_root),
          {:ok, project} <- get_or_create_project(config, project_root) do
-      user = local_user()
-
       {:ok,
        %Scope{
-         user: user,
-         user_id: user.id,
          active_account: nil,
          active_account_id: config["account_id"],
          active_project: project,
          active_project_id: project.id,
-         cwd: project_root,
-         environment: Environment.new(:local, project_root)
+         cwd: project_root
        }}
     end
   end
 
   def scope_from_local_config(nil), do: {:error, :no_working_dir}
-
-  # Same default `Users.Scope.for_local_project/2` and `for_local_cwd/1` use
-  # for a CLI/non-OAuth caller — kept in sync by hand since it is one struct
-  # literal, not worth a round trip through `Users` to share.
-  defp local_user do
-    %ClientUser{
-      id: 0,
-      email: "cli@localhost",
-      oauth_token: nil,
-      oauth_refresh_token: nil,
-      oauth_expires_at: nil
-    }
-  end
 
   # Reads the local config file from the project root directory. Expects a
   # directory containing `.code_my_spec/config.yml`.
@@ -716,55 +693,5 @@ defmodule CodeMySpec.Projects do
     true = project.account_id == scope.active_account_id
 
     Project.changeset(project, attrs, scope)
-  end
-
-  @doc """
-  Creates a GitHub repository for the project.
-
-  ## Parameters
-  - `scope` - User scope for multi-tenant isolation and GitHub authentication
-  - `project` - The project to create a repo for
-  - `repo_type` - Either :code_repo or :docs_repo
-  - `repo_suffix` - Suffix to append to project name (e.g., "-code", "-docs")
-
-  ## Examples
-
-      iex> create_github_repo(scope, project, :code_repo, "-code")
-      {:ok, "https://github.com/username/my-project-code"}
-
-      iex> create_github_repo(scope, project, :docs_repo, "-docs")
-      {:ok, "https://github.com/username/my-project-docs"}
-
-      iex> create_github_repo(scope, project, :code_repo, "-code")
-      {:error, :github_not_connected}
-  """
-  def create_github_repo(%Scope{} = scope, %Project{} = project, repo_type, attrs, repo_suffix)
-      when repo_type in [:code_repo, :docs_repo] do
-    # Sanitize project name for GitHub (replace spaces with hyphens, lowercase)
-    sanitized_name =
-      (project.name || attrs["name"])
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9-_]/, "-")
-      |> String.replace(~r/-+/, "-")
-      |> String.trim("-")
-
-    repo_name = sanitized_name <> repo_suffix
-
-    repo_attrs = %{
-      name: repo_name,
-      description: project.description || "Repository for #{project.name}",
-      private: true
-    }
-
-    case CodeMySpec.GitHub.create_repository(scope, repo_attrs) do
-      {:ok, %{"html_url" => url}} ->
-        {:ok, url}
-
-      {:error, :github_not_connected} ->
-        {:error, :github_not_connected}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
   end
 end

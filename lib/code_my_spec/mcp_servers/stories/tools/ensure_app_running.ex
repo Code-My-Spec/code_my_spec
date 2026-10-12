@@ -70,19 +70,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
         )
 
       {:ok, %{status: status, commit: commit} = info} ->
-        last_commit = Map.get(info, :serving_commit) || commit
-        head = Map.get(info, :head) || "unknown"
-
-        reason =
-          Map.get(info, :action_reason) ||
-            "The harness supplied no startup diagnostics. Inspect this copy's app log before using restart_app."
-
-        Response.tool()
-        |> Response.error(
-          "#{copy_name(id)} app is #{status}. Not serving. " <>
-            "Last recorded app revision: #{last_commit || "unknown"}; current checkout HEAD: #{head}. " <>
-            reason
-        )
+        not_serving(id, status, commit, info)
 
       {:error, reason} ->
         Response.tool() |> Response.error("Could not start the app: #{inspect(reason)}")
@@ -99,6 +87,22 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
   # 048d1f4f: an agent read its own copy's app as main's, and a launch commit
   # behind HEAD as a restart that failed. Always say whose app this is, and
   # when HEAD has moved past what it serves.
+  defp not_serving(id, status, commit, info) do
+    last_commit = Map.get(info, :serving_commit) || commit
+    head = Map.get(info, :head) || "unknown"
+
+    reason =
+      Map.get(info, :action_reason) ||
+        "The harness supplied no startup diagnostics. Inspect this copy's app log before using restart_app."
+
+    Response.tool()
+    |> Response.error(
+      "#{copy_name(id)} app is #{status}. Not serving. " <>
+        "Last recorded app revision: #{last_commit || "unknown"}; current checkout HEAD: #{head}. " <>
+        reason
+    )
+  end
+
   defp copy_name(id) do
     case WorkingCopies.fetch(id) do
       {:ok, %{main: true} = copy} -> "Main copy #{copy.root || copy.label}'s"

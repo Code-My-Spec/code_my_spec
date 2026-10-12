@@ -22,12 +22,12 @@ defmodule CodeMySpecSpex.RecordedAnalysis do
   """
   @spec attach_recorded_analysis(map(), keyword(String.t())) :: map()
   def attach_recorded_analysis(%{scope: scope} = context, recordings) do
-    env = Enum.reduce(recordings, scope.environment, &record/2)
+    env = Enum.reduce(recordings, CodeMySpec.UsersFixtures.fixture_environment(scope), &record/2)
     reregister(scope.active_project_id, env)
 
     context
     |> Map.replace(:environment, env)
-    |> Map.put(:scope, %{scope | environment: env})
+    |> Map.put(:scope, CodeMySpec.UsersFixtures.put_fixture_environment(scope, env))
   end
 
   defp record({source, path}, env) do

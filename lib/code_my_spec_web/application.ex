@@ -16,7 +16,7 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Notifications.AnalysisPush
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation.RunReconciled
+  alias CodeMySpec.AgentTasks.RunReconciled
 
   @impl true
   def start(_type, args) do
@@ -239,7 +239,8 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
         {CodeMySpec.McpServers.Ga4Server, transport: :streamable_http},
         {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},
-        CodeMySpecWeb.Endpoint
+        CodeMySpecWeb.Endpoint,
+        when_serving(serving?, CodeMySpec.Agents.Mailbox.Reconciler)
       ]
       |> Enum.filter(& &1)
       |> children(env, serving?)
@@ -254,6 +255,7 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
+        CodeMySpec.Agents.ValidationHoldReport.attach()
         Events.attach()
         RunReconciled.attach()
         AnalysisPush.attach()

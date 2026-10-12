@@ -37,11 +37,10 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   require Logger
 
-  alias CodeMySpec.Configurations.ProjectConfiguration
+  alias CodeMySpec.{LocalScope, WorkingCopies}
 
   alias CodeMySpec.{
     AccountSecrets,
-    Configurations,
     Conversations,
     Deploys,
     Environments,
@@ -74,13 +73,15 @@ defmodule CodeMySpec.Provisioning.Steps do
     Repository,
     Resend,
     Sops,
-    StepRepository,
     Storage,
     Transport,
     Truncate,
     Wait,
     Widget
   }
+
+  alias CodeMySpec.ProvisioningPlan
+  alias CodeMySpec.ProvisioningPlan.StepRepository
 
   alias CodeMySpec.Users.Scope
 
@@ -1298,6 +1299,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp publish_content(scope, opts) do
+    # `:environment` in step opts is the deployment's name, not a file runtime.
+    opts = Keyword.put_new_lazy(opts, :runtime, fn -> env(scope) end)
+
     case ContentPublishing.run(scope, opts) do
       %{state: :rendered} = result ->
         {:ok, [content_proof(result) | content_objects(result)]}
@@ -1638,7 +1642,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp plain_resource(nil), do: nil
 
-  defp plain_resource(%CodeMySpec.Provisioning.Resource{} = resource),
+  defp plain_resource(%CodeMySpec.ProvisioningPlan.Resource{} = resource),
     do: Map.from_struct(resource)
 
   defp plain_resource(resource), do: resource
@@ -2891,21 +2895,25 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # `Environments.cmd/4` raises rather than returning an error for an
   # environment with no working directory (deliberately — see `Local.cmd/4`),
-  # so calling it against a harness-only project's `scope.environment`
+  # so calling it against an unreachable project environment
   # (`Resources.project_scope/2`'s fallback, `cwd: nil`) took the whole build
   # down instead of falling back cleanly. Checked here first, same reachability
   # gap `app_path/1` has with `mix.exs`. `CmsHarness.Sync` runs this same `git
   # rev-parse HEAD` on the machine that can actually reach it and reports the
   # SHA on every sync (`HarnessProjectChannel`'s `"head_commit"` handler) — the
   # fallback for exactly this shape of project.
-  defp head_commit(%{environment: %{cwd: cwd}} = scope) when is_binary(cwd) do
-    case Environments.cmd(scope.environment, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
-      {sha, 0} -> String.trim(sha)
-      _ -> reported_head_commit(scope)
+  defp head_commit(scope) do
+    case env(scope) do
+      %{cwd: cwd} = environment when is_binary(cwd) ->
+        case Environments.cmd(environment, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+          {sha, 0} -> String.trim(sha)
+          _ -> reported_head_commit(scope)
+        end
+
+      _ ->
+        reported_head_commit(scope)
     end
   end
-
-  defp head_commit(scope), do: reported_head_commit(scope)
 
   defp reported_head_commit(scope) do
     case project(scope) |> Map.get(:head_commit) do
@@ -3625,12 +3633,20 @@ defmodule CodeMySpec.Provisioning.Steps do
   # belongs to whoever can fix it: nobody can set a secret for a project with
   # nowhere to check it out. Reporting "no age key" there would send Sam to
   # the secret form, which would fail for the same underlying reason.
-  def check_secrets(%Scope{environment: nil}, _environment),
-    do: {:error, no_environment_message()}
-
   def check_secrets(%Scope{} = scope, environment) do
+    case env(scope) do
+      nil ->
+        {:error, no_environment_message()}
+
+      resolved_environment ->
+        check_resolved_secrets(scope, environment, resolved_environment)
+    end
+  end
+
+  defp check_resolved_secrets(scope, environment, resolved_environment) do
     with {:ok, private} <- fetch_age_key(scope, environment),
-         {:ok, missing} <- missing_required_secrets(scope, environment, private) do
+         {:ok, missing} <-
+           missing_required_secrets(scope, environment, private, resolved_environment) do
       case missing do
         [] -> {:ok, key_delivery_resource(environment)}
         names -> {:error, boot_refusal(environment, names)}
@@ -3655,13 +3671,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # genuinely be read directly (a local checkout, a container, the sops
   # drills) still gets the original check unchanged, for a project that has
   # not synced since this existed.
-  defp missing_required_secrets(scope, environment, private) do
+  defp missing_required_secrets(scope, environment, private, resolved_environment) do
     case Files.get_by_path(scope, Sops.env_file(environment)) do
       %{validation_errors: %{"data" => %{"missing" => missing}}} ->
         {:ok, missing}
 
       _ ->
-        Sops.missing_secrets(env(scope), environment, private, @required_secrets)
+        Sops.missing_secrets(resolved_environment, environment, private, @required_secrets)
     end
   end
 
@@ -3846,7 +3862,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp backups_outcome({:error, reason}, _bucket, _environment), do: {:error, format(reason)}
 
   defp project(%Scope{active_project: project}), do: project
-  defp env(%Scope{environment: environment}), do: environment
+
+  defp env(%Scope{active_working_copy_id: copy_id} = scope) when not is_nil(copy_id),
+    do: WorkingCopies.environment(scope)
+
+  defp env(%Scope{} = scope), do: LocalScope.environment(scope.active_project)
 
   defp domain(%Scope{active_project: %{domain: d}}) when is_binary(d) and d != "", do: d
   defp domain(_), do: nil
@@ -3996,47 +4016,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Filtered here rather than in the seed, because a row is not infrastructure.
   # Seeding both keeps promotion a matter of changing one setting, which is
   # what "the user promotes to prod themselves" means.
-  @doc """
-  Names of the environments this project's devops level actually permits —
-  every environment row it has, unless `devops: :uat` has filtered production
-  out. Public so `Provisioning` can fan a per-environment step out over the
-  same list `run/3`/`verify/3` already narrow to internally when a caller
-  gives no explicit `:environment`/`:environments` override — without this, a
-  plain "Run" click (or `run/3`'s own whole-sequence walk) would reach past
-  the filter and touch an environment the project's devops level excludes.
-  """
-  @spec permitted_environments(Scope.t()) :: [String.t()]
-  def permitted_environments(scope) do
-    scope |> permitted_environment_rows() |> Enum.map(& &1.name)
-  end
+  @doc "See `ProvisioningPlan.permitted_environments/1`."
+  defdelegate permitted_environments(scope), to: ProvisioningPlan
 
-  @doc """
-  `permitted_environments/1` from the rows already there, seeding none — for a
-  reader that must not write, the requirement graph's `deploy` gate.
-  """
-  @spec permitted_existing_environments(Scope.t()) :: [String.t()]
-  def permitted_existing_environments(scope) do
-    scope
-    |> EnvironmentRepository.list_existing()
-    |> permitted(scope)
-    |> Enum.map(& &1.name)
-  end
+  @doc "See `ProvisioningPlan.permitted_existing_environments/1`."
+  defdelegate permitted_existing_environments(scope), to: ProvisioningPlan
 
-  # The rows, filtered by the same rule. The server step fans out over structs
-  # rather than names, and the comment on `ensure_environment_servers/3` is
-  # about precisely this hazard: a step that fans out over one list and checks
-  # its work against another reports gaps that are really disagreements. It
-  # took the unfiltered list, so the `:uat` filter above stopped the *later*
-  # steps touching prod while the server step went on building the box.
-  defp permitted_environment_rows(scope),
-    do: scope |> EnvironmentRepository.list() |> permitted(scope)
-
-  defp permitted(rows, scope) do
-    case devops_level(scope) do
-      :uat -> Enum.reject(rows, &(&1.name == "prod"))
-      _ -> rows
-    end
-  end
+  defp permitted_environment_rows(scope), do: ProvisioningPlan.permitted_environment_rows(scope)
 
   # The same rule again, for the three steps that need each environment's
   # *host* rather than its name — dns publishes them, tls certifies them, and
@@ -4055,11 +4041,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     |> Enum.filter(&MapSet.member?(permitted, &1.name))
   end
 
-  # No row, or a row predating the column, means nobody has said this project
-  # ships — the same answer the schema default gives. Mirrors
-  # `Resources.devops/2`, which reads it for the same reason.
-  defp devops_level(scope),
-    do: scope |> Configurations.get() |> ProjectConfiguration.devops_level()
+  defp devops_level(scope), do: ProvisioningPlan.devops_level(scope)
 
   # Shared by every run/3 clause that fans out over environments and must
   # refuse rather than report done for a project whose devops level filtered
@@ -4132,10 +4114,18 @@ defmodule CodeMySpec.Provisioning.Steps do
   # `no_environment_message/0` exists to prevent, and the path below already
   # produces it: `deploy_environment/3` reaches `require_script/2`, which names
   # the missing environment. Passing through is what lets it.
-  defp deploy_ready(%Scope{environment: nil}), do: :ok
-
   defp deploy_ready(%Scope{} = scope) do
-    case CodeMySpec.Generators.audit(scope, router_path(scope)) do
+    case env(scope) do
+      nil ->
+        :ok
+
+      environment ->
+        deploy_ready_in(scope, environment)
+    end
+  end
+
+  defp deploy_ready_in(scope, environment) do
+    case CodeMySpec.Generators.audit(scope, router_path(scope), environment) do
       [] ->
         :ok
 
@@ -5080,8 +5070,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # Steps that shell out need somewhere to run. A cloud scope has no
-  # environment — `Scope.environment` is only populated for local scopes — and
+  # Steps that shell out need somewhere to run. A scope with no resolved
+  # environment reaches a nil command target, and
   # `Environments.cmd/4` answers a nil with a FunctionClauseError several
   # frames down, which reports as a crashed LiveView rather than one errored
   # step. Naming it is the difference between "this project has nowhere to run
@@ -5096,7 +5086,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     if Environments.exec_file_exists?(environment, path) do
       :ok
     else
-      findings = CodeMySpec.Generators.audit(scope, router_path(scope))
+      findings = CodeMySpec.Generators.audit(scope, router_path(scope), environment)
 
       case {findings, Environments.file_exists?(environment, path)} do
         # Nothing else looks wrong, and this environment cannot see the
@@ -5156,12 +5146,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   on none of them.
   """
   @spec commit_generated_configuration(Scope.t()) :: :ok | {:error, String.t()}
-  def commit_generated_configuration(%{environment: %{cwd: cwd}}) when not is_binary(cwd),
-    do: :ok
-
   def commit_generated_configuration(scope) do
-    environment = env(scope)
+    case env(scope) do
+      %{cwd: cwd} = environment when is_binary(cwd) ->
+        commit_generated_configuration_in(environment)
 
+      _ ->
+        :ok
+    end
+  end
+
+  defp commit_generated_configuration_in(environment) do
     paths =
       [".sops.yaml", "envs"]
       |> Enum.concat(Enum.map(DeployBoilerplate.manifest(), & &1.path))
@@ -5372,13 +5367,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   # `lib/market_my_spec_web/...`.
   #
   # `Environments.mix_exs_app_name/1` reads `mix.exs`'s own `app:` atom
-  # directly — never ambiguous, but only answerable when `scope.environment`
-  # can actually be read from. For a project reached only through a live
-  # harness connection, `scope.environment` here resolves through
-  # `Resources.project_scope/2`'s fallback to `Environment.new(:local,
-  # project.local_path)` — a path on *the machine the checkout is on*, not
-  # this server's — so this returns `nil` for exactly that shape of project,
-  # same as any other environment nothing here can actually reach.
+  # directly — never ambiguous, but only answerable when the resolved
+  # environment can read the checkout. The reported module name remains the
+  # fallback for a checkout reached through a live harness connection.
   # `module_name` is the fallback for that case: `CmsHarness.Sync` derives it
   # from the SAME `mix.exs`, on the machine that can actually read it, and
   # keeps it corrected on every sync (see `HarnessProjectChannel`'s
@@ -5388,7 +5379,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   # already reports for a file that genuinely does not exist, rather than to
   # a wrong guess.
   defp app_path(scope) do
-    Environments.mix_exs_app_name(scope.environment) || module_name_app_path(scope)
+    case env(scope) do
+      nil -> module_name_app_path(scope)
+      environment -> Environments.mix_exs_app_name(environment) || module_name_app_path(scope)
+    end
   end
 
   defp module_name_app_path(scope) do
@@ -6048,10 +6042,18 @@ defmodule CodeMySpec.Provisioning.Steps do
   @spec put_secret(Scope.t(), String.t(), String.t(), String.t()) ::
           {:ok, map()} | {:error, String.t()}
   def put_secret(%Scope{} = scope, environment, key, value) do
-    env = env(scope)
+    case env(scope) do
+      nil ->
+        {:error, no_environment_message()}
 
-    with {:ok, private} <- ensure_age_key(scope, env, environment),
-         :ok <- Sops.put_secret(env, environment, key, value, private) do
+      resolved_environment ->
+        put_secret_in(scope, resolved_environment, environment, key, value)
+    end
+  end
+
+  defp put_secret_in(scope, resolved_environment, environment, key, value) do
+    with {:ok, private} <- ensure_age_key(scope, resolved_environment, environment),
+         :ok <- Sops.put_secret(resolved_environment, environment, key, value, private) do
       {:ok, %{environment: environment, key: key, file: Sops.env_file(environment)}}
     else
       {:error, reason} -> {:error, to_string_reason(reason)}
@@ -6092,17 +6094,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   @spec recipients(Scope.t(), [String.t()]) :: [
           %{environment: String.t(), fingerprints: [String.t()]}
         ]
-  # A scope with no environment has no repository to read, which is an answer
-  # rather than an error — the page renders for a cloud scope too.
-  def recipients(%Scope{environment: nil}, _environments), do: []
-
   def recipients(%Scope{} = scope, environments) do
-    env = env(scope)
+    case env(scope) do
+      nil ->
+        []
 
-    for environment <- environments,
-        {:ok, keys} <- [Sops.recipients(env, environment)],
-        keys != [] do
-      %{environment: environment, fingerprints: keys}
+      resolved_environment ->
+        for environment <- environments,
+            {:ok, keys} <- [Sops.recipients(resolved_environment, environment)],
+            keys != [] do
+          %{environment: environment, fingerprints: keys}
+        end
     end
   end
 

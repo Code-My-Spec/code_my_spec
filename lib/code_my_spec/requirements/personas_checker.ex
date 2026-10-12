@@ -24,7 +24,8 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
 
   ## Decided at sync, read here
 
-  This used to read and validate both files itself, through `scope.environment`.
+  This used to read and validate both files itself through the scope's
+  execution environment.
   On the light harness there is no environment — the server holds no working
   copy — so it answered "Environment is not available" no matter what the agent
   wrote. One wrote the research, watched it sync, and was still told it could

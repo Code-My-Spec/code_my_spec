@@ -17,12 +17,15 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.QaFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
@@ -136,6 +139,13 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
       )
 
     {:ok, running} = WorkingCopies.report_root(running, running_root)
+
+    :ok =
+      Environments.register(
+        {:working_copy, running.id},
+        Environment.new(:local, running_root)
+      )
+
     a_running_harness_for(running.id, running_root)
 
     {:ok, agent} =
@@ -145,6 +155,12 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
       )
 
     {:ok, agent} = WorkingCopies.report_root(agent, agent_root)
+
+    :ok =
+      Environments.register(
+        {:working_copy, agent.id},
+        Environment.new(:local, agent_root)
+      )
 
     File.write!(
       Path.join(agent_root, "app.ex"),
@@ -156,6 +172,13 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     scope = %{scope | active_working_copy_id: agent.id}
     story = a_story_with_linked_spex(scope)
     :ok = analyzers_are_current(scope, agent_root)
+    head = agent_root |> git!(["rev-parse", "HEAD"]) |> String.trim()
+
+    story
+    |> Ecto.Changeset.change(qa_ready_commit: head, qa_ready_at: DateTime.utc_now())
+    |> CodeMySpec.Repo.update!()
+
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     result = Promotion.promote(scope, story.number)
 

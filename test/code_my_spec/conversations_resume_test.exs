@@ -263,38 +263,120 @@ defmodule CodeMySpec.ConversationsResumeTest do
                    ]
       end
     end
+  end
 
-    test "the agent's working is not replayed as things that were said",
-         %{conversation: conversation} do
+  describe "what the agent did" do
+    defp call(conversation, id, name, args) do
+      {:ok, _} = Conversations.add_tool_call(conversation, id, name, args, "main")
+    end
+
+    defp returned(conversation, id, name, text, opts \\ []) do
+      {:ok, _} =
+        Conversations.add_tool_result(conversation, id, name, text, [agent_role: "main"] ++ opts)
+    end
+
+    test "every call comes back with what it returned", %{conversation: conversation} do
       said(conversation, "have a look at the pricing module")
-
-      {:ok, _call} =
-        Conversations.add_tool_call(
-          conversation,
-          "call-1",
-          "read_file",
-          %{"path" => "pricing.ex"},
-          "main"
-        )
-
-      {:ok, _result} =
-        Conversations.add_tool_result(
-          conversation,
-          "call-1",
-          "read_file",
-          "defmodule Pricing",
-          agent_role: "main"
-        )
-
+      call(conversation, "call-1", "read_file", %{"path" => "pricing.ex"})
+      returned(conversation, "call-1", "read_file", "defmodule Pricing")
+      call(conversation, "call-2", "bash", %{"command" => "mix test"})
+      returned(conversation, "call-2", "bash", "bash failed: 1 failure", failed?: true)
       answered(conversation, "it charges per seat")
 
       assert Conversations.resume_messages(conversation) == [
                %{"role" => "user", "content" => "have a look at the pricing module"},
+               %{
+                 "role" => "assistant",
+                 "content" => [
+                   %{
+                     "type" => "tool_use",
+                     "id" => "call-1",
+                     "name" => "read_file",
+                     "input" => %{"path" => "pricing.ex"}
+                   }
+                 ]
+               },
+               %{
+                 "role" => "user",
+                 "content" => [
+                   %{
+                     "type" => "tool_result",
+                     "tool_use_id" => "call-1",
+                     "content" => "defmodule Pricing"
+                   }
+                 ]
+               },
+               %{
+                 "role" => "assistant",
+                 "content" => [
+                   %{
+                     "type" => "tool_use",
+                     "id" => "call-2",
+                     "name" => "bash",
+                     "input" => %{"command" => "mix test"}
+                   }
+                 ]
+               },
+               %{
+                 "role" => "user",
+                 "content" => [
+                   %{
+                     "type" => "tool_result",
+                     "tool_use_id" => "call-2",
+                     "content" => "bash failed: 1 failure",
+                     "is_error" => true
+                   }
+                 ]
+               },
                %{"role" => "assistant", "content" => "it charges per seat"}
              ],
-             "a tool result describes a file at a path, and an agent being resumed " <>
-               "may be in a different checkout by then — story 963 moves the main " <>
-               "agent between checkouts on purpose."
+             "a resumed agent that knows it made calls and not what they returned " <>
+               "cannot carry on a turn, only start it again"
+    end
+
+    test "a call cut off before it returned is answered as unknown, then the carry-on follows",
+         %{conversation: conversation} do
+      said(conversation, "run the suite")
+
+      answered(conversation, "Running it.")
+      call(conversation, "call-1", "bash", %{})
+
+      said(conversation, "The harness restarted part-way through your turn.")
+
+      assert [_asked, assistant, %{"role" => "user", "content" => [result, carry_on]}] =
+               Conversations.resume_messages(conversation)
+
+      assert assistant["content"] |> Enum.map(& &1["type"]) == ["text", "tool_use"]
+      assert result["tool_use_id"] == "call-1"
+      assert result["content"] =~ "No result was recorded"
+
+      assert carry_on == %{
+               "type" => "text",
+               "text" => "The harness restarted part-way through your turn."
+             },
+             "the answer to the cut call and what the agent was told next are one turn"
+    end
+
+    test "a checkpoint's calls and results come back as the agent held them",
+         %{conversation: conversation} do
+      anchor = said(conversation, "earlier")
+
+      held = [
+        %{"role" => "user", "content" => "summary"},
+        %{
+          "role" => "assistant",
+          "content" => [%{"type" => "tool_use", "id" => "c", "name" => "read", "input" => %{}}]
+        },
+        %{
+          "role" => "user",
+          "content" => [%{"type" => "tool_result", "tool_use_id" => "c", "content" => "ok"}]
+        }
+      ]
+
+      {:ok, _} =
+        Conversations.record_checkpoint(conversation, held, through_message_id: anchor.id)
+
+      assert Conversations.resume_messages(conversation) == held
     end
   end
 end

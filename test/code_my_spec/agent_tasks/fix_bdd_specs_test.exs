@@ -20,8 +20,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   # ============================================================================
 
   defp scope_with_env(tmp_dir) do
-    scope = full_scope_fixture()
-    %{scope | environment: Environment.new(:local, tmp_dir)}
+    scope = working_copy_scope_fixture()
+    put_fixture_environment(scope, Environment.new(:local, tmp_dir))
   end
 
   defp task do

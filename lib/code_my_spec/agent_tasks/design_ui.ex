@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
 
   @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
   def command(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
     project = scope.active_project
 
     html_content = load_html_content(env)
@@ -34,7 +34,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
 
     with {:ok, content} <- Environments.read_file(env, @design_system_path),
          {:ok, html} <- parse_html(content) do

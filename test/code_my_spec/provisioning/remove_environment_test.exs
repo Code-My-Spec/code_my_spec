@@ -21,7 +21,8 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.{EnvironmentRepository, StepRepository, Teardown}
+  alias CodeMySpec.Provisioning.{EnvironmentRepository, Teardown}
+  alias CodeMySpec.ProvisioningPlan.StepRepository
 
   setup do
     scope = full_scope_fixture()

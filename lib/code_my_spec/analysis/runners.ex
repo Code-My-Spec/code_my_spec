@@ -49,6 +49,7 @@ defmodule CodeMySpec.Analysis.Runners do
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Problems.ProblemConverter
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.Analyzers
   alias CodeMySpec.Tests
   alias CodeMySpec.Users.Scope
@@ -64,8 +65,22 @@ defmodule CodeMySpec.Analysis.Runners do
 
   @spec run(String.t(), Scope.t(), [String.t()], keyword()) ::
           {:ok, result()} | {:error, term()}
-  def run("compiler", %Scope{} = scope, _args, opts) do
-    execute_opts = [environment: scope.environment] |> maybe_output_file(opts)
+  def run(source, %Scope{} = scope, args, opts) do
+    cwd = opts[:cwd] || scope.cwd
+    environment = StaticAnalysis.resolve_environment(opts, scope, cwd)
+
+    if is_nil(environment) do
+      {:error, :no_environment}
+    else
+      cwd = opts[:cwd] || environment.cwd
+      environment = %{environment | cwd: cwd}
+      opts = opts |> Keyword.put(:environment, environment) |> Keyword.put(:cwd, cwd)
+      run_resolved(source, scope, args, opts)
+    end
+  end
+
+  defp run_resolved("compiler", %Scope{} = _scope, _args, opts) do
+    execute_opts = [environment: opts[:environment], cwd: opts[:cwd]] |> maybe_output_file(opts)
     result = Compile.execute(execute_opts)
 
     from_raw("compiler", %{
@@ -85,14 +100,14 @@ defmodule CodeMySpec.Analysis.Runners do
   # because that generic interface answers `{:ok, [Problem.t()]}` for every
   # analyzer it wraps — no raw output channel. `run_with_output/2` is the one
   # place that contract was loosened, for exactly this caller — Sobelow now
-  # has the same, below. `available?/1` is checked
+  # has the same, below. `available?/2` is checked with the execution options
   # here explicitly since skipping `StaticRunner` also skips its availability
   # check.
-  def run("credo", %Scope{} = scope, args, opts) do
+  defp run_resolved("credo", %Scope{} = scope, args, opts) do
     files = if args == [], do: nil, else: args
-    runner_opts = [files: files] |> maybe_output_file(opts)
+    runner_opts = opts |> Keyword.put(:files, files) |> maybe_output_file(opts)
 
-    if Analyzers.Credo.available?(scope) do
+    if Analyzers.Credo.available?(scope, runner_opts) do
       case Analyzers.Credo.run_with_output(scope, runner_opts) do
         {:ok, problems, output} ->
           {:ok,
@@ -114,10 +129,10 @@ defmodule CodeMySpec.Analysis.Runners do
   # Always a full project sweep — `Analyzers.Sobelow.build_sobelow_args/1`
   # takes no `--files`/scoped-path option, unlike credo, so there is no
   # partial-run shape to preserve here.
-  def run("sobelow", %Scope{} = scope, _args, opts) do
-    runner_opts = maybe_output_file([], opts)
+  defp run_resolved("sobelow", %Scope{} = scope, _args, opts) do
+    runner_opts = maybe_output_file(opts, opts)
 
-    if Analyzers.Sobelow.available?(scope) do
+    if Analyzers.Sobelow.available?(scope, runner_opts) do
       case Analyzers.Sobelow.run_with_output(scope, runner_opts) do
         {:ok, problems, output} ->
           {:ok,
@@ -136,8 +151,8 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  def run("exunit", %Scope{} = scope, args, opts) do
-    exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
+  defp run_resolved("exunit", %Scope{} = _scope, args, opts) do
+    exec_opts = [environment: opts[:environment], cwd: opts[:cwd]] |> maybe_output_file(opts)
 
     case Tests.execute(args, exec_opts) do
       {:ok, test_run} ->
@@ -161,8 +176,8 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  def run("spex", %Scope{} = scope, args, opts) do
-    exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
+  defp run_resolved("spex", %Scope{} = _scope, args, opts) do
+    exec_opts = [environment: opts[:environment], cwd: opts[:cwd]] |> maybe_output_file(opts)
 
     case Spex.execute(args, exec_opts) do
       {:ok, failures, exit_code, output} ->

@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
 
         id = start_agent(context)
         on_exit(fn -> Machine.stop_agent(id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(id)
+        assert {:ok, %{busy?: false}} = Machine.status(id)
         assert Fixtures.role_queue_size(context.scope, id) == 0
 
         {:reply, conversation, _} = ReadAgentConversation.execute(%{agent_id: id}, frame(context))
@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
       end
 
       then_ "no turn or message is delivered and the same durable agent remains idle", context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert Machine.history(context.agent_id) == context.history_before
         assert Enum.sort(Machine.running()) == context.agents_before
         assert listing(context) =~ context.agent_id

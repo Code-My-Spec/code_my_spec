@@ -2,7 +2,11 @@ defmodule CodeMySpec.Promotion.Runner do
   @moduledoc """
   Where a promotion's disk operations actually run.
 
-  `precheck/3` and `merge/4` still split on the environment rather than being
+  Disk operation APIs take an `Environment.t() | nil` directly. The copy ID is
+  a separate transport address: it selects which harness receives a remote
+  request and is never inferred from `Environment.ref`.
+
+  `precheck/3` and `merge/4` split on the environment rather than being
   configured:
 
     * `:local` — the checkout is on this machine, so `Steps` is called directly.
@@ -52,28 +56,36 @@ defmodule CodeMySpec.Promotion.Runner do
   # channel instead of a shell, so the same ceiling applies.
   @restart_timeout 600_000
   @git_timeout 60_000
+  # Each drop boots `mix` in the test env, which compiles a candidate the gate
+  # has not built yet; its analyzers reuse that build.
+  @reset_timeout 600_000
 
   @doc """
   What is on this checkout, and is it safe to move. `main` is main's HEAD,
   which the checkout must contain (`Steps.precheck/3`).
   """
-  @spec precheck(Scope.t(), String.t(), Ecto.UUID.t() | nil, String.t() | nil) ::
+  @spec precheck(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil, String.t() | nil) ::
           Steps.result()
-  def precheck(scope, root, copy_id, main \\ nil) do
+  def precheck(environment, root, copy_id, main \\ nil) do
     payload = %{"root" => root, "main" => main}
 
-    run(scope, copy_id, "promotion_precheck", payload, @git_timeout, fn env ->
+    run(environment, copy_id, "promotion_precheck", payload, @git_timeout, fn env ->
       Steps.precheck(env, root, main)
     end)
   end
 
   @doc "Build a promotion batch in the gate checkout at `root` (`Steps.build_batch/4`)."
-  @spec build_batch(Scope.t(), String.t(), String.t(), [String.t()], Ecto.UUID.t() | nil) ::
-          Steps.result()
-  def build_batch(scope, root, base, commits, copy_id),
+  @spec build_batch(
+          Environment.t() | nil,
+          String.t(),
+          String.t(),
+          [String.t()],
+          Ecto.UUID.t() | nil
+        ) :: Steps.result()
+  def build_batch(environment, root, base, commits, copy_id),
     do:
       run(
-        scope,
+        environment,
         copy_id,
         "promotion_build_batch",
         %{"root" => root, "base" => base, "commits" => commits},
@@ -81,13 +93,36 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.build_batch(env, root, base, commits) end
       )
 
-  @doc "Which of `commits` `base` already contains (`Steps.contained/4`)."
-  @spec contained(Scope.t(), String.t(), String.t(), [String.t()], Ecto.UUID.t() | nil) ::
+  @doc """
+  Drop the gate copy's test databases (`Steps.reset_test_databases/3`). The
+  harness holding the copy names them; a local environment has none of the
+  harness's partitions and drops nothing.
+  """
+  @spec reset_test_databases(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) ::
           Steps.result()
-  def contained(scope, root, base, commits, copy_id),
+  def reset_test_databases(environment, root, copy_id),
     do:
       run(
-        scope,
+        environment,
+        copy_id,
+        "promotion_reset_test_databases",
+        %{"root" => root},
+        @reset_timeout,
+        fn env -> Steps.reset_test_databases(env, root, []) end
+      )
+
+  @doc "Which of `commits` `base` already contains (`Steps.contained/4`)."
+  @spec contained(
+          Environment.t() | nil,
+          String.t(),
+          String.t(),
+          [String.t()],
+          Ecto.UUID.t() | nil
+        ) :: Steps.result()
+  def contained(environment, root, base, commits, copy_id),
+    do:
+      run(
+        environment,
         copy_id,
         "promotion_contained",
         %{"root" => root, "base" => base, "commits" => commits},
@@ -96,11 +131,12 @@ defmodule CodeMySpec.Promotion.Runner do
       )
 
   @doc "Merge `branch` into the checkout at `root`."
-  @spec merge(Scope.t(), String.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
-  def merge(scope, root, branch, copy_id),
+  @spec merge(Environment.t() | nil, String.t(), String.t(), Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def merge(environment, root, branch, copy_id),
     do:
       run(
-        scope,
+        environment,
         copy_id,
         "promotion_merge",
         %{"root" => root, "branch" => branch},
@@ -108,18 +144,37 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.merge(env, root, branch) end
       )
 
-  @doc "The checkout at `root`'s HEAD and current version, moving nothing."
-  @spec current(Scope.t(), String.t(), Ecto.UUID.t() | nil) :: Steps.result()
-  def current(scope, root, copy_id),
+  @doc "The paths that differ between `from` and `to` at `root` (`Steps.changed/4`)."
+  @spec changed(Environment.t() | nil, String.t(), String.t(), String.t(), Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def changed(environment, root, from, to, copy_id),
     do:
-      run(scope, copy_id, "promotion_current", %{"root" => root}, @git_timeout, fn env ->
+      run(
+        environment,
+        copy_id,
+        "promotion_changed",
+        %{"root" => root, "from" => from, "to" => to},
+        @git_timeout,
+        fn env -> Steps.changed(env, root, from, to) end
+      )
+
+  @doc "The checkout at `root`'s HEAD and current version, moving nothing."
+  @spec current(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
+  def current(environment, root, copy_id),
+    do:
+      run(environment, copy_id, "promotion_current", %{"root" => root}, @git_timeout, fn env ->
         Steps.current(env, root)
       end)
 
   @doc "Check out in `root`'s `.code_my_spec` the commit a merge pinned, fetched from `source`."
-  @spec sync_submodule(Scope.t(), String.t(), String.t(), map(), Ecto.UUID.t() | nil) ::
-          Steps.result()
-  def sync_submodule(scope, root, source, merge, copy_id) do
+  @spec sync_submodule(
+          Environment.t() | nil,
+          String.t(),
+          String.t(),
+          map(),
+          Ecto.UUID.t() | nil
+        ) :: Steps.result()
+  def sync_submodule(environment, root, source, merge, copy_id) do
     moved = %{
       before: Map.get(merge, :before),
       after: Map.get(merge, :after),
@@ -134,7 +189,7 @@ defmodule CodeMySpec.Promotion.Runner do
       "version" => moved.version
     }
 
-    run(scope, copy_id, "promotion_submodule", payload, @git_timeout, fn env ->
+    run(environment, copy_id, "promotion_submodule", payload, @git_timeout, fn env ->
       Steps.sync_submodule(env, root, source, moved)
     end)
   end
@@ -253,7 +308,7 @@ defmodule CodeMySpec.Promotion.Runner do
   # that is the id the channel is registered under — not the root, because two
   # checkouts of one project are two working copies and a path cannot tell them
   # apart.
-  defp run(%Scope{environment: %Environment{type: :harness}}, nil, op, _payload, _timeout, _local) do
+  defp run(%Environment{type: :harness}, nil, op, _payload, _timeout, _local) do
     {:error,
      %{
        reason:
@@ -263,7 +318,7 @@ defmodule CodeMySpec.Promotion.Runner do
   end
 
   defp run(
-         %Scope{environment: %Environment{type: :harness}},
+         %Environment{type: :harness},
          copy_id,
          op,
          payload,
@@ -275,11 +330,10 @@ defmodule CodeMySpec.Promotion.Runner do
     |> decode()
   end
 
-  defp run(%Scope{environment: nil}, _copy_id, op, _payload, _timeout, _local) do
-    {:error, %{reason: "cannot run #{op}: there is no environment on this scope."}}
-  end
+  defp run(nil, _copy_id, op, _payload, _timeout, _local),
+    do: {:error, %{reason: "cannot run #{op}: there is no environment."}}
 
-  defp run(%Scope{environment: env}, _copy_id, _op, _payload, _timeout, local), do: local.(env)
+  defp run(%Environment{} = env, _copy_id, _op, _payload, _timeout, local), do: local.(env)
 
   # The far side answers in JSON, so a map that left as atoms comes back with
   # string keys. Converted here rather than at each call site, because a caller

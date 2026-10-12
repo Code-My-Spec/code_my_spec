@@ -701,7 +701,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # and a pending message that vanished on refresh reads as one that was never
   # accepted.
   defp pending_for(nil), do: []
-  defp pending_for(conversation), do: Conversations.pending_messages(conversation)
+  defp pending_for(conversation), do: Agents.Mailbox.waiting_messages(conversation)
 
   # Each pending row, with the run of promotion notices it folds (empty when it
   # is not one). A run is one row; each notice in it can still be taken back.
@@ -1602,7 +1602,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_info({:message_updated, message}, socket) do
     {:noreply,
      socket
-     |> assign(:pending, drop_ref(socket, message.delivery_ref))
+     |> assign(:pending, pending_for(socket.assigns.conversation))
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
@@ -2247,16 +2247,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">
               {Message.text(notice)}
             </span>
-            <.withdraw_button :if={length(run) > 1} message={notice} />
+            <.withdraw_button
+              :if={length(run) > 1 and notice.mailbox_state in ["queued", "claimed"]}
+              message={notice}
+            />
           </div>
         </details>
         <span :if={run == []} class="min-w-0 whitespace-pre-wrap break-words">
           {Message.text(message)}
         </span>
         <span class="opacity-60">
-          waiting for the agent to finish its turn
+          {message.delivery_diagnostic || message.mailbox_state || "queued"}
         </span>
-        <.withdraw_button :if={length(run) < 2} message={message} />
+        <.withdraw_button
+          :if={length(run) < 2 and message.mailbox_state in ["queued", "claimed"]}
+          message={message}
+        />
       </div>
 
       <form

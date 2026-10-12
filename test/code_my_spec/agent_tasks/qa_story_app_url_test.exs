@@ -26,8 +26,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
 
   defp prompt_without_a_working_copy do
     tmp_dir = CodeMySpec.TempFile.owned_dir("qa_story_app_url")
-    scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    scope = working_copy_scope_fixture()
+    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
+    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
     story = story_fixture(scope)
 
     plan_path = Path.join(tmp_dir, ".code_my_spec/qa/plan.md")
@@ -39,12 +40,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
     # embedding and file paths read this field and need it present.
     scope = %{scope | active_working_copy_id: nil}
 
-    {:ok, prompt} =
-      QaStory.command(scope, %{
-        project_id: scope.active_project.id,
-        component_id: nil,
-        story_id: story.id
-      })
+    {_, id, session} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
+    {:ok, prompt} = QaStory.command(scope, CodeMySpec.TaskOwner.find_task(session, id))
 
     prompt
   end

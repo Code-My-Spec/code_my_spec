@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
         assert {:ok, _} =
                  Machine.start_agent(context.agent_id, context.copy, base_url: context.base_url)
 
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
         {:ok, Map.put(context, :restarted_frame, frame)}
       end

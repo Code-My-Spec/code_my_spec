@@ -3,7 +3,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1718Spex do
   Story 1081 -- My app's logs and traces land in my own ClickHouse
   Criterion 1718 -- Telemetry shows unchecked until Sam checks it.
 
-  Checks are manual only (`Provisioning.Step`'s own documented design) --
+  Checks are manual only (`ProvisioningPlan.Step`'s own documented design) --
   nothing re-verifies a step on mount, on a timer, or as a side effect.
 
   Surface: `CodeMySpecWeb.ConsoleLive`'s Checks tab.
@@ -24,7 +24,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1718Spex do
     scenario "the panel reads unchecked before anyone has run a check" do
       given_ "UAT telemetry was set up an hour ago and never checked", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         run_console_step(view, :telemetry)
         await_console_step(view, :telemetry)

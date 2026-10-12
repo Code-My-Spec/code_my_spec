@@ -57,6 +57,11 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
       <:item :if={@issue.resolution} title="Resolution">
         <p class="whitespace-pre-wrap">{@issue.resolution}</p>
       </:item>
+      <:item :if={@issue.assigned_working_copy_id} title="Assigned to">
+        <span data-test="assigned-working-copy">
+          {assigned_copy_name(@issue, @working_copies)}
+        </span>
+      </:item>
       <:item title="Created">{Calendar.strftime(@issue.inserted_at, "%b %d, %Y %H:%M")}</:item>
     </.list>
 
@@ -102,6 +107,15 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
         />
         <button type="submit" class="btn btn-sm btn-primary">Assign</button>
       </form>
+
+      <button
+        :if={@issue.status == :accepted and @issue.assigned_working_copy_id != nil}
+        phx-click="unassign_from_working_copy"
+        data-test="unassign-issue-from-working-copy"
+        class="btn btn-sm btn-ghost mt-4"
+      >
+        Remove from working copy
+      </button>
 
       <form
         :if={@show_form == :dismiss}
@@ -205,6 +219,21 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
 
   def handle_event("assign_to_working_copy", _params, socket), do: {:noreply, socket}
 
+  def handle_event("unassign_from_working_copy", _params, socket) do
+    case Agents.assign_issue_to_working_copy(
+           socket.assigns.current_scope,
+           socket.assigns.issue.id,
+           nil
+         ) do
+      {:ok, issue} ->
+        {:noreply,
+         socket |> assign_issue(issue) |> put_flash(:info, "Issue removed from working copy.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to remove issue from working copy.")}
+    end
+  end
+
   @impl true
   def handle_event("show_dismiss_form", _params, socket) do
     {:noreply, assign(socket, :show_form, :dismiss)}
@@ -274,6 +303,13 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
 
   defp issue_story(_scope, %{story_id: nil}), do: nil
   defp issue_story(scope, %{story_id: story_id}), do: Stories.get_story(scope, story_id)
+
+  defp assigned_copy_name(%{assigned_working_copy_id: id}, working_copies) do
+    case Enum.find(working_copies, &(&1.id == id)) do
+      nil -> "a working copy no longer on this project"
+      copy -> WorkingCopies.display_name(copy)
+    end
+  end
 
   defp has_screenshot?(%{attachments: attachments}) when is_list(attachments) do
     Enum.any?(attachments, &(is_map(&1) and &1["type"] == "screenshot"))

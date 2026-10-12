@@ -134,7 +134,7 @@ visible to all later steps. Useful keys produced by standard setup:
 | `user` | `:register_and_log_in_user` | The logged-in user |
 | `account` | `:setup_active_account` | The active account |
 | `project` | `:setup_active_project` | The active project row |
-| `scope` | `:setup_active_project` | A `%Scope{}` with `cwd` + `environment` |
+| `scope` | `:setup_active_project` | A `%Scope{}` with project/working-copy identity and `cwd`; resolve runtime explicitly |
 | `environment` | `:setup_active_project` | The in-memory env |
 | `component` | `:synced_context_component` | Component produced by real sync |
 | `config_live` | `:on_configuration_page` | The mounted configuration LiveView |

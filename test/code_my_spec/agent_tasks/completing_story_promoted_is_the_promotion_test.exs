@@ -30,6 +30,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Repo
@@ -136,7 +137,9 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     a_harness(copy.id)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script(git))
-    scope = %{scope | active_working_copy_id: copy.id, environment: env}
+    :ok = Environments.register({:working_copy, copy.id}, env)
+    :ok = Environments.register({:working_copy, running.id}, env)
+    scope = %{scope | active_working_copy_id: copy.id}
 
     {:ok, coder} =
       AgentsRepository.create_agent(scope, %{
@@ -161,8 +164,12 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     %{scope: scope, copy: copy, coder: coder, story: story, task: %{story_id: story.id}}
   end
 
-  # Promotion comes after QA; a story QA has not passed is refused.
-  defp qa(scope, story, :passed), do: {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
+  # Promotion comes after QA; a story QA has not passed is refused. Certified
+  # at the copy's HEAD, since promotion asks at the candidate commit.
+  defp qa(scope, story, :passed) do
+    {:ok, _} = Stories.set_qa_ready(scope, story, @head)
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
+  end
   defp qa(_scope, _story, :not_passed), do: :ok
 
   defp queued(scope) do

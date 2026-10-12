@@ -8,8 +8,8 @@ defmodule CmsHarness.Migrate do
   once, and halts on the outcome. The harness itself still holds no database.
   """
 
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Migration
-  alias CodeMySpec.Users.Scope
 
   @doc """
   Whether this boot is `cms migrate`.
@@ -44,7 +44,7 @@ defmodule CmsHarness.Migrate do
     with {:ok, cloud_project_id} <- target(argv),
          working_dir = File.cwd!(),
          {:ok, project} <- CodeMySpec.Projects.resolve_local_project(working_dir),
-         {:ok, scope} <- Scope.for_local_project(project, working_dir) do
+         {:ok, scope} <- LocalScope.for_local_project(project, working_dir) do
       IO.puts("Migrating #{project.name} to cloud project #{cloud_project_id}…")
 
       Migration.Client.migrate(

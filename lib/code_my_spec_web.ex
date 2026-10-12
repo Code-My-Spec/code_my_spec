@@ -85,6 +85,7 @@ defmodule CodeMySpecWeb do
       # goes back out as `fs_request` — see `Promotion.Runner`.
       CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Requirements,
@@ -102,9 +103,8 @@ defmodule CodeMySpecWeb do
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
+      CodeMySpec.LocalScope,
       CodeMySpec.Utils,
-      # Attaches `Validation.RunReconciled` at app start.
-      CodeMySpec.Validation,
       CodeMySpec.WorkingCopies,
       CodeMySpec.Workspaces,
       # The desktop user's scope, in place of a session (bb8bc042).

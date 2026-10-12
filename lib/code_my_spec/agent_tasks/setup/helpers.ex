@@ -24,7 +24,8 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   """
   @spec app_name(Scope.t()) :: String.t()
   def app_name(%Scope{} = scope) do
-    synced_app_name(scope) || extract_app_name(scope.environment) || "your_app"
+    synced_app_name(scope) || extract_app_name(CodeMySpec.AgentTasks.environment(scope)) ||
+      "your_app"
   end
 
   @doc """

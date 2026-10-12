@@ -201,7 +201,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3515Spex do
   end
 
   defp number(row, test_id) do
-    ~r/data-test="#{test_id}"[^>]*>\s*(?:settled|recomputed)?\s*(\d+)/
+    ~r/data-test="#{test_id}"[^>]*>\s*(?:handled mark\/checkouts|fallback mark\/checkouts)?\s*(\d+)/
     |> Regex.run(row)
     |> then(fn
       [_match, value] -> String.to_integer(value)

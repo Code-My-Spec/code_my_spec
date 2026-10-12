@@ -32,7 +32,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigosCommandTest do
   alias CodeMySpec.AgentTasks.ThreeAmigos
 
   setup do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
 
     story =
       story_fixture(scope, %{

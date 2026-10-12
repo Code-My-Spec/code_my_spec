@@ -14,7 +14,9 @@ defmodule CodeMySpecWeb.ContentLive do
   import CodeMySpecWeb.ContentLive.Helpers
 
   alias CodeMySpec.ContentPublishing
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def mount(_params, _session, socket) do
@@ -60,7 +62,10 @@ defmodule CodeMySpecWeb.ContentLive do
   end
 
   def handle_event("sync", _params, socket) do
-    case ContentPublishing.sync(socket.assigns.scope) do
+    scope = socket.assigns.scope
+    environment = content_environment(scope, socket.assigns.project)
+
+    case ContentPublishing.sync(scope, environment) do
       {:ok, counts} ->
         {:noreply,
          socket
@@ -72,6 +77,9 @@ defmodule CodeMySpecWeb.ContentLive do
 
       {:error, :no_source_path} ->
         {:noreply, put_flash(socket, :error, "Set a content source directory first")}
+
+      {:error, :no_environment} ->
+        {:noreply, put_flash(socket, :error, "No local working directory is available")}
     end
   end
 
@@ -86,12 +94,20 @@ defmodule CodeMySpecWeb.ContentLive do
 
       {:error, %{message: message}} ->
         {:noreply,
-         socket |> assign(publish_error: message, publish_sync_id: nil) |> put_flash(:error, message)}
+         socket
+         |> assign(publish_error: message, publish_sync_id: nil)
+         |> put_flash(:error, message)}
 
       {:error, reason} ->
         {:noreply, assign(socket, publish_error: inspect(reason), publish_sync_id: nil)}
     end
   end
+
+  defp content_environment(%{active_working_copy_id: id} = scope, _project)
+       when not is_nil(id),
+       do: WorkingCopies.environment(scope)
+
+  defp content_environment(_scope, project), do: LocalScope.environment(project)
 
   defp publish_message(%{total: total} = result) do
     breakdown =

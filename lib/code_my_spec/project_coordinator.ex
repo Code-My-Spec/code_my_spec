@@ -13,7 +13,9 @@ defmodule CodeMySpec.ProjectCoordinator do
     deps: [
       CodeMySpec.Components,
       CodeMySpec.Environments,
-      CodeMySpec.Paths
+      CodeMySpec.LocalScope,
+      CodeMySpec.Paths,
+      CodeMySpec.WorkingCopies
     ],
     exports: :all
 
@@ -22,6 +24,8 @@ defmodule CodeMySpec.ProjectCoordinator do
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.LocalScope
+  alias CodeMySpec.WorkingCopies
 
   @tasks_dir CodeMySpec.Paths.tasks_dir()
 
@@ -35,33 +39,46 @@ defmodule CodeMySpec.ProjectCoordinator do
   For each actionable item, calls the task module's `command/2` to generate
   the prompt content, writes it to the status directory, and returns metadata.
   """
-  @spec generate_prompt_files(any(), map(), [map()], String.t()) :: {:ok, [map()]}
-  def generate_prompt_files(scope, session, actionable, status_dir) do
-    Logger.info(
-      "[ProjectCoordinator] Generating #{length(actionable)} prompt files in #{status_dir}"
-    )
+  @spec generate_prompt_files(any(), map(), [map()], String.t()) ::
+          {:ok, [map()]} | {:error, :no_environment}
+  @spec generate_prompt_files(any(), map(), [map()], String.t(), keyword()) ::
+          {:ok, [map()]} | {:error, :no_environment}
+  def generate_prompt_files(scope, session, actionable, status_dir, opts \\ [])
 
-    prompt_files =
-      Enum.map(actionable, fn %{component: component, task_module: task_module} ->
-        child_session = %{component: component, project: session.project}
-        {:ok, prompt_content} = task_module.command(scope, child_session)
+  def generate_prompt_files(_scope, _session, [], _status_dir, _opts), do: {:ok, []}
 
-        safe_name = safe_filename(component.module_name)
-        suffix = task_module_suffix(task_module)
-        file_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
+  def generate_prompt_files(scope, session, actionable, status_dir, opts) do
+    environment = env(scope, opts)
 
-        :ok = Environments.write_file(scope.environment, file_path, prompt_content)
-        Logger.info("[ProjectCoordinator]   #{suffix} → #{file_path}")
+    if is_nil(environment) do
+      {:error, :no_environment}
+    else
+      Logger.info(
+        "[ProjectCoordinator] Generating #{length(actionable)} prompt files in #{status_dir}"
+      )
 
-        %{
-          component: component,
-          task_module: task_module,
-          file_path: file_path,
-          suffix: suffix
-        }
-      end)
+      prompt_files =
+        Enum.map(actionable, fn %{component: component, task_module: task_module} ->
+          child_session = %{component: component, project: session.project}
+          {:ok, prompt_content} = task_module.command(scope, child_session)
 
-    {:ok, prompt_files}
+          safe_name = safe_filename(component.module_name)
+          suffix = task_module_suffix(task_module)
+          file_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
+
+          :ok = Environments.write_file(environment, file_path, prompt_content)
+          Logger.info("[ProjectCoordinator]   #{suffix} → #{file_path}")
+
+          %{
+            component: component,
+            task_module: task_module,
+            file_path: file_path,
+            suffix: suffix
+          }
+        end)
+
+      {:ok, prompt_files}
+    end
   end
 
   @doc """
@@ -138,8 +155,13 @@ defmodule CodeMySpec.ProjectCoordinator do
 
   - `:status_dir` — override status directory (defaults to component-derived path)
   """
-  @spec default_orchestrate(module(), any(), map(), keyword()) :: {:ok, map()}
+  @spec default_orchestrate(module(), any(), map(), keyword()) ::
+          {:ok, map()} | {:error, :no_environment}
   def default_orchestrate(task_module, scope, task, opts) do
+    do_default_orchestrate(task_module, scope, task, opts, env(scope, opts))
+  end
+
+  defp do_default_orchestrate(task_module, scope, task, opts, environment) do
     {module_name, status_dir} = resolve_task_identity(scope, task, opts)
     safe_name = safe_filename(module_name)
     suffix = task_module_suffix(task_module)
@@ -149,36 +171,40 @@ defmodule CodeMySpec.ProjectCoordinator do
     prompt_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
     problem_path = "#{status_dir}/#{safe_name}_#{suffix}_problems.md"
 
-    {complete, problems} =
-      case task_module.evaluate(scope, task) do
-        {:ok, :valid} ->
-          Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: complete")
-          cleanup_file(scope.environment, prompt_path)
-          cleanup_file(scope.environment, problem_path)
-          {true, nil}
+    case task_module.evaluate(scope, task) do
+      {:ok, :valid} ->
+        Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: complete")
+        cleanup_file(environment, prompt_path)
+        cleanup_file(environment, problem_path)
+        orchestration_result(module_name, suffix, prompt_path, problem_path, true, nil)
 
-        {:ok, :invalid, feedback} ->
-          Logger.info(
-            "[ProjectCoordinator] #{suffix} for #{module_name}: incomplete, writing prompt"
-          )
+      {:ok, :invalid, _feedback} when is_nil(environment) ->
+        {:error, :no_environment}
 
-          {:ok, prompt_content} = task_module.command(scope, task)
-          :ok = Environments.write_file(scope.environment, prompt_path, prompt_content)
-          :ok = Environments.write_file(scope.environment, problem_path, feedback)
-          {false, feedback}
-      end
+      {:ok, :invalid, feedback} ->
+        Logger.info(
+          "[ProjectCoordinator] #{suffix} for #{module_name}: incomplete, writing prompt"
+        )
 
+        {:ok, prompt_content} = task_module.command(scope, task)
+        :ok = Environments.write_file(environment, prompt_path, prompt_content)
+        :ok = Environments.write_file(environment, problem_path, feedback)
+        orchestration_result(module_name, suffix, prompt_path, problem_path, false, feedback)
+    end
+  end
+
+  defp orchestration_result(module_name, suffix, prompt_path, problem_path, complete, problems) do
     orchestration_prompt =
-      cond do
-        complete ->
+      case {complete, problems} do
+        {true, _} ->
           "[x] #{suffix} for #{module_name} complete."
 
-        not is_nil(problems) ->
+        {false, nil} ->
+          "[ ] #{suffix} for #{module_name}: read prompt at `#{prompt_path}`"
+
+        {false, _feedback} ->
           "[ ] #{suffix} for #{module_name} has problems. " <>
             "Fix the problems at `#{problem_path}` (full spec at `#{prompt_path}`)"
-
-        true ->
-          "[ ] #{suffix} for #{module_name}: read prompt at `#{prompt_path}`"
       end
 
     {:ok,
@@ -202,8 +228,13 @@ defmodule CodeMySpec.ProjectCoordinator do
 
   - `:status_dir` — override status directory (defaults to component-derived path)
   """
-  @spec default_orchestrate_evaluate(module(), any(), map(), keyword()) :: {:ok, map()}
+  @spec default_orchestrate_evaluate(module(), any(), map(), keyword()) ::
+          {:ok, map()} | {:error, :no_environment}
   def default_orchestrate_evaluate(task_module, scope, task, opts) do
+    do_default_orchestrate_evaluate(task_module, scope, task, opts, env(scope, opts))
+  end
+
+  defp do_default_orchestrate_evaluate(task_module, scope, task, opts, environment) do
     {module_name, status_dir} = resolve_task_identity(scope, task, opts)
     safe_name = safe_filename(module_name)
     suffix = task_module_suffix(task_module)
@@ -211,24 +242,27 @@ defmodule CodeMySpec.ProjectCoordinator do
     prompt_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
     problem_path = "#{status_dir}/#{safe_name}_#{suffix}_problems.md"
 
-    {complete, _problems} =
-      case task_module.evaluate(scope, task) do
-        {:ok, :valid} ->
-          Logger.info("[ProjectCoordinator] #{suffix} evaluate for #{module_name}: complete")
-          # Clean up prompt and problems files
-          cleanup_file(scope.environment, prompt_path)
-          cleanup_file(scope.environment, problem_path)
-          {true, nil}
+    case task_module.evaluate(scope, task) do
+      {:ok, :valid} ->
+        Logger.info("[ProjectCoordinator] #{suffix} evaluate for #{module_name}: complete")
+        cleanup_file(environment, prompt_path)
+        cleanup_file(environment, problem_path)
+        evaluate_result(module_name, suffix, problem_path, true)
 
-        {:ok, :invalid, feedback} ->
-          Logger.info(
-            "[ProjectCoordinator] #{suffix} evaluate for #{module_name}: incomplete, writing problems"
-          )
+      {:ok, :invalid, _feedback} when is_nil(environment) ->
+        {:error, :no_environment}
 
-          :ok = Environments.write_file(scope.environment, problem_path, feedback)
-          {false, feedback}
-      end
+      {:ok, :invalid, feedback} ->
+        Logger.info(
+          "[ProjectCoordinator] #{suffix} evaluate for #{module_name}: incomplete, writing problems"
+        )
 
+        :ok = Environments.write_file(environment, problem_path, feedback)
+        evaluate_result(module_name, suffix, problem_path, false)
+    end
+  end
+
+  defp evaluate_result(module_name, suffix, problem_path, complete) do
     orchestration_prompt =
       if complete do
         "[x] #{suffix} for #{module_name} complete."
@@ -247,21 +281,28 @@ defmodule CodeMySpec.ProjectCoordinator do
   @doc """
   Write a prompt file for a component/task and return metadata.
   """
-  @spec write_prompt_file(any(), map(), module(), String.t(), keyword()) :: map()
+  @spec write_prompt_file(any(), map(), module(), String.t(), keyword()) ::
+          map() | {:error, :no_environment}
   def write_prompt_file(scope, component, task_module, prompt_content, opts) do
+    environment = env(scope, opts)
     status_dir = Keyword.fetch!(opts, :status_dir)
     safe_name = safe_filename(component.module_name)
     suffix = task_module_suffix(task_module)
     file_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
 
-    :ok = Environments.write_file(scope.environment, file_path, prompt_content)
+    case environment do
+      nil ->
+        {:error, :no_environment}
 
-    %{
-      component: component,
-      task_module: task_module,
-      file_path: file_path,
-      suffix: suffix
-    }
+      _ ->
+        write_prompt_file(environment, component, task_module, prompt_content, file_path, suffix)
+    end
+  end
+
+  defp write_prompt_file(environment, component, task_module, prompt_content, file_path, suffix) do
+    :ok = Environments.write_file(environment, file_path, prompt_content)
+
+    %{component: component, task_module: task_module, file_path: file_path, suffix: suffix}
   end
 
   @doc """
@@ -341,7 +382,8 @@ defmodule CodeMySpec.ProjectCoordinator do
   # ============================================================================
 
   # Deletes go through the same environment the writes did. They used to unwrap
-  # `scope.environment.cwd` and hand the joined path to File.rm, which meant a
+  # the scope's execution environment cwd and hand the joined path to File.rm,
+  # which meant a
   # prompt written onto a sprite was deleted from whatever machine happened to
   # run the evaluation — so the prompt survived, and the agent kept being told
   # to redo work it had finished.
@@ -356,6 +398,18 @@ defmodule CodeMySpec.ProjectCoordinator do
   defp cleanup_file(nil, _relative_path) do
     :ok
   end
+
+  defp env(scope, opts) when is_list(opts) do
+    case Keyword.fetch(opts, :environment) do
+      {:ok, environment} -> environment
+      :error -> selected_environment(scope)
+    end
+  end
+
+  defp selected_environment(%{active_working_copy_id: id} = scope) when not is_nil(id),
+    do: WorkingCopies.environment(scope)
+
+  defp selected_environment(scope), do: LocalScope.environment(Map.get(scope, :active_project))
 
   defp agent_for_suffix(suffix) do
     cond do

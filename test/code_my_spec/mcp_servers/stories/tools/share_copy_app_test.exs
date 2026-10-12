@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ShareCopyAppTest do
   end
 
   describe "ShareCopyApp tool" do
-    test "shares a same-device sibling's tunnel for the caller's own serving copy" do
+    test "routes the caller's own serving copy on its machine's tunnel" do
       scope = full_scope_fixture()
       device = device_fixture(scope)
 
@@ -34,6 +34,13 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ShareCopyAppTest do
           preview_url: "https://preview-#{main.id}.astralbi.com",
           preview_tunnel_id: tunnel_id,
           preview_tunnel_secret: "s3cret"
+        })
+
+      # The machine's one tunnel (story 1117), which every copy on it shares.
+      {:ok, _device} =
+        CodeMySpec.Devices.record_tunnel(device.id, %{
+          tunnel_id: tunnel_id,
+          tunnel_secret: "s3cret"
         })
 
       {:ok, sibling} = WorkingCopies.issue(scope, nil, label: "worktree", device: device)

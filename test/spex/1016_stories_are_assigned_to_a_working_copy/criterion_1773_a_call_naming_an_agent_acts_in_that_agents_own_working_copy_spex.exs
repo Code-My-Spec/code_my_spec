@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion1773Spex do
       end
 
       when_ "the coding agent writes the proposal, naming itself and no copy", context do
-        no_copy = %{context.scope | active_working_copy_id: nil, environment: nil}
+        no_copy = %{context.scope | active_working_copy_id: nil}
         {text, scope} = hosted_call(no_copy, context.coding)
         {:ok, Map.merge(context, %{text: text, acted_in: scope})}
       end

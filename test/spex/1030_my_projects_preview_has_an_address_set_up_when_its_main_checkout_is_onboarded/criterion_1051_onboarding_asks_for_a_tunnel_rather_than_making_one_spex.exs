@@ -50,6 +50,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
         # this is reached.
         reply = join_working_copy(context, "/workspace/main", "main")
 
+        :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
+
         :ok =
           Environments.write_file(
             context.environment,

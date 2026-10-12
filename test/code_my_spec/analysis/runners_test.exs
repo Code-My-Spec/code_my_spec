@@ -11,7 +11,10 @@ defmodule CodeMySpec.Analysis.RunnersTest do
   alias CodeMySpec.Analysis.Runners
 
   setup do
-    %{scope: full_scope_fixture() |> Map.put(:cwd, File.cwd!())}
+    scope =
+      full_scope_fixture() |> Map.put(:active_working_copy_id, nil) |> Map.put(:cwd, File.cwd!())
+
+    %{scope: scope}
   end
 
   describe "a tool that never ran" do
@@ -35,6 +38,22 @@ defmodule CodeMySpec.Analysis.RunnersTest do
         # stats["error"], so a failed run says why rather than just "failed".
         assert excerpt =~ "Could not find a Mix.Project"
       end
+    end
+  end
+
+  describe "environment resolution" do
+    test "an explicit nil environment refuses execution even when the scope has a stale one",
+         %{scope: scope} do
+      scope = %{scope | cwd: nil}
+
+      assert {:error, :no_environment} =
+               Runners.run("compiler", scope, [], environment: nil)
+    end
+
+    test "a direct runner call without any runtime refuses to execute", %{scope: scope} do
+      scope = put_fixture_environment(scope, nil)
+
+      assert {:error, :no_environment} = Runners.run("compiler", scope, [], [])
     end
   end
 

@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   use Boundary,
     top_level?: true,
+    exports: [GraphVerification, StoryIssueBag],
     deps: [
       CmsHarness,
       CodeMySpec,
@@ -40,6 +41,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Configurations,
       CodeMySpec.Conversations,
       CodeMySpec.Deploys,
+      CodeMySpec.Devices,
       CodeMySpec.Environments,
       CodeMySpec.Epics,
       CodeMySpec.Events,
@@ -58,8 +60,10 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.ProjectSecrets,
       CodeMySpec.ProjectSync,
       CodeMySpec.Projects,
+      CodeMySpec.Qa,
       CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
@@ -117,6 +121,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox, as: AgentMailbox
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
@@ -148,12 +153,12 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Resend
-  alias CodeMySpec.Provisioning.Sequence
-  alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
+  alias CodeMySpec.ProvisioningPlan.Sequence
+  alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
@@ -957,6 +962,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec put_agent_mid_turn(Scope.t(), String.t()) :: :ok
   def put_agent_mid_turn(%Scope{} = scope, agent_id) do
+    consume_recorded_dispatch(scope, agent_id)
     CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_started"})
   end
 
@@ -1054,7 +1060,7 @@ defmodule CodeMySpecSpex.Fixtures do
       conversation ->
         conversation
         |> CodeMySpec.Conversations.list_messages()
-        |> Enum.filter(&(&1.role == :operator))
+        |> Enum.filter(&(&1.role == :operator and &1.delivery != :failed))
         |> Enum.map(&message_text/1)
     end
   end
@@ -1184,6 +1190,9 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate mark_cli_first_connected(user), to: UsersFixtures
 
   # -- Environments --
+  defdelegate fixture_environment(scope), to: UsersFixtures
+  defdelegate put_fixture_environment(scope, env), to: UsersFixtures
+
   defdelegate memory_environment_fixture(opts \\ []), to: EnvironmentFixtures
   defdelegate local_environment_fixture(opts \\ []), to: EnvironmentFixtures
   defdelegate register_environment(project_id, env), to: Environments, as: :register
@@ -1323,7 +1332,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     # Its own **environment**, not just its own path, and registered against its
     # own root. The hook does not trust the request: it rebuilds the scope from
-    # the harness row via `Scope.for_local_project/2`, which resolves the
+    # the harness row via `LocalScope.for_local_project/2`, which resolves the
     # environment from the registry. Registered per project — as it was — every
     # harness on the project resolved to the *same* env, so this agent scanned
     # the other one's working copy, found its spec, and re-projected the very
@@ -1334,7 +1343,7 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, env} = Environments.create(:memory, working_dir: root)
     :ok = Environments.register({:root, root}, env)
 
-    %{scope | active_working_copy_id: harness.id, cwd: root, environment: env}
+    %{scope | active_working_copy_id: harness.id, cwd: root}
   end
 
   @doc """
@@ -1364,7 +1373,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # disk, and what the server reads back goes over the wire.
     observed_env =
       case Keyword.get(opts, :observe_in) do
-        nil -> scope.environment
+        nil -> UsersFixtures.fixture_environment(scope)
         dir -> CodeMySpec.Environments.Environment.new(:local, dir)
       end
 
@@ -1409,6 +1418,22 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The project with no checkout anywhere: every working copy loses its root, so
+  none is a candidate host. The fixture scope's own copy is rooted, which is a
+  harness running somewhere as far as placing a new copy is concerned.
+  """
+  @spec without_checkouts(Scope.t()) :: :ok
+  def without_checkouts(%Scope{active_project_id: project_id}) do
+    {_, _} =
+      Repo.update_all(
+        from(w in WorkingCopy, where: w.project_id == ^project_id),
+        set: [root: nil]
+      )
+
+    :ok
+  end
+
+  @doc """
   Name the checkout a reader gets when it names none.
 
   `Projection.vantage/1` resolves a scope with no checkout to the project's
@@ -1441,6 +1466,46 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{
         default_working_copy_id: working_copy_id
+      })
+
+    :ok
+  end
+
+  @doc """
+  A machine that already runs a tunnel before the scenario starts — this Mac's
+  dev tunnel, today (story 1117). The device is announced the way its harness
+  would, then its tunnel recorded. State that predates the scenario, which is
+  what makes it a fixture rather than a step.
+  """
+  @spec record_machine_tunnel(Scope.t(), Ecto.UUID.t(), map()) :: :ok
+  def record_machine_tunnel(
+        %Scope{} = scope,
+        device_id,
+        %{tunnel_id: _, tunnel_secret: _} = tunnel
+      ) do
+    {:ok, _device} =
+      CodeMySpec.Devices.announce(scope, device_id, %{kind: :local, hostname: "johns-mac"})
+
+    {:ok, _device} = CodeMySpec.Devices.record_tunnel(device_id, tunnel)
+    :ok
+  end
+
+  @doc """
+  A main copy still holding the per-project tunnel it was given before story
+  1117: the old model, recorded on the copy itself.
+  """
+  @spec record_project_tunnel(Scope.t(), Ecto.UUID.t(), map()) :: :ok
+  def record_project_tunnel(%Scope{} = _scope, working_copy_id, %{
+        tunnel_id: id,
+        tunnel_secret: secret
+      }) do
+    {:ok, copy} = WorkingCopies.fetch(working_copy_id)
+
+    {:ok, _copy} =
+      WorkingCopies.record_preview_tunnel(copy, %{
+        preview_url: PreviewAddress.url(copy.id),
+        preview_tunnel_id: id,
+        preview_tunnel_secret: secret
       })
 
     :ok
@@ -1874,11 +1939,56 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc "Durable messages still waiting for an agent to consume them."
+  def queued_agent_messages(scope, agent_id) do
+    scope |> AgentMailbox.entries(agent_id) |> Enum.filter(&(&1.state in [:queued, :claimed]))
+  end
+
+  # Recording transports stop at the wire. These fixtures explicitly model the
+  # engine's consumption handshake before reporting that a turn began or ended.
+  defp consume_recorded_dispatch(scope, agent_id, ref \\ nil) do
+    entry =
+      Enum.find(AgentMailbox.entries(scope, agent_id), fn entry ->
+        entry.state == :claimed and (is_nil(ref) or entry.delivery_ref == ref)
+      end)
+
+    consume_recorded_entry(scope, agent_id, entry)
+  end
+
+  defp consume_recorded_entry(_scope, _agent_id, nil), do: :ok
+
+  defp consume_recorded_entry(scope, agent_id, entry) do
+    {:ok, agent} = AgentsRepository.fetch_agent(scope, agent_id)
+    generation = agent.mailbox_generation || "fixture-engine"
+    {:ok, :ok} = AgentMailbox.register(scope, agent_id, generation)
+    {:ok, _entry} = AgentMailbox.consume(scope, agent_id, entry.delivery_ref, generation)
+    :ok
+  end
+
+  @doc "Terminal evidence for the fixture engine’s current consumed message."
+  def mailbox_turn_end(scope, agent_id) do
+    scope
+    |> AgentMailbox.entries(agent_id)
+    |> Enum.find(&(&1.state == :consumed))
+    |> mailbox_terminal_event(scope, agent_id)
+  end
+
+  defp mailbox_terminal_event(nil, scope, agent_id) do
+    {:ok, agent} = AgentsRepository.fetch_agent(scope, agent_id)
+    generation = agent.mailbox_generation || "fixture-engine"
+    {:ok, :ok} = AgentMailbox.register(scope, agent_id, generation)
+    %{event: :turn_ended, ref: "work-#{Ecto.UUID.generate()}", generation: generation}
+  end
+
+  defp mailbox_terminal_event(entry, _scope, _agent_id),
+    do: %{event: :turn_ended, ref: entry.delivery_ref, generation: entry.generation}
+
   @doc "Deliver a queued message and begin its turn through the harness channel."
   def deliver_agent_message(%Scope{} = scope, agent_id, ref) do
+    consume_recorded_dispatch(scope, agent_id, ref)
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 
-    Enum.each([%{event: :message_delivered, ref: ref}, %{event: :turn_started}], fn event ->
+    Enum.each([Map.put(mailbox_turn_end(scope, agent_id), :event, :turn_started)], fn event ->
       case CodeMySpecWeb.HarnessProjectChannel.handle_in(
              "agent_turn_event",
              %{
@@ -1918,7 +2028,7 @@ defmodule CodeMySpecSpex.Fixtures do
            "agent_turn_event",
            %{
              "agent_id" => agent_id,
-             "event" => ChannelClient.encode_turn_event(%{event: :turn_ended})
+             "event" => ChannelClient.encode_turn_event(mailbox_turn_end(scope, agent_id))
            },
            socket
          ) do
@@ -1939,7 +2049,12 @@ defmodule CodeMySpecSpex.Fixtures do
 
       rest ->
         :ok =
-          CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, rest)
+          CodeMySpec.Agents.record_turn_event(
+            scope,
+            agent_id,
+            ChannelClient.encode_turn_event(mailbox_turn_end(scope, agent_id)),
+            rest
+          )
     end
   end
 
@@ -2725,7 +2840,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Files the harness scanned but could classify into no role."
   def unclassified_files(%Scope{} = scope),
-    do: Scanner.unclassified(scope.environment)
+    do: Scanner.unclassified(UsersFixtures.fixture_environment(scope))
 
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
@@ -3007,7 +3122,10 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec start_continuous_mode(map(), String.t()) :: :ok
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
-    case AgentTasks.SkillRouter.resolve(scope, %{"skill" => "implement", "external_id" => external_id}) do
+    case AgentTasks.SkillRouter.resolve(scope, %{
+           "skill" => "implement",
+           "external_id" => external_id
+         }) do
       {:ok, %{prompt: _}} -> :ok
       other -> raise "start_continuous_mode failed: #{inspect(other)}"
     end
@@ -3048,7 +3166,37 @@ defmodule CodeMySpecSpex.Fixtures do
   # Story 1038's criteria are about what a *running* agent carries and what a
   # script it runs can reach, so they start one. Through the bridge because
   # `CodeMySpecSpex` is its own Boundary and cannot name `CmsHarness` directly.
-  defdelegate launch_agent(request), to: CmsHarness.Agents, as: :launch
+  def launch_agent(request) do
+    callbacks = mailbox_callbacks(request["agent_id"])
+
+    request
+    |> Map.put("on_register", callbacks[:on_register])
+    |> Map.put("on_consume", callbacks[:on_consume])
+    |> CmsHarness.Agents.launch()
+  end
+
+  def mailbox_callbacks(agent_id) do
+    agent = Repo.get!(CodeMySpec.Agents.Agent, agent_id)
+
+    scope = %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id,
+      active_working_copy_id: agent.working_copy_id
+    }
+
+    [
+      on_register: fn id, generation ->
+        CodeMySpec.Agents.Mailbox.register(scope, id, generation)
+      end,
+      on_consume: fn id, ref, generation ->
+        CodeMySpec.Agents.Mailbox.consume(scope, id, ref, generation)
+      end
+    ]
+  end
+
+  def dispatch_agent_mail(_copy, agent, ref, text, timeout),
+    do: CmsHarness.Agents.send_message(agent.id, ref, text, timeout)
+
   defdelegate halt_agent(agent_id), to: CmsHarness.Agents, as: :halt
 
   @doc "What one agent is doing right now — mid-turn, and how much is behind it."
@@ -3057,19 +3205,18 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   Give an agent something to do without waiting for the turn.
 
-  `send_message/4` rather than `message/4`: a spec that waited would wait on a
-  model, and what these criteria are about is what happens to a *delivery* while
-  an agent is busy — which needs the agent busy, not the spec blocked.
+  Admission returns while the message waits in the database mailbox. The
+  scenario can observe delivery while the agent remains busy.
   """
   def send_agent_message(agent_id, text) do
-    CmsHarness.Agents.send_message(agent_id, "spec-" <> Ecto.UUID.generate(), text)
+    CodeMySpec.Agents.send_to_agent(agent_id, text, :operator_message)
   end
 
   @doc """
   Tell an agent something and wait for the turn it takes about it.
 
   The waiting half of the pair above, and the one a *measured* run needs.
-  `send_message/4` answers `:queued` the moment the message is accepted, and an
+  `send_to_agent/4` answers `:queued` when the message is accepted, and an
   agent that has not dequeued it yet reads as idle — so a helper that sent and
   then waited for idle could return before the turn began, with an empty
   transcript, and count that as the agent having done nothing.
@@ -3080,7 +3227,33 @@ defmodule CodeMySpecSpex.Fixtures do
   caused.
   """
   def message_agent_and_wait(agent_id, text, timeout) do
-    CmsHarness.Agents.message(agent_id, text, timeout)
+    with {:ok, _} <- send_agent_message(agent_id, text) do
+      await_mailbox_turn(agent_id, System.monotonic_time(:millisecond) + timeout)
+    end
+  end
+
+  defp await_mailbox_turn(agent_id, deadline) do
+    agent = Repo.get!(CodeMySpec.Agents.Agent, agent_id)
+    scope = %Scope{active_account_id: agent.account_id, active_project_id: agent.project_id}
+
+    pending =
+      Enum.any?(
+        AgentMailbox.entries(scope, agent_id),
+        &(&1.state in [:queued, :claimed, :consumed, :uncertain])
+      )
+
+    cond do
+      not pending ->
+        with {:ok, messages} <- CmsHarness.Agents.history(agent_id),
+             do: {:ok, inspect(messages, pretty: true, limit: :infinity)}
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:error, :message_timed_out}
+
+      true ->
+        Process.sleep(20)
+        await_mailbox_turn(agent_id, deadline)
+    end
   end
 
   defdelegate agent_tools(agent_id), to: CmsHarness.Agents, as: :tools
@@ -3842,6 +4015,9 @@ defmodule CodeMySpecSpex.Fixtures do
   beneath it. `ensure_dir/2` is a no-op there for the same reason.
   """
   @spec add_phoenix_project_shape(Scope.t()) :: :ok
+  def add_phoenix_project_shape(%Scope{} = scope),
+    do: add_phoenix_project_shape(%{environment: UsersFixtures.fixture_environment(scope)})
+
   def add_phoenix_project_shape(%{environment: env}) do
     :ok = Environments.write_file(env, "mix.exs", "# stub for PhoenixProject.evaluate\n")
     :ok = Environments.write_file(env, "lib/.gitkeep", "")
@@ -3858,6 +4034,9 @@ defmodule CodeMySpecSpex.Fixtures do
   never had the shape passes for the wrong reason.
   """
   @spec remove_mix_exs(Scope.t()) :: :ok
+  def remove_mix_exs(%Scope{} = scope),
+    do: remove_mix_exs(%{environment: UsersFixtures.fixture_environment(scope)})
+
   def remove_mix_exs(%{environment: env}) do
     :ok = Environments.delete_file(env, "mix.exs")
     :ok
@@ -3957,6 +4136,16 @@ defmodule CodeMySpecSpex.Fixtures do
           })
       end
 
+    story = Stories.get_story!(scope, story.id)
+
+    story =
+      if story.qa_ready_at && story.qa_ready_commit do
+        story
+      else
+        {:ok, certified} = Stories.set_qa_ready(scope, story, String.duplicate("a", 40))
+        certified
+      end
+
     task_id = Ecto.UUID.generate()
     session_external_id = "spex-qa-#{System.unique_integer([:positive])}"
 
@@ -3988,6 +4177,10 @@ defmodule CodeMySpecSpex.Fixtures do
           }
         ]
       })
+
+    task = Enum.find(session.tasks, &(&1.id == task_id))
+    {:ok, _review} = CodeMySpec.Qa.capture_story_review(scope, session, task)
+    session = Sessions.get_session(scope, session.id)
 
     {story, task_id, session}
   end
@@ -4021,6 +4214,7 @@ defmodule CodeMySpecSpex.Fixtures do
         # The task module `evaluate_task` dispatches to; unset is a task with none.
         session_type: Keyword.get(opts, :session_type),
         story_id: Keyword.get(opts, :story_id),
+        issue_id: Keyword.get(opts, :issue_id),
         # Settable, because a criterion about how long a task has been open
         # cannot produce elapsed time any other way and must not sleep for it.
         started_at: Keyword.get(opts, :started_at, DateTime.utc_now())
@@ -5200,6 +5394,29 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  defp sync_ledger(scope) do
+    case WorkingCopies.environment(scope) do
+      %{type: :harness} ->
+        :ok
+
+      _ ->
+        {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
+        :ok
+    end
+  end
+
+  @doc """
+  The scope on `copy_id`, with that copy reading the fixture's in-memory
+  runtime (`context.environment`) rather than a checkout. For a spex that joins
+  a copy and keeps its files in memory.
+  """
+  @spec in_memory_copy(map(), Ecto.UUID.t()) :: Scope.t()
+  def in_memory_copy(%{scope: scope, environment: env}, copy_id) do
+    :ok = Environments.unregister({:working_copy, copy_id})
+    :ok = Environments.register({:working_copy, copy_id}, env)
+    %{scope | active_working_copy_id: copy_id}
+  end
+
   @doc """
   Stamp a completed analysis run per source.
 
@@ -5227,8 +5444,9 @@ defmodule CodeMySpecSpex.Fixtures do
     # A full sync first, so the files a reader will see are in the ledger
     # before the run is stamped — the way the thing that reads it syncs
     # (criteria 6529, 6532, 6533 were flaky without it while runs carried
-    # fingerprints of the file set).
-    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
+    # fingerprints of the file set). A copy served by its harness is kept
+    # current by the harness's manifests; the server has no tree to walk.
+    :ok = sync_ledger(scope)
 
     result =
       CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(
@@ -5251,7 +5469,9 @@ defmodule CodeMySpecSpex.Fixtures do
     result
   end
 
-  defp at_head(%Scope{active_working_copy_id: id, environment: env}, opts) do
+  defp at_head(%Scope{active_working_copy_id: id} = scope, opts) do
+    env = WorkingCopies.environment(scope)
+
     if Keyword.get(opts, :at_head, false) do
       {:ok, %{root: root}} = CodeMySpec.WorkingCopies.fetch(id)
       {sha, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"], cd: root)
@@ -5278,7 +5498,7 @@ defmodule CodeMySpecSpex.Fixtures do
   the step production cannot skip.
   """
   def scan_working_copy(%Scope{} = scope) do
-    {:ok, _} = FileSync.sync(scope)
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
     :ok
   end
 

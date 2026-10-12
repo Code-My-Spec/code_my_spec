@@ -15,8 +15,8 @@ defmodule CodeMySpec.Environments do
   ## No environment is a configuration, not a bug
 
   Every file operation here accepts `nil` and answers instead of raising. That
-  is the light harness: the server holds no working copy, so `scope.environment`
-  is legitimately nil and there is no disk to reach.
+  is the light harness: the server has no local working copy, so no local
+  runtime is available and there is no disk to reach.
 
   Until these clauses existed, each of these raised `FunctionClauseError` on the
   way to building an agent's task prompt, and a requirement whose prompt cannot

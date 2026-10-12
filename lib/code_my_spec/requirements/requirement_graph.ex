@@ -20,6 +20,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
@@ -38,7 +39,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.StoryIssueGraph
   alias CodeMySpec.Requirements.Topology
+  alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
 
   @type node_key :: {String.t(), any(), String.t()}
@@ -517,7 +520,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # of the question.
   defp template_edges(scope, ctx, config) do
     component_template_edges(ctx, config) ++
-      Enum.flat_map(ctx.stories, &story_template_edges(&1, config)) ++
+      Enum.flat_map(ctx.stories, &story_template_edges(&1, ctx, config)) ++
       project_template_edges(scope, config)
   end
 
@@ -533,10 +536,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp story_template_edges(story, config) do
+  defp story_template_edges(story, ctx, config) do
     template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
     id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
-    build_template_edges(template, id_map)
+    build_template_edges(template, id_map) ++ StoryIssueGraph.edges(story, ctx, config)
   end
 
   # The generators one side at a time, for `Edges`.
@@ -586,7 +589,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     one = %{stories: [story]}
 
     %{
-      template: story_template_edges(story, config),
+      template: story_template_edges(story, ctx, config),
       kickoff: kickoff,
       exit: exit,
       project: project_to_story_edges(one) ++ story_to_project_edges(one)
@@ -909,13 +912,64 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # child under a parent that turns out not to be a container recomputes both
   # where one would have done, which costs a little and cannot be wrong.
   defp expand_component_families(stale, ctx) do
-    ctx.components
-    |> Enum.group_by(&(&1.parent_component_id || &1.id), & &1.id)
-    |> Enum.reduce(stale, fn {_family, ids}, acc ->
-      if Enum.any?(ids, &MapSet.member?(acc, {"component", &1})),
-        do: Enum.reduce(ids, acc, &MapSet.put(&2, {"component", &1})),
-        else: acc
+    components = Map.new(ctx.components, &{&1.id, &1})
+    children = Enum.group_by(ctx.components, & &1.parent_component_id)
+
+    stale
+    |> Enum.filter(&(elem(&1, 0) == "component"))
+    |> Enum.reduce(stale, fn {"component", id}, covered ->
+      covered
+      |> add_component_template_family(id, components, children)
+      |> add_context_ancestor_families(id, components, children)
     end)
+  end
+
+  # The template for a context emits child-scoped nodes for its direct
+  # children. Recomputing one of those children therefore has to include the
+  # context and its siblings, or reduce_to/2 drops the template owner and the
+  # child is incorrectly treated as a standalone component.
+  defp add_component_template_family(covered, id, components, children) do
+    case Map.get(components, id) do
+      nil ->
+        covered
+
+      component ->
+        parent_is_container =
+          case Map.get(components, component.parent_component_id) do
+            %{type: type} when is_binary(type) -> RequirementsRegistry.has_children?(type)
+            _ -> false
+          end
+
+        ids =
+          if not parent_is_container and RequirementsRegistry.has_children?(component.type),
+            do: [id | Enum.map(Map.get(children, id, []), & &1.id)],
+            else: [id]
+
+        Enum.reduce(ids, covered, &MapSet.put(&2, {"component", &1}))
+    end
+  end
+
+  # If that template owner is itself a child of another context, the full pass
+  # does not run its own template. Carry the containing context into the narrow
+  # context as well, recursively, so the same ownership rules apply at every
+  # nested level.
+  defp add_context_ancestor_families(covered, id, components, children) do
+    add_context_ancestor_families(covered, id, components, children, MapSet.new())
+  end
+
+  defp add_context_ancestor_families(covered, id, components, children, seen) do
+    seen = MapSet.put(seen, id)
+
+    with %{parent_component_id: parent_id} when not is_nil(parent_id) <- Map.get(components, id),
+         %{type: type} when is_binary(type) <- Map.get(components, parent_id),
+         true <- RequirementsRegistry.has_children?(type),
+         false <- MapSet.member?(seen, parent_id) do
+      covered
+      |> add_component_template_family(parent_id, components, children)
+      |> add_context_ancestor_families(parent_id, components, children, seen)
+    else
+      _ -> covered
+    end
   end
 
   # Rows whose entity is no longer in the context at all.
@@ -946,6 +1000,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> MapSet.reject(&MapSet.member?(current, &1))
   end
 
+  defp entity_key(%{entity_type: "issue", details: %{"story_id" => id}}), do: {"story", id}
   defp entity_key(node), do: {node.entity_type, node.entity_id}
 
   # Only the lists are narrowed. The by-id maps stay whole because the
@@ -1623,8 +1678,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {served, served_edges} = Projection.load(scope, ctx)
     {computed, computed_edges} = compute_topology(scope, ctx, config)
 
-    served_by_key = Map.new(served, &{node_key(&1), &1.satisfied})
-    computed_by_key = Map.new(computed, &{node_key(&1), &1.satisfied})
+    served_by_key = Map.new(served, &{node_key(&1), Verification.behavior(&1)})
+    computed_by_key = Map.new(computed, &{node_key(&1), Verification.behavior(&1)})
     served_keys = MapSet.new(Map.keys(served_by_key))
     computed_keys = MapSet.new(Map.keys(computed_by_key))
 
@@ -1636,12 +1691,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       |> MapSet.intersection(computed_keys)
       |> Enum.filter(&(Map.fetch!(served_by_key, &1) != Map.fetch!(computed_by_key, &1)))
 
+    actionable_differences =
+      Enum.flat_map(RoleProfile.roles(), fn role ->
+        actual = actionable_keys(served, served_edges, ctx, role)
+        expected = actionable_keys(computed, computed_edges, ctx, role)
+
+        Enum.map(
+          MapSet.difference(expected, actual),
+          &"#{role} work not offered: #{audit_label(&1)}"
+        ) ++
+          Enum.map(
+            MapSet.difference(actual, expected),
+            &"#{role} extra work offered: #{audit_label(&1)}"
+          )
+      end)
+
     served_edge_set = MapSet.new(served_edges, &{&1.from, &1.to})
     computed_edge_set = MapSet.new(computed_edges, &{&1.from, &1.to})
     edges_missing = MapSet.difference(computed_edge_set, served_edge_set)
     edges_extra = MapSet.difference(served_edge_set, computed_edge_set)
 
     %{
+      actionable_disagree: length(actionable_differences),
       served: map_size(served_by_key),
       computed: map_size(computed_by_key),
       missing: MapSet.size(missing),
@@ -1654,10 +1725,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       sample:
         Enum.map(missing, &"not served: #{audit_label(&1)}") ++
           Enum.map(extra, &"served, not recomputed: #{audit_label(&1)}") ++
-          Enum.map(disagree, &"disagrees: #{audit_label(&1)}") ++
+          Enum.map(disagree, fn key ->
+            fields = Verification.changed_fields(served_by_key[key], computed_by_key[key])
+            "disagrees: #{audit_label(key)} (#{Enum.join(fields, ", ")})"
+          end) ++
+          actionable_differences ++
           Enum.map(edges_missing, &"edge not served: #{audit_edge(&1)}") ++
           Enum.map(edges_extra, &"edge served, not recomputed: #{audit_edge(&1)}")
     }
+  end
+
+  defp actionable_keys(nodes, edges, ctx, role) do
+    nodes
+    |> actionable_for_role_from(edges, ctx, role)
+    |> MapSet.new(&node_key/1)
   end
 
   # A reader that named only the project id — the dev page — carries neither
@@ -1701,7 +1782,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec defined_names(map(), map()) :: %{
           story: MapSet.t(String.t()),
           project: MapSet.t(String.t()),
-          component: %{String.t() => MapSet.t(String.t())}
+          component: %{String.t() => MapSet.t(String.t())},
+          entities: %{{String.t(), term()} => MapSet.t(String.t())}
         }
   def defined_names(ctx, config) do
     {top_level, _children_by_parent} = component_families(ctx)
@@ -1724,8 +1806,57 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     %{
       story: template_names(RequirementDefinitionData.story_graph(), config),
       project: template_names(RequirementDefinitionData.project_graph(), config),
-      component: component
+      component: component,
+      entities: defined_entities(ctx, config)
     }
+  end
+
+  @doc """
+  Expected requirement names for each story and component in a loaded context.
+
+  This derives membership from the same filtered templates and parent/child
+  split used by graph computation. It does not run requirement checkers, so it
+  can identify missing rows without performing verdict work.
+  """
+  @spec defined_entities(map(), map()) :: %{{String.t(), term()} => MapSet.t(String.t())}
+  def defined_entities(ctx, config) do
+    entities =
+      Map.new(ctx.components, &{{"component", &1.id}, MapSet.new()})
+      |> Map.merge(Map.new(ctx.stories, &{{"story", &1.id}, MapSet.new()}))
+
+    {top_level, children_by_parent} = component_families(ctx)
+
+    entities =
+      Enum.reduce(top_level, entities, fn component, acc ->
+        template =
+          component.type
+          |> RequirementDefinitionData.graph_for_type()
+          |> filter_definitions_by_config(config)
+
+        own_names =
+          template
+          |> Enum.filter(&(&1.node_scope in [:parent, :self]))
+          |> MapSet.new(& &1.name)
+
+        acc = Map.update!(acc, {"component", component.id}, &MapSet.union(&1, own_names))
+
+        Enum.reduce(Map.get(children_by_parent, component.id, []), acc, fn child, child_acc ->
+          child_names =
+            template
+            |> Enum.filter(&(&1.node_scope == :child))
+            |> filter_defs_for_child_type(child.type)
+            |> MapSet.new(& &1.name)
+
+          Map.update!(child_acc, {"component", child.id}, &MapSet.union(&1, child_names))
+        end)
+      end)
+
+    story_names = template_names(RequirementDefinitionData.story_graph(), config)
+
+    Map.new(entities, fn
+      {{"story", _id} = key, _names} -> {key, story_names}
+      {key, names} -> {key, names}
+    end)
   end
 
   defp template_names(template, config),
@@ -1928,7 +2059,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         Map.update(acc, edge.from, [edge.to], &[edge.to | &1])
       end)
 
-    entity_of = Map.new(nodes, fn n -> {node_key(n), {n.entity_type, n.entity_id}} end)
+    entity_of = Map.new(nodes, fn n -> {node_key(n), entity_key(n)} end)
 
     nodes
     |> Enum.filter(&seed?(&1, seeds))
@@ -1954,11 +2085,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def seed?(%{entity_type: "component", entity_id: id}, {:story, _story_id, ids}),
     do: MapSet.member?(ids, id)
 
+  def seed?(%{entity_type: "issue", details: %{"story_id" => id}}, {:story, story_id, _ids}),
+    do: id == story_id
+
   def seed?(_node, {:story, _story_id, _ids}), do: false
   def seed?(_node, _seeds), do: true
 
   defp block_from_seed(seed, acc, outgoing, entity_of, role_names) do
-    seed_entity = {seed.entity_type, seed.entity_id}
+    seed_entity = entity_key(seed)
     seeds_own_role = MapSet.member?(role_names, seed.name)
 
     outgoing
@@ -2300,13 +2434,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # 0555b8a3). An `:authored` component is never filtered — it is real
   # architecture regardless of whether its file has landed yet.
   #
-  # Matched on the key's presence rather than defaulted in: `Preloader.topology_context/1`
-  # deliberately carries no file data ("enough for the shape, not enough for any
-  # verdict") and feeds this same code through `Edges.plan/3` on every
-  # `ShadowProjector` redraw. Reading `ctx.files_by_component` unconditionally
-  # raised `KeyError` there for any project with a `:discovered` component,
-  # which the drain's rescue swallowed — leaving every entity in that drain
-  # unwritten, not just the phantom check's own answer wrong.
+  # Lightweight topology loads carry checkout-specific file membership;
+  # full loads carry the records. Both must exclude exactly the same ghosts.
+  defp phantom?(%{provenance: :discovered, id: id}, %{file_component_ids: ids}),
+    do: not MapSet.member?(ids, id)
+
   defp phantom?(%{provenance: :discovered, id: id}, %{files_by_component: files_by_component}),
     do: Map.get(files_by_component, id, []) == []
 
@@ -2602,9 +2734,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # Cross-context dependency edges.
-  # Sibling deps (same parent) are handled by template instantiation.
-  # Cross-context deps gate the dependent's first requirement.
+  # Every recorded dependency gates the dependent's first requirement.
+  # Ownership does not imply that a parent repeats its children's dependencies.
   defp cross_context_dependency_edges(ctx, config) do
     Enum.flat_map(ctx.components, &edges_from_component_deps(&1, ctx, config))
   end
@@ -2624,16 +2755,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp cross_context_edge_for_dep(dep, comp, ctx, config) do
-    with %_{} = dep_comp <- Map.get(ctx.components_by_id, dep.id),
-         false <- skip_cross_context?(comp, dep_comp) do
-      sources = component_boundary(dep_comp, :exit, ctx, config)
-      targets = component_boundary(comp, :entry, ctx, config)
+    case Map.get(ctx.components_by_id, dep.id) do
+      nil ->
+        []
 
-      for source <- sources, target <- targets, source != target do
-        %{from: source, to: target}
-      end
-    else
-      _ -> []
+      dep_comp ->
+        sources = component_boundary(dep_comp, :exit, ctx, config)
+        targets = component_boundary(comp, :entry, ctx, config)
+
+        for source <- sources, target <- targets, source != target do
+          %{from: source, to: target}
+        end
     end
   end
 
@@ -2666,17 +2798,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp boundary_nodes(comp, %{name: name}, _definitions, _ctx),
     do: [{"component", comp.id, name}]
-
-  defp siblings?(comp, dep_comp) do
-    comp.parent_component_id != nil and
-      comp.parent_component_id == dep_comp.parent_component_id
-  end
-
-  # Skip cross-context edges for child components — parent_child_edges
-  # propagates ordering from the parent context to its children.
-  defp skip_cross_context?(comp, dep_comp) do
-    not siblings?(comp, dep_comp) and comp.parent_component_id != nil
-  end
 
   # Cross-entity: project.qa_setup → story.component_linked
   defp project_to_story_edges(ctx) do
@@ -3104,7 +3225,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     files = Map.get(ctx.files_by_component, entity.id, [])
     result = RequirementCalculator.compute_one(scope, entity, definition, files, ctx)
 
-    {parent_id, parent_name} = orchestration_parent(definition, entity, parent)
+    {parent_id, parent_name} = Requirement.orchestration_parent(definition, entity, parent)
 
     %Requirement{
       entity_type: "component",
@@ -3128,16 +3249,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       details: Requirement.normalize_details(result.details)
     }
   end
-
-  # Child nodes use the explicit parent. Parent- and self-scope nodes
-  # self-parent when orchestrated, so they group with the child nodes under the
-  # same context header instead of floating above the wave they belong to.
-  defp orchestration_parent(_definition, _entity, parent) when not is_nil(parent),
-    do: {parent.id, parent.module_name}
-
-  defp orchestration_parent(%{orchestrated_by: nil}, _entity, _parent), do: {nil, nil}
-
-  defp orchestration_parent(_definition, entity, _parent), do: {entity.id, entity.module_name}
 
   # Which template produced this node: a `:child` def comes from the parent's,
   # everything else from the entity's own. Stored on the row because the name
@@ -3172,7 +3283,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, edges} =
       Enum.flat_map_reduce(ctx.stories, [], fn story, all_edges ->
         files = Map.get(ctx.files_by_story, story.id, [])
-        id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
 
         # Stamped once per story rather than once per requirement: every
         # requirement of a story reads the same slice of the context, so they
@@ -3206,7 +3316,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
             }
           end)
 
-        edges = build_template_edges(template, id_map)
+        nodes = nodes ++ StoryIssueGraph.nodes(story, ctx, config, fingerprint)
+        edges = story_template_edges(story, ctx, config)
         {nodes, all_edges ++ edges}
       end)
 
@@ -3388,6 +3499,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     rank = if story, do: story_rank(story), else: {999, 0}
     {1, rank, story_req_depth(name)}
   end
+
+  defp priority_sort_key(
+         %{entity_type: "issue", details: %{"story_id" => id}},
+         stories,
+         comp,
+         order
+       ),
+       do:
+         priority_sort_key(
+           %{entity_type: "story", entity_id: id, name: "ready_for_qa"},
+           stories,
+           comp,
+           order
+         )
 
   defp priority_sort_key(
          %{entity_type: "component", entity_id: id},

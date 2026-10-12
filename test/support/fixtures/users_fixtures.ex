@@ -7,12 +7,14 @@ defmodule CodeMySpec.UsersFixtures do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
   alias CodeMySpec.Users.User
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
   def valid_user_password, do: "hello world!"
@@ -101,6 +103,13 @@ defmodule CodeMySpec.UsersFixtures do
         device: device
       )
 
+    harness =
+      if is_binary(project.local_path) and project.local_path != "" do
+        root_copy(harness, project.local_path)
+      else
+        harness
+      end
+
     %{scope | active_working_copy_id: harness.id}
   end
 
@@ -113,7 +122,7 @@ defmodule CodeMySpec.UsersFixtures do
     # Anchor the test scope's environment to an isolated tmp dir. With a nil
     # cwd, Environments.Local.resolve_path/2 falls through to the BEAM's
     # working directory — i.e. the project root — and any code path under
-    # test that writes through scope.environment leaks files into the live
+    # test that writes through an unrooted runtime leaks files into the live
     # tree (e.g. SpecStub.write_for_scope creating
     # .code_my_spec/spec/my_app/... which ComponentSync then re-projects
     # into the DB on the next sync).
@@ -134,9 +143,79 @@ defmodule CodeMySpec.UsersFixtures do
     # from, and how I broke eleven of story 1026's spex with the first version.
     tmp_dir = CodeMySpec.TempFile.owned_dir("full_scope")
 
-    user_scope_fixture(user, account, project)
-    |> Map.put(:environment, Environment.new(:local, tmp_dir))
+    scope = user_scope_fixture(user, account, project)
+    env = Environment.new(:local, tmp_dir)
+    :ok = Environments.register(project.id, env)
+    %{scope | cwd: tmp_dir}
   end
+
+  @doc "The runtime explicitly registered by a test fixture, independent of Scope's fields."
+  def fixture_environment(scope) do
+    Environments.lookup_registered({:working_copy, scope.active_working_copy_id}) ||
+      Environments.lookup_registered({:root, scope.cwd}) ||
+      Environments.lookup_registered(scope.active_project_id)
+  end
+
+  @doc "Register a fixture runtime without storing it on Scope."
+  def put_fixture_environment(scope, nil) do
+    for key <- [
+          {:working_copy, scope.active_working_copy_id},
+          {:root, scope.cwd},
+          scope.active_project_id
+        ] do
+      :ok = Environments.unregister(key)
+    end
+
+    %{scope | cwd: nil}
+  end
+
+  def put_fixture_environment(scope, %Environment{} = env) do
+    case CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id) do
+      {:ok, _} when is_binary(env.cwd) ->
+        :ok = register_working_copy_environment(scope, env)
+
+      _ ->
+        :ok = Environments.unregister(scope.active_project_id)
+        :ok = Environments.register(scope.active_project_id, env)
+    end
+
+    %{scope | cwd: env.cwd}
+  end
+
+  @doc "Registers the selected working copy at an explicit environment root."
+  def register_working_copy_environment(
+        %{active_working_copy_id: id},
+        %Environment{cwd: cwd} = env
+      )
+      when is_binary(id) and is_binary(cwd) do
+    {:ok, copy} = WorkingCopies.fetch(id)
+    root_copy(copy, cwd)
+    :ok = Environments.unregister({:working_copy, id})
+    :ok = Environments.register({:working_copy, id}, env)
+    :ok
+  end
+
+  # The root alone. `WorkingCopies.report_root/2` also designates a project's
+  # only checkout as main, and main refuses story work — a fixture locating its
+  # runtime must not turn the scope's copy into the project's main checkout.
+  defp root_copy(copy, root) do
+    {:ok, rooted} =
+      copy
+      |> WorkingCopy.changeset(%{root: Path.expand(root)})
+      |> Repo.update()
+
+    rooted
+  end
+
+  @doc "A full test scope whose selected working copy has a registered environment."
+  def working_copy_scope_fixture(project_attrs \\ %{}) do
+    scope = full_scope_fixture(project_attrs)
+    :ok = register_working_copy_environment(scope, fixture_environment(scope))
+    scope
+  end
+
+  def provisioning_scope_fixture(project_attrs \\ %{}),
+    do: working_copy_scope_fixture(project_attrs)
 
   def full_preferences_fixture do
     scope = full_scope_fixture()

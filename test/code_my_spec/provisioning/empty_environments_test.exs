@@ -26,7 +26,7 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
   alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Resend, Steps}
 
   setup do
-    {:ok, scope: full_scope_fixture()}
+    {:ok, scope: provisioning_scope_fixture()}
   end
 
   describe "secrets" do
@@ -42,11 +42,11 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
 
   describe "deploy" do
     test "run refuses instead of shipping nothing and calling it done", ctx do
-      # `environment: nil` short-circuits `deploy_ready/1` past the readiness
+      # An invalid selected-copy id leaves no runtime for `deploy_ready/1` to inspect.
       # audit (357ce21a) — not a workaround, the same bypass that gate uses
       # for a scope with no checkout to read. What is under test here is
       # `deploy_environments/3`'s empty-list guard, which sits after it.
-      scope = %{ctx.scope | environment: nil}
+      scope = %{ctx.scope | active_working_copy_id: Ecto.UUID.generate()}
 
       assert {:error, reason} = Steps.run(:deploy, scope, environments: [])
       assert reason =~ "no environment is permitted"
@@ -55,7 +55,8 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
 
   describe "dns" do
     setup ctx do
-      {:ok, _} = Projects.update_project(ctx.scope, ctx.scope.active_project, %{domain: "astralbi.com"})
+      {:ok, _} =
+        Projects.update_project(ctx.scope, ctx.scope.active_project, %{domain: "astralbi.com"})
 
       Application.put_env(:code_my_spec, Cloudflare,
         api_token: "test-token",
@@ -64,7 +65,9 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
 
       on_exit(fn -> Application.delete_env(:code_my_spec, Cloudflare) end)
 
-      %{scope: %{ctx.scope | active_project: %{ctx.scope.active_project | domain: "astralbi.com"}}}
+      %{
+        scope: %{ctx.scope | active_project: %{ctx.scope.active_project | domain: "astralbi.com"}}
+      }
     end
 
     # `prod` from before this project's devops level was set to `:uat`, and
@@ -102,11 +105,15 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
   # something was ever actually registered at the provider.
   describe "email" do
     setup ctx do
-      {:ok, _} = Projects.update_project(ctx.scope, ctx.scope.active_project, %{domain: "astralbi.com"})
+      {:ok, _} =
+        Projects.update_project(ctx.scope, ctx.scope.active_project, %{domain: "astralbi.com"})
+
       {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
       {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
 
-      %{scope: %{ctx.scope | active_project: %{ctx.scope.active_project | domain: "astralbi.com"}}}
+      %{
+        scope: %{ctx.scope | active_project: %{ctx.scope.active_project | domain: "astralbi.com"}}
+      }
     end
 
     test "verify reports satisfied when nothing was ever registered", ctx do
@@ -120,12 +127,18 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
     end
 
     test "verify does not report a stale registered domain satisfied", ctx do
-      stub_resend_domains(fn -> [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}] end)
+      stub_resend_domains(fn ->
+        [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}]
+      end)
+
       assert {:ok, :absent} = Steps.verify(:email, ctx.scope, [])
     end
 
     test "run pauses and names the orphan instead of calling it done", ctx do
-      stub_resend_domains(fn -> [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}] end)
+      stub_resend_domains(fn ->
+        [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}]
+      end)
+
       assert {:paused, reason} = Steps.run(:email, ctx.scope, [])
       assert reason =~ "astralbi.com"
       assert reason =~ "devops level"

@@ -1,28 +1,20 @@
 defmodule CodeMySpecSpex.Story1051.Criterion3468Spex do
   @moduledoc """
   Story 1051 — Harness startup and restart leave the agent working.
-  Criterion 3468 — An agent is restarted part-way through a turn.
+  Criterion 1391 — An agent is restarted part-way through a turn.
 
-  Rule: A turn in progress is discarded on restart; the agent picks up from the
-  turns already recorded.
+  Rule: A restart resumes the conversation as recorded; an agent caught
+  mid-turn carries its turn on before anything queued is delivered.
 
-  The rule used to read "work in flight when the harness restarts resumes
-  rather than being abandoned", which contradicted story 1015's criterion 3321
-  outright. It was reworded during this story's Three Amigos, and this
-  criterion is the first half of the new wording: the recorded turns survive,
-  the one in progress does not.
+  The surviving history is the half that fails quietly. An agent brought back
+  with an empty thread is running, answering, and has forgotten the story it
+  was part-way through — which looks like success from every angle except the
+  one that matters. `Agents.restart_agent/2` hydrates the launch request from
+  the conversation for exactly this reason.
 
-  Discarding is the cheap half and the surviving history is the half that
-  fails quietly. An agent brought back with an empty thread is running,
-  answering, and has forgotten the story it was part-way through — which looks
-  like success from every angle except the one that matters, and costs the work
-  rather than the process. `Agents.restart_agent/2` hydrates the launch request
-  from the conversation for exactly this reason.
-
-  Asked of the agent's own loop rather than of its transcript. The page renders
-  the rows either way: an agent that came back holding its history and one that
-  came back empty show the same conversation, and the difference only appears
-  when somebody relies on it remembering.
+  Asked of the agent's own loop rather than of its transcript: the page renders
+  the rows either way, and the difference only appears when somebody relies on
+  it remembering. The carry-on is read from what has been sent to the agent.
   """
 
   use CodeMySpecSpex.Case
@@ -42,17 +34,18 @@ defmodule CodeMySpecSpex.Story1051.Criterion3468Spex do
     :ok
   end
 
-  spex "A turn in progress is discarded on restart; the agent picks up from the turns already recorded", criterion: 1391 do
+  spex "A restart resumes the conversation as recorded; an agent caught mid-turn carries its turn on before anything queued is delivered",
+    criterion: 1391 do
     scenario "An agent is restarted part-way through a turn" do
       given_ "an agent mid-turn when it is restarted", context do
         context = given_a_feature_checkout(context, "spex_3468")
         agent_id = start_agent(context)
         agent = %{id: agent_id, role: :coding}
 
-        # Turns already on the thread — what must survive.
+        # The conversation so far — what must survive.
         :ok = Fixtures.agent_said(context.scope, agent, "half of the ledger writer is done")
 
-        # And one in progress, which must not.
+        # And a turn in progress, which must carry on.
         :ok = Fixtures.start_turn(context.scope, agent_id)
 
         {:ok, context |> Map.put(:agent_id, agent_id) |> Map.put(:agent, agent)}
@@ -70,7 +63,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3468Spex do
         {:ok, context}
       end
 
-      then_ "it carries on from the turns already recorded on its thread", context do
+      then_ "it holds its conversation as recorded", context do
         assert running?(context.agent_id),
                "the agent did not come back, so there is nothing to carry on from"
 
@@ -80,27 +73,25 @@ defmodule CodeMySpecSpex.Story1051.Criterion3468Spex do
 
                Running and having forgotten is worse than not coming back: it
                looks like success from every angle except the one that matters,
-               and what is lost is the work rather than the process. An agent
-               restored into an empty thread starts the story again from the
-               beginning — or, worse, starts something else.
+               and what is lost is the work rather than the process.
                """
 
         {:ok, context}
       end
 
-      then_ "and the turn it was in is gone", context do
+      then_ "and it carries the turn on from its last recorded step", context do
+        path = Fixtures.agent_conversation_path(context.scope, context.agent)
+
+        assert told(context, path) =~ "Carry on from your last step",
+               """
+               The restart cut the agent's turn and nothing told it to carry
+               on, so it sits idle with the work half done.
+
+               #{told(context, path)}
+               """
+
         refute listing(context) =~ ~r/Status: starting/,
-               """
-               The agent is left in the state the restart was supposed to move
-               it out of.
-
-               `restart_agent/2` clears `turn_started_at` precisely so nothing
-               goes on reporting a turn that opened before the process it
-               belonged to was killed. A row left mid-turn is one nothing will
-               ever clear.
-
-               #{listing(context)}
-               """
+               "the agent is left in the state the restart was supposed to move it out of"
 
         {:ok, context}
       end

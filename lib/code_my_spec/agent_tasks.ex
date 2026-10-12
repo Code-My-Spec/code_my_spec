@@ -8,6 +8,7 @@ defmodule CodeMySpec.AgentTasks do
     deps: [
       CodeMySpec.PromotionQueue,
       CodeMySpec.Stories,
+      CodeMySpec.TaskOwner,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,
       CodeMySpec.BddSpecs,
@@ -18,6 +19,7 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Issues,
+      CodeMySpec.LocalScope,
       CodeMySpec.Paths,
       CodeMySpec.Problems,
       CodeMySpec.Projects,
@@ -35,6 +37,17 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.WorkingCopies
     ],
     exports: :all
+
+  @doc """
+  Resolve the environment for the selected working copy, or the active local project.
+
+  A selected copy is authoritative: if it is invalid or unavailable, this
+  returns nil rather than falling back to the project's local environment.
+  """
+  def environment(%{active_working_copy_id: id} = scope) when not is_nil(id),
+    do: CodeMySpec.WorkingCopies.environment(scope)
+
+  def environment(scope), do: CodeMySpec.LocalScope.environment(scope.active_project)
 
   @doc """
   Validate an explicitly requested artifact without adding it to the work graph.

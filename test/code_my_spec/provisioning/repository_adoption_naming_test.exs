@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.RepositoryAdoptionNamingTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     _ = github_integration_fixture(scope.user)
 
     %{env: Environment.new(:local, tmp), scope: scope}
@@ -56,14 +56,13 @@ defmodule CodeMySpec.Provisioning.RepositoryAdoptionNamingTest do
         conn
     end)
 
-    scope = %{
+    scope =
       ctx.scope
-      | active_project: %{
-          name: "Cleaner CRM",
-          code_repo: "git@github.com:Code-My-Spec/cleaner_crm.git"
-        },
-        environment: ctx.env
-    }
+      |> put_fixture_environment(ctx.env)
+      |> Map.put(:active_project, %{
+        name: "Cleaner CRM",
+        code_repo: "git@github.com:Code-My-Spec/cleaner_crm.git"
+      })
 
     # The push itself is not this test's concern — no real remote exists at
     # `tmp` — only that the lookup landed on the repository already recorded,

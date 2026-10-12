@@ -28,7 +28,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsPromptTest do
     # Deliberately not the fixture default, which is `MyApp` — the exact string
     # the placeholder produces. With that name a correct implementation and a
     # hardcoded `MyAppSpex` are indistinguishable, and the test proves nothing.
-    scope = full_scope_fixture(%{module_name: "Acme"})
+    scope = working_copy_scope_fixture(%{module_name: "Acme"})
 
     component =
       component_fixture(scope, %{
@@ -41,7 +41,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsPromptTest do
     {:ok, story} = Stories.set_story_component(scope, story, component.id)
 
     # No environment: the light-harness scope. This is the case under test.
-    %{scope: %{scope | environment: nil, cwd: nil}, story: story, component: component}
+    %{scope: put_fixture_environment(scope, nil), story: story, component: component}
   end
 
   defp prompt(scope, story) do

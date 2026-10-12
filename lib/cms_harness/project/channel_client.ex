@@ -54,6 +54,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   require Logger
 
+  alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Config
@@ -289,6 +290,16 @@ defmodule CmsHarness.Project.ChannelClient do
   def start_skill(root, params) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.call(pid, {:start_skill, params}, decision_timeout() + 2_000)
+      [] -> {:error, :not_connected}
+    end
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
+  @doc "Authenticated mailbox transition, acknowledged by the database authority."
+  def mailbox(root, params) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, {:mailbox, params}, 17_000)
       [] -> {:error, :not_connected}
     end
   catch
@@ -732,6 +743,13 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_preview_check()
     schedule_machine_load_check()
     report_agents_present(socket)
+
+    for id <- Liveness.present(socket.assigns.project.root) do
+      case Engine.whereis(id) do
+        {:ok, pid} -> send(pid, :mailbox_ready)
+        _ -> :ok
+      end
+    end
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -1463,66 +1481,44 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_message(_topic, "start_agent", %{"ref" => ref} = msg, socket) do
-    result = CmsHarness.Agents.launch(msg)
-
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_start_result",
-      Map.put(encode_start_result(result), "ref", ref)
-    )
-
-    {:ok, socket}
-  end
-
-  # The agent id is the handle. It used to be a process group id paired with the
-  # boot it belonged to, because a group number outlives the group and gets
-  # reused — a supervised process has no such problem, and the server already
-  # knows the id it asked us to start.
-  # Give a running agent something to do.
-  #
-  # Answered from a task, not from here: a turn is a model call and can take
-  # minutes, and holding the channel for it would stall every other thing this
-  # copy needs to say — its reports, its manifests, its next stop — behind one
-  # agent thinking.
-  def handle_message(_topic, "message_agent", %{"ref" => ref} = msg, socket) do
-    topic = socket.assigns.topic
     parent = self()
+    topic = socket.assigns.topic
+    id = msg["agent_id"]
+    launching = socket.assigns[:launching] || %{}
 
-    Task.start(fn ->
-      result =
-        CmsHarness.Agents.message(
-          msg["agent_id"],
-          msg["message"],
-          msg["timeout"] || 180_000
-        )
+    if Map.has_key?(launching, id) do
+      push(
+        socket,
+        topic,
+        "agent_start_result",
+        Map.put(encode_start_result({:error, :already_starting}), "ref", ref)
+      )
 
-      send(parent, {:agent_message_result, topic, ref, result})
-    end)
+      {:ok, socket}
+    else
+      # Engine registration calls back through this channel. Never block the
+      # channel waiting for init, or neither half can complete the handshake.
+      Task.start(fn ->
+        result = CmsHarness.Agents.launch(msg)
+        send(parent, {:agent_start_result, topic, ref, id, result})
+      end)
 
-    {:ok, socket}
+      {:ok, assign(socket, :launching, Map.put(launching, id, []))}
+    end
   end
 
   # Hand an agent a message and say what became of it, without waiting for the
   # turn.
   #
-  # Answered from here rather than from a task, unlike `message_agent` above:
-  # the engine decides started-or-queued without running anything, so there is
-  # no turn to hold the channel behind.
-  def handle_message(_topic, "send_message", %{"ref" => ref} = msg, socket) do
-    result =
-      CmsHarness.Agents.send_message(
-        msg["agent_id"],
-        msg["message_ref"],
-        msg["message"]
-      )
+  # The engine must obtain a durable consumption acknowledgement through this
+  # channel, so keep the channel free while waiting for it.
+  def handle_message(topic, "mailbox_delivery", %{"ref" => ref} = msg, socket) do
+    parent = self()
 
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_send_result",
-      Map.put(encode_send_result(result), "ref", ref)
-    )
+    Task.start(fn ->
+      result = CmsHarness.Agents.send_message(msg["agent_id"], msg["message_ref"], msg["message"])
+      send(parent, {:mailbox_send_result, topic, ref, result})
+    end)
 
     {:ok, socket}
   end
@@ -1540,19 +1536,6 @@ defmodule CmsHarness.Project.ChannelClient do
       socket.assigns.topic,
       "agent_send_result",
       Map.put(encode_send_result(result), "ref", ref)
-    )
-
-    {:ok, socket}
-  end
-
-  def handle_message(_topic, "withdraw_message", %{"ref" => ref} = msg, socket) do
-    result = CmsHarness.Agents.withdraw(msg["agent_id"], msg["message_ref"])
-
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_withdraw_result",
-      Map.put(encode_withdraw_result(result), "ref", ref)
     )
 
     {:ok, socket}
@@ -1613,7 +1596,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # A script on the server asked for something that lives here. The browser is
   # the only such thing today, and it is on this machine because Chrome is.
-  # Answered from a task, on the same reasoning as `message_agent` above and
+  # Answered from a task, on the same reasoning as mailbox delivery above and
   # for a reason the browser split made unavoidable. This used to run inline,
   # which held the channel for the length of the call — survivable while every
   # such call was capped at thirty seconds, and not survivable now the caller
@@ -1720,6 +1703,20 @@ defmodule CmsHarness.Project.ChannelClient do
            root,
            &Steps.contained(Environment.new(:local, &1), &1, base, commits)
          )
+
+  defp apply_promotion("promotion_reset_test_databases", %{"root" => root}),
+    do:
+      with_served_root(
+        root,
+        &Steps.reset_test_databases(
+          Environment.new(:local, &1),
+          &1,
+          CmsHarness.TestDatabase.partitions(&1)
+        )
+      )
+
+  defp apply_promotion("promotion_changed", %{"root" => root, "from" => from, "to" => to}),
+    do: with_served_root(root, &Steps.changed(Environment.new(:local, &1), &1, from, to))
 
   defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
     merge = %{
@@ -1888,6 +1885,15 @@ defmodule CmsHarness.Project.ChannelClient do
     do: assign(socket, :held_stops, [ref | socket.assigns[:held_stops] || []])
 
   defp stop_or_hold(socket, agent_id, ref) do
+    launching = socket.assigns[:launching] || %{}
+
+    case Map.fetch(launching, agent_id) do
+      {:ok, refs} -> assign(socket, :launching, Map.put(launching, agent_id, [ref | refs]))
+      :error -> stop_unlaunched(socket, agent_id, ref)
+    end
+  end
+
+  defp stop_unlaunched(socket, agent_id, ref) do
     queue = socket.assigns[:restore_queue] || []
 
     case Enum.split_with(queue, &(&1["agent_id"] == agent_id)) do
@@ -1986,9 +1992,9 @@ defmodule CmsHarness.Project.ChannelClient do
       "kind" => to_string(Map.get(envelope, :event, "step")),
       "seq" => Map.get(envelope, :seq),
       "turn" => Map.get(envelope, :turn),
-      # Only a delivery event has one, and for that event it is the whole
-      # message: this named thing is no longer withdrawable.
+      # Turn boundaries carry the durable identity and owning engine generation.
       "ref" => Map.get(envelope, :ref),
+      "generation" => Map.get(envelope, :generation),
       "text" => turn_event_text(envelope),
       # The call as data, beside the sentence describing it.
       #
@@ -2002,20 +2008,16 @@ defmodule CmsHarness.Project.ChannelClient do
     }
   end
 
-  # Deliberately not the whole `input`.
-  #
-  # A `write` call's input carries the entire file body. Putting that on the
-  # wire and into a message row would grow the transcript by the size of
-  # everything the agent has ever written — the same unbounded-growth shape that
-  # filled this machine's disk on 2026-09-03, and the reason `agent_test_events`
-  # now has a byte cap. What is needed is the identity of the call and the path
-  # it touched; the body is already on disk, which is the point of a write.
+  # The whole call: what was asked and, at its end, what came back. This is the
+  # conversation a restart resumes from, so an argument cut short or a result
+  # left out is a call the agent comes back holding that it never made.
   defp tool_meta(%{payload: %{name: name} = payload}) when is_binary(name) do
     %{
       "id" => Map.get(payload, :id),
       "name" => name,
       "path" => touched_path(Map.get(payload, :input)),
-      "input" => bounded_input(Map.get(payload, :input)),
+      "input" => Map.get(payload, :input) || %{},
+      "result" => result_text(Map.get(payload, :result)),
       "error" => error_text(Map.get(payload, :error))
     }
   end
@@ -2039,46 +2041,48 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp touched_path(_input), do: nil
 
-  # The arguments, as `Conversations.add_tool_call/5` already stores them — the
-  # same `{id, name, arguments}` shape `Chat.Runner` and the sprite recorder
-  # write, so the conversation view renders an internal agent's calls the way it
-  # already renders everybody else's rather than as chat lines.
-  #
-  # Bounded per value, which the external path does not need to be: its
-  # arguments come back from the provider and are bounded by the model's own
-  # context. These come from a local tool, and a `write` call's `content` is the
-  # whole file — the difference between recording what an agent did and
-  # recording a second copy of the repository in the message table.
-  @max_argument_bytes 2_000
+  # What a call returned, as text. Absent on `tool_start`; text or content
+  # blocks on `tool_end`, and an error struct when a tool failed without words.
+  defp result_text(nil), do: nil
+  defp result_text(text) when is_binary(text), do: text
 
-  defp bounded_input(input) when is_map(input) do
-    Map.new(input, fn {key, value} -> {key, bound(value)} end)
+  defp result_text(blocks) when is_list(blocks) do
+    Enum.map_join(blocks, "\n", fn
+      %{type: "text", text: text} -> text
+      %{type: "image"} -> "← image"
+      other -> inspect(other)
+    end)
   end
 
-  defp bounded_input(_input), do: %{}
+  defp result_text(other), do: ToolResults.describe(other)
 
-  defp bound(value) when is_binary(value) and byte_size(value) > @max_argument_bytes do
-    kept = binary_part(value, 0, @max_argument_bytes)
-    dropped = byte_size(value) - @max_argument_bytes
-    kept <> "… (#{dropped} more bytes)"
-  end
-
-  defp bound(value), do: value
-
-  # Why a call failed, when it did. `tool_end` carries the error and no result
-  # text — the result itself goes back to the model in the message blocks, not
-  # through this channel — so a failure is the one outcome worth recording, and
-  # inventing a body for a success would be writing down something nobody said.
   defp error_text(nil), do: nil
-  defp error_text(error), do: error |> ToolResults.describe() |> bound()
+  defp error_text(error), do: ToolResults.describe(error)
 
   defp turn_event_text(envelope) do
     case envelope do
-      %{name: name} when is_binary(name) -> name
-      %{text: text} when is_binary(text) -> text
-      %{content: content} when is_binary(content) -> content
-      %{payload: %{name: name} = payload} when is_binary(name) -> tool_text(name, payload)
-      other -> other |> Map.drop([:v, :seq, :turn, :correlation_id, :event]) |> inspect_rest()
+      %{name: name} when is_binary(name) ->
+        name
+
+      %{text: text} when is_binary(text) ->
+        text
+
+      %{content: content} when is_binary(content) ->
+        content
+
+      %{payload: %{name: name} = payload} when is_binary(name) ->
+        tool_text(name, payload)
+
+      # What the model said alongside the calls it asked for (`:assistant_message`).
+      %{payload: %{text: text}} when is_binary(text) ->
+        text
+
+      # `ref` and `generation` travel as their own fields (above); left in, a
+      # turn boundary read as `%{ref: ..., generation: ...}` in the transcript.
+      other ->
+        other
+        |> Map.drop([:v, :seq, :turn, :correlation_id, :event, :ref, :generation])
+        |> inspect_rest()
     end
   end
 
@@ -2142,36 +2146,10 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp primary_argument(_input), do: nil
 
-  # Started or queued, which is the whole answer: the difference is whether the
-  # sender can still take it back.
-  defp encode_send_result({:ok, disposition}) when disposition in [:started, :queued],
-    do: %{"status" => "ok", "disposition" => to_string(disposition)}
+  defp encode_send_result({:ok, :started}),
+    do: %{"status" => "ok", "disposition" => "started"}
 
   defp encode_send_result({:error, reason}),
-    do: %{"status" => "error", "reason" => reason_text(reason)}
-
-  # `already_delivered` travels as its own status rather than as an error
-  # string. It is not a failure — the agent has the message — and whoever asked
-  # has to be able to tell it from "the machine could not be reached", because
-  # one means the agent is acting on it and the other means nobody knows.
-  defp encode_withdraw_result(:ok), do: %{"status" => "ok"}
-
-  defp encode_withdraw_result({:error, :already_delivered}),
-    do: %{"status" => "already_delivered"}
-
-  defp encode_withdraw_result({:error, :never_received}),
-    do: %{"status" => "never_received"}
-
-  defp encode_withdraw_result({:error, reason}),
-    do: %{"status" => "error", "reason" => reason_text(reason)}
-
-  defp encode_message_result({:ok, reply}) when is_binary(reply),
-    do: %{"status" => "ok", "reply" => reply}
-
-  defp encode_message_result({:ok, other}),
-    do: %{"status" => "ok", "reply" => inspect(other)}
-
-  defp encode_message_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
   defp encode_create_result({:ok, %{root: root, working_copy_id: id}}),
@@ -2270,15 +2248,41 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @impl Slipstream
-  # The answer to a `message_agent`, handed back by the task that ran the turn.
+  # The startup result, handed back by the task that launched the engine.
   # Pushed from here rather than from that task, because this process owns the
   # socket.
-  def handle_info({:agent_message_result, topic, ref, result}, socket) do
-    push(
+  def handle_info({:agent_start_result, topic, ref, id, result}, socket) do
+    transport().push(
       socket,
       topic,
-      "agent_message_result",
-      Map.put(encode_message_result(result), "ref", ref)
+      "agent_start_result",
+      Map.put(encode_start_result(result), "ref", ref),
+      5_000
+    )
+
+    {stops, launching} = Map.pop(socket.assigns[:launching] || %{}, id, [])
+    socket = assign(socket, :launching, launching)
+
+    socket =
+      case stops do
+        [] ->
+          socket
+
+        refs ->
+          stopped = CmsHarness.Agents.halt(id)
+          Enum.reduce(refs, socket, &push_stop_result(&2, &1, stopped))
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:mailbox_send_result, topic, ref, result}, socket) do
+    transport().push(
+      socket,
+      topic,
+      "agent_send_result",
+      Map.put(encode_send_result(result), "ref", ref),
+      5_000
     )
 
     {:noreply, socket}
@@ -2546,6 +2550,16 @@ defmodule CmsHarness.Project.ChannelClient do
 
       {:error, _reason} ->
         {:reply, {:error, :not_connected}, socket}
+    end
+  end
+
+  def handle_call({:mailbox, _params}, _from, %{assigns: %{joined: false}} = socket),
+    do: {:reply, {:error, :not_connected}, socket}
+
+  def handle_call({:mailbox, params}, from, socket) do
+    case Engine.whereis(params["agent_id"]) do
+      {:ok, pid} when pid == elem(from, 0) -> mailbox_request(params, from, socket)
+      _ -> {:reply, {:error, :stale_engine}, socket}
     end
   end
 
@@ -3038,6 +3052,17 @@ defmodule CmsHarness.Project.ChannelClient do
     end)
 
     assign(socket, :pending, %{})
+  end
+
+  defp mailbox_request(params, from, socket) do
+    case transport().push(socket, socket.assigns.topic, "agent_mailbox", params, 15_000) do
+      {:ok, ref} ->
+        timer = Process.send_after(self(), {:reply_timeout, ref}, 15_000)
+        {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
+
+      {:error, _} ->
+        {:reply, {:error, :not_connected}, socket}
+    end
   end
 
   defp normalize_reply({:ok, payload}) when is_map(payload), do: {:ok, payload}

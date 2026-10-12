@@ -6,6 +6,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.AgentTasks.StartAgentTask
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa
@@ -17,8 +18,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("qa_story")
-    scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    scope = working_copy_scope_fixture()
+    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
+    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -33,17 +35,14 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   end
 
   defp create_task(context) do
-    task = %{
-      project_id: context.scope.active_project.id,
-      component_id: nil,
-      story_id: task_story_id(context[:story])
-    }
+    {_, id, session} =
+      CodeMySpecSpex.Fixtures.qa_story_task_fixture(context.scope,
+        story: context.story,
+        agent_id: nil
+      )
 
-    Map.put(context, :task, task)
+    Map.put(context, :task, CodeMySpec.TaskOwner.find_task(session, id))
   end
-
-  defp task_story_id(nil), do: 42
-  defp task_story_id(%{id: id}), do: id
 
   defp write_file!(env, relative_path, content) do
     full_path = Path.join(env.cwd, relative_path)
@@ -52,7 +51,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   end
 
   defp create_qa_plan(context) do
-    write_qa_plan(context.scope.environment)
+    write_qa_plan(fixture_environment(context.scope))
     context
   end
 
@@ -209,7 +208,10 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     # Every other test here builds `story_id`, the graph-dispatch shape, so the
     # whole skill route could be dead with the suite green.
     test "a story number arriving as the topic reaches the story", %{scope: scope, story: story} do
+      {_, id, _} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
+
       task = %{
+        id: id,
         project_id: scope.active_project.id,
         requirement_name: to_string(story.number)
       }
@@ -219,6 +221,30 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert prompt =~ "User Authentication",
              "the skill route passed a story number and the prompt does not carry " <>
                "that story, so the argument never landed"
+    end
+
+    test "the skill dispatcher persists and reuses the review task", %{scope: scope, story: story} do
+      {:ok, _} = CodeMySpec.Stories.set_qa_ready(scope, story, "reviewed-revision")
+      external = "qa-topic-#{Ecto.UUID.generate()}"
+
+      args = %{
+        external_id: external,
+        session_type: "qa_story",
+        module_name: to_string(story.number)
+      }
+
+      assert {:ok, _prompt, _} = StartAgentTask.run(scope, args)
+      session = CodeMySpec.Sessions.get_by_external_id(scope, external)
+      assert [task] = CodeMySpec.TaskOwner.tasks(session)
+      assert task.story_id == story.id
+      assert task.requirement_name == "qa_complete"
+      assert task.status == :active
+      assert task.review_commit == "reviewed-revision",
+             "the task started without recording the certification it reviews"
+      assert {:ok, _prompt, _} = StartAgentTask.run(scope, args)
+      repeated = CodeMySpec.Sessions.get_by_external_id(scope, external)
+      assert [same] = CodeMySpec.TaskOwner.tasks(repeated)
+      assert same.id == task.id
     end
 
     test "a topic that is not a story id says so", %{scope: scope} do
@@ -298,15 +324,18 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     test "same prompt regardless of existing artifacts", %{scope: scope, task: task, story: story} do
       assert {:ok, prompt_before} = QaStory.command(scope, task)
 
-      write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.number)
+      write_qa_plan(fixture_environment(scope))
+      write_story_brief(fixture_environment(scope), story.number)
 
       assert {:ok, prompt_after} = QaStory.command(scope, task)
       assert prompt_before == prompt_after
     end
 
     test "accepts string story ID", %{scope: scope, story: story} do
+      {_, id, _} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
+
       task = %{
+        id: id,
         project_id: scope.active_project.id,
         component_id: nil,
         story_id: to_string(story.id)
@@ -349,7 +378,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       scope: scope,
       task: task
     } do
-      write_file!(scope.environment, ".code_my_spec/qa/plan.md", """
+      write_file!(fixture_environment(scope), ".code_my_spec/qa/plan.md", """
       # QA Plan
 
       ## App Overview
@@ -368,7 +397,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_qa_plan(scope.environment)
+      write_qa_plan(fixture_environment(scope))
 
       # With plan valid but no brief, should get brief phase feedback
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
@@ -394,7 +423,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number, """
+      write_story_brief(fixture_environment(scope), story.number, """
       # QA Brief
 
       ## Tool
@@ -428,7 +457,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # completion path. A brief with no result is a fine intermediate
       # state — the agent finished planning and either ran the tests in
       # the BEAM/browser or aborted (issue a15c252b).
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
     end
@@ -438,9 +467,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result
 
       ## Status
@@ -465,9 +494,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result
 
       ## Status
@@ -492,8 +521,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_story_result(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_story_result(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
     end
@@ -503,9 +532,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result: Story #{story.number}
 
       ## Status
@@ -554,8 +583,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -572,8 +601,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -590,15 +619,15 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
       issues_first = Issues.list_by_story(scope, story.id)
 
       # Write a new result and run evaluate again
-      write_result_with_issues(scope.environment, story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
       issues_second = Issues.list_by_story(scope, story.id)
@@ -620,8 +649,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
-      write_result_with_issues(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
+      write_result_with_issues(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
 
@@ -636,9 +665,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(scope.environment, story.number)
+      write_story_brief(fixture_environment(scope), story.number)
 
-      write_story_result(scope.environment, story.number, """
+      write_story_result(fixture_environment(scope), story.number, """
       # QA Result: Story #{story.number}
 
       ## Status

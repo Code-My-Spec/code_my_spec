@@ -10,8 +10,8 @@ defmodule CodeMySpec.Knowledge do
     is static and lives outside the project working tree.
   - `:project_knowledge` — project-specific research under
     `<project>/.code_my_spec/knowledge/` (lives in the user's repo).
-    Reads route through `scope.environment` so the in-memory environment
-    used in BDD specs sees writes made through `Environments.write_file/3`.
+    Reads route through the environment for the exact working copy selected
+    by the scope, so harness-backed project knowledge stays on that checkout.
 
   Same content is exposed through two surfaces:
 
@@ -25,11 +25,20 @@ defmodule CodeMySpec.Knowledge do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.Users, CodeMySpec.Users.Scope],
+    deps: [
+      CodeMySpec.Environments,
+      CodeMySpec.LocalScope,
+      CodeMySpec.Users,
+      CodeMySpec.Users.Scope,
+      CodeMySpec.WorkingCopies
+    ],
     exports: :all
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @libraries %{
     knowledge: %{
@@ -56,8 +65,8 @@ defmodule CodeMySpec.Knowledge do
 
   - `{:priv, relative}` — `priv/<relative>` of `:code_my_spec` (real
     filesystem, always).
-  - `{:project, relative}` — `<scope.cwd>/<relative>` (read via
-    `scope.environment`).
+  - `{:project, relative}` — `<working-copy-root>/<relative>` (read via
+    the selected working copy's environment).
   """
   @spec resolve_root(Scope.t(), term()) :: {:ok, root()} | {:error, String.t()}
   def resolve_root(_scope, {:priv, relative}) do
@@ -73,17 +82,25 @@ defmodule CodeMySpec.Knowledge do
   # Probed with `list_directory`, not `file_exists?`: `Harness.file_exists?`
   # proxies `stat`, and `stat` answers `{:error, :not_regular}` for a directory
   # — so an existing knowledge dir read as missing over a harness environment.
-  def resolve_root(%Scope{environment: env}, {:project, relative}) when not is_nil(env) do
-    root = Path.join(env.cwd, relative)
+  def resolve_root(scope, {:project, relative}) do
+    case project_environment(scope) do
+      %Environment{cwd: cwd} = env when is_binary(cwd) ->
+        root = Path.join(cwd, relative)
 
-    case Environments.list_directory(env, root) do
-      {:ok, _} -> {:ok, {:env, env, root}}
-      {:error, _} -> {:error, "Directory not found: #{relative}"}
+        case Environments.list_directory(env, root) do
+          {:ok, _} -> {:ok, {:env, env, root}}
+          {:error, _} -> {:error, "Directory not found: #{relative}"}
+        end
+
+      _ ->
+        {:error, "Directory not found: #{relative}"}
     end
   end
 
-  def resolve_root(_scope, {:project, relative}),
-    do: {:error, "Directory not found: #{relative}"}
+  defp project_environment(%Scope{active_working_copy_id: nil, active_project: project}),
+    do: LocalScope.environment(project)
+
+  defp project_environment(%Scope{} = scope), do: WorkingCopies.environment(scope)
 
   @typep root :: {:priv_path, String.t()} | {:env, Environments.Environment.t(), String.t()}
 

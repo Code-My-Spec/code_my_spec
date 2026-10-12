@@ -67,14 +67,19 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
     assert only =~ "the earlier turn"
   end
 
-  test "a turn in flight at the crash is told to it, and ended out loud", ctx do
+  test "a replaced engine reports readiness without fabricating completion", ctx do
     :ok = Keeper.remember(ctx.id, %{messages: [], in_flight: "fix the build"})
 
     crash(ctx.id, ctx.root, ctx.pid)
     restarted(ctx.id, ctx.root)
 
     id = ctx.id
-    assert_receive {:event, ^id, %{event: :turn_ended}}, 2_000
+
+    assert_receive {:event, ^id, %{event: :mailbox_ready, generation: generation, ref: nil}},
+                   2_000
+
+    assert is_binary(generation)
+    refute_receive {:event, ^id, %{event: :turn_ended}}
 
     assert [asked, told] = texts(ctx.id)
     assert asked =~ "fix the build"

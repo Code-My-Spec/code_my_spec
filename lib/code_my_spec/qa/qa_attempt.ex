@@ -32,7 +32,6 @@ defmodule CodeMySpec.Qa.QaAttempt do
           tools_used: [String.t()] | nil,
           parent_attempt_id: Ecto.UUID.t() | nil,
           submitted_at: DateTime.t() | nil,
-          wait: {:issue, Ecto.UUID.t()} | {:not_blocking, atom(), [struct()]} | nil,
           invalidations: [Invalidation.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -40,27 +39,30 @@ defmodule CodeMySpec.Qa.QaAttempt do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "qa_attempts" do
-    field :status, Ecto.Enum, values: @statuses
-    field :issue_ids, {:array, :binary_id}, default: []
-    field :agent_id, :string
-    field :task_id, :string
+    # What this attempt reviewed, captured on its task when QA began: the
+    # story's certification (commit and moment) and its submitted issue fixes.
+    # A pass counts only while the story still asks for exactly this.
+    field(:reviewed_commit, :string)
+    field(:reviewed_submissions, :map)
+    field(:review_started_at, :utc_datetime_usec)
+    field(:review_certified_at, :utc_datetime_usec)
+    field(:stale, :boolean, default: false)
+    field(:status, Ecto.Enum, values: @statuses)
+    field(:issue_ids, {:array, :binary_id}, default: [])
+    field(:agent_id, :string)
+    field(:task_id, :string)
     # 257a6a15: self-reported, not independently verified — same trust level
     # as the scenario prose beside it. Nil for attempts that predate the
     # field, not an empty list, so "reported nothing" and "never asked" stay
     # distinguishable.
-    field :tools_used, {:array, :string}
-    field :submitted_at, :utc_datetime_usec
-    # What the submitting task now waits on, set by `QaAttempts.submit/2` and
-    # never stored: `{:issue, id}`, or `{:not_blocking, threshold, issues}` when
-    # no named issue is open at the project's fix threshold.
-    field :wait, :any, virtual: true
+    field(:tools_used, {:array, :string})
+    field(:submitted_at, :utc_datetime_usec)
+    embeds_many(:scenarios, Scenario, on_replace: :delete)
+    embeds_many(:evidence, Evidence, on_replace: :delete)
 
-    embeds_many :scenarios, Scenario, on_replace: :delete
-    embeds_many :evidence, Evidence, on_replace: :delete
-
-    belongs_to :story, Story
-    belongs_to :parent_attempt, __MODULE__, type: :binary_id
-    has_many :invalidations, Invalidation
+    belongs_to(:story, Story)
+    belongs_to(:parent_attempt, __MODULE__, type: :binary_id)
+    has_many(:invalidations, Invalidation)
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -70,6 +72,11 @@ defmodule CodeMySpec.Qa.QaAttempt do
   def changeset(attempt \\ %__MODULE__{}, attrs) do
     attempt
     |> cast(attrs, [
+      :reviewed_commit,
+      :reviewed_submissions,
+      :review_started_at,
+      :review_certified_at,
+      :stale,
       :story_id,
       :status,
       :issue_ids,

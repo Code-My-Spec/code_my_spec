@@ -44,6 +44,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
   @impl true
@@ -70,17 +71,20 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     now = DateTime.utc_now()
     scope = socket.assigns.current_scope
 
+    devices = Devices.list_devices(scope)
+    copies = devices |> Enum.map(& &1.id) |> WorkingCopies.ids_by_device()
+
     assign(socket,
-      devices: Enum.map(Devices.list_devices(scope), &row(&1, now)),
+      devices: Enum.map(devices, &row(&1, Map.get(copies, &1.id, []), now)),
       now: now
     )
   end
 
-  defp row(device, now) do
+  defp row(device, copy_ids, now) do
     %{
       device: device,
       name: Device.display_name(device),
-      presence: presence(device, now)
+      presence: presence(reachable?(copy_ids), device, now)
     }
   end
 
@@ -89,11 +93,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   # `HarnessRegistry` is a live process per connected copy, which is the whole
   # reason to ask it rather than a column: a process cannot be stale. A machine
   # is reachable exactly while something on it is connected.
-  defp reachable?(device) do
-    device.working_copies
-    |> Enum.any?(fn copy ->
-      match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(copy.id))
-    end)
+  defp reachable?(copy_ids) do
+    Enum.any?(copy_ids, &match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(&1)))
   end
 
   # Presence is the connection; last seen is the fallback for a machine that
@@ -108,10 +109,6 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   #
   # A quiet machine and an unreachable one are precisely what this page exists
   # to separate, and a timestamp cannot separate them — only the connection can.
-  defp presence(device, now) do
-    presence(reachable?(device), device, now)
-  end
-
   defp presence(true, _device, _now), do: %{label: "Present", since: nil}
 
   # Never heard from at all is not the same claim as having gone quiet: nothing

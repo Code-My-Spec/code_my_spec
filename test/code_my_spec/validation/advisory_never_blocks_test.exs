@@ -19,7 +19,9 @@ defmodule CodeMySpec.Validation.AdvisoryNeverBlocksTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("advisory_never_blocks")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+    environment = Environment.new(:local, tmp)
+    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
+    :ok = register_working_copy_environment(scope, environment)
 
     File.mkdir_p!(Path.join(tmp, "lib/my_app"))
     File.write!(Path.join(tmp, @path), "defmodule MyApp.Accounts do\nend\n")

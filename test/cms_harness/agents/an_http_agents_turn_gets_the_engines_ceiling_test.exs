@@ -25,6 +25,8 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
         "provider" => "deepinfra",
         "api_key" => "not-a-real-key",
         "working_copy" => root,
+        "on_register" => fn _, _ -> :ok end,
+        "on_consume" => fn _, _, _ -> :ok end,
         "role" => "coding"
       })
 

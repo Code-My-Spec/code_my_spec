@@ -69,7 +69,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
       stories: stories,
       agents: agents,
       reports: reports(stories, tasks, agents, attempts, messages, turns),
-      teams: teams(agents, attempts),
+      teams: teams(agents, stories, attempts),
       summary: summary(scope, agents, stories, messages)
     }
   end
@@ -387,13 +387,24 @@ defmodule CodeMySpec.AgentPerformance.Page do
   # team. One pass over the attempts, grouped by the submitting agent's own
   # working copy, gives every team its rate at once. The denominator is a
   # team's stories, so one attempt per story -- the earliest, win or lose.
-  defp teams(agents, attempts) do
+  defp teams(agents, stories, attempts) do
     copies = Map.new(agents, &{&1.id, &1.working_copy_id})
 
-    attempts
-    |> Enum.group_by(&Map.get(copies, &1.agent_id))
-    |> Enum.reject(fn {working_copy_id, _attempts} -> is_nil(working_copy_id) end)
-    |> Map.new(fn {working_copy_id, group} -> {working_copy_id, first_pass_rate(group)} end)
+    first_pass_rates =
+      attempts
+      |> Enum.group_by(&Map.get(copies, &1.agent_id))
+      |> Enum.reject(fn {working_copy_id, _attempts} -> is_nil(working_copy_id) end)
+      |> Map.new(fn {working_copy_id, group} -> {working_copy_id, first_pass_rate(group)} end)
+
+    # A team that only promotes, with no QA attempt on record, has no
+    # first-pass rate but still belongs here for its throughput.
+    promoting_team_ids =
+      stories
+      |> Enum.flat_map(&[&1.working_copy_id, &1.promoted_working_copy_id])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    Enum.reduce(promoting_team_ids, first_pass_rates, &Map.put_new(&2, &1, nil))
   end
 
   defp first_pass_rate(attempts) do
@@ -463,7 +474,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
   defp throughput(stories) do
     stories
     |> Enum.filter(&(not is_nil(&1.promoted_version)))
-    |> Enum.group_by(& &1.working_copy_id)
+    |> Enum.group_by(&(&1.promoted_working_copy_id || &1.working_copy_id))
     |> Map.new(fn {working_copy_id, promoted} -> {working_copy_id, length(promoted)} end)
   end
 

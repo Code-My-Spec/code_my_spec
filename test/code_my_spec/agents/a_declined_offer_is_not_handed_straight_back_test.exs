@@ -35,6 +35,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   """
   use CodeMySpecSpex.Case, async: false
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
@@ -167,32 +168,25 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
            """
   end
 
-  test "a turn that could not be delivered is not retried twice a second", ctx do
+  test "an undeliverable turn is recorded as offer attempts, not a refusal", ctx do
     # No transport registered for this copy, so the dispatch fails the way an
     # unreachable machine fails.
     Application.put_env(:code_my_spec, :agent_transport, CodeMySpec.Agents.Transport.Harness)
 
     agent =
-      Enum.reduce(1..5, ctx.agent, fn _, acc ->
+      Enum.reduce(1..3, ctx.agent, fn _, acc ->
         acc = reload(ctx.scope, acc)
         {:ok, acc} = AgentsRepository.update_agent(ctx.scope, acc, %{work_request_id: nil})
         _ = Work.request_turn_if_runnable(ctx.scope, acc, :test)
         acc
       end)
 
-    {:ok, agent} = AgentsRepository.update_agent(ctx.scope, agent, %{work_request_id: nil})
-
-    refute admitted?(ctx.scope, reload(ctx.scope, agent)),
-           """
-           An undeliverable turn was offered again immediately.
-
-           A turn that cannot be delivered never becomes a turn, so the agent
-           never ends one and the turn-ended damper never runs. `release/3`
-           puts it straight back into `runnable_state?/1` and the next
-           observation offers the same work again — a spin on the server side
-           with no agent involved at all, filling the transcript with turns
-           that never happened.
-           """
+    # Each failed dispatch is its own offer, settled undelivered — never ignored —
+    # and nothing reads as the agent having said no.
+    offers = Offers.list_for_agent(agent.id)
+    assert length(offers) == 3
+    assert Enum.all?(offers, &(to_string(&1.status) == "undelivered"))
+    assert is_nil(reload(ctx.scope, agent).declined_offer)
   end
 
   test "finishing a task is not declining the next one", ctx do
@@ -238,7 +232,12 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
         work_requested_at: nil
       })
 
-    :ok = CodeMySpec.Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_ended"})
+    :ok =
+      CodeMySpec.Agents.record_turn_event(
+        scope,
+        agent.id,
+        ChannelClient.encode_turn_event(CodeMySpecSpex.Fixtures.mailbox_turn_end(scope, agent.id))
+      )
   end
 
   defp on_entity("story", id), do: %{story_id: String.to_integer(id)}

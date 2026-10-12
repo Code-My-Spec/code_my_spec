@@ -105,9 +105,10 @@ defmodule CmsHarness.Sync do
   end
 
   # A server-side deploy-readiness check has no real way to read this
-  # project's `mix.exs` — `scope.environment` there resolves through
-  # `Resources.project_scope/2`'s fallback to `Environment.new(:local,
-  # project.local_path)`, a path on *this* machine, not the server's (see
+  # project's `mix.exs` — a server-side scope does not carry the remote
+  # checkout's execution environment, and falling back to
+  # `Environment.new(:local, project.local_path)` would use a path on *this*
+  # machine, not the server's (see
   # `CodeMySpec.Provisioning.Steps.app_path/1`). This machine can read it
   # directly, so it does, on every sync — self-healing a `module_name` that
   # was never set (or was set wrong) without waiting on a separate onboarding
@@ -450,6 +451,13 @@ defmodule CmsHarness.Sync do
   # build with — the same reachability gap `app_path/1` has with `mix.exs`.
   # This machine can run `git` in the real checkout, so it does, on every
   # sync, and reports the SHA for a harness-only project to fall back to.
+  #
+  # The server also releases a certification its branch moved past on it, and
+  # a commit changes no file a sync watches, so an agent's turn end reports too.
+  @doc "Report `root`'s HEAD to the server."
+  @spec report_head(String.t()) :: :ok
+  def report_head(root), do: report_head_commit(Environment.new(:local, root), root)
+
   defp report_head_commit(env, root) do
     case Environments.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
       {sha, 0} -> ChannelClient.deliver_head_commit(root, String.trim(sha))

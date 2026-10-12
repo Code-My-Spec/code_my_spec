@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Components.ADeletedComponentStaysDeletedTest do
   alias CodeMySpec.McpServers.Components.Tools.DeleteComponent
 
   setup do
-    scope = %{full_scope_fixture() | environment: nil, cwd: nil}
+    scope = put_fixture_environment(full_scope_fixture(), nil)
 
     component =
       component_fixture(scope, %{

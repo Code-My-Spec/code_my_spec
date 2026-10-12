@@ -45,7 +45,12 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       """
 
     tmp = CodeMySpec.TempFile.owned_dir("deploy_config_target")
-    scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
+
+    scope =
+      CodeMySpec.UsersFixtures.put_fixture_environment(
+        provisioning_scope_fixture(),
+        Environment.new(:local, tmp)
+      )
 
     {:ok, project} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})
@@ -55,9 +60,27 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
 
     {:ok, {public, private}} = Sops.generate_key()
     ProjectSecrets.put_value(scope, "age_private_key_uat", private)
-    :ok = Sops.write_config(scope.environment, %{"uat" => public})
-    :ok = Sops.put_secret(scope.environment, "uat", "SECRET_KEY_BASE", "x", private)
-    :ok = Sops.put_secret(scope.environment, "uat", "DATABASE_URL", "ecto://x", private)
+
+    :ok =
+      Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(scope), %{"uat" => public})
+
+    :ok =
+      Sops.put_secret(
+        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        "uat",
+        "SECRET_KEY_BASE",
+        "x",
+        private
+      )
+
+    :ok =
+      Sops.put_secret(
+        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        "uat",
+        "DATABASE_URL",
+        "ecto://x",
+        private
+      )
 
     File.mkdir_p!(Path.join(tmp, "config"))
     write_boilerplate(tmp)

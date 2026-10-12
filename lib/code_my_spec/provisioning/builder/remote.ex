@@ -371,10 +371,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   `ssh_deliver/2`'s own reasoning for archiving from the project's own
   environment — no GitHub credential anywhere near the builder — assumes
-  there is a reachable environment to archive from. A harness-only project's
-  `scope.environment` is not one (`Environment.new(:local, nil)`, the same
-  shape `Steps.head_commit/1` already falls back for), so there is nothing
-  to run `git archive` against; the source has to come from somewhere the
+  there is a reachable environment to archive from. Without an explicit
+  environment rooted at the source tree, there is nothing to run
+  `git archive` against; the source has to come from somewhere the
   builder itself can already reach. GitHub is that somewhere, since setup
   already pushed the project there.
 

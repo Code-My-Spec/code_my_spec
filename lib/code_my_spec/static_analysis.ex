@@ -23,7 +23,8 @@ defmodule CodeMySpec.StaticAnalysis do
       CodeMySpec.Paths,
       CodeMySpec.Problems,
       CodeMySpec.TempFile,
-      CodeMySpec.Users.Scope
+      CodeMySpec.Users.Scope,
+      CodeMySpec.WorkingCopies
     ],
     exports: :all
 
@@ -44,23 +45,28 @@ defmodule CodeMySpec.StaticAnalysis do
   defdelegate run_analyzers(scope, analyzers, changed_files, config, opts), to: Pipeline
 
   @doc """
-  Resolve the environment an analyzer should shell out into.
-
-  Analyzers already resolve their working directory as `opts[:cwd] ||
-  scope.cwd`; this is the same precedence for the thing that actually runs the
-  command. They are a public API callable without `StaticAnalysis.Runner`, so
-  the resolution has to live where the analyzer can reach it rather than in
-  the runner that usually calls it.
-
-  The `:local` fallback is not a default standing in for a missing value.
-  `System.cmd(cd: cwd)` — what these analyzers did before — *is* a local
-  environment; naming it changes nothing about where the command runs. Scopes
-  built server-side carry no environment because nothing there shells out.
+  Resolve the execution environment. An explicitly supplied `:environment`
+  wins, including `nil`. Otherwise a selected working copy is authoritative,
+  including when it cannot be resolved. `cwd` is the legacy local-runner
+  directory supplied by the caller; this function never uses process cwd.
   """
-  @spec resolve_environment(keyword(), CodeMySpec.Users.Scope.t(), String.t()) ::
-          CodeMySpec.Environments.Environment.t()
+  @spec resolve_environment(keyword(), CodeMySpec.Users.Scope.t(), String.t() | nil) ::
+          CodeMySpec.Environments.Environment.t() | nil
   def resolve_environment(opts, scope, cwd) do
-    opts[:environment] || scope.environment ||
-      Environment.new(:local, cwd)
+    case Keyword.fetch(opts, :environment) do
+      {:ok, environment} ->
+        environment
+
+      :error ->
+        resolve_unset_environment(scope, cwd)
+    end
   end
+
+  defp resolve_unset_environment(%{active_working_copy_id: id} = scope, _cwd) when not is_nil(id),
+    do: CodeMySpec.WorkingCopies.environment(scope)
+
+  defp resolve_unset_environment(_scope, cwd) when is_binary(cwd) and cwd != "",
+    do: Environment.new(:local, cwd)
+
+  defp resolve_unset_environment(_scope, _cwd), do: nil
 end

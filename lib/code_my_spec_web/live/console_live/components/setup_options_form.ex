@@ -11,7 +11,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.SetupOptionsForm do
 
   use CodeMySpecWeb, :html
 
-  alias CodeMySpec.Provisioning.Sequence
+  alias CodeMySpec.ProvisioningPlan.Sequence
 
   attr :options, :list, required: true
 

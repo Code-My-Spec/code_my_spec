@@ -24,6 +24,8 @@ defmodule CodeMySpec.Provisioning.ContentPublishingTest do
 
   defp published, do: %{sync_id: "s1", site_url: "https://sams-site.com"}
 
+  defp sync_without_source, do: fn _scope -> {:error, :no_source_path} end
+
   defp fetching(status, body) do
     fn _base, _path -> {:ok, %{status: status, body: body}} end
   end
@@ -63,6 +65,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishingTest do
     test "reaches :rendered and stamps when it was proven" do
       result =
         ContentPublishing.run(scope(),
+          sync: sync_without_source(),
           publish: fn _ -> {:ok, published()} end,
           fetch: fetching(200, "<h1>hello world</h1>"),
           path: "/blog/hello-world",
@@ -80,6 +83,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishingTest do
     test "a 200 whose body lacks the content is not rendered" do
       result =
         ContentPublishing.run(scope(),
+          sync: sync_without_source(),
           publish: fn _ -> {:ok, published()} end,
           fetch: fetching(200, "<h1>Page not found</h1>"),
           path: "/blog/hello-world",
@@ -95,6 +99,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishingTest do
     test "a non-200 is not rendered either" do
       result =
         ContentPublishing.run(scope(),
+          sync: sync_without_source(),
           publish: fn _ -> {:ok, published()} end,
           fetch: fetching(404, ""),
           path: "/blog/hello-world",
@@ -129,6 +134,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishingTest do
     test "a trigger failure from the pipeline is classified as a trigger failure" do
       result =
         ContentPublishing.run(scope(),
+          sync: sync_without_source(),
           publish: fn _ -> {:error, %{message: "Client pull trigger failed: :econnrefused"}} end,
           path: "/blog/x",
           expect: "hello"
@@ -141,12 +147,27 @@ defmodule CodeMySpec.Provisioning.ContentPublishingTest do
     test "an S3 failure is not misfiled as a trigger failure" do
       result =
         ContentPublishing.run(scope(),
+          sync: sync_without_source(),
           publish: fn _ -> {:error, %{message: "S3 write failed: :timeout"}} end,
           path: "/blog/x",
           expect: "hello"
         )
 
       assert result.state == :publish_failed
+    end
+  end
+
+  describe "run/2 — default sync environment" do
+    test "does not publish when no environment is supplied" do
+      result =
+        ContentPublishing.run(scope(),
+          publish: fn _ -> flunk("published without a content sync environment") end,
+          path: "/blog/x",
+          expect: "hello"
+        )
+
+      assert result.state == :publish_failed
+      assert result.reason =~ ":no_environment"
     end
   end
 

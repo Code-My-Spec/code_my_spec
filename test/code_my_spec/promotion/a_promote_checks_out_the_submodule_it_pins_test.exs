@@ -11,12 +11,14 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.QaFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Support.InMemoryEnvironment
@@ -118,9 +120,17 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     {:ok, agent} = WorkingCopies.report_root(agent, @agent)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script(overrides))
-    scope = %{scope | active_working_copy_id: agent.id, environment: env}
+    :ok = Environments.register({:working_copy, running.id}, env)
+    :ok = Environments.register({:working_copy, agent.id}, env)
+    scope = %{scope | active_working_copy_id: agent.id}
 
     story = story_fixture(scope)
+
+    story
+    |> Ecto.Changeset.change(qa_ready_commit: @merged, qa_ready_at: DateTime.utc_now())
+    |> CodeMySpec.Repo.update!()
+
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     {_n, _} =
       Files.upsert_files(scope, [

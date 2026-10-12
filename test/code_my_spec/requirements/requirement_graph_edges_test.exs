@@ -14,11 +14,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
-  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
-  alias CodeMySpecSpex.ProjectStateFixtures
-  alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -515,7 +512,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # working copy (story 1108), not against main after a promotion — so
     # `story_promoted` moved from *before* `qa_complete` to *after* it.
     # Promotion records verified work landing; it no longer gates what QA can
-    # test. `story_issues_resolved` sits ahead of `qa_complete` instead,
+    # test. Individual issue submissions sit ahead of `qa_complete` instead,
     # straight off `ready_for_qa`: a story's own known issues have to be
     # clear before QA spends a pass on it. Analyzer findings are the promote
     # gate's (28d72f8a), so `problems_resolved` is gone.
@@ -538,6 +535,13 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
           acceptance_criteria: ["AC1"]
         })
 
+      issue =
+        CodeMySpec.IssuesFixtures.issue_fixture(scope, %{
+          story_id: story.id,
+          status: :accepted,
+          severity: :high
+        })
+
       sync!(scope, tmp_dir)
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
@@ -548,18 +552,26 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         end)
       end
 
-      assert edge?.("ready_for_qa", "story_issues_resolved"),
-             "story_issues_resolved should follow ready_for_qa directly"
+      assert Enum.any?(
+               edges,
+               &(&1.from == {"story", story.id, "story_issues_triaged"} and
+                   &1.to == {"issue", issue.id, "submitted"})
+             )
 
-      assert edge?.("story_issues_resolved", "qa_complete"),
-             "qa_complete should wait on the story's known issues being resolved"
+      assert Enum.any?(
+               edges,
+               &(&1.from == {"issue", issue.id, "submitted"} and
+                   &1.to == {"story", story.id, "ready_for_qa"})
+             )
 
-      assert edge?.("qa_complete", "story_promoted"),
-             "promotion should follow QA, not the other way round"
+      assert edge?.("ready_for_qa", "qa_complete")
+      assert edge?.("qa_complete", "story_promoted")
 
-      refute edge?.("ready_for_qa", "qa_complete"),
-             "the direct edge would let QA start on a story whose code has not " <>
-               "left the coding agent's worktree"
+      refute Enum.any?(
+               edges,
+               &(&1.from == {"story", story.id, "ready_for_qa"} and
+                   &1.to == {"issue", issue.id, "submitted"})
+             )
 
       refute edge?.("story_promoted", "qa_complete"),
              "the old direction — promotion gating QA — must not survive the reorder"
@@ -632,12 +644,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    scope =
+      put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     # Graph-shape tests need the full spec -> review -> test -> implementation
     # chain; a fresh project defaults to spex and code only.
@@ -685,120 +696,6 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     full_path = Path.join(tmp_dir, relative_path)
     File.mkdir_p!(Path.dirname(full_path))
     File.write!(full_path, content)
-  end
-
-  # Clear the full story-level chain inline (the LiveView-driven
-  # `apply_story_chain_complete` fixture needs a `context.conn`, which
-  # this unit test doesn't have). Mirrors the same steps:
-  # three_amigos → bdd_spec file → DB QA pass attempt → sync.
-  defp seed_story_chain_complete(scope, tmp_dir, story, persona_id) do
-    :ok =
-      ProjectStateFixtures.apply_three_amigos_for_story(scope, story,
-        persona_id: persona_id,
-        rule_statement: "Rule for #{story.title}"
-      )
-
-    # Re-fetch the story so criteria (created during three amigos) are available.
-    story = StoryHelpers.fetch(scope, story.id)
-
-    # Three amigos adds a happy_path AND a failure_path criterion.
-    # bdd_specs_covered checks every criterion, not just the first, so both
-    # need a file (issue 644279a9).
-    Enum.each(story.criteria, fn criterion ->
-      bdd_path = CodeMySpecSpex.Fixtures.spec_file_path(story, criterion)
-      write_file(tmp_dir, bdd_path, bdd_spec_stub(story, criterion))
-    end)
-
-    # Insert a DB-backed QA pass attempt. The requirement graph now checks
-    # Qa.complete?/2 (DB-driven), not result_complete.md on disk.
-    {:ok, _attempt} =
-      %QaAttempt{}
-      |> QaAttempt.changeset(%{
-        story_id: story.id,
-        status: :pass,
-        scenarios: [%{name: "Placeholder", status: :pass, observation: "All checks passed."}],
-        issue_ids: [],
-        submitted_at: DateTime.utc_now() |> DateTime.truncate(:second)
-      })
-      |> CodeMySpec.Repo.insert()
-
-    sync!(scope, tmp_dir)
-    :ok
-  end
-
-  defp bdd_spec_stub(story, criterion) do
-    """
-    defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
-      use ExUnit.Case, async: true
-
-      test "placeholder" do
-        assert true
-      end
-    end
-    """
-  end
-
-  # Intentionally-invalid spec stub. Carries the correct `## Type` (so
-  # ComponentSync picks the right graph) but omits the required sections,
-  # so sync's validate_entry marks it `valid: false`.
-  defp spec_stub(module_name, type) do
-    """
-    # #{module_name}
-
-    ## Type
-
-    #{type}
-    """
-  end
-
-  # Spec content that passes `Documents.create_dynamic_document` validation —
-  # required so sync doesn't reset `valid: false` after `mark_valid!`. The
-  # sections match required_sections for each doc type in the Documents
-  # Registry:
-  #   - context → "context_spec": [["delegates","functions"], "dependencies", "components"]
-  #   - other  → "spec":         [["delegates","functions"], "dependencies"]
-  defp spec_content(module_name, "context") do
-    """
-    # #{module_name}
-
-    A test context.
-
-    ## Type
-
-    context
-
-    ## Functions
-
-    - `hello/0`
-
-    ## Dependencies
-
-    - MyApp.Repo
-
-    ## Components
-
-    - MyApp.Accounts.User — a user record
-    """
-  end
-
-  defp spec_content(module_name, type) do
-    """
-    # #{module_name}
-
-    A test component.
-
-    ## Type
-
-    #{type}
-
-    ## Functions
-
-    - `hello/0`
-
-    ## Dependencies
-
-    - MyApp.Repo
-    """
   end
 
   # Review content that passes the "design_review" doc type's required_sections:

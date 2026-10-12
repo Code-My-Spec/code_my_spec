@@ -26,7 +26,9 @@ defmodule CodeMySpec.Files.FingerprintAgreementTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+
+    scope =
+      put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, Environment.new(:local, tmp))
 
     File.mkdir_p!(Path.join(tmp, "lib/my_app"))
     File.write!(Path.join(tmp, @path), "defmodule MyApp.Accounts do\nend\n")
@@ -48,7 +50,7 @@ defmodule CodeMySpec.Files.FingerprintAgreementTest do
     Fixtures.deliver_manifest(scope)
     from_manifest = fingerprint(scope)
 
-    {:ok, _} = FileSync.sync(scope, base_dir: tmp)
+    {:ok, _} = FileSync.sync(scope, base_dir: tmp, environment: Environment.new(:local, tmp))
     from_disk = fingerprint(scope)
 
     assert from_manifest != nil, "the manifest should have recorded this file"

@@ -158,14 +158,14 @@ defmodule CodeMySpec.Support.TestAdapter do
   @doc """
   Clones a repository by checking out from the pool.
 
-  Uses a pool of pre-cloned directories for fast reuse. Additional arguments
-  are ignored for backward compatibility - the pool manages paths and always
-  includes deps, _build, and .git.
+  Uses a pool of pre-cloned directories for fast reuse. The optional destination
+  path is accepted for compatibility, but the pool manages checkout paths and
+  always includes deps, _build, and .git.
 
   Use `checkin/1` in `on_exit` to return the directory to the pool.
   """
   @impl true
-  def clone(_scope, repo_url, _path \\ nil, _opts \\ []) do
+  def clone(_scope, repo_url, _path \\ nil) do
     repo_type = url_to_repo_type(repo_url)
     __MODULE__.Pool.checkout(repo_type: repo_type)
   end

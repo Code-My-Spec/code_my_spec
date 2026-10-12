@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.{Environment, Local}
+  alias CodeMySpec.Environments.Local
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Hetzner, Sops, Steps}
 
@@ -33,13 +33,16 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
   @private_ip "10.0.0.5"
 
   setup do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
 
     stub_hetzner()
 
     {public, _private} = key_for(scope, "uat")
-    :ok = Sops.write_config(scope.environment, %{"uat" => public})
+
+    :ok =
+      Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(scope), %{"uat" => public})
+
     put_secret(scope, "uat", "DATABASE_URL", "postgresql://u:p@10.0.0.5:5432/app")
 
     put_secret(
@@ -82,7 +85,12 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
       {:ok, private} = ProjectSecrets.fetch_value(ctx.scope, "age_private_key_uat")
 
       assert {:ok, missing} =
-               Sops.missing_secrets(ctx.scope.environment, "uat", private, ["DATABASE_URL"])
+               Sops.missing_secrets(
+                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+                 "uat",
+                 private,
+                 ["DATABASE_URL"]
+               )
 
       assert "DATABASE_URL" not in missing
     end
@@ -173,7 +181,12 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
       # then given back only the one secret this describe block means to
       # still have present, reproducing a role provisioned back when
       # `CMS_RESTORE_ADMIN_URL` was never written at all.
-      :ok = CodeMySpec.Environments.delete_file(ctx.scope.environment, Sops.env_file("uat"))
+      :ok =
+        CodeMySpec.Environments.delete_file(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          Sops.env_file("uat")
+        )
+
       put_secret(ctx.scope, "uat", "DATABASE_URL", "postgresql://u:p@10.0.0.5:5432/app")
 
       :ok
@@ -216,7 +229,10 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       on_exit(fn -> restore_environment_env(previous) end)
 
-      directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
+      directoryless = %{
+        ctx.scope
+        | active_working_copy_id: Ecto.UUID.generate()
+      }
 
       run = fn [_command] -> {"", 0} end
 
@@ -246,13 +262,18 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       on_exit(fn -> restore_environment_env(previous) end)
 
-      directoryless = %{ctx.scope | environment: Environment.new(:local, nil)}
+      directoryless = %{
+        ctx.scope
+        | active_working_copy_id: Ecto.UUID.generate()
+      }
 
       assert {:error, reason} =
                Steps.put_secret(directoryless, "prod", "DATABASE_URL", "ecto://u:p@host/db")
 
-      assert reason =~ "working directory",
+      assert reason =~ "working environment",
              "expected a clean, named reason rather than a raw exception message: #{reason}"
+
+      assert {:error, :not_found} = ProjectSecrets.fetch_value(ctx.scope, "age_private_key_prod")
     end
   end
 
@@ -281,7 +302,15 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
   defp put_secret(scope, environment, key, value) do
     {:ok, private} = ProjectSecrets.fetch_value(scope, "age_private_key_#{environment}")
-    :ok = Sops.put_secret(scope.environment, environment, key, value, private)
+
+    :ok =
+      Sops.put_secret(
+        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        environment,
+        key,
+        value,
+        private
+      )
   end
 
   defp stub_hetzner do

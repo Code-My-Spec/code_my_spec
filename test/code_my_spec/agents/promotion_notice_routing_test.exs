@@ -60,7 +60,10 @@ defmodule CodeMySpec.Agents.PromotionNoticeRoutingTest do
       assert_received {:agent_dispatch, ^id, ref, "restart confirmation"}
 
       assert %{sender_id: "promotion-notice", delivery: :pending} =
-               Conversations.pending_message_by_ref(ref)
+               CodeMySpec.Repo.get_by(Conversations.Message,
+                 delivery_ref: ref,
+                 delivery: :pending
+               )
     end
   end
 
@@ -82,6 +85,8 @@ defmodule CodeMySpec.Agents.PromotionNoticeRoutingTest do
     report(ctx, "restart failure")
     id = ctx.agent.id
     assert_received {:agent_dispatch, ^id, ref, "restart failure"}
-    assert %{sender_id: "operator"} = Conversations.pending_message_by_ref(ref)
+
+    assert %{sender_id: "operator"} =
+             CodeMySpec.Repo.get_by(Conversations.Message, delivery_ref: ref, delivery: :pending)
   end
 end

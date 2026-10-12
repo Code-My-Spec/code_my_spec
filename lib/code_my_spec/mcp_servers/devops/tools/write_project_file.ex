@@ -17,27 +17,45 @@ defmodule CodeMySpec.McpServers.Devops.Tools.WriteProjectFile do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Environments
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Resources
+  alias CodeMySpec.WorkingCopies
 
   schema do
-    field :path, :string, required: true, doc: "Path relative to the project root."
-    field :content, :string, required: true, doc: "Full file content — this replaces whatever is there."
+    field(:path, :string, required: true, doc: "Path relative to the project root.")
+
+    field(:content, :string,
+      required: true,
+      doc: "Full file content — this replaces whatever is there."
+    )
   end
 
   @impl true
   def execute(%{path: path, content: content} = params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          {:ok, project} <- Validators.devops_project(scope) do
-      scope
-      |> Resources.project_scope(project)
-      |> Map.fetch!(:environment)
-      |> Environments.write_file(path, content)
+      scoped = Resources.project_scope(scope, project)
+
+      scoped
+      |> project_environment(project)
+      |> write_file(path, content)
       |> reply(path, frame)
     else
       {:error, reason} -> {:reply, error(reason), frame}
     end
   end
+
+  defp project_environment(%{active_working_copy_id: copy_id} = scope, _project)
+       when is_binary(copy_id),
+       do: WorkingCopies.environment(scope)
+
+  defp project_environment(_scope, project), do: LocalScope.environment(project)
+
+  defp write_file(nil, _path, _content), do: {:error, :no_working_environment}
+
+  defp write_file(environment, path, content),
+    do: Environments.write_file(environment, path, content)
 
   defp reply(:ok, path, frame), do: {:reply, ok("Wrote #{path}."), frame}
   defp reply({:ok, _}, path, frame), do: {:reply, ok("Wrote #{path}."), frame}

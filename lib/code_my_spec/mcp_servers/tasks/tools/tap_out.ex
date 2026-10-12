@@ -12,6 +12,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions
@@ -31,8 +32,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
       {:reply,
        Response.tool()
        |> Response.text("""
-       Tap-out requested (request_id=`#{request.id}`). It is waiting in your
-       user's notifications (/app/permissions/#{request.id}); a human decides.
+       Tap-out requested (request_id=`#{request.id}`). The main agent decides it and
+       sends it to your user only if it is theirs; the main agent's own goes to the user.
 
        A linked task is blocked; unrelated work may continue. Without a task,
        this asks to turn off continuous work upon approval. Do not ask again.
@@ -52,8 +53,15 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
        frame}
   end
 
-  defp request(scope, agent_id, params) when is_binary(agent_id),
-    do: Notifications.request_agent_tap_out(scope, agent_id, params[:task_id], params[:reason])
+  # A teammate's tap-out is main's to decide from the moment it is raised
+  # (criteria 2073, 2120), so main is woken and offered it, as for a question.
+  defp request(scope, agent_id, params) when is_binary(agent_id) do
+    with {:ok, request} <-
+           Notifications.request_agent_tap_out(scope, agent_id, params[:task_id], params[:reason]) do
+      :ok = MainAgent.question_raised(scope, %{agent_id: agent_id})
+      {:ok, request}
+    end
+  end
 
   defp request(scope, _agent_id, params) do
     with {:ok, session} <- resolve_session(scope, params[:session_id]) do

@@ -18,6 +18,8 @@ defmodule CodeMySpec.Stories.Story do
           specs_ready_commit: String.t() | nil,
           qa_ready_commit: String.t() | nil,
           qa_ready_at: DateTime.t() | nil,
+          qa_reviewed_commit: String.t() | nil,
+          qa_reviewed_at: DateTime.t() | nil,
           three_amigos_sealed: boolean(),
           promoted_version: String.t() | nil,
           epic_id: Ecto.UUID.t() | nil,
@@ -68,6 +70,10 @@ defmodule CodeMySpec.Stories.Story do
           "green), or nil. Set only by completing the ready_for_qa task; " <>
           "cleared with specs_ready",
       qa_ready_at: "When qa_ready_commit was stamped, or nil",
+      qa_reviewed_commit:
+        "The certification a QA pass must have reviewed for this story: qa_ready_commit, " <>
+          "or an earlier certified commit when nothing QA exercises changed since",
+      qa_reviewed_at: "When the certification qa_reviewed_commit names was stamped",
       three_amigos_sealed:
         "Whether the story's Three Amigos session has been sealed. Set by the " <>
           "gate when persona, rules, scenarios and zero open questions all " <>
@@ -117,6 +123,14 @@ defmodule CodeMySpec.Stories.Story do
     field :qa_ready_commit, :string
     field :qa_ready_at, :utc_datetime_usec
 
+    # The certification a QA pass must have reviewed: the stamp itself, or an
+    # earlier one certification carried forward because nothing QA exercises
+    # changed in between (John, 2026-10-11). Without it every test-only commit
+    # after QA cost a QA pass and, until one ran, a promotion the queue
+    # retried forever.
+    field :qa_reviewed_commit, :string
+    field :qa_reviewed_at, :utc_datetime_usec
+
     # Latch behind `three_amigos_complete`, in the same shape as `specs_ready`
     # above. Recomputed, the requirement meant a red card added to a shipped
     # story quietly un-shipped it; a seal is a statement about a conversation
@@ -138,6 +152,9 @@ defmodule CodeMySpec.Stories.Story do
     # Nil is also the invalidation switch: clearing it is how a story gets
     # sent back through `story_promoted` after its work is revised.
     field :promoted_version, :string
+    # Historical attribution survives release of the active working-copy assignment.
+    field :promoted_working_copy_id, :binary_id
+    field :promoted_at, :utc_datetime_usec
 
     # The id this story had on the harness it was migrated from. Story ids are
     # per-deployment sequences and the ranges overlap, so without this the same
@@ -236,8 +253,12 @@ defmodule CodeMySpec.Stories.Story do
       :specs_ready_commit,
       :qa_ready_commit,
       :qa_ready_at,
+      :qa_reviewed_commit,
+      :qa_reviewed_at,
       :three_amigos_sealed,
       :promoted_version,
+      :promoted_working_copy_id,
+      :promoted_at,
       :priority,
       :locked_at,
       :lock_expires_at,
@@ -387,6 +408,8 @@ defmodule CodeMySpec.Stories.Story do
         |> put_change(:specs_ready_commit, nil)
         |> put_change(:qa_ready_commit, nil)
         |> put_change(:qa_ready_at, nil)
+        |> put_change(:qa_reviewed_commit, nil)
+        |> put_change(:qa_reviewed_at, nil)
     end
   end
 

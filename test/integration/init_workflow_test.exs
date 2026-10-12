@@ -55,7 +55,12 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     # Step 4: create project in DB with local_path (simulates init_project MCP tool)
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
-    scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
+
+    scope =
+      CodeMySpec.UsersFixtures.put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     # From here the frame carries the scope, which is what production does:
     # `HarnessScope` reads `X-Harness-Id` off the request and assigns

@@ -106,6 +106,10 @@ defmodule CodeMySpecSpex.HarnessHooks do
       scanner tracks: a harness whose scan finds nothing refuses to send it.
     * `:feature` — `true` makes this checkout a feature copy, with the scope's
       fixture copy designated main (see "Two working copies").
+    * `:environment` — what the server reads for this copy. `:checkout` (the
+      default) reads the checkout through the harness, as production does.
+      `:in_memory` reads `context.environment`, for a spex whose files live in
+      the fixture's in-memory runtime rather than on the checkout.
   """
   @spec given_a_live_harness(map(), keyword()) :: map()
   def given_a_live_harness(context, opts \\ []) do
@@ -152,6 +156,8 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
     scope = %{scope | active_working_copy_id: working_copy_id}
 
+    :ok = serve_from(Keyword.get(opts, :environment, :checkout), working_copy_id, context)
+
     context
     |> Map.put(:harness, %{
       root: root,
@@ -162,6 +168,24 @@ defmodule CodeMySpecSpex.HarnessHooks do
       server_url: url
     })
     |> Map.put(:scope, scope)
+  end
+
+  @doc """
+  From here on the harness's copy reads `context.environment`, the fixture's
+  in-memory runtime, instead of the checkout — what `environment: :in_memory`
+  does at start, for a harness a shared given already started.
+  """
+  @spec serve_in_memory(map()) :: map()
+  def serve_in_memory(%{harness: %{working_copy_id: id}} = context) do
+    :ok = serve_from(:in_memory, id, context)
+    context
+  end
+
+  defp serve_from(:checkout, _working_copy_id, _context), do: :ok
+
+  defp serve_from(:in_memory, working_copy_id, %{environment: %Environment{type: :memory} = env}) do
+    :ok = Environments.unregister({:working_copy, working_copy_id})
+    Environments.register({:working_copy, working_copy_id}, env)
   end
 
   @doc """
@@ -376,7 +400,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
   sent arrives through the agent transport the scenario installed.
   """
   @spec end_turn(map(), String.t()) :: :ok
-  def end_turn(%{harness: %{root: root, working_copy_id: id}}, agent_id) do
+  def end_turn(%{harness: %{root: root, working_copy_id: id}, scope: scope}, agent_id) do
     ref = {__MODULE__, :turn_ended, make_ref()}
 
     :ok =
@@ -387,7 +411,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
         %{id: id, agent_id: agent_id, test: self(), ref: ref}
       )
 
-    :ok = LiveHarness.end_turn(root, agent_id)
+    :ok = LiveHarness.end_turn(root, agent_id, Fixtures.mailbox_turn_end(scope, agent_id))
 
     try do
       await_step(ref, :handled, root, "the harness never reported #{agent_id}'s turn ending")

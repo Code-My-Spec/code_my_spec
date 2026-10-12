@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3560Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: false}} = Machine.status(agent.id)
         coding_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
         {:ok,
@@ -109,7 +109,7 @@ defmodule CodeMySpecSpex.Story1048.Criterion3560Spex do
         refute product.isError, response_text(product)
         assert response_text(product) =~ "issues_triaged"
 
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1
         {:reply, tasks, _} = ListTasks.execute(%{}, context.coding_frame)
         refute tasks.isError, response_text(tasks)

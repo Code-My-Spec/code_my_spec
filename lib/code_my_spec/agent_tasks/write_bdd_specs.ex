@@ -7,7 +7,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Stories
@@ -625,14 +624,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # silently came back empty on a sprite — the spec-writer was told the component
   # had no @moduledoc and no sibling specs, which is a plausible-looking answer
   # rather than a visible failure.
-  defp environment(%{environment: %Environment{} = env}), do: env
-
-  defp environment(scope) do
-    case Map.get(scope, :cwd) do
-      cwd when is_binary(cwd) -> Environment.new(:local, cwd)
-      _ -> nil
-    end
-  end
+  defp environment(scope), do: CodeMySpec.AgentTasks.environment(scope)
 
   defp inferred_path_hint(module_name) when is_binary(module_name) do
     relative =
@@ -752,7 +744,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # surrounding prose names real criteria and real paths, so the placeholders
   # read as deliberate rather than as an unsubstituted template.
   defp derive_app_name(scope) do
-    case scope.environment && Environments.read_file(scope.environment, "mix.exs") do
+    env = CodeMySpec.AgentTasks.environment(scope)
+
+    case env && Environments.read_file(env, "mix.exs") do
       {:ok, content} -> extract_app_name(content, scope)
       _ -> app_name_from_project(scope)
     end

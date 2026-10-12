@@ -314,7 +314,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # The fallback was also the thing that made two harnesses disagree about one
   # project. It only ever fires when the file is on disk and not yet a row, and
   # in that window the heavy harness — which has a working copy — answers
-  # satisfied while the server, whose `scope.environment` is nil, answers
+  # satisfied while the server, which has no local execution environment,
+  # answers
   # unsatisfied. Same project, same instant, two answers, and the one an agent
   # gets depends on which process it asked.
   #
@@ -509,7 +510,12 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # Coverage matches files to criteria by number, so it reads the whole copy
   # rather than the files a story happens to own.
   defp copy_files(_scope, %{files_by_project: files}) when is_list(files), do: files
-  defp copy_files(scope, _ctx), do: Files.list_files(scope)
+
+  defp copy_files(scope, _ctx) do
+    # The project view reads its designated checkout, just like a full load.
+    # A nil copy passed directly to Files would blend every checkout's specs.
+    Files.list_files(%{scope | active_working_copy_id: Preloader.files_copy(scope)})
+  end
 
   defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
     scope

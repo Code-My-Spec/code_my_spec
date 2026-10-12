@@ -28,7 +28,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignHarnessTest do
 
     env = %Environment{type: :harness, cwd: tmp, ref: %{"harness_id" => id}}
 
-    %{scope: %{full_scope_fixture() | cwd: tmp, environment: env}}
+    scope = put_fixture_environment(%{working_copy_scope_fixture() | cwd: tmp}, env)
+    :ok = register_working_copy_environment(scope, env)
+    %{scope: scope}
   end
 
   test "a project with no components and no proposal is initial", ctx do

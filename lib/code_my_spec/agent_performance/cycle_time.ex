@@ -110,14 +110,16 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   defp released_at([], %Story{inserted_at: at}), do: at
 
   defp released_at(tasks, _story) do
-    tasks |> Enum.map(& &1.started_at) |> Enum.reject(&is_nil/1) |> Enum.min(DateTime, fn -> nil end)
+    tasks
+    |> Enum.map(& &1.started_at)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.min(DateTime, fn -> nil end)
   end
 
-  # Nothing stamps the moment of promotion either; `updated_at` is the last
-  # write to the row, and a promotion stamping `promoted_version` is that
-  # write for every story that reaches this branch at all.
+  # New promotions carry a permanent timestamp; retain the legacy estimate
+  # for stories promoted before that history was recorded.
   defp promoted_at(%Story{promoted_version: nil}), do: nil
-  defp promoted_at(%Story{updated_at: at}), do: at
+  defp promoted_at(%Story{} = story), do: story.promoted_at || story.updated_at
 
   defp total_seconds([], _story), do: nil
 
@@ -131,7 +133,9 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   defp stage_seconds(tasks) do
     tasks
     |> Enum.group_by(&Stage.of(&1.session_type))
-    |> Map.new(fn {stage, stage_tasks} -> {stage, Enum.sum(Enum.map(stage_tasks, &active_seconds/1))} end)
+    |> Map.new(fn {stage, stage_tasks} ->
+      {stage, Enum.sum(Enum.map(stage_tasks, &active_seconds/1))}
+    end)
   end
 
   # A task's own active time: wall time open, minus whatever of that was

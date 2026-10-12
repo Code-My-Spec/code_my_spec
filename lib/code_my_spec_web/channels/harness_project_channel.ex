@@ -602,6 +602,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         mark_gave_up(socket, entry["agent_id"], entry["reason"], entry["at"])
       end)
 
+    scope = socket.assigns.scope
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Enum.each(ids, &Agents.Mailbox.pump(scope, &1))
+    end)
+
     {:reply, :ok, consider_once(socket, :present)}
   end
 
@@ -639,7 +645,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   def handle_in("head_commit", %{"sha" => sha}, socket)
       when is_binary(sha) and byte_size(sha) == 40 do
-    project = socket.assigns.scope.active_project
+    scope = socket.assigns.scope
+    project = scope.active_project
+
+    # Certified means at a commit: a branch that moved past its stamp is not
+    # ready for QA, and the graph says so as soon as the copy reports it.
+    if scope.active_working_copy_id,
+      do: PromotionQueue.release_moved_certifications(scope, scope.active_working_copy_id, sha)
 
     if project && project.head_commit != sha do
       case Projects.update_project(socket.assigns.scope, project, %{head_commit: sha}) do
@@ -863,25 +875,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       |> Agents.list_on_duty()
       |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
 
-    # Before hydrating, not after. An agent that was mid-turn is told here what
-    # became of that turn, and hydration is what reads the conversation into
-    # the launch request — so writing first is what makes the notice part of
-    # the history the agent comes back holding, rather than a line it would
-    # only find by re-reading the page.
-    # Kept for the sweep that follows the re-registration, which is when the
-    # agents are back to take the turns this restart discarded (5a977f41).
-    interrupted = Agents.interrupted_turns(running)
     :ok = Agents.account_for_interrupted_turns(scope, running)
 
     tools = ToolRegistry.registry()
     agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
 
-    {:reply, {:ok, %{"agents" => agents}},
-     assign(
-       socket,
-       :interrupted_turns,
-       Map.merge(socket.assigns[:interrupted_turns] || %{}, interrupted)
-     )}
+    {:reply, {:ok, %{"agents" => agents}}, socket}
   end
 
   # One step an agent took, written to its conversation as it arrives.
@@ -893,6 +892,39 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   #
   # Replied to rather than ignored so the machine knows the step landed, but the
   # machine does not wait on it: it casts.
+  def handle_in(
+        "agent_mailbox",
+        %{"operation" => "register", "agent_id" => id, "generation" => generation},
+        socket
+      )
+      when is_binary(generation) do
+    scope = socket.assigns.scope
+
+    with {:ok, agent} <- Agents.fetch_agent(scope, id),
+         true <- agent.working_copy_id == scope.active_working_copy_id,
+         {:ok, _} <- Agents.Mailbox.register(scope, id, generation) do
+      {:reply, {:ok, %{}}, socket}
+    else
+      _ -> {:reply, {:error, %{reason: "mailbox registration refused"}}, socket}
+    end
+  end
+
+  def handle_in(
+        "agent_mailbox",
+        %{"operation" => "consume", "agent_id" => id, "ref" => ref, "generation" => generation},
+        socket
+      ) do
+    scope = socket.assigns.scope
+
+    with {:ok, agent} <- Agents.fetch_agent(scope, id),
+         true <- agent.working_copy_id == scope.active_working_copy_id,
+         {:ok, _} <- Agents.Mailbox.consume(scope, id, ref, generation) do
+      {:reply, {:ok, %{}}, socket}
+    else
+      _ -> {:reply, {:error, %{reason: "mailbox consumption refused"}}, socket}
+    end
+  end
+
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
     Agents.record_turn_event(socket.assigns.scope, agent_id, event)
     settle_draft(socket, agent_id, event)
@@ -927,21 +959,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
-  def handle_in("agent_message_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    if from, do: GenServer.reply(from, decode_message_result(msg))
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
-  end
-
   def handle_in("agent_send_result", %{"ref" => ref} = msg, socket) do
     {from, pending} = Map.pop(pending_agent_stop(socket), ref)
     if from, do: GenServer.reply(from, decode_send_result(msg))
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
-  end
-
-  def handle_in("agent_withdraw_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    if from, do: GenServer.reply(from, decode_withdraw_result(msg))
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
@@ -1067,13 +1087,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp sweep(socket) do
     scope = socket.assigns.scope
     copy_id = scope.active_working_copy_id
-    interrupted = socket.assigns[:interrupted_turns] || %{}
 
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      # First, so a turn the restart discarded is handed back before anything
-      # else is offered in its place (5a977f41).
-      Agents.Work.redeliver_interrupted_turns(scope, interrupted)
-
       Agents.Work.consider_copy(scope, copy_id, :harness_reconnected)
 
       # And the agents `consider_copy/4` cannot reach: a restart discards the
@@ -1082,6 +1097,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # just created, and it is the one case this sweep used to walk straight
       # past.
       Agents.Work.resume_held_tasks(scope, copy_id)
+      Agents.CompletionHandoffs.recover(scope, copy_id)
 
       # The retry-time wakes of agents refused until later, which lived in the
       # process a restart took down.
@@ -1171,20 +1187,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
   end
 
-  @impl true
-  def handle_call({:message_agent, request}, from, socket) do
+  def handle_call({:dispatch_mailbox, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(socket, "message_agent", Map.put(request, "ref", ref))
-
-    {:noreply,
-     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
-  end
-
-  def handle_call({:dispatch_message, request}, from, socket) do
-    ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(socket, "send_message", Map.put(request, "ref", ref))
+    push(socket, "mailbox_delivery", Map.put(request, "ref", ref))
 
     {:noreply,
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
@@ -1193,15 +1198,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_call({:request_work_turn, request}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
     push(socket, "request_work_turn", Map.put(request, "ref", ref))
-
-    {:noreply,
-     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
-  end
-
-  def handle_call({:withdraw_message, request}, from, socket) do
-    ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(socket, "withdraw_message", Map.put(request, "ref", ref))
 
     {:noreply,
      assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
@@ -1311,20 +1307,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The harness holds the tunnel, not the app it launches (2026-09-29, John:
   # "the harness should hold the tunnel, not the generated app" — an app
-  # restart no longer needs to bounce cloudflared with it). Same "told fresh,
-  # never remembered" reasoning as `put_main/2`: main-ness can be
-  # redesignated, and only the copy confirmed main *right now* may ever be
-  # told to run a connector — a stale cached answer here is a stray
-  # connector, the exact hazard this project has already shipped a fix for
-  # once. Read straight from the row rather than `socket.assigns.harness`,
-  # which was only ever guaranteed fresh at join.
-  #
-  # A sibling sharing another copy's tunnel (criterion 1586) holds the same
-  # `preview_tunnel_id`/`secret` on its own row — `stored_credentials/1` alone
-  # cannot tell the two apart, which is exactly why the `main: true` guard is
-  # here and not there. It must never run a connector of its own; its
-  # hostname reaches the shared tunnel through main's, over the ingress rule
-  # the server already manages via Cloudflare's API.
+  # restart no longer needs to bounce cloudflared with it). Told fresh, never
+  # remembered: read straight from the row rather than `socket.assigns.harness`,
+  # which was only ever guaranteed fresh at join, so a machine that gains or
+  # changes its tunnel is reflected on the next request. See `tunnel_for/1`.
   defp put_tunnel(request, socket) do
     case WorkingCopies.fetch(socket.assigns.harness.id) do
       {:ok, copy} ->
@@ -1338,16 +1324,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
-  # The one place that decides whether a copy holds a tunnel and what its
-  # credentials are — shared by `put_tunnel/2` (the long-lived
-  # `ensure_app_running`/`restart_app` path) and the join reply below, so the
-  # two can never compute a different answer for the same copy. `nil` for
-  # anything but the designated main, and for main itself the moment
-  # `PreviewTunnel.stored_credentials/1` finds nothing DB-backed for it (this
-  # repo's own main today — its dev tunnel is still `config/dev.exs`'s
-  # hardcoded bootstrap).
-  defp tunnel_for(%{main: true} = copy) do
-    case PreviewTunnel.stored_credentials(copy) do
+  # The one place that decides which tunnel a copy's harness runs — shared by
+  # `put_tunnel/2` (the long-lived `ensure_app_running`/`restart_app` path) and
+  # the join reply, so the two can never compute a different answer for the
+  # same copy. Every copy on a machine is handed that machine's one tunnel
+  # (story 1117); the harness keeps one connector per tunnel, so the machine
+  # runs one however many copies it carries. `nil` when there is none to run.
+  defp tunnel_for(copy) do
+    case PreviewTunnel.machine_credentials(copy) do
       {:ok, creds} ->
         %{
           "hostname" => creds.hostname,
@@ -1360,8 +1344,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         nil
     end
   end
-
-  defp tunnel_for(_copy), do: nil
 
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
 
@@ -1428,8 +1410,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     start_timed_out
     stop_timed_out
     message_timed_out
-    withdraw_timed_out
     already_delivered
+    busy
+    duplicate
   )
 
   defp decode_reason(reason) when reason in @machine_reasons, do: String.to_atom(reason)
@@ -1439,36 +1422,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # read is an error rather than a default disposition: reporting "delivered"
   # for an answer we did not understand is the failure this story is about.
   defp decode_send_result(%{"status" => "ok", "disposition" => "started"}), do: {:ok, :started}
-  defp decode_send_result(%{"status" => "ok", "disposition" => "queued"}), do: {:ok, :queued}
 
   defp decode_send_result(%{"reason" => reason}) when is_binary(reason),
     do: {:error, decode_reason(reason)}
 
   defp decode_send_result(_msg), do: {:error, :unreadable_send_result}
-
-  defp decode_withdraw_result(%{"status" => "ok"}), do: :ok
-
-  defp decode_withdraw_result(%{"status" => "already_delivered"}),
-    do: {:error, :already_delivered}
-
-  defp decode_withdraw_result(%{"status" => "never_received"}),
-    do: {:error, :never_received}
-
-  defp decode_withdraw_result(%{"reason" => reason}) when is_binary(reason),
-    do: {:error, decode_reason(reason)}
-
-  defp decode_withdraw_result(_msg), do: {:error, :unreadable_withdraw_result}
-
-  defp decode_message_result(%{"status" => "ok", "reply" => reply}) when is_binary(reply),
-    do: {:ok, reply}
-
-  defp decode_message_result(%{"status" => "error", "reason" => reason}),
-    do: {:error, decode_reason(reason)}
-
-  # A shape this server does not understand is not an answer. Reporting one as
-  # success would tell an operator their instruction landed when nothing knows
-  # whether it did.
-  defp decode_message_result(other), do: {:error, {:unexpected_message_result, other}}
 
   defp decode_stop_result(%{"status" => "ok"}), do: :ok
 
@@ -2515,8 +2473,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The working copy this channel speaks for, as something the server can read
   # and write rather than a fact it merely knows.
   #
-  # `scope.environment` was nil on every path that starts here, so anything
-  # reaching for a file got `{:error, :no_environment}` — "there is no working
+  # The server-side scope has no execution environment, so anything reaching
+  # for a file got `{:error, :no_environment}` — "there is no working
   # copy", which is false. There is one; it is on the other end of this socket.
   # Measured on one reconcile: 25 spec files unreadable, 75 read failures, and
   # `ComponentSync` skipping its cleanup because a sync that cannot read cannot
@@ -2723,7 +2681,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         :ok
 
       agent ->
-        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, payload["response"] || %{})
+        TokenUsage.record(
+          scope,
+          agent.id,
+          agent.story_id,
+          agent.provider,
+          payload["response"] || %{}
+        )
+
         mirror_failed_tool_results(scope, agent, payload["request"] || %{})
     end
   end

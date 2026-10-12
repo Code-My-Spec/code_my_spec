@@ -493,7 +493,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   # Trigger sync via the real /sync LiveView surface.
   defp sync_project(context) do
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
+      live(context.conn, files_page(context))
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
     :ok
@@ -590,4 +590,10 @@ defmodule CodeMySpecSpex.GraphGivens do
     sync_project(context)
     :ok
   end
+
+  # The Files page for the scope's own copy. Unnamed, the page views whichever
+  # copy was seen most recently, which need not be the one this fixture wrote.
+  defp files_page(context),
+    do:
+      "/app/projects/#{context.project.id}/files?harness=#{context.scope.active_working_copy_id}"
 end

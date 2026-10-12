@@ -14,8 +14,9 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
 
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture()
-    scope = %{scope | cwd: tmp_dir, environment: Environment.new(:local, tmp_dir)}
+    scope = working_copy_scope_fixture()
+    scope = put_fixture_environment(%{scope | cwd: tmp_dir}, Environment.new(:local, tmp_dir))
+    :ok = register_working_copy_environment(scope, fixture_environment(scope))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -44,25 +45,26 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     write_file!(
       env,
       ".code_my_spec/architecture/decisions/#{name}.md",
-      content || """
-      # #{String.capitalize(name)}
+      content ||
+        """
+        # #{String.capitalize(name)}
 
-      ## Status
+        ## Status
 
-      Accepted
+        Accepted
 
-      ## Context
+        ## Context
 
-      We need #{name} for the project.
+        We need #{name} for the project.
 
-      ## Decision
+        ## Decision
 
-      Use #{name} with API token authentication.
+        Use #{name} with API token authentication.
 
-      ## Consequences
+        ## Consequences
 
-      - Need to manage API credentials
-      """
+        - Need to manage API credentials
+        """
     )
   end
 
@@ -70,13 +72,14 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     write_file!(
       env,
       ".code_my_spec/integrations.md",
-      content || """
-      # Integrations
+      content ||
+        """
+        # Integrations
 
-      | Integration | Auth Type | Status |
-      |---|---|---|
-      | twilio | api_token | verified |
-      """
+        | Integration | Auth Type | Status |
+        |---|---|---|
+        | twilio | api_token | verified |
+        """
     )
   end
 
@@ -136,7 +139,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     end
 
     test "includes decisions when they exist", %{scope: scope, task: task} do
-      write_decision(scope.environment, "twilio")
+      write_decision(fixture_environment(scope), "twilio")
 
       assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ "twilio"
@@ -149,7 +152,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
     end
 
     test "includes existing specs when present", %{scope: scope, task: task} do
-      write_integration_spec(scope.environment, "twilio")
+      write_integration_spec(fixture_environment(scope), "twilio")
 
       assert {:ok, prompt} = QaIntegrationPlan.command(scope, task)
       assert prompt =~ "Existing Integration Specs"
@@ -173,7 +176,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       scope: scope,
       task: task
     } do
-      env = scope.environment
+      env = fixture_environment(scope)
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "verified")
       write_verify_script(env, "twilio")
@@ -187,7 +190,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       task: task
     } do
       write_integration_index(
-        scope.environment,
+        fixture_environment(scope),
         "# Integrations\n\nNo integrations required for this project."
       )
 
@@ -207,7 +210,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       scope: scope,
       task: task
     } do
-      write_integration_index(scope.environment)
+      write_integration_index(fixture_environment(scope))
       sync!(scope)
 
       assert {:ok, :valid} = QaIntegrationPlan.evaluate(scope, task)
@@ -217,7 +220,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       scope: scope,
       task: task
     } do
-      env = scope.environment
+      env = fixture_environment(scope)
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "verified")
       sync!(scope)
@@ -230,7 +233,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlanTest do
       scope: scope,
       task: task
     } do
-      env = scope.environment
+      env = fixture_environment(scope)
       write_integration_index(env)
       write_integration_spec(env, "twilio", status: "pending")
       write_verify_script(env, "twilio")

@@ -69,7 +69,7 @@ defmodule CodeMySpec.Agents.AQueuedPromotionIsNotAnIdleAgentTest do
   # The coder is bound to the issue, QA has passed it, and it holds
   # `promote_issue` â bf57fc93's arrangement.
   defp holding_a_promotion(ctx) do
-    issue = issue_fixture(ctx.scope)
+    issue = issue_fixture(ctx.scope, %{status: :accepted})
     {:ok, bound} = IssueAssignment.assign(ctx.scope, issue.id, ctx.copy.id)
     {:ok, promoted} = Issues.set_awaiting_role(ctx.scope, bound, :promote)
 

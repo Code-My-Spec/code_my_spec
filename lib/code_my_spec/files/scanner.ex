@@ -23,6 +23,7 @@ defmodule CodeMySpec.Files.Scanner do
   alias CodeMySpec.Documents
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.ComponentExtract
+  alias CodeMySpec.Files.DependencyEvidence
   alias CodeMySpec.Paths
 
   # The subtrees a sync walks. Everything outside them is invisible to the
@@ -388,7 +389,8 @@ defmodule CodeMySpec.Files.Scanner do
             "errors" => %{},
             "data" => %{
               "module_name" => ComponentExtract.extract_defmodule(content),
-              "ecto_schema" => ComponentExtract.ecto_schema?(content)
+              "ecto_schema" => ComponentExtract.ecto_schema?(content),
+              "dependency_evidence" => DependencyEvidence.extract(content)
             }
           }
         })

@@ -104,19 +104,20 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   Returns the artifacts a project is missing, each with the reason it matters.
 
   An empty list means the project carries everything the setup routine assumes
-  it can find.
+  it can find. Checks use the supplied environment.
   """
-  @spec missing(Scope.t()) :: [artifact()]
-  def missing(scope) do
-    Enum.reject(@files, &present?(scope, &1.path))
+  @spec missing(Scope.t(), Environment.t() | nil) :: [artifact()]
+  def missing(%Scope{} = scope, env) do
+    Enum.reject(@files, &present?(scope, &1.path, env))
   end
 
   @doc """
-  Returns the encrypted environment files a project is missing.
+  Returns the encrypted environment files a project is missing, using the
+  supplied environment.
   """
-  @spec missing_env_files(Scope.t()) :: [String.t()]
-  def missing_env_files(scope) do
-    Enum.reject(@env_files, &present?(scope, &1))
+  @spec missing_env_files(Scope.t(), Environment.t() | nil) :: [String.t()]
+  def missing_env_files(%Scope{} = scope, env) do
+    Enum.reject(@env_files, &present?(scope, &1, env))
   end
 
   @doc """
@@ -136,12 +137,13 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   cover uat/prod — so flagging mere presence blocked a real deploy over a
   file that could never have shipped. Checked against both, not either: a
   `.dockerignore` entry with no matching `.gitignore` line still reaches git
-  history, and the reverse still reaches the image.
+  history, and the reverse still reaches the image. Checks use the supplied
+  environment.
   """
-  @spec plaintext_env_files(Scope.t()) :: [String.t()]
-  def plaintext_env_files(%Scope{environment: env} = scope) do
+  @spec plaintext_env_files(Scope.t(), Environment.t() | nil) :: [String.t()]
+  def plaintext_env_files(%Scope{} = scope, env) do
     @plaintext_env_names
-    |> Enum.filter(&present?(scope, &1))
+    |> Enum.filter(&present?(scope, &1, env))
     |> Enum.reject(&excluded_from_shipping?(env, &1))
   end
 
@@ -329,14 +331,15 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   inside the released binary, where Mix is not available to run
   `mix ecto.migrate`. A project missing this module passes every other check,
   builds, pushes and boots — and only fails once the migration step runs
-  against a real box, several steps past where the cause is visible.
+  against a real box, several steps past where the cause is visible. The
+  supplied environment determines where the check reads.
   """
-  @spec release_module_exists?(Scope.t(), String.t() | nil) ::
+  @spec release_module_exists?(Scope.t(), String.t() | nil, Environment.t() | nil) ::
           :ok | {:error, {:missing_release_module, String.t()}}
-  def release_module_exists?(_scope, nil), do: :ok
+  def release_module_exists?(_scope, nil, _env), do: :ok
 
-  def release_module_exists?(scope, path) do
-    if present?(scope, path), do: :ok, else: {:error, {:missing_release_module, path}}
+  def release_module_exists?(%Scope{} = scope, path, env) do
+    if present?(scope, path, env), do: :ok, else: {:error, {:missing_release_module, path}}
   end
 
   defp check_health_route(body, path) do
@@ -366,7 +369,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   # directoryless environment that could never have answered honestly. It did
   # not need to ask that at all: the sync this project already runs had the
   # answer the whole time.
-  defp present?(%Scope{environment: env} = scope, path) do
+  defp present?(%Scope{} = scope, path, env) do
     Environments.file_exists?(env, path) == true or synced?(scope, path)
   end
 

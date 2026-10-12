@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
 
     scope = full_scope_fixture()
     _ = github_integration_fixture(scope.user)
-    scope = %{scope | environment: Environment.new(:local, working_dir)}
+    scope = put_fixture_environment(scope, Environment.new(:local, working_dir))
 
     %{scope: scope, project: scope.active_project}
   end
@@ -46,7 +46,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
         %{method: "POST"} = conn ->
           json(conn, 201, %{
             "name" => "sams-thing",
-            "clone_url" => Path.join(System.tmp_dir!(), "nowhere-#{System.unique_integer([:positive])}")
+            "clone_url" =>
+              Path.join(System.tmp_dir!(), "nowhere-#{System.unique_integer([:positive])}")
           })
       end)
 
@@ -69,7 +70,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStepTest do
     # `probe_address_on_domain/2`'s own check — a deterministic outcome that
     # only fires if the parameter actually reached the step.
     test "threads inbound_probe_to through to the step", %{scope: scope, project: project} do
-      {:ok, _project} = CodeMySpec.Projects.update_project(scope, project, %{domain: "example.com"})
+      {:ok, _project} =
+        CodeMySpec.Projects.update_project(scope, project, %{domain: "example.com"})
 
       frame = %Frame{assigns: %{current_scope: scope}}
       params = %{step: "inbound", inbound_probe_to: "sam@somewhere-else.com"}

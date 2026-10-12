@@ -143,7 +143,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, ".code_my_spec/rules/context.md", "# Context rules")
       write_file(tmp_dir, "CLAUDE.md", "# Project")
 
-      {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, result} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       assert result.total_files >= 3
       assert result.upserted >= 3
@@ -154,6 +155,35 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert "lib/my_app/accounts.ex" in paths
       assert ".code_my_spec/rules/context.md" in paths
       assert "CLAUDE.md" in paths
+    end
+
+    test "uses the explicit environment when the scope carries a stale one" do
+      {scope, tmp_dir} = setup_project()
+      wrong_dir = CodeMySpec.TempFile.owned_dir("wrong-environment")
+      stale_scope = %{scope | cwd: wrong_dir}
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+
+      assert {:ok, result} =
+               FileSync.sync(stale_scope,
+                 base_dir: tmp_dir,
+                 environment: Environment.new(:local, tmp_dir)
+               )
+
+      assert result.upserted > 0
+      assert Files.get_by_path(scope, "lib/my_app/accounts.ex")
+    end
+
+    test "an unavailable environment does not remove recorded files" do
+      {scope, tmp_dir} = setup_project()
+      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
+
+      {:ok, _} = FileSync.sync(scope, environment: Environment.new(:local, tmp_dir))
+      before = Files.list_files(scope)
+
+      assert {:error, {:cannot_scan, :no_environment}} =
+               FileSync.sync(put_fixture_environment(scope, nil), environment: nil)
+
+      assert Files.list_files(scope) == before
     end
 
     # The real incident, end to end: a harness-scoped devops call can't see
@@ -172,7 +202,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, "rel/overlays/bin/boot", "#!/bin/sh\n")
       write_file(tmp_dir, "envs/prod.enc.env", "SECRET_KEY_BASE=ENC[...]\n")
 
-      {:ok, _result} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _result} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       paths = scope |> Files.list_files() |> Enum.map(& &1.path)
 
@@ -201,7 +232,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       DATABASE_URL=ENC[AES256_GCM,data:dddd,iv:eeee,tag:ffff,type:str]
       """)
 
-      {:ok, _result} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _result} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       file = Files.get_by_path(scope, "envs/prod.enc.env")
 
@@ -219,7 +251,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       SECRET_KEY_BASE=ENC[AES256_GCM,data:aaaa,iv:bbbb,tag:cccc,type:str]
       """)
 
-      {:ok, _result} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _result} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       file = Files.get_by_path(scope, "envs/prod.enc.env")
 
@@ -234,21 +267,27 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
       # First sync sees the file as new — must report it as changed.
-      {:ok, result1} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, result1} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       assert "lib/my_app/accounts.ex" in result1.changed_paths
 
       # Second sync with no on-disk edits reports an empty diff —
       # otherwise downstream consumers (embedding, the /files panel)
       # would do redundant work on every sync. Story 688: "Files whose
       # checksum is unchanged are skipped."
-      {:ok, result2} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, result2} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       refute "lib/my_app/accounts.ex" in result2.changed_paths
       assert result2.changed_paths == []
 
       # Editing the file's content puts it back in the diff.
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\n  # v2\nend")
 
-      {:ok, result3} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, result3} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       assert "lib/my_app/accounts.ex" in result3.changed_paths
     end
 
@@ -257,12 +296,16 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       path = write_file(tmp_dir, "lib/my_app/old.ex", "defmodule MyApp.Old do\nend")
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       assert Files.get_by_path(scope, "lib/my_app/old.ex")
 
       File.rm!(path)
 
-      {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, result} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       assert result.removed >= 1
       refute Files.get_by_path(scope, "lib/my_app/old.ex")
     end
@@ -279,7 +322,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
       assert impl_file.component_id == component.id
@@ -293,7 +337,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       # a project file anything reads.
       write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\n")
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       refute Files.get_by_path(scope, ".code_my_spec/spec/my_app/broken.spec.md")
     end
@@ -356,7 +401,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, ".code_my_spec/spec/my_app/user_live/show.spec.md", spec_content)
       write_file(tmp_dir, "test/my_app/user_live/show_test.exs", partial_test)
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       test_file = Files.get_by_path(scope, "test/my_app/user_live/show_test.exs")
       assert test_file.valid == true
@@ -370,7 +416,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, "_build/dev/lib/my_app.ex", "defmodule MyApp do\nend")
       write_file(tmp_dir, "lib/my_app/real.ex", "defmodule MyApp.Real do\nend")
 
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       files = Files.list_files(scope)
       paths = Enum.map(files, & &1.path)
@@ -389,10 +436,16 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, "lib/my_app/users.ex", "defmodule MyApp.Users do\nend")
 
       # Full sync to populate DB
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       # Second sync with no changes — nothing should be upserted
-      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      {:ok, result} =
+        FileSync.sync_changed(scope,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
+
       assert result.upserted == 0
       assert result.changed_paths == []
       assert result.total_files >= 2
@@ -406,7 +459,12 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       File.touch!(Path.join(tmp_dir, "lib/my_app/accounts.ex"), :erlang.system_time(:second) + 2)
 
-      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      {:ok, result} =
+        FileSync.sync_changed(scope,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
+
       assert result.upserted == 1
       assert "lib/my_app/accounts.ex" in result.changed_paths
       refute "lib/my_app/users.ex" in result.changed_paths
@@ -416,11 +474,18 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {scope, tmp_dir} = setup_project()
 
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       write_file(tmp_dir, "lib/my_app/users.ex", "defmodule MyApp.Users do\nend")
 
-      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      {:ok, result} =
+        FileSync.sync_changed(scope,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
+
       assert result.upserted == 1
       assert "lib/my_app/users.ex" in result.changed_paths
     end
@@ -429,12 +494,20 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {scope, tmp_dir} = setup_project()
 
       path = write_file(tmp_dir, "lib/my_app/old.ex", "defmodule MyApp.Old do\nend")
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       assert Files.get_by_path(scope, "lib/my_app/old.ex")
 
       File.rm!(path)
 
-      {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
+      {:ok, result} =
+        FileSync.sync_changed(scope,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
+
       assert result.removed >= 1
       refute Files.get_by_path(scope, "lib/my_app/old.ex")
     end
@@ -448,7 +521,12 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, "lib/my_app/users.ex", "defmodule MyApp.Users do\nend")
 
       abs_path = Path.join(tmp_dir, "lib/my_app/accounts.ex")
-      {:ok, result} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+
+      {:ok, result} =
+        FileSync.sync_path(scope, abs_path,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
 
       assert result.changed_path == "lib/my_app/accounts.ex"
 
@@ -481,14 +559,21 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       rel = "test/spex/45_delegated_control/criterion_3139_a_thing_happens_spex.exs"
       write_file(tmp_dir, rel, "defmodule A do\nend")
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
       assert story.specs_ready == true
 
       # The contract changes. This is the event an agent's Write fires.
       abs = write_file(tmp_dir, rel, "defmodule A do\n  # a different contract\nend")
-      {:ok, _} = FileSync.sync_path(scope, abs, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync_path(scope, abs,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
 
       assert CodeMySpec.Stories.get_story(scope, story.id).specs_ready == false,
              "a rewritten spec changes the contract, so whatever a previous " <>
@@ -508,12 +593,19 @@ defmodule CodeMySpec.Files.FileSyncTest do
       rel = "test/spex/46_shipped_story/criterion_4000_a_thing_happens_spex.exs"
       body = "defmodule B do\nend"
       write_file(tmp_dir, rel, body)
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
 
       {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
 
       abs = write_file(tmp_dir, rel, body)
-      {:ok, _} = FileSync.sync_path(scope, abs, base_dir: tmp_dir)
+
+      {:ok, _} =
+        FileSync.sync_path(scope, abs,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
 
       assert CodeMySpec.Stories.get_story(scope, story.id).specs_ready == true,
              "a touch or a reformat that lands identical bytes is not a " <>
@@ -528,12 +620,19 @@ defmodule CodeMySpec.Files.FileSyncTest do
       path = write_file(tmp_dir, "lib/my_app/old.ex", "defmodule MyApp.Old do\nend")
 
       # First create the record via full sync
-      {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
+      {:ok, _} =
+        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+
       assert Files.get_by_path(scope, "lib/my_app/old.ex")
 
       # Delete from disk, then sync_path
       File.rm!(path)
-      {:ok, result} = FileSync.sync_path(scope, path, base_dir: tmp_dir)
+
+      {:ok, result} =
+        FileSync.sync_path(scope, path,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
 
       assert result.changed_path == "lib/my_app/old.ex"
       refute Files.get_by_path(scope, "lib/my_app/old.ex")
@@ -557,8 +656,17 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       abs_path = write_file(tmp_dir, "lib/my_app/shared.ex", "defmodule MyApp.Shared do\nend")
 
-      assert {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
-      assert {:ok, _} = FileSync.sync_path(other_scope, abs_path, base_dir: tmp_dir)
+      assert {:ok, _} =
+               FileSync.sync_path(scope, abs_path,
+                 base_dir: tmp_dir,
+                 environment: Environment.new(:local, tmp_dir)
+               )
+
+      assert {:ok, _} =
+               FileSync.sync_path(other_scope, abs_path,
+                 base_dir: tmp_dir,
+                 environment: Environment.new(:local, tmp_dir)
+               )
 
       assert Files.get_by_path(scope, "lib/my_app/shared.ex")
       assert Files.get_by_path(other_scope, "lib/my_app/shared.ex")
@@ -570,7 +678,11 @@ defmodule CodeMySpec.Files.FileSyncTest do
       write_file(tmp_dir, "README.md", "# My App")
       abs_path = Path.join(tmp_dir, "README.md")
 
-      {:ok, result} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)
+      {:ok, result} =
+        FileSync.sync_path(scope, abs_path,
+          base_dir: tmp_dir,
+          environment: Environment.new(:local, tmp_dir)
+        )
 
       assert result.changed_path == nil
     end
@@ -583,12 +695,11 @@ defmodule CodeMySpec.Files.FileSyncTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    scope = %{
-      scope
-      | active_project: project,
-        cwd: tmp_dir,
-        environment: Environment.new(:local, tmp_dir)
-    }
+    scope =
+      put_fixture_environment(
+        %{scope | active_project: project},
+        Environment.new(:local, tmp_dir)
+      )
 
     # Spec-file validation is gated on `require_specs`, which a fresh project
     # now defaults off — without this the "invalid spec file" cases validate

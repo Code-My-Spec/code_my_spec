@@ -71,6 +71,16 @@ defmodule CodeMySpec.SpexGivensTest do
   # credential — four drives, none of which the block naming it could perform
   # any other way.
   #
+  # Story 1117's `MachineTunnelHelpers`, each a helper whose whole body is the
+  # drive: `serving_copy`/`idle_copy`/`rejoin` join `harness_project` from a
+  # named machine and report the app over the socket; `turn_on`/`turn_off`/
+  # `offboard` call the share, unshare and offboard tools; `cloudflare_fails`
+  # and `existing_tunnel` set the fake Cloudflare's state — the provider seam,
+  # by `Req.Test.stub`'s precedent. `johns_mac` is the spex's own premise:
+  # starts that Cloudflare, gives it the dev tunnel, and records the tunnel on
+  # an announced machine through `Fixtures`. `push_app_event_with` is
+  # `push_app_event` with a payload.
+  #
   # `machine_out_of_reach` is a transport seam, listed by the same precedent as
   # `Req.Test.stub` and `stage_`. A block saying "this agent's tools cannot be
   # resolved at launch" has made its precondition true in the only way
@@ -255,12 +265,17 @@ defmodule CodeMySpec.SpexGivensTest do
   # runs over its real channel; the issue helpers drive the issue tools a
   # team's agents call. `two_queued_together` is a spex-local builder made of
   # the above.
+  # Story issue-bag builders establish a real staffed story via SetActiveStory,
+  # or a real promotable checkout with submitted fixes and captured passing QA.
+  # Name only these builders: Bag.evidence/0 and Bag.revision/0 are accessors.
   @establishes ~w(
+    Bag.team( Bag.promotable( Compact.fleet(
     promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
     the_gate_answers an_issue_assigned_to_the_team the_coder_fixes_it
     qa_passes_it the_coder_promotes_it two_queued_together
     ComponentHelpers. spec!( implementation!( sync!( execute_proposal!( depend!( design!( design_coded!(
     Slice.
+    teamless_copy( queue_context(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
     .execute(
@@ -276,7 +291,7 @@ defmodule CodeMySpec.SpexGivensTest do
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
     join_working_copy report_agents
-    EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
+    H.start( EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
     given_a_harnessed_checkout checkout( add_criterion(
     given_a_live_harness HarnessHooks.
     machine_out_of_reach
@@ -290,6 +305,8 @@ defmodule CodeMySpec.SpexGivensTest do
     Projects.ensure_started await_connected SlotHolder.
     Application.put_env
     app_instance_rig push_app_event push_app_event_as_main
+    johns_mac( serving_copy( idle_copy( rejoin( turn_on( turn_off( offboard(
+    cloudflare_fails( existing_tunnel( push_app_event_with
     set_idle_timeout install_app_instance_runner
     coding_work_waiting offered_work coder_holding_a_task handed_the_menu
     team_on_a_story issue_accepted qa_plan_missing

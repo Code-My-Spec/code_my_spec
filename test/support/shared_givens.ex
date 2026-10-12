@@ -156,7 +156,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
+      live(context.conn, files_page(context))
 
     sync_live
     |> element("button[phx-click='sync']")
@@ -196,7 +196,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
+      live(context.conn, files_page(context))
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -288,7 +288,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     end)
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
+      live(context.conn, files_page(context))
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -307,7 +307,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       )
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
+      live(context.conn, files_page(context))
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -390,7 +390,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       """)
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
+      live(context.conn, files_page(context))
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -519,7 +519,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       )
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.id}/files")
+      live(context.conn, files_page(context))
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -1053,4 +1053,10 @@ defmodule CodeMySpecSpex.SharedGivens do
       _ -> HarnessHooks.write_file(context, relative, content)
     end
   end
+
+  # The Files page for the scope's own copy. Unnamed, the page views whichever
+  # copy was seen most recently, which need not be the one this fixture wrote.
+  defp files_page(context),
+    do:
+      "/app/projects/#{context.project.id}/files?harness=#{context.scope.active_working_copy_id}"
 end

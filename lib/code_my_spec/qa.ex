@@ -34,12 +34,15 @@ defmodule CodeMySpec.Qa do
     deps: [
       CodeMySpec.Agents.Agent,
       CodeMySpec.Qa.QaAttempt,
+      CodeMySpec.Qa.Invalidations,
+      CodeMySpec.Qa.Invalidation,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Configurations,
       CodeMySpec.Environments,
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Repo,
+      CodeMySpec.Sessions,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.TaskOwner,
       CodeMySpec.Uploads,
@@ -49,6 +52,25 @@ defmodule CodeMySpec.Qa do
     exports: :all
 
   alias CodeMySpec.Qa.{Invalidations, IssueQaAttempts, QaAttempts, Verdict}
+
+  defdelegate story_review_current?(scope, story_id),
+    to: CodeMySpec.Qa.StoryReviews,
+    as: :current_pass?
+
+  defdelegate story_review_current?(scope, story_id, expected_revision),
+    to: CodeMySpec.Qa.StoryReviews,
+    as: :current_pass?
+
+  defdelegate carry(story, changed), to: CodeMySpec.Qa.StoryReviews
+  defdelegate product_change?(paths), to: CodeMySpec.Qa.StoryReviews
+
+  defdelegate capture_story_review(scope, owner, task),
+    to: CodeMySpec.Qa.StoryReviews,
+    as: :capture
+
+  defdelegate complete_reviewed_story_issues(scope, story, landed_commit, expected_revision),
+    to: CodeMySpec.Qa.StoryReviews,
+    as: :complete
 
   @doc """
   Submit a QA outcome for an active qa_complete task.

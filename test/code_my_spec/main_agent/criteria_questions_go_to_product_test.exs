@@ -105,10 +105,12 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
     end
 
     test "goes to main when no product agent is running", ctx do
+      _main = agent(ctx.scope, ctx.copy, :main)
       assert ask(ctx, %{about: "criteria"}).holder == "main_agent"
     end
 
     test "without `about` goes to main, as before", ctx do
+      _main = agent(ctx.scope, ctx.copy, :main)
       _product = agent(ctx.scope, ctx.copy, :product)
       assert ask(ctx).holder == "main_agent"
     end
@@ -142,6 +144,7 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
     end
 
     test "product cannot answer a question that is not its own", ctx do
+      _main = agent(ctx.scope, ctx.copy, :main)
       product = agent(ctx.scope, ctx.copy, :product)
       request = ask(ctx)
 

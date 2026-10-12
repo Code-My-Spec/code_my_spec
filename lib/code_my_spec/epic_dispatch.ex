@@ -148,13 +148,11 @@ defmodule CodeMySpec.EpicDispatch do
     #
     # Idempotent by role, so a second epic onto the same copy starts nothing —
     # the coding and QA agents there are the ones that take it. Product stays
-    # on the main copy and is not sent with it; `place/3` takes the epic it
-    # was designing off it (step 4c).
+    # on the main copy and is not sent with it. Approval assigns the epic
+    # after staffing and clears product's design binding (step 4c).
     with {:ok, _epic} <- result, %{} <- copy do
       place(scope, epic.id, copy.id)
       Agents.ensure_copy_agents(scope, copy)
-      # Again for the agents just staffed: `place/3` gave the epic to the ones
-      # already there.
       Agents.assign_epic(scope, epic.id, copy.id)
     end
 
@@ -282,25 +280,89 @@ defmodule CodeMySpec.EpicDispatch do
   "assigned" would bury the edits that are actually about the work. `updated_at`
   is set by hand because `update_all` does not touch timestamps.
 
-  The copy's agents get the epic too (`Agents.assign_epic/3`, a31f1cd6). The
-  team there takes one of its stories at a time, together: a story is assigned
-  to every coding and QA agent on the copy, by `set_active_story` or by the
-  first claim on a story's work while the team holds none.
+  Placement edits the queue and preserves stories currently held by agents.
+  Passing `nil` returns only unheld stories to the backlog. Approval separately
+  assigns the epic to the staffed team through `Agents.assign_epic/3`. The
+  team takes one story at a time, together, through `set_active_story` or the
+  first claim while the team holds none.
+
   """
   @spec place(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: {:ok, non_neg_integer()}
-  def place(%Scope{active_project_id: project_id} = scope, epic_id, working_copy_id)
+  def place(%Scope{active_project_id: project_id}, epic_id, working_copy_id)
       when is_binary(project_id) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+    held = held_story_ids(%Scope{active_project_id: project_id})
+
     {count, _} =
-      from(s in Story, where: s.epic_id == ^epic_id and s.project_id == ^project_id)
+      from(s in Story,
+        where: s.epic_id == ^epic_id and s.project_id == ^project_id,
+        where: s.id not in ^held
+      )
       |> Repo.update_all(set: [working_copy_id: working_copy_id, updated_at: now])
 
-    Agents.assign_epic(scope, epic_id, working_copy_id)
     {:ok, count}
   end
 
   def place(%Scope{}, _epic_id, _working_copy_id), do: {:ok, 0}
+
+  @doc "Edit a copy's queue without changing its team's current story."
+  def edit_queue(%Scope{} = scope, kind, subject, copy_id, action)
+      when kind in [:story, :epic] and action in [:add, :remove] do
+    with {:ok, copy} <- WorkingCopies.fetch(copy_id),
+         true <- copy.project_id == scope.active_project_id,
+         true <- is_binary(copy.root) and copy.root != "",
+         {:ok, query} <- queue_subject(scope, kind, subject) do
+      Repo.transaction(fn ->
+        held = held_story_ids(scope)
+
+        query = where(query, [s], s.id not in ^held)
+
+        query =
+          if action == :remove, do: where(query, [s], s.working_copy_id == ^copy_id), else: query
+
+        destination = if action == :add, do: copy_id, else: nil
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        {count, _} = Repo.update_all(query, set: [working_copy_id: destination, updated_at: now])
+        count
+      end)
+    else
+      false -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp held_story_ids(scope) do
+    scope
+    |> Agents.list_agents()
+    |> Enum.filter(&(is_nil(&1.retired_at) and not is_nil(&1.story_id)))
+    |> Enum.map(& &1.story_id)
+    |> Enum.uniq()
+  end
+
+  defp queue_subject(scope, :story, number) do
+    case CodeMySpec.Stories.get_story_by_number(scope, number) do
+      nil ->
+        {:error, :not_found}
+
+      story ->
+        {:ok,
+         from(s in Story, where: s.id == ^story.id and s.project_id == ^scope.active_project_id)}
+    end
+  end
+
+  defp queue_subject(scope, :epic, id) do
+    case Epics.get_epic(scope, id) do
+      nil ->
+        {:error, :not_found}
+
+      epic ->
+        {:ok,
+         from(s in Story,
+           where: s.epic_id == ^epic.id and s.project_id == ^scope.active_project_id
+         )}
+    end
+  end
 
   @doc """
   Record a question a dispatched agent needs the user to answer.

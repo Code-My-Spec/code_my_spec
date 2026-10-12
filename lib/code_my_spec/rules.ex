@@ -27,7 +27,7 @@ defmodule CodeMySpec.Rules do
 
   ## Examples
 
-      iex> find_matching_rules("context", "coding", scope.environment)
+      iex> find_matching_rules("context", "coding", environment)
       [%Rules{}, ...]
 
   """

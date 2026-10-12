@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
         )
 
         HeldProvider.hold()
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(main.id)
+        assert {:ok, %{busy?: false}} = Machine.status(main.id)
         running_ids = Machine.running()
         {:reply, tapped, _} = TapOut.execute(%{task_id: nil}, main_frame)
         refute tapped.isError, response_text(tapped)
@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
         assert response_text(inbox) =~ context.question_id
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='false']")
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.main_id)
         assert HeldProvider.seen() == []
         assert Machine.running() == context.running_ids
         {:ok, context}
@@ -113,9 +113,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
 
       when_ "the user explicitly chats with that same agent", context do
         {:ok, :started} =
-          Machine.send_message(
+          Fixtures.send_agent_message(
             context.main_id,
-            "explicit-user-chat",
             "Please summarize the export question"
           )
 
@@ -176,7 +175,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
       end
 
       then_ "one unassigned turn uses the existing agent instead of staffing another", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
         assert Machine.running() == context.running_ids
         {:reply, tasks, _} = ListTasks.execute(%{}, context.main_frame)
         refute tasks.isError, response_text(tasks)

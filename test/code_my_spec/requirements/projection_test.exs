@@ -124,6 +124,13 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
       assert MapSet.new(read_edges) == MapSet.new(edges)
     end
 
+    test "story nodes retain their project parent", %{scope: scope} do
+      {_computed, {read, _}} = round_trip(scope)
+      stories = Enum.filter(read, &(&1.entity_type == "story"))
+      assert stories != []
+      assert Enum.all?(stories, &(&1.parent_entity_id == scope.active_project_id))
+    end
+
     test "a component node keeps its uuid and a story node its integer id", %{scope: scope} do
       {_computed, {read, _}} = round_trip(scope)
 

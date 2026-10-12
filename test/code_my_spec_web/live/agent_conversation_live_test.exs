@@ -11,8 +11,10 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   import Phoenix.LiveViewTest
   import CodeMySpec.DevicesFixtures
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
@@ -157,10 +159,10 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       scope: scope,
       project: project
     } do
-      conversation = agent_conversation(scope, project)
+      {agent, conversation} = agent_with_conversation(scope, project)
 
       for _ <- 1..2 do
-        {:ok, _} =
+        {:ok, message} =
           Conversations.add_message(
             conversation,
             :operator,
@@ -170,6 +172,8 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
             delivery: :pending,
             delivery_ref: Ecto.UUID.generate()
           )
+
+        Mailbox.admit(agent, message, :operator_message)
       end
 
       {:ok, view, _} = live(conn, show_path(project, conversation))
@@ -190,7 +194,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       scope: scope,
       project: project
     } do
-      conversation = agent_conversation(scope, project)
+      {agent, conversation} = agent_with_conversation(scope, project)
 
       {:ok, message} =
         Conversations.add_message(
@@ -202,6 +206,8 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           delivery: :pending,
           delivery_ref: Ecto.UUID.generate()
         )
+
+      Mailbox.admit(agent, message, :operator_message)
 
       {:ok, view, _} = live(conn, show_path(project, conversation))
 
@@ -215,6 +221,24 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
                "details[data-test='routine-notice']:not([open])",
                "Deployment confirmation details"
              )
+    end
+
+    test "unowned historical pending messages have no withdrawal control", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      {:ok, _} =
+        Conversations.add_message(conversation, :operator, "unknown outcome", "operator", [],
+          delivery: :pending,
+          delivery_ref: Ecto.UUID.generate()
+        )
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+      assert has_element?(view, "[data-test='agent-pending-message']", "unknown outcome")
+      refute has_element?(view, "[data-test='agent-withdraw-message']")
     end
 
     test "a queued message enters the received transcript only on delivery", %{
@@ -885,7 +909,15 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       CodeMySpec.Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_started"}, [])
       assert has_element?(view, turn)
 
-      CodeMySpec.Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_ended"}, [])
+      CodeMySpec.Agents.record_turn_event(
+        scope,
+        agent.id,
+        ChannelClient.encode_turn_event(
+          CodeMySpecSpex.Fixtures.mailbox_turn_end(scope, agent.id)
+        ),
+        []
+      )
+
       refute has_element?(view, turn)
     end
   end

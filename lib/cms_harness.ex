@@ -66,6 +66,7 @@ defmodule CmsHarness do
       # the harness.
       CodeMySpec.Migration,
       CodeMySpec.Users.Scope,
+      CodeMySpec.LocalScope,
       CodeMySpec.Paths,
       CodeMySpec.Permissions,
       CodeMySpec.Projects,

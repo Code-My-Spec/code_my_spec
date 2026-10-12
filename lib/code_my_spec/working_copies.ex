@@ -45,6 +45,7 @@ defmodule CodeMySpec.WorkingCopies do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -282,6 +283,35 @@ defmodule CodeMySpec.WorkingCopies do
 
   def fetch(_), do: {:error, :invalid_id}
 
+  @doc """
+  Resolves the environment for the exact working copy selected by `scope`.
+
+  Both active ids must be present, and the fetched copy must belong to the
+  active project. For a rooted copy, resolution prefers its id-specific
+  registration, then a registration for its root, then a synthesized harness
+  environment. This deliberately ignores `scope.cwd`,
+  the project's registered environment, and other copies. Root registration
+  is only a fallback for the already-validated copy root; it is not a project
+  environment override. Invalid, missing, mismatched, or unrooted copies
+  return `nil`.
+  """
+  @spec environment(Scope.t()) :: Environment.t() | nil
+  def environment(%Scope{active_project_id: project_id, active_working_copy_id: copy_id})
+      when is_binary(project_id) and is_binary(copy_id) do
+    case fetch(copy_id) do
+      {:ok, %{project_id: ^project_id, root: root}}
+      when is_binary(root) and root != "" ->
+        Environments.lookup_registered({:working_copy, copy_id}) ||
+          Environments.lookup_registered({:root, root}) ||
+          Environment.new(:harness, root, ref: %{"harness_id" => copy_id})
+
+      _ ->
+        nil
+    end
+  end
+
+  def environment(_scope), do: nil
+
   @doc "The name of the machine a working copy is on, or nil when it has none on record."
   @spec machine_name(term()) :: String.t() | nil
   def machine_name(working_copy_id) do
@@ -428,27 +458,17 @@ defmodule CodeMySpec.WorkingCopies do
     do: GraphInputs.announce(scope, "WorkingCopies", [], :project_wide)
 
   @doc """
-  Point a scope at a harness: which checkout, where it is, and how to reach it.
+  Select a working copy and its recorded root without attaching a runtime.
 
-  All three, together, because the third is the one that gets forgotten.
-  `HarnessProjectChannel` set every field and MCP requests set only
-  `active_working_copy_id` — so a tool invoked over `/mcp/harness` knew exactly which
-  working copy it was talking about and had no way to read or write a byte of
-  it. `regenerate_proposal` surfaced it by trying: the transport is fine, the
-  harness implements every op, and the call failed with `:no_environment`
-  because the scope carried none.
-
-  `cwd` is the harness's own recorded root rather than anything the request
-  said. A request that could name its own directory would be back to resolving
-  a working copy by path, which is what addressing by id replaced.
+  Callers that need filesystem access resolve `environment/1` at the operation
+  boundary. The scope carries the copy identity, not its execution adapter.
   """
   @spec put_scope(Scope.t(), WorkingCopy.t()) :: Scope.t()
   def put_scope(%Scope{} = scope, %WorkingCopy{} = harness) do
     %{
       scope
       | active_working_copy_id: harness.id,
-        cwd: harness.root || scope.cwd,
-        environment: Environment.new(:harness, harness.root, ref: %{"harness_id" => harness.id})
+        cwd: harness.root || scope.cwd
     }
   end
 
@@ -472,8 +492,8 @@ defmodule CodeMySpec.WorkingCopies do
 
   For sweeps that act on "every project's main checkout" rather than one
   project at a time — `reconcile_lockfile/1`'s periodic backstop is the
-  first caller. Each scope is independently usable: `environment` is a
-  `:harness` environment addressed by that copy's own id, so a read against
+  first caller. Each scope selects its own copy; `environment/1` resolves a
+  runtime addressed by that copy's own id, so a read against
   one that happens to be offline right now fails on its own and does not
   take the rest of the sweep down with it.
   """
@@ -827,36 +847,12 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   @doc """
-  Another working copy on the same project and device that already holds a
-  preview tunnel — the one `PreviewTunnel.ensure/1` shares rather than
-  duplicates (criterion 1586).
-
-  `nil` device_id never matches anything, including another `nil`: a copy
-  that has not yet reported which machine it is on cannot be assumed to
-  share one with anything else — two such copies could as easily be on two
-  different laptops that both onboarded before their harness ever connected.
-  That absence of a match is exactly criterion 1587: a copy on a different
-  device gets `:error` here and `PreviewTunnel.ensure/1` refuses to share
-  rather than guessing.
+  Whether any working copy still names `tunnel_id` as the tunnel carrying its
+  address — what decides a replaced tunnel may be deleted (story 1117).
   """
-  @spec tunnel_sibling(WorkingCopy.t()) :: {:ok, WorkingCopy.t()} | :error
-  def tunnel_sibling(%WorkingCopy{project_id: project_id, device_id: device_id, id: id})
-      when is_binary(project_id) and is_binary(device_id) do
-    query =
-      from w in WorkingCopy,
-        where: w.project_id == ^project_id,
-        where: w.device_id == ^device_id,
-        where: w.id != ^id,
-        where: not is_nil(w.preview_tunnel_id) and not is_nil(w.preview_tunnel_secret),
-        limit: 1
-
-    case Repo.one(query) do
-      nil -> :error
-      sibling -> {:ok, sibling}
-    end
-  end
-
-  def tunnel_sibling(%WorkingCopy{}), do: :error
+  @spec tunnel_in_use?(String.t()) :: boolean()
+  def tunnel_in_use?(tunnel_id) when is_binary(tunnel_id),
+    do: Repo.exists?(from w in WorkingCopy, where: w.preview_tunnel_id == ^tunnel_id)
 
   @doc """
   Where this project's preview answers, or nothing.
@@ -1283,6 +1279,20 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   def list_on_device(_device_id), do: %{}
+
+  @doc """
+  The ids of every copy on each of these devices, as `device_id => [id]`. A
+  device with no copies is absent.
+
+  Every row, rootless or not: a device is an orphan only when nothing at all
+  references it, since destroying one cascades its copies away.
+  """
+  @spec ids_by_device([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Ecto.UUID.t()]}
+  def ids_by_device(device_ids) when is_list(device_ids) do
+    from(w in WorkingCopy, where: w.device_id in ^device_ids, select: {w.device_id, w.id})
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
 
   @doc """
   Record what a device can see of the copies attached to it.

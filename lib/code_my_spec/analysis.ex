@@ -181,9 +181,10 @@ defmodule CodeMySpec.Analysis do
   # was accepted, which it was. Answering with the execution's error made a suite
   # that failed to boot read as a refused request.
   defp start_local(scope, job, :inline) do
-    run = open_run(scope, job)
-    _ = Execution.execute(scope, run, job.opts)
-    {:ok, :started, run.id}
+    with {:ok, run} <- open_run(scope, job) do
+      _ = Execution.execute(scope, run, job.opts)
+      {:ok, :started, run.id}
+    end
   end
 
   defp start_local(scope, job, :async) do
@@ -1223,18 +1224,17 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp run_inline(scope, job), do: Execution.execute(scope, open_run(scope, job), job.opts)
+  defp run_inline(scope, job) do
+    with {:ok, run} <- open_run(scope, job), do: Execution.execute(scope, run, job.opts)
+  end
 
   defp open_run(scope, job) do
-    {:ok, run} =
-      RunsRepository.start_run(scope, %{
-        source: job.source,
-        kind: job.kind,
-        args: %{"args" => job.args},
-        requested_by: job.requested_by
-      })
-
-    run
+    RunsRepository.start_run(scope, %{
+      source: job.source,
+      kind: job.kind,
+      args: %{"args" => job.args},
+      requested_by: job.requested_by
+    })
   end
 
   # The working copy, because that is what owns the build tree the queue exists

@@ -12,8 +12,12 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
 
   use CodeMySpecWeb, :html
 
-  attr :attempts, :list, required: true, doc: "List of QaAttempt structs (most-recent first)"
-  attr :invalidating_attempt_id, :string, default: nil, doc: "Attempt id whose inline form is open"
+  attr(:attempts, :list, required: true, doc: "List of QaAttempt structs (most-recent first)")
+
+  attr(:invalidating_attempt_id, :string,
+    default: nil,
+    doc: "Attempt id whose inline form is open"
+  )
 
   def qa_history(assigns) do
     ~H"""
@@ -35,13 +39,28 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
     """
   end
 
-  attr :attempt, :map, required: true
-  attr :invalidating_attempt_id, :string, default: nil
+  attr(:attempt, :map, required: true)
+  attr(:invalidating_attempt_id, :string, default: nil)
 
   defp attempt_card(assigns) do
     invalidated? = attempt_invalidated?(assigns.attempt)
     showing_form? = assigns.invalidating_attempt_id == to_string(assigns.attempt.id)
-    assigns = assign(assigns, invalidated?: invalidated?, showing_form?: showing_form?)
+
+    review =
+      case Map.get(assigns.attempt, :reviewed_commit) do
+        commit when is_binary(commit) ->
+          %{
+            commit: commit,
+            started_at: assigns.attempt.review_started_at,
+            submissions: assigns.attempt.reviewed_submissions || %{}
+          }
+
+        _ ->
+          nil
+      end
+
+    assigns =
+      assign(assigns, invalidated?: invalidated?, showing_form?: showing_form?, review: review)
 
     ~H"""
     <div
@@ -65,6 +84,16 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
           </span>
         </div>
 
+        <div :if={Map.get(@attempt, :stale, false)} class="text-sm text-warning">
+          Historical result — does not approve the current work.
+        </div>
+        <div :if={@review} data-role="qa-reviewed-work" class="text-xs text-base-content/70">
+          Reviewed revision: <code>{@review.commit}</code>
+          <div>Review started: {format_dt(@review.started_at)}</div>
+          <div :for={{issue_id, ref} <- @review.submissions}>
+            Issue <code>{issue_id}</code>: submission <code>{ref}</code>
+          </div>
+        </div>
         <%!-- Agent and parent chain --%>
         <div :if={@attempt.agent_id} class="text-sm text-base-content/70">
           Agent: <code class="text-xs">{@attempt.agent_id}</code>
@@ -128,6 +157,7 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
             {format_dt(inv.invalidated_at)}
           </span>
           <p class="mt-1 text-base-content/80">{inv.reason}</p>
+          <p :if={inv.cause} class="text-xs">{inv.cause} · {inv.actor_id} · {inv.submission_ref}</p>
         </div>
 
         <%!-- Invalidate button (only for passed, non-invalidated, no open form) --%>

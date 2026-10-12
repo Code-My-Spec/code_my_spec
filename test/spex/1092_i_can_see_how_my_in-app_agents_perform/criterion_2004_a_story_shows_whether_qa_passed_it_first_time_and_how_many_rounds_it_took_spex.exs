@@ -9,6 +9,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  import Phoenix.ChannelTest
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,7 +17,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
+  alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -26,6 +27,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
+  alias CodeMySpecSpex.StorySliceHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -48,8 +50,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
 
-        reply = join_working_copy(context, "/tmp/spex-2004", "the checkout")
-        scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+        {reply, socket} = join_working_copy_socket(context, "/tmp/spex-2004", "the checkout")
+        scope = StorySliceHelpers.scope_for_copy(context, reply.working_copy_id, "/tmp/spex-2004")
 
         ComponentHelpers.create(scope,
           name: "Example2004",
@@ -82,6 +84,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
           )
 
         qa = Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-2004")
+        coder = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2004")
+        coding = %Frame{assigns: %{current_scope: scope, agent_id: coder.id}}
         asking = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
 
         frame = %Frame{assigns: %{current_scope: scope}}
@@ -89,14 +93,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
         refute resp.isError, inspect(resp)
 
         {:reply, started, _frame} =
-          StartTask.execute(
-            %{
-              requirement_name: "qa_complete",
-              entity_type: "story",
-              entity_id: to_string(story.number)
-            },
-            asking
-          )
+          start_qa(asking, story, socket)
 
         refute started.isError, inspect(started)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))
@@ -134,25 +131,30 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         refute accepted_1.isError, inspect(accepted_1)
 
-        {:reply, resolved_1, _frame} =
-          ResolveIssue.execute(
-            %{issue_id: issue_1_id, resolution: "Fixed the save button's no-op handler"},
-            asking
+        {:reply, submitted_1, _frame} =
+          SubmitStoryIssue.execute(
+            %{
+              issue_id: issue_1_id,
+              revision: String.duplicate("b", 40),
+              evidence: "Fixed the save button's no-op handler; regression test passed."
+            },
+            coding
           )
 
-        refute resolved_1.isError, inspect(resolved_1)
+        refute submitted_1.isError, inspect(submitted_1)
+
+        {:ok, _} =
+          Stories.set_qa_ready(
+            scope,
+            Stories.get_story!(scope, story.id),
+            String.duplicate("b", 40)
+          )
 
         {:reply, resumed_1, _frame} =
-          StartTask.execute(
-            %{
-              requirement_name: "qa_complete",
-              entity_type: "story",
-              entity_id: to_string(story.number)
-            },
-            asking
-          )
+          start_qa(asking, story, socket)
 
         refute resumed_1.isError, inspect(resumed_1)
+        [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(resumed_1))
 
         {:reply, issue_2, _frame} =
           CreateIssue.execute(
@@ -185,25 +187,30 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         refute accepted_2.isError, inspect(accepted_2)
 
-        {:reply, resolved_2, _frame} =
-          ResolveIssue.execute(
-            %{issue_id: issue_2_id, resolution: "Fixed the save button's error handling"},
-            asking
+        {:reply, submitted_2, _frame} =
+          SubmitStoryIssue.execute(
+            %{
+              issue_id: issue_2_id,
+              revision: String.duplicate("c", 40),
+              evidence: "Fixed the save button's error handling; regression test passed."
+            },
+            coding
           )
 
-        refute resolved_2.isError, inspect(resolved_2)
+        refute submitted_2.isError, inspect(submitted_2)
+
+        {:ok, _} =
+          Stories.set_qa_ready(
+            scope,
+            Stories.get_story!(scope, story.id),
+            String.duplicate("c", 40)
+          )
 
         {:reply, resumed_2, _frame} =
-          StartTask.execute(
-            %{
-              requirement_name: "qa_complete",
-              entity_type: "story",
-              entity_id: to_string(story.number)
-            },
-            asking
-          )
+          start_qa(asking, story, socket)
 
         refute resumed_2.isError, inspect(resumed_2)
+        [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(resumed_2))
 
         {:reply, round_3, _frame} =
           SubmitQaResult.execute(
@@ -251,5 +258,35 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
         {:ok, context}
       end
     end
+  end
+
+  defp start_qa(asking, story, socket) do
+    task =
+      Task.async(fn ->
+        StartTask.execute(
+          %{
+            requirement_name: "qa_complete",
+            entity_type: "story",
+            entity_id: to_string(story.number)
+          },
+          asking
+        )
+      end)
+
+    with_task_cleanup(task, fn ->
+      assert_push("ensure_app_running", %{"ref" => ref}, 5_000)
+
+      reply_ref =
+        Phoenix.ChannelTest.push(socket, "ensure_app_running_result", %{
+          "ref" => ref,
+          "status" => "ok",
+          "app_status" => "serving",
+          "app_url" => "http://127.0.0.1:4100",
+          "app_commit" => "cafef00d"
+        })
+
+      assert_reply(reply_ref, :ok, _, 5_000)
+      Task.await(task, 5_000)
+    end)
   end
 end

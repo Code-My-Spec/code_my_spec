@@ -268,51 +268,10 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel, embedder: "https://de
 # changesets leaves `updated_at` untouched and so moves no fingerprint.
 config :code_my_spec, graph_stale_read_log: true
 
-# The event-derived projection, maintained beside the fingerprint pass.
-#
-# Off until now, which meant `ShadowProjector` had never started: every number
-# the conversion was verified against came from scripts driving the code
-# synchronously, and no drain had ever handled a real event. `Shadow.diff/1`
-# compares the two projections on every pass and logs the distance — nodes and,
-# since `20260916150000`, edges.
-#
-# It writes `shadow_requirements` and `shadow_requirement_edges` and decides
-# nothing; the pass still serves. Turning it off stops the second projection
-# without losing the marks that would let it restart.
-#
-# The projection stays ON. It is the event path — the direction this project is
-# moving toward, not away from — and a projection nothing drives stops being a
-# candidate to swap to.
-#
-# What is off is the *comparison*. `Shadow.diff/1` opens with a full
-# `Preloader.load/2` per computed vantage, on every pass; `ShadowProjector` is
-# built to avoid exactly that ("`Preloader.load/1` is never called"). Measured
-# here 2026-09-21: **814 preloads for 157 passes**, 5.2x, against a preload
-# that is the largest phase of a pass at 21-90ms. Almost all of it was the
-# measurement rather than the thing measured.
-#
-# These were one flag, and turning it off to stop paying for the diff also
-# stopped the event path and left the batched pass serving alone — backwards.
-# Hence two.
-#
-# Turn `graph_shadow_diff` on to re-validate. What it proved while it ran: 157
-# consecutive passes at `shadow agrees`, nodes and edges exact (2107/2107,
-# 6653/6653). What it cannot prove, and what still blocks
-# `graph_event_is_source`, is idle-vantage staleness — `report_shadow/2` diffs
-# only the vantages the pass just computed, so a clean run says nothing about
-# the checkouts nothing named. Measured the same day: the `Harness` vantage sat
-# 6h36m behind on the event side while every diff read clean. Criterion 3522.
-# The event path serves readers in dev (2026-09-21). `ShadowProjector` writes
-# `requirements` and `requirement_edges`; the batched pass writes the shadow
-# pair and stays on as the oracle, with the diff below comparing the two at
-# every live vantage on every pass. Flipped on: the spex suite green with reads
-# served from the event path, a diff window of 226 verdicts whose every
-# difference was the pass behind on an idle checkout, and handler drains at
-# 47/53/330ms against the pass's 698ms in the same window.
+# The event projection is the sole continuous writer in dev. The legacy pass
+# remains available through explicit recomputation and verification commands.
+# All 13 live views and 39 incremental checks agreed before this cutover.
 config :code_my_spec, graph_event_is_source: true
 config :code_my_spec, graph_shadow_projection: true
-# On for a validation window (2026-09-21): every pass diffs the projector's
-# rows and edges against its own at every live vantage, and `[Requirements]
-# shadow agrees|differs` in web.log is the record. It costs a preload per live
-# vantage per pass; turn it back off once the window has said its piece.
-config :code_my_spec, graph_shadow_diff: true
+config :code_my_spec, graph_pass_enabled: false
+config :code_my_spec, graph_shadow_diff: false

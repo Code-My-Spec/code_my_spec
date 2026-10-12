@@ -12,14 +12,17 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Issues
   alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -201,6 +204,12 @@ defmodule CodeMySpec.Requirements.Preloader do
           criteria_by_story: criteria_by_story(story_ids),
           personas_by_story: personas_by_story(story_ids),
           qa_latest_by_story: qa_latest_by_story(story_ids),
+          qa_submission_snapshots:
+            Issues.story_submission_snapshots(
+              scope,
+              story_ids,
+              Configurations.fix_issues_min_severity(scope)
+            ),
           delegated_inputs: delegated_inputs(project_id, working_copy_id),
           # Once per load rather than once per story's `deploy`, and in the
           # context so `Freshness.story/2` sees setup completing.
@@ -222,6 +231,7 @@ defmodule CodeMySpec.Requirements.Preloader do
        files_by_project: all_files,
        files_by_path: Map.new(all_files, &{&1.path, &1}),
        issues_by_story: shared.issues_by_story,
+       story_issues: shared.story_issues,
        components: components,
        components_by_id: Map.new(components, &{&1.id, &1}),
        children_by_parent: Enum.group_by(components, & &1.parent_component_id),
@@ -231,6 +241,7 @@ defmodule CodeMySpec.Requirements.Preloader do
        criteria_by_story: rest.criteria_by_story,
        personas_by_story: rest.personas_by_story,
        qa_latest_by_story: rest.qa_latest_by_story,
+       qa_submission_snapshots: rest.qa_submission_snapshots,
        uat_deploy_by_story: shared.uat_deploy_by_story,
        delegated_inputs: rest.delegated_inputs,
        setup_missing: rest.setup_missing
@@ -365,6 +376,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     %{
       components: project_components(project_id),
       issues_by_story: issue_stamps_by_story(project_id),
+      story_issues: project_story_issues(project_id),
       rules_by_story: rules_by_story(project_id),
       questions_by_story: questions_by_story(project_id),
       uat_deploy_by_story: uat_deploy_by_story(project_id)
@@ -422,9 +434,10 @@ defmodule CodeMySpec.Requirements.Preloader do
   for `Projection.rehydrate/2` to place a stored row — it reads
   `components_by_id` and `stories` — so the event path can rebuild edges over
   the rows it already holds. Not enough for any verdict, on purpose: nothing
-  here reads a file, a problem or a criterion.
+  here reads file contents, problems or criteria. File membership is needed
+  to exclude discovered components absent from this checkout's story edges.
 
-  Four queries. `ShadowProjector.reproject_topology/2` used to call `load/2`
+  Five queries. `ShadowProjector.reproject_topology/2` used to call `load/2`
   for this on every narrow drain — the whole project, ~50 queries and the
   largest phase of a pass, to compare one fingerprint that had not moved.
   """
@@ -432,12 +445,31 @@ defmodule CodeMySpec.Requirements.Preloader do
   def topology_context(%Scope{active_project_id: project_id} = scope) do
     components = project_components(project_id)
 
+    file_component_ids =
+      File
+      |> where([f], f.project_id == ^project_id and not is_nil(f.component_id))
+      |> scope_to_harness(files_copy(scope))
+      |> select([f], f.component_id)
+      |> distinct(true)
+      |> Repo.all()
+      |> MapSet.new()
+
     %{
+      file_component_ids: file_component_ids,
       components: components,
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
+      story_issues: project_story_issues(project_id),
       stories: project_stories(project_id, scope.active_working_copy_id)
     }
+  end
+
+  defp project_story_issues(project_id) do
+    Repo.all(
+      from(i in CodeMySpec.Issues.Issue,
+        where: i.project_id == ^project_id and not is_nil(i.story_id)
+      )
+    )
   end
 
   defp project_stories(project_id, working_copy_id) do
@@ -542,6 +574,16 @@ defmodule CodeMySpec.Requirements.Preloader do
     [story]
     |> narrow_context()
     |> Map.put(:files_by_story, %{story.id => files})
+    |> Map.put(:story_issues, Issues.list_story_submissions(scope, story.id))
+    |> Map.put(:qa_latest_by_story, qa_latest_by_story([story.id]))
+    |> Map.put(
+      :qa_submission_snapshots,
+      Issues.story_submission_snapshots(
+        scope,
+        [story.id],
+        Configurations.fix_issues_min_severity(scope)
+      )
+    )
   end
 
   # Only the keys this load actually fills, and that is a safety property rather
@@ -611,44 +653,27 @@ defmodule CodeMySpec.Requirements.Preloader do
   end
 
   @doc """
-  One component's family, for a consumer computing only that family.
-
-  The family is the unit, because `component_families/1` decides top-level from
-  nested by asking whether each component's parent is in the set it was given,
-  and `expand_component_families/2` groups by `parent_component_id || id`. So
-  the family of a component is its root — itself, or its parent — plus every
-  component sharing that root. Two queries rather than the project's 1138 rows.
-
-  That grouping is also what makes the narrow set safe to hand to
-  `component_families/1`: the root is present, so its children classify as
-  nested, and the root itself classifies as top-level exactly as it would in a
-  whole-project context — its own parent, if it has one, is outside the set and
-  therefore not a container here, which is the same answer `load/1` gives on
-  this project's shape (measured: 0 components nested below the second level).
+  One component's template family, with the ancestor context needed to preserve
+  whether each component is a top-level template owner or a child emitted by
+  its parent. A child nested below a context cannot be computed alone: omitting
+  the context makes `component_families/1` promote it to top-level and changes
+  its definition metadata.
 
   No problems are loaded: no component requirement reads them (28d72f8a).
   """
   @spec load_component_family(Scope.t(), Ecto.UUID.t()) :: {:ok, context()}
   def load_component_family(%Scope{active_project_id: project_id} = scope, id)
       when is_binary(project_id) do
-    root =
-      Repo.one(
-        from(c in Component,
-          where: c.id == ^id and c.project_id == ^project_id,
-          select: coalesce(c.parent_component_id, c.id)
-        )
-      )
-
-    {:ok, family_context(scope, root)}
+    lineage = component_context_lineage(project_id, id)
+    ids = Enum.uniq([id | lineage])
+    {:ok, family_context(scope, ids)}
   end
 
-  defp family_context(_scope, nil), do: narrow_context([])
-
-  defp family_context(%Scope{active_project_id: project_id} = scope, root) do
+  defp family_context(%Scope{active_project_id: project_id} = scope, ids) do
     family =
       Component
       |> where([c], c.project_id == ^project_id)
-      |> where([c], c.id == ^root or c.parent_component_id == ^root)
+      |> where([c], c.id in ^ids or c.parent_component_id in ^ids)
       |> preload([:dependencies, :child_components])
       |> Repo.all()
 
@@ -668,6 +693,44 @@ defmodule CodeMySpec.Requirements.Preloader do
       children_by_parent: Enum.group_by(family, & &1.parent_component_id),
       files_by_component: Enum.group_by(files, & &1.component_id)
     })
+  end
+
+  # Keep walking only through ancestors that own child templates. A component
+  # below a non-container parent is top-level in the full graph, so that parent
+  # is irrelevant to its template. Context ancestors are included so the same
+  # component_families/1 classification holds at every level of a nested path.
+  defp component_context_lineage(project_id, component_id, seen \\ MapSet.new()) do
+    if MapSet.member?(seen, component_id) do
+      []
+    else
+      seen = MapSet.put(seen, component_id)
+
+      component_context_lineage_step(project_id, component_id, seen)
+    end
+  end
+
+  defp component_context_lineage_step(project_id, component_id, seen) do
+    parent_id =
+      Repo.one(
+        from(c in Component,
+          where: c.id == ^component_id and c.project_id == ^project_id,
+          select: c.parent_component_id
+        )
+      )
+
+    with id when not is_nil(id) <- parent_id,
+         type when is_binary(type) <-
+           Repo.one(
+             from(c in Component,
+               where: c.id == ^id and c.project_id == ^project_id,
+               select: c.type
+             )
+           ),
+         true <- RequirementsRegistry.has_children?(type) do
+      [id | component_context_lineage(project_id, id, seen)]
+    else
+      _ -> []
+    end
   end
 
   defp rules_by_story(project_id) do
@@ -718,9 +781,9 @@ defmodule CodeMySpec.Requirements.Preloader do
   # port to the SQLite side.
   defp qa_latest_by_story(story_ids) do
     QaAttempt
-    |> where([a], a.story_id in ^story_ids)
-    |> order_by([a], desc: a.inserted_at, desc: a.id)
-    |> preload(:invalidations)
+    |> where([a], a.story_id in ^story_ids and not a.stale)
+    |> order_by([a], desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id)
+    |> preload([:invalidations])
     |> Repo.all()
     |> Enum.group_by(& &1.story_id)
     |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
@@ -926,29 +989,8 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
-  # The issues attributed to each story, so a story's fingerprint carries its
-  # own and not the project's.
-  #
-  # `delegated_inputs/2` keeps collecting `issues` project-wide, and correctly:
-  # `issues_triaged` and `issues_resolved` ask about the queue as a whole. They
-  # are project nodes, which `recompute_stale/3` rebuilds unconditionally every
-  # pass, so they never read a story's fingerprint. Hashing the project's list
-  # into every story's fingerprint therefore bought nothing and cost every
-  # story — one issue, 973 of 2086 requirements and 137 of 137 stories, measured
-  # on dev 2026-09-14.
-  #
-  # The only story-level reader is `IssuesChecker.story_resolved?/2`, and it
-  # already draws this line: "Only issues QA attributed to the story count. An
-  # issue with no `story_id` is the project queue's problem, not this story's."
-  # So an unattributed issue belongs to no group here, which is the same
-  # statement.
-  #
-  # Stamps rather than a filtered count, for the reason the module's header
-  # gives: `story_resolved?/2` reads status and severity, and a key naming the
-  # fields this module happens to know about goes stale the first time that
-  # checker reads one more. `{id, updated_at}` covers a status moving from
-  # incoming to accepted, a severity being raised, and a re-attribution — which
-  # moves both the story that lost it and the story that gained it.
+  # Story-local stamps cover triage and inherited submission state. Moving an
+  # issue invalidates both its old and new story without dirtying every story.
   defp issue_stamps_by_story(project_id) do
     Repo.all(
       from(i in "issues",

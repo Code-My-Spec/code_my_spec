@@ -20,7 +20,7 @@ defmodule CodeMySpec.Provisioning.DnsVerifyTest do
   alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps}
 
   setup do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     {:ok, _} = Projects.update_project(scope, scope.active_project, %{domain: "astralbi.com"})
 
     %{scope: %{scope | active_project: %{scope.active_project | domain: "astralbi.com"}}}

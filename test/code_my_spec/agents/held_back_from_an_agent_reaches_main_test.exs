@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
 
   use CodeMySpecSpex.Case, async: false
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
@@ -148,7 +149,13 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
         work_requested_at: nil
       })
 
-    Agents.record_turn_event(ctx.scope, agent_id, %{"kind" => "turn_ended"})
+    Agents.record_turn_event(
+      ctx.scope,
+      agent_id,
+      ChannelClient.encode_turn_event(
+        CodeMySpecSpex.Fixtures.mailbox_turn_end(ctx.scope, agent_id)
+      )
+    )
   end
 
   defp main_id(ctx) do

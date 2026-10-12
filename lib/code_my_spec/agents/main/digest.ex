@@ -34,10 +34,21 @@ defmodule CodeMySpec.Agents.Main.Digest do
           off: [Agent.t()],
           machinery: Machinery.t() | nil,
           questions: [OpenQuestion.t()],
+          requirements:
+            %{total: non_neg_integer(), satisfied: non_neg_integer()}
+            | {:unavailable, String.t()}
+            | nil,
+          completions: [struct()],
           failed: String.t() | nil
         }
 
-  defstruct work: [], off: [], machinery: nil, questions: [], failed: nil
+  defstruct work: [],
+            off: [],
+            machinery: nil,
+            questions: [],
+            requirements: nil,
+            completions: [],
+            failed: nil
 
   @doc "A digest that could not be assembled, and what stopped it."
   @spec failed(String.t()) :: t()
@@ -57,7 +68,7 @@ defmodule CodeMySpec.Agents.Main.Digest do
   def quiet?(%Digest{failed: reason}) when is_binary(reason), do: false
 
   def quiet?(%Digest{} = digest) do
-    digest.questions == [] and machinery_ok?(digest.machinery) and
+    digest.questions == [] and digest.completions == [] and machinery_ok?(digest.machinery) and
       Enum.all?(digest.work, &settled?/1)
   end
 

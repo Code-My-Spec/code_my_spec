@@ -9,6 +9,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -17,7 +18,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
   spex "A completed fix is offered to QA alone", criterion: 2018 do
     scenario "The coder cannot claim the submitted fix again" do
       given_ "a coder has claimed an accepted issue assigned to its team", context do
-        context = context |> Slice.main_copy() |> Slice.staff()
+        context = context |> Slice.main_copy() |> Slice.staff() |> Slice.git_backed()
         coder = Enum.find(context.team, &(&1.role == :coding))
         qa = Enum.find(context.team, &(&1.role == :qa))
 
@@ -69,6 +70,8 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
       end
 
       when_ "the coder evaluates its fix successfully", context do
+        Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
+
         {:reply, evaluated, _} =
           EvaluateTask.execute(%{task_id: context.task_id}, context.coder_frame)
 

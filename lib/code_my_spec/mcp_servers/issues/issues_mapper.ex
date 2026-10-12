@@ -10,7 +10,7 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
 
   def issue_created_response(issue) do
     summary = "Issue created: \"#{issue.title}\" [#{issue.severity}] (ID: #{issue.id})"
-    hybrid_response(summary, issue_data(issue))
+    hybrid_response(summary <> submission_summary(issue), issue_data(issue))
   end
 
   def issue_get_response(issue) do
@@ -31,7 +31,7 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
         summary
       end
 
-    hybrid_response(String.trim(summary), issue_data(issue))
+    hybrid_response(String.trim(summary <> submission_summary(issue)), issue_data(issue))
   end
 
   # Issue bodies are untrusted, and were being interpolated raw.
@@ -85,7 +85,7 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
       "Issue #{action}: \"#{issue.title}\" (ID: #{issue.id})" <>
         category_suffix(issue) <> story_suffix(issue)
 
-    hybrid_response(summary, issue_data(issue))
+    hybrid_response(summary <> submission_summary(issue), issue_data(issue))
   end
 
   def issues_list_response(issues, filters, total \\ nil) do
@@ -286,6 +286,22 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   defp story_suffix(%{story: %{number: number}}), do: " → story #{number}"
   defp story_suffix(_issue), do: ""
 
+  defp submission_summary(%{story_submission_ref: ref} = issue) when is_binary(ref) do
+    """
+
+    **Story fix submitted:** #{ref}
+    **Revision:** #{issue.story_submission_revision}
+    **Submitted at:** #{issue.story_submitted_at}
+    **Submission evidence:**
+    #{fenced(issue.story_submission_evidence)}
+    """
+  end
+
+  defp submission_summary(%{story_id: story_id, assigned_working_copy_id: nil, status: :accepted})
+       when not is_nil(story_id), do: "\n**Story fix:** awaiting submission"
+
+  defp submission_summary(_issue), do: ""
+
   defp issue_data(issue) do
     %{
       id: issue.id,
@@ -295,7 +311,11 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
       description: issue.description,
       status: issue.status,
       resolution: issue.resolution,
-      source_path: issue.source_path
+      source_path: issue.source_path,
+      story_submission_ref: issue.story_submission_ref,
+      story_submission_revision: issue.story_submission_revision,
+      story_submission_evidence: issue.story_submission_evidence,
+      story_submitted_at: issue.story_submitted_at
     }
   end
 end

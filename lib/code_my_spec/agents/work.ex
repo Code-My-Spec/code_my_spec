@@ -6,6 +6,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Assignment
+  alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
@@ -14,7 +15,6 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -56,115 +56,10 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   @resume_prompt "Your last turn ended without finishing — the harness restarted " <>
-                   "under it, so whatever it had in flight was discarded and never " <>
-                   "recorded. You still hold the task below. Nothing is wrong with it " <>
+                   "under it. You still hold the task below. Nothing is wrong with it " <>
                    "and nothing has been decided about it; pick it back up from where " <>
                    "the thread leaves off, and dispose of it as usual when the work is " <>
                    "done. If you cannot tell how far it got, re-check rather than assume."
-
-  @doc """
-  Give back the turns a harness restart discarded (5a977f41).
-
-  `Agents.account_for_interrupted_turns/2` tells an agent its turn was
-  discarded, but only as history — and every agent then sat idle: a continuous
-  coder resuming a task and a main agent acting on an instruction were both
-  still idle twelve minutes after v2.0.296's restart. Holding a task, waiting
-  on a tap-out or damped on its last offer, none of them is reached by
-  `consider_copy/4` or `resume_held_tasks/2`.
-
-  So the message the discarded turn was answering is delivered again, as a
-  turn. `:own_reply` — the restart is the agent's own work coming back, not
-  new work — which reaches a waiting or non-continuous agent and never an off
-  one. `interrupted` is `Agents.interrupted_turns/1`'s answer from the restore
-  this reconnect follows.
-  """
-  @spec redeliver_interrupted_turns(Scope.t(), %{Ecto.UUID.t() => Ecto.UUID.t() | nil}) :: :ok
-  def redeliver_interrupted_turns(scope, interrupted) when is_map(interrupted) do
-    Enum.each(interrupted, fn {agent_id, starter_id} ->
-      case AgentsRepository.fetch_agent(scope, agent_id) do
-        {:ok, agent} -> redeliver(scope, agent, starter_id)
-        _gone -> :ok
-      end
-    end)
-  end
-
-  # With nothing recorded there is no message to give back, so only an agent in
-  # the loop is told to carry on: a non-continuous one is woken by a person or
-  # its own reply, and neither is on the thread.
-  defp redeliver(_scope, %Agent{continuous: continuous}, nil) when continuous != true, do: :ok
-
-  defp redeliver(scope, agent, starter_id) do
-    with :ok <- Wake.allow?(scope, agent, :own_reply),
-         {:ok, {reserved, ref}} <- reserve_interrupted(scope, agent.id) do
-      turn_prompt = redeliver_prompt(starter_id) <> held_task_line(reserved)
-
-      offered =
-        reserved
-        |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, :resume, {"restart", nil})
-
-      case Transport.request_work_turn(
-             reserved.working_copy_id,
-             reserved,
-             ref,
-             turn_prompt,
-             5_000
-           ) do
-        {:ok, :started} ->
-          {:ok, ref}
-
-        _error ->
-          Offers.undelivered(offered)
-          release(scope, reserved.id, ref)
-      end
-    end
-  end
-
-  @redelivered "The harness restarted part-way through your last turn, and that turn " <>
-                 "was discarded — the notice above says what that means. "
-
-  defp redeliver_prompt(starter_id) do
-    case starter_id && Repo.get(Message, starter_id) do
-      %Message{} = starter ->
-        @redelivered <>
-          "This is the message it was answering, delivered again. Pick it up from what " <>
-          "the thread shows was already done:\n\n" <> Message.text(starter)
-
-      _none ->
-        @redelivered <> "Carry on from what the thread shows was already done."
-    end
-  end
-
-  # The task the turn was working, when it holds one — what `resume_held_tasks/2`
-  # would have named, since this turn is taken in its place.
-  defp held_task_line(agent) do
-    case Agent.active_task(agent) do
-      nil -> ""
-      task -> "\n\n" <> task_line(task)
-    end
-  end
-
-  # Holding a task does not fence this out, as it fences `reserve/2`: the
-  # discarded turn may have been working one.
-  defp reserve_interrupted(scope, id) do
-    Repo.transaction(fn ->
-      agent =
-        Repo.one(
-          from a in Agent,
-            where:
-              a.id == ^id and a.project_id == ^scope.active_project_id and
-                a.account_id == ^scope.active_account_id,
-            lock: "FOR UPDATE"
-        )
-
-      if agent && takes_redelivery?(agent), do: reserve(agent), else: :not_runnable
-    end)
-  end
-
-  defp takes_redelivery?(agent) do
-    present?(agent) and is_nil(agent.turn_started_at) and
-      not reservation_open?(agent) and not is_nil(agent.working_copy_id)
-  end
 
   @doc """
   Offer a turn to agents left holding a task with no turn open.
@@ -262,11 +157,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && stranded?(scope, agent), do: reserve(agent), else: :not_stranded
@@ -356,6 +252,8 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
+  @blocker_cycle [:blocker_id, :blocker_type, :blocked_at, :blocker_resolved_at]
+
   @doc """
   Offer an idle agent back the tasks a resolved blocker released — only those
   its work now includes (criterion 1863). `header` says what resolved, `detail`
@@ -370,6 +268,10 @@ defmodule CodeMySpec.Agents.Work do
   @spec wake_released(Scope.t(), Agent.t(), [map()], String.t(), String.t() | nil, keyword()) ::
           :ok
   def wake_released(scope, %Agent{} = agent, released, header, detail \\ nil, opts \\ []) do
+    {:ok, agent} = AgentsRepository.fetch_agent(scope, agent.id)
+
+    released = Enum.filter(released, &still_released?(agent, &1))
+
     execution = work_for(scope, agent.role, agent)
 
     {waiting, ready} = Enum.split_with(released, &still_waiting?(&1, execution))
@@ -377,18 +279,30 @@ defmodule CodeMySpec.Agents.Work do
     if waiting != [],
       do: note_released(agent, with_detail(waiting_notice(header, waiting, execution), detail))
 
-    case ready do
-      [] ->
-        if agent.working_copy_id,
-          do: consider_copy(scope, agent.working_copy_id, :blocker_resolved)
+    resume_ready(scope, agent, ready, {header, detail}, opts)
+  end
 
-        :ok
+  defp resume_ready(scope, agent, [], _notice, _opts) do
+    if agent.working_copy_id,
+      do: consider_copy(scope, agent.working_copy_id, :blocker_resolved)
 
-      [task | _] ->
-        notice = with_detail("#{header}; #{resume_instruction(scope, ready)}", detail)
-        subject = Keyword.get(opts, :subject) || {"task", task.id}
-        wake_with_notice(scope, agent, notice, :blocker_resolved, subject)
-    end
+    :ok
+  end
+
+  defp resume_ready(scope, agent, [task | _] = ready, {header, detail}, opts) do
+    notice = with_detail("#{header}; #{resume_instruction(scope, ready)}", detail)
+    subject = Keyword.get(opts, :subject) || {"task", task.id}
+    wake_with_notice(scope, agent, notice, :blocker_resolved, subject)
+  end
+
+  # Still the release this wake was about: the same blocker cycle, resolved and
+  # not since re-blocked.
+  defp still_released?(agent, previous) do
+    Enum.any?(agent.tasks || [], fn current ->
+      current.id == previous.id and current.status == :blocked and
+        not is_nil(current.blocker_resolved_at) and
+        Map.take(current, @blocker_cycle) == Map.take(previous, @blocker_cycle)
+    end)
   end
 
   # Waiting only on its own story's evidence: the agent's work is that story
@@ -423,9 +337,19 @@ defmodule CodeMySpec.Agents.Work do
   defp resume_instruction(scope, tasks) do
     "resume " <>
       Enum.map_join(tasks, "; ", fn task ->
-        "task #{task.id} with `start_task(#{start_args(scope, task)})`"
+        case start_args(scope, task) do
+          nil ->
+            "task #{task.id} only after inspecting its recorded requirement; entity identity is unavailable"
+
+          args ->
+            "task #{task.id} with `start_task(#{args})`"
+        end
       end) <> "."
   end
+
+  defp start_args(_scope, %{issue_id: issue_id} = task) when is_binary(issue_id),
+    do:
+      ~s(requirement_name: "#{task.requirement_name}", entity_type: "issue", entity_id: "#{issue_id}")
 
   defp start_args(scope, %{story_id: story_id} = task) when not is_nil(story_id) do
     number =
@@ -441,7 +365,15 @@ defmodule CodeMySpec.Agents.Work do
     do:
       ~s(requirement_name: "#{task.requirement_name}", entity_type: "component", module_name: "#{module}")
 
-  defp start_args(_scope, task), do: ~s(requirement_name: "#{task.requirement_name}")
+  defp start_args(_scope, %{component_id: id} = task) when is_binary(id),
+    do:
+      ~s(requirement_name: "#{task.requirement_name}", entity_type: "component", entity_id: "#{id}")
+
+  defp start_args(_scope, %{project_id: id} = task) when is_binary(id),
+    do:
+      ~s(requirement_name: "#{task.requirement_name}", entity_type: "project", entity_id: "#{id}")
+
+  defp start_args(_scope, _task), do: nil
 
   defp task_list(tasks),
     do: Enum.map_join(tasks, "; ", &"task #{&1.id} (`#{&1.requirement_name}`)")
@@ -510,7 +442,6 @@ defmodule CodeMySpec.Agents.Work do
         error ->
           Offers.undelivered(offered)
           release(scope, reserved.id, ref)
-          suppress_offer(scope, reserved, offer)
           error
       end
     else
@@ -542,16 +473,18 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   @doc """
-  The main agent's check-in turn: one per cadence tick, with or without work.
+  The main agent's check-in turn only for actionable work or observed attention.
 
   `render` builds the prompt from whether main's work offer stands — eligible
   graph work it has not declined past the damper. Admitted as `:cadence`, so
   only a running, continuous, idle main that is not waiting gets it; mid-turn
   it is skipped, not queued — the next tick comes round.
   """
-  def request_cadence_turn(scope, %Agent{} = agent, render) when is_function(render, 1) do
+  def request_cadence_turn(scope, %Agent{} = agent, render, opts \\ [])
+      when is_function(render, 1) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, :cadence),
+         true <- Keyword.get(opts, :attention?, false) or work_offered?(scope, current),
          {:ok, {reserved, ref}} <- reserve(scope, current.id, :cadence) do
       turn_prompt = render.(work_offered?(scope, reserved))
 
@@ -576,6 +509,7 @@ defmodule CodeMySpec.Agents.Work do
           error
       end
     else
+      false -> {:ok, :no_work}
       hold -> not_admitted(hold)
     end
   end
@@ -621,29 +555,6 @@ defmodule CodeMySpec.Agents.Work do
   """
   def record_decline(scope, %Agent{} = agent, turn_started_at \\ nil) do
     AgentsRepository.update_agent(scope, agent, decline_attrs(scope, agent, turn_started_at))
-  end
-
-  @doc """
-  Hold off on re-offering work whose dispatch did not land.
-
-  A turn that cannot be delivered never becomes a turn, so the agent never ends
-  one and `record_decline/3` — which fires on the turn-ended path — never runs.
-  Nothing else damps it either: `release/3` clears the reservation, which puts
-  the agent straight back into `runnable_state?/3`, and the next observation
-  offers it the same work again.
-
-  So an agent whose machine is unreachable spins on the *server* side, with no
-  agent involved at all. Measured 2026-09-22: main agent `d632ee86` on a
-  checkout whose harness was not connected recorded 130 undelivered prompts a
-  minute for nine minutes, each one logging "nothing registered for working
-  copy", while the transcript filled with turns that never happened.
-
-  Same window as a refusal, for the same reason: retrying an unreachable
-  machine six times an hour is diagnosis, twice a second is a denial of
-  service against our own database.
-  """
-  def suppress_offer(scope, %Agent{} = agent, fingerprint) do
-    AgentsRepository.update_agent(scope, agent, streak(agent, fingerprint))
   end
 
   # One more repeat of the same offer, or the start of a new streak.
@@ -727,11 +638,12 @@ defmodule CodeMySpec.Agents.Work do
     Repo.transaction(fn ->
       agent =
         Repo.one(
-          from a in Agent,
+          from(a in Agent,
             where:
               a.id == ^id and a.project_id == ^scope.active_project_id and
                 a.account_id == ^scope.active_account_id,
             lock: "FOR UPDATE"
+          )
         )
 
       if agent && runnable_state?(scope, agent, event),
@@ -786,15 +698,25 @@ defmodule CodeMySpec.Agents.Work do
   # An open candidate for this task's own subject is the queue's to finish;
   # a resolved one is the agent's turn.
   defp awaiting_landing?(agent, task) do
-    case subject(task) do
+    case subject(agent, task) do
       nil -> false
       {type, id} -> PromotionQueue.open_for(agent.id, type, id)
     end
   end
 
-  defp subject(%{issue_id: issue_id}) when is_binary(issue_id), do: {"issue", issue_id}
-  defp subject(%{story_id: story_id}) when is_binary(story_id), do: {"story", to_string(story_id)}
-  defp subject(_task), do: nil
+  defp subject(_agent, %{awaiting_subject_type: type, awaiting_subject_id: id})
+       when is_binary(type) and is_binary(id), do: {type, id}
+
+  defp subject(_agent, %{issue_id: issue_id}) when is_binary(issue_id), do: {"issue", issue_id}
+
+  defp subject(agent, %{story_id: story_id}) when is_integer(story_id) do
+    case CodeMySpec.Stories.get_story(%Scope{active_project_id: agent.project_id}, story_id) do
+      %{number: number} -> {"story", to_string(number)}
+      nil -> nil
+    end
+  end
+
+  defp subject(_agent, _task), do: nil
 
   # Its process alive now (`Agents.Presence`): nothing starts a turn in one that
   # is not there.
@@ -1085,6 +1007,12 @@ defmodule CodeMySpec.Agents.Work do
   # still lists them. Measured 2026-10-02: main was re-offered one question it
   # believed it had escalated four times in six minutes, and every turn read
   # "no change".
+  # A refusal the agent gave. A *delivery* failure is a different fact and is
+  # not this: it is recorded as an undelivered offer, not folded in here.
+  # Folding it in damped every reader -- the cadence's `work?` and the
+  # wake that tells an agent about new work -- for an offer that was merely
+  # undeliverable once, which is how devops work stopped reaching main
+  # (criterion 1185) after a first attempt missed.
   defp already_declined?(%{declined_offer: declined} = agent, offer, questions_only?)
        when not is_nil(declined) and declined == offer do
     repeats_spent?(agent.declined_offer_count, questions_only?) and
@@ -1217,12 +1145,34 @@ defmodule CodeMySpec.Agents.Work do
   # back on, bypasses the graph entirely — an issue is not in it
   # (`Agents.IssueWork`, story 1091). Checked ahead of everything else, the
   # same standing as `bound_story_id/1`: offered that and nothing else.
-  def work_for(%Scope{} = scope, _role, %Agent{issue_id: id} = owner, opts)
-      when is_binary(id) do
+  def work_for(%Scope{} = scope, role, %Agent{} = owner, opts) do
     scope = at_copy(scope, owner)
-    execution = IssueWork.execution(scope, owner)
-    withheld? = withholding(scope, owner, opts)
-    actionable = Enum.reject(execution.actionable, withheld?)
+
+    bag =
+      if Assignment.team_member?(owner.role),
+        do: IssueAssignment.bag(scope, owner.working_copy_id),
+        else: []
+
+    cond do
+      bag != [] ->
+        filter_issue_work(scope, owner, IssueWork.execution(scope, owner, bag), opts)
+
+      is_binary(owner.issue_id) ->
+        filter_issue_work(scope, owner, IssueWork.execution(scope, owner), opts)
+
+      not is_nil(owner.team_free_at) ->
+        IssueWork.execution(scope, owner)
+
+      true ->
+        story_work_for(scope, role, owner, opts)
+    end
+  end
+
+  def work_for(%Scope{} = scope, role, owner, opts),
+    do: story_work_for(scope, role, owner, opts)
+
+  defp filter_issue_work(scope, owner, execution, opts) do
+    actionable = Enum.reject(execution.actionable, withholding(scope, owner, opts))
 
     if execution.actionable != [] and actionable == [] do
       %{
@@ -1231,25 +1181,18 @@ defmodule CodeMySpec.Agents.Work do
           actionable: [],
           wave: [],
           remaining: 0,
-          reason:
-            "The issue's current task is held by a teammate or blocked on an unresolved decision."
+          reason: "The issue work is held by a teammate or blocked on an unresolved decision."
       }
     else
-      execution
+      %{execution | actionable: actionable, wave: actionable, remaining: length(actionable)}
     end
   end
 
-  def work_for(%Scope{} = scope, _role, %Agent{team_free_at: %DateTime{}} = owner, _opts) do
-    IssueWork.execution(at_copy(scope, owner), owner)
-  end
-
-  def work_for(%Scope{} = scope, role, owner, opts) do
+  defp story_work_for(scope, role, owner, opts) do
     scope = at_copy(scope, owner)
     number = Keyword.get(opts, :story_number)
     withheld? = withholding(scope, owner, opts)
-    assignment = assignment(scope, owner)
-
-    Requirements.story_execution(scope, role, number, withheld?, assignment)
+    Requirements.story_execution(scope, role, number, withheld?, assignment(scope, owner))
   end
 
   # The team is no longer moved to its next story on its own (John, 2026-10-07,

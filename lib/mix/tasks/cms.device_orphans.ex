@@ -17,7 +17,7 @@ defmodule Mix.Tasks.Cms.DeviceOrphans do
 
   This cleans up what that already produced. "Orphan" means exactly one
   thing: zero `working_copies` reference the device, checked through
-  `Devices.list_devices/1`'s own preload rather than a hostname guess — a
+  `WorkingCopies.ids_by_device/1` rather than a hostname guess — a
   device sharing a hostname with a real one is not evidence either way, only
   an empty `working_copies` list is. `destroy/2`'s own moduledoc says why
   that check has to be exact: a device *with* working copies attached
@@ -42,6 +42,7 @@ defmodule Mix.Tasks.Cms.DeviceOrphans do
   alias CodeMySpec.Devices
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @impl Mix.Task
   def run(args) do
@@ -114,19 +115,20 @@ defmodule Mix.Tasks.Cms.DeviceOrphans do
   end
 
   defp orphans_for(account_id) do
-    %Scope{active_account_id: account_id}
-    |> Devices.list_devices()
-    |> Enum.filter(&orphan?/1)
+    devices = Devices.list_devices(%Scope{active_account_id: account_id})
+    copies = devices |> Enum.map(& &1.id) |> WorkingCopies.ids_by_device()
+
+    Enum.filter(devices, &orphan?(Map.get(copies, &1.id, [])))
   end
 
   # Public and `@doc false`, the same seam `ProvisioningLeaks.leaked?/1` uses:
   # the one fact this whole task must get right, worth proving directly
-  # against a device rather than only through a live query. Zero working
-  # copies, not a hostname match — a device sharing a hostname with a real
-  # one is not evidence either way.
+  # against a device's copies rather than only through a live query. Zero
+  # working copies, not a hostname match — a device sharing a hostname with a
+  # real one is not evidence either way.
   @doc false
-  @spec orphan?(Devices.Device.t()) :: boolean()
-  def orphan?(%Devices.Device{working_copies: copies}), do: copies == []
+  @spec orphan?([Ecto.UUID.t()]) :: boolean()
+  def orphan?(copy_ids) when is_list(copy_ids), do: copy_ids == []
 
   defp report(orphans_by_account, total) do
     Mix.shell().info("#{total} orphaned device(s) across #{map_size(orphans_by_account)} account(s):\n")

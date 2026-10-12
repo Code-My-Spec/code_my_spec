@@ -59,6 +59,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   alias CodeMySpec.Activity
   alias CodeMySpec.Generators.DeployArtifacts
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.Backups
@@ -66,13 +67,14 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.ContentPublishing
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Resend
-  alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Widget
+  alias CodeMySpec.ProvisioningPlan.Sequence
+  alias CodeMySpec.Resources
   alias CodeMySpec.Telemetry
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   alias CodeMySpecWeb.ConsoleLive.Components.DiagnosticsPanel
   alias CodeMySpecWeb.ConsoleLive.Components.EnvironmentSwitcher
@@ -1114,34 +1116,28 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   # Same as ProvisioningLive.scope_for/2 — see the mount/3 comment above for
   # why this is its own copy rather than a shared import.
-  defp scope_for(%{active_project: project} = scope, nil),
-    do: {:ok, with_project_environment(scope, project)}
+  defp scope_for(%{active_project: %{} = project} = scope, nil),
+    do: {:ok, Resources.project_scope(scope, project)}
 
   defp scope_for(%{active_project: %{id: id} = project} = scope, id),
-    do: {:ok, with_project_environment(scope, project)}
+    do: {:ok, Resources.project_scope(scope, project)}
 
   defp scope_for(scope, project_id) do
     case Projects.get_project(scope, project_id) do
       {:ok, project} ->
-        {:ok,
-         %{scope | active_project: project, active_project_id: project.id}
-         |> with_project_environment(project)}
+        {:ok, Resources.project_scope(scope, project)}
 
       _ ->
         :error
     end
   end
 
-  defp with_project_environment(scope, nil), do: scope
+  # Resolve the checkout at the operation boundary; caller identity supplies
+  # authorization, not the execution environment.
+  defp operation_environment(%{active_working_copy_id: id} = scope) when not is_nil(id),
+    do: WorkingCopies.environment(scope)
 
-  defp with_project_environment(%{environment: nil} = scope, project) do
-    case Scope.for_local_project(project) do
-      {:ok, %{environment: env, cwd: cwd}} -> %{scope | environment: env, cwd: cwd}
-      _ -> scope
-    end
-  end
-
-  defp with_project_environment(scope, _project), do: scope
+  defp operation_environment(scope), do: LocalScope.environment(scope.active_project)
 
   @impl true
   def handle_event("generate_project", _params, socket) do
@@ -1150,7 +1146,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     scope = socket.assigns.current_scope
     project = scope.active_project
 
-    case DeployArtifacts.generate(scope.environment,
+    case DeployArtifacts.generate(operation_environment(scope),
            app: DeployArtifacts.otp_app_name(project),
            host: project.domain || "example.com",
            owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
@@ -1235,6 +1231,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # from ProvisioningLive.handle_event("probe_restore", ...).
   def handle_event("run_restore_probe", _params, socket) do
     scope = socket.assigns.current_scope
+    environment = operation_environment(scope)
     options = socket.assigns.options
 
     Activity.record(scope, "check", "storage_backups", "ran the restore probe")
@@ -1242,7 +1239,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     socket =
       socket
       |> assign(:restore_probe_running?, true)
-      |> start_async(:restore_probe, fn -> run_restore_probe(scope, options) end)
+      |> start_async(:restore_probe, fn -> run_restore_probe(scope, environment, options) end)
 
     {:noreply, socket}
   end
@@ -1943,7 +1940,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   # Ported from ProvisioningLive.handle_event("probe_restore", ...) and its
   # private helpers (list_backups/1, age_days/1, now/0).
-  defp run_restore_probe(scope, options) do
+  defp run_restore_probe(scope, environment, options) do
     dumps = list_backups(scope, options)
 
     case {Storage.credentials(scope, options), dumps} do
@@ -1959,7 +1956,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
           |> Keyword.put(:bucket, newest.bucket)
           |> Keyword.put(:credentials, credentials)
 
-        case Backups.restore_proof(scope.environment, newest.key, restore_opts) do
+        case Backups.restore_proof(environment, newest.key, restore_opts) do
           {:ok, proof} ->
             %{state: "succeeded", rows: proof.rows, target: proof.target, reason: nil}
 
@@ -2027,7 +2024,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
   end
 
   defp publish_opts(scope) do
-    [path: "/", expect: "<html", site_url: site_url(scope.active_project.domain)]
+    [
+      path: "/",
+      expect: "<html",
+      site_url: site_url(scope.active_project.domain),
+      runtime: operation_environment(scope)
+    ]
   end
 
   defp site_url(name) do

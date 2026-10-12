@@ -16,7 +16,8 @@ defmodule CodeMySpec.Files.UnchangedManifestTest do
   server-side on every manifest, so a file can need writing with its content and
   fingerprint untouched.
   """
-  use ExUnit.Case, async: true
+  # This module changes the VM-wide log level; serialize it like ReconcileTimingTest.
+  use ExUnit.Case, async: false
 
   import CodeMySpec.UsersFixtures
   import ExUnit.CaptureLog

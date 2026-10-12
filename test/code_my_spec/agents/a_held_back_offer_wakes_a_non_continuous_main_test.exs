@@ -16,6 +16,7 @@ defmodule CodeMySpec.Agents.AHeldBackOfferWakesANonContinuousMainTest do
 
   import CodeMySpec.{DevicesFixtures, UsersFixtures}
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
@@ -95,7 +96,13 @@ defmodule CodeMySpec.Agents.AHeldBackOfferWakesANonContinuousMainTest do
         turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)
       })
 
-    Agents.record_turn_event(ctx.scope, ctx.coder.id, %{"kind" => "turn_ended"})
+    Agents.record_turn_event(
+      ctx.scope,
+      ctx.coder.id,
+      ChannelClient.encode_turn_event(
+        CodeMySpecSpex.Fixtures.mailbox_turn_end(ctx.scope, ctx.coder.id)
+      )
+    )
   end
 
   defp told(%Agent{id: id}) do
@@ -130,8 +137,7 @@ defmodule CodeMySpec.Agents.AHeldBackOfferWakesANonContinuousMainTest do
       # And once: the turn-end escalation reads the terminal rung, and this
       # refusal has already been reported (criterion 2056, 1738).
       end_turn(ctx)
-      refute_receive {:agent_dispatch, _, _, _}, 300,
-                     "main was told about the refusal twice"
+      refute_receive {:agent_dispatch, _, _, _}, 300, "main was told about the refusal twice"
     end
   end
 
@@ -156,7 +162,8 @@ defmodule CodeMySpec.Agents.AHeldBackOfferWakesANonContinuousMainTest do
       assert text =~ @task
       assert text =~ "offered #{length(ladder)} times and not taken"
 
-      refute_receive {:agent_dispatch, _, _, _}, 300,
+      refute_receive {:agent_dispatch, _, _, _},
+                     300,
                      "one escalation only: a later turn repeats nothing"
     end
   end

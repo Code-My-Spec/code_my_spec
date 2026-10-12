@@ -31,7 +31,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
     :ok
   end
 
-  spex "Changing the interval reschedules real recovery without unconditional turns", criterion: 1299 do
+  spex "Changing the interval reschedules real recovery without unconditional turns",
+    criterion: 1299 do
     scenario "A shorter interval applies to an already-running recovery timer" do
       given_ "idle continuous main and coding agents have only main-role shaping work available",
              context do
@@ -50,7 +51,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
         for id <- [main.id, coding.id] do
           assert {:ok, _} = Machine.start_agent(id, context.copy, base_url: base_url)
           on_exit(fn -> Machine.stop_agent(id) end)
-          assert {:ok, %{busy?: false, queued: 0}} = Machine.status(id)
+          assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
         {:reply, conversation, _} =
@@ -97,8 +98,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
       end
 
       then_ "only main is taking a turn and both agents still choose their own tasks", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.main_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert Machine.running() == context.running_ids
         [request] = HeldProvider.seen()
         prompt = Jason.decode!(request)["messages"] |> Jason.encode!()

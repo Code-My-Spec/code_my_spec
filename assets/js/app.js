@@ -26,6 +26,8 @@ import { hooks as colocatedHooks } from "phoenix-colocated/code_my_spec"
 import { StripePaymentElement } from "./stripe_payment"
 import { SigmaGraph } from "./sigma_graph"
 import { EChart } from "./echart"
+import { OfferResults } from "./offer_results"
+import { StoryFlow } from "./story_flow"
 import { createLivePaneHooks } from "live_pane"
 import topbar from "../vendor/topbar"
 import Sortable from "../vendor/Sortable.min.js"
@@ -37,6 +39,8 @@ const { groupHook: live_pane_group, paneHook: live_pane, resizerHook: live_pane_
   createLivePaneHooks()
 
 let Hooks = {
+  LiveFlow: StoryFlow,
+  OfferResults,
   StripePaymentElement,
   SigmaGraph,
   EChart,
@@ -525,4 +529,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

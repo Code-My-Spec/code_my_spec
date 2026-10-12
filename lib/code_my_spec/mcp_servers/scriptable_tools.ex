@@ -41,8 +41,12 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)
   component(CodeMySpec.McpServers.Issues.Tools.DismissIssue)
   component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue)
   component(CodeMySpec.McpServers.Issues.Tools.UpdateIssue)
   component(CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy)
+  component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
+  component(CodeMySpec.McpServers.Issues.Tools.SetActiveIssue)
+  component(CodeMySpec.McpServers.Issues.Tools.UnassignIssue)
   component(CodeMySpec.McpServers.Personas.Tools.CreatePersona)
   component(CodeMySpec.McpServers.Personas.Tools.UpdatePersona)
   component(CodeMySpec.McpServers.Personas.Tools.DeletePersona)
@@ -120,6 +124,9 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop)
   component(CodeMySpec.McpServers.Stories.Tools.SetActiveStory)
   component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.UnassignStoryFromWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.UnassignEpicFromWorkingCopy)
 
   # Story 1108: an agent on a copy can start, restart and stop its own copy's
   # app. Always the caller's own copy, never a parameter — see each tool's
@@ -174,6 +181,9 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.ListNotifications)
   component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ValidationHold)
+  component(CodeMySpec.McpServers.MainAgent.Tools.CompletionHandoff)
+  component(CodeMySpec.McpServers.MainAgent.Tools.ResumeIssueQa)
   component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
   component(CodeMySpec.McpServers.MainAgent.Tools.ListOffers)
   component(CodeMySpec.McpServers.MainAgent.Tools.ResetDocPackages)

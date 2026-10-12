@@ -56,16 +56,16 @@ defmodule CodeMySpec.Requirements.Edges do
   @typep side :: %{edges: [edge()], reach: Topology.reach()}
 
   @typedoc """
-  Everything about the edges that does not depend on the vantage, generated
-  once: the component side as generated with reachability over it, every
+  Generated edges for one topology and discovered-file membership: the component side as generated with reachability over it, every
   ready story's edges by kind, and the project's chain. `over/3` admits and
   reduces it for one vantage.
 
   Generating is most of a redraw — measured on dev, 2026-09-21, at the
   unscoped vantage: 205ms to generate 138 stories' 26,942 kickoff edges and
   86ms for reachability over the component side, in a 452ms redraw — and
-  none of it reads the vantage, so a drain settling ten vantages generated
-  the same set ten times.
+  checkouts with the same discovered-file membership can reuse that work.
+  Different membership needs a separate plan because story dependencies
+  exclude discovered components with no files in that checkout.
   """
   @type plan :: %{
           component_side: [edge()],
@@ -78,7 +78,7 @@ defmodule CodeMySpec.Requirements.Edges do
   @typep sides :: %{template: [edge()], kickoff: [edge()], exit: [edge()], project: [edge()]}
 
   @doc """
-  The vantage-invariant half, generated once for a shape.
+  The generated half for a shape and its discovered-file membership.
 
   `ctx` needs the shape and nothing more — `Preloader.topology_context/1` is
   enough, and so is a full load — and its stories should be every story a
@@ -201,15 +201,22 @@ defmodule CodeMySpec.Requirements.Edges do
     end)
   end
 
-  # An exit is redundant when one of its source's successors is, or reaches,
-  # another source landing on the same node: the longer path gates the same.
+  # Only a strictly downstream exit makes an exit redundant. Sources in the
+  # same cycle must survive: treating their mutual reachability as alternate
+  # exits can remove every edge into the story's completion milestone.
   defp kept_exit(exit_by_to, reach) do
     Enum.flat_map(exit_by_to, fn {to, sources} ->
       sources
-      |> Enum.reject(fn source ->
-        reach |> Topology.successors(source) |> Enum.any?(&touches?(reach, &1, sources))
-      end)
+      |> Enum.reject(&redundant_exit?(&1, sources, reach))
       |> Enum.map(&%{from: &1, to: to})
+    end)
+  end
+
+  defp redundant_exit?(source, sources, reach) do
+    Enum.any?(sources, fn other ->
+      other != source and
+        Topology.reaches?(reach, source, Topology.mask(reach, [other])) and
+        not Topology.reaches?(reach, other, Topology.mask(reach, [source]))
     end)
   end
 

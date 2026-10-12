@@ -23,10 +23,10 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.StepRepository
+  alias CodeMySpec.ProvisioningPlan.StepRepository
 
   setup do
-    {:ok, scope: full_scope_fixture()}
+    {:ok, scope: provisioning_scope_fixture()}
   end
 
   # `environment: "prod"` is read only by a per-environment step (deploy is

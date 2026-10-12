@@ -37,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ContextScopingTest do
   end
 
   test "the app name comes from this checkout's mix.exs, not another's" do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     {:ok, device} = CodeMySpec.Devices.announce(scope, nil, %{hostname: "box", kind: :local})
 
     {:ok, other} =
@@ -56,7 +56,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ContextScopingTest do
   end
 
   test "a file present only in another checkout is not reported as present here" do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     {:ok, device} = CodeMySpec.Devices.announce(scope, nil, %{hostname: "box", kind: :local})
     {:ok, other} = WorkingCopies.issue(scope, nil, label: "another checkout", device: device)
 
@@ -78,7 +78,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ContextScopingTest do
   end
 
   test "a scope with no checkout still answers, rather than reporting nothing set up" do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     mix_exs_for(scope, scope.active_working_copy_id, "code_my_spec")
 
     sessionless = %{scope | active_working_copy_id: nil}

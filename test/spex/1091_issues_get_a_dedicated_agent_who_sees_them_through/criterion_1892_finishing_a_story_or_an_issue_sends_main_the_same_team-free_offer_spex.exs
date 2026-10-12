@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListOffers
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias Ecto.Adapters.SQL.Sandbox
@@ -50,7 +51,8 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
           border()
         )
 
-        story = a_promotable_story(context, title: "Fix the border dispute")
+        story_context = %{context | scope: context.team_a.scope, agent_root: context.team_a.root}
+        story = a_promotable_story(story_context, title: "Fix the border dispute")
         _qa = Fixtures.running_agent(context.team_a.scope, role: "qa")
 
         {:reply, set_active, _frame} =
@@ -68,7 +70,21 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
       when_ "team A's story lands", context do
         response = promote_from(context.team_a, context.story.number)
         assert what_was_told(context.team_a.agent_id) =~ "landed on main"
-        {:ok, Map.put(context, :promote_response, response)}
+        story_notice = what_was_told(context.main.id)
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.main.id)
+        :ok = Fixtures.end_turn(context.scope, context.main.id)
+
+        {:reply, next, _} =
+          GetNextRequirement.execute(
+            %{},
+            %Frame{
+              assigns: %{current_scope: context.team_a.scope, agent_id: context.team_a.agent_id}
+            }
+          )
+
+        refute next.isError
+        assert String.downcase(response_text(next)) =~ "waiting for main assignment"
+        {:ok, Map.merge(context, %{promote_response: response, story_notice: story_notice})}
       end
 
       when_ "team B's fix passes QA and lands", context do
@@ -86,6 +102,12 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
 
       then_ "main receives one team-free offer per team, both the same kind, each naming its copy and what it finished",
             context do
+        issue_notice = what_was_told(context.main.id)
+        notices = [context.story_notice, issue_notice]
+        assert Enum.any?(notices, &(&1 =~ "story #{context.story.number} ("))
+        assert Enum.any?(notices, &(&1 =~ context.issue_id))
+        :ok = Fixtures.drain_background_work()
+
         {:reply, response, _frame} =
           ListOffers.execute(%{agent_id: context.main.id, kind: "team_free"}, context.main_frame)
 

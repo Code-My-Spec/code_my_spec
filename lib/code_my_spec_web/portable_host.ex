@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.PortableHost do
   import Phoenix.LiveView, only: [attach_hook: 4, push_navigate: 2, put_flash: 3]
 
   alias CodeMySpec.Projects
+  alias CodeMySpec.Resources
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.Scope
 
@@ -71,7 +72,7 @@ defmodule CodeMySpecWeb.PortableHost do
 
       scope =
         %Scope{scope | active_project: project, active_project_id: project.id}
-        |> with_project_environment(project)
+        |> Resources.project_scope(project)
 
       # `:current_scope` carries it too, so cloud views written before the
       # portable contract — mail, mailboxes, project users — keep reading
@@ -92,27 +93,6 @@ defmodule CodeMySpecWeb.PortableHost do
   end
 
   defp put_scope(_params, _uri, socket), do: {:cont, socket}
-
-  # An HTTP-session scope (`Scope.for_user/1`) carries no environment — every
-  # portable LiveView that reads `scope.environment` (Files, this app's own
-  # `Environments.glob`/`read_file` callers, `ContentPublishing.sync/1`, ...)
-  # got `nil` and quietly treated it as "no files" rather than surfacing an
-  # error. `ProvisioningLive.with_project_environment/2` hit this exact gap on
-  # one page and patched around it locally; lifted here so every route under
-  # `:portable` gets the fix, not just that one.
-  #
-  # Only the environment is taken, not a whole rebuilt scope —
-  # `Scope.for_local_project/2` centers an entire scope on a default local
-  # user, and adopting that here would quietly swap out the signed-in user
-  # mid-request.
-  defp with_project_environment(%{environment: nil} = scope, project) do
-    case Scope.for_local_project(project) do
-      {:ok, %{environment: env, cwd: cwd}} -> %{scope | environment: env, cwd: cwd}
-      _ -> scope
-    end
-  end
-
-  defp with_project_environment(scope, _project), do: scope
 
   # Opening a project is what makes it the one you were last in — otherwise the
   # bookmark only ever records what the picker was used for, and bare `/app`

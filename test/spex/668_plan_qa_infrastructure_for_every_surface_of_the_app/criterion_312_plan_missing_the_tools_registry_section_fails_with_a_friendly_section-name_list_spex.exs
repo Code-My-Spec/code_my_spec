@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,6 +29,10 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
   spex "QA setup evaluate names missing required sections", criterion: 312 do
     scenario "Plan missing the Tools Registry section fails with a friendly section-name list" do
       given_ :qa_setup_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "a plan exists with App Overview and Seed Strategy but no Tools Registry", context do
         :ok =

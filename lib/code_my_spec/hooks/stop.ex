@@ -25,7 +25,7 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
-  alias CodeMySpec.Validation.TaskEvaluator
+  alias CodeMySpec.AgentTasks.TaskEvaluator
 
   @total_response_cap 4096
 

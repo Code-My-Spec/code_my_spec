@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3547Spex do
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(coding.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(coding.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(coding.id)
+        assert {:ok, %{busy?: false}} = Machine.status(coding.id)
 
         {:reply, conversation, _} =
           ReadAgentConversation.execute(%{agent_id: coding.id}, frame(context))
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3547Spex do
 
       then_ "the coding agent remains idle without receiving a turn or operator message",
             context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert Machine.history(context.coding_id) == context.history_before
         assert HeldProvider.seen() == []
 

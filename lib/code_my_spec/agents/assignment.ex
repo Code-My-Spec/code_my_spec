@@ -44,10 +44,8 @@ defmodule CodeMySpec.Agents.Assignment do
   import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
@@ -99,10 +97,12 @@ defmodule CodeMySpec.Agents.Assignment do
   defp fan_out(scope, copy_id, story_id) do
     result =
       Repo.transaction(fn ->
+        lock_project(scope)
         team = lock_team(scope, copy_id)
         if team == [], do: Repo.rollback(:no_team)
 
         story = reserve(scope, copy_id, story_id)
+        clear_issue_bag(scope, copy_id, story)
         new_id = story && story.id
         before = team |> Enum.map(& &1.story_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
@@ -119,6 +119,44 @@ defmodule CodeMySpec.Agents.Assignment do
       if before != [new_id], do: WorkingCopies.announce_selection(scope)
       {:ok, new_id}
     end
+  end
+
+  defp clear_issue_bag(_scope, _copy_id, nil), do: :ok
+
+  defp clear_issue_bag(scope, copy_id, _story),
+    do: IssueAssignment.clear_for_story(scope, copy_id)
+
+  defp lock_project(scope) do
+    Repo.one!(
+      from p in CodeMySpec.Projects.Project,
+        where: p.id == ^scope.active_project_id,
+        select: p.id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  @doc "Release story work when the locked team switches to an issue bag."
+  def clear_for_issues(scope, copy_id) do
+    team = lock_team(scope, copy_id)
+
+    for agent <- team,
+        task <- TaskOwner.tasks(agent),
+        not is_nil(task.story_id) and is_nil(task.issue_id),
+        task.status in [:active, :prepared, :blocked] do
+      {:ok, _} = TaskOwner.complete_task(scope, agent, task.id, :cancelled)
+    end
+
+    story_ids =
+      Repo.all(
+        from s in Stories.Story,
+          where: s.project_id == ^scope.active_project_id and s.working_copy_id == ^copy_id,
+          select: s.id
+      )
+
+    WorkingCopies.release_stories(scope, copy_id, story_ids)
+
+    from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
+    |> Repo.update_all(set: [story_id: nil, team_free_at: nil])
   end
 
   @doc """
@@ -139,6 +177,7 @@ defmodule CodeMySpec.Agents.Assignment do
   def advance(%Scope{} = scope, copy_id, from_id, to_id) do
     with :ok <- feature_copy(scope, copy_id) do
       Repo.transaction(fn ->
+        lock_project(scope)
         team = lock_team(scope, copy_id)
         still_on? = team != [] and Enum.all?(team, &(&1.story_id == from_id))
         move(scope, copy_id, to_id, landed?(scope, from_id) and still_on?)
@@ -176,8 +215,10 @@ defmodule CodeMySpec.Agents.Assignment do
   end
 
   defp team_attrs(nil), do: [story_id: nil]
-  defp team_attrs(%{id: id, epic_id: nil}), do: [story_id: id]
-  defp team_attrs(%{id: id, epic_id: epic_id}), do: [story_id: id, epic_id: epic_id]
+  defp team_attrs(%{id: id, epic_id: nil}), do: [story_id: id, team_free_at: nil]
+
+  defp team_attrs(%{id: id, epic_id: epic_id}),
+    do: [story_id: id, epic_id: epic_id, team_free_at: nil]
 
   defp lock_team(scope, copy_id) do
     from(a in Agent,
@@ -228,21 +269,61 @@ defmodule CodeMySpec.Agents.Assignment do
   @doc """
   Tell main a team finished a story by promoting it (criterion 1892).
 
-  The story-side half of the team-free notice `IssueAssignment.free/2` sends
-  for an issue, so main learns of both kinds of finish through the one offer
-  kind. This is the whole of what a landing does to the team: nothing moves it
-  (criterion 2064), and main assigns the next story with `set_active_story`
-  (criterion 2065). `story_id` is left untouched for that reason, and this
-  notifies only when nothing else (an issue) is already holding a member of the
-  team.
+  Release the promoted story and clear only matching active assignments.
+  Completed work remains in history; other queued stories remain reserved.
+  A repeated or stale landing never clears newer work or repeats the handoff.
+  Main receives the standard team-free offer only when no active work remains.
   """
   @spec notify_team_free(Scope.t(), Ecto.UUID.t(), Stories.Story.t()) :: :ok
   def notify_team_free(%Scope{} = scope, copy_id, story) do
-    if Enum.any?(team_on_copy(scope, copy_id), &is_nil(&1.issue_id)) do
-      notify_main(scope, copy_id, story)
+    {:ok, freed?} = Repo.transaction(fn -> finish_story(scope, copy_id, story) end)
+
+    if freed? do
+      CodeMySpec.Agents.notify_main(scope, :team_free, team_free_message(copy_id, story),
+        offer: {:team_free, {"copy", copy_id}}
+      )
     end
 
     :ok
+  end
+
+  defp finish_story(scope, copy_id, story) do
+    # Share the issue bag mutation lock: a final issue and story can land together.
+    Repo.one!(
+      from p in CodeMySpec.Projects.Project,
+        where: p.id == ^scope.active_project_id,
+        select: p.id,
+        lock: "FOR UPDATE"
+    )
+
+    team = lock_team(scope, copy_id)
+
+    if landed?(scope, story.id) do
+      matching = Enum.filter(team, &(&1.story_id == story.id))
+
+      from(a in Agent, where: a.id in ^Enum.map(matching, & &1.id))
+      |> Repo.update_all(set: [story_id: nil])
+
+      WorkingCopies.release_stories(scope, copy_id, [story.id])
+      finish_idle_team(scope, copy_id, matching != [])
+    else
+      false
+    end
+  end
+
+  defp finish_idle_team(scope, copy_id, changed?) do
+    team = team_on_copy(scope, copy_id)
+
+    free? =
+      changed? and Enum.all?(team, &(is_nil(&1.story_id) and is_nil(&1.issue_id))) and
+        IssueAssignment.bag(scope, copy_id) == []
+
+    if free? do
+      from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
+      |> Repo.update_all(set: [team_free_at: DateTime.utc_now()])
+    end
+
+    free?
   end
 
   @doc """
@@ -269,22 +350,6 @@ defmodule CodeMySpec.Agents.Assignment do
           a.working_copy_id == ^copy_id and a.role in ^team_roles() and is_nil(a.retired_at)
     )
     |> Repo.all()
-  end
-
-  defp notify_main(scope, copy_id, story) do
-    case AgentsRepository.list_running_main(scope) do
-      [main | _] ->
-        text = team_free_message(copy_id, story)
-
-        main
-        |> Conversations.record_sent_to_agent(text)
-        |> Offers.record(main, :team_free, {"copy", copy_id})
-
-        :ok
-
-      [] ->
-        :ok
-    end
   end
 
   # The notice tells main what to do next, so it must name tools main can

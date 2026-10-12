@@ -64,7 +64,7 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
 
       :ok =
         Environments.write_file(
-          main.environment,
+          ctx.environment,
           @impl_path,
           "defmodule ExampleContext do\nend\n"
         )

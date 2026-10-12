@@ -162,7 +162,11 @@ defmodule CodeMySpec.ScenarioFixtures do
   def install_cli_config(project_dir) do
     config_dir = Path.join(project_dir, ".code_my_spec")
     File.mkdir_p!(config_dir)
-    File.write!(Path.join(config_dir, "config.yml"), "project_id: d7f466a1-591e-4f36-8319-42633f59411e\n")
+
+    File.write!(
+      Path.join(config_dir, "config.yml"),
+      "project_id: d7f466a1-591e-4f36-8319-42633f59411e\n"
+    )
   end
 
   # ============================================================================
@@ -189,7 +193,8 @@ defmodule CodeMySpec.ScenarioFixtures do
       email: "scenario-test@example.com",
       oauth_token: "test-token-#{System.unique_integer([:positive])}",
       oauth_refresh_token: "test-refresh-token",
-      oauth_expires_at: DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second)
+      oauth_expires_at:
+        DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second)
     })
   end
 
@@ -199,7 +204,7 @@ defmodule CodeMySpec.ScenarioFixtures do
   def put_scenario_environment(scope, project_dir) do
     scope
     |> Map.put(:cwd, project_dir)
-    |> Map.put(:environment, Environment.new(:local, project_dir))
+    |> put_fixture_environment(Environment.new(:local, project_dir))
   end
 
   @doc """
@@ -221,7 +226,9 @@ defmodule CodeMySpec.ScenarioFixtures do
     addition = create_story_with_criteria(scope, @addition_story, @addition_criteria)
     subtraction = create_story_with_criteria(scope, @subtraction_story, @subtraction_criteria)
     history = create_story_with_criteria(scope, @history_story, @history_criteria)
-    clear_history = create_story_with_criteria(scope, @clear_history_story, @clear_history_criteria)
+
+    clear_history =
+      create_story_with_criteria(scope, @clear_history_story, @clear_history_criteria)
 
     %{
       addition: addition,

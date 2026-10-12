@@ -1,8 +1,11 @@
 defmodule CodeMySpec.Sessions.SessionTypeTest do
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.AgentTasks
+  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.SessionType
+  alias CodeMySpec.Sessions.Task
 
   # ============================================================================
   # Fixtures
@@ -26,7 +29,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       AgentTasks.FixBddSpecs,
       AgentTasks.ReadyForQa,
       AgentTasks.FixIssues,
-      AgentTasks.FixStoryIssues,
+      AgentTasks.SubmitStoryIssue,
       AgentTasks.IssueFix,
       AgentTasks.IssuePromote,
       AgentTasks.IssueQa,
@@ -70,7 +73,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       "FixBddSpecs",
       "ReadyForQa",
       "FixIssues",
-      "FixStoryIssues",
+      "SubmitStoryIssue",
       "IssueFix",
       "IssuePromote",
       "IssueQa",
@@ -215,6 +218,53 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       # The asymmetry is the point: tolerate what is already on disk, refuse to
       # write more of it.
       assert :error = SessionType.cast("Elixir.CodeMySpec.ComponentDesignSessions")
+    end
+  end
+
+  describe "persisted JSON task history" do
+    test "a removed task type loads from both agent and session embeds" do
+      stored_task = %{
+        "id" => "historical-task",
+        "status" => "completed",
+        "session_type" => "Elixir.CodeMySpec.AgentTasks.FixStoryIssues",
+        "story_id" => 601,
+        "requirement_name" => "story_issues_resolved"
+      }
+
+      for schema <- [Agent, Session] do
+        owner = Ecto.embedded_load(schema, %{"tasks" => [stored_task]}, :json)
+        assert [task] = owner.tasks
+        assert task.id == "historical-task"
+        assert task.status == :completed
+        assert task.story_id == 601
+        assert task.session_type == CodeMySpec.AgentTasks.FixStoryIssues
+        assert Ecto.embedded_dump(task, :json)[:session_type] == stored_task["session_type"]
+      end
+    end
+
+    test "a removed task type remains invalid for newly created tasks" do
+      changeset =
+        Task.changeset(%{
+          id: "new-task",
+          status: :active,
+          session_type: "Elixir.CodeMySpec.AgentTasks.FixStoryIssues"
+        })
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :session_type)
+    end
+
+    test "current submission tasks round-trip through their persisted JSON representation" do
+      task = %Task{
+        id: "submission-task",
+        status: :active,
+        session_type: AgentTasks.SubmitStoryIssue
+      }
+
+      stored = task |> Ecto.embedded_dump(:json) |> Jason.encode!() |> Jason.decode!()
+
+      assert stored["session_type"] == "Elixir.CodeMySpec.AgentTasks.SubmitStoryIssue"
+      assert Ecto.embedded_load(Task, stored, :json) == task
     end
   end
 end

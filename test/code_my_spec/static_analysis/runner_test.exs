@@ -16,7 +16,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
-  alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Support.TestAdapter
 
@@ -37,7 +37,10 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     {:ok, updated_project} =
       CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
 
-    scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
+    scope =
+      user_scope_fixture(user, account, updated_project)
+      |> Map.put(:cwd, project_dir)
+      |> Map.put(:active_working_copy_id, nil)
 
     on_exit(fn ->
       # Clean up spec files created by tests (docs is a submodule, git clean won't reach it)
@@ -97,7 +100,8 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
   describe "run/3" do
     test "the retired spec alignment analyzer is unavailable", %{scope: scope} do
-      assert {:error, "Unknown analyzer: spec_alignment"} = Runner.run(scope, :spec_alignment)
+      assert {:error, "Unknown analyzer: spec_alignment"} =
+               Runner.run(scope, :spec_alignment, environment: Environment.new(:local, scope.cwd))
     end
 
     @tag timeout: 120_000
@@ -122,7 +126,11 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
   describe "run/3 - error handling" do
     test "returns error when analyzer name is invalid", %{scope: scope} do
-      assert {:error, message} = Runner.run(scope, :nonexistent_analyzer)
+      assert {:error, message} =
+               Runner.run(scope, :nonexistent_analyzer,
+                 environment: Environment.new(:local, scope.cwd)
+               )
+
       assert is_binary(message)
     end
 
@@ -133,7 +141,9 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       project = project_fixture(scope, %{code_repo: nil})
       scope = user_scope_fixture(user, account, project)
 
-      assert {:error, message} = Runner.run(scope, :credo)
+      assert {:error, message} =
+               Runner.run(scope, :credo, environment: Environment.new(:local, "/nonexistent"))
+
       assert is_binary(message)
     end
 
@@ -145,7 +155,9 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       project = project_fixture(scope_no_repo)
 
       scope_no_repo =
-        user_scope_fixture(user, account, project) |> Map.put(:cwd, "/nonexistent/directory")
+        user_scope_fixture(user, account, project)
+        |> Map.put(:cwd, "/nonexistent/directory")
+        |> Map.put(:active_working_copy_id, nil)
 
       capture_log(fn ->
         assert {:error, message} = Runner.run(scope_no_repo, :credo)
@@ -191,22 +203,26 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
         File.mkdir_p!(temp_dir)
 
         project = project_fixture(scope)
-        scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, temp_dir)
+
+        scope =
+          user_scope_fixture(user, account, project)
+          |> Map.put(:cwd, temp_dir)
+          |> Map.put(:active_working_copy_id, nil)
 
         assert {:ok, problems} = Runner.run_all(scope)
         assert is_list(problems)
       end
     end
 
-    test "returns empty list when no analyzers are available" do
-      # Create scope with no cwd - no analyzers will be available
+    test "refuses execution when no runtime is available" do
+      # This scope has neither a rooted working copy nor a local runtime.
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
       project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project)
 
-      assert {:ok, []} = Runner.run_all(scope)
+      assert {:error, :no_environment} = Runner.run_all(scope)
     end
 
     @tag timeout: 120_000
@@ -269,7 +285,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
       # When no cwd is set, run_all should return empty list
       # since no analyzers will be available
-      assert {:ok, []} = Runner.run_all(scope)
+      assert {:error, :no_environment} = Runner.run_all(scope)
     end
 
     @tag timeout: 120_000

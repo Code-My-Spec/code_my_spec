@@ -23,16 +23,17 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
   import ExUnit.CaptureLog
 
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Users.Scope
 
   defp scope, do: %Scope{}
 
-  defp server(overrides \\ %{}), do: Map.merge(%{"id" => 42, "name" => "burst-platform"}, overrides)
+  defp server(overrides \\ %{}),
+    do: Map.merge(%{"id" => 42, "name" => "burst-platform"}, overrides)
 
-  defp build_fun, do: fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
+  defp build_fun,
+    do: fn _scope, _server, _ref, arch -> {:ok, %{reference: "img", architecture: arch}} end
 
   # Records every destroy so a test can assert the box went away, and for
   # whom.
@@ -256,14 +257,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
-  # `Remote.ssh_deliver/2` needs a real environment to archive the commit
-  # from — for a harness-only project, `scope.environment` is
-  # `Environment.new(:local, nil)`, the same unreachable shape
-  # `Steps.head_commit/1` already falls back for. Reported live against
-  # MarketMySpec: this used to raise instead of failing cleanly.
+  # Without a resolved source environment, delivery falls back to GitHub and
+  # fails clearly when the project has no repository to use.
   describe "choosing how to deliver the source" do
     test "falls back to a clean error, not a crash, when there is no repo to fall back to" do
-      scope = %Scope{environment: Environment.new(:local, nil)}
+      scope = %Scope{}
       run = fn [_cmd] -> {"", 0} end
 
       assert {:error, {:source_delivery_failed, :no_reachable_source, _}, _resources} =

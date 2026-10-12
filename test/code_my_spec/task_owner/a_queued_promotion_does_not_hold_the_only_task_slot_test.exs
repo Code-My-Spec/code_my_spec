@@ -30,6 +30,7 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
@@ -93,6 +94,16 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
     marked
   end
 
+  test "work admission recognizes an integer story id awaiting the queue's story number", ctx do
+    story = story_fixture(ctx.scope)
+    owner = hold_promotion(ctx, story)
+    CodeMySpecTest.AgentPresence.present(owner)
+    assert {:hold, :busy} = Work.admission(ctx.scope, owner, :work_offer)
+    {:ok, _} = enqueue(ctx, story.number, agent_id: owner.id)
+    refute Work.admission(ctx.scope, owner, :work_offer) == {:hold, :busy}
+    assert TaskOwner.active_task(owner).story_id == story.id
+  end
+
   test "the agent claims assigned work while its queued promotion waits", ctx do
     story = story_fixture(ctx.scope)
     {:ok, queued} = enqueue(ctx, story.number, agent_id: ctx.agent.id)
@@ -105,14 +116,14 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
     assert {:ok, claimed} =
              TaskOwner.add_task(ctx.scope, owner, %{
                status: :active,
-               requirement_name: "story_issues_resolved",
+               requirement_name: "ready_for_qa",
                story_id: story.id
              })
 
     # The claim succeeded, which is the point: the marked promotion no longer
     # refuses it. `active_task/1` still answers the first `:active` task in the
     # list, and that is now the promotion one -- see the note on that below.
-    assert Enum.any?(TaskOwner.tasks(claimed), &(&1.requirement_name == "story_issues_resolved"))
+    assert Enum.any?(TaskOwner.tasks(claimed), &(&1.requirement_name == "ready_for_qa"))
     assert promote_task.id in Enum.map(TaskOwner.tasks(claimed), & &1.id)
     assert TaskOwner.find_task(claimed, promote_task.id).status == :active
   end
@@ -126,7 +137,7 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
     {:ok, prepared_owner} =
       TaskOwner.add_task(ctx.scope, owner, %{
         status: :prepared,
-        requirement_name: "story_issues_resolved",
+        requirement_name: "ready_for_qa",
         story_id: story.id
       })
 
@@ -145,7 +156,7 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
     assert {:error, {:active_task_exists, ^held}} =
              TaskOwner.add_task(ctx.scope, owner, %{
                status: :active,
-               requirement_name: "story_issues_resolved",
+               requirement_name: "ready_for_qa",
                story_id: story.id
              })
   end
@@ -166,11 +177,11 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
     assert {:ok, claimed} =
              TaskOwner.add_task(ctx.scope, owner, %{
                status: :active,
-               requirement_name: "story_issues_resolved",
+               requirement_name: "ready_for_qa",
                story_id: story.id
              })
 
-    assert Enum.any?(TaskOwner.tasks(claimed), &(&1.requirement_name == "story_issues_resolved"))
+    assert Enum.any?(TaskOwner.tasks(claimed), &(&1.requirement_name == "ready_for_qa"))
   end
 
   test "an ordinary active task still holds the only slot", ctx do
@@ -179,7 +190,7 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
     {:ok, ordinary} =
       TaskOwner.add_task(ctx.scope, ctx.agent, %{
         status: :active,
-        requirement_name: "story_issues_resolved",
+        requirement_name: "ready_for_qa",
         story_id: story.id
       })
 
@@ -199,7 +210,7 @@ defmodule CodeMySpec.TaskOwner.AQueuedPromotionDoesNotHoldTheOnlyTaskSlotTest do
     {:ok, owner} =
       TaskOwner.add_task(ctx.scope, ctx.agent, %{
         status: :active,
-        requirement_name: "story_issues_resolved",
+        requirement_name: "ready_for_qa",
         story_id: story.id
       })
 

@@ -226,16 +226,11 @@ defmodule CodeMySpec.Devices do
   """
   @spec list_devices(Scope.t()) :: [Device.t()]
   def list_devices(%Scope{active_account_id: account_id}) when is_binary(account_id) do
-    # The copies come with it. Whether a machine is reachable is answered by
-    # asking `HarnessRegistry` whether any of its working copies holds a
-    # channel, so a caller without them cannot tell a quiet machine from an
-    # unreachable one — and `%Ecto.Association.NotLoaded{}` reaching
-    # `Enum.any?/2` raises rather than reading as "no copies", which is the
-    # better failure but still a failure.
+    # A copy names its device; a device does not carry its copies. Ask
+    # `WorkingCopies.ids_by_device/1` for them.
     from(d in Device,
       where: d.account_id == ^account_id,
-      order_by: [desc_nulls_last: d.last_seen_at],
-      preload: [:working_copies]
+      order_by: [desc_nulls_last: d.last_seen_at]
     )
     |> Repo.all()
   end
@@ -248,6 +243,40 @@ defmodule CodeMySpec.Devices do
     do: existing(account_id, id)
 
   def get_device(%Scope{}, _id), do: nil
+
+  @doc """
+  The tunnel a machine's harness runs, as `{:ok, %{tunnel_id, tunnel_secret}}`,
+  or `:error` when it holds none. Unscoped: the caller already holds a working
+  copy on this machine, which is what decides it may ask.
+  """
+  @spec tunnel(Ecto.UUID.t() | nil) :: {:ok, map()} | :error
+  def tunnel(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      %Device{preview_tunnel_id: id, preview_tunnel_secret: secret}
+      when is_binary(id) and is_binary(secret) ->
+        {:ok, %{tunnel_id: id, tunnel_secret: secret}}
+
+      _ ->
+        :error
+    end
+  end
+
+  def tunnel(_device_id), do: :error
+
+  @doc "Record the tunnel a machine's harness runs."
+  @spec record_tunnel(Ecto.UUID.t(), map()) :: {:ok, Device.t()} | {:error, term()}
+  def record_tunnel(device_id, %{tunnel_id: id, tunnel_secret: secret})
+      when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      nil ->
+        {:error, :no_such_device}
+
+      device ->
+        device
+        |> Device.tunnel_changeset(%{preview_tunnel_id: id, preview_tunnel_secret: secret})
+        |> Repo.update()
+    end
+  end
 
   @doc """
   Record that this machine is alive, because something on it just proved it.

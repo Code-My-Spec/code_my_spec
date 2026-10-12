@@ -30,6 +30,13 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     context
   end
 
+  @doc "Use the fixture's in-memory runtime for an explicitly joined working copy."
+  def scope_for_copy(%{scope: scope, environment: environment}, copy_id, root) do
+    :ok = Environments.unregister({:working_copy, copy_id})
+    :ok = Environments.register({:working_copy, copy_id}, environment)
+    %{scope | active_working_copy_id: copy_id, cwd: root}
+  end
+
   @doc """
   A coding and a QA agent on the scope's copy, unless it already has a team.
   A story goes to the copy's team (a31f1cd6), so a copy needs one to hold it.
@@ -45,7 +52,17 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     staff(context, staffed?)
   end
 
-  defp staff(context, true), do: context
+  defp staff(context, true) do
+    team =
+      context.scope
+      |> CodeMySpec.Agents.list_agents()
+      |> Enum.filter(
+        &(&1.working_copy_id == context.scope.active_working_copy_id and
+            &1.role in [:coding, :qa] and is_nil(&1.retired_at))
+      )
+
+    Map.put(context, :team, team)
+  end
 
   defp staff(context, false) do
     team = for role <- ~w(coding qa), do: Fixtures.running_agent(context.scope, role: role)
@@ -78,7 +95,8 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
       )
 
     {:ok, _} = WorkingCopies.designate_main(context.scope, copy.id)
-    main_scope = %{context.scope | active_working_copy_id: copy.id}
+    {:ok, _} = WorkingCopies.report_root(copy, context.scope.cwd)
+    main_scope = scope_for_copy(context, copy.id, context.scope.cwd)
     main = Fixtures.running_agent(main_scope, role: "main")
     Map.merge(context, %{main_copy: copy, main_scope: main_scope, main: main})
   end
@@ -136,7 +154,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
 
     story =
       StoryHelpers.create_and_link(context.scope, module,
-        title: "Waiting story B",
+        title: Keyword.get(opts, :title, "Waiting story B"),
         description: "Future work",
         acceptance_criteria: ["Waiting works"],
         priority: 0
@@ -170,6 +188,47 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     end
 
     Map.put(context, :waiting, story)
+  end
+
+  @doc """
+  A real git repository at the copy's root, with one commit.
+
+  `staff/1`'s copy has no root (`buildable/1`'s stub is a directory marker,
+  not a checkout, and has no `.git` either), and a step that reads HEAD
+  (`Fixtures.fresh_analysis_runs(context.scope, ..., at_head: true)`) needs
+  `git rev-parse HEAD` to find an actual repository there.
+  """
+  def git_backed(context) do
+    root = CodeMySpec.TempFile.owned_dir("story-slice-git")
+
+    {_, 0} =
+      Environments.cmd(context.environment, "git", [
+        "init",
+        "--quiet",
+        "--initial-branch=main",
+        root
+      ])
+
+    {_, 0} =
+      Environments.cmd(
+        context.environment,
+        "git",
+        [
+          "-c",
+          "user.email=spex@example.com",
+          "-c",
+          "user.name=Spex",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "root"
+        ],
+        cd: root
+      )
+
+    {:ok, copy} = WorkingCopies.fetch(context.scope.active_working_copy_id)
+    {:ok, _} = WorkingCopies.report_root(copy, root)
+    context
   end
 
   # A copy is only assignable once it has a checkout on disk, which is what a

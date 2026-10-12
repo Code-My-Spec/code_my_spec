@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story597.Criterion5285Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,6 +30,10 @@ defmodule CodeMySpecSpex.Story597.Criterion5285Spex do
       end
 
       given_ :qa_integration_plan_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "a fully verified twilio integration is in place", context do
         Fixtures.with_verified_integration(context.environment, "twilio")

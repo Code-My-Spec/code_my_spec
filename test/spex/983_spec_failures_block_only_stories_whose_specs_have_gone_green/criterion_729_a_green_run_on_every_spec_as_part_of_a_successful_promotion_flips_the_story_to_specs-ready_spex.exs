@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
 
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -46,9 +47,12 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
           |> with_work_on_the_copy()
           |> analyzers_are_current()
 
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
         commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
         context = analyzers_are_current(context)
+
+        :ok = StoryIssueBag.certify(context.scope, story.id, head_of(context, context.agent_root))
+        {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
         {:ok, Map.put(context, :story, story)}
       end
@@ -75,8 +79,9 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
     scenario "the story is certified ready for QA but not promoted" do
       given_ "a coding agent holding the story's ready-for-QA task on a clean copy",
              context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
-        story = a_promotable_story(context)
+        context = a_promotable_project(context)
+        story = a_promotable_story(context, qa: :not_passed)
+        context = analyzers_are_current(context)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 

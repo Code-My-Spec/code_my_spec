@@ -128,6 +128,8 @@ defmodule CodeMySpecSpex.OfferHelpers do
       {:noreply, _} -> :ok
       {:reply, _, _} -> :ok
     end
+
+    Fixtures.end_turn(context.scope, agent_id)
   end
 
   @doc """

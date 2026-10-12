@@ -7,8 +7,10 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Cadence
   alias CodeMySpec.Agents.Offers
@@ -52,6 +54,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
       )
 
     AgentPresence.present(main)
+    {:ok, _} = Mailbox.register(ctx.scope, main.id, "test-main")
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -100,11 +103,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
     id = ctx.main.id
     assert_received {:agent_dispatch, ^id, ref, _text}
 
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
+    assert {:ok, _} = Mailbox.consume(ctx.scope, id, ref, "test-main")
   end
 
   defp called(ctx, name) do
@@ -120,7 +119,14 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
         turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)
       })
 
-    Agents.record_turn_event(ctx.scope, ctx.main.id, %{"kind" => "turn_ended"})
+    Agents.record_turn_event(
+      ctx.scope,
+      ctx.main.id,
+      ChannelClient.encode_turn_event(
+        CodeMySpecSpex.Fixtures.mailbox_turn_end(ctx.scope, ctx.main.id)
+      )
+    )
+
     await_dispatches()
   end
 
@@ -135,7 +141,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
     assert [offer] = stalled_offers(ctx)
 
     assert %{subject_type: "agent", subject_key: "a1b2c3d4", status: :open} = offer
-    assert offer.template_version == "stalled/1"
+    assert offer.template_version == "stalled/2"
     assert [%{message_id: message_id}] = offer.messages
     assert Conversations.Message |> Repo.get!(message_id) |> Conversations.Message.text() == text
   end
@@ -178,13 +184,13 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
     assert [%{status: :undelivered}] = stalled_offers(ctx)
   end
 
-  test "a notice whose send failed is recorded undelivered", ctx do
+  test "a notice whose acknowledgement failed remains pending", ctx do
     Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
     ctx = main(ctx)
     announce(ctx, "a1b2c3d4")
 
-    assert [%{status: :undelivered}] = stalled_offers(ctx)
+    assert [%{status: :open}] = stalled_offers(ctx)
     end_turn(ctx)
-    assert [%{status: :undelivered}] = stalled_offers(ctx)
+    assert [%{status: :open}] = stalled_offers(ctx)
   end
 end

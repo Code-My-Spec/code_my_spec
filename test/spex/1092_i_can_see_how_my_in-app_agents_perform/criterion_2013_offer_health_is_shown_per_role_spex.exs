@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
         {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
 
         reply = join_working_copy(context, "/tmp/spex-2013", "the checkout")
-        scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+        scope = Fixtures.in_memory_copy(context, reply.working_copy_id)
 
         ComponentHelpers.create(scope,
           name: "Example2013",

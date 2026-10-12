@@ -8,6 +8,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.DevicesFixtures
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -17,13 +18,50 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.IssueFix
+  alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.AgentPresence
+
+  @copy "/issue-fix/copy"
+  @head "7777777777777777777777777777777777777777"
+
+  defp clean_shell do
+    test = self()
+
+    fn "git", args, opts ->
+      send(test, {:git, Keyword.fetch!(opts, :cd), args})
+      clean_answer(args)
+    end
+  end
+
+  defp clean_answer(["status" | _]), do: {"", 0}
+  defp clean_answer(["rev-parse", "--abbrev-ref", "HEAD"]), do: {"issue/x\n", 0}
+  defp clean_answer(["rev-parse", "HEAD"]), do: {@head <> "\n", 0}
+  defp clean_answer(["ls-files" | _]), do: {"", 0}
+  defp clean_answer(args), do: {"unscripted: git #{Enum.join(args, " ")}", 1}
+
+  # A certifiable copy: a clean tree at a known HEAD, with every analyzer
+  # already fresh there, so `IssueFix`'s certification passes on the first
+  # call rather than starting runs (that path belongs to issue_fix_test.exs).
+  defp certifiable_copy(scope) do
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "copy", device: device_fixture(scope))
+    {:ok, copy} = WorkingCopies.report_root(copy, @copy)
+    :ok = HarnessRegistry.register_executor(copy.id, "copy-harness", @copy)
+    {:ok, env} = InMemoryEnvironment.create(shell: clean_shell())
+    :ok = CodeMySpec.Environments.unregister({:working_copy, copy.id})
+    :ok = CodeMySpec.Environments.register({:working_copy, copy.id}, env)
+    scope = %{scope | active_working_copy_id: copy.id}
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
+    %{scope: scope, copy_id: copy.id}
+  end
 
   setup do
     scope = full_scope_fixture()
@@ -57,11 +95,11 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
 
   test "evaluating a fix hands it to QA and refuses a second coding task", ctx do
-    copy_id = copy(ctx.scope)
-    coding = agent(ctx.scope, :coding, copy_id)
-    qa = agent(ctx.scope, :qa, copy_id)
-    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
-    frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
+    %{scope: scope, copy_id: copy_id} = certifiable_copy(ctx.scope)
+    coding = agent(scope, :coding, copy_id)
+    qa = agent(scope, :qa, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(scope, ctx.issue.id, copy_id)
+    frame = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
     params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
 
     {:reply, started, _} = StartTask.execute(params, frame)
@@ -74,11 +112,12 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     refute evaluated.isError
     assert [%{id: task_id, status: :completed}] = reload(coding).tasks
     assert task_id == task.id
-    assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :qa
-    assert %{status: :blocked, actionable: []} = IssueWork.execution(ctx.scope, reload(coding))
+    assert Issues.get_issue(scope, ctx.issue.id).awaiting_role == :qa
+    assert Issues.get_issue(scope, ctx.issue.id).qa_ready_commit == @head
+    assert %{status: :blocked, actionable: []} = IssueWork.execution(scope, reload(coding))
 
     assert [%{name: "qa_complete", entity_id: issue_id}] =
-             IssueWork.execution(ctx.scope, reload(qa)).actionable
+             IssueWork.execution(scope, reload(qa)).actionable
 
     assert issue_id == ctx.issue.id
 

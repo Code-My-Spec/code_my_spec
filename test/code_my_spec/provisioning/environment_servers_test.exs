@@ -28,7 +28,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   alias CodeMySpec.Servers.Server
 
   setup do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
 
     # The step now refuses before it creates anything when the project has no
@@ -45,7 +45,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   test "refuses before making anything when the project has no storage keys", ctx do
     record_requests(self(), :always_available)
 
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
 
     assert {:paused, instructions} = Steps.run(:server, scope, [])

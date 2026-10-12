@@ -1020,15 +1020,17 @@ defmodule CmsHarness.AppInstance do
   # `tunnel_held_by_harness?` and `Runner.launch/7`'s doc for the other half
   # of this: the two sides derive the same answer from the same fact, so
   # there is no window where both, or neither, are running one.
-  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, false, _tunnel) when is_pid(pid) do
-    Runner.stop_tunnel(pid)
-    %{state | tunnel_pid: nil, tunnel_id: nil}
-  end
-
-  defp ensure_tunnel(state, false, _tunnel), do: state
-
-  # Main, but holds no tunnel of its own — nothing to run.
-  defp ensure_tunnel(state, true, nil), do: state
+  #
+  # Story 1117: every copy on a machine is handed the machine's one tunnel,
+  # main or not, so whether to hold it is decided by whether one was handed
+  # over — never by main-ness. Several copies holding the same tunnel share one
+  # connector: `Runner.start_tunnel/2` keys it on the tunnel id and answers the
+  # running one to every later caller.
+  #
+  # Handed none: nothing to run, and nothing stopped — a connector this copy
+  # shares carries other copies' addresses, so one copy losing its tunnel is no
+  # reason to take everyone's down.
+  defp ensure_tunnel(state, _main?, nil), do: state
 
   # Already running this exact tunnel — re-checked on every call rather than
   # trusted once: a connector this process did not itself stop can still
@@ -1037,7 +1039,7 @@ defmodule CmsHarness.AppInstance do
   # "not running," not crash the process supervising it.
   defp ensure_tunnel(
          %__MODULE__{tunnel_pid: pid, tunnel_id: id} = state,
-         true,
+         _main?,
          %{tunnel_id: id} = tunnel
        )
        when is_pid(pid) do
@@ -1049,12 +1051,12 @@ defmodule CmsHarness.AppInstance do
   # Holding a tunnel already, but for different credentials — re-provisioned
   # under us. Swap to the new ones rather than leaving a connector answering
   # for a tunnel this copy no longer holds the secret for.
-  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, true, tunnel) when is_pid(pid) do
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, _main?, tunnel) when is_pid(pid) do
     Runner.stop_tunnel(pid)
     start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
 
-  defp ensure_tunnel(state, true, tunnel), do: start_tunnel(state, tunnel)
+  defp ensure_tunnel(state, _main?, tunnel), do: start_tunnel(state, tunnel)
 
   defp start_tunnel(state, tunnel) do
     case tunnel_origin(state) do

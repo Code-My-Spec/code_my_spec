@@ -156,6 +156,24 @@ defmodule CodeMySpec.TaskOwner do
     end)
   end
 
+  @doc "Record what a story QA task is reviewing (`Qa.StoryReviews.capture/3`)."
+  def record_review(scope, owner, task_id, review) when is_map(review) do
+    locked_update(scope, owner, fn current ->
+      case find_task(current, task_id) do
+        nil ->
+          {:error, :task_not_found}
+
+        _ ->
+          update_embedded_task(current, task_id, %{
+            review_commit: review.commit,
+            review_certified_at: review.certified_at,
+            review_submissions: review.submissions,
+            review_started_at: review.started_at
+          })
+      end
+    end)
+  end
+
   @doc "Clear evaluation feedback for only the named attempt."
   def clear_task_feedback(scope, owner, task_id) do
     locked_update(scope, owner, fn current ->
@@ -324,13 +342,14 @@ defmodule CodeMySpec.TaskOwner do
     [Agent, Session]
     |> Enum.flat_map(fn module ->
       Repo.all(
-        from row in module,
+        from(row in module,
           where: row.project_id == ^project_id,
           select:
             fragment(
               "(select array_agg(t->>'blocker_id') from unnest(?) t where t->>'blocker_type' = 'issue' and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
               row.tasks
             )
+        )
       )
     end)
     |> Enum.flat_map(&(&1 || []))
@@ -338,7 +357,7 @@ defmodule CodeMySpec.TaskOwner do
   end
 
   defp waiting_on(module, type, blocker_id) do
-    from row in module,
+    from(row in module,
       where:
         fragment(
           "exists (select 1 from unnest(?) t where t->>'blocker_id' = ? and t->>'blocker_type' = ? and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
@@ -346,6 +365,7 @@ defmodule CodeMySpec.TaskOwner do
           ^blocker_id,
           ^Atom.to_string(type)
         )
+    )
   end
 
   defp release_waiters(owner, {type, id, _outcome} = blocker, opts) do
@@ -551,11 +571,12 @@ defmodule CodeMySpec.TaskOwner do
     Repo.transaction(fn ->
       current =
         Repo.one(
-          from row in module,
+          from(row in module,
             where:
               row.id == ^id and row.account_id == ^scope.active_account_id and
                 row.project_id == ^scope.active_project_id,
             lock: "FOR UPDATE"
+          )
         )
 
       case current do
@@ -636,22 +657,24 @@ defmodule CodeMySpec.TaskOwner do
   # two agents that name no tree are as much each other's neighbours as two
   # that name the same one.
   defp agents_sharing_this_copy(%{working_copy_id: nil} = owner) do
-    from agent in Agent,
+    from(agent in Agent,
       where:
         agent.project_id == ^owner.project_id and agent.account_id == ^owner.account_id and
           is_nil(agent.working_copy_id) and agent.id != ^owner.id
+    )
   end
 
   defp agents_sharing_this_copy(owner) do
-    from agent in Agent,
+    from(agent in Agent,
       where:
         agent.project_id == ^owner.project_id and agent.account_id == ^owner.account_id and
           agent.working_copy_id == ^owner.working_copy_id and agent.id != ^owner.id
+    )
   end
 
   defp holds_requirement?(task, attrs) do
     task.status in [:active, :blocked] and
-      Enum.all?([:requirement_name, :component_id, :story_id, :project_id], fn key ->
+      Enum.all?([:requirement_name, :component_id, :story_id, :issue_id, :project_id], fn key ->
         Map.get(task, key) == Map.get(attrs, key)
       end)
   end

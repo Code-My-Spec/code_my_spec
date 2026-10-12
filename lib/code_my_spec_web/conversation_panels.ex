@@ -467,6 +467,13 @@ defmodule CodeMySpecWeb.ConversationPanels do
             class="size-3 shrink-0 text-primary"
           />
           <span class="min-w-0 flex-1 truncate">{copy.row.heading}</span>
+          <.link
+            navigate={~p"/app/projects/#{@project_id}/working-copies/#{copy.row.harness.id}/status"}
+            class="link link-hover"
+            data-test="working-copy-status"
+          >
+            Status
+          </.link>
           <span class="shrink-0 opacity-60">{copy.row.liveness.label}</span>
         </div>
 

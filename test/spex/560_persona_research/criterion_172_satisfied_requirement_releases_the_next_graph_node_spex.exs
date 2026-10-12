@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5129Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.HarnessHooks
-  alias CodeMySpecSpex.ProjectStateFixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -45,17 +44,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5129Spex do
       given_ :persona_research_task_started
 
       when_ "the agent fires the stop hook and asks for next work", context do
-        # The harness syncs the checkout before it fires the stop hook — see
-        # `Validation`, which skips `FileSync.sync_changed/2` "because the
-        # harness has already done" it. There is no harness here, and the files
-        # this scenario wrote are what the hook is about, so the fixture does it.
-        #
-        # This used to happen by accident further down: `GetNextRequirement`
-        # opened with a full `FileSync.sync/2`, so files written any time before
-        # the agent asked were picked up on the way to the graph. That made a
-        # read responsible for a write's visibility and is gone (c83c5b58).
-        ProjectStateFixtures.synced(context)
-
         HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}

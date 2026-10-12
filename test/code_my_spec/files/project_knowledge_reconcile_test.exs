@@ -167,13 +167,21 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
     {:ok, copy} =
       WorkingCopies.issue(scope, nil, label: "test copy", device: device_fixture(scope))
 
+    {:ok, copy} = WorkingCopies.report_root(copy, dir)
+
     designate(scope, copy, opts[:main?])
 
     %{scope: WorkingCopies.put_scope(scope, copy), dir: dir}
   end
 
   defp designate(scope, copy, true), do: {:ok, _} = WorkingCopies.designate_main(scope, copy.id)
-  defp designate(_scope, _copy, false), do: :ok
+  defp designate(scope, _copy, false) do
+    {:ok, main_copy} = WorkingCopies.fetch(scope.active_working_copy_id)
+    {:ok, main_copy} =
+      WorkingCopies.report_root(main_copy, CodeMySpec.TempFile.owned_dir("main-copy"))
+
+    {:ok, _} = WorkingCopies.designate_main(scope, main_copy.id)
+  end
 
   defp write(dir, content) do
     path = Path.join(dir, @path)

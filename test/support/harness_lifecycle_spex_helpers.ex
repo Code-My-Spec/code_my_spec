@@ -89,6 +89,10 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   end
 
   defp connected(context) do
+    # The fixture's files are in its in-memory runtime, and the test machine
+    # serves no filesystem requests: the joined copy reads that runtime.
+    :ok = CodeMySpec.Environments.unregister({:working_copy, context.copy_id})
+    :ok = CodeMySpec.Environments.register({:working_copy, context.copy_id}, context.environment)
     scope = %{context.scope | active_working_copy_id: context.copy_id}
     {:ok, _integration} = Fixtures.connect_provider(scope, :zai)
 
@@ -192,6 +196,26 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
     {:ok, view, _html} = live(context.conn, path)
 
     view |> element("[data-test='conversation-scroll']") |> render()
+  end
+
+  @doc """
+  The transcript region plus what is waiting to reach the agent.
+
+  A message sent to an agent sits pending, outside the transcript, until its
+  engine takes it; what the agent has been told includes it.
+  """
+  @spec told(map(), String.t()) :: String.t()
+  def told(context, path) do
+    {:ok, view, _html} = live(context.conn, path)
+
+    pending =
+      view
+      |> render()
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='agent-pending-message']")
+      |> Floki.text()
+
+    render(element(view, "[data-test='conversation-scroll']")) <> pending
   end
 
   @doc """

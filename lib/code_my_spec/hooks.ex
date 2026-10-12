@@ -33,6 +33,7 @@ defmodule CodeMySpec.Hooks do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
       CodeMySpec.Configurations,
       CodeMySpec.Conversations,

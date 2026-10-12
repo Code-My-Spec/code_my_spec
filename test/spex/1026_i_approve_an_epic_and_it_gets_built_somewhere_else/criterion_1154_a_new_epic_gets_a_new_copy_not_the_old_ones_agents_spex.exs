@@ -105,7 +105,13 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
             ~p"/app/projects/#{context.project.id}/working-copies/#{epic_copy(context)}"
           )
 
-        {:ok, Map.put(context, :html, html)}
+        conversation_html =
+          html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test=agent]")
+          |> Floki.raw_html()
+
+        {:ok, Map.merge(context, %{html: html, conversation_html: conversation_html})}
       end
 
       then_ "it gets its own copy with its own coding and QA agents", context do
@@ -122,7 +128,7 @@ defmodule CodeMySpecSpex.Story964.Criterion3092Spex do
       end
 
       then_ "and that copy's conversation starts clean", context do
-        refute context.html =~ "The last epic",
+        refute context.conversation_html =~ "The last epic",
                "the new copy is carrying the discarded epic's context. A fresh copy " <>
                  "that inherits the last one's conversation gives the new agents the " <>
                  "old work to reason about, which is the thing the discard was for."

@@ -57,10 +57,22 @@ defmodule CmsHarness.TurnEventEncodingTest do
     end
 
     test "a delivery carries the ref, which is the whole of what it says" do
-      encoded = ChannelClient.encode_turn_event(%{event: :message_delivered, ref: "r-1"})
+      encoded = ChannelClient.encode_turn_event(%{event: :turn_started, ref: "r-1"})
 
       assert encoded["ref"] == "r-1"
-      assert encoded["kind"] == "message_delivered"
+      assert encoded["kind"] == "turn_started"
+    end
+
+    # 2026-10-11: the durable mailbox added the engine generation to turn
+    # boundaries, and `%{ref: ..., generation: ...}` was stored as something
+    # main and its coder said, once per turn.
+    test "a turn boundary's ref and generation travel as fields, not as text" do
+      encoded =
+        ChannelClient.encode_turn_event(%{event: :turn_started, ref: "r-1", generation: "g-1"})
+
+      assert encoded["ref"] == "r-1"
+      assert encoded["generation"] == "g-1"
+      assert encoded["text"] == nil
     end
 
     test "a turn starting carries no text, not an inspected empty map" do

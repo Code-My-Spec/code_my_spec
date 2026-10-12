@@ -3,8 +3,9 @@ defmodule CodeMySpec.Promotion.Steps do
   The three things a promotion does to a disk, and nothing else.
 
   Extracted because they are the only part that cannot happen on the server. A
-  project's checkout is on someone else's machine, `scope.environment` is a
-  harness environment, and `Environments.Harness.cmd/4` answers
+  project's checkout is on someone else's machine. Scope identifies the
+  project and working copy; explicit runtime resolution determines where
+  file operations can run. `Environments.Harness.cmd/4` answers
   `{:error, :not_supported_on_harness}` on purpose — it carries file operations
   to the disk, not commands.
 
@@ -499,6 +500,13 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
+  @doc """
+  The paths that differ between `from` and `to` in the checkout at `root`:
+  what certification reads to decide whether a QA pass carries forward.
+  `{:ok, %{paths: paths}}`; `paths` is `nil` when they cannot be read.
+  """
+  def changed(env, root, from, to), do: {:ok, %{paths: changed_between(env, root, from, to)}}
+
   # What the merge brought in, which `Promotion` reads to choose a reload or a
   # restart. `nil` when it cannot be read, which restarts.
   defp changed_between(_env, _root, same, same), do: []
@@ -759,6 +767,49 @@ defmodule CodeMySpec.Promotion.Steps do
         {:error,
          %{reason: "could not reset the gate checkout #{root} to #{base}: #{String.trim(out)}"}}
     end
+  end
+
+  @doc """
+  Drop the gate checkout's test databases, one per `partitions`, before its
+  analyzers run a new candidate. The runs' own `ecto.create` and `ecto.migrate`
+  rebuild them from the candidate's migrations.
+
+  `ecto.migrate` only goes forward: a candidate the gate ejected left its
+  migrations in these databases, and the next candidate failed 749 tests on a
+  schema it never had (2026-10-11). Only ever for the gate copy — nobody works
+  there — never for a requester's copy.
+
+  `{:ok, %{dropped: [partition]}}`.
+  """
+  @spec reset_test_databases(Environments.Environment.t(), String.t(), [String.t()]) :: result()
+  def reset_test_databases(env, root, partitions) do
+    Enum.reduce_while(partitions, {:ok, %{dropped: []}}, fn partition, {:ok, %{dropped: done}} ->
+      case drop_test_database(env, root, partition) do
+        {_, 0} ->
+          {:cont, {:ok, %{dropped: done ++ [partition]}}}
+
+        {out, _} ->
+          {:halt,
+           {:error,
+            %{
+              reason:
+                "could not reset the gate's test database #{partition} in #{root}: " <>
+                  String.trim(out)
+            }}}
+      end
+    end)
+  end
+
+  # `MIX_ENV` is given, and the task also refuses anything but a test database
+  # in its own VM: an environment with it scrubbed once acted on dev.
+  defp drop_test_database(env, root, partition) do
+    env
+    |> Environments.cmd("mix", ["cms.drop_test_database"],
+      cd: root,
+      stderr_to_stdout: true,
+      env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", partition}]
+    )
+    |> normalize()
   end
 
   # No merge in progress is the ordinary case, not a failure.

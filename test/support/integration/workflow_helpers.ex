@@ -33,9 +33,11 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     scope = %{
       scope
       | active_project: project,
-        environment: Environment.new(:local, tmp_dir),
         cwd: tmp_dir
     }
+
+    scope =
+      CodeMySpec.UsersFixtures.put_fixture_environment(scope, Environment.new(:local, tmp_dir))
 
     external_id = "workflow-#{System.unique_integer([:positive])}"
     {:ok, session} = Sessions.find_or_create_session(scope, external_id)

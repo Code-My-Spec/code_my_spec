@@ -7,9 +7,8 @@ defmodule CodeMySpec.Provisioning.ImageTagUnreachableEnvironmentTest do
   `cannot run "git": this environment has no working directory, and running
   it wherever the caller happens to be would analyse the wrong project` — an
   unhandled `ArgumentError` from `Environments.cmd/4`, which raises rather
-  than returning an error for exactly this shape (a harness-only project,
-  where `scope.environment` resolves to `Environment.new(:local, nil)`), the
-  same reachability gap `app_path/1` and `missing_required_secrets/3` already
+  than returning an error for a selected copy whose runtime cannot be
+  resolved, the same reachability gap `app_path/1` and `missing_required_secrets/3` already
   had with `mix.exs` and `envs/<env>.enc.env`. `head_commit/1` now checks
   reachability before calling `Environments.cmd/4` at all, falling back to
   the harness-reported `project.head_commit` (`CmsHarness.Sync.
@@ -19,17 +18,17 @@ defmodule CodeMySpec.Provisioning.ImageTagUnreachableEnvironmentTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Steps
 
-  # The same shape a harness-only project's `Environment.new(:local, project.
-  # local_path)` takes when `local_path` is nil — distinct from `nil` itself.
-  defp unreachable(scope), do: %{scope | environment: Environment.new(:local, nil)}
+  # An invalid selected-copy id resolves to no runtime, distinct from no
+  # selection (which can use the local project path).
+  defp unreachable(scope),
+    do: %{scope | active_working_copy_id: Ecto.UUID.generate()}
 
   describe "the environment is reachable" do
     test "reads the real git HEAD rather than any reported value" do
-      scope = full_scope_fixture(%{head_commit: String.duplicate("a", 40)})
-      tmp = scope.environment.cwd
+      scope = provisioning_scope_fixture(%{head_commit: String.duplicate("a", 40)})
+      tmp = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
 
       System.cmd("git", ["init"], cd: tmp)
       System.cmd("git", ["commit", "--allow-empty", "-m", "x"], cd: tmp)
@@ -39,27 +38,30 @@ defmodule CodeMySpec.Provisioning.ImageTagUnreachableEnvironmentTest do
       assert {:ok, tag} = Steps.image_tag(scope, [])
       assert tag == String.slice(real_sha, 0, 12)
       refute tag == "aaaaaaaaaaaa"
+
+      stale = CodeMySpec.TempFile.owned_dir("stale-scope")
+      assert {:ok, ^tag} = Steps.image_tag(%{scope | cwd: stale}, [])
     end
   end
 
   describe "the environment cannot be reached" do
     test "falls back to the harness-reported head_commit instead of crashing" do
       sha = String.duplicate("b", 40)
-      scope = unreachable(full_scope_fixture(%{head_commit: sha}))
+      scope = unreachable(provisioning_scope_fixture(%{head_commit: sha}))
 
       assert {:ok, tag} = Steps.image_tag(scope, [])
       assert tag == String.slice(sha, 0, 12)
     end
 
     test "reports nothing to tag, rather than raising, when nothing has been reported" do
-      scope = unreachable(full_scope_fixture())
+      scope = unreachable(provisioning_scope_fixture())
 
       assert {:error, reason} = Steps.image_tag(scope, [])
       assert reason =~ "no commit to build"
     end
 
     test "an explicit :tag still wins over both" do
-      scope = unreachable(full_scope_fixture(%{head_commit: String.duplicate("c", 40)}))
+      scope = unreachable(provisioning_scope_fixture(%{head_commit: String.duplicate("c", 40)}))
 
       assert {:ok, "deadbeef"} = Steps.image_tag(scope, tag: "deadbeef")
     end

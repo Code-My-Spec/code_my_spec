@@ -95,7 +95,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1497Spex do
       end
 
       then_ "the same agent stays idle without another turn or operator message", context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert Machine.history(context.agent_id) == context.history_before
         assert HeldProvider.seen() == []
 

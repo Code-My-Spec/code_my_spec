@@ -32,9 +32,9 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Questions,
       CodeMySpec.Repo,
-      # `deploy` waits on `Resources.setup_missing/3`, the answer
+      # `deploy` waits on `ProvisioningPlan.setup_missing/3`, the answer
       # `devops_status` reports.
-      CodeMySpec.Resources,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Requirements.Invalidation,
       CodeMySpec.Requirements.Invalidations,
@@ -139,6 +139,30 @@ defmodule CodeMySpec.Requirements do
       _ -> false
     end
   end
+
+  @doc """
+  A story's architecture and requirements at the scope's working copy.
+
+  Starts at the story's linked component, follows its component subtree and
+  declared dependency closure, then selects the published requirement nodes.
+  Requirement edges never expand the component set. Other stories are excluded.
+
+  Returns `{:ok, graph}` with `root_component`, selected `components`,
+  `component_ids`, `component_edges` (dependent → dependency, including
+  `provenance` and `in_code`), ownership-only `owners`, and the requirement
+  `nodes`, `edges` (prerequisite → dependent), and `actionable` nodes.
+  Authored dependencies absent from code are preserved, not silently discarded.
+  An unlinked story has a nil root and no component work; an inaccessible story
+  returns `{:error, :not_found}`. Reads the existing projection; no graph edits.
+  """
+  defdelegate story_graph(scope, story_id), to: CodeMySpec.Requirements.StoryGraph, as: :read
+
+  @doc "Adds live project-issue branches to the requirements graph visualization."
+  defdelegate issue_bag_graph(issues), to: CodeMySpec.Requirements.ProjectIssueGraph, as: :bag
+
+  defdelegate project_issue_graph(scope, graph),
+    to: CodeMySpec.Requirements.ProjectIssueGraph,
+    as: :read
 
   @doc """
   Whether requirement `name` is one `role` is offered, by its profile's

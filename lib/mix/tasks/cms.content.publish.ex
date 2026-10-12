@@ -5,7 +5,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
 
   Runs the same two steps the Content LiveView drives:
 
-  1. `ContentPublishing.sync/1` — parse every markdown file under the project's
+  1. `ContentPublishing.sync/2` — parse every markdown file under the project's
      `content_source_path` into the local snapshot and upload any images to the
      project's image bucket.
   2. `ContentPublishing.publish/1` — write a content blob plus an integrity
@@ -57,10 +57,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.ContentPublishing
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.Users.Scope
 
   @shortdoc "Publish a project's markdown content to its deployed site"
 
@@ -83,9 +83,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
       |> override_deploy_key(opts[:deploy_key])
 
     scope = build_scope!(project)
+    environment = LocalScope.environment(project)
 
     print_target(project)
-    sync!(scope)
+    sync!(scope, environment)
 
     if Keyword.get(opts, :sync_only, false) do
       Mix.shell().info("\nStopped after sync (--sync-only). Nothing published.")
@@ -106,7 +107,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
     Application.ensure_all_started(:ecto_sql)
     Application.ensure_all_started(:req)
 
-    # Environments.Registry too: Scope.for_local_project/1 resolves the project's
+    # Environments.Registry too: LocalScope.for_local_project/1 resolves the project's
     # working directory through it.
     children = [
       CodeMySpec.Vault,
@@ -171,7 +172,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
   end
 
   defp build_scope!(project) do
-    case Scope.for_local_project(project) do
+    case LocalScope.for_local_project(project) do
       {:ok, scope} ->
         scope
 
@@ -208,8 +209,8 @@ defmodule Mix.Tasks.Cms.Content.Publish do
 
   defp production_warning(_), do: ""
 
-  defp sync!(scope) do
-    case ContentPublishing.sync(scope) do
+  defp sync!(scope, environment) do
+    case ContentPublishing.sync(scope, environment) do
       {:ok, counts} ->
         Mix.shell().info(
           "Synced #{counts.success} file(s), #{counts.error} error(s), " <>
@@ -225,6 +226,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
         Set one in the harness content settings.
         """)
 
+        System.halt(1)
+
+      {:error, :no_environment} ->
+        Mix.shell().error("This project has no available local environment to read content from.")
         System.halt(1)
     end
   end
@@ -289,9 +294,10 @@ defmodule Mix.Tasks.Cms.Content.Publish do
   # this runs before any project (and so any scope) is resolved.
   defp publishable_projects do
     Repo.all(
-      from p in Project,
+      from(p in Project,
         where: not is_nil(p.content_source_path) and p.content_source_path != "",
         order_by: p.name
+      )
     )
   end
 

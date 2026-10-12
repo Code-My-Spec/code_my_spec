@@ -20,18 +20,19 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Project.Transport
 
   setup do
-    Process.put({CmsHarness.Project.Transport, :impl}, CmsHarness.Project.Transport.Test)
+    Process.put({Transport, :impl}, CmsHarness.Project.Transport.Test)
     Process.put({CmsHarness.Project.Transport.Test, :owner}, self())
     :ok
   end
 
   test "a recorder selected here does not replace another process's real transport" do
-    other = Task.async(fn -> CmsHarness.Project.Transport.impl() end)
+    other = Task.async(fn -> Transport.impl() end)
 
     assert Task.await(other, :infinity) == CmsHarness.Project.Transport.Slipstream
-    assert CmsHarness.Project.Transport.impl() == CmsHarness.Project.Transport.Test
+    assert Transport.impl() == CmsHarness.Project.Transport.Test
   end
 
   defp socket(assigns) do

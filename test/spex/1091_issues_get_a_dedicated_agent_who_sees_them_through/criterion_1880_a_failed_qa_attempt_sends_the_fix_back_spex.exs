@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
   alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.{EvaluateTask, StartTask}
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -31,7 +32,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
   spex "A failed issue QA attempt keeps the team assigned and offers rework", criterion: 1880 do
     scenario "QA rejects a submitted fix and the coder receives the issue again" do
       given_ "a team has submitted its issue fix and QA has claimed testing", context do
-        context = context |> Slice.main_copy() |> Slice.staff()
+        context = context |> Slice.main_copy() |> Slice.staff() |> Slice.git_backed()
         coder = Enum.find(context.team, &(&1.role == :coding))
         qa = Enum.find(context.team, &(&1.role == :qa))
 
@@ -87,6 +88,8 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
           )
 
         false = started.isError
+
+        Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
         {:reply, submitted, _} =
           EvaluateTask.execute(%{task_id: extract_task_id!(started)}, coder_frame)

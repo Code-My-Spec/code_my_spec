@@ -32,7 +32,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
 
   describe "an environment that cannot answer" do
     test "is reported as unobservable, not as an unmet requirement" do
-      scope = %{full_scope_fixture() | environment: nil}
+      scope = %{working_copy_scope_fixture() | active_working_copy_id: "missing-working-copy"}
 
       assert ArchitectureDesign.evaluate(scope, %{id: 1}) == {:error, :no_environment},
              "flattened to `{:ok, :invalid, _}` this becomes the gate's verdict, and the " <>
@@ -46,7 +46,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
     # proposal AND executes it as one transaction — creating spec files and
     # linking stories". On a project with 903 components that is a mass rewrite.
     test "does not fall through to the mode that rewrites the proposal" do
-      scope = %{full_scope_fixture() | environment: nil}
+      scope = %{working_copy_scope_fixture() | active_working_copy_id: "missing-working-copy"}
 
       refute match?({:ok, :invalid, _}, ArchitectureDesign.evaluate(scope, %{id: 1}))
       refute match?({:ok, :valid}, ArchitectureDesign.evaluate(scope, %{id: 1}))
@@ -56,7 +56,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
   describe "an environment that can answer" do
     setup do
       tmp = CodeMySpec.TempFile.owned_dir("test")
-      %{scope: %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}}
+
+      scope = put_fixture_environment(working_copy_scope_fixture(), Environment.new(:local, tmp))
+      %{scope: scope}
     end
 
     # The other half. "Could not look" and "looked, and it is not there" are

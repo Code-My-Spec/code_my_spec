@@ -15,8 +15,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
 
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
-    scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
+    scope = working_copy_scope_fixture()
+    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
+    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -187,8 +188,8 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     end
 
     test "includes router content when router exists", %{scope: scope, task: task} do
-      write_mix_exs(scope.environment)
-      write_router(scope.environment)
+      write_mix_exs(fixture_environment(scope))
+      write_router(fixture_environment(scope))
 
       assert {:ok, prompt} = QaApp.command(scope, task)
       assert prompt =~ "PageController"
@@ -247,11 +248,15 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert {:ok, _prompt} = QaApp.command(scope, task)
 
       # Prompt file should be written for the story
-      prompt_path = Path.join(scope.environment.cwd, ".code_my_spec/qa/#{story.number}/prompt.md")
+      prompt_path =
+        Path.join(fixture_environment(scope).cwd, ".code_my_spec/qa/#{story.number}/prompt.md")
+
       assert File.exists?(prompt_path)
 
       content = File.read!(prompt_path)
       assert content =~ "User Authentication"
+      assert content =~ "start_task"
+      assert content =~ "qa_complete"
     end
 
     test "includes prompt file paths in orchestration prompt", %{scope: scope} do
@@ -275,7 +280,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       scope: scope,
       task: task
     } do
-      write_qa_summary(scope.environment)
+      write_qa_summary(fixture_environment(scope))
 
       assert {:ok, :valid} = QaApp.evaluate(scope, task)
     end
@@ -291,7 +296,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     test "delegates story validation to QaStory.evaluate", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
-      write_qa_plan(scope.environment)
+      write_qa_plan(fixture_environment(scope))
 
       # No brief or result — QaStory.evaluate should report brief missing
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
@@ -309,10 +314,10 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.number)
-      write_story_result(scope.environment, story.number)
-      write_qa_summary(scope.environment)
+      write_qa_plan(fixture_environment(scope))
+      write_story_brief(fixture_environment(scope), story.number)
+      write_story_result(fixture_environment(scope), story.number)
+      write_qa_summary(fixture_environment(scope))
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "submit_qa_result"
@@ -323,9 +328,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.number)
-      write_qa_summary(scope.environment)
+      write_qa_plan(fixture_environment(scope))
+      write_story_brief(fixture_environment(scope), story.number)
+      write_qa_summary(fixture_environment(scope))
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "submit_qa_result"
@@ -335,9 +340,9 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      write_qa_plan(scope.environment)
-      write_story_brief(scope.environment, story.number)
-      write_story_result(scope.environment, story.number)
+      write_qa_plan(fixture_environment(scope))
+      write_story_brief(fixture_environment(scope), story.number)
+      write_story_result(fixture_environment(scope), story.number)
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
       assert feedback =~ "summary"

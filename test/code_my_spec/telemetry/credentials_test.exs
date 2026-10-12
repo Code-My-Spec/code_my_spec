@@ -3,22 +3,25 @@ defmodule CodeMySpec.Telemetry.CredentialsTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.ClickHouse.Credentials
+  alias CodeMySpec.Provisioning.Sops
+  alias CodeMySpec.Provisioning.Steps
 
   test "publication encrypts owner credentials and preserves the scoped platform reader" do
     directory = CodeMySpec.TempFile.owned_dir("test")
-    environment = CodeMySpec.Environments.Environment.new(:local, directory)
-    scope = %{full_scope_fixture() | environment: environment}
-    {:ok, {public, private}} = CodeMySpec.Provisioning.Sops.generate_key()
-    assert :ok = CodeMySpec.Provisioning.Sops.write_config(environment, %{"prod" => public})
-    assert {:ok, _} = CodeMySpec.Provisioning.Steps.import_age_key(scope, "prod", private)
+    environment = Environment.new(:local, directory)
+    scope = put_fixture_environment(full_scope_fixture(), environment)
+    {:ok, {public, private}} = Sops.generate_key()
+    assert :ok = Sops.write_config(environment, %{"prod" => public})
+    assert {:ok, _} = Steps.import_age_key(scope, "prod", private)
     assert {:ok, credentials} = Credentials.prepare(scope, "prod", "box-a")
 
     assert :ok = Credentials.publish(scope, "prod", "telemetry.example.com", credentials)
 
     assert {:ok, owner_values} =
-             CodeMySpec.Provisioning.Sops.decrypt(environment, "prod", private)
+             Sops.decrypt(environment, "prod", private)
 
     assert owner_values["CLICKHOUSE_URL"] == "https://telemetry.example.com"
     assert owner_values["CLICKHOUSE_USERNAME"] == credentials.owner.username

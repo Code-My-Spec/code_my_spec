@@ -23,22 +23,21 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   def name, do: "credo"
 
   @impl true
-  @spec available?(Scope.t()) :: boolean()
-  def available?(%Scope{cwd: cwd} = scope) when is_binary(cwd) and cwd != "" do
+  @spec available?(Scope.t(), keyword()) :: boolean()
+  def available?(%Scope{} = scope, opts \\ []) do
     # exec_file_exists?, not File.*: this asks whether the tool is installed for
     # the `mix` that would actually run, and on a remote environment that is not
     # this machine's disk. Raw File calls would inspect the wrong host and answer
     # false, which skips the analyzer silently instead of failing.
-    env = StaticAnalysis.resolve_environment([], scope, cwd)
+    env = StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
 
-    Environments.exec_file_exists?(env, "mix.exs") and
+    not is_nil(env) and Environments.exec_file_exists?(env, "mix.exs") and
       Environments.exec_file_exists?(env, "deps/credo")
   end
 
-  def available?(_scope), do: false
-
   @impl true
-  @spec run(Scope.t(), keyword()) :: {:ok, [Problems.Problem.t()]} | {:error, String.t()}
+  @spec run(Scope.t(), keyword()) ::
+          {:ok, [Problems.Problem.t()]} | {:error, String.t() | :no_environment}
   def run(%Scope{} = scope, opts \\ []) do
     case run_with_output(scope, opts) do
       {:ok, problems, _output} -> {:ok, problems}
@@ -60,11 +59,17 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   `.code_my_spec/rules/analysis_output_fidelity.md`.
   """
   @spec run_with_output(Scope.t(), keyword()) ::
-          {:ok, [Problems.Problem.t()], String.t()} | {:error, String.t()}
+          {:ok, [Problems.Problem.t()], String.t()} | {:error, String.t() | :no_environment}
   def run_with_output(%Scope{} = scope, opts \\ []) do
-    cwd = opts[:cwd] || scope.cwd
+    environment =
+      StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
+
+    cwd = opts[:cwd] || (environment && environment.cwd)
 
     cond do
+      is_nil(environment) ->
+        {:error, :no_environment}
+
       is_nil(cwd) or cwd == "" ->
         {:error, "No working directory available"}
 
@@ -78,6 +83,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
         read_from_output_file(opts[:output_file], scope)
 
       true ->
+        opts = Keyword.put(opts, :environment, environment)
         temp_file = CodeMySpec.TempFile.path("credo_output", ".json")
         result = execute_and_parse(cwd, temp_file, scope, opts)
         CodeMySpec.TempFile.cleanup(temp_file)

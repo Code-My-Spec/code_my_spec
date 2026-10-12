@@ -11,7 +11,7 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
       mix test --only live test/cms_harness/agents/claude_code_provider_live_test.exs
 
   Every assertion here goes through `CmsHarness.Agents.launch/1` and
-  `CmsHarness.Agents.message/3`, exactly as the server would drive them —
+  `CmsHarness.Agents.send_message/5`, exactly as the server would drive them —
   `Provider.options/3`'s `"claude-code"` clause, `Engine.alloy_options/2`
   passing `working_copy` through as a stable `:workdir`, and the tool loop
   (`Alloy.Tool.Core.Read` among the real tools an agent carries) are all
@@ -37,12 +37,17 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
     %{root: tmp_dir}
   end
 
+  defp execute(id, text),
+    do: Agents.send_message(id, Ecto.UUID.generate(), text, 180_000, await: true)
+
   defp request(root, overrides \\ %{}) do
     Map.merge(
       %{
         "agent_id" => "claude-code-live-#{System.unique_integer([:positive])}",
         "provider" => "claude-code",
         "working_copy" => root,
+        "on_register" => fn _, _ -> :ok end,
+        "on_consume" => fn _, _, _ -> :ok end,
         "role" => "coding"
       },
       overrides
@@ -53,7 +58,7 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
     assert {:ok, %{agent_id: id}} = Agents.launch(request(root))
     on_exit(fn -> Agents.halt(id) end)
 
-    assert {:ok, text} = Agents.message(id, "Reply with exactly the word PROVIDER-WORKS.")
+    assert {:ok, text} = execute(id, "Reply with exactly the word PROVIDER-WORKS.")
     assert text =~ "PROVIDER-WORKS"
   end
 
@@ -64,7 +69,7 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
     on_exit(fn -> Agents.halt(id) end)
 
     assert {:ok, text} =
-             Agents.message(
+             execute(
                id,
                "Read pricing.txt in the working directory and tell me exactly what it says."
              )
@@ -84,13 +89,13 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
     # re-sent - that specific cost claim already has a live assertion with
     # direct visibility into response_metadata.cache_read_input_tokens at
     # the Alloy layer, where it belongs. This test only needs to prove the
-    # content actually carries across two real `Agents.message/2` calls
+    # content actually carries across two real `Agents.send_message/5` calls
     # through this harness's own entry point.
     assert {:ok, %{agent_id: id}} = Agents.launch(request(root))
     on_exit(fn -> Agents.halt(id) end)
 
-    assert {:ok, _} = Agents.message(id, "Remember the codeword MANGO-31. Reply with just ONE.")
-    assert {:ok, text} = Agents.message(id, "What was the codeword?")
+    assert {:ok, _} = execute(id, "Remember the codeword MANGO-31. Reply with just ONE.")
+    assert {:ok, text} = execute(id, "What was the codeword?")
     assert text =~ "MANGO-31"
   end
 end

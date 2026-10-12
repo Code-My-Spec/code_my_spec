@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
   available for it was `checked_at` — whether a requirement's row was rewritten.
   That was a fair proxy for the batched pass, where a rewritten row means work
   happened. It is not one for a projection that applies events: settling
-  `story_issues_resolved` is one `UPDATE` across every story's row plus the
+  `story_issues_triaged` is one `UPDATE` across every story's row plus the
   exceptions, which is two writes for a population of any size and stamps every
   row. So the cheaper system reads as the more expensive one, and a criterion
   written on the proxy goes red on an improvement.
@@ -209,10 +209,10 @@ defmodule CodeMySpec.Requirements.DrainCost do
       {result, extra} = fun.()
       emit(Map.merge(meta, extra), counter, System.monotonic_time() - started)
       result
-    rescue
-      error ->
+    catch
+      kind, reason ->
         emit(Map.put(meta, :raised, true), counter, System.monotonic_time() - started)
-        reraise error, __STACKTRACE__
+        :erlang.raise(kind, reason, __STACKTRACE__)
     after
       :telemetry.detach(handler_id)
     end
@@ -305,6 +305,9 @@ defmodule CodeMySpec.Requirements.DrainCost do
   defp report(meta, measurements) do
     %{
       kind: meta.kind,
+      raised: Map.get(meta, :raised, false),
+      measured_at: DateTime.utc_now(),
+      measurement_scope: :projection,
       duration_ms: System.convert_time_unit(measurements.duration, :native, :millisecond),
       queries: measurements.queries,
       rows_written: measurements.rows_written,

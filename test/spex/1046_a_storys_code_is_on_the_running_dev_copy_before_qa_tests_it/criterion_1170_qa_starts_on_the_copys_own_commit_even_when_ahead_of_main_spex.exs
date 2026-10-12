@@ -25,12 +25,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import CodeMySpecSpex.WorkingCopyHelpers
-
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -49,6 +48,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
              context do
         context = a_promotable_project(context)
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_up_to_analysis(context)
+        PromotionHelpers.materialize_source_fixture_files(context)
 
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
@@ -201,10 +201,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
 
     _ = out
 
-    running = join_working_copy(context, running_root, "the checkout the dev app runs in")
+    running =
+      PromotionHelpers.join_main_working_copy(
+        context,
+        running_root,
+        "the checkout the dev app runs in"
+      )
 
     {agent, agent_socket} =
-      join_working_copy_socket(context, agent_root, "the coding agent's copy")
+      PromotionHelpers.join_local_working_copy_socket(
+        context,
+        agent_root,
+        "the coding agent's copy"
+      )
 
     # The running checkout joined first and so holds the designation: the
     # project's first checkout to report a root becomes its main copy

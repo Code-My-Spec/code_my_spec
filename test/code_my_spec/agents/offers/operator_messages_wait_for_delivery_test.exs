@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
       })
 
     AgentPresence.present(agent)
+    {:ok, _} = Agents.Mailbox.register(scope, agent.id, "test-engine")
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -65,11 +66,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
 
     assert [%{status: :open}] = Offers.list_for_agent(ctx.agent.id)
 
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
 
     assert [%{status: :open}] = Offers.list_for_agent(ctx.agent.id)
 
@@ -105,10 +102,14 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
 
     assert {:ok, :queued} = Agents.message_agent(ctx.scope, id, "Keep my exact words.")
     assert_received {:agent_dispatch, ^id, first_ref, "Keep my exact words."}
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, id, first_ref, "test-engine")
+    {:ok, _} = Agents.Mailbox.finish(ctx.scope, id, first_ref, "test-engine")
     refute_received {:agent_dispatch, ^main_id, _, _}
 
     assert {:ok, :queued} = Agents.message_agent(ctx.scope, id, "Keep my exact words.")
     assert_received {:agent_dispatch, ^id, second_ref, "Keep my exact words."}
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, id, second_ref, "test-engine")
+    {:ok, _} = Agents.Mailbox.finish(ctx.scope, id, second_ref, "test-engine")
     assert_receive {:agent_dispatch, ^main_id, _, notice}, 5_000
     assert notice =~ "repeated an instruction"
     assert notice =~ id
@@ -119,7 +120,9 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert [first, second, third] = Offers.list_for_agent(id)
     assert first.status == :superseded
     assert second.status == :superseded
-    assert second.next_step == "told_main"
+    assert String.starts_with?(second.next_step, "main_notice:")
+    notice_id = String.replace_prefix(second.next_step, "main_notice:", "")
+    assert Repo.get!(Message, notice_id).delivery == :pending
     assert third.status == :open
     assert third.attempt == 3
     assert Offers.standing(id) == %{}
@@ -132,6 +135,51 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     refute_received {:agent_dispatch, ^main_id, _, _}
   end
 
+  test "failed main escalation recovers on a repeat and pending or delivered notice prevents duplicates",
+       ctx do
+    Sandbox.mode(Repo, {:shared, self()})
+    {:ok, _} = CodeMySpec.Staffing.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
+
+    {:ok, main} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: :main,
+        status: :running,
+        continuous: true,
+        working_copy: "/tmp/escalation-recovery-main",
+        working_copy_id: ctx.scope.active_working_copy_id
+      })
+
+    text = "Recover this exact instruction."
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    [_, second] = Offers.list_for_agent(ctx.agent.id)
+    notice_id = String.replace_prefix(second.next_step, "main_notice:", "")
+    assert Repo.get!(Message, notice_id).delivery == :failed
+    refute second.next_step == "told_main"
+
+    AgentPresence.present(main)
+    {:ok, _} = Agents.Mailbox.register(ctx.scope, main.id, "test-engine")
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    main_id = main.id
+    assert_receive {:agent_dispatch, ^main_id, ref, notice}, 5000
+    assert notice =~ "repeated an instruction"
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    refute_receive {:agent_dispatch, ^main_id, _, _}, 100
+
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, main.id, ref, "test-engine")
+
+    assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, text)
+    refute_receive {:agent_dispatch, ^main_id, _, _}, 100
+    assert Enum.any?(Offers.list_for_agent(ctx.agent.id), &(&1.next_step == "told_main"))
+
+    CodeMySpec.TaskSupervisor
+    |> Task.Supervisor.children()
+    |> Enum.map(&Process.monitor/1)
+    |> Enum.each(fn monitor -> assert_receive {:DOWN, ^monitor, _, _, _}, 5000 end)
+  end
+
   test "a delivery event arriving before the transport reply is retained", ctx do
     Application.put_env(
       :code_my_spec,
@@ -139,7 +187,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
       CodeMySpecTest.DeliveryBeforeAckTransport
     )
 
-    assert {:ok, :queued, message} =
+    assert {:ok, :started, message} =
              Agents.dispatch_message(ctx.scope, ctx.agent.id, "Inspect this.", :operator_message)
 
     assert message.delivery == :delivered
@@ -164,11 +212,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
                "coding"
              )
 
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
 
     assert :ok = Offers.settle_turn(ctx.agent)
     assert [offer] = Offers.list_for_agent(ctx.agent.id)
@@ -179,11 +223,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert {:ok, :queued} = Agents.message_agent(ctx.scope, ctx.agent.id, "Inspect this.")
     assert_received {:agent_dispatch, _, ref, "Inspect this."}
 
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, ctx.agent.id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, ctx.agent.id, ref, "test-engine")
 
     assert {:ok, _} =
              Conversations.add_tool_call(
@@ -199,19 +239,20 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert offer.status == :n_a
   end
 
-  test "a failed delivery is recorded without accusing the agent of ignoring it", ctx do
+  test "unconfirmed transport leaves the durable message pending without accusing the agent",
+       ctx do
     Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.UnreachableMachine)
 
     assert {:error, :harness_not_connected} =
              Agents.message_agent(ctx.scope, ctx.agent.id, "Inspect this.")
 
     assert [offer] = Offers.list_for_agent(ctx.agent.id)
-    assert offer.status == :undelivered
+    assert offer.status == :open
     assert [link] = offer.messages
-    assert Repo.get!(Message, link.message_id).delivery == :failed
+    assert Repo.get!(Message, link.message_id).delivery == :pending
     assert :ok = Offers.settle_turn(ctx.agent)
     assert [settled] = Offers.list_for_agent(ctx.agent.id)
-    assert settled.status == :undelivered
+    assert settled.status == :open
   end
 
   test "the development route also queues and measures its instruction", ctx do
@@ -244,11 +285,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert pending.status == :open
     assert pending.outcome_at == nil
 
-    assert :ok =
-             Agents.record_turn_event(ctx.scope, id, %{
-               "kind" => "message_delivered",
-               "ref" => ref
-             })
+    {:ok, _} = Agents.Mailbox.consume(ctx.scope, id, ref, "test-engine")
 
     assert Repo.get!(Message, message.id).delivery == :delivered
 
@@ -256,5 +293,56 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert [settled] = Offers.list_for_agent(id)
     assert settled.status == :n_a
     assert settled.outcome_at
+  end
+
+  test "default rejection skips a newer pending instruction", ctx do
+    delivered = rejection_offer(ctx, :delivered, "received work")
+    pending = rejection_offer(ctx, :pending, "waiting instruction")
+
+    {:ok, _} =
+      delivered
+      |> Ecto.Changeset.change(inserted_at: DateTime.add(DateTime.utc_now(), -60, :second))
+      |> Repo.update()
+
+    assert {:ok, declined} = Offers.reject(ctx.agent.id, nil, "Decline received work")
+    assert declined.id == delivered.id
+    assert declined.reason == "Decline received work"
+    assert Repo.reload!(pending).status == :open
+  end
+
+  test "explicit rejection refuses pending, failed and withdrawn deliveries", ctx do
+    for delivery <- [:pending, :failed, :withdrawn] do
+      offer = rejection_offer(ctx, delivery, "unseen #{delivery}")
+      assert {:error, :not_found} = Offers.reject(ctx.agent.id, offer.id, "Unrelated refusal")
+      assert Repo.reload!(offer).status == :open
+      assert Repo.reload!(offer).reason == nil
+    end
+  end
+
+  test "only pending offers cannot be declined by default", ctx do
+    offer = rejection_offer(ctx, :pending, "still queued")
+    assert {:error, :not_found} = Offers.reject(ctx.agent.id, nil, "Unrelated refusal")
+    assert Repo.reload!(offer).status == :open
+  end
+
+  test "delivered identity and unlinked legacy offers remain rejectable", ctx do
+    delivered = rejection_offer(ctx, :delivered, "received instruction")
+    legacy = Offers.record(:ok, ctx.agent, :work, {"requirement", "legacy"})
+    assert {:ok, %{id: id}} = Offers.reject(ctx.agent.id, delivered.id, "Received and declined")
+    assert id == delivered.id
+    assert Repo.reload!(legacy).status == :open
+    assert {:error, :not_found} = Offers.reject(Ecto.UUID.generate(), legacy.id, "Foreign agent")
+    assert {:ok, %{id: legacy_id}} = Offers.reject(ctx.agent.id, legacy.id, "Legacy declined")
+    assert legacy_id == legacy.id
+  end
+
+  defp rejection_offer(ctx, delivery, text) do
+    {:ok, message} =
+      Conversations.add_message(ctx.conversation, :operator, text, "operator", [],
+        delivery: delivery,
+        delivery_ref: Ecto.UUID.generate()
+      )
+
+    Offers.record({:ok, message}, ctx.agent, :instruction, {"message", text})
   end
 end

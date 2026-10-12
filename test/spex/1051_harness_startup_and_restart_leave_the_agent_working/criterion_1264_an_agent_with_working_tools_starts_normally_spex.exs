@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3296Spex do
       end
 
       then_ "and it takes turns and calls tools without anything being raised", context do
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id),
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id),
                "the agent is not in a state where a turn could be taken"
 
         assert {:ok, body} = tool_call(context.agent_id),

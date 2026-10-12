@@ -15,7 +15,7 @@ defmodule CodeMySpec.Provisioning.SetupOptionsTest do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.Sequence
+  alias CodeMySpec.ProvisioningPlan.Sequence
 
   setup do
     %{scope: full_scope_fixture()}

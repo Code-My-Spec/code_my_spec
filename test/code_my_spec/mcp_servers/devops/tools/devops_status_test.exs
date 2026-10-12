@@ -9,9 +9,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatusTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.McpServers.Devops.Tools.DevopsStatus
   alias CodeMySpec.Provisioning.RunLock
-  alias CodeMySpec.Provisioning.Sequence
-  alias CodeMySpec.Provisioning.Step
-  alias CodeMySpec.Provisioning.StepRepository
+  alias CodeMySpec.ProvisioningPlan.Sequence
+  alias CodeMySpec.ProvisioningPlan.Step
+  alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.Resources
 

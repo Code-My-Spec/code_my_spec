@@ -260,8 +260,8 @@ config :code_my_spec,
   remote_await_timeout: 500,
   # The floor every `GenServer.call(pid, msg, timeout + call_grace_ms())`
   # site (CodeMySpec.Analysis.harness_fs_request/4,
-  # CodeMySpec.Agents.Transport.Harness.call/4, CmsHarness.Token,
-  # CmsHarness.Agents.Engine.chat/3) adds on top of a caller's own timeout,
+  # CodeMySpec.Agents.Transport.Harness.call/4, CmsHarness.Token)
+  # adds on top of a caller's own timeout,
   # so "still working" isn't mistaken for "gone". 5s in every real
   # environment; 1ms here so a test proving the timeout path fires pays
   # only the timeout it actually asked for, not the real grace period too.

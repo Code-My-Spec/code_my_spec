@@ -6,8 +6,10 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResultTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.CodeMode.Tools.ToolDocs
   alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
+  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.Qa.IssueQaAttempts
   alias CodeMySpec.TaskOwner
 
@@ -94,7 +96,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResultTest do
       |> Map.put(:scenarios, [%{name: "Validation", status: "pass", observation: "Observed"}])
 
     {:reply, response, _} =
-      CodeMySpec.McpServers.Qa.Tools.SubmitQaResult.execute(params, ctx.frame)
+      SubmitQaResult.execute(params, ctx.frame)
 
     assert response.isError
     assert text(response) =~ "submit_issue_qa_result"
@@ -102,6 +104,37 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResultTest do
     assert_unsubmitted(ctx)
 
     refute CodeMySpec.Repo.get_by(CodeMySpec.Qa.QaAttempt, task_id: ctx.task.id)
+  end
+
+  test "a partial attempt completes the task and keeps the issue with QA (cae2db90)", ctx do
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, ctx.issue, :qa)
+
+    response =
+      submit(%{ctx | params: Map.put(ctx.params, :status, "partial")}, [
+        %{name: "Browser tooling", status: "partial", observation: "run_browser_script refused"}
+      ])
+
+    refute response.isError
+    assert %{status: :partial} = IssueQaAttempts.latest(ctx.scope, ctx.issue.id)
+    assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :qa
+
+    {:ok, agent} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+    refute TaskOwner.active_task(agent)
+    assert TaskOwner.find_task(agent, ctx.task.id).status == :completed
+  end
+
+  test "a fail attempt completes the task and sends the fix back to the coder (cae2db90)", ctx do
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, ctx.issue, :qa)
+
+    response = submit(ctx, [%{name: "Delivery", status: "fail", observation: "Still broken"}])
+
+    refute response.isError
+    assert %{status: :fail} = IssueQaAttempts.latest(ctx.scope, ctx.issue.id)
+    assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :coding
+
+    {:ok, agent} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
+    refute TaskOwner.active_task(agent)
+    assert TaskOwner.find_task(agent, ctx.task.id).status == :completed
   end
 
   defp submit(ctx, scenarios) do

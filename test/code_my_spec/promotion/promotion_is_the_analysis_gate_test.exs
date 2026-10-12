@@ -21,6 +21,7 @@ defmodule CodeMySpec.Promotion.PromotionIsTheAnalysisGateTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Promotion
   alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.WorkingCopies
@@ -124,7 +125,9 @@ defmodule CodeMySpec.Promotion.PromotionIsTheAnalysisGateTest do
     a_harness(agent.id)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script(git))
-    %{scope: %{scope | active_working_copy_id: agent.id, environment: env}}
+    :ok = Environments.register({:working_copy, running.id}, env)
+    :ok = Environments.register({:working_copy, agent.id}, env)
+    %{scope: %{scope | active_working_copy_id: agent.id}}
   end
 
   defp dispatched_sources do

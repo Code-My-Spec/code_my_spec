@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
   end
 
   spex "The main agent settles a fresh question it can answer, with no check-in in between",
-       criterion: 2027 do
+    criterion: 2027 do
     scenario "a coding agent asks a question the main agent can answer outright" do
       given_ "a coding agent's fresh question the main agent can settle from its own records",
              context do
@@ -45,6 +45,8 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
         coding = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2027")
+        # An on-duty main holds the question; with none, it goes to the user (1052, 2124).
+        _main = Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-2027-main")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
 
         {:reply, asked, _} =

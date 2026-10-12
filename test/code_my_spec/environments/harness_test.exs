@@ -2,7 +2,7 @@ defmodule CodeMySpec.Environments.HarnessTest do
   @moduledoc """
   A working copy on another machine, addressed over its harness channel.
 
-  The server holds no checkout, so `scope.environment` was `nil` there and every
+  The server holds no checkout, so `fixture_environment(scope)` was `nil` there and every
   file operation answered `{:error, :no_environment}` — "there is no working
   copy", which is false. There is one; it is elsewhere. Forty-eight server-side
   modules acted on that answer, nineteen of them agent tasks whose evaluators run
@@ -18,6 +18,8 @@ defmodule CodeMySpec.Environments.HarnessTest do
   """
 
   use ExUnit.Case, async: true
+
+  import CodeMySpec.UsersFixtures, only: [fixture_environment: 1, put_fixture_environment: 2]
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment

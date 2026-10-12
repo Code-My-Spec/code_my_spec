@@ -36,7 +36,8 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
     {:ok, env} = InMemoryEnvironment.create()
     on_exit(fn -> InMemoryEnvironment.destroy(env) end)
 
-    scope = %{full_scope_fixture() | environment: env}
+    scope = put_fixture_environment(working_copy_scope_fixture(), env)
+    :ok = register_working_copy_environment(scope, env)
     %{scope: scope, env: env}
   end
 

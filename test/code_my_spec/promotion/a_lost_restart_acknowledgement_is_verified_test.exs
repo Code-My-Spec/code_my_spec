@@ -14,6 +14,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.QaFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -21,6 +22,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Environments
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Support.InMemoryEnvironment
@@ -150,9 +152,17 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
     AgentPresence.present(agent)
 
     {:ok, env} = InMemoryEnvironment.create(shell: script())
-    scope = %{scope | active_working_copy_id: copy.id, environment: env}
+    :ok = Environments.register({:working_copy, running.id}, env)
+    :ok = Environments.register({:working_copy, copy.id}, env)
+    scope = %{scope | active_working_copy_id: copy.id}
 
     story = story_fixture(scope, %{title: "Lost ack"})
+
+    story
+    |> Ecto.Changeset.change(qa_ready_commit: @merged, qa_ready_at: DateTime.utc_now())
+    |> CodeMySpec.Repo.update!()
+
+    {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
 
     {_n, _} =
       Files.upsert_files(scope, [

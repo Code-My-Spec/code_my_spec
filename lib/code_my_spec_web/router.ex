@@ -203,8 +203,8 @@ defmodule CodeMySpecWeb.Router do
     # `current_scope` those plugs build reaches the tools untouched — which is
     # the same route `working_dir` takes on the local mount.
     #
-    # `X-Project-ID` alone names a project, not a working copy —
-    # `scope.environment` stays nil. Add `X-Harness-Id` (see
+    # `X-Project-ID` alone names a project, not a working copy — it does not
+    # resolve a runtime for file operations. Add `X-Harness-Id` (see
     # `ProjectScopeOverride`'s moduledoc) to also name the working copy; any
     # tool here that touches files — `evaluate_task` on a task whose checker
     # reads the environment, for one — answers `:no_environment` without it.
@@ -645,6 +645,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/next-task", Tasks.NextTaskLive
       live "/projects/:project_id/tasks", Tasks.TaskQueueLive
       live "/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
+      live "/projects/:project_id/architecture/components", ArchitectureLive, :components_graph
       live "/projects/:project_id/architecture/overview", ArchitectureLive, :overview
       live "/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
 
@@ -718,6 +719,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/working-copies", WorkingCopyLive.Index, :index
       live "/projects/:project_id/working-copies/:id", WorkingCopyLive.Show, :show
       live "/projects/:project_id/working-copies/:id/edit", WorkingCopyLive.Form, :edit
+      live "/projects/:project_id/working-copies/:id/status", WorkingCopyLive.Status, :status
       # The cockpit is a *project* page, and which agent you are reading is a
       # selection within it (`?conversation=<id>`) rather than a different
       # route. Switching agents is then a patch: the transcript changes and the

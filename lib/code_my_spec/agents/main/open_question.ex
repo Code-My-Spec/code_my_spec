@@ -109,7 +109,7 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
       kind: :permission,
       title: permission_title(request.tool_name),
       questions: [%{"question" => permission_question(request)}],
-      holder: permission_holder(request, aged?),
+      holder: permission_holder(request, field(agent, :role), aged?),
       escalation_reason: request.escalation_reason,
       asked_at: request.inserted_at,
       agent_id: request.agent_id,
@@ -127,9 +127,15 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   # Escalated stays the user's at any age — only the main agent decides to
   # send one up, and that decision does not get overridden by the clock
   # that exists to catch the ones nobody decided at all.
-  defp permission_holder(%{escalation_reason: reason}, _aged?) when is_binary(reason), do: "user"
-  defp permission_holder(_request, true), do: "main_agent"
-  defp permission_holder(_request, false), do: "user"
+  #
+  # Everyone else's tap-out is main's from the moment it is raised (criteria
+  # 2073/2074); main's own has nobody above it but the user. It used to reach
+  # main only after ageing a recovery interval, so a fresh one sat with the user.
+  defp permission_holder(%{escalation_reason: reason}, _role, _aged?) when is_binary(reason),
+    do: "user"
+
+  defp permission_holder(_request, :main, _aged?), do: "user"
+  defp permission_holder(_request, _role, _aged?), do: "main_agent"
 
   defp permission_question(%{escalated_as: as}) when is_binary(as), do: as
   defp permission_question(request), do: permission_text(request)

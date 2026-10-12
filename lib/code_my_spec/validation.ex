@@ -31,7 +31,6 @@ defmodule CodeMySpec.Validation do
     deps: [
       CodeMySpec.Agents.Agent,
       CodeMySpec.Stories,
-      CodeMySpec.AgentTasks,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
@@ -155,7 +154,7 @@ defmodule CodeMySpec.Validation do
 
   # `cwd` is not the same claim as "there is a working copy here". It is set for
   # any resolved scope, so the clause above matches on the
-  # server too, where `scope.environment` is a `Harness` that walks nothing —
+  # server too, where no local environment can scan the remote checkout —
   # and the sync it ran deleted every row for the checkout it was named after.
   #
   # An environment that cannot scan is the case the `cwd: nil` clause already

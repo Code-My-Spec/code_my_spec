@@ -53,7 +53,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   """
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, _task) do
-    env = scope.environment
+    env = CodeMySpec.AgentTasks.environment(scope)
     app_name = Helpers.extract_app_name(env) || "app"
     decisions = list_decisions(env)
     already_run = detect_already_run(env, app_name)
@@ -74,7 +74,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, _task) do
-    case check_artifact(scope.environment) do
+    case check_artifact(CodeMySpec.AgentTasks.environment(scope)) do
       :ok -> {:ok, :valid}
       {:error, feedback} -> {:ok, :invalid, feedback}
     end

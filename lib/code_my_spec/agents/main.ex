@@ -504,7 +504,7 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   @doc """
-  The cadence's tick: one turn for a continuous main, carrying the check-in and
+  The cadence's tick: an admitted turn for a continuous main with work or attention, carrying the check-in and
   its own work offer together, and the recovery check for everyone else.
 
   John: "we never want a non continuous main agent to get the nudge. Only a
@@ -549,9 +549,14 @@ defmodule CodeMySpec.Agents.Main do
   defp cadence_turn(scope, %Agent{} = main, digest, newly_stalled) do
     new_stalls = Enum.map(newly_stalled, & &1.agent_id)
 
-    Work.request_cadence_turn(scope, main, fn work? ->
-      CheckInReport.render(digest, self: main.id, work?: work?, new_stalls: new_stalls)
-    end)
+    Work.request_cadence_turn(
+      scope,
+      main,
+      fn work? ->
+        CheckInReport.render(digest, self: main.id, work?: work?, new_stalls: new_stalls)
+      end,
+      attention?: CheckInReport.needs_attention?(digest)
+    )
   end
 
   @doc """
@@ -1438,6 +1443,32 @@ defmodule CodeMySpec.Agents.Main do
   def escalate_question(%Scope{}, _question_id, _reason, _opts), do: {:error, :needs_a_reason}
 
   @doc """
+  Hand a question sideways between the main and product agents (criterion 2123).
+
+  The user does not see it until one of them escalates it. Tap-outs are main's
+  alone, so only questions move.
+  """
+  @spec hand_question(Scope.t(), String.t(), String.t(), String.t()) ::
+          {:ok, OpenQuestion.t()} | {:error, term()}
+  def hand_question(%Scope{} = scope, question_id, to, reason)
+      when to in ["main", "product"] and is_binary(reason) and reason != "" do
+    holder = if to == "main", do: "main_agent", else: "product_agent"
+
+    with {:ok, %{kind: :question} = question} <-
+           QuestionsRepository.fetch_open_question(scope, question_id),
+         {:ok, _updated} <- QuestionsRepository.hand_to(question_id, holder, reason) do
+      :ok = question_raised(scope, %{agent_id: question.agent_id, holder: holder})
+      QuestionsRepository.fetch_open_question(scope, question_id)
+    else
+      {:ok, _permission} -> {:error, :only_questions_move_sideways}
+      error -> error
+    end
+  end
+
+  def hand_question(%Scope{}, _question_id, _to, _reason),
+    do: {:error, :needs_main_or_product_and_a_reason}
+
+  @doc """
   Who a newly raised question starts with.
 
   An agent's question starts with the main agent — that is story 1052's routing
@@ -1447,39 +1478,48 @@ defmodule CodeMySpec.Agents.Main do
   a question with no agent came from Claude Code, which talks to the person
   directly.
   """
-  @spec holder_for(Scope.t(), String.t() | nil, String.t() | nil) :: String.t()
-  def holder_for(scope, agent_id, about \\ nil)
+  @spec holder_for(Scope.t(), String.t() | nil, String.t() | nil, String.t() | nil) ::
+          String.t()
+  def holder_for(scope, agent_id, about \\ nil, to \\ nil)
 
-  def holder_for(%Scope{}, nil, _about), do: "user"
+  def holder_for(%Scope{}, nil, _about, _to), do: "user"
 
-  def holder_for(%Scope{} = scope, agent_id, about) when is_binary(agent_id) do
+  def holder_for(%Scope{} = scope, agent_id, about, to) when is_binary(agent_id) do
     case Agents.fetch_agent(scope, agent_id) do
-      {:ok, agent} -> routed(scope, agent, about)
+      {:ok, agent} -> routed(scope, agent, target(about, to))
       {:error, _reason} -> "user"
     end
   end
 
-  # 8c91d5bc: a question the asker marks as about a story's criteria or spec
-  # goes to the product agent, which owns them, rather than up the chain to a
-  # customer. Only when one is running to take it; the asker's field, never a
-  # reading of its prose.
-  defp routed(scope, %Agent{role: role} = agent, "criteria") when role != :product do
-    case product_agent(scope, agent.working_copy_id) do
-      %Agent{} -> "product_agent"
-      nil -> holder(RoleProfile.questions_to(role))
-    end
+  # Story 1052 (three amigos 2026-10-11): coding and QA ask product or main,
+  # main when they name neither (2122); `about: "criteria"` names product.
+  defp target(_about, "product"), do: :product
+  defp target(_about, "main"), do: :main
+  defp target("criteria", _to), do: :product
+  defp target(_about, _to), do: :main
+
+  # Main's and product's own questions have nobody above them but the user
+  # (criterion 1987). Anyone else's goes to the answerer it names, to the other
+  # when that one is not running, and to the user only when neither is (2124).
+  defp routed(_scope, %Agent{role: role}, _target) when role in [:main, :product], do: "user"
+
+  defp routed(scope, %Agent{} = agent, target) do
+    [target, other(target)]
+    |> Enum.find(&running?(scope, agent, &1))
+    |> answerer_holder()
   end
 
-  # A product agent's own question is nobody's above it to settle (criterion
-  # 1987): main does not design the epic, so it has no basis main itself
-  # lacks, and routing it there first would be a wake for a turn main can
-  # never actually take.
-  defp routed(_scope, %Agent{role: :product}, _about), do: "user"
+  defp other(:main), do: :product
+  defp other(:product), do: :main
 
-  defp routed(_scope, %Agent{role: role}, _about), do: holder(RoleProfile.questions_to(role))
+  # On duty (not off, not retired) rather than connected: a main that is briefly
+  # unreachable still holds its questions, and the user sees them meanwhile (1201).
+  defp running?(scope, agent, role),
+    do: Enum.any?(Agents.list_on_duty(scope), &(&1.role == role and &1.id != agent.id))
 
-  defp holder(:user), do: "user"
-  defp holder(:main), do: "main_agent"
+  defp answerer_holder(:main), do: "main_agent"
+  defp answerer_holder(:product), do: "product_agent"
+  defp answerer_holder(nil), do: "user"
 
   @doc "The holder value a role answers as, or nil for a role that answers none."
   @spec holder_of(atom() | nil) :: String.t() | nil

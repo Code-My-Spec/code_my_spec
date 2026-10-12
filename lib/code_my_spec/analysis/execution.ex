@@ -12,6 +12,7 @@ defmodule CodeMySpec.Analysis.Execution do
   alias CodeMySpec.Analysis.{Reconciler, Run, Runners}
   alias CodeMySpec.Environments
   alias CodeMySpec.Problems
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -36,8 +37,10 @@ defmodule CodeMySpec.Analysis.Execution do
   defp run_and_reconcile(scope, run, opts) do
     start = System.monotonic_time(:millisecond)
     args = run_args(run)
+    environment = resolve_environment(scope, opts)
+    opts = Keyword.put(opts, :environment, environment)
 
-    case Runners.run(run.source, scope, args, runner_opts(scope, run, opts)) do
+    case Runners.run(run.source, scope, args, runner_opts(environment, run, opts)) do
       {:ok, %{problems: problems} = result} ->
         ms = System.monotonic_time(:millisecond) - start
 
@@ -123,15 +126,19 @@ defmodule CodeMySpec.Analysis.Execution do
   defp run_args(%Run{args: args}) when is_list(args), do: args
   defp run_args(_run), do: []
 
+  defp resolve_environment(scope, opts) do
+    cwd = opts[:cwd] || scope.cwd
+
+    StaticAnalysis.resolve_environment(opts, scope, cwd)
+  end
+
   # Cassette escape hatch: spex inject pre-recorded tool output per source,
-  # per call or attached to the scope's environment.
-  defp runner_opts(scope, %Run{source: source}, opts) do
+  # per call or attached to the environment selected for this run.
+  defp runner_opts(environment, %Run{source: source}, opts) do
     key = :"#{output_key(source)}_output_file"
 
-    case Keyword.get(opts, key) || Environments.recorded_output(scope.environment, source) do
-      nil -> []
-      path -> [output_file: path]
-    end
+    output_file = Keyword.get(opts, key) || Environments.recorded_output(environment, source)
+    if output_file, do: Keyword.put(opts, :output_file, output_file), else: opts
   end
 
   defp output_key("compiler"), do: :compile

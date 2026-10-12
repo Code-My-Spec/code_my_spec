@@ -28,14 +28,13 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
 
   setup do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
-    {:ok, scope: full_scope_fixture()}
+    {:ok, scope: working_copy_scope_fixture()}
   end
 
-  # The shape a light harness presents: it names the working copy it serves —
-  # on the scope and on the environment, because a harness reports its root —
-  # and cannot walk it from here.
+  # The shape a light harness presents: it names the working copy it serves
+  # through the registered environment and cannot walk it from here.
   defp harness_scope(scope) do
-    %{scope | cwd: "/workspace/app", environment: Environment.new(:harness, "/workspace/app")}
+    put_fixture_environment(scope, Environment.new(:harness, "/workspace/app"))
   end
 
   test "/sync says why it did not scan, rather than reporting a clean sync", %{scope: scope} do
@@ -85,6 +84,8 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
   # ok or an error and asserted nothing in the error case, which meant it passed
   # without ever reaching the branch its name described.
   test "/sync elsewhere reports its own failure, not the harness's excuse", %{scope: scope} do
+    scope = %{scope | active_working_copy_id: nil, cwd: nil}
+
     assert {:error, message} =
              SkillRouter.resolve(scope, %{"skill" => "sync", "external_id" => "ext-2"})
 

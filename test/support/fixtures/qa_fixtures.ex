@@ -2,7 +2,7 @@ defmodule CodeMySpec.QaFixtures do
   @moduledoc """
   Test fixtures for QA attempt lifecycle.
 
-  Provides direct DB insertion of QaAttempt rows for test setup
+  Captures a certified review and inserts a QaAttempt for test setup
   that needs a fully-satisfied `qa_complete` requirement without
   going through the full MCP tool surface.
 
@@ -13,6 +13,7 @@ defmodule CodeMySpec.QaFixtures do
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -36,7 +37,27 @@ defmodule CodeMySpec.QaFixtures do
         %{name: "Placeholder", status: :pass, observation: "Seeded by QaFixtures."}
       ])
 
+    story = Stories.get_story!(scope, story_id)
+
+    story =
+      story
+      |> Ecto.Changeset.change(
+        qa_ready_at: story.qa_ready_at || DateTime.utc_now(),
+        qa_ready_commit:
+          story.qa_ready_commit || "fixture-reviewed-revision-#{Ecto.UUID.generate()}"
+      )
+      |> Repo.update!()
+
     attrs = %{
+      reviewed_commit: story.qa_ready_commit,
+      reviewed_submissions:
+        CodeMySpec.Issues.story_submission_snapshot(
+          scope,
+          story.id,
+          CodeMySpec.Configurations.fix_issues_min_severity(scope)
+        ),
+      review_started_at: DateTime.utc_now(),
+      review_certified_at: story.qa_ready_at,
       story_id: story_id,
       status: :pass,
       scenarios: scenarios,

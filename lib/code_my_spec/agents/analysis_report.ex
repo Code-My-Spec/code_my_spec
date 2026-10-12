@@ -49,9 +49,9 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   So `deliver/4` takes the requester\'s id: everyone else keeps the silence,
   and the one who asked gets an answer either way.
 
-  Delivery is dispatched, never called: `message_agent/4` runs the whole turn
-  inside a `GenServer.call`, and this runs inside the reconciler, which must not
-  wait out an agent's reply to finish recording a run.
+  Delivery enters the durable mailbox without waiting for the agent's turn.
+  The reconciler can finish recording the run while the notification waits
+  for consumption.
 
   An agent with no process is not owed delivery and is not a failure
   (criterion 3049). `dispatch_message` answers `{:error, :not_running}` and this
@@ -71,9 +71,6 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   require Logger
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.Offers
-  alias CodeMySpec.Agents.Transport
-  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
@@ -270,43 +267,11 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # refused as :would_deadlock (same class as 104bcb23). Whether it reaches the
   # agent at all is `Wake`'s: a stopped agent is not owed one (criterion 3049).
   #
-  # Not written to the conversation, so a findings offer stands unlinked.
-  defp tell(scope, %Agent{} = agent, event, message, offer \\ nil) do
-    if Wake.allow?(scope, agent, event) == :ok do
-      offered = record_offer(agent, offer)
-
-      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-        dispatch(agent, message, offered)
-      end)
-    end
+  # Admission is synchronous and durable; only transport runs off this process.
+  defp tell(_scope, %Agent{} = agent, event, message, offer \\ nil) do
+    CodeMySpec.Agents.send_to_agent(agent.id, message, event, offer: offer, async: true)
 
     :ok
-  end
-
-  defp record_offer(_agent, nil), do: nil
-  defp record_offer(agent, {kind, subject}), do: Offers.record(nil, agent, kind, subject)
-
-  defp dispatch(%Agent{} = agent, message, offered) do
-    ref = "analysis-" <> Ecto.UUID.generate()
-
-    case Transport.dispatch_message(agent.working_copy_id, agent, ref, message, 10_000) do
-      {:ok, _disposition} ->
-        :ok
-
-      # Not a warning. Nobody to tell is an ordinary state — the agent was
-      # stopped — and logging it as a failure is what criterion 3049 forbids.
-      {:error, :not_running} ->
-        Offers.undelivered(offered)
-
-      {:error, reason} ->
-        Offers.undelivered(offered)
-
-        Logger.info(
-          "[Analysis] could not tell agent #{agent.id} about the run: #{inspect(reason)}"
-        )
-
-        :ok
-    end
   end
 
   # What landed, by source, and what to do about it. `nil` when there is nothing

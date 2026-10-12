@@ -46,6 +46,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -68,6 +69,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
     scenario "well-formed entries with URL + title + ISO date pass the checker" do
       given_ :persona_exists
       given_ :persona_research_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "summary.md is written with all required sections", context do
         :ok =
@@ -123,6 +128,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
     scenario "sources.md with entries missing a URL fails the checker" do
       given_ :persona_exists
       given_ :persona_research_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "summary.md is written with all required sections", context do
         :ok =
@@ -184,6 +193,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
       given_ :persona_exists
       given_ :persona_research_task_started
 
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
+
       given_ "summary.md is written with all required sections", context do
         :ok =
           Environments.write_file(
@@ -242,6 +255,10 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
     scenario "sources.md with no markdown list entries fails the checker" do
       given_ :persona_exists
       given_ :persona_research_task_started
+
+      given_ "this copy reads the fixture's in-memory files", context do
+        {:ok, HarnessHooks.serve_in_memory(context)}
+      end
 
       given_ "summary.md is written with all required sections", context do
         :ok =

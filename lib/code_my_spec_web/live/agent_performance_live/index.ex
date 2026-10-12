@@ -336,11 +336,11 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     <section data-test="teams" class="mt-6">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Teams</h2>
       <div
-        :for={working_copy_id <- team_working_copy_ids(@teams, @summary.throughput_by_team)}
+        :for={{working_copy_id, rate} <- @teams}
         data-test="team"
         data-working-copy-id={working_copy_id}
       >
-        First-pass rate: {percent(Map.get(@teams, working_copy_id))}
+        First-pass rate: {percent(rate)}
         <span>Promoted: {Map.get(@summary.throughput_by_team, working_copy_id, 0)}</span>
       </div>
     </section>
@@ -359,7 +359,12 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <p :if={@loading?} data-test="stories-loading" class="text-base-content/60">
         Loading the project's stories...
       </p>
-      <div :for={story <- @stories} id={"story-#{story.id}"} data-test="story" class="card bg-base-100 shadow-md">
+      <div
+        :for={story <- @stories}
+        id={"story-#{story.id}"}
+        data-test="story"
+        class="card bg-base-100 shadow-md"
+      >
         <div class="card-body">
           <h3 class="card-title">{story.title}</h3>
           {cycle_time_block(Map.fetch!(@reports, story.id).cycle_time)}
@@ -503,15 +508,4 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   defp percent(nil), do: "not yet measured"
   defp percent(rate), do: "#{round(rate * 100)}%"
-
-  # A team that only promotes, with no QA attempt on record, has no
-  # first-pass rate but still belongs in the Teams section for its
-  # throughput.
-  defp team_working_copy_ids(teams, throughput_by_team) do
-    team_ids = Enum.map(teams, fn {working_copy_id, _rate} -> working_copy_id end)
-
-    (team_ids ++ Map.keys(throughput_by_team))
-    |> Enum.uniq()
-    |> Enum.sort()
-  end
 end

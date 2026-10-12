@@ -108,7 +108,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
     assert_woken(
       ctx.agent.id,
       "Your blocker question #{request.id} was answered; resume task #{task.id} " <>
-        ~s[with `start_task(requirement_name: "bdd_specs_passing")`]
+        "only after inspecting its recorded requirement"
     )
   end
 

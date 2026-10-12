@@ -3,7 +3,7 @@ defmodule CodeMySpec.Environments.NoEnvironmentTest do
   Every file operation, and every task prompt, against no environment at all.
 
   This is the light harness's normal shape, not an edge case: the server has no
-  working copy, so `scope.environment` is nil. Before these clauses existed the
+  working copy, so no execution environment can be resolved. Before these clauses existed the
   operations raised `FunctionClauseError`, which took out the prompt builders
   that call them — and a requirement whose prompt cannot be rendered cannot be
   worked at all. An agent hit that on nine requirements in a row and could get
@@ -49,7 +49,7 @@ defmodule CodeMySpec.Environments.NoEnvironmentTest do
   describe "task prompts on a server with no working copy" do
     setup do
       scope = full_scope_fixture()
-      %{scope: %{scope | environment: nil}, task: %{}}
+      %{scope: put_fixture_environment(scope, nil), task: %{}}
     end
 
     # The exact list an agent reported as crashing, each naming glob/2,
@@ -80,7 +80,7 @@ defmodule CodeMySpec.Environments.NoEnvironmentTest do
       # module name. Stripping separators out of "e2e-todo" yields "E2etodo";
       # the repo defines "E2eTodo", and the two are one letter apart.
       project = %{scope.active_project | name: "e2e-todo", module_name: "E2eTodo"}
-      scope = %{scope | active_project: project, environment: nil}
+      scope = put_fixture_environment(%{scope | active_project: project}, nil)
 
       assert {:ok, prompt} = ArchitectureDesign.command(scope, %{})
 

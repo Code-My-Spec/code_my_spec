@@ -107,7 +107,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   def via(project_id), do: {:via, Registry, {CodeMySpec.Requirements.Registry, project_id}}
 
   @doc """
-  Watch this project, if nothing is watching it yet.
+  Start the serving writer for this project and the optional legacy pass.
 
   Idempotent and cheap to call from anywhere a scope is in hand — the second
   caller gets the running one. Started on demand rather than for every project
@@ -118,27 +118,39 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   def ensure_watching(%Scope{active_project_id: nil}), do: {:error, :no_project}
 
   def ensure_watching(%Scope{active_project_id: project_id} = scope) do
-    # The event-based projection is maintained beside this one whenever the
-    # experiment is on, so both are fed by the same traffic on the same
-    # projects. Started here rather than anywhere else because this is what
-    # decides a project is being worked on; `ensure_projecting/1` refuses when
-    # the flag is off, so this costs a function call in the normal case.
-    # Allowed on the caller's sandbox like the watcher below, so a spex that
-    # runs on its own connection (`async: true`, manual mode) has a projector
-    # that can read it.
-    case ShadowProjector.ensure_projecting(watcher_scope(scope)) do
-      {:ok, projector} -> allow_sandbox(projector)
+    projector = ShadowProjector.ensure_projecting(watcher_scope(scope))
+
+    case projector do
+      {:ok, pid} -> allow_sandbox(pid)
       _disabled -> :ok
     end
 
-    case DynamicSupervisor.start_child(
-           CodeMySpec.Requirements.WatcherSupervisor,
-           {__MODULE__, {project_id, watcher_scope(scope)}}
-         ) do
-      {:ok, pid} -> {:ok, allow_sandbox(pid)}
-      {:error, {:already_started, pid}} -> {:ok, allow_sandbox(pid)}
-      other -> other
+    if pass_enabled?() do
+      case DynamicSupervisor.start_child(
+             CodeMySpec.Requirements.WatcherSupervisor,
+             {__MODULE__, {project_id, watcher_scope(scope)}}
+           ) do
+        {:ok, pid} -> {:ok, allow_sandbox(pid)}
+        {:error, {:already_started, pid}} -> {:ok, allow_sandbox(pid)}
+        other -> other
+      end
+    else
+      projector
     end
+  end
+
+  @doc """
+  Whether normal project startup also maintains the legacy pass.
+
+  The pass can be retired only when the enabled event projection serves reads.
+  Rolling back either event flag restores the pass, even if its opt-out remains
+  configured. Explicit `RequirementGraph.recompute/2` and read-only verification
+  remain available independently of this lifecycle switch.
+  """
+  @spec pass_enabled?() :: boolean()
+  def pass_enabled? do
+    Application.get_env(:code_my_spec, :graph_pass_enabled, true) or
+      not (Shadow.inverted?() and Shadow.enabled?())
   end
 
   # The watcher outlives whatever called this and has no sandbox ownership of
@@ -742,8 +754,6 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         end
       )
 
-    account_for(consumed)
-
     # After the writes, never before — a mark consumed on the strength of having
     # been started is one a crash turns into a permanently stale entity
     # (criterion 3521). Consumed by the pass as well as the projector now: only
@@ -768,6 +778,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     # silently misses one reports agreement it has not checked.
     unless shadow_will_consume?(state), do: Invalidations.consume(marks)
     report_shadow(state, computed)
+    account_for(consumed)
 
     # Only when an input actually moved. A pass that ran purely to onboard a
     # vantage a reader named for the first time (`consumed == []`, including

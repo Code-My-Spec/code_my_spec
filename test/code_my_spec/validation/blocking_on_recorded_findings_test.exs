@@ -24,7 +24,9 @@ defmodule CodeMySpec.Validation.BlockingOnRecordedFindingsTest do
     # test built on `full_scope_fixture/0` alone asserts against that clause and
     # never reaches the decision it means to exercise.
     tmp = CodeMySpec.TempFile.owned_dir("blocking_on_recorded_findings")
-    scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
+    environment = Environment.new(:local, tmp)
+    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
+    :ok = register_working_copy_environment(scope, environment)
 
     Configurations.get_or_create(scope)
     {:ok, _} = Configurations.update(scope, %{credo: :block_all})

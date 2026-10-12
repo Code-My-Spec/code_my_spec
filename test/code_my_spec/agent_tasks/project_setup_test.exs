@@ -3,12 +3,13 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   # load/unload is process-global. Run async, this kills whatever other test is
   # inside a shell-out when the patch moves — as a bare `** (EXIT) killed` that
   # names neither this file nor the cassette.
-  use ExUnit.Case, async: false
+  use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
+
+  import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Users.Scope
 
   @moduletag :tmp_dir
 
@@ -16,24 +17,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   # Test Helpers
   # ============================================================================
 
-  defp create_environment(tmp_dir) do
-    %Environment{
-      type: :local,
-      ref: %{working_dir: tmp_dir},
-      cwd: tmp_dir,
-      metadata: %{}
-    }
-  end
-
   defp create_scope(tmp_dir) do
-    %Scope{
-      user: nil,
-      active_account: nil,
-      active_account_id: nil,
-      active_project: nil,
-      active_project_id: nil,
-      environment: create_environment(tmp_dir)
-    }
+    scope = full_scope_fixture()
+    put_fixture_environment(%{scope | cwd: tmp_dir}, Environment.new(:local, tmp_dir))
   end
 
   defp create_task(_tmp_dir) do
@@ -253,7 +239,6 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
         assert prompt =~ ".code_my_spec" or prompt =~ "Project Structure"
       end
     end
-
   end
 
   # ============================================================================

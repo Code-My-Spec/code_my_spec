@@ -49,10 +49,36 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
     assert log =~ "mix test/spex routed (shape: piped, redirected)"
   end
 
+  # Claude Code asks a person before any `rm` of a path it cannot resolve, so a
+  # routed run that cleaned up a `mktemp` file was denied whenever nobody was
+  # at the prompt.
+  test "a routed run removes nothing" do
+    command = routed(decide("mix spex test/spex/1080_story > out.txt 2>&1"))
+
+    refute command =~ ~r/\brm\b/
+    refute command =~ "mktemp"
+  end
+
+  # The curl carries `$f` as written, so it was a run of the file `$f` — which
+  # found nothing and answered green (2026-10-12).
+  test "a segment whose args the shell would expand is not routed" do
+    assert decide("f=test/a_test.exs; mix spex $f > out.txt 2>&1") == %{}
+    assert decide("mix test `cat files.txt` 2>&1 | tail -5") == %{}
+  end
+
+  # Claude Code's removal guard cannot read inside a `sh -c` script, so it
+  # refused every routed run in auto mode (2026-10-11).
+  test "a routed run is one plain curl, not a shell script" do
+    command = routed(decide("mix test test/a_test.exs"))
+
+    assert String.starts_with?(command, "curl -sS --fail-with-body ")
+    refute command =~ "sh -c"
+  end
+
   test "a test after cd into this copy is routed, and the cd is kept" do
     command = routed(decide("cd /w/copy/apps/web && mix test test/a_test.exs", "/w/copy"))
 
-    assert String.starts_with?(command, "cd /w/copy/apps/web && sh -c ")
+    assert String.starts_with?(command, "cd /w/copy/apps/web && curl ")
   end
 
   test "a relative cd stays inside the copy" do

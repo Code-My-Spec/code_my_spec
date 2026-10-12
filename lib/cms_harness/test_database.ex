@@ -152,4 +152,8 @@ defmodule CmsHarness.TestDatabase do
   def partition_for(cwd, "spex"), do: partition_for(cwd) <> "s"
   def partition_for(cwd, "exunit"), do: partition_for(cwd) <> "a"
   def partition_for(cwd, _source), do: partition_for(cwd)
+
+  @doc "Every partition a working copy's runs use: the session's, exunit's and spex's."
+  @spec partitions(String.t()) :: [String.t()]
+  def partitions(cwd), do: Enum.map([nil, "exunit", "spex"], &partition_for(cwd, &1))
 end

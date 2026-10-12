@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6533Spex do
   spex "Dispatch directive carries the role atom so the main agent can route", criterion: 662 do
     scenario "qa_complete requirement → directive surfaces role: :qa explicitly" do
       given_ "a live harness serves the checkout", context do
-        {:ok, HarnessHooks.ensure_live_harness(context)}
+        {:ok, HarnessHooks.ensure_live_harness(context, environment: :in_memory)}
       end
 
       given_ "a session exists with a pending qa_complete requirement on a story",

@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
         # whatever is eligible, and that offer would race the idle check.
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(agent.id)
+        assert {:ok, %{busy?: false}} = Machine.status(agent.id)
         {:reply, available, _} = GetNextRequirement.execute(%{}, agent_frame)
         refute available.isError, response_text(available)
         assert Fixtures.role_queue_size(context.scope, agent.id) > 0
@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
       end
 
       then_ "one turn reaches the model without a task or embedded requirement", context do
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         [request] = HeldProvider.seen()
         messages = Jason.decode!(request)["messages"]
         assert is_list(messages)

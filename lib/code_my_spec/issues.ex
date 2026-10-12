@@ -19,6 +19,7 @@ defmodule CodeMySpec.Issues do
     deps: [
       CodeMySpec.Accounts,
       CodeMySpec.Projects,
+      CodeMySpec.Qa.Invalidations,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope,
@@ -30,6 +31,7 @@ defmodule CodeMySpec.Issues do
 
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository
+  alias CodeMySpec.Issues.StorySubmissions
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
@@ -67,21 +69,12 @@ defmodule CodeMySpec.Issues do
   end
 
   @doc """
-  Issues attributed to one story, at a status, at or above a severity.
-
-  What gates a single story's release, as opposed to
-  `list_by_status_and_min_severity/3`, which answers for the whole project.
-  """
-  def list_by_story_status_and_min_severity(%Scope{} = scope, story_id, status, min_severity) do
-    IssuesRepository.list_by_story_status_and_min_severity(scope, story_id, status, min_severity)
-  end
-
-  @doc """
   Attribute unattributed `:app` issues to a story. Returns the count updated.
 
   Called when a QA attempt is submitted: the agent has just named these
-  issues as the findings of a pass over one story, and `story_issues_resolved`
-  reads `story_id` to decide what blocks that story's release. Leaving it to
+  issues as the findings of a pass over one story. The inherited submission
+  graph reads `story_id` to place accepted blocking fixes before shared story
+  QA; promotion completes the reviewed submissions. Leaving it to
   the agent to pass `story_id` on every `create_issue` call did not work —
   every accepted issue on this project reached triage unattributed.
   """
@@ -122,10 +115,8 @@ defmodule CodeMySpec.Issues do
     IssuesRepository.get_issue!(scope, id)
   end
 
-  defdelegate unresolved_by_story(scope, min_severity), to: IssuesRepository
-
-  @doc "See `CodeMySpec.Issues.IssuesRepository.latest_resolutions/2`."
-  defdelegate latest_resolutions(project_id, story_ids), to: IssuesRepository
+  @doc "See `CodeMySpec.Issues.IssuesRepository.latest_story_submissions/2`."
+  defdelegate latest_story_submissions(project_id, story_ids), to: IssuesRepository
   defdelegate incoming_by_story(scope), to: IssuesRepository
   defdelegate list_triageable(scope, min_severity), to: IssuesRepository
 
@@ -150,6 +141,45 @@ defmodule CodeMySpec.Issues do
 
   def list_filtered(%Scope{} = scope, filters) do
     IssuesRepository.list_filtered(scope, filters)
+  end
+
+  @doc "Accepted issues inherited from a story, excluding explicitly assigned issue bags."
+  defdelegate list_story_submissions(scope, story_id), to: StorySubmissions, as: :list
+
+  @doc "Current submission identities; nil values identify fixes still awaiting coding."
+  def story_submission_snapshot(scope, story_id, threshold \\ :medium),
+    do: StorySubmissions.snapshot(scope, story_id, threshold)
+
+  defdelegate story_submission_snapshots(scope, story_ids, threshold),
+    to: StorySubmissions,
+    as: :snapshots
+
+  defdelegate story_issue_submitted?(issue), to: StorySubmissions, as: :submitted?
+
+  @doc "Submit an inherited story fix and invalidate qualifying QA in the same transaction."
+  def submit_story_issue(scope, issue, attrs) do
+    case StorySubmissions.submit(scope, issue, attrs) do
+      {:ok, {updated, changed?}} ->
+        if changed?, do: broadcast(scope, {:updated, updated})
+        {:ok, updated}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def rework_story_submissions(scope, story_id, snapshot, issue_ids, reason) do
+    with {:ok, issues} <- StorySubmissions.rework(scope, story_id, snapshot, issue_ids, reason) do
+      Enum.each(issues, &broadcast(scope, {:updated, &1}))
+      {:ok, issues}
+    end
+  end
+
+  def complete_story_submissions(scope, story_id, snapshot, landed_commit) do
+    with {:ok, issues} <- StorySubmissions.complete(scope, story_id, snapshot, landed_commit) do
+      Enum.each(issues, &broadcast(scope, {:resolved, &1}))
+      {:ok, issues}
+    end
   end
 
   # -- Create -----------------------------------------------------------------
@@ -330,6 +360,14 @@ defmodule CodeMySpec.Issues do
     end
   end
 
+  def resolve_issue(
+        %Scope{},
+        %Issue{story_id: story_id, assigned_working_copy_id: nil},
+        _resolution
+      )
+      when not is_nil(story_id),
+      do: {:error, :story_issue_requires_shared_qa_and_promotion}
+
   def resolve_issue(%Scope{} = scope, %Issue{} = issue, resolution) do
     with {:ok, issue} <- IssuesRepository.update_status(issue, :resolved, resolution) do
       broadcast(scope, {:resolved, issue})
@@ -378,6 +416,20 @@ defmodule CodeMySpec.Issues do
   @doc "The accepted issue assigned to `working_copy_id`'s team, or nil."
   @spec assigned_to_copy(Scope.t(), Ecto.UUID.t()) :: Issue.t() | nil
   defdelegate assigned_to_copy(scope, working_copy_id), to: IssuesRepository
+
+  @doc """
+  Stamps `issue` ready for QA at `commit` — the commit `Promotion.certify/3`
+  passed at. The only writer of `qa_ready_commit`; `IssueFix` reads it.
+  """
+  @spec set_qa_ready(Scope.t(), Issue.t(), String.t(), DateTime.t()) ::
+          {:ok, Issue.t()} | {:error, term()}
+  def set_qa_ready(%Scope{} = scope, %Issue{} = issue, commit, at \\ DateTime.utc_now())
+      when is_binary(commit) do
+    with {:ok, updated} <- IssuesRepository.update_qa_ready_commit(issue, commit, at) do
+      broadcast(scope, {:updated, updated})
+      {:ok, updated}
+    end
+  end
 
   @doc "Record the commit an issue's fix landed on main at."
   @spec record_fix_landed(Scope.t(), Issue.t(), String.t()) :: {:ok, Issue.t()} | {:error, term()}
@@ -508,15 +560,9 @@ defmodule CodeMySpec.Issues do
 
   # The story it was attributed to, if any, and always the project.
   #
-  # `:project` unconditionally, because `issues_triaged` and `issues_resolved`
-  # are project requirements and read the whole queue — an issue arriving or
-  # being resolved moves them whether or not it names a story.
-  #
-  # The story only when QA attributed one. `IssuesChecker.story_resolved?/2`
-  # draws that line itself — "an issue with no `story_id` is the project queue's
-  # problem, not this story's" — and `Freshness.story/2` hashes
-  # `issues_by_story` on the same basis, so an unattributed issue belongs to no
-  # story's requirements and naming one would recompute it for nothing.
+  # Project events maintain project triage and explicit issue branches. A
+  # story event rebuilds its inherited submission branches and shared QA
+  # prerequisites. Unattributed issues do not change another story's graph.
   defp graph_entities({_verb, %{story_id: story_id}}) when not is_nil(story_id),
     do: [{"story", story_id}, :project]
 

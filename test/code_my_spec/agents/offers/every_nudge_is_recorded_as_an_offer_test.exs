@@ -8,6 +8,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
@@ -168,7 +169,9 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
     main = agent(ctx.scope, %{role: "main"})
 
     assert {:ok, _ref} =
-             Work.request_cadence_turn(ctx.scope, main, &"Check-in. Work offered: #{&1}")
+             Work.request_cadence_turn(ctx.scope, main, &"Check-in. Work offered: #{&1}",
+               attention?: true
+             )
 
     id = main.id
     assert_received {:work_turn_requested, ^id, _ref, "Check-in. Work offered: " <> _ = prompt}
@@ -256,19 +259,16 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
   end
 
   describe "a harness restart (f5699eb9)" do
-    test "an idle agent's restart notice records a resume offer linked to it", ctx do
+    test "an idle agent is told nothing and offered nothing", ctx do
       agent = agent(ctx.scope)
 
       :ok = Agents.account_for_interrupted_turns(ctx.scope, [agent])
 
-      assert [offer] = Offers.list_for_agent(agent.id)
-      assert {offer.kind, offer.subject_type, offer.subject_key} == {:resume, "restart", nil}
-      assert offer.template_version == "resume/1"
-      assert [notice] = linked_texts(offer)
-      assert notice =~ "The harness restarted. No turn of yours was interrupted"
+      assert Offers.list_for_agent(agent.id) == [],
+             "a stopped agent lost nothing to a restart and has nothing to resume"
     end
 
-    test "a mid-turn agent's interrupted notice records a resume offer linked to it", ctx do
+    test "a mid-turn agent's carry-on records a resume offer linked to it", ctx do
       agent = agent(ctx.scope)
 
       {:ok, mid_turn} =
@@ -278,19 +278,26 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
 
       assert [offer] = Offers.list_for_agent(agent.id)
       assert {offer.kind, offer.subject_type, offer.subject_key} == {:resume, "restart", nil}
-      assert [notice] = linked_texts(offer)
-      assert notice =~ "while you were part-way through a turn"
+      assert offer.template_version == "resume/1"
+      assert [carry_on] = linked_texts(offer)
+      assert carry_on =~ "Carry on from your last step"
     end
 
-    test "a second restart supersedes the first notice's offer", ctx do
+    test "a second restart replaces the first carry-on and supersedes its offer", ctx do
       agent = agent(ctx.scope)
+      mid_turn = %{turn_started_at: DateTime.utc_now()}
 
+      {:ok, agent} = AgentsRepository.update_agent(ctx.scope, agent, mid_turn)
       :ok = Agents.account_for_interrupted_turns(ctx.scope, [agent])
+      {:ok, agent} = AgentsRepository.update_agent(ctx.scope, agent, mid_turn)
       :ok = Agents.account_for_interrupted_turns(ctx.scope, [agent])
 
       assert [first, second] = Offers.list_for_agent(agent.id)
       assert first.status == :superseded
       assert second.status == :open
+
+      assert [%{state: :withdrawn}, %{state: :claimed}] =
+               Mailbox.entries(ctx.scope, agent.id)
     end
   end
 

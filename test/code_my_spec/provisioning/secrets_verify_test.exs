@@ -33,7 +33,13 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   # there.
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
+
+    scope =
+      CodeMySpec.UsersFixtures.put_fixture_environment(
+        provisioning_scope_fixture(),
+        Environment.new(:local, tmp)
+      )
+
     {:ok, scope: scope, tmp: tmp}
   end
 
@@ -45,13 +51,24 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
   # Every secret the step mints, not just the one the test happens to name.
   defp put_secret(scope, environment, key, value) do
-    :ok = Sops.put_secret(scope.environment, environment, key, value, stored(scope, environment))
+    :ok =
+      Sops.put_secret(
+        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        environment,
+        key,
+        value,
+        stored(scope, environment)
+      )
   end
 
   describe "a key that matches its file" do
     test "is satisfied once every secret the step mints is in it", ctx do
       {public, _} = key_for(ctx.scope, "prod")
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => public
+        })
 
       put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
       put_secret(ctx.scope, "prod", "DEPLOY_KEY", "dk_v")
@@ -66,7 +83,11 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # boots pointed at nothing.
     test "is absent while the widget url is missing", ctx do
       {public, _} = key_for(ctx.scope, "prod")
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => public
+        })
 
       put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
       put_secret(ctx.scope, "prod", "DEPLOY_KEY", "dk_v")
@@ -81,7 +102,11 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # that reads the value rather than the one that never wrote it.
     test "is absent while the deploy key is missing", ctx do
       {public, _} = key_for(ctx.scope, "prod")
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => public
+        })
 
       put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
 
@@ -93,8 +118,20 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # the deploy refused two steps later by name.
     test "is absent while the boot secret is missing", ctx do
       {public, _} = key_for(ctx.scope, "prod")
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
-      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => public
+        })
+
+      :ok =
+        Sops.put_secret(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          "prod",
+          "K",
+          "v",
+          stored(ctx.scope, "prod")
+        )
 
       assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
     end
@@ -106,14 +143,39 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # aimed at an unrelated problem.
     test "reports absent, so re-running the step repairs it", ctx do
       {public, _} = key_for(ctx.scope, "prod")
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
-      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => public
+        })
+
+      :ok =
+        Sops.put_secret(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          "prod",
+          "K",
+          "v",
+          stored(ctx.scope, "prod")
+        )
 
       # Someone else's recipient arrives, and the file is re-encrypted to it.
       {:ok, {other_public, other_private}} = Sops.generate_key()
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => other_public})
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => other_public
+        })
+
       File.rm!(Path.join(ctx.tmp, "envs/prod.enc.env"))
-      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", other_private)
+
+      :ok =
+        Sops.put_secret(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          "prod",
+          "K",
+          "v",
+          other_private
+        )
 
       assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"]),
              "expected drift to report absent — reporting satisfied is what made it unrecoverable"
@@ -165,7 +227,11 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
 
       assert {:ok, %{"CODEMYSPEC_WIDGET_URL" => url, "DEPLOY_KEY" => key}} =
-               Sops.decrypt(ctx.scope.environment, "prod", stored(ctx.scope, "prod"))
+               Sops.decrypt(
+                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+                 "prod",
+                 stored(ctx.scope, "prod")
+               )
 
       assert url == "wss://drill.example.test/widget"
       refute url == "wss://codemyspec.com/widget"
@@ -187,7 +253,14 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["uat"])
       first = stored(ctx.scope, "uat")
 
-      :ok = Sops.put_secret(ctx.scope.environment, "uat", "SECRET_KEY_BASE", "s3kr1t", first)
+      :ok =
+        Sops.put_secret(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          "uat",
+          "SECRET_KEY_BASE",
+          "s3kr1t",
+          first
+        )
 
       # A second environment arrives. uat is untouched and working.
       {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["uat", "prod"])
@@ -196,7 +269,11 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
              "uat's key was replaced while it was still opening its own file"
 
       assert {:ok, %{"SECRET_KEY_BASE" => "s3kr1t"}} =
-               Sops.decrypt(ctx.scope.environment, "uat", stored(ctx.scope, "uat")),
+               Sops.decrypt(
+                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+                 "uat",
+                 stored(ctx.scope, "uat")
+               ),
              "the secret set before the re-run must still be readable afterwards"
     end
 
@@ -205,14 +282,39 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # repair with. The contents are already unrecoverable at that point.
     test "still replaces a key that no longer opens its file", ctx do
       {public, _} = key_for(ctx.scope, "prod")
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
-      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => public
+        })
+
+      :ok =
+        Sops.put_secret(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          "prod",
+          "K",
+          "v",
+          stored(ctx.scope, "prod")
+        )
 
       # Someone else's recipient arrives; the stored key no longer matches.
       {:ok, {other_public, other_private}} = Sops.generate_key()
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => other_public})
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => other_public
+        })
+
       File.rm!(Path.join(ctx.tmp, "envs/prod.enc.env"))
-      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", other_private)
+
+      :ok =
+        Sops.put_secret(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          "prod",
+          "K",
+          "v",
+          other_private
+        )
 
       before = stored(ctx.scope, "prod")
       {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
@@ -233,7 +335,12 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # reported `done` with no sign anything was dropped.
     setup ctx do
       {prod_public, _} = key_for(ctx.scope, "prod")
-      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => prod_public})
+
+      :ok =
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+          "prod" => prod_public
+        })
+
       put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
 
       {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
@@ -248,7 +355,11 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       # uat, the same as the real run the report reproduced against.
       {:ok, _} = Steps.run(:secrets, ctx.scope, [])
 
-      {:ok, config} = Environments.read_file(ctx.scope.environment, ".sops.yaml")
+      {:ok, config} =
+        Environments.read_file(
+          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          ".sops.yaml"
+        )
 
       assert config =~ "path_regex: envs/prod\\.enc\\.env$", config
       assert config =~ ctx.prod_public, config
@@ -268,7 +379,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       assert :ok =
                Sops.put_secret(
-                 ctx.scope.environment,
+                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
                  "prod",
                  "OTHER",
                  "v",

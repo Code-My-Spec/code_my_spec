@@ -5,6 +5,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
   """
   use CodeMySpecSpex.Case, async: false
 
+  alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
@@ -80,7 +81,12 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
         work_requested_at: nil
       })
 
-    Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_ended"})
+    Agents.record_turn_event(
+      scope,
+      agent.id,
+      ChannelClient.encode_turn_event(CodeMySpecSpex.Fixtures.mailbox_turn_end(scope, agent.id))
+    )
+
     await_dispatches()
   end
 
@@ -95,6 +101,15 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
 
     end_turn(scope, agent)
     assert Repo.get!(Offer, offer.id).status == :undelivered
+  end
+
+  defp assert_pending_through_turn_end(scope, agent, kind) do
+    offer = only(agent, kind)
+    assert %{status: :open, outcome_at: nil} = offer
+    assert [%{state: :claimed, diagnostic: diagnostic}] = Agents.Mailbox.entries(scope, agent.id)
+    assert diagnostic =~ "unconfirmed"
+    end_turn(scope, agent)
+    assert Repo.get!(Offer, offer.id).status == :open
   end
 
   test "a work prompt whose turn request failed", ctx do
@@ -133,7 +148,9 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
     main = agent(ctx.scope, %{role: "main"})
 
     assert {:error, :harness_not_connected} =
-             Work.request_cadence_turn(ctx.scope, main, fn _work? -> "Check-in." end)
+             Work.request_cadence_turn(ctx.scope, main, fn _work? -> "Check-in." end,
+               attention?: true
+             )
 
     assert_undelivered_through_turn_end(ctx.scope, main, :check_in)
   end
@@ -180,7 +197,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
                  offer: {:answer, {"question", "q-1"}}
                )
 
-      assert_undelivered_through_turn_end(ctx.scope, agent, :answer)
+      assert_pending_through_turn_end(ctx.scope, agent, :answer)
     end
 
     test "a send Wake refuses", ctx do
@@ -211,7 +228,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
       })
 
       await_dispatches()
-      assert_undelivered_through_turn_end(ctx.scope, agent, :retry)
+      assert_pending_through_turn_end(ctx.scope, agent, :retry)
     end
   end
 
@@ -228,7 +245,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
     :ok = StopDecision.deliver(ctx.scope, %{agent | tasks: [task]}, [])
     await_dispatches()
 
-    assert_undelivered_through_turn_end(ctx.scope, agent, :menu)
+    assert_pending_through_turn_end(ctx.scope, agent, :menu)
   end
 
   test "an undelivered offer does not count toward the next attempt", ctx do

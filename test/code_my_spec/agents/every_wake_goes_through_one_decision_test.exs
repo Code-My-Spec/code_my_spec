@@ -8,6 +8,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
+  import Ecto.Query
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
@@ -20,6 +21,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Devops.Starter
+  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Notifications
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -155,6 +157,24 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
       MainAgent.question_raised(ctx.scope, %{agent_id: coding.id})
 
       assert asked(main, :teammate_question) == :ok
+    end
+
+    # Criteria 2026 and 2120: a tap-out reaches main as an offer when it is
+    # raised. It used to sit with the user until it aged a recovery interval.
+    test "a teammate's tap-out: main is woken and offered it", ctx do
+      main = agent(ctx, :main)
+      coding = agent(ctx, :coding)
+      frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
+
+      {:reply, reply, _} = TapOut.execute(%{reason: "blocked"}, frame)
+      refute reply.isError
+
+      assert asked(main, :teammate_question) == :ok
+
+      assert CodeMySpec.Repo.exists?(
+               from o in CodeMySpec.Agents.Offer,
+                 where: o.agent_id == ^main.id and o.subject_type == "questions"
+             )
     end
 
     test "a released blocker or a denied tap-out: offer_turn_with as the caller says", ctx do

@@ -14,13 +14,13 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Files
   alias CodeMySpec.Personas
   alias CodeMySpec.Questions
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   @impl true
   def mount(_params, _session, socket) do

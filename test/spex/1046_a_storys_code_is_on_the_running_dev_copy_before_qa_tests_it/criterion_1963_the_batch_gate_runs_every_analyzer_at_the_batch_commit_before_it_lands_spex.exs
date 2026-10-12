@@ -38,9 +38,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1963Spex do
           treaty()
         )
 
+        context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
 
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        {:ok, context}
       end
 
       when_ "the agent promotes, and three of the four analyzers answer clean", context do

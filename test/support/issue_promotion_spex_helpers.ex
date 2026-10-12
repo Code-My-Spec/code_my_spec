@@ -70,6 +70,11 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   def the_coder_fixes_it(context, path, content) do
     task_id = take(context, context.coder, "fix_issue")
     PromotionHelpers.commit_work(context, context.agent_root, path, content)
+
+    # fix_issue now certifies the copy for QA the way ready_for_qa does
+    # (John, 2026-10-11): a clean analyzer run at HEAD, or it stays pending.
+    Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
+
     call(frame(context, context.coder), EvaluateTask, %{task_id: task_id})
     context
   end

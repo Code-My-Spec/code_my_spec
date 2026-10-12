@@ -64,6 +64,9 @@ defmodule CodeMySpecSpex.Story1002.Criterion3442Spex do
     scenario "a checkout with no recorded exunit problems" do
       given_ "a working copy with no recorded exunit problems", context do
         context = a_promotable_project(context)
+        copy_id = context.scope.active_working_copy_id
+        :ok = Environments.unregister({:working_copy, copy_id})
+        :ok = Environments.register({:working_copy, copy_id}, context.environment)
 
         assert [] == Problems.list_project_problems(context.scope, sources: ["exunit"]),
                "the premise failed: this project already carries exunit problems"

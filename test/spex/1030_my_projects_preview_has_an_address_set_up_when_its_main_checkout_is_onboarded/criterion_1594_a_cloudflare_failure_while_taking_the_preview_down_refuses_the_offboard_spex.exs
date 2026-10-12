@@ -34,12 +34,14 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
   @tunnel_id "a11ce000-0000-4000-8000-000000001594"
 
   spex "A Cloudflare failure while taking the preview down refuses the offboard and keeps the copy's record",
-       criterion: 1594 do
+    criterion: 1594 do
     scenario "Cloudflare fails while a shared copy is being discarded" do
       given_ "main is onboarded and holds a tunnel of its own", context do
         :ok = Environments.register(context.project.id, context.environment)
 
         reply = join_working_copy(context, "/workspace/main", "main")
+
+        :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
 
         :ok =
           Environments.write_file(
@@ -82,7 +84,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
         Phoenix.ChannelTest.assert_reply(ref, :ok)
 
         share_frame = %Frame{
-          assigns: %{current_scope: %{context.scope | active_working_copy_id: reply.working_copy_id}}
+          assigns: %{
+            current_scope: %{context.scope | active_working_copy_id: reply.working_copy_id}
+          }
         }
 
         {:reply, share_response, _frame} = ShareCopyApp.execute(%{}, share_frame)
@@ -142,12 +146,22 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
 
   defp cond_response(true, _cfd_tunnel?, %{method: "GET"} = conn, test_pid) do
     CodeMySpecSpex.Fixtures.notify(test_pid, {:cloudflare, "get_config", nil})
-    Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"config" => %{"ingress" => []}}})
+
+    Req.Test.json(conn, %{
+      "success" => true,
+      "errors" => [],
+      "result" => %{"config" => %{"ingress" => []}}
+    })
   end
 
   defp cond_response(true, _cfd_tunnel?, conn, test_pid) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
-    CodeMySpecSpex.Fixtures.notify(test_pid, {:cloudflare, "put_config", Jason.decode!(body)["config"]["ingress"]})
+
+    CodeMySpecSpex.Fixtures.notify(
+      test_pid,
+      {:cloudflare, "put_config", Jason.decode!(body)["config"]["ingress"]}
+    )
+
     Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{}})
   end
 
@@ -165,6 +179,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
   # unreachable account fails the ingress read, the ingress write and the DNS
   # lookup identically.
   defp cloudflare_failure_response(conn) do
-    Req.Test.json(conn, %{"success" => false, "errors" => [%{"code" => 1000, "message" => "down"}]})
+    Req.Test.json(conn, %{
+      "success" => false,
+      "errors" => [%{"code" => 1000, "message" => "down"}]
+    })
   end
 end

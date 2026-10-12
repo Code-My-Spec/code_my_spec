@@ -2219,7 +2219,7 @@ defmodule CodeMySpecSpex.Case do
       :code_my_spec,
       :provisioning_step_opts,
       Keyword.merge(previous,
-        run: Fixtures.fleet_runner(scope.environment, ssh_key_path: key),
+        run: Fixtures.fleet_runner(Fixtures.fixture_environment(scope), ssh_key_path: key),
         # The fleet box carries no private network address, so the registry
         # publishes on loopback there. `serve_one_registry/5` uses `put_new`,
         # which is what lets this stand.
@@ -2857,11 +2857,14 @@ defmodule CodeMySpecSpex.Case do
 
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
+    Fixtures.unregister_environment({:root, project.local_path})
+    Fixtures.register_environment({:root, project.local_path}, env)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, project.local_path}) end)
     Callbacks.on_exit(fn -> Fixtures.unregister_environment(project.id) end)
 
     context
     |> Map.put(:environment, env)
-    |> Map.put(:scope, %{scope | environment: env, cwd: env.cwd})
+    |> Map.put(:scope, Fixtures.put_fixture_environment(scope, env))
   end
 
   @doc """
@@ -2910,6 +2913,9 @@ defmodule CodeMySpecSpex.Case do
 
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
+    Fixtures.unregister_environment({:root, project.local_path})
+    Fixtures.register_environment({:root, project.local_path}, env)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, project.local_path}) end)
 
     Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous_opts)
@@ -2918,7 +2924,7 @@ defmodule CodeMySpecSpex.Case do
 
     context
     |> Map.put(:environment, env)
-    |> Map.put(:scope, %{scope | environment: env, cwd: env.cwd})
+    |> Map.put(:scope, Fixtures.put_fixture_environment(scope, env))
   end
 
   @doc """
@@ -6393,7 +6399,7 @@ defmodule CodeMySpecSpex.Case do
     # every replay ask for a bucket the cassette had never heard of.
     project = existing_or_created_project(scope, context, account, user, stub_dir)
 
-    # Register the env so Scope.for_local_project (called by LiveViews that
+    # Register the env so LocalScope.for_local_project (called by LiveViews that
     # rebuild scope from project) returns THIS env instead of a default
     # :local env. Registration is monitored — when the test process exits
     # the entry is cleaned up automatically.
@@ -6404,7 +6410,10 @@ defmodule CodeMySpecSpex.Case do
       user
       |> Fixtures.user_scope_fixture(account, project)
       |> Map.put(:cwd, stub_dir)
-      |> Map.put(:environment, env)
+      |> Fixtures.put_fixture_environment(env)
+
+    Fixtures.register_environment({:root, stub_dir}, env)
+    Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, stub_dir}) end)
 
     Fixtures.select_active_project(updated_scope, project.id)
 

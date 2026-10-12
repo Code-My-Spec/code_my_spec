@@ -40,12 +40,14 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
   @tunnel_id "a11ce000-0000-4000-8000-000000001590"
 
   spex "Asking to share a serving copy's app gives it a preview address",
-       criterion: 1590 do
+    criterion: 1590 do
     scenario "a copy on main's device asks for its own preview once it is serving" do
       given_ "main is onboarded and holds a tunnel of its own", context do
         :ok = Environments.register(context.project.id, context.environment)
 
         reply = join_working_copy(context, "/workspace/main", "main")
+
+        :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
 
         :ok =
           Environments.write_file(
@@ -137,12 +139,22 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
 
   defp cond_response(true, _cfd_tunnel?, %{method: "GET"} = conn, test_pid) do
     CodeMySpecSpex.Fixtures.notify(test_pid, {:cloudflare, "get_config", nil})
-    Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"config" => %{"ingress" => []}}})
+
+    Req.Test.json(conn, %{
+      "success" => true,
+      "errors" => [],
+      "result" => %{"config" => %{"ingress" => []}}
+    })
   end
 
   defp cond_response(true, _cfd_tunnel?, conn, test_pid) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
-    CodeMySpecSpex.Fixtures.notify(test_pid, {:cloudflare, "put_config", Jason.decode!(body)["config"]["ingress"]})
+
+    CodeMySpecSpex.Fixtures.notify(
+      test_pid,
+      {:cloudflare, "put_config", Jason.decode!(body)["config"]["ingress"]}
+    )
+
     Req.Test.json(conn, %{"success" => true, "errors" => [], "result" => %{}})
   end
 

@@ -78,9 +78,14 @@ defmodule CodeMySpecSpex.Story1024.Criterion2896Spex do
             ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: context.conversation.id]}"
           )
 
-        refute html =~ "stop what you are doing",
-               "the message is in the transcript over a machine that never got it, " <>
-                 "so the record itself is now wrong about what the agent knows"
+        pending =
+          html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test=agent-pending-message]")
+          |> Floki.text()
+
+        assert pending =~ "stop what you are doing"
+        assert pending =~ "Dispatch unconfirmed"
 
         {:ok, context}
       end

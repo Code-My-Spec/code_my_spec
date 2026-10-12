@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story668.Criterion5486Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "QA setup prompt omits the Existing Plan section when no plan is present", criterion: 315 do
+  spex "QA setup prompt omits the Existing Plan section when no plan is present",
+    criterion: 315 do
     scenario "No existing plan omits the Existing Plan section entirely" do
       given_ :qa_setup_task_started
 

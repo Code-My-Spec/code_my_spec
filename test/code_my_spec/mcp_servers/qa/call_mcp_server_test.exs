@@ -39,8 +39,8 @@ defmodule CodeMySpec.McpServers.Qa.CallMcpServerTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.{Frame, Response}
-  alias CodeMySpec.McpServers.Qa.Tools.CallMcpServer
   alias CodeMySpec.McpServers.Qa.CallMcpServerTest.PingServer
+  alias CodeMySpec.McpServers.Qa.Tools.CallMcpServer
 
   setup do
     scope = full_scope_fixture()

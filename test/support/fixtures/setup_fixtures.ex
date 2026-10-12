@@ -48,7 +48,7 @@ defmodule CodeMySpec.SetupFixtures do
   """
   @spec satisfy(Scope.t() | Environment.t(), [module()]) :: :ok
   def satisfy(%Scope{} = scope, steps) when is_list(steps) do
-    env = scope.environment
+    env = CodeMySpec.UsersFixtures.fixture_environment(scope)
     ensure_baseline_mix_exs(env)
     Enum.each(steps, &satisfy_step(env, &1))
 
@@ -56,7 +56,7 @@ defmodule CodeMySpec.SetupFixtures do
     # populate `valid` + `validation_errors`. The Setup.* step `check/1`
     # functions read those persisted records — they no longer touch disk.
     if scope.active_project_id do
-      {:ok, _} = FileSync.sync(scope)
+      {:ok, _} = FileSync.sync(scope, environment: env)
     end
 
     :ok

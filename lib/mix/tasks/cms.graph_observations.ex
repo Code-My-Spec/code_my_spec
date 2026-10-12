@@ -1,55 +1,27 @@
 defmodule Mix.Tasks.Cms.GraphObservations do
-  @shortdoc "Prove every graph observation reached a recompute"
+  @shortdoc "Verify that graph observations have completion evidence"
 
   @moduledoc """
-  Reads a log set and reports whether every observation the requirement graph
-  was told about was actually consumed by a recompute.
+  Checks that every announced observation has a subsequent completion record.
 
-      mix cms.graph_observations
+      mix cms.graph_observations --logs ~/.codemyspec/web.log
       mix cms.graph_observations --since 14:00 --logs ~/.codemyspec/web.log
 
-  ## What it is for
+  Accepts completion records from GraphWatcher and ShadowProjector. A raw
+  recompute log is not proof of completion: a later checkout or queue write
+  can still fail. Overlapping log files are deduplicated.
 
-  "The graph recomputes incrementally" was, until this existed, a claim checked
-  by reading counts and believing them. The counts cannot support it. A line
-  saying `recomputed 63 of 2078 requirements — 67 entity(ies) stale` is equally
-  consistent with one observation, with twenty, and with an observation that
-  arrived and was dropped on the floor — and a recompute that no observation
-  asked for looks exactly like one that three did.
+  Unanswered observations within 30 seconds of the log range's end are pending;
+  older ones are unaccounted for. Neither is a passing verification result.
+  Missing files, unnamed announcements, invalid arguments, and an empty range
+  also fail. A successful exit requires every announcement to be accounted for.
 
-  Measured before this: of eight recomputes in half an hour, three could be
-  tied to an issue by hand-comparing log timestamps against the database, and
-  five had no identifiable cause. That is not a report anyone should have to
-  produce twice.
+  Time-only filters apply to the time of day on every date in the log set;
+  use a full local ISO timestamp to select a particular day. This command
+  judges a captured range, not whether a live log has stopped progressing.
 
-  ## How the proof works
-
-  Every writer that publishes a graph input mints an id
-  (`GraphInputs.observation_id/0`) and logs it. `GraphWatcher` accumulates the
-  ids it receives, and stamps them as `obs=` metadata on every line the
-  recompute emits. So the chain is in the log:
-
-      [FileSync] announcing a graph change ... obs=3f2a91c4
-      [Requirements] recomputed 63 of 2078 ... obs=3f2a91c4,7b10de02
-
-  An observation is *consumed* when its id appears in a later recompute. One
-  that never does is an observation the graph was told about and did not act
-  on, which is the failure this is built to catch.
-
-  ## What it reports
-
-    * consumed — announced, then named by a recompute. The good case.
-    * dropped — announced and never named. A real defect.
-    * pending — announced within the debounce window at the end of the range,
-      so its recompute has not happened yet. Not a defect; excluded from the
-      verdict rather than counted against it, because a report that cries wolf
-      at its own boundary gets ignored.
-    * unprompted — a recompute that named no observation (`obs=none`). Not
-      necessarily wrong: a first read with nothing stored recomputes, and so
-      does a reader arriving after a restart. Worth seeing, because a *stream*
-      of them means something is invalidating the graph without announcing it.
-
-  Exits non-zero when anything was dropped, so it can gate.
+  This proves log accounting, not graph correctness. Use cms.graph_verify to
+  compare served requirements and offered work with a fresh computation.
   """
 
   use Boundary, classify_to: CodeMySpec
@@ -64,10 +36,13 @@ defmodule Mix.Tasks.Cms.GraphObservations do
 
   @impl Mix.Task
   def run(argv) do
-    {opts, _, _} =
+    {opts, args, invalid} =
       OptionParser.parse(argv,
         strict: [since: :string, logs: :keep, verbose: :boolean]
       )
+
+    if args != [] or invalid != [], do: Mix.raise("Invalid graph observation arguments")
+    validate_since!(opts[:since])
 
     logs = opts |> Keyword.get_values(:logs) |> paths()
     lines = read_lines(logs)
@@ -75,13 +50,24 @@ defmodule Mix.Tasks.Cms.GraphObservations do
     announced = announcements(lines, opts[:since])
     recomputes = recomputes(lines, opts[:since])
 
-    named = recomputes |> Enum.flat_map(& &1.obs) |> MapSet.new()
     last_at = lines |> List.last() |> timestamp()
 
-    {pending, settled} =
-      Enum.split_with(announced, &within_grace?(&1.at, last_at))
+    completed_at =
+      Enum.reduce(recomputes, %{}, fn completed, times ->
+        Enum.reduce(completed.obs, times, fn id, acc ->
+          Map.update(acc, id, completed.at, &max(&1, completed.at))
+        end)
+      end)
 
-    {consumed, dropped} = Enum.split_with(settled, &MapSet.member?(named, &1.id))
+    {consumed, unanswered} =
+      Enum.split_with(announced, fn announcement ->
+        case Map.fetch(completed_at, announcement.id) do
+          {:ok, at} -> at >= announcement.at
+          :error -> false
+        end
+      end)
+
+    {pending, dropped} = Enum.split_with(unanswered, &within_grace?(&1.at, last_at))
     unprompted = Enum.filter(recomputes, &(&1.obs == []))
 
     report(
@@ -95,7 +81,7 @@ defmodule Mix.Tasks.Cms.GraphObservations do
       opts[:verbose] == true
     )
 
-    if dropped != [], do: exit({:shutdown, 1})
+    if dropped != [] or pending != [] or announced == [], do: exit({:shutdown, 1})
   end
 
   defp paths([]), do: Enum.map(@default_logs, &Path.expand/1)
@@ -103,9 +89,9 @@ defmodule Mix.Tasks.Cms.GraphObservations do
 
   defp read_lines(paths) do
     paths
-    |> Enum.filter(&File.exists?/1)
     |> Enum.flat_map(&(&1 |> File.read!() |> String.split("\n")))
     |> Enum.filter(&String.starts_with?(&1, "ts="))
+    |> Enum.uniq()
     |> Enum.sort()
   end
 
@@ -116,20 +102,13 @@ defmodule Mix.Tasks.Cms.GraphObservations do
     |> Enum.filter(&(String.contains?(&1, "announcing a graph change") and after?(&1, since)))
     |> Enum.flat_map(fn line ->
       case obs_ids(line) do
-        [] -> []
+        [] -> Mix.raise("An announcement has no observation ID; evidence is incomplete")
         ids -> Enum.map(ids, &%{id: &1, at: timestamp(line), line: line})
       end
     end)
   end
 
-  # Two kinds of line name an observation, and both must count.
-  #
-  # `[Requirements] recomputed` is the watcher's own pass doing the work. But
-  # the architecture's normal case is a *reader* triggering the computation in
-  # its own process, which carries no metadata — so the watcher also writes
-  # `[GraphWatcher] accounted for`, saying which observations its pass answered
-  # for whatever did the computing. Counting only the first reported an
-  # observation as dropped that had in fact been applied nine seconds earlier.
+  # Completion is recorded only after all work for the drain succeeds.
   defp recomputes(lines, since) do
     lines
     |> Enum.filter(&(naming_line?(&1) and after?(&1, since)))
@@ -137,8 +116,8 @@ defmodule Mix.Tasks.Cms.GraphObservations do
   end
 
   defp naming_line?(line) do
-    String.contains?(line, "[Requirements] recomputed") or
-      String.contains?(line, "[GraphWatcher] accounted for")
+    String.contains?(line, "[GraphWatcher] accounted for") or
+      String.contains?(line, "[ShadowProjector] accounted for")
   end
 
   # `obs=none` is a recompute that named nothing, which is a real answer rather
@@ -161,7 +140,24 @@ defmodule Mix.Tasks.Cms.GraphObservations do
   end
 
   defp after?(_line, nil), do: true
+
+  defp after?(line, since) when byte_size(since) in [5, 8],
+    do: String.slice(timestamp(line) || "", 11, byte_size(since)) >= since
+
   defp after?(line, since), do: (timestamp(line) || "") >= since
+
+  defp validate_since!(nil), do: :ok
+
+  defp validate_since!(since) do
+    value = if byte_size(since) == 5, do: since <> ":00", else: since
+
+    valid? =
+      if byte_size(since) in [5, 8],
+        do: match?({:ok, _}, Time.from_iso8601(value)),
+        else: match?({:ok, _}, NaiveDateTime.from_iso8601(value))
+
+    unless valid?, do: Mix.raise("--since must be HH:MM, HH:MM:SS, or an ISO local timestamp")
+  end
 
   defp within_grace?(_at, nil), do: false
 
@@ -177,19 +173,19 @@ defmodule Mix.Tasks.Cms.GraphObservations do
   defp report(logs, announced, recomputes, consumed, dropped, pending, unprompted, verbose) do
     Mix.shell().info("""
 
-    Graph observations — did every announcement reach a recompute?
+    Graph observations — did every announcement reach completion?
     #{Enum.map_join(logs, "\n", &"  read #{&1}")}
 
       announced     #{length(announced)}
-      recomputes    #{length(recomputes)}
+      completions   #{length(recomputes)}
 
       consumed      #{length(consumed)}
       dropped       #{length(dropped)}#{flag(dropped)}
       pending       #{length(pending)}  (inside the debounce window at the end of the range)
-      unprompted    #{length(unprompted)}  (recomputes that named no observation)
+      unprompted    #{length(unprompted)}  (completions that named no observation)
     """)
 
-    show("UNACCOUNTED FOR — announced, never named by any recompute", dropped, verbose)
+    show("UNACCOUNTED FOR — announced, never named by any completion", dropped, verbose)
 
     if dropped != [] do
       Mix.shell().info("""
@@ -205,7 +201,7 @@ defmodule Mix.Tasks.Cms.GraphObservations do
       show("UNPROMPTED — recomputed with obs=none", unprompted, true)
     end
 
-    Mix.shell().info(verdict(dropped, announced))
+    Mix.shell().info(verdict(dropped, announced, pending))
   end
 
   defp flag([]), do: ""
@@ -235,11 +231,15 @@ defmodule Mix.Tasks.Cms.GraphObservations do
     Mix.shell().info("")
   end
 
-  defp verdict([], []), do: "  No observations in range — nothing to prove either way.\n"
+  defp verdict([], [], _pending),
+    do: "  No observations in range — nothing to prove either way.\n"
 
-  defp verdict([], _announced),
-    do: "  PASS — every settled observation was named by a recompute.\n"
+  defp verdict([], _announced, []),
+    do: "  PASS — every settled observation was named by a completion.\n"
 
-  defp verdict(dropped, _announced),
+  defp verdict([], _announced, _pending),
+    do: "  INCOMPLETE — observations are still pending; agreement is not established.\n"
+
+  defp verdict(dropped, _announced, _pending),
     do: "  FAIL — #{length(dropped)} observation(s) unaccounted for.\n"
 end

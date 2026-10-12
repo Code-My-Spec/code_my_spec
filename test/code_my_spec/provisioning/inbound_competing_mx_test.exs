@@ -22,6 +22,7 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
+
   import CodeMySpecSpex.Case,
     only: [fake_providers: 1, zone_exists: 2, zone_record_exists: 2, zone_records: 1]
 
@@ -32,7 +33,12 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
+
+    scope =
+      CodeMySpec.UsersFixtures.put_fixture_environment(
+        provisioning_scope_fixture(),
+        Environment.new(:local, tmp)
+      )
 
     {:ok, project} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})
@@ -63,7 +69,8 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
     end
 
     test "pauses instead of overwriting it", ctx do
-      assert {:paused, message} = Steps.run(:inbound, ctx.scope, inbound_probe_to: "sam@#{@domain}")
+      assert {:paused, message} =
+               Steps.run(:inbound, ctx.scope, inbound_probe_to: "sam@#{@domain}")
 
       assert message =~ "mx.competing-provider.example"
       assert message =~ @domain
@@ -158,8 +165,18 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
       resend_records = [%{"name" => "", "value" => "inbound-smtp.us-east-1.amazonaws.com"}]
 
       existing = [
-        %{"id" => "rec-1", "name" => @domain, "type" => "MX", "content" => "route1.mx.cloudflare.net"},
-        %{"id" => "rec-2", "name" => @domain, "type" => "MX", "content" => "inbound-smtp.us-east-1.amazonaws.com"},
+        %{
+          "id" => "rec-1",
+          "name" => @domain,
+          "type" => "MX",
+          "content" => "route1.mx.cloudflare.net"
+        },
+        %{
+          "id" => "rec-2",
+          "name" => @domain,
+          "type" => "MX",
+          "content" => "inbound-smtp.us-east-1.amazonaws.com"
+        },
         %{"id" => "rec-3", "name" => @domain, "type" => "TXT", "content" => "v=spf1 -all"}
       ]
 
@@ -170,7 +187,12 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
       resend_records = [%{"name" => "", "value" => "inbound-smtp.us-east-1.amazonaws.com"}]
 
       existing = [
-        %{"id" => "rec-2", "name" => @domain, "type" => "MX", "content" => "inbound-smtp.us-east-1.amazonaws.com"}
+        %{
+          "id" => "rec-2",
+          "name" => @domain,
+          "type" => "MX",
+          "content" => "inbound-smtp.us-east-1.amazonaws.com"
+        }
       ]
 
       assert [] = Steps.competing_records(@zone, resend_records, existing)

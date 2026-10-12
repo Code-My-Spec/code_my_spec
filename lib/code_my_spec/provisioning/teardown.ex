@@ -36,15 +36,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   require Logger
 
-  alias CodeMySpec.Provisioning.{
-    Cloudflare,
-    EnvironmentRepository,
-    Hetzner,
-    Resend,
-    Sequence,
-    StepRepository,
-    Storage
-  }
+  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Hetzner, Resend, Storage}
+  alias CodeMySpec.ProvisioningPlan.{Sequence, StepRepository}
 
   alias CodeMySpec.Users.Scope
 

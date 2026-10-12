@@ -17,22 +17,22 @@ defmodule CodeMySpec.Provisioning.CommitGeneratedConfigurationUnreachableEnviron
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Steps
 
-  # The same shape a harness-only project's `Environment.new(:local, project.
-  # local_path)` takes when `local_path` is nil — distinct from `nil` itself.
-  defp unreachable(scope), do: %{scope | environment: Environment.new(:local, nil)}
+  # An invalid selected-copy id resolves to no runtime, distinct from no
+  # selection (which can use the local project path).
+  defp unreachable(scope),
+    do: %{scope | active_working_copy_id: Ecto.UUID.generate()}
 
   test "does nothing, rather than crashing, when the environment cannot be reached" do
-    scope = unreachable(full_scope_fixture())
+    scope = unreachable(provisioning_scope_fixture())
 
     assert :ok = Steps.commit_generated_configuration(scope)
   end
 
   test "still commits setup's generated files when the environment is reachable" do
-    scope = full_scope_fixture()
-    tmp = scope.environment.cwd
+    scope = provisioning_scope_fixture()
+    tmp = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
 
     System.cmd("git", ["init"], cd: tmp)
     System.cmd("git", ["config", "user.email", "test@example.com"], cd: tmp)

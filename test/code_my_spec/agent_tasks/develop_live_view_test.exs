@@ -41,7 +41,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
   describe "command/3" do
     test "returns static development instructions with LiveView name" do
-      scope = full_scope_fixture()
+      scope = working_copy_scope_fixture()
       {liveview, _children} = create_liveview_with_children(scope)
       task = create_task(scope, liveview)
 
@@ -55,7 +55,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
   describe "evaluate/3" do
     test "returns {:ok, :valid} when all components have requirements satisfied" do
-      scope = full_scope_fixture()
+      scope = working_copy_scope_fixture()
       {liveview, children} = create_liveview_with_children(scope)
 
       for component <- [liveview | children] do
@@ -73,7 +73,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
     end
 
     test "returns {:ok, :invalid, feedback} when components have unsatisfied requirements" do
-      scope = full_scope_fixture()
+      scope = working_copy_scope_fixture()
       {liveview, children} = create_liveview_with_children(scope)
 
       for component <- [liveview | children] do
@@ -92,7 +92,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
     end
 
     test "returns :invalid when no files exist" do
-      scope = full_scope_fixture()
+      scope = working_copy_scope_fixture()
       {liveview, _children} = create_liveview_with_children(scope)
 
       liveview = Components.get_component(scope, liveview.id)

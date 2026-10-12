@@ -225,6 +225,11 @@ defmodule CodeMySpec.Stories do
   project and diverge later.
   """
   def get_story_by_number(scope, number), do: impl().get_story_by_number(scope, number)
+
+  @doc "Unpromoted stories assigned to `working_copy_id` and certified ready for QA, newest first."
+  def list_certified_on_copy(scope, working_copy_id),
+    do: impl().list_certified_on_copy(scope, working_copy_id)
+
   def get_story_by_number!(scope, number), do: impl().get_story_by_number!(scope, number)
 
   @doc """
@@ -315,6 +320,8 @@ defmodule CodeMySpec.Stories do
       |> maybe_put(:specs_ready_at, Keyword.get(opts, :at))
       |> maybe_put(:specs_ready_commit, Keyword.get(opts, :commit))
       |> maybe_put(:promoted_version, Keyword.get(opts, :promoted_version))
+      |> maybe_put(:promoted_working_copy_id, Keyword.get(opts, :promoted_working_copy_id))
+      |> maybe_put(:promoted_at, Keyword.get(opts, :promoted_at))
 
     update_story(scope, story, attrs)
   end
@@ -325,20 +332,63 @@ defmodule CodeMySpec.Stories do
       specs_ready_at: nil,
       specs_ready_commit: nil,
       qa_ready_commit: nil,
-      qa_ready_at: nil
+      qa_ready_at: nil,
+      qa_reviewed_commit: nil,
+      qa_reviewed_at: nil
     })
   end
 
   @doc """
   Stamps `story` ready for QA at `commit` — the commit `Promotion.certify/3`
   passed at. The only writer of `qa_ready_commit`; `ready_for_qa` reads it.
-  Cleared by `set_specs_ready(scope, story, false)`.
+  Cleared by `set_specs_ready(scope, story, false)` and `release_qa_ready/3`.
+
+  `reviewed` is `{commit, at}`: the certification a QA pass must have
+  reviewed. This one, unless certification carried an earlier one forward
+  because nothing QA exercises changed since (`Qa.StoryReviews.carry/3`).
   """
-  @spec set_qa_ready(Scope.t(), Story.t(), String.t(), DateTime.t()) ::
-          {:ok, Story.t()} | {:error, Ecto.Changeset.t()}
-  def set_qa_ready(%Scope{} = scope, %Story{} = story, commit, at \\ DateTime.utc_now())
+  @spec set_qa_ready(
+          Scope.t(),
+          Story.t(),
+          String.t(),
+          DateTime.t(),
+          {String.t() | nil, DateTime.t() | nil} | nil
+        ) :: {:ok, Story.t()} | {:error, Ecto.Changeset.t()}
+  def set_qa_ready(
+        %Scope{} = scope,
+        %Story{} = story,
+        commit,
+        at \\ DateTime.utc_now(),
+        reviewed \\ nil
+      )
       when is_binary(commit) do
-    update_story(scope, story, %{qa_ready_commit: commit, qa_ready_at: at})
+    {reviewed_commit, reviewed_at} = reviewed || {commit, at}
+
+    update_story(scope, story, %{
+      qa_ready_commit: commit,
+      qa_ready_at: at,
+      qa_reviewed_commit: reviewed_commit,
+      qa_reviewed_at: reviewed_at
+    })
+  end
+
+  @doc """
+  Takes back a stamp the story's branch has moved past, so the graph offers
+  `ready_for_qa` again. `keep_reviewed?` keeps the certification its current QA
+  pass reviewed, for certification at the new commit to carry forward when
+  nothing QA exercises changed; false forgets it, so QA runs again.
+  """
+  @spec release_qa_ready(Scope.t(), Story.t(), boolean()) ::
+          {:ok, Story.t()} | {:error, Ecto.Changeset.t()}
+  def release_qa_ready(%Scope{} = scope, %Story{} = story, keep_reviewed?) do
+    attrs = %{qa_ready_commit: nil, qa_ready_at: nil}
+
+    attrs =
+      if keep_reviewed?,
+        do: attrs,
+        else: Map.merge(attrs, %{qa_reviewed_commit: nil, qa_reviewed_at: nil})
+
+    update_story(scope, story, attrs)
   end
 
   @doc """
@@ -351,11 +401,31 @@ defmodule CodeMySpec.Stories do
 
   A story already stamped keeps its version: the promote that first carried
   it is the answer to "which promotion put this on main". `nil` (no version
-  to stamp) latches without stamping. `opts` are `:at` and `:commit`.
+  to stamp) latches without stamping. `opts` are `:at`, `:commit`, and
+  `:working_copy_id`. Promotion team and time survive assignment cleanup.
   """
   def mark_story_promoted(%Scope{} = scope, %Story{} = story, version, opts \\ []) do
     stamp = story.promoted_version || version
-    set_specs_ready(scope, story, true, Keyword.put(opts, :promoted_version, stamp))
+    opts = Keyword.put(opts, :promoted_version, stamp)
+
+    opts =
+      if stamp do
+        opts
+        |> Keyword.put(
+          :promoted_working_copy_id,
+          story.promoted_working_copy_id ||
+            Keyword.get(opts, :working_copy_id) || story.working_copy_id ||
+            scope.active_working_copy_id
+        )
+        |> Keyword.put(
+          :promoted_at,
+          story.promoted_at || Keyword.get(opts, :at) || DateTime.utc_now()
+        )
+      else
+        opts
+      end
+
+    set_specs_ready(scope, story, true, opts)
   end
 
   defp maybe_put(map, _key, nil), do: map

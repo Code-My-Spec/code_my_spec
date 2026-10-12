@@ -121,6 +121,11 @@ defmodule CodeMySpecWeb.FilesLive do
          ]
        )}
     else
+      # A harness copy is synced by its harness's manifests; the server has no
+      # tree to walk, and that is not a failure.
+      {:error, {:cannot_scan, _}} ->
+        {:noreply, assign(socket, sync_status: :harness, sync_result: nil)}
+
       {:error, reason} ->
         Logger.error("[FilesLive] Sync failed: #{inspect(reason)}")
 
@@ -206,6 +211,15 @@ defmodule CodeMySpecWeb.FilesLive do
             </li>
           </ul>
         </div>
+      </div>
+
+      <div
+        :if={@sync_status == :harness}
+        role="status"
+        data-test="sync-by-harness"
+        class="alert alert-info alert-soft mb-6"
+      >
+        This working copy is synced by its harness.
       </div>
 
       <div

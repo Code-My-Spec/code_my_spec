@@ -4,7 +4,7 @@ defmodule CodeMySpec.Resources do
 
   ## Two checks, one answer
 
-  **Per project** the expected set comes from `Provisioning.Sequence` and the
+  **Per project** the expected set comes from `ProvisioningPlan.Sequence` and the
   project's chosen options — the same source the run itself uses, so the
   checklist cannot disagree with the thing that does the work. A second
   manifest would be a second truth, and this page exists because the first one
@@ -32,36 +32,33 @@ defmodule CodeMySpec.Resources do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Configurations,
+      CodeMySpec.LocalScope,
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Provisioning.Hetzner,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
-      CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
   import Ecto.Query
 
-  alias CodeMySpec.Configurations
-  alias CodeMySpec.Configurations.ProjectConfiguration
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
-  alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Provisioning.Teardown
+  alias CodeMySpec.ProvisioningPlan
+  alias CodeMySpec.ProvisioningPlan.Step
   alias CodeMySpec.Repo
   alias CodeMySpec.Resources.Acknowledgement
   alias CodeMySpec.Resources.Inventory
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @type report :: %{
           status: :healthy | :unhealthy,
@@ -346,12 +343,12 @@ defmodule CodeMySpec.Resources do
   @spec project_report(Scope.t(), Project.t()) ::
           {:ok, report()} | {:error, :devops_off}
   def project_report(%Scope{} = scope, %Project{} = project) do
-    case devops(scope, project) do
+    case ProvisioningPlan.devops(scope, project) do
       :off ->
         {:error, :devops_off}
 
       _ ->
-        checklist = project_checklist(scope, project)
+        checklist = ProvisioningPlan.checklist(scope, project)
         problems = Enum.count(checklist, &(&1.state == :missing))
 
         {:ok,
@@ -366,238 +363,70 @@ defmodule CodeMySpec.Resources do
   end
 
   @doc """
-  The setup steps still missing before `environment` can take a deploy.
-
-  `project_report/2`'s checklist, narrowed to that environment's rows and the
-  project-wide ones every environment stands on. The deploy requirement gates
-  on this, so it and `devops_status` read one answer.
-
-  Read without seeding environment rows, because the requirement graph calls
-  it on every load and a read must not write. An environment with no row has
-  not started setup at all: `{:error, :not_started}`.
+  The setup steps `environment` still misses. See
+  `ProvisioningPlan.setup_missing/3`, which the deploy requirement reads directly.
   """
-  @spec setup_missing(Scope.t(), Project.t(), String.t()) ::
-          {:ok, [map()]} | {:error, :devops_off | :not_started}
-  def setup_missing(%Scope{} = scope, %Project{} = project, environment) do
-    case devops(scope, project) do
-      :off ->
-        {:error, :devops_off}
-
-      _ ->
-        checklist = project_checklist(scope, project, seed: false)
-
-        if Enum.any?(checklist, &(&1.environment == environment)),
-          do:
-            {:ok,
-             Enum.filter(
-               checklist,
-               &(&1.state == :missing and &1.environment in [nil, environment])
-             )},
-          else: {:error, :not_started}
-    end
-  end
+  defdelegate setup_missing(scope, project, environment), to: ProvisioningPlan
 
   # What each project meant to be deployed should have, from the same sequence
-  # the run uses. `plan/2` fills the gaps a run never reached, which is the
+  # the run uses. `ProvisioningPlan.plan/3` fills the gaps a run never reached, which is the
   # only reason a step nobody started can appear here at all.
   defp checklist(scope) do
-    for project <- deployable(scope), entry <- project_checklist(scope, project), do: entry
-  end
-
-  # 3f9bb7b7: `step.state` records the *last run's* verdict, not what exists —
-  # this module's own moduledoc already says so ("Never from stored step
-  # state"), and this function was the one place still reading `:done` as the
-  # *only* way a step counts as present. `:running`, `:errored` and `:paused`
-  # can all follow a step that already created something real (a server, a
-  # domain, a database) before the run stopped making progress. Measured on
-  # Broken Oaths: five of six non-`:done` steps held real, checkable
-  # resources — reported "nothing behind them" anyway, on the strength of
-  # `state` alone.
-  #
-  # Added to `:done`, not substituted for it. A step can read `:done` with
-  # `resources: []` for reasons that are not this bug: a pure verification
-  # step with nothing to point at, or a fixture that stamped completion
-  # directly without walking the real provisioning path that would have
-  # populated it. `state == :done` is still sufficient on its own — the
-  # thing this issue found insufficient was treating it as *necessary*.
-  #
-  # `step.resources` is what setup itself populates when it creates or adopts
-  # something (`entry/3` in `Provisioning`, from the persisted row's
-  # `resources` column) — the same field `project_scope/2`'s eventual reader
-  # would use to find the thing in its provider's own console. Reading it
-  # here, alongside state rather than instead of it, is asking the actual
-  # side without stopping trusting the stored one where it already agrees.
-  #
-  # A step correctly stays `:missing` when it has never produced anything and
-  # never reached `:done` either — `:not_started` or `:errored` before
-  # creating a resource alike.
-  defp project_checklist(scope, project, plan_opts \\ []) do
-    for step <-
-          Provisioning.plan(
-            project_scope(scope, project),
-            Provisioning.setup_options(project),
-            plan_opts
-          ) do
-      %{
-        project_id: project.id,
-        project_name: project.name,
-        key: step.key,
-        environment: step.environment,
-        state: if(step.state == :done or step.resources != [], do: :present, else: :missing),
-        detail: step.provider_error,
-        # The last run's verdict and when it was recorded, beside the
-        # presence verdict above rather than instead of it (82f09c49).
-        step_state: step.state,
-        recorded_at: if(step.state == :running, do: step.started_at, else: step.completed_at),
-        paused_instructions: step.paused_instructions
-      }
-    end
+    for project <- deployable(scope),
+        entry <- ProvisioningPlan.checklist(scope, project),
+        do: entry
   end
 
   defp deployable(scope) do
-    Enum.filter(Projects.list_projects(scope), &(devops(scope, &1) != :off))
+    Enum.filter(Projects.list_projects(scope), &(ProvisioningPlan.devops(scope, &1) != :off))
   end
 
-  # Read, never `get_or_create/1`. Loading a page must not write: the first
-  # version of this used the get-or-create and silently created a
-  # configuration row for every project in the account the moment anyone
-  # opened `/app/resources`.
-  #
-  # No row, or a row predating the column, means nobody has said this project
-  # ships — which is `:off`, the same answer the schema default gives.
-  defp devops(scope, project) do
-    Utils.rescued("Resources.devops", :off, fn ->
-      scope
-      |> project_scope(project)
-      |> Configurations.get()
-      |> ProjectConfiguration.devops_level()
-    end)
-  end
-
-  # An MCP call arriving over a harness connection carries that harness's own
-  # `environment` — `%Environment{type: :harness}`, correct for addressing
-  # *this session's* working copy (analysis, hooks) but not a general command
-  # runner: `CmsHarness.Environments.Harness.cmd/4` is a stub that always
-  # returns `{:error, :not_supported_on_harness}`. Provisioning steps that
-  # shell out (the repository push, most concretely) crashed on it —
-  # `String.trim(:error)`, the stub's return value pattern-matched as if it
-  # were `{output, status}` — rather than failing cleanly, because nothing
-  # upstream expects `cmd/4` to disagree with its own declared contract.
-  #
-  # Provisioning has always run against the project's own checkout, regardless
-  # of which session asked for it to run. Re-deriving `:local` here, the same
-  # way `Scope.for_local_project/2` does, is what makes an MCP-invoked run
-  # behave like the button on the page instead of like whichever connection
-  # issued it.
   @doc """
-  A scope acting as `project`, with an `environment` real commands can run in.
+  A caller scope acting as `project`, retaining only a working copy that
+  belongs to that project.
 
-  Public because `project_scope/2` is the one place this coercion lives —
-  anything that needs to run a provisioning-shaped action (a step, or a
-  generator write) against a specific project from an MCP call should build
-  its scope through this rather than re-deriving `:local` itself.
+  Execution environments are resolved by the action that needs them. This
+  function preserves caller identity and makes cross-project selection safe.
   """
   @spec project_scope(Scope.t(), Project.t()) :: Scope.t()
-  # Always re-derived for the *target* project rather than trusting the
-  # calling scope's own environment — a harness bound to project A iterating
-  # over project B must not run B's steps against A's checkout, which is what
-  # made this a separate branch from "keep what's already there" in the first
-  # place. But re-deriving used to mean `project.local_path` alone, which
-  # missed a project onboarded outside the usual local_path-setting flow
-  # (adopted, no persisted column) even while a harness was live-registered
-  # for it right now. `Scope.for_local_project/1` checks that registration
-  # first and falls back to `local_path` only if nothing answers, so this
-  # gets the same live-checkout preference the nil-environment clause below
-  # already has.
-  def project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
-    environment = harness_environment(scope.active_working_copy_id, project)
-
-    %Scope{
-      scope
-      | active_project: project,
-        active_project_id: project.id,
-        environment: environment
-    }
-  end
-
-  # A scope built from an HTTP session — `/app/resources`' own button, unlike
-  # `ProvisioningLive`'s — carries no environment at all: `Scope.for_user/1`
-  # never sets one. Left alone, every shelling-out step (repository push,
-  # deploy, backups) hit `is_nil(env(scope))` and errored with "no working
-  # environment" on every run this page started — even for a project whose
-  # checkout is real, current, and sitting right where `local_path` says.
-  # The persisted `:repository` row (a step re-verified on every run,
-  # deliberately — see `verify(:repository, …)`) then flipped from `:done` to
-  # `:error`, and the checklist read that as a fresh "Missing" (issue a2ea10a8).
-  #
-  # `ProvisioningLive.with_project_environment/2` already solved this for the
-  # per-project setup page by resolving through `Scope.for_local_project/2` —
-  # which checks a live-registered harness before falling back to
-  # `project.local_path`, so a currently-connected checkout wins over a stale
-  # column. This mirrors it so the account-wide "Run setup" button gets the
-  # same real environment instead of running blind.
-  #
-  # A project truly reachable nowhere (no registration, no `local_path`) still
-  # falls through with `environment: nil`, and the shelling-out steps still
-  # name that plainly rather than guessing — there is nothing to adopt here,
-  # only somewhere real to look first.
-  def project_scope(%Scope{environment: nil} = scope, project) do
-    case Scope.for_local_project(project) do
-      {:ok, %{environment: environment, cwd: cwd}} ->
-        %Scope{
+  def project_scope(%Scope{} = scope, %Project{id: project_id} = project) do
+    case matching_working_copy(scope.active_working_copy_id, project_id) do
+      {:ok, %{id: copy_id, root: root}} ->
+        %{
           scope
           | active_project: project,
-            active_project_id: project.id,
-            environment: environment,
-            cwd: cwd
+            active_project_id: project_id,
+            active_working_copy_id: copy_id,
+            cwd: root
         }
 
-      {:error, _reason} ->
-        %Scope{scope | active_project: project, active_project_id: project.id}
+      :error ->
+        %{
+          scope
+          | active_project: project,
+            active_project_id: project_id,
+            active_working_copy_id: nil,
+            cwd: local_cwd(project)
+        }
     end
   end
 
-  def project_scope(%Scope{} = scope, project) do
-    %Scope{scope | active_project: project, active_project_id: project.id}
-  end
-
-  # The caller's own connected working copy is the most specific answer there
-  # is to "where is this project's checkout" — more specific than
-  # `local_path`, which nothing sets for a project that has only ever been
-  # reached through its own harness connection and never through any other
-  # onboarding flow. `Scope.for_local_project/1`'s own registry check is
-  # spex-test-only (`CodeMySpec.Environments.register/2`'s own doc says so),
-  # so in production it always missed and fell straight to `local_path` —
-  # `nil` for a project like this, raising deep inside `Environments.Local.
-  # cmd/4` instead of ever finding the checkout that is live and connected
-  # right now. Confirmed live against Broken Oaths' real project: a harness
-  # joined with a known root, `local_path` empty, and `adopt_repository`
-  # died on "this environment has no working directory."
-  #
-  # Only trusted when the connected copy actually names *this* project,
-  # never a caller bound to project A iterating over project B — using A's
-  # checkout for B's steps is exactly the bug the surrounding clause exists
-  # to prevent, and a stale or wrong working-copy id must fall through to
-  # the same fallback a caller with none at all gets, not silently borrow
-  # the wrong root.
-  defp harness_environment(working_copy_id, %Project{id: project_id} = project)
-       when is_binary(working_copy_id) do
-    case WorkingCopies.fetch(working_copy_id) do
-      {:ok, %WorkingCopy{project_id: ^project_id, root: root}}
-      when is_binary(root) and root != "" ->
-        Environment.new(:local, root)
+  defp matching_working_copy(copy_id, project_id) when is_binary(copy_id) do
+    case WorkingCopies.fetch(copy_id) do
+      {:ok, %{id: ^copy_id, project_id: ^project_id} = copy} ->
+        {:ok, copy}
 
       _ ->
-        fallback_environment(project)
+        :error
     end
   end
 
-  defp harness_environment(_working_copy_id, project), do: fallback_environment(project)
+  defp matching_working_copy(_copy_id, _project_id), do: :error
 
-  defp fallback_environment(project) do
-    case Scope.for_local_project(project) do
-      {:ok, %{environment: environment}} -> environment
-      {:error, _reason} -> Environment.new(:local, project.local_path)
+  defp local_cwd(project) do
+    case LocalScope.environment(project) do
+      %{cwd: cwd} -> cwd
+      _ -> nil
     end
   end
 

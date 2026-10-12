@@ -11,25 +11,45 @@ defmodule CodeMySpec.AgentTasks.QaStoryNamesWhatChangedTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.WorkingCopies
 
   setup do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
 
-    scope = %{
-      scope
-      | environment: Environment.new(:local, CodeMySpec.TempFile.owned_dir("qa_changed"))
-    }
+    scope =
+      put_fixture_environment(
+        scope,
+        Environment.new(:local, CodeMySpec.TempFile.owned_dir("qa_changed"))
+      )
 
     story = story_fixture(scope, %{title: "Stripe connect"})
-    %{scope: scope, story: story, task: %{story_id: story.id}}
+
+    {:ok, copy} =
+      WorkingCopies.issue(scope, nil, device: CodeMySpec.DevicesFixtures.device_fixture(scope))
+
+    {:ok, _} =
+      AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "zai",
+        working_copy: "/tmp/qa-changes",
+        working_copy_id: copy.id,
+        role: :coding,
+        status: :running,
+        story_id: story.id
+      })
+
+    scope = %{scope | active_working_copy_id: copy.id}
+
+    %{scope: scope, story: story, task: %{id: Ecto.UUID.generate(), story_id: story.id}}
   end
 
-  defp resolved!(scope, story, title) do
+  defp submitted!(scope, story, title) do
     {:ok, issue} =
       Issues.create_issue(scope, %{
         title: title,
@@ -39,7 +59,10 @@ defmodule CodeMySpec.AgentTasks.QaStoryNamesWhatChangedTest do
       })
 
     {:ok, issue} = Issues.accept_issue(scope, issue)
-    {:ok, issue} = Issues.resolve_issue(scope, issue, "fixed #{title}")
+
+    {:ok, issue} =
+      Issues.submit_story_issue(scope, issue, %{revision: "fix-sha", evidence: "fixed #{title}"})
+
     issue
   end
 
@@ -57,20 +80,27 @@ defmodule CodeMySpec.AgentTasks.QaStoryNamesWhatChangedTest do
   end
 
   test "a first attempt gets no change list", ctx do
+    story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+    {:ok, _} = CodeMySpec.Stories.set_qa_ready(ctx.scope, story, "fix-sha")
     {:ok, prompt} = QaStory.command(ctx.scope, ctx.task)
     refute prompt =~ "since your last attempt"
   end
 
-  test "the re-offered prompt lists issues resolved and how to see commits since", ctx do
-    before = resolved!(ctx.scope, ctx.story, "Fixed before the attempt")
+  test "the re-offered prompt lists issues submitted and how to see commits since", ctx do
+    before = submitted!(ctx.scope, ctx.story, "Fixed before the attempt")
     past = DateTime.add(DateTime.utc_now(), -3600, :second)
-    Repo.update_all(from(i in Issue, where: i.id == ^before.id), set: [updated_at: past])
+    Repo.update_all(from(i in Issue, where: i.id == ^before.id), set: [story_submitted_at: past])
 
     attempt = attempt!(ctx.story, [before.id])
     later = DateTime.add(attempt.submitted_at, 1, :second)
-    after_attempt = resolved!(ctx.scope, ctx.story, "Webhook handler wired")
-    Repo.update_all(from(i in Issue, where: i.id == ^after_attempt.id), set: [updated_at: later])
+    after_attempt = submitted!(ctx.scope, ctx.story, "Webhook handler wired")
 
+    Repo.update_all(from(i in Issue, where: i.id == ^after_attempt.id),
+      set: [story_submitted_at: later]
+    )
+
+    story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+    {:ok, _} = CodeMySpec.Stories.set_qa_ready(ctx.scope, story, "fix-sha")
     {:ok, prompt} = QaStory.command(ctx.scope, ctx.task)
 
     assert prompt =~ "since your last attempt"

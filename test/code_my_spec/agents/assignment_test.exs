@@ -69,6 +69,81 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
   defp placement(story), do: Repo.get!(Story, story.id).working_copy_id
 
+  @tag criterion: 2083
+  test "assigning a story clears the issue bag and cancels open issue attempts", ctx do
+    first = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{status: :accepted})
+    second = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{status: :accepted})
+    copy_id = ctx.scope.active_working_copy_id
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, first.id, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy_id)
+
+    {:ok, coding} =
+      CodeMySpec.TaskOwner.add_task(ctx.scope, reload(ctx.coding), %{
+        status: :blocked,
+        issue_id: first.id,
+        requirement_name: "fix_issue",
+        session_type: CodeMySpec.AgentTasks.IssueFix
+      })
+
+    [attempt] = coding.tasks
+
+    pick(ctx.scope, ctx.first)
+
+    assert Agents.IssueAssignment.bag(ctx.scope, copy_id) == []
+
+    for member <- [ctx.coding, ctx.qa] do
+      assert reload(member).story_id == ctx.first.id
+      assert reload(member).issue_id == nil
+    end
+
+    for issue <- [first, second] do
+      remaining = CodeMySpec.Issues.get_issue(ctx.scope, issue.id)
+      assert remaining.assigned_working_copy_id == nil
+      assert remaining.status == :accepted
+    end
+
+    assert [%{id: id, status: :cancelled}] = reload(coding).tasks
+    assert id == attempt.id
+  end
+
+  test "assigning an issue clears the active story and queued reservations", ctx do
+    pick(ctx.scope, ctx.first)
+    copy_id = ctx.scope.active_working_copy_id
+    {:ok, _} = WorkingCopies.reserve_story(ctx.scope, copy_id, ctx.second.id)
+    issue = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{status: :accepted})
+
+    {:ok, coding} =
+      CodeMySpec.TaskOwner.add_task(ctx.scope, reload(ctx.coding), %{
+        status: :blocked,
+        story_id: ctx.first.id,
+        requirement_name: "ready_for_qa",
+        session_type: CodeMySpec.AgentTasks.ReadyForQa
+      })
+
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, issue.id, copy_id)
+
+    assert placement(ctx.first) == nil
+    assert placement(ctx.second) == nil
+
+    for member <- [ctx.coding, ctx.qa] do
+      assert reload(member).story_id == nil
+      assert reload(member).issue_id == issue.id
+    end
+
+    assert [%{status: :cancelled}] = reload(coding).tasks
+  end
+
+  @tag criterion: 2084
+  test "a refused story assignment preserves the issue bag", ctx do
+    issue = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{status: :accepted})
+    copy_id = ctx.scope.active_working_copy_id
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, issue.id, copy_id)
+    assert {:error, _} = Agents.Assignment.assign_team(ctx.scope, copy_id, -1)
+    assert [%{id: id}] = Agents.IssueAssignment.bag(ctx.scope, copy_id)
+    assert id == issue.id
+    assert reload(ctx.coding).issue_id == issue.id
+  end
+
   test "the coder and the QA on one copy share its story", ctx do
     pick(ctx.scope, ctx.first, ctx.coding)
 
@@ -114,6 +189,103 @@ defmodule CodeMySpec.Agents.AssignmentTest do
              call(SetActiveStory, scope, %{story_number: ctx.first.number}, nil)
 
     assert text =~ "No coding or QA agent"
+  end
+
+  test "promotion clears only the finished story and leaves its queue and history", ctx do
+    {:ok, main_copy} =
+      WorkingCopies.issue(ctx.scope, nil,
+        device: CodeMySpec.DevicesFixtures.device_fixture(ctx.scope)
+      )
+
+    {:ok, _} = WorkingCopies.designate_main(ctx.scope, main_copy.id)
+    main = agent(ctx.scope, :main, main_copy.id)
+    :ok = AgentPresence.absent(main)
+    pick(ctx.scope, ctx.first)
+
+    {:ok, _} =
+      WorkingCopies.reserve_story(ctx.scope, ctx.scope.active_working_copy_id, ctx.second.id)
+
+    {:ok, landed} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, ctx.first, "2.0.99")
+
+    assert :ok =
+             Agents.Assignment.notify_team_free(
+               ctx.scope,
+               ctx.scope.active_working_copy_id,
+               landed
+             )
+
+    for member <- [ctx.coding, ctx.qa] do
+      assert reload(member).story_id == nil
+      assert reload(member).team_free_at
+    end
+
+    assert placement(ctx.first) == nil
+    assert placement(ctx.second) == ctx.scope.active_working_copy_id
+    assert Repo.get!(Story, ctx.first.id).promoted_version == "2.0.99"
+    assert next(ctx.scope, ctx.coding) =~ "Waiting for main assignment"
+    assert [%{status: :undelivered}] = Agents.Offers.list_for_agent(main.id)
+
+    assert :ok =
+             Agents.Assignment.notify_team_free(
+               ctx.scope,
+               ctx.scope.active_working_copy_id,
+               landed
+             )
+
+    assert length(Agents.Offers.list_for_agent(main.id)) == 1
+
+    pick(ctx.scope, ctx.second)
+    assert reload(ctx.coding).team_free_at == nil
+
+    assert :ok =
+             Agents.Assignment.notify_team_free(
+               ctx.scope,
+               ctx.scope.active_working_copy_id,
+               landed
+             )
+
+    assert reload(ctx.coding).story_id == ctx.second.id
+    assert reload(ctx.qa).story_id == ctx.second.id
+    assert placement(ctx.second) == ctx.scope.active_working_copy_id
+  end
+
+  test "a promoted story leaves remaining issue work assigned", ctx do
+    pick(ctx.scope, ctx.first)
+
+    issue =
+      CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{
+        status: :accepted,
+        story_id: ctx.first.id
+      })
+
+    {:ok, _} =
+      Agents.assign_issue_to_working_copy(ctx.scope, issue.id, ctx.scope.active_working_copy_id)
+
+    {:ok, landed} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, ctx.first, "2.0.99")
+    :ok = Agents.Assignment.notify_team_free(ctx.scope, ctx.scope.active_working_copy_id, landed)
+
+    for member <- [ctx.coding, ctx.qa] do
+      assert reload(member).story_id == nil
+      assert reload(member).issue_id == issue.id
+      assert reload(member).team_free_at == nil
+    end
+
+    assert [%{id: id}] = Agents.assigned_issues(ctx.scope, ctx.scope.active_working_copy_id)
+    assert id == issue.id
+  end
+
+  test "an unlanded story cannot clear its team", ctx do
+    pick(ctx.scope, ctx.first)
+
+    assert :ok =
+             Agents.Assignment.notify_team_free(
+               ctx.scope,
+               ctx.scope.active_working_copy_id,
+               ctx.first
+             )
+
+    assert reload(ctx.coding).story_id == ctx.first.id
+    assert placement(ctx.first) == ctx.scope.active_working_copy_id
   end
 
   describe "main" do
@@ -265,6 +437,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
       product = agent(ctx.scope, :product)
 
       {:ok, 2} = EpicDispatch.place(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
+      :ok = Agents.assign_epic(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
 
       assert reload(ctx.coding).epic_id == ctx.epic.id
       assert reload(ctx.qa).epic_id == ctx.epic.id
@@ -274,6 +447,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
 
     test "an agent joining later inherits the epic", ctx do
       {:ok, _} = EpicDispatch.place(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
+      :ok = Agents.assign_epic(ctx.scope, ctx.epic.id, ctx.scope.active_working_copy_id)
 
       assert agent(ctx.scope, :coding).epic_id == ctx.epic.id
     end
@@ -288,6 +462,12 @@ defmodule CodeMySpec.Agents.AssignmentTest do
         )
 
       {:ok, _} = EpicDispatch.place(ctx.scope, ctx.epic.id, other.id)
+
+      assert reload(ctx.coding).story_id == ctx.first.id
+      assert placement(ctx.first) == ctx.scope.active_working_copy_id
+      assert placement(ctx.second) == other.id
+
+      :ok = Agents.assign_epic(ctx.scope, ctx.epic.id, other.id)
 
       coding = reload(ctx.coding)
       assert coding.epic_id == nil

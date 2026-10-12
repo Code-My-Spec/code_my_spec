@@ -27,7 +27,7 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
   @new_ip "5.161.1.1"
 
   setup do
-    scope = full_scope_fixture()
+    scope = provisioning_scope_fixture()
 
     {:ok, project} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @apex})

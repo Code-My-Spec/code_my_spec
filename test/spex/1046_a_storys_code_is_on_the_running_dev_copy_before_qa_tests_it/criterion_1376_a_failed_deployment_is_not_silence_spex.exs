@@ -31,13 +31,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 1]
+  import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.Fixtures.StoryIssueBag
+  alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -71,7 +73,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         write(context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":from_the_copy"))
         {_, 0} = git(context, context.agent_root, ["commit", "-q", "-am", "the story's work"])
 
-        story = a_promotable_story(context)
+        story = a_promotable_story(context, qa: :not_passed)
+
+        :ok =
+          StoryIssueBag.certify(
+            context.scope,
+            story.id,
+            PromotionHelpers.head_of(context, context.agent_root)
+          )
+
+        {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
         analyzers_are_current(context)
 
         {:ok, context |> Map.put(:agent, agent) |> Map.put(:story, story)}
@@ -89,7 +100,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
         # and the correction is the later of the two. Waiting for it first
         # means the log has definitely already landed.
         # The queue's "landed" message comes first; the correction follows it.
-        correction = correction(context.agent.id)
+        correction = correction(context.scope, context.agent.id)
 
         assert correction,
                "the restart failed outright and no correction reached the agent — " <>
@@ -156,19 +167,32 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   end
 
   defp promote(context, story_number) do
+    # A distinct merged tree requires the gate responses this scenario supplies.
+    PromotionHelpers.commit_work(
+      context,
+      context.running_root,
+      "main-only.txt",
+      "Independent main work\n"
+    )
+
     frame = %Anubis.Server.Frame{
       assigns: %{current_scope: context.scope, agent_id: context.agent.id}
     }
 
-    {:reply, response, _frame} = PromoteSync.execute(%{story_number: story_number}, frame)
-    response
+    task = Task.async(fn -> PromoteSync.execute(%{story_number: story_number}, frame) end)
+
+    with_task_cleanup(task, fn ->
+      PromotionHelpers.the_gate_answers(context)
+      {:reply, response, _frame} = Task.await(task, 30_000)
+      response
+    end)
   end
 
   # Standing in for the harness on the other end of `verb`, whose app comes
   # back down instead of serving. A failed reload is followed by a restart in
   # the same promote; only a restart that also fails is a failed deployment.
   defp answer_app_down(socket, verb) do
-    assert_push ^verb, %{"ref" => ref}, 5_000
+    assert_push(^verb, %{"ref" => ref}, 5_000)
 
     reply_ref =
       Phoenix.ChannelTest.push(socket, verb <> "_result", %{
@@ -190,6 +214,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   # See criterion 1170's own copy of this helper for the full rationale. The
   # running copy keeps its socket — this spec answers `restart_app` on it.
   defp a_promotable_project(context) do
+    PromotionHelpers.stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1376-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
 
@@ -202,6 +227,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
 
     {_, 0} = git(context, running_root, ["add", "-A"])
     {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
+    {_, 0} = git(context, running_root, ["tag", "-a", "v0.1.0", "-m", "v0.1.0"])
 
     agent_root = CodeMySpec.TempFile.dir("spex-1376-agent")
     {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", agent_root])
@@ -212,11 +238,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
     _ = out
 
     {running, running_socket} =
-      join_working_copy_socket(context, running_root, "the checkout the dev app runs in",
-        app_verbs: ["reload_app"]
+      CodeMySpecSpex.PromotionHelpers.join_main_working_copy_socket(
+        context,
+        running_root,
+        "the checkout the dev app runs in", app_verbs: ["reload_app"])
+
+    agent =
+      CodeMySpecSpex.PromotionHelpers.join_local_working_copy(
+        context,
+        agent_root,
+        "the coding agent's copy"
       )
 
-    agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    context = PromotionHelpers.a_gate_copy(context, running_root)
 
     {:ok, _view, html} =
       live(context.conn, "/app/projects/#{context.project.id}/working-copies")
@@ -245,15 +279,20 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
 
   defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
 
-  defp correction(agent_id) do
+  defp correction(scope, agent_id) do
     receive do
       {:agent_dispatch, ^agent_id, _ref, message} ->
-        correction(message, message =~ "Correction", agent_id)
+        correction(message, message =~ "Correction", scope, agent_id)
     after
       5_000 -> nil
     end
   end
 
-  defp correction(message, true, _agent_id), do: message
-  defp correction(_message, false, agent_id), do: correction(agent_id)
+  defp correction(message, true, _scope, _agent_id), do: message
+
+  defp correction(_message, false, scope, agent_id) do
+    :ok = Fixtures.put_agent_mid_turn(scope, agent_id)
+    :ok = Fixtures.end_turn(scope, agent_id)
+    correction(scope, agent_id)
+  end
 end

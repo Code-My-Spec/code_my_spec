@@ -70,6 +70,26 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     pid
   end
 
+  test "equal satisfaction cannot hide changed stored details", ctx do
+    import Ecto.Query
+    project_live(ctx.scope)
+    project_shadow(ctx.scope)
+    source = Shadow.event_target()
+
+    {changed, _} =
+      CodeMySpec.Repo.update_all(
+        from(n in source,
+          where: n.project_id == ^ctx.scope.active_project_id and n.name == "personas_complete"
+        ),
+        set: [details: %{"waiting_on" => "verification probe"}]
+      )
+
+    assert changed > 0
+    report = Shadow.diff(ctx.scope)
+    assert report.disagree > 0
+    assert Enum.any?(report.sample, &String.contains?(&1, "details"))
+  end
+
   describe "a seeded shadow" do
     test "agrees with the live projection on a project it has never seen", ctx do
       scope = ctx.scope

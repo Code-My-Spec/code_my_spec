@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1669Spex do
         {reply, socket} =
           join_working_copy_socket(context, "/tmp/spex-1669-#{System.unique_integer()}", "c1669")
 
-        scope = %{context.scope | active_working_copy_id: reply[:working_copy_id]}
+        scope = Fixtures.in_memory_copy(context, reply[:working_copy_id])
         context = Map.merge(context, %{scope: scope, socket: socket})
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])

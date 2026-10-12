@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3566Spex do
 
       given_ "the completed turn has been reported and the agent is idle", context do
         :ok = Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == context.requests_before
         {:ok, context}
       end
@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3566Spex do
       then_ "the same process handles the later turn with its earlier context intact",
             context do
         assert Process.alive?(context.engine_pid)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.agent_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert Enum.sort(Machine.running()) == context.roster_before
         assert {:ok, history} = Machine.history(context.agent_id)
         assert {:ok, previous_history} = context.history_before

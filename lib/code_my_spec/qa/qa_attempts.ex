@@ -12,10 +12,9 @@ defmodule CodeMySpec.Qa.QaAttempts do
   require Logger
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
-  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Qa.StoryReviews
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Sessions.Session
@@ -43,19 +42,23 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
     with :ok <- validate_findings_path(params) do
       Repo.transaction(fn ->
-        with {:ok, {story_id, agent_id}} <- resolve_task_info(scope, task_id),
+        with {:ok, {story_id, agent_id, task}} <- resolve_task_info(scope, task_id),
+             {:ok, review, current?} <- StoryReviews.fetch(scope, task, story_id),
              parent_attempt_id <- find_latest_attempt_id(story_id),
              attrs <- build_attrs(params, story_id, agent_id, task_id, parent_attempt_id),
+             attrs <-
+               Map.merge(attrs, %{
+                 reviewed_commit: review.commit,
+                 reviewed_submissions: review.submissions,
+                 review_started_at: review.started_at,
+                 review_certified_at: review.certified_at,
+                 stale: not current?
+               }),
              {:ok, attempt} <- insert_attempt(attrs) do
-          # The submission is the moment attribution is knowable: the agent has
-          # just declared that these issues are the findings of a pass over
-          # this story. `story_issues_resolved` gates the story's release on
-          # them, and asking the agent to remember `story_id` on every
-          # `create_issue` call did not work — every accepted issue on this
-          # project reached triage with none. Only `:app` findings are
-          # attributed; see `Issues.attribute_to_story/3`.
-          Issues.attribute_to_story(scope, attempt.issue_ids || [], story_id)
-          wait_on_filed_issues(scope, attempt, agent_id)
+          apply_review_findings(scope, attempt, review, current?)
+
+          complete_review_task(scope, task_id, agent_id)
+          attempt
         else
           {:error, reason} -> Repo.rollback(reason)
         end
@@ -64,53 +67,30 @@ defmodule CodeMySpec.Qa.QaAttempts do
     end
   end
 
-  # An attempt that did not pass and named issues is waiting on those issues.
-  #
-  # Without this the story is handed straight back. `qa_complete` stays
-  # unsatisfied and actionable, so the graph re-offers the same story against
-  # the same code the moment QA finishes failing it — and QA, correctly, says
-  # "this needs a coding fix, not another QA pass". The only way it had to say
-  # so was a tap-out, which is a human gate.
-  #
-  # Measured on story 1053, 2026-09-22: three rounds of QA finding a real
-  # regression, filing it, tapping out, a human denying the tap-out once coding
-  # had landed the fix. Every technical step either side was autonomous and
-  # correct; the three denials were mechanical.
-  #
-  # Blocking on the issue lets the system make the handoff itself — resolving it
-  # releases the block and offers QA a turn (`TaskOwner.blocker_resolved/4`).
-  #
-  # Here rather than in the tool, because this is where `story_id` and
-  # `agent_id` are already resolved and where attribution already happens; the
-  # tool layer would have to look the owner up again to do the same thing.
-  #
-  # The obvious alternative does not exist: `qa_complete` (id 4) cannot take
-  # `story_issues_resolved` (id 6) as a prerequisite, because 6 already depends
-  # on 4 and the graph would cycle.
-  #
-  # Only on an open issue at or above the project's `fix_issues_min_severity`.
-  # Nothing offers a fix below it (`story_issues_resolved` counts only what is
-  # at it), so a block there never releases: QA e62dbe27 parked stories 36 and
-  # 42 on two lows and the copy stopped. Such an issue stays recorded; the task
-  # stays active and the attempt's `wait` says why, for the tool to tell QA.
-  defp wait_on_filed_issues(_scope, %{status: :pass} = attempt, _agent_id), do: attempt
+  # Historical reviews cannot attribute findings or return newer fixes.
+  defp apply_review_findings(_scope, _attempt, _review, false), do: :ok
 
-  defp wait_on_filed_issues(
-         scope,
-         %{issue_ids: [_ | _] = ids, task_id: task_id} = attempt,
-         agent_id
-       )
-       when is_binary(task_id) and is_binary(agent_id) do
-    threshold = Configurations.fix_issues_min_severity(scope)
-    issues = ids |> Enum.map(&Issues.get_issue(scope, &1)) |> Enum.reject(&is_nil/1)
-
-    case Enum.find(issues, &Issue.blocking?(&1, threshold)) do
-      nil -> %{attempt | wait: {:not_blocking, threshold, issues}}
-      issue -> %{attempt | wait: block_on(scope, attempt, agent_id, issue)}
-    end
+  defp apply_review_findings(scope, attempt, review, true) do
+    Issues.attribute_to_story(scope, attempt.issue_ids || [], attempt.story_id)
+    rework_reviewed_findings(scope, attempt, review)
   end
 
-  defp wait_on_filed_issues(_scope, attempt, _agent_id), do: attempt
+  defp rework_reviewed_findings(_scope, %{status: :pass}, _review), do: :ok
+
+  defp rework_reviewed_findings(scope, attempt, review) do
+    reviewed_ids = Enum.filter(attempt.issue_ids || [], &Map.has_key?(review.submissions, &1))
+
+    case Issues.rework_story_submissions(
+           scope,
+           attempt.story_id,
+           review.submissions,
+           reviewed_ids,
+           "Story QA #{attempt.id}: #{attempt.status}"
+         ) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
 
   # A read on the `Agents.Agent` leaf; Qa sits below Agents.
   defp agent_in_project(%Scope{active_project_id: project_id}, agent_id)
@@ -123,15 +103,28 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   defp agent_in_project(_scope, _agent_id), do: nil
 
-  defp block_on(scope, attempt, agent_id, issue) do
-    with %Agent{} = agent <- agent_in_project(scope, agent_id),
-         {:ok, _} <-
-           TaskOwner.block_task(scope, agent, attempt.task_id, :issue, issue.id,
-             reason: "waiting on issue #{issue.id}"
-           ) do
-      {:issue, issue.id}
-    else
-      _ -> nil
+  defp complete_review_task(scope, task_id, agent_id) do
+    owner = agent_in_project(scope, agent_id) || session_owner(scope, task_id)
+
+    case owner && TaskOwner.complete_task(scope, owner, task_id, :completed) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+      nil -> Repo.rollback(:qa_task_owner_not_found)
+    end
+  end
+
+  defp session_owner(scope, task_id) do
+    ids_and_tasks =
+      Repo.all(
+        from(s in Session,
+          where: s.project_id == ^scope.active_project_id,
+          select: {s.id, s.tasks}
+        )
+      )
+
+    case Enum.find(ids_and_tasks, fn {_id, tasks} -> find_task(List.wrap(tasks), task_id) end) do
+      {id, _} -> Repo.get(Session, id)
+      nil -> nil
     end
   end
 
@@ -142,9 +135,9 @@ defmodule CodeMySpec.Qa.QaAttempts do
   # After the transaction commits, not inside it: `GraphWatcher` recomputes on
   # this, and a recompute that read the attempt before it committed would decide
   # from a row that might roll back. Only on success for the same reason.
-  # An event rather than a mark, because there is nothing to ask: a submitted
-  # attempt *is* what `qa_complete` reads, and `Requirements.Handlers` settles
-  # that requirement across every story from the newest attempt each one has.
+  # The event also retains its story fallback mark: a failed review can reset
+  # submission nodes and certification inside this same transaction. The narrow
+  # recompute must run after commit, alongside the updated QA verdict.
   # The entities ride along so a consumer with no handler for this kind still
   # falls back to recomputing the story.
   defp announce_graph_change(scope, {:ok, _attempt} = result) do
@@ -240,7 +233,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> by_story(story_id)
     |> by_project(scope)
     |> order_by([a], desc: a.inserted_at, desc: a.id)
-    |> preload(:invalidations)
+    |> preload([:invalidations])
     |> Repo.all()
   end
 
@@ -372,7 +365,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
     do: {:error, :no_active_project}
 
   defp resolve_task_info(%Scope{} = scope, task_id) when is_binary(task_id) do
-    project_id = scope.active_project.id
+    project_id = scope.active_project_id
 
     # `tasks` is `{:array, :map}` (PG `jsonb[]`), not a single `jsonb`,
     # so the `@>` operator doesn't apply. Select only the `tasks`
@@ -392,7 +385,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
             {:error, {:issue_task_requires_issue_submission, issue_id}}
 
           story_id = task_field(task, :story_id) ->
-            {:ok, {story_id, owner_of(task, task_id, agents)}}
+            {:ok, {story_id, owner_of(task, task_id, agents), task}}
 
           true ->
             {:error, :task_has_no_story}

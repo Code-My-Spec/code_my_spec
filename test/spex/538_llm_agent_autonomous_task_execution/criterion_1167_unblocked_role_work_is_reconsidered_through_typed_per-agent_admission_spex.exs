@@ -126,8 +126,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
       then_ "only the existing eligible coding engine receives one turn and neither role gets a task assigned",
             context do
         assert Fixtures.role_queue_size(context.scope, context.coding_id) > 0
-        assert {:ok, %{busy?: true, queued: 0}} = Machine.status(context.coding_id)
-        assert {:ok, %{busy?: false, queued: 0}} = Machine.status(context.qa_id)
+        assert {:ok, %{busy?: true}} = Machine.status(context.coding_id)
+        assert {:ok, %{busy?: false}} = Machine.status(context.qa_id)
         assert Enum.sort(Machine.running()) == context.running_before
         [request] = HeldProvider.seen()
         prompt = request |> Jason.decode!() |> Map.fetch!("messages") |> Jason.encode!()

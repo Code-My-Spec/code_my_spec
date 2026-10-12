@@ -26,15 +26,29 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   @doc "Insert a new `:running` run."
   @spec start_run(Scope.t(), map()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
   def start_run(%Scope{active_project_id: project_id} = scope, attrs) do
-    %Run{}
-    |> Run.changeset(
-      attrs
-      |> Map.put(:project_id, project_id)
-      |> Map.put(:working_copy_id, scope.active_working_copy_id)
-      |> Map.put_new(:status, :running)
-      |> Map.put_new(:started_at, DateTime.utc_now())
-    )
-    |> Repo.insert()
+    Repo.transaction(fn ->
+      CodeMySpec.Analysis.ValidationHolds.lock(project_id)
+      hold = CodeMySpec.Analysis.ValidationHolds.admit!(scope, attrs)
+
+      changeset =
+        %Run{}
+        |> Run.changeset(
+          attrs
+          |> Map.put(:project_id, project_id)
+          |> Map.put(:working_copy_id, scope.active_working_copy_id)
+          |> Map.put_new(:status, :running)
+          |> Map.put_new(:started_at, DateTime.utc_now())
+        )
+
+      case Repo.insert(changeset) do
+        {:ok, run} ->
+          CodeMySpec.Analysis.ValidationHolds.bind!(hold, run)
+          run
+
+        {:error, error} ->
+          Repo.rollback(error)
+      end
+    end)
   end
 
   @doc "Mark a run finished (`:completed` or `:failed`) with output/stats."
@@ -48,7 +62,15 @@ defmodule CodeMySpec.Analysis.RunsRepository do
       |> Map.put_new(:finished_at, DateTime.utc_now())
     )
     |> Repo.update()
+    |> report_terminal_hold()
   end
+
+  defp report_terminal_hold({:ok, run} = result) do
+    CodeMySpec.Analysis.ValidationHolds.terminal(run)
+    result
+  end
+
+  defp report_terminal_hold(error), do: error
 
   @doc """
   Record the git state a harness reported for `run` (`Run.tree_changeset/2`).
@@ -142,8 +164,9 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   @doc """
   How many full runs of `source` on this working copy failed to run at
-  `commit`: started there, or opened since `since` and failed before they could
-  say where they started (an analyzer that would not boot). Runs its harness
+  `commit` during the attempt beginning at `since`: started there, or failed
+  before they could say where they started (an analyzer that would not boot).
+  Earlier failed attempts do not prevent a fresh promotion from retrying. Runs its harness
   going away orphaned (`stats.orphaned`) are not counted — they say nothing about
   whether the analyzer can run there.
   """
@@ -154,9 +177,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     Run
     |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
     |> where([r], r.status == :failed)
+    |> where([r], r.inserted_at >= ^since)
     |> where(
       [r],
-      r.start_commit == ^commit or (is_nil(r.start_commit) and r.inserted_at >= ^since)
+      r.start_commit == ^commit or is_nil(r.start_commit)
     )
     |> where(
       [r],
@@ -510,6 +534,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
         ]
       )
 
+    Enum.each(failed, &CodeMySpec.Analysis.ValidationHolds.terminal/1)
     {:ok, failed}
   end
 
@@ -562,6 +587,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
           stats: orphaned(:server_restarted)
         ]
       )
+
+    Enum.each(failed, &CodeMySpec.Analysis.ValidationHolds.terminal/1)
 
     failed
     |> Enum.map(&{&1.id, &1.source, &1.working_copy_id})

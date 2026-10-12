@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story810.Criterion6532Spex do
     criterion: 661 do
     scenario "No registered QA sub-agent — directive says Agent spawn, no SendMessage to a stale id" do
       given_ "a live harness serves the checkout", context do
-        {:ok, HarnessHooks.ensure_live_harness(context)}
+        {:ok, HarnessHooks.ensure_live_harness(context, environment: :in_memory)}
       end
 
       given_ "a session exists with NO registered sub-agents for any role",
