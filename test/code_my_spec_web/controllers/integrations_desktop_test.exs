@@ -2,17 +2,18 @@ defmodule CodeMySpecWeb.IntegrationsDesktopTest do
   @moduledoc """
   On the desktop the provider's page opens in the system browser, whose
   cookies are not the window's, so the callback finds its flow by `state`
-  (CodeMySpecDesktop.OAuthHandoff) instead of the session.
+  (CodeMySpec.Integrations.OAuthHandoff) instead of the session.
   """
   # Not async: flips the app-wide `:env`.
   use CodeMySpecTest.ConnCase, async: false
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpecDesktop.{Identity, OAuthHandoff}
+  alias CodeMySpec.Integrations.OAuthHandoff
+  alias CodeMySpec.UserPreferences.DesktopUser
 
   setup %{conn: conn} do
-    user_fixture(%{email: Identity.email()})
+    user_fixture(%{email: DesktopUser.email()})
     previous = Application.get_env(:code_my_spec, :env)
     Application.put_env(:code_my_spec, :env, :desktop)
     on_exit(fn -> Application.put_env(:code_my_spec, :env, previous) end)

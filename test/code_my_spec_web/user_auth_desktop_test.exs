@@ -6,12 +6,12 @@ defmodule CodeMySpecWeb.UserAuthDesktopTest do
   import CodeMySpec.UsersFixtures
   import Phoenix.LiveViewTest
 
-  alias CodeMySpecDesktop.Identity
+  alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpecWeb.UserAuth
   alias Phoenix.LiveView
 
   setup %{conn: conn} do
-    user = user_fixture(%{email: Identity.email()})
+    user = user_fixture(%{email: DesktopUser.email()})
     %{user: user, conn: init_test_session(conn, %{})}
   end
 

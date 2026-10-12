@@ -12,9 +12,9 @@ defmodule CodeMySpecDesktop.FirstBoot do
   alias CodeMySpec.Oauth.AccessToken
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
+  alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users
   alias CodeMySpec.Users.User
-  alias CodeMySpecDesktop.Identity
 
   def child_spec(_), do: %{id: __MODULE__, start: {__MODULE__, :run, []}, restart: :temporary}
 
@@ -48,8 +48,8 @@ defmodule CodeMySpecDesktop.FirstBoot do
   end
 
   defp ensure_user do
-    with nil <- Users.get_user_by_email(Identity.email()) do
-      {:ok, user} = Users.register_user(%{email: Identity.email()})
+    with nil <- Users.get_user_by_email(DesktopUser.email()) do
+      {:ok, user} = Users.register_user(%{email: DesktopUser.email()})
       user |> User.confirm_changeset() |> Repo.update!()
     end
   end

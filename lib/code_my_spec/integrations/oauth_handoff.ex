@@ -1,4 +1,4 @@
-defmodule CodeMySpecDesktop.OAuthHandoff do
+defmodule CodeMySpec.Integrations.OAuthHandoff do
   @moduledoc """
   Holds an OAuth flow's state between the desktop window that starts it and
   the system browser that finishes it (bb8bc042).

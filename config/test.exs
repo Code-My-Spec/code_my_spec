@@ -756,12 +756,12 @@ config :code_my_spec, :agent_eval_settle_timeout, 300_000
 config :code_my_spec, :eval_artifact_staleness, :warn
 
 # A test that runs a desktop OAuth connect must not open the machine's browser.
-config :code_my_spec, CodeMySpecDesktop.Browser, launch: false
+config :code_my_spec, CodeMySpec.Utils.Browser, launch: false
 
-# Resend client registration (CodeMySpecDesktop.OAuthClients) never reaches
+# Resend client registration (CodeMySpec.Integrations.DesktopClients) never reaches
 # Resend from a test; tests stub it with Req.Test.
-config :code_my_spec, CodeMySpecDesktop.OAuthClients,
-  plug: {Req.Test, CodeMySpecDesktop.OAuthClients}
+config :code_my_spec, CodeMySpec.Integrations.DesktopClients,
+  plug: {Req.Test, CodeMySpec.Integrations.DesktopClients}
 
 config :code_my_spec, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth,
   plug: {Req.Test, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth}

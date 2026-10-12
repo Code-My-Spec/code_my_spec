@@ -1,7 +1,7 @@
-defmodule CodeMySpecDesktop.OAuthHandoffTest do
+defmodule CodeMySpec.Integrations.OAuthHandoffTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpecDesktop.OAuthHandoff
+  alias CodeMySpec.Integrations.OAuthHandoff
 
   setup do
     %{server: start_supervised!({OAuthHandoff, name: nil})}

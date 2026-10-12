@@ -1,4 +1,4 @@
-defmodule CodeMySpecDesktop.OAuthClients do
+defmodule CodeMySpec.Integrations.DesktopClients do
   @moduledoc """
   The OAuth clients the desktop app connects integrations with (bb8bc042).
 
@@ -19,8 +19,8 @@ defmodule CodeMySpecDesktop.OAuthClients do
   `CodeMySpec.Integrations` merges over each provider's own config.
   """
 
-  alias CmsHarness.Config
   alias CodeMySpec.Integrations.Providers.{Cloudflare, Google, Resend}
+  alias CodeMySpec.Paths
 
   require Logger
 
@@ -131,7 +131,7 @@ defmodule CodeMySpecDesktop.OAuthClients do
     end
   end
 
-  defp resend_path, do: Path.join(Config.local_state_dir(), "resend_client.json")
+  defp resend_path, do: Path.join(Paths.local_state_dir(), "resend_client.json")
 
   defp req_options, do: Application.get_env(:code_my_spec, __MODULE__, [])
 end

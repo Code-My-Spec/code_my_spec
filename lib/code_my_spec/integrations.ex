@@ -31,6 +31,7 @@ defmodule CodeMySpec.Integrations do
     top_level?: true,
     deps: [
       CodeMySpec.Encrypted.Binary,
+      CodeMySpec.Paths,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
       CodeMySpec.Users,

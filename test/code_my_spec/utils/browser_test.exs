@@ -1,10 +1,10 @@
-defmodule CodeMySpecDesktop.BrowserTest do
+defmodule CodeMySpec.Utils.BrowserTest do
   # Not async: sets CMS_NO_BROWSER, which is process-global.
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
-  alias CodeMySpecDesktop.Browser
+  alias CodeMySpec.Utils.Browser
 
   test "each OS's opener" do
     url = "http://localhost:4000"

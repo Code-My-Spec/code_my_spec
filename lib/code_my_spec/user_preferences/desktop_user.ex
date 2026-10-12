@@ -1,4 +1,4 @@
-defmodule CodeMySpecDesktop.Identity do
+defmodule CodeMySpec.UserPreferences.DesktopUser do
   @moduledoc """
   The desktop build's one user: `<os user>@localhost`, put on every browser
   scope without a login.

@@ -36,7 +36,7 @@ config :paper_trail, strict_mode: true
 config :code_my_spec, secure_session_cookie: false
 
 # Integration clients made for an app with no server secret, baked in at build
-# time (CodeMySpecDesktop.OAuthClients). Google's "Desktop app" secret is not
+# time (CodeMySpec.Integrations.DesktopClients). Google's "Desktop app" secret is not
 # confidential by Google's own definition; it still comes from sops/CI secrets
 # rather than the repo. Cloudflare's client is public: an id, no secret.
 config :code_my_spec, :desktop_oauth_clients,
