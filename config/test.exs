@@ -356,6 +356,8 @@ config :code_my_spec, :harness_connect_headers, CmsHarnessTest.ConnectHeaders
 config :code_my_spec, CmsHarness.Device.Client.Http,
   plug: {Req.Test, CmsHarness.Device.Client.Http}
 
+config :code_my_spec, CmsHarness.Mcp.Http, plug: {Req.Test, CmsHarness.Mcp.Http}
+
 # The CLI providers' answer to the pin above. A project that connected OpenAI
 # launches its agents on `codex exec`, and a spex that talked to one ran it for
 # real on every analysis. Replayed from a recording; an unrecorded call raises.

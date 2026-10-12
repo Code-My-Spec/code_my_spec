@@ -14,8 +14,7 @@ defmodule CmsHarness.Mcp do
   proven by the proxy and is lifted from it verbatim: `server_url <>
   "/mcp/harness"`, a bearer token from `Token.access_token/1`, and the harness
   id in a header. What is added is a session — `initialize`, keep the id,
-  `notifications/initialized`, then `tools/call` — and `Anubis.Client` with its
-  streamable-HTTP transport already does all of it.
+  `notifications/initialized`, then `tools/call` — which `Mcp.Http` does.
 
   ## Why a client and not one more REST endpoint
 
@@ -90,9 +89,8 @@ defmodule CmsHarness.Mcp do
 
   def call(client, tool, arguments, []), do: Transport.impl().call(client, tool, arguments)
 
-  # A caller with a deadline of its own. Without one the MCP client applies
-  # thirty seconds, which is right for every tool that answers from a database
-  # and wrong for the one sandbox whose calls wait on purpose.
+  # A caller with a deadline of its own, for the one sandbox whose calls wait
+  # on purpose.
   def call(client, tool, arguments, opts),
     do: Transport.impl().call(client, tool, arguments, opts)
 
