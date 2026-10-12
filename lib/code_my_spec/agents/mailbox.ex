@@ -29,8 +29,13 @@ defmodule CodeMySpec.Agents.Mailbox do
     end)
   end
 
-  @doc "Called in the admission transaction, after the message and its offer exist."
-  def admit(agent, message, event) do
+  @doc """
+  Called in the admission transaction, after the message and its offer exist.
+
+  `send_now: true` lets the message into a running turn at its next tool
+  boundary (`take_send_now/3`); otherwise it waits for the turn to end.
+  """
+  def admit(agent, message, event, opts \\ []) do
     scope = %CodeMySpec.Users.Scope{
       active_account_id: agent.account_id,
       active_project_id: agent.project_id
@@ -45,6 +50,7 @@ defmodule CodeMySpec.Agents.Mailbox do
           message_id: message.id,
           delivery_ref: message.delivery_ref,
           event: to_string(event),
+          send_now: Keyword.get(opts, :send_now, false),
           state: :queued
         })
       end)
@@ -87,7 +93,9 @@ defmodule CodeMySpec.Agents.Mailbox do
         Repo.one(
           from e in Entry,
             where: e.agent_id == ^agent_id and e.state == :queued,
-            order_by: e.id,
+            # A message sent now that no tool boundary took goes ahead of the
+            # rest when the turn ends.
+            order_by: [desc_nulls_last: e.send_now, asc: e.id],
             limit: 1
         )
 
@@ -331,6 +339,74 @@ defmodule CodeMySpec.Agents.Mailbox do
     end)
   end
 
+  @doc """
+  The messages sent now to an agent mid-turn, taken at a tool boundary.
+
+  Asked by the engine after each round of tool calls. Each one is consumed and
+  completed here, in the same transaction, before the engine hands it to the
+  model: it is delivered inside the turn whose entry is already consumed, so it
+  has no turn of its own to finish. Only the engine that holds that turn may
+  take them.
+  """
+  def take_send_now(scope, agent_id, generation) when is_binary(generation) do
+    Repo.transaction(fn ->
+      agent = scope |> lock_agent!(agent_id) |> in_turn!(generation)
+      now = DateTime.utc_now()
+
+      for entry <-
+            Repo.all(
+              from e in Entry,
+                where: e.agent_id == ^agent_id and e.state == :queued and e.send_now == true,
+                order_by: e.id
+            ),
+          do: take_now(entry, agent, generation, now)
+    end)
+    |> taken()
+  end
+
+  defp in_turn!(%Agent{mailbox_generation: generation} = agent, generation) do
+    if Repo.exists?(
+         from e in Entry,
+           where: e.agent_id == ^agent.id and e.state == :consumed and e.generation == ^generation
+       ),
+       do: agent,
+       else: Repo.rollback(:no_turn)
+  end
+
+  defp in_turn!(_agent, _generation), do: Repo.rollback(:stale_engine)
+
+  defp take_now(entry, agent, generation, now) do
+    change_entry(entry, %{
+      state: :completed,
+      generation: generation,
+      consumed_at: now,
+      finished_at: now
+    })
+
+    {:ok, message} =
+      Conversations.set_delivery(Repo.get!(Message, entry.message_id), :delivered,
+        broadcast: false
+      )
+
+    CompletionHandoffs.delivered(entry.message_id, agent)
+    message
+  end
+
+  defp taken({:ok, messages}) do
+    Enum.each(messages, &publish/1)
+    {:ok, Enum.map(messages, &Message.text/1)}
+  end
+
+  defp taken(error), do: error
+
+  @doc "Let a queued message into the running turn at its next tool boundary."
+  def send_now(scope, agent_id, ref) do
+    transition(scope, agent_id, ref, fn
+      %{state: :queued} = entry -> change_entry(entry, %{send_now: true})
+      _ -> Repo.rollback(:already_delivered)
+    end)
+  end
+
   @doc "Withdrawal and consumption arbitrate on the same durable claim."
   def withdraw(scope, agent_id, ref) do
     case transition(scope, agent_id, ref, fn
@@ -373,6 +449,9 @@ defmodule CodeMySpec.Agents.Mailbox do
             delivery_diagnostic:
               "Legacy delivery is unconfirmed; it will not be replayed automatically."
         }
+
+      {message, %{state: :queued, send_now: true} = entry} ->
+        %{message | mailbox_state: "send_now", delivery_diagnostic: entry.diagnostic}
 
       {message, entry} ->
         %{message | mailbox_state: to_string(entry.state), delivery_diagnostic: entry.diagnostic}

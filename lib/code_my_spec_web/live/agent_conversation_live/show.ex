@@ -731,6 +731,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     """
   end
 
+  attr :message, :any, required: true
+
+  # Story 1051: into the running turn at its next tool call, rather than when
+  # the turn ends.
+  defp send_now_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="send_now"
+      phx-value-ref={@message.delivery_ref}
+      data-test="agent-send-now"
+      class="btn btn-xs btn-ghost"
+    >
+      Send now
+    </button>
+    """
+  end
+
   defp page_title(project, nil), do: "#{project.name} · Agent conversation"
 
   defp page_title(project, conversation),
@@ -905,6 +923,23 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket.assigns.current_scope
     |> Agents.withdraw_message(socket.assigns.conversation.agent_id, ref)
     |> withdrawn(socket)
+  end
+
+  def handle_event("send_now", %{"ref" => ref}, socket) do
+    case Agents.send_now(socket.assigns.current_scope, socket.assigns.conversation.agent_id, ref) do
+      {:ok, _entry} ->
+        {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
+
+      {:error, :already_delivered} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "The agent already has that message.")
+         |> assign(:pending, pending_for(socket.assigns.conversation))}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "That message could not be sent now (#{inspect(reason)}).")}
+    end
   end
 
   # The questions this session asked. They belong here rather than only on a
@@ -1557,6 +1592,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     do:
       {:noreply,
        put_flash(socket, :error, "That message could not be taken back (#{inspect(reason)}).")}
+
+  defp mailbox_label("send_now"), do: "at its next tool call"
+  defp mailbox_label(nil), do: "queued"
+  defp mailbox_label(state), do: state
 
   defp drop_ref(socket, ref), do: Enum.reject(socket.assigns.pending, &(&1.delivery_ref == ref))
 
@@ -2257,10 +2296,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           {Message.text(message)}
         </span>
         <span class="opacity-60">
-          {message.delivery_diagnostic || message.mailbox_state || "queued"}
+          {message.delivery_diagnostic || mailbox_label(message.mailbox_state)}
         </span>
+        <.send_now_button
+          :if={length(run) < 2 and message.mailbox_state == "queued"}
+          message={message}
+        />
         <.withdraw_button
-          :if={length(run) < 2 and message.mailbox_state in ["queued", "claimed"]}
+          :if={length(run) < 2 and message.mailbox_state in ["queued", "claimed", "send_now"]}
           message={message}
         />
       </div>

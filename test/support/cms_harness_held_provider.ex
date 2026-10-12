@@ -142,6 +142,15 @@ defmodule CmsHarnessTest.HeldProvider do
   defdelegate release(), to: Store
 
   @doc """
+  Answer the waiting request by calling `tool` with `arguments`, and flow after.
+
+  A turn with a tool boundary in it: the agent runs the call and asks again,
+  and that next request is what a message sent now arrives in (story 1051).
+  """
+  @spec release_with_tool_call(String.t(), map()) :: :ok
+  defdelegate release_with_tool_call(tool, arguments), to: Store
+
+  @doc """
   Wait until a turn is actually in flight.
 
   Without this, "the agent is mid-turn" is a race: the message has been
@@ -169,7 +178,31 @@ defmodule CmsHarnessTest.HeldProvider do
       :ok -> answer(conn)
       :refuse -> refusal(conn)
       :midway -> answer_midway(conn)
+      {:tool_call, tool, arguments} -> answer_tool_call(conn, tool, arguments)
     end
+  end
+
+  defp answer_tool_call(conn, tool, arguments) do
+    call = %{
+      "index" => 0,
+      "id" => "call_held_1",
+      "type" => "function",
+      "function" => %{"name" => tool, "arguments" => Jason.encode!(arguments)}
+    }
+
+    conn
+    |> Plug.Conn.put_resp_content_type("text/event-stream")
+    |> Plug.Conn.send_chunked(200)
+    |> send_chunks([
+      "data: " <>
+        Jason.encode!(%{
+          "choices" => [
+            %{"index" => 0, "delta" => %{"role" => "assistant", "tool_calls" => [call]}}
+          ]
+        }) <> "\n\n",
+      ~s(data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n),
+      "data: [DONE]\n\n"
+    ])
   end
 
   defp answer_midway(conn) do
@@ -277,12 +310,17 @@ defmodule CmsHarnessTest.HeldProvider do
       GenServer.call(store!(), :release)
     end
 
+    @spec release_with_tool_call(String.t(), map()) :: :ok
+    def release_with_tool_call(tool, arguments) do
+      GenServer.call(store!(), {:release_with_tool_call, tool, arguments})
+    end
+
     @spec seen() :: [String.t()]
     def seen do
       GenServer.call(store!(), :seen)
     end
 
-    @spec arrived(String.t()) :: :ok | :refuse | :midway
+    @spec arrived(String.t()) :: :ok | :refuse | :midway | {:tool_call, String.t(), map()}
     def arrived(body) do
       GenServer.call(store!(), {:arrived, body}, :infinity)
     end
@@ -330,6 +368,11 @@ defmodule CmsHarnessTest.HeldProvider do
 
     def handle_call(:release, _from, state) do
       Enum.each(state.held, &GenServer.reply(&1, :ok))
+      {:reply, :ok, %{state | mode: :flowing, held: []}}
+    end
+
+    def handle_call({:release_with_tool_call, tool, arguments}, _from, state) do
+      Enum.each(state.held, &GenServer.reply(&1, {:tool_call, tool, arguments}))
       {:reply, :ok, %{state | mode: :flowing, held: []}}
     end
 

@@ -52,6 +52,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
+  alias CmsHarness.Agents.SendNow
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Copy.Supervisor, as: Copy
@@ -335,6 +336,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
     # Opened here rather than during validation, and unlinked: this process is
     # the right thing for a session's failure to reach, and nothing above it is.
     agent_id = Keyword.fetch!(opts, :agent_id)
+    # Before the options, so the tool boundary's send-now asker names it.
+    generation = new_ref()
+    opts = Keyword.put(opts, :generation, generation)
     {:ok, alloy_opts} = alloy_options(opts, Session.client(agent_id))
     {alloy_opts, interrupted} = restored(alloy_opts, Keeper.recall(agent_id))
     prune_spilled(spill_dir(agent_id))
@@ -343,7 +347,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
       {:ok, alloy} ->
         Process.flag(:trap_exit, true)
         :ok = Liveness.watch(agent_id, self(), Keyword.fetch!(opts, :working_copy))
-        generation = new_ref()
         :ok = register_mailbox(opts, agent_id, generation)
 
         {:ok,
@@ -1011,7 +1014,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).
-       |> Keyword.put(:middleware, [Compaction, ToolResults])
+       # `SendNow` lets a message sent now in at the tool boundary (story 1051).
+       |> Keyword.put(:middleware, [Compaction, ToolResults, SendNow])
        # A code-mode tool called directly came back as a bare "Unknown tool",
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
@@ -1049,7 +1053,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # How the compaction middleware reaches the agent it is running
          # inside. Middleware is a module rather than a closure, and the thing
          # it has to report to is per-agent.
-         on_compaction: compaction_reporter(opts)
+         on_compaction: compaction_reporter(opts),
+         # Asked after each round of tool calls for messages sent now.
+         take_send_now: send_now_taker(opts)
        })
        |> Keyword.put(:messages, resumed(Keyword.get(opts, :messages)))}
     end
@@ -1144,6 +1150,30 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
       _ ->
         nil
+    end
+  end
+
+  # Nil until the engine has minted its generation: validation builds these
+  # options too, and there is no turn to deliver into.
+  defp send_now_taker(opts) do
+    with agent_id when is_binary(agent_id) <- Keyword.get(opts, :agent_id),
+         generation when is_binary(generation) <- Keyword.get(opts, :generation) do
+      take = Keyword.get(opts, :on_send_now) || take_over_channel(opts)
+      fn -> take.(agent_id, generation) end
+    else
+      _ -> nil
+    end
+  end
+
+  defp take_over_channel(opts) do
+    working_copy = Keyword.fetch!(opts, :working_copy)
+
+    fn agent_id, generation ->
+      ChannelClient.mailbox(working_copy, %{
+        "operation" => "take_send_now",
+        "agent_id" => agent_id,
+        "generation" => generation
+      })
     end
   end
 

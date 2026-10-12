@@ -20,6 +20,7 @@ defmodule CodeMySpec.Agents.Mailbox.Entry do
         :uncertain
       ]
 
+    field :send_now, :boolean
     field :generation, :string
     field :claimed_at, :utc_datetime_usec
     field :consumed_at, :utc_datetime_usec

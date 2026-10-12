@@ -91,6 +91,7 @@ defmodule CmsHarness.Agents do
       # caller.
       on_event: request["on_event"] || reporter_for(request["working_copy"]),
       on_consume: request["on_consume"],
+      on_send_now: request["on_send_now"],
       on_register:
         request["on_register"] ||
           fn agent_id, generation ->
