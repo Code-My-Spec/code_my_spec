@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Provisioning.Resource do
+defmodule CodeMySpec.ProvisioningPlan.Resource do
   @moduledoc """
   Something a step brought into existence, and where it lives.
 

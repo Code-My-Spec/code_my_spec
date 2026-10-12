@@ -4,7 +4,7 @@ defmodule CodeMySpec.Resources do
 
   ## Two checks, one answer
 
-  **Per project** the expected set comes from `Provisioning.Sequence` and the
+  **Per project** the expected set comes from `ProvisioningPlan.Sequence` and the
   project's chosen options — the same source the run itself uses, so the
   checklist cannot disagree with the thing that does the work. A second
   manifest would be a second truth, and this page exists because the first one
@@ -32,35 +32,32 @@ defmodule CodeMySpec.Resources do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Configurations,
       CodeMySpec.LocalScope,
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Provisioning.Hetzner,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
-      CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
   import Ecto.Query
 
-  alias CodeMySpec.Configurations
-  alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.LocalScope
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
-  alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Provisioning.Teardown
+  alias CodeMySpec.ProvisioningPlan
+  alias CodeMySpec.ProvisioningPlan.Step
   alias CodeMySpec.Repo
   alias CodeMySpec.Resources.Acknowledgement
   alias CodeMySpec.Resources.Inventory
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
 
   @type report :: %{
@@ -346,12 +343,12 @@ defmodule CodeMySpec.Resources do
   @spec project_report(Scope.t(), Project.t()) ::
           {:ok, report()} | {:error, :devops_off}
   def project_report(%Scope{} = scope, %Project{} = project) do
-    case devops(scope, project) do
+    case ProvisioningPlan.devops(scope, project) do
       :off ->
         {:error, :devops_off}
 
       _ ->
-        checklist = project_checklist(scope, project)
+        checklist = ProvisioningPlan.checklist(scope, project)
         problems = Enum.count(checklist, &(&1.state == :missing))
 
         {:ok,
@@ -366,112 +363,22 @@ defmodule CodeMySpec.Resources do
   end
 
   @doc """
-  The setup steps still missing before `environment` can take a deploy.
-
-  `project_report/2`'s checklist, narrowed to that environment's rows and the
-  project-wide ones every environment stands on. The deploy requirement gates
-  on this, so it and `devops_status` read one answer.
-
-  Read without seeding environment rows, because the requirement graph calls
-  it on every load and a read must not write. An environment with no row has
-  not started setup at all: `{:error, :not_started}`.
+  The setup steps `environment` still misses. See
+  `ProvisioningPlan.setup_missing/3`, which the deploy requirement reads directly.
   """
-  @spec setup_missing(Scope.t(), Project.t(), String.t()) ::
-          {:ok, [map()]} | {:error, :devops_off | :not_started}
-  def setup_missing(%Scope{} = scope, %Project{} = project, environment) do
-    case devops(scope, project) do
-      :off ->
-        {:error, :devops_off}
-
-      _ ->
-        checklist = project_checklist(scope, project, seed: false)
-
-        if Enum.any?(checklist, &(&1.environment == environment)),
-          do:
-            {:ok,
-             Enum.filter(
-               checklist,
-               &(&1.state == :missing and &1.environment in [nil, environment])
-             )},
-          else: {:error, :not_started}
-    end
-  end
+  defdelegate setup_missing(scope, project, environment), to: ProvisioningPlan
 
   # What each project meant to be deployed should have, from the same sequence
-  # the run uses. `plan/2` fills the gaps a run never reached, which is the
+  # the run uses. `ProvisioningPlan.plan/3` fills the gaps a run never reached, which is the
   # only reason a step nobody started can appear here at all.
   defp checklist(scope) do
-    for project <- deployable(scope), entry <- project_checklist(scope, project), do: entry
-  end
-
-  # 3f9bb7b7: `step.state` records the *last run's* verdict, not what exists —
-  # this module's own moduledoc already says so ("Never from stored step
-  # state"), and this function was the one place still reading `:done` as the
-  # *only* way a step counts as present. `:running`, `:errored` and `:paused`
-  # can all follow a step that already created something real (a server, a
-  # domain, a database) before the run stopped making progress. Measured on
-  # Broken Oaths: five of six non-`:done` steps held real, checkable
-  # resources — reported "nothing behind them" anyway, on the strength of
-  # `state` alone.
-  #
-  # Added to `:done`, not substituted for it. A step can read `:done` with
-  # `resources: []` for reasons that are not this bug: a pure verification
-  # step with nothing to point at, or a fixture that stamped completion
-  # directly without walking the real provisioning path that would have
-  # populated it. `state == :done` is still sufficient on its own — the
-  # thing this issue found insufficient was treating it as *necessary*.
-  #
-  # `step.resources` is what setup itself populates when it creates or adopts
-  # something (`entry/3` in `Provisioning`, from the persisted row's
-  # `resources` column) — the same field `project_scope/2`'s eventual reader
-  # would use to find the thing in its provider's own console. Reading it
-  # here, alongside state rather than instead of it, is asking the actual
-  # side without stopping trusting the stored one where it already agrees.
-  #
-  # A step correctly stays `:missing` when it has never produced anything and
-  # never reached `:done` either — `:not_started` or `:errored` before
-  # creating a resource alike.
-  defp project_checklist(scope, project, plan_opts \\ []) do
-    for step <-
-          Provisioning.plan(
-            project_scope(scope, project),
-            Provisioning.setup_options(project),
-            plan_opts
-          ) do
-      %{
-        project_id: project.id,
-        project_name: project.name,
-        key: step.key,
-        environment: step.environment,
-        state: if(step.state == :done or step.resources != [], do: :present, else: :missing),
-        detail: step.provider_error,
-        # The last run's verdict and when it was recorded, beside the
-        # presence verdict above rather than instead of it (82f09c49).
-        step_state: step.state,
-        recorded_at: if(step.state == :running, do: step.started_at, else: step.completed_at),
-        paused_instructions: step.paused_instructions
-      }
-    end
+    for project <- deployable(scope),
+        entry <- ProvisioningPlan.checklist(scope, project),
+        do: entry
   end
 
   defp deployable(scope) do
-    Enum.filter(Projects.list_projects(scope), &(devops(scope, &1) != :off))
-  end
-
-  # Read, never `get_or_create/1`. Loading a page must not write: the first
-  # version of this used the get-or-create and silently created a
-  # configuration row for every project in the account the moment anyone
-  # opened `/app/resources`.
-  #
-  # No row, or a row predating the column, means nobody has said this project
-  # ships — which is `:off`, the same answer the schema default gives.
-  defp devops(scope, project) do
-    Utils.rescued("Resources.devops", :off, fn ->
-      scope
-      |> project_scope(project)
-      |> Configurations.get()
-      |> ProjectConfiguration.devops_level()
-    end)
+    Enum.filter(Projects.list_projects(scope), &(ProvisioningPlan.devops(scope, &1) != :off))
   end
 
   @doc """

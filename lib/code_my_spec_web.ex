@@ -85,6 +85,7 @@ defmodule CodeMySpecWeb do
       # goes back out as `fs_request` — see `Promotion.Runner`.
       CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Qa,
       CodeMySpec.Questions,
       CodeMySpec.Requirements,

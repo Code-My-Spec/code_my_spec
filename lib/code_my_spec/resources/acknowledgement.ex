@@ -18,7 +18,7 @@ defmodule CodeMySpec.Resources.Acknowledgement do
   deliberate leftovers as broken, and a red mark that is wrong often enough
   stops being read — which costs more than the resource does.
 
-  Distinct from `Provisioning.Resource.origin`, which says who *created* a
+  Distinct from `ProvisioningPlan.Resource.origin`, which says who *created* a
   resource we know about. This says who wants it kept.
   """
 

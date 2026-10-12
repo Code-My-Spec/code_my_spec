@@ -4,7 +4,8 @@ defmodule CodeMySpec.ProvisioningTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.{Sequence, StepRepository, Steps, Teardown}
+  alias CodeMySpec.Provisioning.{Steps, Teardown}
+  alias CodeMySpec.ProvisioningPlan.{Sequence, StepRepository}
   alias CodeMySpec.Requirements.Invalidations
 
   doctest Sequence, only: [for_options: 1]

@@ -28,7 +28,8 @@ defmodule CodeMySpec.LiveProvisioningTest do
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.{Hetzner, Sops, StepRepository, Storage}
+  alias CodeMySpec.Provisioning.{Hetzner, Sops, Storage}
+  alias CodeMySpec.ProvisioningPlan.StepRepository
 
   @moduletag :live
   @moduletag timeout: 900_000

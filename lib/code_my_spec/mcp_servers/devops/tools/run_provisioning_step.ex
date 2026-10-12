@@ -90,8 +90,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
-  alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Provisioning.Truncate
+  alias CodeMySpec.ProvisioningPlan.Step
   alias CodeMySpec.Resources
 
   schema do

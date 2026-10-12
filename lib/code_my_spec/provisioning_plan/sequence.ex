@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Provisioning.Sequence do
+defmodule CodeMySpec.ProvisioningPlan.Sequence do
   @moduledoc """
   The ordered setup sequence, and which steps a project's options include.
 
@@ -201,7 +201,7 @@ defmodule CodeMySpec.Provisioning.Sequence do
 
   ## Examples
 
-      iex> CodeMySpec.Provisioning.Sequence.for_options([]) |> Enum.map(& &1.key)
+      iex> CodeMySpec.ProvisioningPlan.Sequence.for_options([]) |> Enum.map(& &1.key)
       [:repository, :secrets, :server, :deploy, :callback_credential]
   """
   @spec for_options([atom()] | MapSet.t()) :: [step()]

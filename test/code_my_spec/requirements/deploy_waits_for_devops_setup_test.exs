@@ -11,7 +11,7 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.StepRepository
+  alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Preloader

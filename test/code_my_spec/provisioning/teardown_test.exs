@@ -5,7 +5,8 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
   import ExUnit.CaptureLog
 
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.{StepRepository, Teardown}
+  alias CodeMySpec.Provisioning.Teardown
+  alias CodeMySpec.ProvisioningPlan.StepRepository
 
   setup do
     %{scope: full_scope_fixture()}
@@ -62,7 +63,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
     # `origin` existed, or by a provider that forgot to set it, must read as
     # adopted rather than as fair game.
     test "a resource with no recorded origin defaults to adopted" do
-      assert %{origin: "adopted"} = %CodeMySpec.Provisioning.Resource{}
+      assert %{origin: "adopted"} = %CodeMySpec.ProvisioningPlan.Resource{}
     end
   end
 

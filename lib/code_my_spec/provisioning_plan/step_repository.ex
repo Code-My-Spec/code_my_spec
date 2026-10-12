@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Provisioning.StepRepository do
+defmodule CodeMySpec.ProvisioningPlan.StepRepository do
   @moduledoc """
   Persistence for setup steps.
 
@@ -11,7 +11,7 @@ defmodule CodeMySpec.Provisioning.StepRepository do
 
   import Ecto.Query
 
-  alias CodeMySpec.Provisioning.Step
+  alias CodeMySpec.ProvisioningPlan.Step
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 

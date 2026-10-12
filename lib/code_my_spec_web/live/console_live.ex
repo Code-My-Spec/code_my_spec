@@ -67,11 +67,11 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.ContentPublishing
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Resend
-  alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Widget
+  alias CodeMySpec.ProvisioningPlan.Sequence
   alias CodeMySpec.Resources
   alias CodeMySpec.Telemetry
   alias CodeMySpec.WorkingCopies

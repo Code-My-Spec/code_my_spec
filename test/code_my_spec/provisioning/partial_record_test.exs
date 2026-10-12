@@ -23,7 +23,7 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.StepRepository
+  alias CodeMySpec.ProvisioningPlan.StepRepository
 
   setup do
     {:ok, scope: provisioning_scope_fixture()}
