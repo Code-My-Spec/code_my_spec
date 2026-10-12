@@ -31,7 +31,6 @@ defmodule CodeMySpec.Validation do
     deps: [
       CodeMySpec.Agents.Agent,
       CodeMySpec.Stories,
-      CodeMySpec.AgentTasks,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,

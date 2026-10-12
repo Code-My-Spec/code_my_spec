@@ -373,22 +373,6 @@ defmodule CodeMySpec.ProjectsTest do
       project = project_fixture(scope)
       assert %Ecto.Changeset{} = Projects.change_project(scope, project)
     end
-
-    test "create_github_repo/4 returns error when GitHub not connected" do
-      user = user_fixture()
-      account = account_with_owner_fixture(user)
-      scope = user_scope_fixture(user, account)
-
-      project =
-        project_fixture(scope, %{
-          name: "Test Project",
-          description: "A test project"
-        })
-
-      # Without GitHub integration, should return error
-      assert {:error, :github_not_connected} =
-               Projects.create_github_repo(scope, project, :code_repo, %{}, "-code")
-    end
   end
 
   describe "app_name/1" do

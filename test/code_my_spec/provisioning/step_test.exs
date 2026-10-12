@@ -3,7 +3,7 @@ defmodule CodeMySpec.Provisioning.StepTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.Step
+  alias CodeMySpec.ProvisioningPlan.Step
   alias CodeMySpec.Repo
 
   setup do

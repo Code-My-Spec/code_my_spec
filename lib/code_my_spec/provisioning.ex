@@ -58,6 +58,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.Projects,
       CodeMySpec.Provisioning.Environment,
       CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
@@ -76,15 +77,9 @@ defmodule CodeMySpec.Provisioning do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
 
-  alias CodeMySpec.Provisioning.{
-    Environment,
-    EnvironmentRepository,
-    RunLock,
-    Sequence,
-    Step,
-    StepRepository,
-    Steps
-  }
+  alias CodeMySpec.Provisioning.{Environment, EnvironmentRepository, RunLock, Steps}
+  alias CodeMySpec.ProvisioningPlan
+  alias CodeMySpec.ProvisioningPlan.{Sequence, Step, StepRepository}
 
   alias CodeMySpec.Users.Scope
 
@@ -147,45 +142,11 @@ defmodule CodeMySpec.Provisioning do
 
   ## Options
 
-  @doc """
-  Every optional part of setup, as atoms.
+  @doc "Every optional part of setup. See `ProvisioningPlan.available_options/0`."
+  defdelegate available_options(), to: ProvisioningPlan
 
-  Derived from the sequence rather than listed separately, so adding a step
-  with a new option cannot leave the toggle behind.
-  """
-  @spec available_options() :: [atom()]
-  def available_options do
-    Sequence.all() |> Enum.map(& &1.option) |> Enum.reject(&is_nil/1) |> Enum.uniq()
-  end
-
-  @doc """
-  The options a project has chosen.
-
-  A project that has never chosen gets everything. Setup's job is a working
-  project, and a user who wants less turns it off rather than having to
-  discover what to turn on.
-
-  `nil` and `[]` are deliberately different: `nil` is "never chosen" and
-  yields the full set, `[]` is "chose none of the optional parts" and yields
-  none. Collapsing them would make turning everything off indistinguishable
-  from never having opened the page — and the page would helpfully turn it all
-  back on.
-  """
-  @spec setup_options(Project.t() | Scope.t()) :: [atom()]
-  def setup_options(%Scope{active_project: project}), do: setup_options(project)
-  def setup_options(%Project{setup_options: nil}), do: available_options()
-
-  def setup_options(%Project{setup_options: stored}) do
-    available = available_options()
-    by_name = Map.new(available, &{to_string(&1), &1})
-
-    # Looked up rather than `String.to_existing_atom/1`: a stored option whose
-    # step was later removed should be ignored, not raise. The row outlives the
-    # code that wrote it.
-    stored |> Enum.flat_map(&List.wrap(Map.get(by_name, &1))) |> Enum.uniq()
-  end
-
-  def setup_options(_), do: available_options()
+  @doc "The options a project has chosen. See `ProvisioningPlan.setup_options/1`."
+  defdelegate setup_options(project_or_scope), to: ProvisioningPlan
 
   @doc """
   Persist the project's chosen options.
@@ -263,105 +224,11 @@ defmodule CodeMySpec.Provisioning do
   defp derived_host("prod", domain), do: domain
   defp derived_host(name, domain), do: "#{name}.#{domain}"
 
-  @doc """
-  Production when there is one, because that is the site everything else
-  (a reader, a webhook, a health check) actually reaches. Otherwise the
-  first environment the project has, so a UAT-only project still gets one
-  rather than none. `:content` is the one step that cannot yet act on more
-  than one environment at a time (it proves itself against the project's
-  single stored `client_api_url`/`content_bucket`) — this is what its one
-  row is attributed to until that becomes genuinely independent per
-  environment.
+  @doc "The environment a primary-only step acts on. See `ProvisioningPlan.primary_environment/1`."
+  defdelegate primary_environment(scope), to: ProvisioningPlan
 
-  Public so callers outside this module (the setup page, naming a step's
-  actual scope) can say which environment a primary-only action affects,
-  rather than guessing at it themselves.
-  """
-  @spec primary_environment(Scope.t()) :: String.t() | nil
-  def primary_environment(scope), do: scope |> Steps.permitted_environments() |> primary_of()
-
-  defp primary_of([]), do: nil
-  defp primary_of(names), do: if("prod" in names, do: "prod", else: List.first(names))
-
-  @doc """
-  The whole plan for a project, in order, before anything runs.
-
-  Every step carries its current state, so Sam sees the shape of the run and
-  where it stands at once (criterion 7959). Steps his options exclude are
-  absent, not present-and-skipped (criterion 7968).
-
-  A project-wide step is one entry. A step that runs independently per
-  environment (`Sequence.scope/1` == `:environment`) is one entry per
-  environment the project has — `:content` is the one exception, pinned to
-  `primary_environment/1` rather than fanned out, since its own execution
-  cannot yet prove more than one environment's site.
-
-  `seed: false` reads only the environment rows already there. A reader that
-  must not write — the requirement graph — passes it; a project with no rows
-  then plans its project-wide steps alone.
-  """
-  @spec plan(Scope.t(), [atom()], keyword()) :: [map()]
-  def plan(%Scope{} = scope, enabled_options, opts \\ []) do
-    persisted =
-      scope |> StepRepository.list() |> Map.new(&{{&1.key, &1.environment}, &1})
-
-    names =
-      if Keyword.get(opts, :seed, true),
-        do: Steps.permitted_environments(scope),
-        else: Steps.permitted_existing_environments(scope)
-
-    for step <- Sequence.for_options(enabled_options),
-        environment <- plan_environments(names, step),
-        do: entry(step, environment, Map.get(persisted, {step.key, environment}))
-  end
-
-  defp plan_environments(_names, %{scope: :project}), do: [nil]
-  defp plan_environments(names, %{key: :content}), do: [primary_of(names)]
-  defp plan_environments(names, %{scope: :environment}), do: names
-
-  # Two heads rather than a `row && row.field` for each of ten fields. Those
-  # guards were the same question asked ten times, and asking it once — has
-  # this step ever run — is both shorter and the actual distinction.
-  defp entry(step, environment, nil) do
-    %{
-      key: step.key,
-      scope: step.scope,
-      environment: environment,
-      label: step.label,
-      why: step.why,
-      position: Sequence.position(step.key),
-      state: :not_started,
-      attempted: nil,
-      provider_error: nil,
-      paused_instructions: nil,
-      completed_at: nil,
-      started_at: nil,
-      verified_at: nil,
-      resources: []
-    }
-  end
-
-  defp entry(step, environment, row) do
-    %{
-      key: step.key,
-      scope: step.scope,
-      environment: environment,
-      label: step.label,
-      why: step.why,
-      position: Sequence.position(step.key),
-      state: row.state || :not_started,
-      attempted: row.attempted,
-      provider_error: row.provider_error,
-      paused_instructions: row.paused_instructions,
-      # When the step last changed state. A `done` row's timestamp is when it
-      # finished, which is what makes "setup waited for verification rather
-      # than declaring victory first" checkable rather than asserted.
-      completed_at: row.updated_at,
-      started_at: row.started_at,
-      verified_at: row.verified_at,
-      resources: row.resources || []
-    }
-  end
+  @doc "The whole plan for a project, before anything runs. See `ProvisioningPlan.plan/3`."
+  defdelegate plan(scope, enabled_options, opts \\ []), to: ProvisioningPlan
 
   ## Running
 
@@ -947,7 +814,7 @@ defmodule CodeMySpec.Provisioning do
     names = Steps.permitted_environments(scope)
 
     for step <- Sequence.for_options(enabled_options),
-        environment <- plan_environments(names, step),
+        environment <- ProvisioningPlan.step_environments(names, step),
         row = StepRepository.get(scope, step.key, environment),
         row && row.state == :done do
       verify_opts = with_environment_opt(scope, step.key, environment, opts)

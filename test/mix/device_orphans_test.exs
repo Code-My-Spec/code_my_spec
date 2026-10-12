@@ -10,26 +10,21 @@ defmodule Mix.Tasks.Cms.DeviceOrphansTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Devices.Device
-  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias Mix.Tasks.Cms.DeviceOrphans
 
   describe "a device with no working copies" do
     test "is an orphan" do
-      assert DeviceOrphans.orphan?(%Device{working_copies: []})
+      assert DeviceOrphans.orphan?([])
     end
   end
 
   describe "a device with at least one working copy" do
-    test "is not an orphan, even sharing a hostname with a real orphan" do
-      refute DeviceOrphans.orphan?(%Device{
-               hostname: "Johns-Mac-mini",
-               working_copies: [%WorkingCopy{}]
-             })
+    test "is not an orphan" do
+      refute DeviceOrphans.orphan?([Ecto.UUID.generate()])
     end
 
     test "still is not an orphan with several attached" do
-      refute DeviceOrphans.orphan?(%Device{working_copies: [%WorkingCopy{}, %WorkingCopy{}]})
+      refute DeviceOrphans.orphan?([Ecto.UUID.generate(), Ecto.UUID.generate()])
     end
   end
 end

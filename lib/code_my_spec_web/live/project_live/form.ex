@@ -41,52 +41,18 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
         <.input field={@form[:name]} type="text" label="Name" />
         <.input field={@form[:module_name]} type="text" label="Module Name" />
         <.input field={@form[:description]} type="textarea" label="Description" />
-        <div class="fieldset mb-2">
-          <label>
-            <span class="label mb-1">Code repo</span>
-          </label>
-          <div class="join w-full">
-            <input
-              type="text"
-              id={@form[:code_repo].id}
-              name={@form[:code_repo].name}
-              value={@form[:code_repo].value}
-              class="input input-bordered join-item flex-1"
-              placeholder="https://github.com/username/repo-code"
-            />
-            <button
-              type="button"
-              phx-click="create_code_repo"
-              disabled={is_nil(@project.name) || @project.name == ""}
-              class="btn join-item"
-            >
-              Create
-            </button>
-          </div>
-        </div>
-        <div class="fieldset mb-2">
-          <label>
-            <span class="label mb-1">Docs repo</span>
-          </label>
-          <div class="join w-full">
-            <input
-              type="text"
-              id={@form[:docs_repo].id}
-              name={@form[:docs_repo].name}
-              value={@form[:docs_repo].value}
-              class="input input-bordered join-item flex-1"
-              placeholder="https://github.com/username/repo-docs"
-            />
-            <button
-              type="button"
-              phx-click="create_docs_repo"
-              disabled={is_nil(@project.name) || @project.name == ""}
-              class="btn join-item"
-            >
-              Create
-            </button>
-          </div>
-        </div>
+        <.input
+          field={@form[:code_repo]}
+          type="text"
+          label="Code repo"
+          placeholder="https://github.com/username/repo-code"
+        />
+        <.input
+          field={@form[:docs_repo]}
+          type="text"
+          label="Docs repo"
+          placeholder="https://github.com/username/repo-docs"
+        />
         <.input field={@form[:client_api_url]} type="text" label="Client API URL" />
         <.input
           field={@form[:google_analytics_property_id]}
@@ -437,14 +403,6 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
     {:noreply, assign(socket, deploy_key_value: Project.mint_deploy_key())}
   end
 
-  def handle_event("create_code_repo", params, socket) do
-    create_github_repo(socket, :code_repo, params, "")
-  end
-
-  def handle_event("create_docs_repo", params, socket) do
-    create_github_repo(socket, :docs_repo, params, "-docs")
-  end
-
   def handle_event("save", %{"project" => project_params}, socket) do
     save_project(socket, socket.assigns.live_action, project_params)
   end
@@ -601,44 +559,4 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
   defp resend_message(%{"message" => message}) when is_binary(message), do: message
   defp resend_message(%{"error" => %{"message" => message}}) when is_binary(message), do: message
   defp resend_message(_body), do: nil
-
-  defp create_github_repo(socket, repo_type, params, suffix) do
-    project = socket.assigns.project
-
-    case Projects.create_github_repo(
-           socket.assigns.current_scope,
-           project,
-           repo_type,
-           params,
-           suffix
-         ) do
-      {:ok, repo_url} ->
-        attrs = Map.put(%{}, repo_type, repo_url)
-
-        changeset =
-          Projects.change_project(
-            socket.assigns.current_scope,
-            project,
-            attrs
-          )
-
-        {:noreply,
-         socket
-         |> assign(:form, to_form(changeset))
-         |> put_flash(:info, "Repository created successfully: #{repo_url}")}
-
-      {:error, :github_not_connected} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Please connect your GitHub account first")}
-
-      {:error, reason} ->
-        require Logger
-        Logger.error("Failed to create GitHub repo: #{inspect(reason)}")
-
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to create repository. Please try again.")}
-    end
-  end
 end

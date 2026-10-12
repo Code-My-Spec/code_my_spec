@@ -1305,6 +1305,20 @@ defmodule CodeMySpec.WorkingCopies do
   def list_on_device(_device_id), do: %{}
 
   @doc """
+  The ids of every copy on each of these devices, as `device_id => [id]`. A
+  device with no copies is absent.
+
+  Every row, rootless or not: a device is an orphan only when nothing at all
+  references it, since destroying one cascades its copies away.
+  """
+  @spec ids_by_device([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Ecto.UUID.t()]}
+  def ids_by_device(device_ids) when is_list(device_ids) do
+    from(w in WorkingCopy, where: w.device_id in ^device_ids, select: {w.device_id, w.id})
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  @doc """
   Record what a device can see of the copies attached to it.
 
   `observations` is `%{working_copy_id => present?}` — the harness's read of its

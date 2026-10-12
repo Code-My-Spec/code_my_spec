@@ -88,9 +88,9 @@ defmodule CodeMySpecSpex.Drill do
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.Sops
   alias CodeMySpec.Provisioning.Teardown
+  alias CodeMySpec.ProvisioningPlan.Sequence
   alias CodeMySpec.Utils.MapAccess
   alias CodeMySpecSpex.Fixtures
 

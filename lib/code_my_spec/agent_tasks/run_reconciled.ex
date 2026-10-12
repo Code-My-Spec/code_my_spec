@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Validation.RunReconciled do
+defmodule CodeMySpec.AgentTasks.RunReconciled do
   @moduledoc """
   Re-evaluates the active sessions' tasks when an analysis run lands.
 
@@ -16,7 +16,7 @@ defmodule CodeMySpec.Validation.RunReconciled do
   require Logger
 
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Validation.TaskEvaluator
+  alias CodeMySpec.AgentTasks.TaskEvaluator
 
   @event [:code_my_spec, :analysis, :run_reconciled]
 

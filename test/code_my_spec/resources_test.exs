@@ -8,7 +8,8 @@ defmodule CodeMySpec.ResourcesTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
-  alias CodeMySpec.Provisioning.{RunLock, StepRepository}
+  alias CodeMySpec.Provisioning.RunLock
+  alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Resources
   alias CodeMySpec.WorkingCopies
 
@@ -342,7 +343,7 @@ defmodule CodeMySpec.ResourcesTest do
       location: "github.com/acme/acme",
       identifier: "acme/acme"
     }
-    @position CodeMySpec.Provisioning.Sequence.position(:repository)
+    @position CodeMySpec.ProvisioningPlan.Sequence.position(:repository)
 
     test "a step that errored after creating a resource still reads present", %{scope: scope} do
       StepRepository.upsert(scope, :repository, nil, %{

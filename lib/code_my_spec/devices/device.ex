@@ -36,8 +36,6 @@ defmodule CodeMySpec.Devices.Device do
 
   import Ecto.Changeset
 
-  alias CodeMySpec.WorkingCopies.WorkingCopy
-
   @kinds [:local, :cloud]
 
   @type t :: %__MODULE__{
@@ -47,7 +45,6 @@ defmodule CodeMySpec.Devices.Device do
           kind: atom() | nil,
           account_id: Ecto.UUID.t() | nil,
           last_seen_at: DateTime.t() | nil,
-          working_copies: [WorkingCopy.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -87,8 +84,6 @@ defmodule CodeMySpec.Devices.Device do
     # nobody should act on.
     field :load, :map
     field :load_reported_at, :utc_datetime_usec
-
-    has_many :working_copies, WorkingCopy
 
     timestamps(type: :utc_datetime)
   end

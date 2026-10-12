@@ -7,13 +7,13 @@ defmodule CodeMySpec.Requirements.DevopsSetupChecker do
   steps and is not offered (a86c85dd): the main agent was claiming every deploy,
   failing on the missing setup, and tapping out.
 
-  The answer is `Resources.setup_missing/3`, the checklist `devops_status`
+  The answer is `ProvisioningPlan.setup_missing/3`, the checklist `devops_status`
   reports, not a second reading of the step rows.
   """
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Resources
+  alias CodeMySpec.ProvisioningPlan
   alias CodeMySpec.Users.Scope
 
   @waiting_on "devops_setup"
@@ -28,7 +28,7 @@ defmodule CodeMySpec.Requirements.DevopsSetupChecker do
   @spec missing(Scope.t(), String.t()) :: [String.t()] | :not_started
   def missing(%Scope{} = scope, environment) do
     with %Project{} = project <- project(scope),
-         {:ok, steps} <- Resources.setup_missing(scope, project, environment) do
+         {:ok, steps} <- ProvisioningPlan.setup_missing(scope, project, environment) do
       steps |> Enum.map(&label/1) |> Enum.uniq()
     else
       {:error, :not_started} -> :not_started

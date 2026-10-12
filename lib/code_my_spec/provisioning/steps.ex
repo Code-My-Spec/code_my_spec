@@ -37,12 +37,10 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   require Logger
 
-  alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.{LocalScope, WorkingCopies}
 
   alias CodeMySpec.{
     AccountSecrets,
-    Configurations,
     Conversations,
     Deploys,
     Environments,
@@ -75,13 +73,15 @@ defmodule CodeMySpec.Provisioning.Steps do
     Repository,
     Resend,
     Sops,
-    StepRepository,
     Storage,
     Transport,
     Truncate,
     Wait,
     Widget
   }
+
+  alias CodeMySpec.ProvisioningPlan
+  alias CodeMySpec.ProvisioningPlan.StepRepository
 
   alias CodeMySpec.Users.Scope
 
@@ -1642,7 +1642,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp plain_resource(nil), do: nil
 
-  defp plain_resource(%CodeMySpec.Provisioning.Resource{} = resource),
+  defp plain_resource(%CodeMySpec.ProvisioningPlan.Resource{} = resource),
     do: Map.from_struct(resource)
 
   defp plain_resource(resource), do: resource
@@ -4016,47 +4016,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Filtered here rather than in the seed, because a row is not infrastructure.
   # Seeding both keeps promotion a matter of changing one setting, which is
   # what "the user promotes to prod themselves" means.
-  @doc """
-  Names of the environments this project's devops level actually permits —
-  every environment row it has, unless `devops: :uat` has filtered production
-  out. Public so `Provisioning` can fan a per-environment step out over the
-  same list `run/3`/`verify/3` already narrow to internally when a caller
-  gives no explicit `:environment`/`:environments` override — without this, a
-  plain "Run" click (or `run/3`'s own whole-sequence walk) would reach past
-  the filter and touch an environment the project's devops level excludes.
-  """
-  @spec permitted_environments(Scope.t()) :: [String.t()]
-  def permitted_environments(scope) do
-    scope |> permitted_environment_rows() |> Enum.map(& &1.name)
-  end
+  @doc "See `ProvisioningPlan.permitted_environments/1`."
+  defdelegate permitted_environments(scope), to: ProvisioningPlan
 
-  @doc """
-  `permitted_environments/1` from the rows already there, seeding none — for a
-  reader that must not write, the requirement graph's `deploy` gate.
-  """
-  @spec permitted_existing_environments(Scope.t()) :: [String.t()]
-  def permitted_existing_environments(scope) do
-    scope
-    |> EnvironmentRepository.list_existing()
-    |> permitted(scope)
-    |> Enum.map(& &1.name)
-  end
+  @doc "See `ProvisioningPlan.permitted_existing_environments/1`."
+  defdelegate permitted_existing_environments(scope), to: ProvisioningPlan
 
-  # The rows, filtered by the same rule. The server step fans out over structs
-  # rather than names, and the comment on `ensure_environment_servers/3` is
-  # about precisely this hazard: a step that fans out over one list and checks
-  # its work against another reports gaps that are really disagreements. It
-  # took the unfiltered list, so the `:uat` filter above stopped the *later*
-  # steps touching prod while the server step went on building the box.
-  defp permitted_environment_rows(scope),
-    do: scope |> EnvironmentRepository.list() |> permitted(scope)
-
-  defp permitted(rows, scope) do
-    case devops_level(scope) do
-      :uat -> Enum.reject(rows, &(&1.name == "prod"))
-      _ -> rows
-    end
-  end
+  defp permitted_environment_rows(scope), do: ProvisioningPlan.permitted_environment_rows(scope)
 
   # The same rule again, for the three steps that need each environment's
   # *host* rather than its name — dns publishes them, tls certifies them, and
@@ -4075,11 +4041,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     |> Enum.filter(&MapSet.member?(permitted, &1.name))
   end
 
-  # No row, or a row predating the column, means nobody has said this project
-  # ships — the same answer the schema default gives. Mirrors
-  # `Resources.devops/2`, which reads it for the same reason.
-  defp devops_level(scope),
-    do: scope |> Configurations.get() |> ProjectConfiguration.devops_level()
+  defp devops_level(scope), do: ProvisioningPlan.devops_level(scope)
 
   # Shared by every run/3 clause that fans out over environments and must
   # refuse rather than report done for a project whose devops level filtered

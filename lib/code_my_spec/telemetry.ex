@@ -46,7 +46,7 @@ defmodule CodeMySpec.Telemetry do
   login can read, and that it cannot write.
 
   Manual only -- nothing calls this on its own, the same design
-  `CodeMySpec.Provisioning.Step` documents for every other step's checks.
+  `CodeMySpec.ProvisioningPlan.Step` documents for every other step's checks.
   """
   @spec check(Scope.t(), String.t(), keyword()) :: health()
   def check(%Scope{} = scope, environment, opts \\ []) when is_binary(environment) do

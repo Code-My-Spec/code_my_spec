@@ -62,6 +62,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Qa,
       CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
+      CodeMySpec.ProvisioningPlan,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
@@ -151,12 +152,12 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Resend
-  alias CodeMySpec.Provisioning.Sequence
-  alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
+  alias CodeMySpec.ProvisioningPlan.Sequence
+  alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs

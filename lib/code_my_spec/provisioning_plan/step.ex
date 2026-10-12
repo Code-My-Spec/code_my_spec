@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Provisioning.Step do
+defmodule CodeMySpec.ProvisioningPlan.Step do
   @moduledoc """
   One named step in the setup sequence and its state.
 
@@ -44,8 +44,8 @@ defmodule CodeMySpec.Provisioning.Step do
   import Ecto.Changeset
 
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Provisioning.Resource
-  alias CodeMySpec.Provisioning.Sequence
+  alias CodeMySpec.ProvisioningPlan.Resource
+  alias CodeMySpec.ProvisioningPlan.Sequence
 
   @states [:not_started, :running, :done, :errored, :paused]
 
