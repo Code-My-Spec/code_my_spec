@@ -125,10 +125,10 @@ defmodule CodeMySpec.PromotionQueue do
   def enqueue(%Scope{} = scope, story_number, opts \\ []) do
     with {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
-         {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id)),
-         :ok <- qa_passed(scope, subject),
-         :ok <- assigned_issues_clear(scope, copy, subject),
          {:ok, head} <- clean_head(scope, copy),
+         {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id), head),
+         :ok <- qa_passed(scope, subject, head),
+         :ok <- assigned_issues_clear(scope, copy, subject),
          :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
          {:ok, entry} <-
            Repository.enqueue(
@@ -337,16 +337,20 @@ defmodule CodeMySpec.PromotionQueue do
   # e4c9bfcd, 2026-10-05: a copy held four issues, and the one picked was not
   # the one being promoted — it had not passed QA, so every promote from the
   # copy was refused over it.
-  defp subject(_scope, %{} = story, _copy, _issue_id), do: {:ok, {:story, story}}
+  defp subject(_scope, %{} = story, _copy, _issue_id, _head), do: {:ok, {:story, story}}
 
-  defp subject(scope, nil, copy, nil) do
-    case Issues.assigned_to_copy(scope, copy.id) do
-      nil -> {:ok, nil}
-      issue -> {:ok, {:issue, issue}}
+  # Unnamed, a candidate is what the copy is assigned: an accepted issue, else a
+  # certified story. Nothing assigned is plain code — a refactor or UI pass
+  # promotes without a story.
+  defp subject(scope, nil, copy, nil, _head) do
+    case {Issues.assigned_to_copy(scope, copy.id), Stories.list_certified_on_copy(scope, copy.id)} do
+      {%{} = issue, _stories} -> {:ok, {:issue, issue}}
+      {nil, [story | _]} -> {:ok, {:story, story}}
+      {nil, []} -> {:ok, nil}
     end
   end
 
-  defp subject(scope, nil, copy, issue_id) do
+  defp subject(scope, nil, copy, issue_id, _head) do
     case Issues.get_issue(scope, issue_id) do
       %{status: :accepted, assigned_working_copy_id: id} = issue when id == copy.id ->
         {:ok, {:issue, issue}}
@@ -367,15 +371,56 @@ defmodule CodeMySpec.PromotionQueue do
   defp subject_attrs({:issue, issue}), do: %{subject_type: :issue, subject_id: issue.id}
   defp subject_attrs(nil), do: %{}
 
+  @doc """
+  Release the certification of each story assigned to `working_copy_id` that
+  its branch moved past, now that the copy reports `head`. The QA pass is kept
+  for re-certification to carry when nothing QA exercises changed.
+  """
+  @spec release_moved_certifications(Scope.t(), String.t(), String.t()) :: [Stories.Story.t()]
+  def release_moved_certifications(%Scope{} = scope, working_copy_id, head)
+      when is_binary(working_copy_id) and is_binary(head) do
+    for story <- Stories.list_certified_on_copy(scope, working_copy_id),
+        story.qa_ready_commit != head,
+        {:ok, released} <- [release(scope, story)],
+        do: released
+  end
+
+  defp release(scope, story),
+    do: Stories.release_qa_ready(scope, story, Qa.story_review_current?(scope, story.id))
+
   # Promotion comes after QA. With QA passing first, a promotion before it is a
   # mistake; this is the backstop that names what is missing.
-  defp qa_passed(scope, {:story, story}),
-    do: qa_verdict(Qa.qa_complete?(scope, story.id), "story #{story.number}")
+  # Certified means at a commit, and promotion asks at the candidate. A stamp
+  # the branch has moved past is taken back here, so the graph offers
+  # `ready_for_qa` again at once instead of the queue refusing the same
+  # candidate forever; the pass it had is kept for re-certification to carry
+  # when nothing QA exercises changed.
+  defp qa_passed(scope, {:story, story}, head) do
+    cond do
+      Qa.story_review_current?(scope, story.id, head) ->
+        :ok
 
-  defp qa_passed(scope, {:issue, issue}),
+      story.qa_ready_commit not in [nil, head] ->
+        {:ok, _} = release(scope, story)
+
+        {:error,
+         %{
+           reason:
+             "story #{story.number} is certified at #{story.qa_ready_commit}, not at this " <>
+               "copy's HEAD #{head}, so it is not promoted. Its certification is released: " <>
+               "complete ready_for_qa again to certify #{head}. A QA pass that still holds " <>
+               "carries over when nothing QA exercises changed; otherwise QA runs again."
+         }}
+
+      true ->
+        qa_verdict(false, "story #{story.number}")
+    end
+  end
+
+  defp qa_passed(scope, {:issue, issue}, _head),
     do: qa_verdict(Qa.issue_qa_passed?(scope, issue.id), "the fix for issue #{issue.id}")
 
-  defp qa_passed(_scope, nil), do: :ok
+  defp qa_passed(_scope, nil, _head), do: :ok
 
   # A fix may promote itself; other accepted issues on this copy still hold
   # its work until they are resolved or their assignment is removed.

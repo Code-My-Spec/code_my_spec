@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2059Spex do
 
         story_b =
           Promotion.a_promotable_story(
-            %{context | scope: context.destination.scope},
+            %{context | scope: context.destination.scope, agent_root: context.destination.root},
             title: "Copy B finished work"
           )
 

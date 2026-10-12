@@ -110,7 +110,13 @@ defmodule CodeMySpec.StoryReconcile do
     if unchanged_plan?(story, planned) and Qa.story_review_current?(scope, story.id) do
       with {:ok, released} <- Stories.update_story(scope, story, %{ready_for_dev: true}),
            {:ok, released} <- restore_specs(scope, released, story) do
-        Stories.set_qa_ready(scope, released, story.qa_ready_commit, story.qa_ready_at)
+        Stories.set_qa_ready(
+          scope,
+          released,
+          story.qa_ready_commit,
+          story.qa_ready_at,
+          {story.qa_reviewed_commit, story.qa_reviewed_at}
+        )
       end
     else
       {:error, :story_reconcile_plan_stale}
@@ -122,6 +128,8 @@ defmodule CodeMySpec.StoryReconcile do
       :ready_for_dev,
       :qa_ready_commit,
       :qa_ready_at,
+      :qa_reviewed_commit,
+      :qa_reviewed_at,
       :specs_ready,
       :specs_ready_at,
       :specs_ready_commit

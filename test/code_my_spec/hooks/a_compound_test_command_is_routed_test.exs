@@ -59,10 +59,19 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
     refute command =~ "mktemp"
   end
 
+  # Claude Code's removal guard cannot read inside a `sh -c` script, so it
+  # refused every routed run in auto mode (2026-10-11).
+  test "a routed run is one plain curl, not a shell script" do
+    command = routed(decide("mix test test/a_test.exs"))
+
+    assert String.starts_with?(command, "curl -sS --fail-with-body ")
+    refute command =~ "sh -c"
+  end
+
   test "a test after cd into this copy is routed, and the cd is kept" do
     command = routed(decide("cd /w/copy/apps/web && mix test test/a_test.exs", "/w/copy"))
 
-    assert String.starts_with?(command, "cd /w/copy/apps/web && sh -c ")
+    assert String.starts_with?(command, "cd /w/copy/apps/web && curl ")
   end
 
   test "a relative cd stays inside the copy" do

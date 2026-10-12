@@ -51,7 +51,7 @@ defmodule CodeMySpec.Qa.AFailedStoryReviewClosesItsTaskTest do
       |> Repo.update()
 
     task = Enum.find(agent.tasks, &(&1.status == :active))
-    {:ok, _review} = Qa.capture_story_review(scope, task)
+    {:ok, _review} = Qa.capture_story_review(scope, agent, task)
 
     %{scope: scope, agent: agent, story: story, task: task}
   end

@@ -78,7 +78,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
     submitted_at: #{attempt.submitted_at}
     parent_attempt_id: #{attempt.parent_attempt_id || "none"}
     stale: #{attempt.stale}
-    #{render_review(attempt.review)}
+    #{render_review(attempt)}
     scenarios (#{length(attempt.scenarios)}):
     #{render_scenarios(attempt.scenarios)}
     issue_ids: #{render_issue_ids(attempt.issue_ids)}
@@ -88,11 +88,12 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
   end
 
   defp render_review(%{
-         certified_revision: revision,
-         submissions: submissions,
-         started_at: started_at
-       }) do
-    "reviewed_revision: #{revision}\nreview_started_at: #{started_at}\nreviewed_submissions: #{Jason.encode!(submissions)}"
+         reviewed_commit: revision,
+         reviewed_submissions: submissions,
+         review_started_at: started_at
+       })
+       when is_binary(revision) do
+    "reviewed_revision: #{revision}\nreview_started_at: #{started_at}\nreviewed_submissions: #{Jason.encode!(submissions || %{})}"
   end
 
   defp render_review(_), do: "review: (not recorded)"

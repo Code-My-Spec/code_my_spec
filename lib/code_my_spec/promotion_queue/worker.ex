@@ -232,14 +232,18 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp build_in_gate_copy(state, entries, base) do
     with {:ok, gate} <- gate_copy(state.scope),
          gate_scope = scope_for(state.scope, gate),
+         environment = WorkingCopies.environment(gate_scope),
          {:ok, built} <-
            Runner.build_batch(
-             WorkingCopies.environment(gate_scope),
+             environment,
              gate.root,
              base,
              Enum.map(entries, & &1.commit),
              gate.id
-           ) do
+           ),
+         # Each candidate's analyzers start on databases its own migrations
+         # build: an ejected one left its schema there for the next (2026-10-11).
+         {:ok, _} <- Runner.reset_test_databases(environment, gate.root, gate.id) do
       merged = MapSet.new(built.merged)
       conflicted = MapSet.new(built.conflicted, & &1.commit)
 
@@ -555,6 +559,14 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
       {:error, %{landed: true} = reason} ->
         hold_landed(state, batch.entries, batch.head, reason)
+
+      # Only its team can fix this — the QA it needs is not at its commit — so
+      # retrying it changes nothing. Re-queued, it went back to the head of the
+      # queue and was refused again every cycle, holding every candidate behind
+      # it (2026-10-11).
+      {:error, %{qa_not_current: true} = reason} ->
+        Enum.each(batch.entries, &eject(state.scope, &1, reason.reason))
+        next(idle(state))
 
       {:error, reason} ->
         # Main moved under the batch (a direct promotion landed) or the merge

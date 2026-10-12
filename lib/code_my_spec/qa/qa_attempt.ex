@@ -9,7 +9,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
 
   # A leaf so the requirement graph can read attempts (`Qa.Verdict`) without
   # depending on `Qa`, which sits above it.
-  use Boundary, top_level?: true, deps: [CodeMySpec.Qa.StoryReview], exports: :all
+  use Boundary, top_level?: true, deps: [], exports: :all
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -39,7 +39,11 @@ defmodule CodeMySpec.Qa.QaAttempt do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   schema "qa_attempts" do
-    belongs_to(:review, CodeMySpec.Qa.StoryReview, type: :binary_id)
+    # What this attempt reviewed, captured on its task when QA began: the
+    # story's certification (commit and moment) and its submitted issue fixes.
+    # A pass counts only while the story still asks for exactly this.
+    field(:reviewed_commit, :string)
+    field(:reviewed_submissions, :map)
     field(:review_started_at, :utc_datetime_usec)
     field(:review_certified_at, :utc_datetime_usec)
     field(:stale, :boolean, default: false)
@@ -68,7 +72,8 @@ defmodule CodeMySpec.Qa.QaAttempt do
   def changeset(attempt \\ %__MODULE__{}, attrs) do
     attempt
     |> cast(attrs, [
-      :review_id,
+      :reviewed_commit,
+      :reviewed_submissions,
       :review_started_at,
       :review_certified_at,
       :stale,

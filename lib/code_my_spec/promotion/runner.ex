@@ -56,6 +56,9 @@ defmodule CodeMySpec.Promotion.Runner do
   # channel instead of a shell, so the same ceiling applies.
   @restart_timeout 600_000
   @git_timeout 60_000
+  # Each drop boots `mix` in the test env, which compiles a candidate the gate
+  # has not built yet; its analyzers reuse that build.
+  @reset_timeout 600_000
 
   @doc """
   What is on this checkout, and is it safe to move. `main` is main's HEAD,
@@ -90,6 +93,24 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.build_batch(env, root, base, commits) end
       )
 
+  @doc """
+  Drop the gate copy's test databases (`Steps.reset_test_databases/3`). The
+  harness holding the copy names them; a local environment has none of the
+  harness's partitions and drops nothing.
+  """
+  @spec reset_test_databases(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def reset_test_databases(environment, root, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_reset_test_databases",
+        %{"root" => root},
+        @reset_timeout,
+        fn env -> Steps.reset_test_databases(env, root, []) end
+      )
+
   @doc "Which of `commits` `base` already contains (`Steps.contained/4`)."
   @spec contained(
           Environment.t() | nil,
@@ -121,6 +142,20 @@ defmodule CodeMySpec.Promotion.Runner do
         %{"root" => root, "branch" => branch},
         @git_timeout,
         fn env -> Steps.merge(env, root, branch) end
+      )
+
+  @doc "The paths that differ between `from` and `to` at `root` (`Steps.changed/4`)."
+  @spec changed(Environment.t() | nil, String.t(), String.t(), String.t(), Ecto.UUID.t() | nil) ::
+          Steps.result()
+  def changed(environment, root, from, to, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_changed",
+        %{"root" => root, "from" => from, "to" => to},
+        @git_timeout,
+        fn env -> Steps.changed(env, root, from, to) end
       )
 
   @doc "The checkout at `root`'s HEAD and current version, moving nothing."

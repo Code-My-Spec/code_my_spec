@@ -783,7 +783,7 @@ defmodule CodeMySpec.Requirements.Preloader do
     QaAttempt
     |> where([a], a.story_id in ^story_ids and not a.stale)
     |> order_by([a], desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id)
-    |> preload([:invalidations, :review])
+    |> preload([:invalidations])
     |> Repo.all()
     |> Enum.group_by(& &1.story_id)
     |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)

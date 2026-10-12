@@ -29,14 +29,19 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
   @copy "/ready-for-qa/copy"
   @head "5555555555555555555555555555555555555555"
 
-  defp script(status) do
+  defp script(status, changed) do
     test = self()
 
     fn "git", args, opts ->
       send(test, {:git, Keyword.fetch!(opts, :cd), args})
-      answer(status, args)
+      answer(status, changed, args)
     end
   end
+
+  defp answer(_status, changed, ["diff", "--name-only", _range]),
+    do: {Enum.join(changed, "\n"), 0}
+
+  defp answer(status, _changed, args), do: answer(status, args)
 
   defp answer(:not_a_repository, ["status" | _]),
     do: {"fatal: not a git repository (or any of the parent directories): .git\n", 128}
@@ -68,12 +73,12 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     forward(test)
   end
 
-  defp a_copy(status \\ "") do
+  defp a_copy(status \\ "", changed \\ []) do
     scope = working_copy_scope_fixture()
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "copy", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     a_harness(copy.id)
-    {:ok, env} = InMemoryEnvironment.create(shell: script(status))
+    {:ok, env} = InMemoryEnvironment.create(shell: script(status, changed))
     scope = put_fixture_environment(%{scope | active_working_copy_id: copy.id}, env)
     :ok = Environments.register({:working_copy, copy.id}, env)
     %{scope: scope, story: story_fixture(scope)}
@@ -190,12 +195,13 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     assert {:ok, :valid, _} = ReadyForQa.evaluate(scope, task(story))
   end
 
-  test "an already certified story's task says there is nothing to do" do
+  test "an already certified story's task says completing it checks HEAD" do
     %{scope: scope, story: story} = a_copy()
     {:ok, _} = Stories.set_qa_ready(scope, story, @head)
 
     assert {:ok, prompt} = ReadyForQa.command(scope, task(story))
-    assert prompt =~ "already certified ready for QA at #{@head}"
+    assert prompt =~ "certified ready for QA at #{@head}"
+    assert prompt =~ "re-certifies"
     assert prompt =~ "evaluate_task"
   end
 
@@ -206,5 +212,48 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     {:ok, _} = Stories.set_specs_ready(scope, story, false)
 
     assert stamp(scope, story) == nil
+  end
+
+  @earlier "4444444444444444444444444444444444444444"
+
+  defp certified_earlier(scope, story) do
+    at = DateTime.add(DateTime.utc_now(), -3600)
+    {:ok, story} = Stories.set_qa_ready(scope, story, @earlier, at)
+    story
+  end
+
+  # Certified means at a commit: a stamp the branch has moved past is not read
+  # back as a certification of what is there now.
+  test "a stamp HEAD has moved past is re-certified at HEAD" do
+    %{scope: scope, story: story} = a_copy("", ["test/war_test.exs"])
+    certified_earlier(scope, story)
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
+    spec(scope, story)
+
+    assert {:ok, :valid, message} = ReadyForQa.evaluate(scope, task(story), nil)
+    assert message =~ @head
+    assert stamp(scope, story) == @head
+  end
+
+  test "QA the story already has carries across a change QA does not exercise" do
+    %{scope: scope, story: story} = a_copy("", ["test/war_test.exs", ".code_my_spec"])
+    certified_earlier(scope, story)
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
+    spec(scope, story)
+
+    assert {:ok, :valid, _} = ReadyForQa.evaluate(scope, task(story), nil)
+
+    assert Stories.get_story(scope, story.id).qa_reviewed_commit == @earlier,
+           "a test-only commit after QA made the pass stale, so it would cost another QA pass"
+  end
+
+  test "a product change after QA needs QA again" do
+    %{scope: scope, story: story} = a_copy("", ["test/war_test.exs", "lib/war.ex"])
+    certified_earlier(scope, story)
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
+    spec(scope, story)
+
+    assert {:ok, :valid, _} = ReadyForQa.evaluate(scope, task(story), nil)
+    assert Stories.get_story(scope, story.id).qa_reviewed_commit == @head
   end
 end

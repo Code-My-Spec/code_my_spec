@@ -181,6 +181,44 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["describe", "--tags", "--exact-match", "HEAD"]) == "v0.1.1"
   end
 
+  # 2026-10-11: a story candidate refused at landing for QA not at its commit
+  # went back to the head of the queue and was refused again every cycle,
+  # holding every candidate behind it. Only its team can fix that.
+  test "a story candidate whose QA is not at its commit is ejected, and the next lands", ctx do
+    story = CodeMySpec.StoriesFixtures.story_fixture(ctx.scope)
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    b = candidate(ctx, "b", "main", "b.ex", "b\n")
+    clean_runs_at(ctx, a.commit)
+    spex = "test/spex/#{story.number}_feature/criterion_1_spex.exs"
+
+    {_n, _} =
+      CodeMySpec.Files.upsert_files(%{ctx.scope | active_working_copy_id: a.copy.id}, [
+        %{path: spex, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
+      ])
+
+    {:ok, unreviewed} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
+        restart: false,
+        subject_type: :story,
+        subject_id: Integer.to_string(story.number)
+      })
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(unreviewed)
+    assert inspect(result) =~ "needs QA"
+
+    # Re-queued, the refused entry would be older than this one and taken first.
+    clean_runs_at(ctx, b.commit)
+    behind = queue(ctx, b)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed}} = settle(behind), "the refused story held the queue"
+  end
+
   # 2026-10-06: the gate held a candidate's new files untracked, its merge was
   # refused, and the queue rebuilt the same batch for hours.
   test "a candidate whose new file is left untracked in the gate lands", ctx do

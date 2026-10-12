@@ -10,7 +10,6 @@ defmodule CodeMySpec.QaFixtures do
   called from spex test files directly.
   """
 
-  alias CodeMySpec.Qa
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
@@ -49,13 +48,16 @@ defmodule CodeMySpec.QaFixtures do
       )
       |> Repo.update!()
 
-    {:ok, review} =
-      Qa.capture_story_review(scope, %{id: Ecto.UUID.generate(), story_id: story.id})
-
     attrs = %{
-      review_id: review.id,
-      review_started_at: review.started_at,
-      review_certified_at: review.certified_at,
+      reviewed_commit: story.qa_ready_commit,
+      reviewed_submissions:
+        CodeMySpec.Issues.story_submission_snapshot(
+          scope,
+          story.id,
+          CodeMySpec.Configurations.fix_issues_min_severity(scope)
+        ),
+      review_started_at: DateTime.utc_now(),
+      review_certified_at: story.qa_ready_at,
       story_id: story_id,
       status: :pass,
       scenarios: scenarios,

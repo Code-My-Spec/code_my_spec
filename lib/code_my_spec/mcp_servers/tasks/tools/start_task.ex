@@ -252,7 +252,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp current_review_task(scope, owner, %{requirement_name: "qa_complete", issue_id: nil} = task) do
-    case CodeMySpec.Qa.capture_story_review(owner_scope(scope, owner), task) do
+    case CodeMySpec.Qa.capture_story_review(owner_scope(scope, owner), owner, task) do
       {:ok, _} ->
         {:ok, owner, task}
 
@@ -482,15 +482,29 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     task_attrs = build_task_attrs(scope, requirement, agent_id)
     owner = maybe_init_session(scope, owner, requirement.satisfied_by)
 
-    case TaskOwner.add_task(scope, owner, task_attrs) do
-      {:ok, updated_owner} ->
-        task = TaskOwner.find_task(updated_owner, task_attrs.id)
-        return_prompt(task, scope, frame)
-
-      {:error, reason} ->
-        {:reply, TasksMapper.error(claim_error(reason)), frame}
+    with {:ok, updated_owner} <- TaskOwner.add_task(scope, owner, task_attrs),
+         task = TaskOwner.find_task(updated_owner, task_attrs.id),
+         {:ok, task} <- review_new_task(scope, updated_owner, task) do
+      return_prompt(task, scope, frame)
+    else
+      {:error, reason} -> {:reply, TasksMapper.error(claim_error(reason)), frame}
     end
   end
+
+  # A story QA task records what it reviews as it starts; one that cannot
+  # (uncertified, untriaged) is not left holding the agent.
+  defp review_new_task(scope, owner, %{requirement_name: "qa_complete", issue_id: nil} = task) do
+    case CodeMySpec.Qa.capture_story_review(owner_scope(scope, owner), owner, task) do
+      {:ok, _review} ->
+        {:ok, task}
+
+      {:error, reason} ->
+        {:ok, _} = TaskOwner.complete_task(scope, owner, task.id, :cancelled)
+        {:error, reason}
+    end
+  end
+
+  defp review_new_task(_scope, _owner, task), do: {:ok, task}
 
   # A team member works its team's story (a31f1cd6, `Agents.claim_story/3`):
   # another story's work is refused while the team holds one, and with none

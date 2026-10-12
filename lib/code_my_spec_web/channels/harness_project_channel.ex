@@ -645,7 +645,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   def handle_in("head_commit", %{"sha" => sha}, socket)
       when is_binary(sha) and byte_size(sha) == 40 do
-    project = socket.assigns.scope.active_project
+    scope = socket.assigns.scope
+    project = scope.active_project
+
+    # Certified means at a commit: a branch that moved past its stamp is not
+    # ready for QA, and the graph says so as soon as the copy reports it.
+    if scope.active_working_copy_id,
+      do: PromotionQueue.release_moved_certifications(scope, scope.active_working_copy_id, sha)
 
     if project && project.head_commit != sha do
       case Projects.update_project(socket.assigns.scope, project, %{head_commit: sha}) do
