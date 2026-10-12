@@ -19,7 +19,8 @@ defmodule CodeMySpecWeb.RequirementsLive do
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
-  alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphReport
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils.MapAccess
@@ -218,6 +219,16 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
   def handle_info({:watcher_synced, _info}, socket), do: {:noreply, socket}
 
+  # The event writer finished a pass. Only `ShadowProjector` announces this,
+  # and only when it is the graph's writer: a sync it consumed can rewire edges
+  # without changing any node, and the page has to show that too.
+  def handle_info({:graph_updated, project_id}, %{assigns: %{scope: scope}} = socket)
+      when not is_nil(scope) do
+    if project_id == scope.active_project_id,
+      do: handle_info({:watcher_synced, %{}}, socket),
+      else: {:noreply, socket}
+  end
+
   def handle_info(
         {event, %CodeMySpec.Issues.Issue{project_id: project_id}},
         %{assigns: %{live_action: :graph, scope: scope}} = socket
@@ -258,6 +269,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
     if connected?(socket) do
       ProjectSync.subscribe(scope)
       CodeMySpec.Issues.subscribe(scope)
+      if scope.active_project_id, do: GraphInputs.subscribe(scope.active_project_id)
       assign(socket, watching?: true)
     else
       socket
@@ -300,7 +312,8 @@ defmodule CodeMySpecWeb.RequirementsLive do
       served_from: metrics[:served_from],
       node_count: metrics[:node_count],
       project_issue_count: metrics[:project_issue_count] || 0,
-      watcher: scope && GraphWatcher.status(scope.active_project_id)
+      writer: GraphReport.writer_name(),
+      watcher: scope && GraphReport.writer_status(scope.active_project_id)
     }
   end
 
@@ -428,13 +441,22 @@ defmodule CodeMySpecWeb.RequirementsLive do
         + {@provenance.project_issue_count} live project issue branches: assigned → submitted → completed
       </span>
       <span data-test="graph-computed-at" title={@provenance.computed_at}>
-        computed {@provenance.computed_at}
+        nodes last checked {@provenance.computed_at}
+      </span>
+      <span
+        :if={@provenance.watcher && @provenance.watcher.last_recompute}
+        data-test="graph-last-pass"
+        title={@provenance.watcher.last_recompute}
+      >
+        {@provenance.writer} last ran {@provenance.watcher.last_recompute}
       </span>
       <span :if={@provenance.watcher} data-test="graph-watcher">
-        watcher {if @provenance.watcher.pending, do: "has a pass pending", else: "idle"}
+        {@provenance.writer} {if @provenance.watcher.pending,
+          do: "has a pass pending",
+          else: "idle"}
       </span>
       <span :if={is_nil(@provenance.watcher)} data-test="graph-watcher" class="text-warning">
-        no watcher — this graph only moves when somebody reads it
+        no {@provenance.writer} — this graph only moves when somebody reads it
       </span>
       <span
         :if={@provenance.watcher && @provenance.watcher.last_error}
