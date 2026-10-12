@@ -41,7 +41,11 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
   Promotable means QA has passed it: promotion comes after QA, and the queue
   refuses a story without a passing attempt. `qa: :not_passed` leaves it
-  untested, for a scenario about that refusal.
+  untested, for a scenario about that refusal; `qa: :certified` certifies it at
+  the copy's HEAD and leaves it untested.
+
+  `assigned?: true` assigns it to the promoting copy, as a team claiming it
+  does: what an unnamed promote, and a copy's HEAD report, act on.
   """
   @spec a_promotable_story(map(), keyword()) :: map()
   def a_promotable_story(context, opts \\ []) do
@@ -54,6 +58,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
     sync_story_specs_to_local_copy(context, story)
+    story = if Keyword.get(opts, :assigned?, false), do: assign(context, story), else: story
     qa(context, story, Keyword.get(opts, :qa, :passed))
 
     if Keyword.get(opts, :red?, false) do
@@ -85,7 +90,21 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   defp qa(context, story, :passed),
     do: {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
+  defp qa(%{agent_root: root} = context, story, :certified),
+    do: :ok = StoryIssueBag.certify(context.scope, story.id, head_of(context, root))
+
   defp qa(_context, _story, :not_passed), do: :ok
+
+  defp assign(context, story) do
+    {:ok, _} =
+      CodeMySpec.Stories.update_story(
+        context.scope,
+        CodeMySpec.Stories.get_story(context.scope, story.id),
+        %{working_copy_id: context.scope.active_working_copy_id}
+      )
+
+    story
+  end
 
   # The state fixture writes through the project's source environment.
   # Promotion reads spec evidence from the active copy, so publish these
@@ -247,7 +266,13 @@ defmodule CodeMySpecSpex.PromotionHelpers do
         Keyword.take(opts, [:app_verbs])
       )
 
-    agent = join_local_working_copy(context, agent_root, "the coding agent's copy")
+    # `agent_socket: true` keeps the copy's channel, for a scenario that plays
+    # its harness reporting something.
+    {agent, agent_socket} =
+      if Keyword.get(opts, :agent_socket, false),
+        do: join_local_working_copy_socket(context, agent_root, "the coding agent's copy"),
+        else: {join_local_working_copy(context, agent_root, "the coding agent's copy"), nil}
+
     context = a_gate_copy(context, running_root)
 
     # The running checkout joined first and so holds the designation. Asserted,
@@ -265,6 +290,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     |> Map.put(:running, running)
     |> Map.put(:running_socket, running_socket)
     |> Map.put(:agent, agent)
+    |> Map.put(:agent_socket, agent_socket)
     |> Map.put(:scope, %{context.scope | active_working_copy_id: agent.working_copy_id})
   end
 
