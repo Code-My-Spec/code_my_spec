@@ -4,7 +4,6 @@ defmodule CodeMySpecSpex.Story1051.Criterion2154Spex do
   Rule: A message sent now reaches a busy agent at its next tool boundary, inside the running turn; nothing is cancelled.
   """
   use CodeMySpecSpex.Case
-  alias CmsHarnessTest.HeldProvider
   alias CodeMySpecSpex.MailboxHelpers, as: H
   import Phoenix.LiveViewTest
   alias CodeMySpec.Conversations
