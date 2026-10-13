@@ -355,11 +355,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     with {:ok, account} <- account_id(),
          :ok <- remove_ingress(account, id, host),
          :ok <- delete_dns_record(host) do
-      WorkingCopies.record_preview_tunnel(copy, %{
-        preview_url: nil,
-        preview_tunnel_id: nil,
-        preview_tunnel_secret: nil
-      })
+      copy
+      |> WorkingCopies.clear_preview_tunnel()
       |> case do
         {:ok, _copy} -> :ok
         error -> error

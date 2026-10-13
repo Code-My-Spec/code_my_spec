@@ -739,6 +739,21 @@ defmodule CodeMySpec.WorkingCopies do
 
   def record_preview_tunnel(%WorkingCopy{}, _attrs), do: {:error, :not_the_main_copy}
 
+  @doc """
+  Takes a copy's preview address and tunnel credential off it. Never refused,
+  unlike recording one: a copy whose app has since stopped (no `app_url`) must
+  still be able to give its address up, and `PreviewTunnel.release/1` calls
+  this after Cloudflare has already dropped the route.
+  """
+  @spec clear_preview_tunnel(WorkingCopy.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
+  def clear_preview_tunnel(%WorkingCopy{} = harness),
+    do:
+      do_record_preview_tunnel(harness, %{
+        preview_url: nil,
+        preview_tunnel_id: nil,
+        preview_tunnel_secret: nil
+      })
+
   defp do_record_preview_tunnel(harness, attrs) do
     harness
     |> save(Map.take(attrs, [:preview_url, :preview_tunnel_id, :preview_tunnel_secret]))
