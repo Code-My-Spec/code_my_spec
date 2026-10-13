@@ -832,19 +832,29 @@ defmodule CodeMySpec.Promotion.Steps do
   """
   @spec build_assets(Environments.Environment.t(), String.t()) :: result()
   def build_assets(env, root) do
-    case Environments.stat(env, Path.join(root, "mix.exs")) do
-      {:ok, _} ->
-        env
-        |> Environments.cmd("mix", ["assets.build"],
-          cd: root,
-          stderr_to_stdout: true,
-          env: [{"MIX_ENV", "test"}]
-        )
-        |> normalize()
-        |> asset_build_result(root)
+    if loadable_mix_exs?(env, root) do
+      env
+      |> Environments.cmd("mix", ["assets.build"],
+        cd: root,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}]
+      )
+      |> normalize()
+      |> asset_build_result(root)
+    else
+      {:ok, %{skipped: true}}
+    end
+  end
 
-      {:error, _} ->
-        {:ok, %{skipped: true}}
+  # Not every `mix.exs` in this project's own fixtures is a real, loadable
+  # module -- several write a bare `version: "X.Y.Z"` literal on purpose, for
+  # `mix_version/2`'s own regex read, with no `defmodule` wrapper at all. A
+  # real project's `mix.exs` always has one; a fixture's bare literal does
+  # not, which is the distinction this checks instead of mere existence.
+  defp loadable_mix_exs?(env, root) do
+    case Environments.read_file(env, Path.join(root, "mix.exs")) do
+      {:ok, content} -> String.contains?(content, "defmodule")
+      {:error, _} -> false
     end
   end
 
