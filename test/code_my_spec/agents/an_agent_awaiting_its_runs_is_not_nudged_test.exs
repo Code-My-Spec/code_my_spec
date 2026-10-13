@@ -6,7 +6,7 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
   only bought "same nudge, still waiting" turns — 5 to 27 an hour on
   metric_flow's coding agent, 2026-09-27.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

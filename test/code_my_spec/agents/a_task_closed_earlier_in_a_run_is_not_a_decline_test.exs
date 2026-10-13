@@ -14,7 +14,7 @@ defmodule CodeMySpec.Agents.ATaskClosedEarlierInARunIsNotADeclineTest do
 
   A run of queued turns is one run: its start is the first turn's.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents

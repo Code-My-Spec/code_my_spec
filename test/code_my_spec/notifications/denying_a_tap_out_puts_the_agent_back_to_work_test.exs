@@ -16,7 +16,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
   `allow` is deliberately not woken: it takes the agent out of the loop, which
   is what it asked for, and waking it would answer the opposite question.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Work

@@ -9,7 +9,7 @@ defmodule CodeMySpec.Agents.Main.TheEscalatorHearsTheUsersAnswerTest do
   it (2026-10-13).
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.QuestionRoutingHelpers
 

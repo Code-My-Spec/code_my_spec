@@ -19,7 +19,7 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
   stopped never learns it — and answering must reach the agent's process not at
   all, otherwise "allowed to stop" is a fiction.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

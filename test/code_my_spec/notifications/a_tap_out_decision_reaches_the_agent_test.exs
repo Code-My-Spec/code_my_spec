@@ -28,7 +28,7 @@ defmodule CodeMySpec.Notifications.ATapOutDecisionReachesTheAgentTest do
   work period". The nullable link is the whole intent discriminator, so each
   half needs its own case.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

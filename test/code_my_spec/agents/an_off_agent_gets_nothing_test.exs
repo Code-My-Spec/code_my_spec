@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   work, no automatic restart reaches it, and every tool that would act on it
   refuses until somebody turns it on. Turning on is the only way back.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

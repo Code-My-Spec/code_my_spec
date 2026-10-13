@@ -6,7 +6,7 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   criteria or its spec — goes to the project's product agent, which owns them.
   (b) Main can still answer a teammate's question that sits with the user.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

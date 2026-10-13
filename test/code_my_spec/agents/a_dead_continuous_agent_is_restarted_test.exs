@@ -12,7 +12,7 @@ defmodule CodeMySpec.Agents.ADeadContinuousAgentIsRestartedTest do
   agent's thread — said to it, not by it. The server restarts nothing on it:
   a second restarter is how one death got restarted twice.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   @moduletag :capture_log
 

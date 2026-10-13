@@ -11,7 +11,7 @@ defmodule CodeMySpec.Agents.SwitchingOnSaysWhetherTheBellReachedAnythingTest do
   Measured live by QA on story 796 (`fe059aa3`): two enables, one that admitted
   a turn and one that admitted nothing, indistinguishable from the reply.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

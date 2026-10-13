@@ -12,7 +12,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
   that rather than reaching into the private notify.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents

@@ -21,7 +21,7 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
   requires it to be nil before offering anything — an agent genuinely mid-turn
   is still left alone, which is what the guard was for.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query
 

@@ -20,7 +20,7 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
   `blocked`, `get_next_requirement` went on answering "ready", and the agent
   took no turn for five minutes while the copy's other four roles waited.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations

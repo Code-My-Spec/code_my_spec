@@ -15,7 +15,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
   and then when it's done running analysis it should message the Alloy agent
   back."
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

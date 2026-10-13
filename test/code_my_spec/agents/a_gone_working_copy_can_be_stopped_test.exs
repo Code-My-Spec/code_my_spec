@@ -9,7 +9,7 @@ defmodule CodeMySpec.Agents.AGoneWorkingCopyCanBeStoppedTest do
   is left anywhere to hold the process the refusal is protecting.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import Ecto.Query

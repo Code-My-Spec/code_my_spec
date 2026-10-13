@@ -6,7 +6,7 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
   Both widget doors used to message main (`WidgetIssueNotice`, 6da8e0e5). The
   issue now reaches the fleet as `issues_triaged`, product's requirement.
   """
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures

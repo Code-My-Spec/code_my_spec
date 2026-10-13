@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.AFailedRunReachesItsRequesterFromTheChannelTest do
   Asserted as the property the transport needs: the delivery comes from some
   process other than the one announcing the failure.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

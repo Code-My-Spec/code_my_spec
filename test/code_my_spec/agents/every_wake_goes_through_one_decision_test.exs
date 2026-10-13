@@ -4,7 +4,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   its event. Observed through the decision's own announcement, so a path that
   stops asking — or asks about the wrong event — fails here by name.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

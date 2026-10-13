@@ -7,7 +7,7 @@ defmodule CodeMySpec.McpServers.Agents.TeammatesMessageEachOtherOnTheirCopyTest 
   "the fix is at commit X" between them.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

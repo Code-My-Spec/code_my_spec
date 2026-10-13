@@ -27,7 +27,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
   and a run whose predecessor predates signature recording — both still
   announce, which is the safe direction for this to be wrong in.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures

@@ -5,7 +5,7 @@ defmodule CodeMySpec.Agents.Main.MainSeesWhatProductIsDesigningTest do
   Main dispatches epics, so it needs to see which one product is still on.
   Coding and QA hold their team's epic too, but they build it; no line for them.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent

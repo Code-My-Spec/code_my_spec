@@ -8,7 +8,7 @@ defmodule CodeMySpec.Analysis.ARunARestartKilledIsRunAgainTest do
   nobody heard it, nothing re-ran it, and the coder answered "Your turn is done"
   nudges until someone queued the run again by hand 16 minutes later.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

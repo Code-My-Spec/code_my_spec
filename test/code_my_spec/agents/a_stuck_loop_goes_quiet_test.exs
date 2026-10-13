@@ -23,7 +23,7 @@ defmodule CodeMySpec.Agents.AStuckLoopGoesQuietTest do
   and never trips it; an unchanging menu does, after the same five repeats
   every other class of message already gets.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

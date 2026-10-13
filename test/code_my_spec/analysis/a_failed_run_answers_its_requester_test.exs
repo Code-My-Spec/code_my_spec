@@ -6,7 +6,7 @@ defmodule CodeMySpec.Analysis.AFailedRunAnswersItsRequesterTest do
   server restart. Only a completed run reported back, so the agent, waiting on
   it before promoting, would have waited forever.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

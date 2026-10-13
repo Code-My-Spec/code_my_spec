@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Agents.PromotionNoticeRoutingTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Events

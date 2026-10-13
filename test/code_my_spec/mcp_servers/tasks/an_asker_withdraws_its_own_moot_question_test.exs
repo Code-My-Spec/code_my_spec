@@ -5,7 +5,7 @@ defmodule CodeMySpec.McpServers.Tasks.AnAskerWithdrawsItsOwnMootQuestionTest do
   blocked 20+ minutes on a customer. The asker withdraws it with a reason,
   which releases the task through the one blocker path.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   A conversation id in this scope names its agent. One outside it is not found,
   and not-found says so without inventing a project mismatch.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   The staff button leaves an off role alone and fills a retired one, and
   offboarding retires.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

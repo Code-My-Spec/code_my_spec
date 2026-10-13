@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.Mailbox.SendingNowStopsABusyAgentsTurnTest do
   over only inside a turn the mailbox had started: a correction to team 2's
   coder waited out sixteen minutes of the work it was correcting (2026-10-13).
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

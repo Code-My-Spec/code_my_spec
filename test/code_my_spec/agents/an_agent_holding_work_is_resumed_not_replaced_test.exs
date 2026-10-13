@@ -18,7 +18,7 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
   John: "We need to fix the reset problem. Agents with tasks should continue on
   start."
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

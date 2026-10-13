@@ -10,7 +10,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
   channel registry instead of trusting the column, and `restart_agent/2`
   is what `set_agent_continuous/3` reaches for once it finds nothing there.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

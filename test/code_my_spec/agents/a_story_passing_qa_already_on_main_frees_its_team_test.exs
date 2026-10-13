@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.AStoryPassingQaAlreadyOnMainFreesItsTeamTest do
   landing announced the team free, and team 2 sat idle for seven hours with
   main never told (2026-10-13).
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import Ecto.Query
   import CodeMySpec.UsersFixtures

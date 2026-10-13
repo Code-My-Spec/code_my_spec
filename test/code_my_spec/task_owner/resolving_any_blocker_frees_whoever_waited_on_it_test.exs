@@ -9,7 +9,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
   "Eligible work is available" prompt, which it answered "Same nudge, no new
   information. Stopping here." Nothing named the task it could now resume.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

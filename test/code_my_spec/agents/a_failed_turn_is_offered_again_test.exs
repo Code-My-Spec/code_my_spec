@@ -5,7 +5,7 @@ defmodule CodeMySpec.Agents.AFailedTurnIsOfferedAgainTest do
   the agent speaking, nothing offered the work again, and the request was lost
   — six times from 09-23 to 10-01.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository

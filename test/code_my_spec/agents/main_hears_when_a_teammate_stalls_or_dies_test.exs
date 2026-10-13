@@ -5,7 +5,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
   stalls, once, on the transition, and is woken for it past its own open
   question (John). A crash the harness restarts is not news.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
   back, a denial offer takes one. Held back is always the last rung.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offer

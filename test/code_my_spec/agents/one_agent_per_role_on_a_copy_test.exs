@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.OneAgentPerRoleOnACopyTest do
   Once the original was restarted the copy had two coding agents claiming and
   editing the same work.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
