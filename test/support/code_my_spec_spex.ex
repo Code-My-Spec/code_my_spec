@@ -15,6 +15,10 @@ defmodule CodeMySpecSpex do
       # `Promotion` below.
       CodeMySpec.Activity,
       CodeMySpec.Agents,
+      # Its own boundary by design (see its moduledoc), precisely so a caller
+      # can read a role's tool list without depending on all of Agents.
+      # Criterion 2025 asserts product's own tool list carries `search_answers`.
+      CodeMySpec.Agents.RoleProfile,
       # Story 1108, criterion 4657 calls `QaStory.command/2` directly — it is
       # the module under test (the prompt `start_task` hands a QA agent), the
       # same reason `CodeMySpec.McpServers` is a dep for spex that call a tool
@@ -52,12 +56,14 @@ defmodule CodeMySpecSpex do
       # working copy's app already uses), the same reasoning as
       # `CodeMySpec.AgentTasks` above.
       CodeMySpec.Promotion,
+      CodeMySpec.PromotionQueue,
       CodeMySpec.Problems,
       # Story 1089's criterion 1848 calls `Qa.QaAttempts.list/2` directly to
       # re-read the attempt's own row after submission — the module under
       # test (does the evidence persist, not just appear in the one-time
       # tool response), same reasoning as `CodeMySpec.AgentTasks` and
       # `CodeMySpec.Promotion` above.
+      CodeMySpec.Provisioning,
       CodeMySpec.Qa,
       # Story 1116's `ClickHouseCassetteHelpers.configure!/2` writes real
       # `ProjectSecrets` rows and `stub_rows_by_username/1` stubs
@@ -99,7 +105,6 @@ defmodule CodeMySpecSpex do
       # a machine did have to drive the harness, and may not reference
       # `CmsHarness` to do it.
       CmsHarnessTest,
-      CodeMySpecWeb,
-      CodeMySpecLocalWeb
+      CodeMySpecWeb
     ]
 end

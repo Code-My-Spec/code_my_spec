@@ -23,7 +23,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Sessions
-  alias CodeMySpecLocalWeb.Hooks.StopController
+  alias CodeMySpec.Hooks.Stop
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -154,7 +154,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
   describe "validation_type" do
     test "manual validation tasks are not evaluated — stop is allowed" do
-      {:ok, tmp_dir} = Briefly.create(directory: true)
+      tmp_dir = CodeMySpec.TempFile.owned_dir("test")
       scope = full_scope_fixture()
 
       {:ok, project} =
@@ -206,7 +206,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   # ============================================================================
 
   defp setup_component_scenario do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
@@ -231,25 +231,12 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
     """)
   end
 
-  # Nothing here is about analyzer content — only whether the sync/task-eval
-  # side of the stop hook behaves. `compile` and `spex` always shell out
-  # for real otherwise: `spex_stale` is requested regardless of config, and
-  # a temp dir with no `mix.exs` makes both a doomed, real subprocess.
-  @test_output_files %{
-    "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
-    "compile" => Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
-  }
-
   defp call_stop_hook!(scope, session_id) do
-    body_params = %{"session_id" => session_id, "test_output_files" => @test_output_files}
+    body_params = %{"session_id" => session_id}
 
-    conn =
-      Phoenix.ConnTest.build_conn(:post, "/api/hooks/stop", body_params)
-      |> Plug.Conn.assign(:current_scope, scope)
-      |> Plug.Conn.put_private(:phoenix_format, "json")
-      |> Map.put(:body_params, body_params)
-
-    conn = StopController.handle(conn, conn.body_params)
-    Jason.decode!(conn.resp_body)
+    scope
+    |> Stop.decide(body_params)
+    |> Jason.encode!()
+    |> Jason.decode!()
   end
 end

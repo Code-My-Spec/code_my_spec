@@ -3,15 +3,14 @@ defmodule CodeMySpec.Agents.ADeadContinuousAgentIsRestartedTest do
   2999a0cb — an agent whose process died stayed dead, and nothing said so.
 
   metric_flow's main agent crashed at 22:49:38Z; its row still read
-  `:running` until the next report reaped it, `list_agent_work` then dropped
-  it, and the reaped-agent restart only runs when a harness joins. Fifteen
-  minutes passed before a person noticed.
+  `:running` until the next report reaped it, and fifteen minutes passed
+  before a person noticed.
 
-  The harness now reports the death as an `agent_died` turn event. The server
-  writes it into the agent's thread, marks the row reaped, and restarts a
-  continuous agent through `MainAgent.restart_agent/3` — the path that already
-  refuses an agent that is off and stops after three restarts that changed
-  nothing.
+  Restarting it is its harness's now: the agent's `Engine.Keeper` restarts a
+  crashed process with its history and gives up on a crash loop. What reaches
+  the server is the cause, as an `agent_died` turn event, written into the
+  agent's thread — said to it, not by it. The server restarts nothing on it:
+  a second restarter is how one death got restarted twice.
   """
   use CodeMySpecTest.DataCase, async: false
 
@@ -24,9 +23,10 @@ defmodule CodeMySpec.Agents.ADeadContinuousAgentIsRestartedTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main.RestartRepository
   alias CodeMySpec.Conversations
-  alias CodeMySpec.MainAgent.RestartRepository
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -66,6 +66,8 @@ defmodule CodeMySpec.Agents.ADeadContinuousAgentIsRestartedTest do
         )
       )
 
+    AgentPresence.present(agent)
+
     agent
   end
 
@@ -89,41 +91,22 @@ defmodule CodeMySpec.Agents.ADeadContinuousAgentIsRestartedTest do
 
   defp text(message), do: Enum.map_join(message.content, "", &(&1["text"] || ""))
 
-  test "a continuous agent that died is restarted, told why", ctx do
-    agent = an_agent(ctx.scope, ctx.copy, %{})
-    agent_id = agent.id
-
-    died(ctx.scope, agent)
-
-    assert_receive {:agent_dispatch, ^agent_id, _ref, "Restarted: " <> _}, 5_000
-    refute Repo.get(Agent, agent.id).status == :stopped
-  end
-
   test "the death is in its thread, said to it rather than by it", ctx do
     agent = an_agent(ctx.scope, ctx.copy, %{})
-    agent_id = agent.id
 
     died(ctx.scope, agent)
-    assert_receive {:agent_dispatch, ^agent_id, _ref, _}, 5_000
 
     assert Enum.any?(thread(ctx.scope, agent), fn {role, text} ->
              role == :operator and text =~ "died at" and text =~ "Protocol.UndefinedError"
            end)
-
-    # Written as the agent speaking, a death would resolve the restart it caused,
-    # and an agent that dies on every turn would be restarted forever.
-    assert [_restart] = RestartRepository.unresolved_reasons(Repo.get(Agent, agent.id))
   end
 
-  test "an agent that was not continuous is recorded dead, not restarted", ctx do
-    agent = an_agent(ctx.scope, ctx.copy, %{continuous: false})
+  test "the server restarts nothing on it; its harness does", ctx do
+    agent = an_agent(ctx.scope, ctx.copy, %{})
 
     died(ctx.scope, agent)
 
-    stopped = Repo.get(Agent, agent.id)
-    assert stopped.status == :stopped
-    assert stopped.stopped_reason == :reaped
-    refute_received {:agent_dispatch, _, _, _}
-    assert Enum.any?(thread(ctx.scope, agent), fn {_role, text} -> text =~ "died at" end)
+    refute_receive {:agent_dispatch, _, _, _}, 300
+    assert [] = RestartRepository.unresolved_reasons(Repo.get(Agent, agent.id))
   end
 end

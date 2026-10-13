@@ -14,8 +14,8 @@ defmodule CodeMySpecTest.HexTarballFixtures do
   """
   @spec build(%{String.t() => String.t()}) :: binary()
   def build(ex_sources) do
-    {:ok, contents_path} = Briefly.create()
-    {:ok, outer_path} = Briefly.create()
+    contents_path = Path.join(CodeMySpec.TempFile.owned_dir("test"), "file")
+    outer_path = Path.join(CodeMySpec.TempFile.owned_dir("test"), "file")
 
     inner_entries =
       for {path, content} <- ex_sources, do: {String.to_charlist(path), content}

@@ -7,9 +7,11 @@ defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
   that someone reading the release can tell which work is in it, which means
   the stories have to be named rather than counted.
 
-  Surface: HTTP `POST /api/agent-tasks/start`. The release task compiles its
-  notes from the stories on UAT since the last release, so what it is working
-  from has to name them.
+  Surface: `CodeMySpec.AgentTasks.StartAgentTask.run/2`, called directly through
+  `Fixtures.start_agent_task/2` -- the HTTP action it backed was removed with
+  the retired CLI's LocalWeb router (issue f532f990). The release task
+  compiles its notes from the stories on UAT since the last release, so what
+  it is working from has to name them.
   """
 
   use CodeMySpecSpex.Case
@@ -63,14 +65,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
 
       when_ "the agent starts the release", context do
         response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_working_copy_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/agent-tasks/start", %{
+          Fixtures.start_agent_task(context.scope, %{
             "session_type" => @release_type,
             "external_id" => "spex-#{System.unique_integer([:positive])}"
           })
-          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :prompt, response["prompt"] || response["error"] || "")}
       end

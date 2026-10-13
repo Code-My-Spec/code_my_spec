@@ -21,6 +21,14 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
     field :status, :string, default: "pending"
     field :decision, :string
 
+    # Set only by an escalation: the main agent's own reason it could not
+    # decide this, and the person-facing framing of what approving or
+    # denying actually changes. Nil means nobody has sent this up — the
+    # computed holder reads that as "still main's, once aged" rather than
+    # "already the user's".
+    field :escalation_reason, :string
+    field :escalated_as, :string
+
     # Which agent asked, so the decision can be delivered back to it. Nil for
     # a Claude Code request, which is answered on the SSE connection already
     # waiting on it.
@@ -44,7 +52,9 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
       :tool_name,
       :tool_input,
       :status,
-      :decision
+      :decision,
+      :escalation_reason,
+      :escalated_as
     ])
     |> validate_required([:user_id, :tool_name, :tool_input])
     |> validate_inclusion(:status, ~w(pending approved denied expired))

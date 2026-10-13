@@ -141,6 +141,32 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
+  How many full runs of `source` on this working copy failed to run at
+  `commit`: started there, or opened since `since` and failed before they could
+  say where they started (an analyzer that would not boot). Runs its harness
+  going away orphaned (`stats.orphaned`) are not counted — they say nothing about
+  whether the analyzer can run there.
+  """
+  @spec failed_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: non_neg_integer()
+  def failed_at_commit(%Scope{active_project_id: project_id} = scope, source, commit, since) do
+    since = DateTime.to_naive(since)
+
+    Run
+    |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
+    |> where([r], r.status == :failed)
+    |> where(
+      [r],
+      r.start_commit == ^commit or (is_nil(r.start_commit) and r.inserted_at >= ^since)
+    )
+    |> where(
+      [r],
+      is_nil(r.stats) or fragment("(?->>'orphaned') IS DISTINCT FROM 'true'", r.stats)
+    )
+    |> scope_to_harness(scope)
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
   Whether `source` has a completed full run on this working copy — whether
   anything answers for it at all. An `exists` query: no row, no output column.
   """
@@ -209,22 +235,6 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   defp earliest(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
-
-  @doc """
-  Sources whose every `:running` run on this working copy is still waiting for
-  a machine slot — none has begun (bf627680).
-  """
-  @spec queued_sources(Scope.t()) :: MapSet.t(String.t())
-  def queued_sources(%Scope{active_project_id: project_id} = scope) do
-    Run
-    |> where([r], r.project_id == ^project_id and r.status == :running)
-    |> scope_to_harness(scope)
-    |> group_by([r], r.source)
-    |> having([r], count(r.began_at) == 0)
-    |> select([r], r.source)
-    |> Repo.all()
-    |> MapSet.new()
-  end
 
   @doc """
   Whether `agent_id` has a run it requested still `:running` (queued runs
@@ -313,6 +323,36 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
     if count == 1, do: :ok, else: :already
   end
+
+  @doc """
+  The working copies of this project with a run still `:running`, other than
+  `except_copy_id`. A promotion that lands restarts the harness every copy's
+  runs depend on, so the promotion queue waits until this is empty.
+  """
+  @spec running_elsewhere(Scope.t(), Ecto.UUID.t() | nil) :: [Ecto.UUID.t()]
+  def running_elsewhere(%Scope{active_project_id: project_id}, except_copy_id) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.status == :running)
+    |> where([r], not is_nil(r.working_copy_id))
+    |> except_copy(except_copy_id)
+    |> distinct(true)
+    |> select([r], r.working_copy_id)
+    |> Repo.all()
+  end
+
+  @doc "Whether the scope's working copy has a run still `:running`."
+  @spec running_on?(Scope.t()) :: boolean()
+  def running_on?(%Scope{active_working_copy_id: nil}), do: false
+
+  def running_on?(%Scope{active_project_id: project_id, active_working_copy_id: copy_id}) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.working_copy_id == ^copy_id)
+    |> where([r], r.status == :running)
+    |> Repo.exists?()
+  end
+
+  defp except_copy(query, nil), do: query
+  defp except_copy(query, copy_id), do: where(query, [r], r.working_copy_id != ^copy_id)
 
   @doc """
   This working copy's still-`:running` full runs of `source`, newest first.

@@ -19,9 +19,23 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
   `edit` it makes, so this path answers what the session path has always
   answered — and the role table that stood in for it is gone.
 
+  One thing did change afterwards, and it is the `block_all` case below rather
+  than the `block_changed` ones: John, 2026-10-04 and issue 48f4eada — *task
+  evaluation judges the whole copy, like promotion* — retired attribution as an
+  override. It used to run after the mode partition and demote whatever was
+  left, so an agent that had edited nothing was excused even from a source the
+  project had set to `block_all`. `8ccd19097` removed that pass.
+
+  The distinction is worth keeping straight, because the two look alike and are
+  not. `block_changed` is a mode the project chooses, and it narrows by changed
+  files legitimately, before attribution is consulted. Attribution was an
+  invisible second pass that could overrule the choice. Only the second is gone.
+
   `qa_validation` is the source under test because it never writes a ledger row
   (`Run.changeset/2` accepts only compiler/credo/exunit/spex), so it can never
-  be stale and freshness cannot quietly explain any of these outcomes.
+  be stale and freshness cannot quietly explain any of these outcomes. It also
+  defaults to `block_changed`, which is what makes the mode-plain tests here
+  meaningful and the one `block_all` test below a deliberate exception.
   """
 
   use ExUnit.Case, async: true
@@ -52,7 +66,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
   end
 
   defp seeded_scope do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
@@ -97,7 +111,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     # and blocks on its own merits. Without this the rest asserts against
     # nothing, which is the failure mode every criterion on story 988 hit.
     assert {:error, seeded, _key} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
              )
@@ -113,7 +127,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     FileEdits.track_agent_edit("an-agent", @broken_qa_brief_path)
 
     assert {:error, reason, _key} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "an-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -131,7 +145,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     {scope, compile_jsonl} = seeded_scope()
 
     assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "an-idle-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -150,7 +164,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     FileEdits.track_agent_edit("the-editor", @broken_qa_brief_path)
 
     assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "the-bystander",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -162,27 +176,34 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
            """
   end
 
-  test "a block_all source is demoted too when the agent did not touch the file" do
+  test "a block_all source blocks even when the agent did not touch the file" do
     {scope, compile_jsonl} = seeded_scope()
 
-    # `block_all` ignores changed files by design, so the role stopgap never
-    # covered it and a product agent kept being handed exunit failures to fix
-    # (issue 4799558c). Attribution runs after the mode partition, on whatever
-    # is left blocking, so edit tracking should reach this too — asserted rather
-    # than assumed, because "it should follow" is how the last two holes got in.
+    # `block_all` ignores changed files by design, so the mode partition leaves
+    # the finding blocking and the agent's changed set is never consulted. This
+    # test asserted the opposite until 48f4eada/8ccd19097: attribution ran after
+    # the mode partition on whatever was left, so an agent that had edited
+    # nothing was excused even from a source set to `block_all`.
+    #
+    # The distinction that survives, and the reason the five tests around this
+    # one are untouched: `block_changed` is a mode the project chooses, and it
+    # narrows by changed files legitimately. Attribution was different — it
+    # overrode the chosen mode invisibly, which is what retired it.
     {:ok, _} = Configurations.update(scope, %{qa_validation: :block_all})
 
-    assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+    assert {:error, reason, _key} =
+             stop(scope,
                agent_id: "an-idle-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
              ),
            """
-           A block_all finding on a file this agent never touched still blocked
-           it. That is the war-epic product agent's exunit case, and the reason
-           turning credo off did not help it.
+           A block_all finding on a file this agent never touched was demoted.
+           `block_all` means block: edit tracking narrows `block_changed`, and it
+           is not consulted for a source set to block everything.
            """
+
+    assert reason =~ "qa_validation"
   end
 
   test "a block_all source still blocks the agent that did touch the file" do
@@ -192,7 +213,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     FileEdits.track_agent_edit("an-agent", @broken_qa_brief_path)
 
     assert {:error, reason, _key} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                agent_id: "an-agent",
                compile_output_file: compile_jsonl,
                spex_output_file: @spex_output_file
@@ -206,7 +227,7 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
     {scope, compile_jsonl} = seeded_scope()
 
     assert {:ok, _result} =
-             Validation.validate_stop(scope, nil,
+             stop(scope,
                session_id: "a-session",
                agent_id: "an-agent",
                compile_output_file: compile_jsonl,
@@ -219,4 +240,9 @@ defmodule CodeMySpec.Integration.InternalAgentOwnsItsTreeTest do
            than beside it.
            """
   end
+
+  # A stop never starts or ingests analysis (John, 2026-10-04): the recorded
+  # outputs land as completed runs first, and the stop reads what they found.
+  defp stop(scope, opts),
+    do: Validation.validate_stop(scope, nil, CodeMySpecSpex.Fixtures.land_outputs(scope, opts))
 end

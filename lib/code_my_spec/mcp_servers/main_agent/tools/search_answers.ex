@@ -10,15 +10,17 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers do
   of a precedent: evidence that this has been asked and not decided.
   """
 
-  # The match is on the question's text, because that is all the main agent has
-  # to go on when a new one arrives. It returns *similar* by construction, which
-  # is why `answer_question` checks the precedent rather than trusting it — the
-  # more useful this search is, the more often it hands back an answer to a
-  # different question.
+  # The match is on the question's text or the answer's, because a decision's
+  # subject matter sometimes lives only in how it was settled (b6380ea4) — a
+  # question phrased generically can be answered in terms that are the only
+  # place the real topic appears. Either way it returns *similar* by
+  # construction, which is why `answer_question` checks the precedent rather
+  # than trusting it — the more useful this search is, the more often it hands
+  # back an answer to a different question.
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.MainAgent.AnswersMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Utils.MapAccess

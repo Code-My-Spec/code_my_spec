@@ -205,7 +205,7 @@ defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
   # -- Setup helpers --
 
   defp setup_project_with_setup_only do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 

@@ -48,10 +48,19 @@ defmodule CodeMySpec.Integrations.Providers.ApiKey do
         messages: [%{role: "user", content: "hi"}],
         max_tokens: 1
       }
+    },
+    deepinfra: %{
+      label: "DeepInfra",
+      method: :get,
+      # OpenAI-compatible, so the models list authenticates without spending.
+      url: "https://api.deepinfra.com/v1/openai/models",
+      auth: :bearer,
+      headers: [],
+      json: nil
     }
   }
 
-  @type provider :: :anthropic | :zai
+  @type provider :: :anthropic | :zai | :deepinfra
   @type failure :: :rejected | {:unexpected, pos_integer()} | {:unreachable, term()}
 
   @doc "The providers connected by pasting a key."
@@ -96,7 +105,10 @@ defmodule CodeMySpec.Integrations.Providers.ApiKey do
   defp auth_header({:header, name}, key), do: [{name, key}]
 
   defp classify({:ok, %Req.Response{status: status}}) when status in 200..299, do: :ok
-  defp classify({:ok, %Req.Response{status: status}}) when status in [401, 403], do: {:error, :rejected}
+
+  defp classify({:ok, %Req.Response{status: status}}) when status in [401, 403],
+    do: {:error, :rejected}
+
   defp classify({:ok, %Req.Response{status: status}}), do: {:error, {:unexpected, status}}
   defp classify({:error, reason}), do: {:error, {:unreachable, reason}}
 

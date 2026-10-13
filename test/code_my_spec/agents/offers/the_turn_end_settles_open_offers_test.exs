@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
   alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Conversations
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -43,6 +44,8 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
         working_copy: "/tmp/settle-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -380,13 +383,86 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       assert %{ignored: 0, held?: false} = Offers.standing(ctx.agent.id)[@node]
     end
 
-    test "nothing but work escalates (1742)", ctx do
+    test "a kind not in the ladders never escalates (1742, 2057)", ctx do
       offered = offer(ctx, :resume, {"restart", nil})
-      denial = offer(ctx, :denial, {"tap_out", "r-1"})
+      check_in = offer(ctx, :check_in, {"cadence", nil})
       end_turn(ctx)
 
       assert settled(offered).next_step == nil
-      assert settled(denial).next_step == nil
+      assert settled(check_in).next_step == nil
+    end
+
+    test "a denial escalates on its own one-rung ladder (2057)", ctx do
+      denial = offer(ctx, :denial, {"tap_out", "r-1"})
+      end_turn(ctx)
+
+      assert settled(denial).next_step == "held_back"
+    end
+  end
+
+  describe "every kind has an outcome" do
+    test "settling does not crash, and leaves none open, for any offer kind", ctx do
+      subjects = %{
+        work: {"requirement", @node},
+        menu: {"menu", nil},
+        problems: {"problem_set", "abc"},
+        resume: {"task", "t-1"},
+        retry: {"retry", nil},
+        answer: {"question", "q-1"},
+        unblocked: {"blocker", "i-1"},
+        denial: {"tap_out", "r-1"},
+        check_in: {"cadence", nil},
+        stalled: {"agent", "a-1"},
+        instruction: {"message", "instruction-1"},
+        team_free: {"copy", "copy-1"}
+      }
+
+      assert Enum.sort(Map.keys(subjects)) == Enum.sort(Offer.kinds())
+
+      offered = for kind <- Offer.kinds(), do: offer(ctx, kind, subjects[kind])
+
+      end_turn(ctx)
+
+      for o <- offered do
+        refute settled(o).status == :open, "#{o.kind} was left open"
+      end
+    end
+
+    test "a team_free offer is claimed when main re-assigns the named copy with set_active_story",
+         ctx do
+      offered = offer(ctx, :team_free, {"copy", "copy-1"})
+      called(ctx, "set_active_story", %{"story_number" => 42, "working_copy_id" => "copy-1"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :claimed
+    end
+
+    test "a team_free offer is claimed when main assigns an issue to the named copy", ctx do
+      offered = offer(ctx, :team_free, {"copy", "copy-1"})
+
+      called(ctx, "assign_issue_to_working_copy", %{
+        "issue_id" => "iss-1",
+        "working_copy_id" => "copy-1"
+      })
+
+      end_turn(ctx)
+
+      assert settled(offered).status == :claimed
+    end
+
+    test "a team_free offer is ignored when main acts on a different copy", ctx do
+      offered = offer(ctx, :team_free, {"copy", "copy-1"})
+      called(ctx, "set_active_story", %{"story_number" => 42, "working_copy_id" => "copy-2"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :ignored
+    end
+
+    test "a team_free offer is ignored when the turn took nothing", ctx do
+      offered = offer(ctx, :team_free, {"copy", "copy-1"})
+      end_turn(ctx)
+
+      assert settled(offered).status == :ignored
     end
   end
 

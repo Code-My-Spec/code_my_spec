@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.APermissionAnsweredLikeAQuestionIsRefusedTest do
+defmodule CodeMySpec.Agents.Main.APermissionAnsweredLikeAQuestionIsRefusedTest do
   @moduledoc """
   `list_notifications` unions questions and permissions on purpose — both stop
   an agent identically — so reaching for the wrong verb on one of them is an
@@ -27,8 +27,9 @@ defmodule CodeMySpec.MainAgent.APermissionAnsweredLikeAQuestionIsRefusedTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Notifications
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -48,6 +49,8 @@ defmodule CodeMySpec.MainAgent.APermissionAnsweredLikeAQuestionIsRefusedTest do
         working_copy: "/tmp/permission-#{System.unique_integer([:positive])}",
         status: :running
       })
+
+    AgentPresence.present(agent)
 
     {:ok, permission} =
       Notifications.create_permission_request(scope.user.id, %{

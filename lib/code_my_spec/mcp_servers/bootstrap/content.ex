@@ -130,7 +130,12 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     When you finish (or the session stops), the harness evaluates your output:
     - Does the file exist at the expected path?
     - Does it parse/validate against the document schema?
-    - Do tests compile and pass?
+
+    A stop never runs the analyzers. Compile, credo, tests and spex run when you
+    ask (`start_analysis`, or `mix test`, which the PreToolUse hook routes to
+    the harness) and at ready_for_qa certification and promotion. What they find
+    is persisted, and a stop is refused while blocking problems stand — fix them,
+    run the analyzer again, and stop.
 
     If evaluation finds problems, you receive structured feedback. Fix and continue.
 
@@ -194,16 +199,15 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     | Endpoint | Purpose |
     |---|---|
     | `POST localhost:4004/api/harnesses/<working_copy_id>/analysis/run` | Run one analyzer (`compiler`/`credo`/`exunit`/`spex`). The PreToolUse hook rewrites your `mix test` into this, so you rarely call it yourself. |
-    | `POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait` | Block until the background analyzers are idle, then report each source's state and problem count. |
+    | `POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait` | Block until the analyzers you started are idle, then report each source's state and problem count. |
 
     **Run the wait in the background.** A full sweep on a large project takes
     200-590 seconds; fire it as a background command and you will be notified
     when it returns, rather than sitting on the call.
 
-    Use it when a stop is refused with "Background analysis is still running" —
-    the refusal includes the exact command with your harness id filled in. The
-    stop hook decides from persisted problems, so waiting is how you get a stop
-    evaluated against fresh results rather than the previous sweep's.
+    A stop never waits on analysis and never starts it: it decides from the
+    problems already persisted. Waiting on a run you started is how you see its
+    results before you stop.
 
     This used to be an MCP tool called `await_analysis`. It could not work: a
     sweep outlives MCP's 30s request cap, so it answered

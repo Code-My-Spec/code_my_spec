@@ -27,7 +27,7 @@ defmodule CodeMySpec.BootVersionTest do
   end
 
   defp git_repo do
-    {:ok, root} = Briefly.create(directory: true)
+    root = CodeMySpec.TempFile.owned_dir("test")
     {_, 0} = System.cmd("git", ["init", "--quiet"], cd: root, stderr_to_stdout: true)
     {_, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: root)
     {_, 0} = System.cmd("git", ["config", "user.name", "t"], cd: root)
@@ -45,7 +45,7 @@ defmodule CodeMySpec.BootVersionTest do
   # the worktree situation in miniature: code arrives on the upstream ref
   # without this checkout's HEAD ever moving.
   defp origin_and_clone do
-    {:ok, origin} = Briefly.create(directory: true)
+    origin = CodeMySpec.TempFile.owned_dir("test")
     # `--initial-branch=main` so a clone lands on main. Without it the bare repo
     # HEAD is an unborn default, and a second clone commits onto an unrelated
     # branch whose push is refused as non-fast-forward.
@@ -59,7 +59,7 @@ defmodule CodeMySpec.BootVersionTest do
   end
 
   defp clone(origin) do
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
     root = Path.join(dir, "checkout")
     {_, 0} = System.cmd("git", ["clone", "-q", origin, root], stderr_to_stdout: true)
     {_, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: root)
@@ -94,7 +94,7 @@ defmodule CodeMySpec.BootVersionTest do
     end
 
     test "a directory that is not a git checkout" do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
 
       BootVersion.capture(root)
 

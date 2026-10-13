@@ -7,11 +7,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
   claim about what is running has to come from the harness's claim, not from
   what the server remembers asking for.
 
-  The spex exercises the reap-after-report path, which was always right. This
-  covers the case it cannot reach: an agent `start_agent/2` wrote and no device
-  ever confirmed. Nothing reports it, so nothing reaps it, and reading `engine`
-  without `status` made it claim presence on a channel it had never joined —
-  indefinitely, and in the reassuring direction.
+  The claim is presence (`Agents.Presence`), carried on each agent as its
+  `lifecycle`. An agent on duty and not present — asked for, being restored,
+  awaiting a restart — must not claim to be running.
   """
 
   use ExUnit.Case, async: true
@@ -20,25 +18,31 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
 
   @now ~U[2026-08-23 12:00:00Z]
 
-  defp agent(status, engine, minutes_ago) do
+  defp agent(lifecycle, engine, minutes_ago) do
+    at = DateTime.add(@now, -minutes_ago * 60, :second)
+
     %{
-      status: status,
+      lifecycle: lifecycle,
       engine: engine,
-      updated_at: DateTime.add(@now, -minutes_ago * 60, :second)
+      updated_at: at,
+      off_at: stamped(lifecycle, :off, at),
+      retired_at: stamped(lifecycle, :retired, at)
     }
   end
 
-  describe "an agent nobody has confirmed" do
-    test "does not claim presence on a channel it never joined" do
+  defp stamped(lifecycle, lifecycle, at), do: at
+  defp stamped(_lifecycle, _stamp, _at), do: nil
+
+  describe "an agent on duty and not present" do
+    test "does not claim to be running" do
       summary = Liveness.agent(agent(:starting, :alloy, 5), @now)
 
       refute summary.label =~ "Running",
-             "a :starting row is a request, not a report. `start_agent/2` writes it " <>
-               "and only `record_reported/2` moves it to :running, so calling it " <>
-               "Running is the server reading its own intention back as evidence — " <>
-               "and it reads as healthy, which is the direction that costs money."
+             "an agent asked for is a request, not a report. Calling it Running is " <>
+               "the server reading its own intention back as evidence — and it reads " <>
+               "as healthy, which is the direction that costs money."
 
-      refute summary.basis =~ "present",
+      refute summary.basis =~ "alive",
              "the basis names the signal, and there is no signal here"
     end
 
@@ -59,25 +63,26 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
       assert summary.label == "Starting"
     end
 
-    test "does not mask a lane that really is present beside it" do
+    test "does not mask an agent that really is present beside it" do
       summary =
         Liveness.working_copy([agent(:starting, :alloy, 2), agent(:running, :alloy, 1)], @now)
 
       assert summary.label == "Running"
-      assert summary.basis == "1 agent present on the harness channel"
+      assert summary.basis == "1 agent alive on the harness"
     end
   end
 
-  describe "a confirmed agent" do
-    test "a running Pi lane is present, on the evidence of the channel" do
+  describe "a present agent" do
+    test "is running, as a fact about now rather than evidence with an age" do
       summary = Liveness.agent(agent(:running, :alloy, 0), @now)
 
       assert summary.label == "Running"
-      assert summary.basis == "present on the harness channel"
+      assert summary.basis == "its process is alive on the harness"
+      assert summary.since == nil
     end
 
-    test "a running Claude Code agent is recency, and says so" do
-      summary = Liveness.agent(agent(:running, :claude_code, 12), @now)
+    test "a Claude Code agent is recency, and says so" do
+      summary = Liveness.agent(agent(:starting, :claude_code, 12), @now)
 
       assert summary.label == "Last heard from"
       assert summary.since == "12m ago"
@@ -102,24 +107,21 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
 
   # John, after clicking the new stop button on his own conversation: "it
   # completely killed the agent. Like it left the list." `list_for_team_status/1`
-  # started handing this function a `:stopped` agent for the first time — before,
-  # only `list_running/1` fed it, so nothing here had ever exercised `:stopped`.
-  # Reading `engine` alone claimed "Running · present on the harness channel"
-  # for a process that had just been asked to end, the same shape of lie
-  # `:starting` was fixed for above.
-  describe "a stopped agent" do
-    test "does not claim presence on a channel it no longer holds" do
-      summary = Liveness.agent(agent(:stopped, :alloy, 1), @now)
+  # hands this function an agent that was turned off, and reading `engine` alone
+  # claimed it present for a process that had just been asked to end.
+  describe "an agent turned off" do
+    test "does not claim to be running" do
+      summary = Liveness.agent(agent(:off, :alloy, 1), @now)
 
       refute summary.label =~ "Running",
-             "asked to stop is not the same claim as present on the channel"
+             "asked to stop is not the same claim as alive on the harness"
 
-      assert summary.label == "Stopped"
+      assert summary.label == "Off"
       assert summary.since == "1m ago"
     end
 
     test "does not roll up into a Running copy" do
-      summary = Liveness.working_copy([agent(:stopped, :alloy, 3)], @now)
+      summary = Liveness.working_copy([agent(:off, :alloy, 3)], @now)
 
       assert summary.label == "Stopped"
     end
@@ -128,14 +130,47 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
     # this is a slot whose one agent is not running.
     test "reads differently from a copy with nothing on it" do
       idle = Liveness.working_copy([], @now)
-      stopped = Liveness.working_copy([agent(:stopped, :alloy, 3)], @now)
+      stopped = Liveness.working_copy([agent(:off, :alloy, 3)], @now)
 
       refute idle.label == stopped.label
     end
 
-    test "does not mask a lane that really is present beside it" do
+    test "does not mask an agent that really is present beside it" do
       summary =
-        Liveness.working_copy([agent(:stopped, :alloy, 10), agent(:running, :alloy, 0)], @now)
+        Liveness.working_copy([agent(:off, :alloy, 10), agent(:running, :alloy, 0)], @now)
+
+      assert summary.label == "Running"
+    end
+  end
+
+  # Not "Starting": nothing is going to start it (Harness, 2026-10-05).
+  describe "an agent its harness gave up on" do
+    defp gave_up(minutes_ago) do
+      at = DateTime.add(@now, -minutes_ago * 60, :second)
+
+      %{
+        agent(:gave_up, :alloy, minutes_ago)
+        | updated_at: at
+      }
+      |> Map.put(:gave_up, %{reason: ":boom", at: at})
+    end
+
+    test "says so, with why and since when" do
+      summary = Liveness.agent(gave_up(4), @now)
+
+      assert summary.label == "Gave up — needs main"
+      assert summary.basis =~ ":boom"
+      assert summary.since == "4m ago"
+    end
+
+    test "is what the copy reads as when nothing is running on it" do
+      summary = Liveness.working_copy([gave_up(4), agent(:starting, :alloy, 1)], @now)
+
+      assert summary.label == "Gave up — needs main"
+    end
+
+    test "does not mask an agent that really is running beside it" do
+      summary = Liveness.working_copy([gave_up(4), agent(:running, :alloy, 0)], @now)
 
       assert summary.label == "Running"
     end

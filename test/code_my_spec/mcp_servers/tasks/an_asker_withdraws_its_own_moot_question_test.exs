@@ -14,11 +14,13 @@ defmodule CodeMySpec.McpServers.Tasks.AnAskerWithdrawsItsOwnMootQuestionTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion
   alias CodeMySpec.Notifications
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -70,6 +72,8 @@ defmodule CodeMySpec.McpServers.Tasks.AnAskerWithdrawsItsOwnMootQuestionTest do
         working_copy_id: copy.id
       })
 
+    AgentPresence.present(agent)
+
     agent
   end
 
@@ -104,7 +108,7 @@ defmodule CodeMySpec.McpServers.Tasks.AnAskerWithdrawsItsOwnMootQuestionTest do
     {false, _} = call(%{question_id: ctx.request.id, reason: "moot"}, ctx.scope, ctx.coder.id)
 
     refute Enum.any?(
-             CodeMySpec.MainAgent.list_open_questions(ctx.scope),
+             MainAgent.list_open_questions(ctx.scope),
              &(&1.id == ctx.request.id)
            )
 

@@ -18,6 +18,7 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
   alias CmsHarness.WorkingCopies.Create
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.McpServers.ToolRegistry
 
   @impl true
   def start_agent(_working_copy_id, agent, _timeout) do
@@ -38,10 +39,12 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
     # installed one, and `nil` otherwise, which leaves the default alone.
     request =
       agent
-      |> LaunchRequest.for()
+      |> LaunchRequest.for(ToolRegistry.registry())
       |> Map.put_new("api_key", "unused-in-process")
       |> Map.put("on_event", CodeMySpecTest.TurnEventRelay.reporter())
 
+    # Presence is the channel's to keep, and there is no channel here.
+    :ok = CodeMySpecTest.PresenceRelay.relay(agent)
     Agents.launch(request)
   end
 

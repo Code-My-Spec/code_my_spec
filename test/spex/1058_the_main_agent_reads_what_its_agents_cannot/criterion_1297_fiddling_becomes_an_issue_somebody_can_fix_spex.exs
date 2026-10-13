@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
 
   spex "A workaround is written down where it can be picked up", criterion: 1297 do
     scenario "the main agent supplies something a role should have had" do
-      given_ "a product agent blocked on something its tools do not expose",
+      given_ "a coding agent blocked on something its tools do not expose",
              context do
         reply = join_working_copy(context, "/tmp/spex-3329", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
         orphan = Fixtures.authored_story(scope, "Dunning emails go out")
         :ok = Fixtures.mark_story_ready(scope, orphan)
 
-        agent = Fixtures.running_agent(scope, role: "product", working_copy: "/tmp/spex-3329")
+        agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3329")
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
@@ -106,7 +106,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
         {:reply, response, _frame} =
           AnswerNotification.execute(
             %{
-              id: context.question_id,
+              notification_id: context.question_id,
               answer: "Dunning emails go out",
               basis: "record",
               worked_around: "no tool exposes story-to-epic membership"

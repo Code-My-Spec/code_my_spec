@@ -23,7 +23,7 @@ defmodule CmsHarness.HarnessConfigTest do
   @other "5d5c599b-4be7-4e41-8c94-3ab878cab753"
 
   setup do
-    {:ok, root} = Briefly.create(directory: true)
+    root = CodeMySpec.TempFile.owned_dir("test")
     prior = System.get_env("CMS_HARNESS_ID")
     System.delete_env("CMS_HARNESS_ID")
 

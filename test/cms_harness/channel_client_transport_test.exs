@@ -22,24 +22,17 @@ defmodule CmsHarness.ChannelClientTransportTest do
   alias CmsHarness.Project.ChannelClient
 
   setup do
-    previous = Application.get_env(:code_my_spec, :harness_transport)
-    Application.put_env(:code_my_spec, :harness_transport, CmsHarness.Project.Transport.Test)
-    Application.put_env(:code_my_spec, :harness_transport_owner, self())
-
-    on_exit(fn ->
-      restore_transport(previous)
-      Application.delete_env(:code_my_spec, :harness_transport_owner)
-    end)
-
+    Process.put({CmsHarness.Project.Transport, :impl}, CmsHarness.Project.Transport.Test)
+    Process.put({CmsHarness.Project.Transport.Test, :owner}, self())
     :ok
   end
 
-  # Multi-clause rather than an `if`: nothing was configured before this suite
-  # and something was are two cases, not a condition.
-  defp restore_transport(nil), do: Application.delete_env(:code_my_spec, :harness_transport)
+  test "a recorder selected here does not replace another process's real transport" do
+    other = Task.async(fn -> CmsHarness.Project.Transport.impl() end)
 
-  defp restore_transport(module),
-    do: Application.put_env(:code_my_spec, :harness_transport, module)
+    assert Task.await(other, :infinity) == CmsHarness.Project.Transport.Slipstream
+    assert CmsHarness.Project.Transport.impl() == CmsHarness.Project.Transport.Test
+  end
 
   defp socket(assigns) do
     %Slipstream.Socket{
@@ -112,30 +105,6 @@ defmodule CmsHarness.ChannelClientTransportTest do
                    1_000,
                    "the cache is fetched once on join; without this tick a sprite " <>
                      "holds an empty domain for the whole session"
-  end
-
-  # `34e03128`. A report sent the instant a join completes always describes
-  # the one moment the answer is empty — nothing has been asked to start yet,
-  # including whatever `agents_to_restore` (pushed a few lines below this) is
-  # about to ask for. The server read that emptiness as "none of this copy's
-  # :starting agents are really running" and reaped them — `settle_against/3`
-  # has no grace period — before the restore reply had a chance to land, let
-  # alone launch anything. Measured live against a Docker boot: an agent
-  # created 600ms before the harness joined was marked :stopped forever,
-  # though nothing had ever tried, and failed, to start it.
-  test "agents_running is not reported synchronously on join" do
-    assert {:ok, _out} =
-             ChannelClient.handle_join(
-               "harness_project:p1",
-               %{},
-               socket(%{project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}})
-             )
-
-    refute_receive {:transport_push, _, "agents_running", _, _},
-                   100,
-                   "reporting immediately races the restore this same join just asked " <>
-                     "for — a freshly parked agent gets reaped before the request to " <>
-                     "start it can possibly have landed"
   end
 
   test "join still asks what to restore, immediately" do
@@ -490,14 +459,6 @@ defmodule CmsHarness.ChannelClientTransportTest do
                        "subtrees in one harness met the same server restart and only the " <>
                        "one that had never been refused returned"
     end
-
-    defp receive_all_reconnects do
-      receive do
-        :reconnect -> receive_all_reconnects()
-      after
-        50 -> :ok
-      end
-    end
   end
 
   describe "the reconnect backoff survives a join that does not work" do
@@ -616,7 +577,219 @@ defmodule CmsHarness.ChannelClientTransportTest do
       assert first =~ "[error]"
 
       {_, again} = with_log(fn -> ChannelClient.handle_reply(ref, refusal, out) end)
-      refute again =~ "[error]"
+      # with_log sees every process's logs and this file runs async, so check
+      # only this refusal's own line, not any [error] another test logged.
+      refute again =~ "would not hand over the read model"
+    end
+  end
+
+  # 57aa576c. Slipstream times neither the upgrade nor the join reply, so a dial
+  # the server never answers left the client alive, unjoined and never
+  # disconnected — and the backoff only runs from a disconnect.
+  describe "a dial that never joins" do
+    defp dialing(assigns) do
+      socket(Map.merge(%{joined: false, attempts: 0, pending: %{}}, assigns))
+    end
+
+    test "an upgraded socket whose join is never answered is dropped" do
+      ref = make_ref()
+      sock = %{dialing(%{join_attempt: ref}) | channel_pid: self()}
+
+      {{:noreply, _out}, log} =
+        with_log(fn -> ChannelClient.handle_info({:join_deadline, ref}, sock) end)
+
+      assert_receive {:transport_disconnect, "harness_project:p1"},
+                     1_000,
+                     "dropping the socket is what hands the retry to `handle_disconnect/2`"
+
+      assert log =~ "the join was never answered"
+    end
+
+    test "an upgrade that never answers is abandoned and dialed again" do
+      ref = make_ref()
+
+      {{:noreply, out}, log} =
+        with_log(fn ->
+          ChannelClient.handle_info({:join_deadline, ref}, dialing(%{join_attempt: ref}))
+        end)
+
+      assert_receive {:transport_abandon, "harness_project:p1"}, 1_000
+
+      assert_receive :reconnect,
+                     2_000,
+                     "no disconnect follows an upgrade that never answered, so nothing " <>
+                       "else will ever schedule the next dial"
+
+      assert out.assigns.attempts == 1
+      assert log =~ "the websocket upgrade was never answered"
+    end
+
+    test "a deadline from an attempt that already ended does nothing" do
+      ref = make_ref()
+      sock = %{dialing(%{join_attempt: make_ref()}) | channel_pid: self()}
+
+      assert {:noreply, _} = ChannelClient.handle_info({:join_deadline, ref}, sock)
+      refute_receive {:transport_disconnect, _}, 100
+    end
+
+    test "a deadline after the join landed does nothing" do
+      ref = make_ref()
+      sock = %{dialing(%{join_attempt: ref, joined: true}) | channel_pid: self()}
+
+      assert {:noreply, _} = ChannelClient.handle_info({:join_deadline, ref}, sock)
+      refute_receive {:transport_disconnect, _}, 100
+    end
+
+    test "a disconnect retires the attempt's deadline" do
+      ref = make_ref()
+
+      {:ok, out} =
+        capture_log_result(fn ->
+          ChannelClient.handle_disconnect(:closed, dialing(%{join_attempt: ref}))
+        end)
+
+      assert {:noreply, _} = ChannelClient.handle_info({:join_deadline, ref}, out)
+
+      refute_receive {:transport_abandon, _},
+                     100,
+                     "a stale deadline after a disconnect would schedule a second reconnect"
+    end
+  end
+
+  # 8c04a700. The restore launched inline, ~20s per agent, and every
+  # `stop_agent` push queued behind it until the server's stop timed out. It
+  # runs in a task now; this process owns the queue and the task asks it for
+  # each agent. Here the test process plays this client to the real task.
+  describe "a restore in progress" do
+    defp restoring(assigns), do: socket(Map.merge(%{joined: true, pending: %{}}, assigns))
+
+    defp agent(id), do: %{"agent_id" => id, "working_copy" => "/nonexistent/#{id}"}
+
+    defp stop(socket, agent_id, ref) do
+      {:ok, out} =
+        ChannelClient.handle_message(
+          "harness_project:p1",
+          "stop_agent",
+          %{"ref" => ref, "agent_id" => agent_id},
+          socket
+        )
+
+      out
+    end
+
+    defp next_restore(socket) do
+      assert_receive {:"$gen_call", from, :next_restore}, 5_000
+      {:reply, reply, out} = ChannelClient.handle_call(:next_restore, from, socket)
+      {from, reply, out}
+    end
+
+    test "a stop for an agent queued behind a slow launch answers at once, and it never starts" do
+      {_, log} =
+        with_log(fn ->
+          {:ok, sock} =
+            ChannelClient.handle_reply(
+              :restore,
+              {:ok, %{"agents" => [agent("a"), agent("b")]}},
+              restoring(%{restore_ref: :restore})
+            )
+
+          # The task has been handed `a` and is launching it; the reply is held
+          # here, so that launch has not returned.
+          {from, {:launch, %{"agent_id" => "a"}} = launch, sock} = next_restore(sock)
+
+          sock = stop(sock, "b", "r1")
+
+          assert_receive {:transport_push, _, "agent_stop_result",
+                          %{"status" => "ok", "ref" => "r1"}, _},
+                         100,
+                         "a queued agent's stop waited for the launch ahead of it"
+
+          GenServer.reply(from, launch)
+          {from, reply, _sock} = next_restore(sock)
+          GenServer.reply(from, reply)
+
+          assert reply == :done, "the stopped agent was still handed to the restore"
+        end)
+
+      refute log =~ "agent b", "b was launched after it was stopped"
+    end
+
+    test "a stop for the agent being launched waits for the launch, then stops it" do
+      sock = restoring(%{restore_queue: [], restoring: "a"})
+
+      sock = stop(sock, "a", "r1")
+
+      refute_receive {:transport_push, _, "agent_stop_result", _, _},
+                     100,
+                     "stopped before its launch returned, the launch would start it again"
+
+      {:reply, :done, _} = ChannelClient.handle_call(:next_restore, {self(), make_ref()}, sock)
+
+      assert_receive {:transport_push, _, "agent_stop_result", %{"ref" => "r1"}, _}, 1_000
+    end
+  end
+
+  # Agent presence (`.code_my_spec/plans/agent-liveness-from-presence.md`).
+  describe "agent presence" do
+    test "join reports the copy's present agents at once" do
+      assert {:ok, _out} =
+               ChannelClient.handle_join(
+                 "harness_project:p1",
+                 %{},
+                 socket(%{project: %{id: "p1", root: "/tmp/x", working_copy_id: nil}})
+               )
+
+      assert_receive {:transport_push, "harness_project:p1", "agents_present",
+                      %{"agent_ids" => ids}, _},
+                     1_000
+
+      assert is_list(ids)
+    end
+
+    test "an agent in this copy coming up is pushed as agent_up" do
+      {:noreply, _} =
+        ChannelClient.handle_info({:agent_liveness, :up, "a1", "/tmp/x", nil}, socket(%{}))
+
+      assert_receive {:transport_push, "harness_project:p1", "agent_up", %{"agent_id" => "a1"}, _}
+    end
+
+    test "its death is pushed as agent_down, with the reason" do
+      {:noreply, _} =
+        ChannelClient.handle_info({:agent_liveness, :down, "a1", "/tmp/x", :killed}, socket(%{}))
+
+      assert_receive {:transport_push, _, "agent_down",
+                      %{"agent_id" => "a1", "reason" => ":killed"}, _}
+    end
+
+    test "its harness giving up on it is the final agent_down, marked gave_up" do
+      {:noreply, _} =
+        ChannelClient.handle_info(
+          {:agent_liveness, :gave_up, "a1", "/tmp/x", {:badarg, []}},
+          socket(%{})
+        )
+
+      assert_receive {:transport_push, _, "agent_down",
+                      %{"agent_id" => "a1", "reason" => "gave_up: {:badarg, []}"}, _}
+    end
+
+    test "another copy's agent is its own channel's to report" do
+      {:noreply, _} =
+        ChannelClient.handle_info(
+          {:agent_liveness, :up, "a1", "/tmp/elsewhere", nil},
+          socket(%{})
+        )
+
+      refute_receive {:transport_push, _, "agent_up", _, _}, 100
+    end
+
+    test "nothing is pushed while not joined; the next join's set carries it" do
+      {:noreply, _} =
+        ChannelClient.handle_info(
+          {:agent_liveness, :up, "a1", "/tmp/x", nil},
+          socket(%{joined: false})
+        )
+
+      refute_receive {:transport_push, _, "agent_up", _, _}, 100
     end
   end
 end

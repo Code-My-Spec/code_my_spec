@@ -5,7 +5,7 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
   the container path (`/workspace/<app>`) because `Workspaces.instance_root/1`
   had not yet been taught to ask `Runner.Local.root/2` for it.
 
-  That correction alone was not enough. `LaunchRequest.for/1` sends
+  That correction alone was not enough. `LaunchRequest.for/2` sends
   `agent.working_copy` verbatim on a restore — a snapshot taken once, when the
   agent's row was created — so an agent started against the wrong root kept
   offering the harness that same wrong root on every later rejoin, and restore
@@ -101,7 +101,7 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
              "working copy just joined under the correct root"
   end
 
-  test "a stopped agent's recorded root is left alone", %{
+  test "a turned-off agent's recorded root is left alone", %{
     scope: scope,
     device: device,
     topic: topic
@@ -111,7 +111,8 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
     agent =
       create_agent(scope, scope.active_working_copy_id, %{
         working_copy: @stale_root,
-        status: :stopped
+        off_at: DateTime.utc_now(),
+        off_by: "a test"
       })
 
     Process.unlink(first.channel_pid)
@@ -120,7 +121,7 @@ defmodule CodeMySpecWeb.HarnessRootSyncAgentsTest do
     assert {:ok, _reply, _socket} = join_as(scope, topic, payload(scope, device, @real_root))
 
     assert reloaded(agent.id).working_copy == @stale_root,
-           "a stopped agent is not restored, so correcting its path records an intent " <>
+           "a turned-off agent is not restored, so correcting its path records an intent " <>
              "nothing will ever act on"
   end
 

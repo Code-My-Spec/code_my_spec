@@ -65,7 +65,7 @@ defmodule CodeMySpecWeb.DevAgentController do
         &%{
           id: &1.id,
           role: &1.role,
-          status: &1.status,
+          status: Agents.lifecycle(&1, Agents.Presence.ids(&1.project_id)),
           engine: &1.engine,
           continuous: &1.continuous,
           project_id: &1.project_id,

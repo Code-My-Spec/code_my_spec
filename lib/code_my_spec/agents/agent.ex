@@ -46,6 +46,9 @@ defmodule CodeMySpec.Agents.Agent do
   the group exists, or the agent is not ours to signal.
   """
 
+  # A schema leaf (John, 2026-10-04): contexts below Agents — TaskOwner,
+  # Notifications, Qa — read and match agent rows without depending on Agents.
+  use Boundary, top_level?: true, deps: [CodeMySpec.Agents.RoleProfile], exports: :all
   use Ecto.Schema
 
   import Ecto.Changeset
@@ -206,6 +209,11 @@ defmodule CodeMySpec.Agents.Agent do
     # running is the interesting part: five seconds is normal and fifty minutes
     # is not, and a flag cannot tell them apart.
     field :turn_started_at, :utc_datetime_usec
+    # Derived for display, never stored: `Agents.with_lifecycle/2` sets it from
+    # `Agents.Presence` (`:running | :gave_up | :starting | :off | :retired`),
+    # and `gave_up` to what the harness said when it gave up on the agent.
+    field :lifecycle, :any, virtual: true
+    field :gave_up, :map, virtual: true
     field :work_request_id, :string
     field :work_requested_at, :utc_datetime_usec
 

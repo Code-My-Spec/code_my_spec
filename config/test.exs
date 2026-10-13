@@ -203,8 +203,7 @@ end
 #
 # Binding the port had a real cost: every `mix test` and `mix run` grabbed
 # 4002, so a concurrent background analysis run (the stop hook enqueues a full
-# `mix spex`) failed the other with :eaddrinuse. Same reasoning as the
-# LocalWeb endpoint below, which has always been server: false.
+# `mix spex`) failed the other with :eaddrinuse.
 #
 # Under CMS_E2E it listens on 4102 — deliberately not 4002, so an e2e server and
 # an ordinary `mix test` cannot collide on the port.
@@ -232,13 +231,6 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
   # So the exception is explicit rather than inferred from a framework
   # behaviour I got wrong once already.
   server: e2e? and System.get_env("CMS_E2E_SEED") != "1"
-
-# Local web endpoint — needed for spex tests that drive the local UI.
-# server: false, runs as a started-but-quiet endpoint so LiveViewTest can use it.
-config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4004],
-  secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
-  server: false
 
 # Light harness endpoint. A port of its own so a test run cannot talk to — or be
 # talked to by — a `cms harness` someone left running on 4005.
@@ -363,6 +355,12 @@ config :code_my_spec, :harness_connect_headers, CmsHarnessTest.ConnectHeaders
 # when it works.
 config :code_my_spec, CmsHarness.Device.Client.Http,
   plug: {Req.Test, CmsHarness.Device.Client.Http}
+
+# The CLI providers' answer to the pin above. A project that connected OpenAI
+# launches its agents on `codex exec`, and a spex that talked to one ran it for
+# real on every analysis. Replayed from a recording; an unrecorded call raises.
+config :code_my_spec, CmsHarness.Agents.Provider,
+  command_runner: {CmsHarnessTest.RecordedCli, :run}
 
 # Provisioning's pollers back off between reads — waiting for a server to boot,
 # a bucket to appear, a firewall to release. Against stubs and cassettes there

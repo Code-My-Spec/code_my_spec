@@ -874,15 +874,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       refute_push "run_analysis", _runs, 200
     end
 
-    test "a stop while the harness is still running one says so, rather than reporting clean",
+    # A stop never waits on or reports analysis (John, 2026-10-04): it answers
+    # from what is persisted, and a run still going changes nothing.
+    test "a stop while the harness is still running one decides from what is persisted",
          %{channel: channel} do
       _run_id = dispatch_compiler(channel)
 
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, decision, 5_000
 
-      assert decision["systemMessage"] =~ "analysis running",
-             "\"I have not looked yet\" has to be a different answer from \"nothing blocks\""
+      refute decision["decision"] == "block"
+      refute inspect(decision) =~ "analysis running"
     end
 
     test "diagnostics from the harness become Problems", %{channel: channel, scope: scope} do

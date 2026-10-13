@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
+defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   @moduledoc """
   8c91d5bc. A coder's question about criterion 944 sat in the customer's queue.
 
@@ -16,12 +16,14 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.Notifications
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -58,6 +60,8 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
         working_copy: "/tmp/criteria-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end
@@ -119,7 +123,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
 
       {:reply, response, _} =
         AnswerNotification.execute(
-          %{id: request.id, answer: "Criterion 944 is rewritten; keep the fix."},
+          %{notification_id: request.id, answer: "Criterion 944 is rewritten; keep the fix."},
           frame(ctx, product)
         )
 
@@ -142,7 +146,10 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
       request = ask(ctx)
 
       {:reply, response, _} =
-        AnswerNotification.execute(%{id: request.id, answer: "do it"}, frame(ctx, product))
+        AnswerNotification.execute(
+          %{notification_id: request.id, answer: "do it"},
+          frame(ctx, product)
+        )
 
       assert response.isError
       assert Notifications.get_question_request(request.id).status == "pending"
@@ -163,7 +170,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
       request = ask(ctx)
 
       {:ok, _} =
-        CodeMySpec.MainAgent.escalate_question(ctx.scope, request.id, "a product call")
+        MainAgent.escalate_question(ctx.scope, request.id, "a product call")
 
       Map.merge(ctx, %{main: main, request: request})
     end
@@ -174,7 +181,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
       {:reply, response, _} =
         AnswerNotification.execute(
           %{
-            id: ctx.request.id,
+            notification_id: ctx.request.id,
             answer: "Moot: #{issue.title} — keep the fix.",
             basis: "record"
           },
@@ -191,7 +198,7 @@ defmodule CodeMySpec.MainAgent.CriteriaQuestionsGoToProductTest do
     test "an answer that does not stand up leaves the user's question as it was", ctx do
       {:reply, response, _} =
         AnswerNotification.execute(
-          %{id: ctx.request.id, answer: "just guess", basis: "record"},
+          %{notification_id: ctx.request.id, answer: "just guess", basis: "record"},
           frame(ctx, ctx.main)
         )
 

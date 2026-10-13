@@ -10,22 +10,19 @@ defmodule CodeMySpec.AnalysisBootstrapTest do
     {:ok, scope: scope}
   end
 
-  describe "ensure_stale_runs/3 with only_failed" do
-    test "enqueues a source that has never run", %{scope: scope} do
-      # The bootstrap case. `only_failed` means "re-run what broke", and a
-      # source with no run at all matched no clause — so it was skipped as
-      # current, forever, and could never produce the first run that would
-      # let it be considered again.
-      assert %{enqueued: enqueued} =
-               Analysis.ensure_stale_runs(scope, ["compiler", "credo"], only_failed: true)
+  # Explicit analysis — `start_analysis`, certification, promotion — always
+  # runs what it asks for. The quiet-stop rules that once skipped "current"
+  # sources went with the stop's analysis (John, 2026-10-04).
+  describe "ensure_stale_runs/3" do
+    test "enqueues every requested source and memoizes none", %{scope: scope} do
+      assert %{enqueued: enqueued, memoized: []} =
+               Analysis.ensure_stale_runs(scope, ["credo", "compiler"], [])
 
-      assert "compiler" in enqueued
-      assert "credo" in enqueued
+      assert Enum.sort(enqueued) == ["compiler", "credo"]
     end
 
-    test "still enqueues everything when only_failed is not set", %{scope: scope} do
-      assert %{enqueued: enqueued} = Analysis.ensure_stale_runs(scope, ["credo"], [])
-      assert "credo" in enqueued
+    test "puts compile first" do
+      assert [{"compiler", _}, {"credo", _}] = Analysis.plan_runs(["credo", "compiler"])
     end
   end
 end

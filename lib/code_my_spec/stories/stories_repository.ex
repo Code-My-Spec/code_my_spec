@@ -263,11 +263,20 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   Ready rather than all, because that is the question people ask. A story
   nobody has released is not yet anybody's problem, and including them buries
   the one that is.
+
+  Also excludes anything already promoted (issue b6462c09): `ready_for_dev`
+  is product's approval and stays set after delivery, so a shipped story with
+  nowhere left to go stayed in this set forever — the only ways to clear it
+  were to park delivered work in an epic or propose one of nothing but
+  finished stories. "Ready to build" and "still needs dispatching" are two
+  different questions; only the second belongs here.
   """
   @spec ready_stories_without_epic(Scope.t()) :: [Story.t()]
   def ready_stories_without_epic(%Scope{active_project_id: project_id}) do
     from(s in Story,
-      where: s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id),
+      where:
+        s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id) and
+          is_nil(s.promoted_version),
       order_by: [asc: s.inserted_at]
     )
     |> Repo.all()
@@ -392,6 +401,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     %Story{}
     |> Story.changeset(attrs_with_ownership)
+    |> Story.retire_dropped_criteria()
     |> Ecto.Changeset.put_change(:project_id, project_id)
     |> put_account_id(scope)
     |> put_number(project_id)
@@ -454,6 +464,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     story
     |> Story.changeset(attrs_with_ownership)
+    |> Story.retire_dropped_criteria()
     |> PaperTrail.update(originator: originator(scope))
     |> case do
       {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags], force: true)}
@@ -468,7 +479,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     now = DateTime.utc_now()
 
     Repo.transaction(fn ->
-      from(c in CodeMySpec.AcceptanceCriteria.Criterion,
+      from(c in CodeMySpec.Stories.AcceptanceCriteria.Criterion,
         where: c.story_id == ^story.id and is_nil(c.retired_at)
       )
       |> Repo.update_all(set: [retired_at: now])
@@ -489,7 +500,7 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   # again is its own decision.
   def restore_story(%Scope{} = scope, %Story{retired_at: %DateTime{} = retired_at} = story) do
     Repo.transaction(fn ->
-      from(c in CodeMySpec.AcceptanceCriteria.Criterion,
+      from(c in CodeMySpec.Stories.AcceptanceCriteria.Criterion,
         where: c.story_id == ^story.id and c.retired_at == ^retired_at
       )
       |> Repo.update_all(set: [retired_at: nil])

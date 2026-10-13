@@ -75,6 +75,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         :ok = Fixtures.put_agent_mid_turn(context.scope, main.id)
         context = check_in(Map.merge(context, %{coder: coder.id, main_id: main.id}))
+        :ok = Fixtures.end_turn(context.scope, context.main_id)
+
+        assert [%{status: "open"}] = offers(context, context.main_id, %{kind: "stalled"}),
+               listing(context)
+
+        :ok = Fixtures.deliver_agent_message(context.scope, context.main_id, context.notice_ref)
         {:ok, context}
       end
 
@@ -113,6 +119,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         :ok = Fixtures.put_agent_mid_turn(context.scope, main.id)
         context = check_in(Map.merge(context, %{coder: coder.id, main_id: main.id}))
+        :ok = Fixtures.end_turn(context.scope, context.main_id)
+
+        assert [%{status: "open"}] = offers(context, context.main_id, %{kind: "stalled"}),
+               listing(context)
+
+        :ok = Fixtures.deliver_agent_message(context.scope, context.main_id, context.notice_ref)
         {:ok, context}
       end
 
@@ -150,7 +162,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
     )
 
     main_id = context.main_id
-    assert_receive {:agent_message, ^main_id, "Teammate stalled" <> _ = notice}, 5_000
-    Map.put(context, :notice, notice)
+    assert_receive {:agent_dispatch, ^main_id, ref, "Teammate stalled" <> _ = notice}, 5_000
+    Map.merge(context, %{notice: notice, notice_ref: ref})
   end
 end

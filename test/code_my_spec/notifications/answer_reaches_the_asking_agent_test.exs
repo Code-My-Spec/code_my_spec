@@ -29,6 +29,7 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Notifications
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -57,6 +58,8 @@ defmodule CodeMySpec.Notifications.AnswerReachesTheAskingAgentTest do
         working_copy: "/tmp/answers-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     # The conversation the answer must leave alone. An agent always has one in
     # production, opened when it starts, so "nothing was written into it" is

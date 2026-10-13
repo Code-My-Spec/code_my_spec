@@ -60,11 +60,25 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
     # problem `Fixtures.record_problem/3` writes, since its path is a name
     # rather than a file. Computing first swept them before the menu could
     # count them, and criteria 3183 and 3196 went silent for it.
-    {:reply, _response, _frame} =
-      SetWorkingCopyLoop.execute(
-        %{working_copy_id: copy_id || context.scope.active_working_copy_id, working: true},
-        frame
-      )
+    switch_on = fn ->
+      {:reply, _response, _frame} =
+        SetWorkingCopyLoop.execute(
+          %{working_copy_id: copy_id || context.scope.active_working_copy_id, working: true},
+          frame
+        )
+    end
+
+    # On a live harness the switch asks for a rescan, and the manifest lands
+    # later and wakes the copy's agents through the graph. Waited out here, so
+    # that wake belongs to this setup and not to the step after it (74870eb6).
+    case context do
+      %{harness: %{}} ->
+        :ok = HarnessHooks.await_manifest(context, switch_on)
+        :ok = Fixtures.settle_graph(context.scope)
+
+      _no_harness ->
+        switch_on.()
+    end
 
     {:reply, _next, _frame} = GetNextRequirement.execute(%{}, frame)
 

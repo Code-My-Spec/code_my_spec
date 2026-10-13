@@ -6,8 +6,8 @@ defmodule CodeMySpec.AgentTasks do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
-      CodeMySpec.Analysis,
+      CodeMySpec.PromotionQueue,
+      CodeMySpec.Stories,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,
       CodeMySpec.BddSpecs,
@@ -20,7 +20,6 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Problems,
-      CodeMySpec.ProjectSync,
       CodeMySpec.Projects,
       CodeMySpec.Promotion,
       CodeMySpec.PublicUrl,
@@ -31,7 +30,6 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Resources,
       CodeMySpec.Rules,
       CodeMySpec.Sessions,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies

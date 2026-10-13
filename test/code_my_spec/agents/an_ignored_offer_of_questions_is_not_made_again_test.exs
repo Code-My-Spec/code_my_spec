@@ -10,13 +10,14 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup :register_log_in_setup_account
@@ -34,8 +35,9 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
     CodeMySpec.WorkingCopies.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
 
     main = agent(ctx.scope, "main")
-    # Product's questions go to main, as on the project where this was measured.
-    asker = agent(ctx.scope, "product")
+    # A coding agent's questions go to main, as on the project where this was
+    # measured (product's own now go straight to the user, criterion 1987).
+    asker = agent(ctx.scope, "coding")
     question = question(ctx.scope, asker, "Which way?")
 
     :ok = GraphWatcher.settle(ctx.scope)
@@ -55,6 +57,8 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
         working_copy: "/tmp/questions-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _conversation} =
       Conversations.find_or_create_agent_conversation(

@@ -70,8 +70,7 @@ defmodule CodeMySpec.Devices do
     deps: [
       CodeMySpec.Accounts,
       CodeMySpec.Repo,
-      CodeMySpec.Users.Scope,
-      CodeMySpec.WorkingCopies
+      CodeMySpec.Users.Scope
     ],
     exports: :all
 
@@ -81,7 +80,6 @@ defmodule CodeMySpec.Devices do
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @doc """
   The device for this id, or a new one created using it if the caller has none.
@@ -252,27 +250,6 @@ defmodule CodeMySpec.Devices do
   def get_device(%Scope{}, _id), do: nil
 
   @doc """
-  Attach a working copy to the machine it is on.
-
-  Called on join, when the daemon says which device it is announcing from. A
-  copy that moves machines — a repository cloned to a new laptop under the same
-  id — re-attaches rather than being refused, because the copy's identity is its
-  own and does not belong to the box.
-  """
-  @spec attach(WorkingCopy.t(), Device.t() | nil) ::
-          {:ok, WorkingCopy.t()} | {:error, Ecto.Changeset.t()}
-  def attach(%WorkingCopy{} = working_copy, nil), do: {:ok, working_copy}
-
-  def attach(%WorkingCopy{device_id: id} = working_copy, %Device{id: id}),
-    do: {:ok, working_copy}
-
-  def attach(%WorkingCopy{} = working_copy, %Device{} = device) do
-    working_copy
-    |> WorkingCopy.changeset(%{device_id: device.id})
-    |> Repo.update()
-  end
-
-  @doc """
   Record that this machine is alive, because something on it just proved it.
 
   Split from `announce/3` for the reason `WorkingCopies.mark_alive/1` is split
@@ -320,22 +297,12 @@ defmodule CodeMySpec.Devices do
   bookkeeping fact is not a reason to refuse the message carrying it.
   """
   @spec record_load(Ecto.UUID.t() | nil, map()) :: :ok
-  def record_load(working_copy_id, load) when is_map(load) do
-    working_copy_id
-    |> device_for_copy()
+  def record_load(nil, load) when is_map(load), do: :ok
+
+  def record_load(device_id, load) when is_map(load) do
+    Device
+    |> Repo.get(device_id)
     |> write_load(load)
-  end
-
-  defp device_for_copy(nil), do: nil
-
-  defp device_for_copy(working_copy_id) do
-    from(w in WorkingCopy,
-      join: d in Device,
-      on: d.id == w.device_id,
-      where: w.id == type(^working_copy_id, :binary_id),
-      select: d
-    )
-    |> Repo.one()
   end
 
   defp write_load(nil, _load), do: :ok

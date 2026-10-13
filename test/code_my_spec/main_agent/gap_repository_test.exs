@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.GapRepositoryTest do
+defmodule CodeMySpec.Agents.Main.GapRepositoryTest do
   @moduledoc """
   The counting is the part story 1058's criterion 3330 turns on, and it is the
   part a spex reads only through an issue title — so it is checked here as well,
@@ -9,7 +9,8 @@ defmodule CodeMySpec.MainAgent.GapRepositoryTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.MainAgent.GapRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.GapRepository
 
   test "one gap is one row, and every recurrence is counted" do
     scope = user_scope_fixture()
@@ -69,7 +70,7 @@ defmodule CodeMySpec.MainAgent.GapRepositoryTest do
     test "fits the column no matter how long the capability is" do
       capability = String.duplicate("read the promote log itself, which it cannot ", 40)
 
-      title = CodeMySpec.MainAgent.gap_title(%{role: "coding", capability: capability})
+      title = MainAgent.gap_title(%{role: "coding", capability: capability})
 
       assert byte_size(title) <= 255,
              "issues.title is varchar(255); a title longer than that does not " <>
@@ -80,7 +81,7 @@ defmodule CodeMySpec.MainAgent.GapRepositoryTest do
     end
 
     test "leaves a capability that already fits exactly as it is" do
-      title = CodeMySpec.MainAgent.gap_title(%{role: "qa", capability: "read its own tool set"})
+      title = MainAgent.gap_title(%{role: "qa", capability: "read its own tool set"})
 
       assert title == "The qa role cannot: read its own tool set"
       refute String.ends_with?(title, "…")
@@ -89,7 +90,7 @@ defmodule CodeMySpec.MainAgent.GapRepositoryTest do
     test "cuts on a character boundary, not a byte one" do
       capability = String.duplicate("é", 300)
 
-      title = CodeMySpec.MainAgent.gap_title(%{role: "product", capability: capability})
+      title = MainAgent.gap_title(%{role: "product", capability: capability})
 
       assert byte_size(title) <= 255
       assert String.valid?(title), "a byte-wise cut would split a two-byte é in half"

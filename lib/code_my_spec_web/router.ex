@@ -589,10 +589,11 @@ defmodule CodeMySpecWeb.Router do
       live "/servers/:name", ServerLive.Show, :show
     end
 
-    # Portable UI — these LiveViews are mounted by CodeMySpecLocalWeb.Router
-    # at the same paths. `layout:` picks the cloud chrome, `on_mount` supplies
-    # the scope; nothing app-specific is baked into the views themselves.
-    # Same path shape as the local mount is what lets them keep plain `~p`.
+    # Portable UI — named for when a second host (CodeMySpecLocalWeb.Router)
+    # mounted the same LiveViews at the same paths, so the views themselves
+    # stayed app-agnostic. That second host is gone (issue f532f990); the
+    # `layout:`/`on_mount` split stays because nothing here depends on there
+    # being two hosts, only on the scope arriving through `PortableHost`.
     live_session :portable,
       layout: {CodeMySpecWeb.Layouts, :live},
       on_mount: [
@@ -646,6 +647,10 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
       live "/projects/:project_id/architecture/overview", ArchitectureLive, :overview
       live "/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
+
+      live "/projects/:project_id/agent-performance", AgentPerformanceLive.Index, :index
+      live "/projects/:project_id/agent-performance/:agent_id", AgentPerformanceLive.Show, :show
+
       live "/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
       live "/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
       live "/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge

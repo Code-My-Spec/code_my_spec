@@ -36,6 +36,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -62,6 +63,8 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
         working_copy: "/tmp/issue-block-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

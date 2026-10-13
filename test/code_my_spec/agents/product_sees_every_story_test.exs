@@ -16,13 +16,14 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Validation.Menu
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -201,6 +202,8 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
         working_copy: "/tmp/rp4d-#{role}-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

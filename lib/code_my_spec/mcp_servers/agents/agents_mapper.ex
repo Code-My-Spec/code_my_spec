@@ -15,7 +15,9 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   """
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.WorkingCopies
@@ -69,7 +71,9 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
   # owed is the retry — `34e03128`, "a :starting row is never retried" — and
   # until that lands this line is what stops an unconfirmed row reading as a
   # running agent.
-  defp headline(%Agent{status: :starting}),
+  defp headline(%Agent{} = agent), do: headline(agent, lifecycle(agent))
+
+  defp headline(%Agent{}, :starting),
     do: """
     Agent recorded, not yet confirmed by the machine.
 
@@ -78,7 +82,18 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     what says why.
     """
 
-  defp headline(%Agent{}), do: "Agent started."
+  defp headline(%Agent{}, :gave_up),
+    do: """
+    Its harness gave up on it: the process crashed three times in ten minutes and
+    is no longer restarted. Nothing will start it on its own — find the cause,
+    then `restart_agent` it.
+    """
+
+  defp headline(%Agent{}, _lifecycle), do: "Agent started."
+
+  # Derived, not stored: running while its process is present
+  # (`Agents.lifecycle/2`).
+  defp lifecycle(%Agent{} = agent), do: Agents.lifecycle(agent, Presence.ids(agent.project_id))
 
   def started(%Agent{} = agent) do
     Response.tool()
@@ -92,7 +107,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Model: #{agent.model || "the provider's default"}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
     Account: #{agent.account_id}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
 
     Its turns appear in the agent conversation view for this project, the same
     place a Claude Code agent's do.
@@ -117,6 +132,18 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     """)
   end
 
+  def replied(agent_id, :queued) do
+    Response.tool()
+    |> Response.text(
+      "Agent: #{agent_id}\n\nQueued. The agent will receive this at its next turn boundary."
+    )
+  end
+
+  def replied(agent_id, :started) do
+    Response.tool()
+    |> Response.text("Agent: #{agent_id}\n\nDelivered. The agent has started its turn.")
+  end
+
   def replied(agent_id, reply) do
     Response.tool()
     |> Response.text("""
@@ -136,7 +163,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     body = Enum.map_join(agents, "\n\n", &entry/1)
 
     Response.tool()
-    |> Response.text("#{length(agents)} agent(s) running.\n\n#{body}")
+    |> Response.text("#{length(agents)} agent(s), each with its status.\n\n#{body}")
   end
 
   defp entry(%Agent{} = agent) do
@@ -145,7 +172,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Engine: #{agent.engine}
     Provider: #{agent.provider}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
     """
   end
 
@@ -157,7 +184,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
 
     Agent: #{agent.id}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
     State: #{Agent.describe_off(agent)}
 
     Nothing is delivered to it and nothing restarts it until `turn_on_agent`.
@@ -172,7 +199,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
 
     Agent: #{agent.id}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}
+    Status: #{lifecycle(agent)}
     """)
   end
 
@@ -185,7 +212,7 @@ defmodule CodeMySpec.McpServers.Agents.AgentsMapper do
     Agent: #{agent.id}
     Role: #{agent.role}
     Working copy: #{agent.working_copy}#{recorded_against(agent)}
-    Status: #{agent.status}#{unreachable(unreachable_machine)}
+    Status: #{lifecycle(agent)}#{unreachable(unreachable_machine)}
 
     It will never run again and its seat is free: `start_agent` can put a new \
     #{agent.role} agent there. Its conversation stays readable.

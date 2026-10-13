@@ -6,7 +6,7 @@ defmodule CodeMySpec.Files do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.BddSpecs,
       CodeMySpec.Components,
       CodeMySpec.Dependencies,
@@ -19,7 +19,6 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Requirements.Invalidations,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
@@ -91,7 +90,7 @@ defmodule CodeMySpec.Files do
   defp story_by_spec_path(%Scope{active_project_id: nil}), do: %{}
 
   defp story_by_spec_path(%Scope{} = scope) do
-    CodeMySpec.AcceptanceCriteria.Criterion
+    CodeMySpec.Stories.AcceptanceCriteria.Criterion
     |> where([c], c.project_id == ^scope.active_project_id)
     |> where([c], not is_nil(c.spec_path) and c.spec_path != "")
     |> select([c], {c.spec_path, c.story_id})
@@ -498,6 +497,22 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  Each spex file on this working copy and the criterion number its `spex` call
+  names (`Files.SpecBinding`), as `%{path => number}`. Which criterion a file
+  covers is this number joined to `criteria.number`.
+  """
+  @spec bdd_spec_criterion_numbers(Scope.t()) :: %{String.t() => integer()}
+  def bdd_spec_criterion_numbers(%Scope{active_project_id: project_id} = scope) do
+    File
+    |> where([f], f.project_id == ^project_id and f.role == :bdd_spec)
+    |> where([f], not is_nil(f.criterion_number))
+    |> scope_to_harness(scope)
+    |> select([f], {f.path, f.criterion_number})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   Why each spex on this working copy covers nothing although it names a
   criterion — an unknown or retired number, or one another spex already
   covers — as `%{path => reason}`. Read from the numbers files name and the
@@ -536,6 +551,21 @@ defmodule CodeMySpec.Files do
     |> where([f], f.project_id == ^project_id and f.path in ^paths)
     |> scope_to_harness(scope)
     |> Repo.all()
+  end
+
+  @doc """
+  Which of `paths` any checkout of the project still tracks.
+
+  Project-wide on purpose, unlike `get_by_paths/2`: a spec held by one
+  checkout is work on disk whichever checkout asks.
+  """
+  @spec tracked_in_project(Scope.t(), [String.t()]) :: MapSet.t(String.t())
+  def tracked_in_project(%Scope{active_project_id: project_id}, paths) when is_list(paths) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path in ^paths)
+    |> select([f], f.path)
+    |> Repo.all()
+    |> MapSet.new()
   end
 
   @doc """

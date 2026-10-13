@@ -15,6 +15,7 @@ defmodule CodeMySpec.Analysis.AFailedRunAnswersItsRequesterTest do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -42,6 +43,8 @@ defmodule CodeMySpec.Analysis.AFailedRunAnswersItsRequesterTest do
         working_copy: "/tmp/failed-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

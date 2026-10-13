@@ -28,8 +28,13 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
   attempted. So this scenario — a real content conflict — is caught the
   same way a same-file-different-lines divergence is, or a completely
   unrelated-files divergence is: refused for being behind main, not
-  merged-then-aborted-and-named. The file name is gone from the message on
-  purpose; there is no merge attempt left to have inspected it.
+  merged-then-aborted-and-named.
+
+  Third (promote-queue, 2026-10-04): promotions are queued, and the queue
+  merges candidates in its own gate checkout. A conflict there is aborted in
+  the gate, never on the running checkout, and the candidate is taken out of
+  the queue naming the file — the merge was attempted again, so the file is
+  known again. The remedy is unchanged: merge main in your own copy.
   """
 
   use CodeMySpecSpex.Case
@@ -53,7 +58,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
     :ok
   end
 
-  spex "A conflict is refused before it is attempted, and the agent is sent to resolve it locally",
+  spex "A conflict is taken out of the queue, and the agent is sent to resolve it locally",
     criterion: 1178 do
     scenario "main and the story branch changed the same line" do
       given_ "a story branch that changed a line", context do
@@ -90,19 +95,17 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
         {:ok, context}
       end
 
-      then_ "the agent is told it is behind main, not which file conflicts", context do
+      then_ "the agent is told which file conflicts", context do
         text = response_text(context.response)
 
-        assert text =~ "behind main",
-               "ff-only refuses on ancestry alone and never inspected the tree, " <>
-                 "so the refusal has to name what is actually true rather than " <>
-                 "imply a conflict was found. Got: #{text}"
+        assert text =~ "lib/broken_oaths/diplomacy/war.ex",
+               "the conflict was found by a merge, so the file it found is known. Got: #{text}"
 
         {:ok, context}
       end
 
       then_ "the agent is told to resolve it in its own copy, not the running one", context do
-        assert response_text(context.response) =~ "git merge --ff-only main",
+        assert response_text(context.response) =~ "Merge main into your branch",
                "the agent was refused without being told the remedy is its own to run"
 
         {:ok, context}
@@ -194,6 +197,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
 
     running = join_working_copy(context, running_root, "the checkout the dev app runs in")
     agent = join_working_copy(context, agent_root, "the coding agent's copy")
+    CodeMySpecSpex.PromotionHelpers.a_gate_copy(context, running_root)
 
     # The running checkout joined first and so holds the designation: the
     # project's first checkout to report a root becomes its main copy

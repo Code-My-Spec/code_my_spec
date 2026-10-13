@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.MainAgent.MainAgentMapper
   alias CodeMySpec.McpServers.Validators
 

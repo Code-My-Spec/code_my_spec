@@ -19,7 +19,11 @@ defmodule CodeMySpecSpex.Fixtures do
     deps: [
       CmsHarness,
       CodeMySpec,
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Agents.Agent,
+      CodeMySpec.Embeddings,
+      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Provisioning.Hetzner,
+      CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
       CodeMySpec.Accounts,
       CodeMySpec.AgentHarness,
@@ -44,7 +48,6 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Files,
       CodeMySpec.Generators,
       CodeMySpec.Integrations,
-      CodeMySpec.MainAgent,
       CodeMySpec.Mail,
       CodeMySpec.Migration,
       CodeMySpec.Notifications,
@@ -63,7 +66,6 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
-      CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.TempFile,
       CodeMySpec.UserPreferences,
@@ -115,6 +117,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Analysis.Reconciler
@@ -161,6 +164,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
@@ -171,7 +175,9 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.Workspace
   alias CodeMySpec.Workspaces.WorkspacesRepository
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.FakeWorkspaceRunner
+  alias CodeMySpecTest.RecordingAgentTransport
   alias CodeMySpecTest.WorkspaceWatchers
   alias Phoenix.ConnTest
   alias Plug.Conn
@@ -900,13 +906,42 @@ defmodule CodeMySpecSpex.Fixtures do
         agent.id
       )
 
-    agent
+    # Running is presence now: the copy's channel tracks a live agent, so the
+    # row alone would read as off.
+    AgentPresence.present(agent)
   end
+
+  @doc "Track an already-created agent present, the way `running_agent/2` does."
+  @spec mark_present(map()) :: map()
+  def mark_present(agent), do: AgentPresence.present(agent)
 
   defp tool_set(role) when is_binary(role),
     do: role |> String.to_existing_atom() |> tool_set()
 
   defp tool_set(role) when is_atom(role), do: ToolSets.for_role(role)
+
+  @doc """
+  Swap in `RecordingAgentTransport` for a scenario that restarts or messages
+  a `running_agent/2` fixture.
+
+  `running_agent/2` creates only the row, with no live harness process behind
+  it, so the default `InProcessAgentTransport` refuses delivery to a machine
+  that was never actually started -- this is the same swap
+  `OperatorMessagesWaitForDeliveryTest` and its siblings use to exercise
+  `message_agent`/`restart_agent` without one.
+  """
+  @spec use_recording_transport() :: :ok
+  def use_recording_transport do
+    previous = Application.get_env(:code_my_spec, :agent_transport)
+    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :agent_transport, previous)
+    end)
+
+    RecordingAgentTransport.listen()
+    :ok
+  end
 
   @doc """
   Put an agent mid-turn, the way a turn actually starts.
@@ -1566,6 +1601,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Sync only what changed since the last sync -- the path a rewrite actually
+  goes through (`FileSync.sync_changed/2`), which is what clears a
+  criterion's own latch when its spex is rewritten. `sync_files/1`'s full
+  `FileSync.sync/2` does not carry that: it is the bulk reconciliation pass,
+  not the incremental one the watcher and the stop hook use.
+  """
+  @spec sync_changed(Scope.t()) :: :ok
+  def sync_changed(%Scope{} = scope) do
+    {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
+    :ok
+  end
+
+  @doc """
   What the graph actually holds actionable for a role, right now.
 
   `CodeMySpec.Requirements` is not a spex dependency, same as `watch_graph/1`
@@ -1816,17 +1864,33 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   An analyzer run for this copy that finished badly.
 
-  For premises about what a stop does next: `validate_stop/3` enqueues with
-  `only_failed: true` on the no-changed-files path, so a *failed* run is the
-  state that makes a stop re-run something and a completed one is not. Without
-  it a spec asserting "the turn end enqueued the analyzers" passes on runs an
-  earlier step already caused, and proves nothing.
+  For premises about a run that did not finish well. A stop never re-runs it
+  (John, 2026-10-04); only an explicit request does.
   """
   def failed_analysis_run(%Scope{} = scope, source) do
     CodeMySpec.AnalysisFixtures.analysis_run_fixture(scope, %{
       source: source,
       status_override: :failed
     })
+  end
+
+  @doc "Deliver a queued message and begin its turn through the harness channel."
+  def deliver_agent_message(%Scope{} = scope, agent_id, ref) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    Enum.each([%{event: :message_delivered, ref: ref}, %{event: :turn_started}], fn event ->
+      case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+             "agent_turn_event",
+             %{
+               "agent_id" => agent_id,
+               "event" => ChannelClient.encode_turn_event(event)
+             },
+             socket
+           ) do
+        {:noreply, _socket} -> :ok
+        {:reply, _reply, _socket} -> :ok
+      end
+    end)
   end
 
   @doc """
@@ -1863,15 +1927,45 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
-  # Cassette opts (`:compile_output_file` and friends — see
-  # `CodeMySpec.Validation.validate_stop/3`) have no wire representation: a
-  # real harness never sends them, and the channel payload above has nowhere
-  # to carry them. Driven straight through `Agents.record_turn_event/4`
-  # instead of the socket when a spex supplies any, which is the same escape
-  # `Hooks.Stop` already gives the external path — the channel round-trip
-  # this skips is a two-line passthrough with nothing of its own to exercise.
+  # Recorded outputs (`:compile_output_file` and friends) are landed as a
+  # completed analysis run first (`land_outputs/2`); a turn end never starts
+  # or ingests one. Whatever opts remain go straight through
+  # `Agents.record_turn_event/4`, since the channel payload has nowhere to
+  # carry them; with none left, the turn ends over the socket like a real one.
   def end_turn(%Scope{} = scope, agent_id, opts) do
-    :ok = CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, opts)
+    case land_outputs(scope, opts) do
+      [] ->
+        end_turn(scope, agent_id, [])
+
+      rest ->
+        :ok =
+          CodeMySpec.Agents.record_turn_event(scope, agent_id, %{"kind" => "turn_ended"}, rest)
+    end
+  end
+
+  @doc """
+  An agent's turn failing, as it arrives on the channel.
+
+  Same reasoning as `end_turn/3`: the proxy that reports a failed turn lives
+  in `cms_harness`, so a spec drives the channel's own `agent_turn_event`
+  entry on a `turn_failed` kind rather than a second version of it. `text`
+  is read by `Agents.record_turn_event/4` through `ProviderRefusal.read/2`
+  and `TurnTimeout.exec/1` to classify the failure's cause.
+  """
+  @spec fail_turn(Scope.t(), String.t(), String.t()) :: :ok
+  def fail_turn(%Scope{} = scope, agent_id, text) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    event = ChannelClient.encode_turn_event(%{event: :turn_failed, text: text})
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "agent_turn_event",
+           %{"agent_id" => agent_id, "event" => event},
+           socket
+         ) do
+      {:noreply, _socket} -> :ok
+      {:reply, _reply, _socket} -> :ok
+    end
   end
 
   @doc """
@@ -2102,6 +2196,40 @@ defmodule CodeMySpecSpex.Fixtures do
       |> CodeMySpec.Repo.update_all(set: [inserted_at: timestamp, updated_at: timestamp])
 
     :ok
+  end
+
+  @doc """
+  Establish the age of a permission request already created through its
+  public surface (`tap_out`, or a tool permission).
+
+  Mirrors `age_question/3`. Changes only timestamps, never status or decision.
+  """
+  @spec age_permission(Scope.t(), String.t(), pos_integer()) :: :ok
+  def age_permission(%Scope{user: %{id: user_id}}, permission_id, seconds)
+      when is_integer(seconds) and seconds > 0 do
+    timestamp =
+      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+
+    {1, _} =
+      from(p in Notifications.PermissionRequest,
+        where: p.id == ^permission_id and p.user_id == ^user_id
+      )
+      |> CodeMySpec.Repo.update_all(set: [inserted_at: timestamp, updated_at: timestamp])
+
+    :ok
+  end
+
+  @doc """
+  Bind an already-created agent to a story and/or epic, as the agent row
+  records it.
+
+  Setup only: a scenario about an agent's own story or epic needs the row to
+  carry one without re-deriving the whole `start_agent` path.
+  """
+  @spec bind_agent(Scope.t(), map(), map()) :: map()
+  def bind_agent(%Scope{} = scope, agent, attrs) do
+    {:ok, agent} = AgentsRepository.update_agent(scope, agent, attrs)
+    agent
   end
 
   @doc """
@@ -2354,7 +2482,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   def cloud_criteria(%Scope{} = scope, story),
-    do: CodeMySpec.AcceptanceCriteria.list_story_criteria(scope, story.id)
+    do: AcceptanceCriteria.list_story_criteria(scope, story.id)
 
   defp stringify_all(records), do: Enum.map(records, &stringify/1)
 
@@ -2550,16 +2678,49 @@ defmodule CodeMySpecSpex.Fixtures do
   # key is R8's repeat identity for the finding set, not something a spec has an
   # opinion about, and every one of these asserts on the reason.
   #
-  # `opts` is the same cassette escape hatch `end_turn/3` carries
-  # (`:compile_output_file` and friends, test-only) — passed straight through
-  # to `Validation.validate_stop/3`.
+  # A stop never starts or ingests analysis (John, 2026-10-04). Recorded outputs
+  # in `opts` (`:compile_output_file` and friends) are landed as a completed run
+  # first, by `land_outputs/2`, and the stop then reads what that run persisted.
   def validate_stop(scope, opts \\ [])
 
   def validate_stop(%Scope{} = scope, opts) do
-    case CodeMySpec.Validation.validate_stop(scope, nil, opts) do
+    case CodeMySpec.Validation.validate_stop(scope, nil, land_outputs(scope, opts)) do
       {:error, reason, _key} -> {:error, reason}
       other -> other
     end
+  end
+
+  @output_file_sources [
+    compile_output_file: "compiler",
+    credo_output_file: "credo",
+    exunit_output_file: "exunit",
+    spex_output_file: "spex"
+  ]
+
+  @doc """
+  Recorded analyzer outputs, landed as completed analysis runs — what
+  `start_analysis` would have produced — before anything stops.
+
+  Takes the opts a stop or turn end was given and returns them without the
+  output files and `:await` (which waits for the runs to land), neither of
+  which a stop accepts.
+  """
+  def land_outputs(%Scope{} = scope, opts) do
+    {files, rest} = Keyword.split(opts, Keyword.keys(@output_file_sources))
+
+    case for({opt, source} <- @output_file_sources, Keyword.has_key?(files, opt), do: source) do
+      [] ->
+        :ok
+
+      sources ->
+        CodeMySpec.Analysis.ensure_stale_runs(scope, sources, files)
+        # Waited for only when asked, as `validate_stop/3` used to: a scope
+        # that routes runs to a harness the spec never started would wait
+        # forever.
+        if Keyword.get(rest, :await, false), do: CodeMySpec.Analysis.await_all(scope)
+    end
+
+    Keyword.delete(rest, :await)
   end
 
   @doc "Files the harness scanned but could classify into no role."
@@ -2771,7 +2932,13 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec embedding_serving_is_recorded() :: :ok
   def embedding_serving_is_recorded do
     previous = Application.get_env(:code_my_spec, :embedding_serving)
-    Application.put_env(:code_my_spec, :embedding_serving, CodeMySpecTest.RecordingEmbeddingServing)
+
+    Application.put_env(
+      :code_my_spec,
+      :embedding_serving,
+      CodeMySpecTest.RecordingEmbeddingServing
+    )
+
     CodeMySpecTest.RecordingEmbeddingServing.listen(self())
 
     ExUnit.Callbacks.on_exit(fn ->
@@ -2826,9 +2993,13 @@ defmodule CodeMySpecSpex.Fixtures do
   Drive the real `POST /api/skills/start` endpoint with skill=implement
   so the agent's autonomous loop is enabled on the named session.
 
-  Production surface: `cms implement` (CLI) → POST /api/skills/start
-  → SkillController.start_skill → StartAgentTask.run("start_implementation")
-  → StartImplementation.init_session sets `session.continuous = true`.
+  Production surface: `cms implement` (CLI) → harness → `CmsHarness.Web.
+  SkillsController` → `HarnessProjectChannel` → `SkillRouter.resolve/2`
+  (skill: "implement") → `StartAgentTask.run("start_implementation")` →
+  `StartImplementation.init_session` sets `session.continuous = true`.
+  LocalWeb's `POST /api/skills/start` is gone with the retired CLI (issue
+  f532f990); calling `resolve/2` directly skips the transport layers same
+  as `start_agent_task/2` does for the direct-dispatch route.
 
   Returns `:ok`. The session's `external_id` is whatever the caller passed
   in; calling this AFTER a regular `start_task` for that session flips the
@@ -2836,21 +3007,9 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec start_continuous_mode(map(), String.t()) :: :ok
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
-    response =
-      ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-harness-id", scope.active_working_copy_id)
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> ConnTest.dispatch(
-        CodeMySpecLocalWeb.Endpoint,
-        :post,
-        "/api/skills/start",
-        %{"skill" => "implement", "external_id" => external_id}
-      )
-      |> ConnTest.json_response(200)
-
-    case response do
-      %{"prompt" => _} -> :ok
-      _ -> raise "start_continuous_mode failed: #{inspect(response)}"
+    case AgentTasks.SkillRouter.resolve(scope, %{"skill" => "implement", "external_id" => external_id}) do
+      {:ok, %{prompt: _}} -> :ok
+      other -> raise "start_continuous_mode failed: #{inspect(other)}"
     end
   end
 
@@ -3346,6 +3505,30 @@ defmodule CodeMySpecSpex.Fixtures do
       })
 
     :ok
+  end
+
+  @doc """
+  Starts an agent task the way the removed `POST /api/agent-tasks/start`
+  controller used to, for a spex whose criterion is about the task's own
+  behaviour rather than about having an HTTP endpoint for it -- LocalWeb, and
+  that route with it, is gone (issue f532f990).
+
+  Mirrors the JSON response's string-keyed shape (`"prompt"`/`"error"`) so a
+  spex written against the HTTP call needs no change beyond how it gets the
+  response.
+  """
+  @spec start_agent_task(Scope.t(), map()) :: map()
+  def start_agent_task(%Scope{} = scope, params) do
+    args = %{
+      external_id: params["external_id"],
+      session_type: params["session_type"],
+      module_name: params["module_name"]
+    }
+
+    case AgentTasks.StartAgentTask.run(scope, args) do
+      {:ok, prompt, _sync_result} -> %{"prompt" => prompt}
+      {:error, reason} -> %{"error" => inspect(reason)}
+    end
   end
 
   @spec install_workspace_runner(keyword(), keyword()) :: :ok
@@ -3856,7 +4039,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec give_up_on_question(Scope.t(), String.t()) :: :ok
   def give_up_on_question(%Scope{} = scope, question_id) do
-    {:ok, _question} = CodeMySpec.MainAgent.give_up_on_question(scope, question_id)
+    {:ok, _question} = MainAgent.give_up_on_question(scope, question_id)
     :ok
   end
 
@@ -3869,15 +4052,15 @@ defmodule CodeMySpecSpex.Fixtures do
   about the wake-up's *content and consequences*, and the tick is that wake-up.
   """
   @spec cadence_tick(Scope.t()) :: :ok
-  def cadence_tick(%Scope{} = scope), do: CodeMySpec.MainAgent.check_in(scope)
+  def cadence_tick(%Scope{} = scope), do: MainAgent.check_in(scope)
 
   @doc "Start a real recovery timer for a scheduling spec and clean up its supervised child."
   @spec start_recovery_timer(Scope.t()) :: :ok
   def start_recovery_timer(%Scope{} = scope) do
-    {:ok, pid} = CodeMySpec.MainAgent.ensure_cadence(scope)
+    {:ok, pid} = MainAgent.ensure_cadence(scope)
 
     ExUnit.Callbacks.on_exit(fn ->
-      DynamicSupervisor.terminate_child(CodeMySpec.MainAgent.CadenceSupervisor, pid)
+      DynamicSupervisor.terminate_child(CodeMySpec.Agents.Main.CadenceSupervisor, pid)
     end)
 
     :ok
@@ -3929,7 +4112,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "How often this project's main agent is woken, in seconds."
   @spec cadence_interval(Scope.t()) :: pos_integer()
-  def cadence_interval(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_interval(scope)
+  def cadence_interval(%Scope{} = scope), do: MainAgent.cadence_interval(scope)
 
   @doc """
   Set how often this project's main agent is woken.
@@ -3940,11 +4123,11 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec set_cadence_interval(Scope.t(), pos_integer()) :: :ok
   def set_cadence_interval(%Scope{} = scope, seconds),
-    do: CodeMySpec.MainAgent.set_cadence_interval(scope, seconds)
+    do: MainAgent.set_cadence_interval(scope, seconds)
 
   @doc "Whether this project's cadence is still waking its main agent."
   @spec cadence_running?(Scope.t()) :: boolean()
-  def cadence_running?(%Scope{} = scope), do: CodeMySpec.MainAgent.cadence_running?(scope)
+  def cadence_running?(%Scope{} = scope), do: MainAgent.cadence_running?(scope)
 
   @doc """
   Make one of the things the digest reads unanswerable.
@@ -4271,10 +4454,14 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec spec_file_path(map(), map()) :: String.t()
   #
-  # `criterion_id` is what `GetStory` shows the agent, which is the number.
+  # `criterion_id` is either a real criterion's own database id (a struct
+  # from `story.criteria`) or the number `GetStory` shows the agent under
+  # the same key — matching on both is what lets either caller through.
   def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
     story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
-    criterion = Enum.find(story.criteria, &(&1.number == criterion_id))
+
+    criterion =
+      Enum.find(story.criteria, &(&1.id == criterion_id or &1.number == criterion_id))
 
     unless criterion do
       raise ArgumentError,
@@ -4481,6 +4668,12 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def set_project_deploy_key(scope, project, key) do
     {:ok, project} = CodeMySpec.Projects.update_project(scope, project, %{deploy_key: key})
+    project
+  end
+
+  @doc "A project's deploy key, minting one if it has none yet."
+  def ensure_project_deploy_key(scope, project) do
+    {:ok, project} = CodeMySpec.Projects.ensure_deploy_key(scope, project)
     project
   end
 

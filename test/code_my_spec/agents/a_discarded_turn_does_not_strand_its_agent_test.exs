@@ -30,6 +30,7 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup :register_log_in_setup_account
@@ -54,6 +55,8 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
         working_copy: "/tmp/stranded-turn-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _conversation} =
       Conversations.find_or_create_agent_conversation(
@@ -128,6 +131,32 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
            coming — measured at six minutes on one project and eight days on
            another, each ended by a human sending a message.
            """
+  end
+
+  test "an agent coming up does not resume another task-holder on its copy", ctx do
+    held = holding_a_task(ctx.scope, ctx.agent, nil)
+
+    {:ok, newcomer} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "qa",
+        continuous: false,
+        status: :running,
+        working_copy: held.working_copy,
+        working_copy_id: held.working_copy_id
+      })
+
+    AgentPresence.present(newcomer)
+    :ok = CodeMySpec.Agents.came_up(ctx.scope, newcomer.id)
+
+    refute offered_a_turn?(held.id)
+    held_id = held.id
+    refute_received {:work_turn_requested, ^held_id, _, _}
+
+    :ok = CodeMySpec.Agents.came_up(ctx.scope, held.id)
+    assert_receive {:work_turn_requested, ^held_id, _, message}
+    assert message =~ Agent.active_task(held).id
   end
 
   test "an agent genuinely mid-turn is left alone", ctx do

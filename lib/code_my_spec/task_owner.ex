@@ -2,7 +2,7 @@ defmodule CodeMySpec.TaskOwner do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Configurations,
       CodeMySpec.Issues,
       CodeMySpec.Repo,
@@ -50,7 +50,6 @@ defmodule CodeMySpec.TaskOwner do
   """
 
   alias CodeMySpec.Agents.Agent
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Configurations
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
@@ -82,6 +81,50 @@ defmodule CodeMySpec.TaskOwner do
   @doc "One task by id."
   @spec find_task(t(), String.t()) :: Task.t() | nil
   def find_task(owner, task_id), do: Enum.find(tasks(owner), &(&1.id == task_id))
+
+  @doc """
+  Record that the owner's open promotion task waits on the queue.
+
+  Called by the MCP `promote` tool *after* `PromotionQueue` answers `:queued`,
+  naming the subject the candidate was queued for. This is the push half of
+  issue e515bff3 (story 1091): the wait is written onto the task's own row here,
+  so `allow_activation/2` can read it without asking the queue anything.
+
+  It has to be called from above both boundaries — the MCP layer depends on
+  `Agents` and on `PromotionQueue`, where every enqueuer sits below `Agents` and
+  could only close a cycle (see issue e23a5547 for the four dep lists).
+
+  A no-op when the owner holds no open promotion task: an operator promoting
+  from a script has no task to mark, and the queue messages nobody.
+  """
+  @spec await_promotion(t(), String.t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def await_promotion(%Session{} = owner, _type, _id), do: {:ok, owner}
+
+  def await_promotion(%Agent{} = owner, subject_type, subject_id)
+      when is_binary(subject_type) and is_binary(subject_id) do
+    case Enum.find(tasks(owner), &promotion_task?/1) do
+      nil ->
+        {:ok, owner}
+
+      %Task{id: id} ->
+        owner
+        |> Agent.update_task(id, %{
+          awaiting_subject_type: subject_type,
+          awaiting_subject_id: subject_id
+        })
+        |> Repo.update()
+    end
+  end
+
+  # The tasks whose open state is the queue's, not the agent's (criterion 2021).
+  # Kept here rather than read from `Agents.Work`, which holds the same list:
+  # `TaskOwner` sits below `Agents`, so the read would close the cycle.
+  @promotion_tasks ~w(promote_issue story_promoted)
+
+  defp promotion_task?(%Task{status: :active, requirement_name: name}),
+    do: name in @promotion_tasks
+
+  defp promotion_task?(_task), do: false
 
   @doc "Blocked attempts, including resolved blockers awaiting explicit resumption."
   @spec blocked_tasks(t()) :: [Task.t()]
@@ -129,7 +172,30 @@ defmodule CodeMySpec.TaskOwner do
     end)
   end
 
-  @doc "Block an active task while retaining its identity, ownership and continuous policy."
+  @doc """
+  Block a task while retaining its identity, ownership and continuous policy.
+
+  An `:active` task is the ordinary case: it becomes `:blocked` on the new
+  blocker.
+
+  A task that is already `:blocked` is accepted too, and this is the whole of
+  ce070442. It used to fall through to `{:error, :task_not_active}`, which left
+  a blocked task unreachable by `tap_out` — and `tap_out` is what the loop's own
+  refusal text tells an agent to reach for ("block it with `ask_user_question`
+  or `tap_out`, or `cancel_task`"). The reported sequence is exactly that: a
+  `qa_complete` task blocked on a question, the question answered, `start_task`
+  refusing to resume it (`:requirement_not_eligible` on the entity_id bug
+  ab111a52), `tap_out` refusing it as inactive, and nothing left but
+  `cancel_task` — which discards the attempt instead of asking a person, the
+  opposite of what the agent wanted.
+
+  Re-blocking is not a contradiction. The agent is saying "a person should
+  decide this", and the task is demonstrably not active *because* nobody has
+  decided the old blocker yet. What changes is which blocker it waits on: the
+  new one, so approving it frees exactly this task. `blocker_resolved_at` is
+  cleared for the same reason `block_tap_out_task/5` relies on — a task waiting
+  again is not a task whose blocker is answered.
+  """
   @spec block_task(Scope.t(), t(), String.t(), atom(), String.t(), keyword()) ::
           {:ok, t()} | {:error, term()}
   def block_task(scope, owner, task_id, type, blocker_id, opts \\ [])
@@ -137,10 +203,12 @@ defmodule CodeMySpec.TaskOwner do
              blocker_id != "" do
     locked_update(scope, owner, fn current ->
       case find_task(current, task_id) do
-        %Task{status: :active} ->
+        %Task{status: status} = task when status in [:active, :blocked] ->
           update_embedded_task(current, task_id, %{
             status: :blocked,
-            blocked_at: now(),
+            # The first block's time is kept: it is when this task stopped being
+            # worked, and re-blocking does not restart that clock.
+            blocked_at: task.blocked_at || now(),
             blocker_type: type,
             blocker_id: blocker_id,
             blocker_resolved_at: nil,
@@ -353,19 +421,24 @@ defmodule CodeMySpec.TaskOwner do
   defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
     detail = Keyword.get(opts, :detail)
 
-    case active_task(agent) do
-      nil ->
-        Elixir.Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          Work.wake_released(scope, agent, released, resolved_header(blocker), detail,
+    # Agents answers this (`Agents.Events`); TaskOwner sits below Agents.
+    meta =
+      case active_task(agent) do
+        nil ->
+          %{
+            scope: scope,
+            agent: agent,
+            released: released,
+            header: resolved_header(blocker),
+            detail: detail,
             subject: offer_subject(blocker)
-          )
-        end)
+          }
 
-      _active ->
-        Work.note_released(agent, deferred_notice(released, blocker, detail))
-    end
+        _active ->
+          %{agent: agent, deferred: deferred_notice(released, blocker, detail)}
+      end
 
-    :ok
+    :telemetry.execute([:code_my_spec, :tasks, :released], %{}, meta)
   end
 
   defp wake_holder(_scope, %Session{}, _released, _blocker, _opts), do: :ok
@@ -587,11 +660,21 @@ defmodule CodeMySpec.TaskOwner do
     case active_task(owner) do
       nil -> :ok
       %Task{id: ^task_id} -> :ok
-      task -> {:error, {:active_task_exists, task.id}}
+      task -> if awaiting_landing?(task), do: :ok, else: {:error, {:active_task_exists, task.id}}
     end
   end
 
   defp allow_activation(%Session{}, _task_id), do: :ok
+
+  # A promotion task that waits on the queue does not hold the one-task slot:
+  # `promote` only enqueues, and the task stays open until its batch lands.
+  #
+  # Criterion 2017 keeps it open until the landing or the ejection, so the fix is
+  # not to close it early — it keeps its place in the list and stops parking the
+  # agent. The signal is the task's own row, written by `await_promotion/3`; see
+  # `Task.awaiting_subject_id` for why it is not a read of the queue.
+  defp awaiting_landing?(%Task{awaiting_subject_id: id}) when is_binary(id), do: true
+  defp awaiting_landing?(_task), do: false
 
   defp add_embedded_task(%Session{} = session, attrs) do
     session |> Session.add_task(attrs) |> Repo.update()

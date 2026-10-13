@@ -29,7 +29,7 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
   end
 
   test "byte-identical impl rewrite + new failing test surfaces both blocking compiler and advisory exunit" do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
@@ -107,7 +107,7 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
     exunit_json = Path.join(fixture_dir, "exunit.json")
 
     result =
-      Validation.validate_stop(scope, nil,
+      stop(scope,
         compile_output_file: compile_jsonl,
         exunit_output_file: exunit_json,
         spex_output_file: Path.expand("test/fixtures/validation/spex_green.jsonl")
@@ -138,4 +138,9 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
     assert reason =~ "(advisory)",
            "expected (advisory) tag, got:\n#{reason}"
   end
+
+  # A stop never starts or ingests analysis (John, 2026-10-04): the recorded
+  # outputs land as completed runs first, and the stop reads what they found.
+  defp stop(scope, opts),
+    do: Validation.validate_stop(scope, nil, CodeMySpecSpex.Fixtures.land_outputs(scope, opts))
 end

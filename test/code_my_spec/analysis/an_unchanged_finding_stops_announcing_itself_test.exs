@@ -36,6 +36,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -55,7 +56,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
 
     scope = %{scope | active_working_copy_id: copy.id}
 
-    {:ok, _agent} =
+    {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         continuous: true,
@@ -64,6 +65,8 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
         working_copy: "/tmp/unchanged-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, copy: copy}
   end
@@ -129,7 +132,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
 
     assert_receive {:agent_dispatch, _id, _ref, message}, 2_000
 
-    assert message =~ "2 problems",
+    assert message =~ "2 blocking problems",
            """
            A run that found something new said nothing.
 
@@ -157,6 +160,8 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
         working_copy: "/tmp/asked-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.copy.id
       })
+
+    AgentPresence.present(agent)
 
     sweep(ctx.scope, [problem("lib/a.ex")])
     assert_receive {:agent_dispatch, _id, _ref, _message}, 2_000
@@ -198,13 +203,15 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
         working_copy_id: ctx.copy.id
       })
 
+    AgentPresence.present(agent)
+
     sweep(ctx.scope, [], requested_by: agent.id)
 
     assert_receive {:agent_dispatch, id, _ref, message}, 2_000
 
     assert id == agent.id, "the answer goes to the agent that started the run"
 
-    assert message =~ "no problems",
+    assert message =~ "no blocking problems",
            """
            A run the agent started came back green and said nothing.
 

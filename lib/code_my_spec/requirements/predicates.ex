@@ -69,11 +69,11 @@ defmodule CodeMySpec.Requirements.Predicates do
 
   import Ecto.Query
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
   alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
 
   @doc """
@@ -100,8 +100,8 @@ defmodule CodeMySpec.Requirements.Predicates do
   ## `:bdd_specs_covered`
 
   Story-scoped, like `:file_exists`, but satisfied per criterion rather than
-  per story: every acceptance criterion on the story has a non-empty
-  `spec_path` that resolves to an existing file of `config.role`. A story
+  per story: every live acceptance criterion on the story is named by a valid
+  file of `config.role` (its `files.criterion_number`, `Files.SpecBinding`). A story
   with no criteria is unsatisfied rather than vacuously true, matching
   `:all_deployed`'s reasoning — nothing to cover is not coverage.
 

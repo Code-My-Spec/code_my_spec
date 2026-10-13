@@ -19,13 +19,14 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Validation.Menu
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup :register_log_in_setup_account
@@ -146,6 +147,8 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
         working_copy: "/tmp/agree-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

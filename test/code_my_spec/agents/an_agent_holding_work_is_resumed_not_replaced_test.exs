@@ -27,6 +27,7 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -151,6 +152,10 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
       })
 
     assert started.id == stopped.id
+
+    # Its process comes up: what the copy's channel does on `agent_up`.
+    AgentPresence.present(started)
+    :ok = Agents.came_up(ctx.scope, started.id)
 
     # `Work.consider_project/2` is edge-triggered and a restart is not one of
     # its edges, so without an explicit ask the agent comes back running,

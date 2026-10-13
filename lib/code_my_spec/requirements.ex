@@ -10,7 +10,7 @@ defmodule CodeMySpec.Requirements do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.BddRules,
       CodeMySpec.Components,
@@ -28,7 +28,8 @@ defmodule CodeMySpec.Requirements do
       # to answer. So the graph reads it — from this leaf, not from `Promotion`,
       # which sits above the graph and must not be called by it.
       CodeMySpec.Promotion.RunningCopy,
-      CodeMySpec.Qa,
+      CodeMySpec.Qa.QaAttempt,
+      CodeMySpec.Qa.Verdict,
       CodeMySpec.Questions,
       CodeMySpec.Repo,
       # `deploy` waits on `Resources.setup_missing/3`, the answer
@@ -37,7 +38,6 @@ defmodule CodeMySpec.Requirements do
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Requirements.Invalidation,
       CodeMySpec.Requirements.Invalidations,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies
@@ -357,6 +357,10 @@ defmodule CodeMySpec.Requirements do
     RequirementGraph.compute_all(scope)
   end
 
+  @doc "How many of a story's requirements are satisfied, at one working copy."
+  @spec story_progress(integer(), Ecto.UUID.t() | nil) :: {non_neg_integer(), non_neg_integer()}
+  defdelegate story_progress(story_id, working_copy_id), to: NodeRepository
+
   @doc """
   Every requirement node, read from the projection when it is still current.
 
@@ -459,7 +463,8 @@ defmodule CodeMySpec.Requirements do
     story_id = if is_binary(id), do: String.to_integer(id), else: id
 
     with {:ok, %{stories: [story]} = ctx} <- Preloader.load_story(scope, story_id),
-         %{} = definition <- Enum.find(RequirementDefinitionData.story_graph(), &(&1.name == name)) do
+         %{} = definition <-
+           Enum.find(RequirementDefinitionData.story_graph(), &(&1.name == name)) do
       files = Map.get(ctx.files_by_story, story.id, [])
       RequirementCalculator.compute_one(scope, story, definition, files, ctx).satisfied == true
     else

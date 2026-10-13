@@ -57,9 +57,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Conversations.Reads
   alias CodeMySpec.Epics
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.ScreenState
   alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
@@ -71,6 +74,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProjectTimeline
+  alias CodeMySpecWeb.StoryProgress
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -177,6 +181,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # project, same as `WorkingCopyLive.Index` — without this it only ever
       # reflects whatever was true at the last navigation.
       Agents.subscribe(scope)
+      Agents.subscribe_presence(scope)
 
       # What the analyzers are doing right now.
       #
@@ -205,6 +210,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # the version that does not depend on the agent remembering.
       Epics.subscribe(scope)
       Stories.subscribe_stories(scope)
+
+      # Story progress pies, which change when the graph is recomputed.
+      GraphInputs.subscribe(scope.active_project_id)
 
       # Every message in the account, for the activity panel's read marks.
       Phoenix.PubSub.subscribe(
@@ -238,6 +246,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:working?, working?(scope, conversation))
     |> assign(:on?, on?(scope, conversation))
     |> assign(:retired?, retired?(scope, conversation))
+    |> assign(:assigned, assigned_to(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
     |> assign(:waiting, waiting)
@@ -327,11 +336,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp main_copy_id({:ok, agent, _conversation}), do: agent.working_copy_id
   defp main_copy_id(_error), do: nil
 
-  defp main_summary({:ok, %{status: :running}, _conversation}),
-    do: "Working on your project. Its steps appear below as it takes them."
-
-  defp main_summary({:ok, _agent, _conversation}),
-    do: "Getting ready. It will start work as soon as its machine picks it up."
+  # Working once its process is alive (`Agents.Presence`); until then, getting
+  # ready.
+  defp main_summary({:ok, agent, _conversation}) do
+    if Agents.present?(agent.project_id, agent),
+      do: "Working on your project. Its steps appear below as it takes them.",
+      else: "Getting ready. It will start work as soon as its machine picks it up."
+  end
 
   defp main_summary(_error), do: ""
 
@@ -551,6 +562,69 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp on?(_scope, _conversation), do: false
 
+  defp assigned_to(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, agent} -> assignments(scope, agent)
+      _ -> []
+    end
+  end
+
+  defp assigned_to(_scope, _conversation), do: []
+
+  # The issue first: it takes priority over the story in dispatch (story 1091).
+  defp assignments(scope, %Agent{} = agent) do
+    Enum.reject([assigned_issue(scope, agent), assigned_story(scope, agent)], &is_nil/1)
+  end
+
+  defp assigned_issue(_scope, %Agent{issue_id: nil}), do: nil
+
+  defp assigned_issue(scope, %Agent{issue_id: id}) do
+    case Issues.get_issue(scope, id) do
+      nil ->
+        nil
+
+      issue ->
+        %{
+          kind: :issue,
+          ref: String.slice(issue.id, 0, 8),
+          title: issue.title,
+          path: ~p"/app/projects/#{scope.active_project_id}/issues/#{issue.id}"
+        }
+    end
+  end
+
+  # Every pie on the page: the header's, and one per agent row holding a story.
+  defp story_progress_ids(assigns) do
+    header = if Enum.any?(assigns.assigned, &(&1.kind == :story)), do: ["story-progress-header"]
+
+    rows =
+      for copy <- assigns.copies,
+          a <- copy.agents,
+          Enum.any?(a.assigned, &(&1.kind == :story)),
+          do: "story-progress-#{a.agent.id}"
+
+    List.wrap(header) ++ rows
+  end
+
+  defp assigned_story(_scope, %Agent{story_id: nil}), do: nil
+
+  defp assigned_story(scope, %Agent{story_id: id}) do
+    case Stories.get_story(scope, id) do
+      nil ->
+        nil
+
+      story ->
+        %{
+          kind: :story,
+          story_id: story.id,
+          working_copy_id: story.working_copy_id,
+          ref: "##{story.number}",
+          title: story.title,
+          path: ~p"/app/projects/#{scope.active_project_id}/stories/#{story.number}"
+        }
+    end
+  end
+
   # A retired agent has no power button: it can never be turned on again.
   defp retired?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
     match?({:ok, %Agent{retired_at: %DateTime{}}}, Agents.fetch_agent(scope, agent_id))
@@ -599,7 +673,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp talkable?(_scope, nil), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
-    match?({:ok, %{status: status}} when status != :stopped, Agents.fetch_agent(scope, agent_id))
+    match?(
+      {:ok, agent} when agent.off_at == nil and agent.retired_at == nil,
+      Agents.fetch_agent(scope, agent_id)
+    )
   end
 
   defp talkable?(_scope, _conversation), do: false
@@ -625,6 +702,34 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # accepted.
   defp pending_for(nil), do: []
   defp pending_for(conversation), do: Conversations.pending_messages(conversation)
+
+  # Each pending row, with the run of promotion notices it folds (empty when it
+  # is not one). A run is one row; each notice in it can still be taken back.
+  defp pending_runs(pending) do
+    pending
+    |> Enum.chunk_by(&ChatComponents.routine_notice?/1)
+    |> Enum.flat_map(fn [first | _] = run ->
+      if ChatComponents.routine_notice?(first),
+        do: [{first, run}],
+        else: Enum.map(run, &{&1, []})
+    end)
+  end
+
+  attr :message, :any, required: true
+
+  defp withdraw_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="withdraw_message"
+      phx-value-ref={@message.delivery_ref}
+      data-test="agent-withdraw-message"
+      class="btn btn-xs btn-ghost"
+    >
+      Take it back
+    </button>
+    """
+  end
 
   defp page_title(project, nil), do: "#{project.name} · Agent conversation"
 
@@ -1051,6 +1156,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           chat: chat,
           liveness: Liveness.agent(agent, now),
           question?: not is_nil(session) and MapSet.member?(pending_sessions, session),
+          assigned: assignments(scope, agent),
           task_label: task_label(scope, agent.id)
         }
       end)
@@ -1348,6 +1454,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # The page holds one page of messages (50 by default), so re-folding the list
   # on each arrival costs nothing and the whole class of problem goes away.
   defp assign_turns(socket, messages) do
+    # Pending messages belong in the queue; failed and withdrawn attempts
+    # remain audit records, not things the agent has received.
+    messages = Enum.filter(messages, &(Map.get(&1, :delivery) in [nil, :delivered]))
+
     # A run of calls folds into one expandable item, and a pending question
     # anchored inside that run would render after the whole thing — below calls
     # the agent made *after* it asked. So the run breaks where the question is.
@@ -1368,6 +1478,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:results, results)
   end
 
+  # A message already on screen is replaced where it stands, never appended
+  # again: one loaded at mount can still arrive as a broadcast, and a queued one
+  # arrives again when it is delivered. Appending rendered it twice.
+  defp upsert(messages, %{id: id} = message) do
+    if Enum.any?(messages, &(&1.id == id)),
+      do: Enum.map(messages, &if(&1.id == id, do: message, else: &1)),
+      else: messages ++ [message]
+  end
+
   # A full page back means there is probably more; a short one means we reached
   # the beginning. Assumed true before the first fetch so the binding is armed
   # on a conversation that is exactly one page long — the check costs one query
@@ -1381,8 +1500,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # twice.
   defp sent({:ok, :started, _message}, socket), do: {:noreply, socket}
 
-  defp sent({:ok, :queued, message}, socket),
-    do: {:noreply, assign(socket, :pending, socket.assigns.pending ++ [message])}
+  defp sent({:ok, :queued, _message}, socket),
+    do: {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
 
   # Named, not generic. "Could not be sent" over a machine that is not
   # reachable and over an agent that has stopped send a person to different
@@ -1461,7 +1580,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   def handle_info({:new_message, message}, socket) do
-    {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
+    {:noreply,
+     socket
+     |> assign(:pending, pending_for(socket.assigns.conversation))
+     |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
   # What the agent is writing, before it is a message: the whole draft so far,
@@ -1478,7 +1600,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Either way it is no longer something the operator can change, and a control
   # still offering to change it is the failure the ref exists to prevent.
   def handle_info({:message_updated, message}, socket) do
-    {:noreply, assign(socket, :pending, drop_ref(socket, message.delivery_ref))}
+    {:noreply,
+     socket
+     |> assign(:pending, drop_ref(socket, message.delivery_ref))
+     |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
   # Above the catch-all deliberately. A clause added below it is dead code that
@@ -1548,8 +1673,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # `:session_changed` is in the mix too: it is what fires when a task
   # activates or completes, which is the only way an agent's task line ever
   # moves without somebody reloading the page.
+  # An agent's process came up or went down (`Agents.Presence`): the same
+  # redraw as the agent news below.
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket),
+    do: handle_info({:agent_started, nil}, socket)
+
   def handle_info({event, _payload}, socket)
-      when event in [:agents_reported, :agent_started, :agent_stopped, :session_changed] do
+      when event in [
+             :agents_reported,
+             :agent_started,
+             :agent_stopped,
+             :agent_turn,
+             :session_changed
+           ] do
     # The power button follows a turn-off or turn-on made anywhere else.
     scope = socket.assigns.current_scope
     conversation = socket.assigns[:conversation]
@@ -1558,8 +1694,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      socket
      |> assign(:on?, on?(scope, conversation))
      |> assign(:retired?, retired?(scope, conversation))
+     |> assign(:assigned, assigned_to(scope, conversation))
      |> assign(:talkable?, talkable?(scope, conversation))
      |> refresh_team_status()}
+  end
+
+  def handle_info({:graph_updated, _project_id}, socket) do
+    for id <- story_progress_ids(socket.assigns),
+        do: send_update(StoryProgress, id: id, refresh: true)
+
+    {:noreply, socket}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -1667,6 +1811,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           working?={@working?}
           on?={@on?}
           retired?={@retired?}
+          assigned={@assigned}
           draft={@draft}
           agent_writing={@agent_writing}
           main_agent?={@main_agent?}
@@ -1712,6 +1857,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               working?={@working?}
               on?={@on?}
               retired?={@retired?}
+              assigned={@assigned}
               draft={@draft}
               agent_writing={@agent_writing}
               main_agent?={@main_agent?}
@@ -1783,6 +1929,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Required for the same reason: the power button must never guess its state.
   attr :on?, :boolean, required: true
   attr :retired?, :boolean, required: true
+  attr :assigned, :list, required: true
   attr :draft, :string, required: true
 
   attr :agent_writing, :string,
@@ -1820,9 +1967,28 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       >
         <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
         <div class="flex min-w-0 flex-col">
-          <h1 class="min-w-0 truncate text-lg font-semibold">
-            {@conversation && Conversations.display_name(@conversation)}
-          </h1>
+          <div class="flex min-w-0 items-baseline gap-2">
+            <h1 class="min-w-0 shrink-0 truncate text-lg font-semibold">
+              {@conversation && Conversations.display_name(@conversation)}
+            </h1>
+            <.link
+              :for={item <- @assigned}
+              navigate={item.path}
+              data-test={"assigned-#{item.kind}"}
+              title={item.title}
+              class="link link-hover min-w-0 truncate text-xs opacity-70"
+            >
+              {if item.kind == :issue, do: "Issue", else: "Story"} {item.ref} · {item.title}
+            </.link>
+            <.live_component
+              :for={item <- @assigned}
+              :if={item.kind == :story}
+              module={StoryProgress}
+              id="story-progress-header"
+              story_id={item.story_id}
+              working_copy_id={item.working_copy_id}
+            />
+          </div>
           <%!-- Where the project is, in the words somebody who does not read
           code would use. Deliberately not a status line assembled from row
           counts: the agent is what will write this, and a summary built out of
@@ -1844,9 +2010,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <%!-- Story 538's R13, at the grain somebody is actually looking at.
         The working copy page moves all three roles together, which is right
         for staffing an epic and wrong when you have one agent's conversation
-        open and want that one to carry on. Power lives on the team panel now
-        (f096eba2), alongside every other agent's — this is the one quick
-        control worth keeping on the agent you already have open. --%>
+        open and want that one to carry on. --%>
         <button
           :if={@conversation && @conversation.agent_id}
           type="button"
@@ -1861,6 +2025,33 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           }
         >
           <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
+        </button>
+
+        <%!-- The power button (39af5611): green while on, red while off, and
+        the label says what a click does, so colour is never the only signal.
+        Off is a real shutdown; only this or `turn_on_agent` brings it back. --%>
+        <span
+          :if={@conversation && @conversation.agent_id && @retired?}
+          data-test="agent-retired"
+          class="badge badge-ghost badge-sm shrink-0"
+        >
+          Retired
+        </span>
+        <button
+          :if={@conversation && @conversation.agent_id && not @retired?}
+          type="button"
+          phx-click="toggle_agent_power"
+          data-test="agent-power"
+          data-on={to_string(@on?)}
+          class={[
+            "btn btn-ghost btn-sm btn-square shrink-0",
+            if(@on?, do: "text-success", else: "text-error")
+          ]}
+          aria-label={if @on?, do: "Turn agent off", else: "Turn agent on"}
+          aria-pressed={to_string(@on?)}
+          title={if @on?, do: "On — turn this agent off", else: "Off — turn this agent on"}
+        >
+          <.icon name="hero-power" class="size-4" />
         </button>
       </header>
 
@@ -2038,27 +2229,34 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       </div>
 
       <div
-        :for={message <- @pending}
+        :for={{message, run} <- pending_runs(@pending)}
         data-test="agent-pending-message"
         class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
       >
-        <%!-- The text is not repeated here. It is already in the transcript above,
-      as the message it is — printing it again put the same sentence on the
-      page twice and read as the message having been sent twice, which is a
-      thing that can genuinely happen and must not be imitated by a status
-      line. This says what is true of it and offers the one action. --%>
+        <%!-- Pending content appears here until delivery moves it into the transcript. --%>
+        <details
+          :if={run != []}
+          data-test="pending-routine-notice"
+          data-count={length(run)}
+          class="min-w-0 flex-1"
+        >
+          <summary class="cursor-pointer">
+            Promotion confirmed{if length(run) > 1, do: " ×#{length(run)}"}
+          </summary>
+          <div :for={notice <- run} class="mt-2 flex items-start gap-2">
+            <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">
+              {Message.text(notice)}
+            </span>
+            <.withdraw_button :if={length(run) > 1} message={notice} />
+          </div>
+        </details>
+        <span :if={run == []} class="min-w-0 whitespace-pre-wrap break-words">
+          {Message.text(message)}
+        </span>
         <span class="opacity-60">
           waiting for the agent to finish its turn
         </span>
-        <button
-          type="button"
-          phx-click="withdraw_message"
-          phx-value-ref={message.delivery_ref}
-          data-test="agent-withdraw-message"
-          class="btn btn-xs btn-ghost"
-        >
-          Take it back
-        </button>
+        <.withdraw_button :if={length(run) < 2} message={message} />
       </div>
 
       <form

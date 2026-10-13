@@ -211,6 +211,10 @@ defmodule CmsHarnessTest.LiveHarness do
   """
   @spec post_hook(String.t(), String.t(), map()) :: map()
   def post_hook(working_copy_id, hook, payload) do
+    # The endpoint is in the harness tree. Without this a spex run on its own
+    # found no endpoint, and passed only when an earlier spex had started it.
+    :ok = CmsHarnessTest.Projects.ensure_harness_supervisor_started()
+
     ConnTest.build_conn()
     |> Plug.Conn.put_req_header("content-type", "application/json")
     |> ConnTest.dispatch(

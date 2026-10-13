@@ -25,7 +25,8 @@ intake interview, no JTBD).
 Personas are **project-scoped**. `create_persona` and
 `link_persona_to_story` need the scope to carry an `active_project_id`.
 If `create_persona` returns `missing_active_project`, the working
-directory isn't linked — run `init_project` to bind it, then retry.
+directory isn't linked, and binding it is the main agent's one-time setup
+act, not this task's — stop and say so, then retry once it is linked.
 
 ## Reuse before research
 
@@ -33,7 +34,7 @@ Check existing personas first:
 
 - **`list_personas`** — every persona on the active project. Use early
   in the intake to see if a prior session already researched this role.
-- **`get_persona`** by `slug` or `id` — fetch the full record. Pair with
+- **`get_persona`** by `slug` or `persona_id` — fetch the full record. Pair with
   reading `.code_my_spec/personas/<slug>/summary.md` for the research
   text.
 

@@ -50,8 +50,7 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   alias CodeMySpec.Deploys
   alias CodeMySpec.Promotion.RunningCopy
-  alias CodeMySpec.Qa
-  alias CodeMySpec.Qa.QaAttempts
+  alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Requirements.ArchitectureChecker
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Requirements.DevopsSetupChecker
@@ -220,7 +219,10 @@ defmodule CodeMySpec.Requirements.Handlers do
     # Issues too: a fix resolved after the last promotion unsatisfies it
     # (1f8028a1), and resolving is an issue event.
     "story_promoted" => [:stories, :issues],
-    "qa_complete" => [:qa],
+    # Moved by :stories too, not just :qa: a revision that re-stamps
+    # qa_ready_at without a fresh attempt has to recompute this requirement
+    # even though no QaAttempt changed (2e7ed919).
+    "qa_complete" => [:qa, :stories],
     # The rollups. `qa_integration_plan` is handed the file profile it would
     # otherwise re-read; the rest query for themselves — see
     # `@delegate_requirements`.
@@ -590,17 +592,17 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The newest attempt decides, and `QaAttempts.passed?/1` decides what counts —
+  # The newest attempt decides, and `Verdict.passed?/1` decides what counts —
   # a later `:partial` overrides an earlier pass, and an invalidated pass is not
   # one. Default unsatisfied, because a story with no attempt at all is the
   # common state and reads identically to one whose latest attempt failed.
-  defp settle("qa_complete", %{qa: profile}, _scope),
+  defp settle("qa_complete", %{qa: profile, stories: stories}, _scope),
     do: %{
       entity_type: "story",
       name: "qa_complete",
       default: false,
-      default_details: details(elem(Qa.verdict(false), 1)),
-      except: qa_passes(profile)
+      default_details: details(elem(Verdict.verdict(false), 1)),
+      except: qa_passes(profile, stories)
     }
 
   # The rollups. One call to the requirement's own checker, which is a narrowed
@@ -875,9 +877,16 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   # Only the passes. The default already says what every other story's latest
   # attempt amounts to, and says it identically.
-  defp qa_passes(profile) do
-    for {story_id, attempt} <- profile.latest_by_story, QaAttempts.passed?(attempt) do
-      {true, detail} = Qa.verdict(true)
+  #
+  # `Verdict.passed?/2` also requires the attempt to postdate the story's
+  # current `qa_ready_at`, the same rule the per-entity read applies via
+  # `Verdict.complete_check/3` -- see its own doc for why.
+  defp qa_passes(profile, %{stories: stories}) do
+    qa_ready_at_by_story = Map.new(stories, &{&1.id, &1.qa_ready_at})
+
+    for {story_id, attempt} <- profile.latest_by_story,
+        Verdict.passed?(attempt, Map.get(qa_ready_at_by_story, story_id)) do
+      {true, detail} = Verdict.verdict(true)
       change("story", story_id, "qa_complete", true, detail)
     end
   end

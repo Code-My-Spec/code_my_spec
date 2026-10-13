@@ -8,11 +8,15 @@ defmodule CodeMySpecWeb.Application do
   require Logger
 
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpec.Agents.Events
   alias CodeMySpec.Agents.GraphWake
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Embeddings.HetznerFlameBackend
+  alias CodeMySpec.Notifications.AnalysisPush
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation.RunReconciled
 
   @impl true
   def start(_type, args) do
@@ -27,6 +31,15 @@ defmodule CodeMySpecWeb.Application do
     # (5e59a29d). Logged once at boot and reported by `register_session`.
     CodeMySpec.BootVersion.capture()
     log_boot_version()
+
+    # Whether this boot is the server. Everything the server owns that acts
+    # outside this process — the promotion queue, waking agents, the dev
+    # tunnel, sweeps that write and fetch — starts only then, never under
+    # `mix run`, a task or a script against the same database
+    # (`when_serving/2`). 2026-10-05, 09:48: an agent read one row with
+    # `mix run`, and its boot requeued the promotion batch the server's worker
+    # held and tried to claim dev.codemyspec.com's tunnel.
+    serving? = Phoenix.Endpoint.server?(:code_my_spec, CodeMySpecWeb.Endpoint)
 
     children =
       [
@@ -68,19 +81,23 @@ defmodule CodeMySpecWeb.Application do
         # `LocalBackend`, where a
         # "runner" costs nothing to get wrong.
         embeddings_configured?() &&
-          {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
+          {FLAME.Pool,
+           name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
         # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
         # — not gated on `embeddings_configured?()` like the two above,
         # because `project_dependencies` is dependency bookkeeping on its
         # own, independent of whether anything embeds hex docs from it here.
-        CodeMySpec.Files.LockfileSweep,
+        when_serving(serving?, CodeMySpec.Files.LockfileSweep),
         # The hex-doc reconciler's own driver (step 3) — gated like
         # `OrtexServing`/`EmbedPool` above, since embedding is exactly what
         # it does and it has nothing to drive without them.
-        embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep,
+        when_serving(serving?, embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep),
         # Framework knowledge (step 4): one reconcile per boot, no watcher. A
         # `:temporary`, non-raising Task, so it never blocks or fails boot.
-        embeddings_configured?() && CodeMySpec.Embeddings.FrameworkKnowledgeReconciler,
+        when_serving(
+          serving?,
+          embeddings_configured?() && CodeMySpec.Embeddings.FrameworkKnowledgeReconciler
+        ),
         # How many `FLAME.call`s are in flight on `CodeMySpec.EmbedPool` right
         # now, per pool — the fact `BurstBox.busy?/3`'s embedding half needs
         # (story 877, item 1 correction) with no FLAME-internals
@@ -116,6 +133,9 @@ defmodule CodeMySpecWeb.Application do
         #
         # Started on demand by `GraphWatcher.ensure_watching/1` rather than one
         # per project at boot: a project nobody is working on needs no watcher.
+        # One worker per project with a promotion queue (`PromotionQueue`).
+        {Registry, keys: :unique, name: CodeMySpec.PromotionQueue.Registry},
+        {DynamicSupervisor, name: CodeMySpec.PromotionQueue.Supervisor, strategy: :one_for_one},
         {Registry, keys: :unique, name: CodeMySpec.Requirements.Registry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: CodeMySpec.Requirements.WatcherSupervisor},
@@ -136,10 +156,13 @@ defmodule CodeMySpecWeb.Application do
         # restarts again. Still not a reason to refuse to boot — a server that
         # will not start helps nobody — but it is a reason to read a failure
         # here as something to act on rather than as self-correcting.
-        Supervisor.child_spec(
-          {Task, &GraphWake.watch_active_projects/0},
-          id: :watch_active_projects,
-          restart: :temporary
+        when_serving(
+          serving?,
+          Supervisor.child_spec(
+            {Task, &GraphWake.watch_active_projects/0},
+            id: :watch_active_projects,
+            restart: :temporary
+          )
         ),
         # One cadence per project with agents running in it, waking the main
         # agent on an interval with the digest in hand.
@@ -154,16 +177,20 @@ defmodule CodeMySpecWeb.Application do
         # true for every project that had never stood down, including every one
         # with no timer at all; and the spex start the process themselves, so
         # they proved the loop and not the wiring.
-        {Registry, keys: :unique, name: CodeMySpec.MainAgent.CadenceRegistry},
-        {DynamicSupervisor, strategy: :one_for_one, name: CodeMySpec.MainAgent.CadenceSupervisor},
+        {Registry, keys: :unique, name: CodeMySpec.Agents.Main.CadenceRegistry},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: CodeMySpec.Agents.Main.CadenceSupervisor},
         # And re-establish them after a restart, for the reason the watcher's
         # seeding gives: timers are in memory and a deploy lands mid-run.
         # `:temporary` on the same grounds — failing to seed is not a reason to
         # refuse to boot.
-        Supervisor.child_spec(
-          {Task, &CodeMySpec.MainAgent.wake_active_projects/0},
-          id: :wake_active_projects,
-          restart: :temporary
+        when_serving(
+          serving?,
+          Supervisor.child_spec(
+            {Task, &MainAgent.wake_active_projects/0},
+            id: :wake_active_projects,
+            restart: :temporary
+          )
         ),
         # Which projects a light harness is holding, and therefore where their
         # analyzers run. Here rather than in `Analysis.Supervisor` because that
@@ -197,6 +224,8 @@ defmodule CodeMySpecWeb.Application do
         # endpoint, which is where the drafts arrive from.
         CodeMySpec.Conversations.Drafts,
         CodeMySpecWeb.Presence,
+        # Which agents' processes are alive, tracked by their copies' channels.
+        CodeMySpec.Agents.Presence,
         # The harness tools. Same server module the local process runs — the
         # only difference is where scope comes from, and the tools never had to
         # know. `session_idle_timeout` matches the local mount for the same
@@ -213,7 +242,7 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpecWeb.Endpoint
       ]
       |> Enum.filter(& &1)
-      |> children(env)
+      |> children(env, serving?)
       # CodeMySpecDesktop.Application adds its own children here.
       |> then(Keyword.get(args, :children, & &1))
 
@@ -225,6 +254,11 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
+        Events.attach()
+        RunReconciled.attach()
+        AnalysisPush.attach()
+        CodeMySpec.Staffing.attach()
+        when_serving(serving?, &CodeMySpec.PromotionQueue.resume_all/0)
         GraphWake.attach()
         ok
 
@@ -336,7 +370,13 @@ defmodule CodeMySpecWeb.Application do
     end
   end
 
-  def children(children, :dev) do
+  # A child (or, for a function, a call) only when this boot serves; `nil`
+  # otherwise, which the child list filters out.
+  defp when_serving(false, _thing), do: nil
+  defp when_serving(true, fun) when is_function(fun, 0), do: fun.()
+  defp when_serving(true, child), do: child
+
+  def children(children, :dev, serving?) do
     tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
 
     tunnel_opts =
@@ -345,25 +385,23 @@ defmodule CodeMySpecWeb.Application do
         otp_app: :code_my_spec,
         origin_url:
           tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}",
-        enabled: main_copy?() and not tunnel_held_by_harness?()
+        enabled: serving? and main_copy?() and not tunnel_held_by_harness?()
       )
 
     children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}]
   end
 
-  def children(children, :test) do
-    # The local web endpoint is the door the spex suite drives hooks, MCP and
-    # portable LiveViews through; the Analysis run service backs the stop-hook
-    # paths those tests hit.
+  def children(children, :test, _serving?) do
+    # The Analysis run service backs the stop-hook paths the integration
+    # suite hits.
     children ++
       [
         CodeMySpec.Analysis.Supervisor,
-        CodeMySpec.AgentHarness.WorkSource,
-        CodeMySpecLocalWeb.Endpoint
+        CodeMySpec.AgentHarness.WorkSource
       ]
   end
 
-  def children(children, _), do: children
+  def children(children, _env, _serving?), do: children
 
   # `tunnel_config` is main's own tunnel — a hardcoded hostname, tunnel id and
   # account tag in this file, read unconditionally by every :dev boot. A

@@ -54,7 +54,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   require Logger
 
-  alias CmsHarness.Agents.Engine
+  alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Config
   alias CmsHarness.Credentials
@@ -77,6 +77,13 @@ defmodule CmsHarness.Project.ChannelClient do
   @default_decision_timeout 10_000
 
   @backoff [1_000, 2_000, 5_000, 10_000, 30_000]
+
+  # How long one dial has to end in a join. Slipstream times neither the
+  # websocket upgrade nor the join reply, so an attempt the server never
+  # answers sits forever with no disconnect to retry from (57aa576c). A healthy
+  # join is milliseconds; this is well past a loaded one and short of
+  # Slipstream's own heartbeat timeout (~60s), which only starts after upgrade.
+  @default_join_timeout 20_000
 
   # The channel contract this harness speaks. Kept in step with
   # `CodeMySpecWeb.HarnessProjectChannel`'s copy of the same number — the two
@@ -129,6 +136,9 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp decision_timeout,
     do: Application.get_env(:code_my_spec, :harness_decision_timeout, @default_decision_timeout)
+
+  defp join_timeout,
+    do: Application.get_env(:code_my_spec, :harness_join_timeout, @default_join_timeout)
 
   # A whole suite, not a decision. Longer than the server's own wait, so a run
   # the server gives up on comes back as its answer rather than as this timing
@@ -506,6 +516,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:refusals, 0)
       |> assign(:silences, 0)
 
+    :ok = Liveness.subscribe()
     {:ok, socket, {:continue, :connect}}
   end
 
@@ -521,7 +532,9 @@ defmodule CmsHarness.Project.ChannelClient do
         # to one dialing the right one and getting refused, and the two need
         # opposite fixes. Token redacted: it is a credential, not a diagnostic.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
-        {:noreply, connect!(socket, uri: uri, headers: connect_headers(socket))}
+
+        {:noreply,
+         socket |> connect!(uri: uri, headers: connect_headers(socket)) |> arm_join_deadline()}
 
       {:error, :no_credential} ->
         # Not a retry loop. Nothing about waiting produces a credential, and a
@@ -619,6 +632,19 @@ defmodule CmsHarness.Project.ChannelClient do
        # server ignores the field and sweeps everything, which is what it does
        # today.
        "active_runs" => AnalysisServer.in_flight(project.root),
+       # The app this copy is actually running, from the harness's own
+       # `state.json` (00bd7d4a). A restart's result reaches the server as a
+       # reply or a push, and a harness that restarted mid-reply, or whose
+       # socket dropped and reconnected, leaves the server holding a commit the
+       # app is not running â metric_flow's main copy reported `app_commit`
+       # c3eb20b against HEAD 59dc451. This is the one moment a harness is
+       # guaranteed to be talking to the server, so it is where the server's
+       # answer converges on the harness's.
+       #
+       # `nil` when this copy never ran an app; an older server ignores the
+       # field, so the rollout order does not matter â the same reasoning
+       # `active_runs` above is built on.
+       "app" => CmsHarness.AppInstance.reported(project.root),
        # App verbs newer than the contract version. The server pushes one only
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
@@ -705,7 +731,7 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_read_model_refresh()
     schedule_preview_check()
     schedule_machine_load_check()
-    schedule_agents_running_after_join()
+    report_agents_present(socket)
 
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
@@ -847,56 +873,28 @@ defmodule CmsHarness.Project.ChannelClient do
   defp schedule_machine_load_check,
     do: Process.send_after(self(), :measure_machine_load, @machine_load_check_ms)
 
-  # How often this harness tells the server which of its agents are alive.
+  # Presence (`.code_my_spec/plans/agent-liveness-from-presence.md`): the
+  # server tracks an agent while this channel says it is up — `agent_up` and
+  # `agent_down` as `Liveness` sees them, the moment they happen. A fresh join
+  # tracks nothing, so it is told the whole set at once, with no delay: an
+  # empty set here is true, and nothing on the server acts on absence.
   #
-  # On a timer as well as on join, and the timer is the half that matters. An
-  # agent is a `restart: :temporary` GenServer: when one dies, nothing sends
-  # anything, so an event-driven report would cover the two cases the server
-  # already knows about — a start we asked for and a stop we asked for — and
-  # miss the one it does not, which is the case `0c912986` is about.
-  #
-  # A minute, matching the other two self-observations on this channel. The
-  # cost is a list of ids; the alternative is a row claiming life indefinitely.
-  @agents_running_ms 60_000
-
-  @doc "Public so a test can assert against the real interval rather than a copy."
-  def agents_running_ms, do: @agents_running_ms
-
-  defp schedule_agents_running,
-    do: Process.send_after(self(), :report_agents_running, @agents_running_ms)
-
-  # Matches `Agents.start_agent/2`'s own @start_timeout_ms — how long the
-  # server already gives a fresh start to confirm, so a restore gets no less
-  # runway than an ordinary one.
-  #
-  # `handle_join` used to report immediately and unconditionally, which reads
-  # as "what is running right now" at the one moment that answer is always
-  # empty — nothing has been asked to start yet, restoring included, since
-  # `ask_what_to_restore/2` below fires its push and returns without waiting
-  # for any of the agents it asked for to actually come up. The server read
-  # that empty report as "none of this copy's :starting agents are really
-  # running" and reaped every one of them — `settle_against/3` has no grace
-  # period — before the restore reply had a chance to land, let alone launch
-  # anything. `34e03128`: measured live against a Docker boot where an agent
-  # created 600ms before the harness joined was marked :stopped forever,
-  # though nothing had ever tried, and failed, to start it — the request
-  # simply arrived after the one report that would ever ask about it.
-  #
-  # The ordinary 60s cadence is not the fix for the same reason: it is armed
-  # from this same instant, so its first firing sits in exactly the window
-  # this delay exists to skip.
-  @join_agents_running_delay_ms 15_000
-
-  defp schedule_agents_running_after_join,
-    do: Process.send_after(self(), :report_agents_running, @join_agents_running_delay_ms)
-
-  # What is actually alive here, read from the registry rather than from
-  # anything we were told — `Engine.running/0` filters on `Process.alive?`, so
-  # this cannot disagree with the process table the way a maintained record can.
-  defp report_agents_running(socket) do
-    push(socket, socket.assigns.topic, "agents_running", %{
-      "agent_ids" => Engine.running()
-    })
+  # This replaces the 60-second `agents_running` report and the 15-second
+  # post-join delay that kept that report from reaping agents still being
+  # restored (`34e03128`); an agent's death is its own message now.
+  defp report_agents_present(socket) do
+    transport().push(
+      socket,
+      socket.assigns.topic,
+      "agents_present",
+      %{
+        "agent_ids" => Liveness.present(socket.assigns.project.root),
+        # The ones its Keepers gave up on, so they stay stuck across the
+        # reconnect rather than reading as starting again.
+        "gave_up" => Liveness.gave_up(socket.assigns.project.root)
+      },
+      5_000
+    )
 
     socket
   end
@@ -905,7 +903,7 @@ defmodule CmsHarness.Project.ChannelClient do
   # another harness holds; anything else is reported as it arrived.
   @impl Slipstream
   def handle_topic_close(topic, reason, socket) do
-    socket = socket |> assign(:joined, false) |> pause_watcher()
+    socket = socket |> assign(:joined, false) |> assign(:join_attempt, nil) |> pause_watcher()
 
     # Slipstream reports a refused join as `:failed_to_join` and a channel that
     # closed after joining as `:error`; the refusal we know how to explain can
@@ -1047,8 +1045,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
     case reply do
       {:ok, %{"agents" => agents}} when is_list(agents) ->
-        restore(agents)
-        {:ok, assign(socket, :restored, true)}
+        {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
       other ->
         # Not fatal: nothing is running yet, so the worst case is a harness that
@@ -1359,8 +1356,13 @@ defmodule CmsHarness.Project.ChannelClient do
     # distinction, and this is the one thing under this root that isn't the
     # user's. Best-effort and fire-and-forget, same as everything else this
     # event does: nothing here can hold up the offboard.
-    Task.start(fn -> CmsHarness.AppInstance.discard(root) end)
-    Task.start(fn -> CmsHarness.Projects.stop_serving(root) end)
+    #
+    # In that order, in one task: stopping the copy takes its app with it (phase
+    # 2b), and a discard that lost that race never dropped the database.
+    Task.start(fn ->
+      CmsHarness.AppInstance.discard(root)
+      CmsHarness.Projects.stop_serving(root)
+    end)
 
     {:ok, socket}
   end
@@ -1556,18 +1558,8 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
-  def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket) do
-    result = CmsHarness.Agents.halt(msg["agent_id"])
-
-    push(
-      socket,
-      socket.assigns.topic,
-      "agent_stop_result",
-      Map.put(encode_stop_result(result), "ref", ref)
-    )
-
-    {:ok, socket}
-  end
+  def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket),
+    do: {:ok, stop_or_hold(socket, msg["agent_id"], ref)}
 
   # Story 1108: bring this copy's own app up, restart it, or stop it.
   #
@@ -1707,6 +1699,28 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
     do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
 
+  defp apply_promotion(
+         "promotion_build_batch",
+         %{"root" => root, "base" => base, "commits" => commits}
+       )
+       when is_list(commits),
+       do:
+         with_served_root(
+           root,
+           &Steps.build_batch(Environment.new(:local, &1), &1, base, commits)
+         )
+
+  defp apply_promotion(
+         "promotion_contained",
+         %{"root" => root, "base" => base, "commits" => commits}
+       )
+       when is_list(commits),
+       do:
+         with_served_root(
+           root,
+           &Steps.contained(Environment.new(:local, &1), &1, base, commits)
+         )
+
   defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
     merge = %{
       before: payload["before"],
@@ -1831,19 +1845,108 @@ defmodule CmsHarness.Project.ChannelClient do
   # starting at once against one plan and one box — how to pace it properly is
   # an open question, and sequential is the answer that cannot stampede while it
   # is being decided.
-  defp restore(agents) do
-    Enum.each(agents, fn agent ->
-      case CmsHarness.Agents.launch(agent) do
-        {:ok, _} ->
-          Logger.info("[CmsHarness] restored agent #{agent["agent_id"]}")
+  #
+  # Off this process (8c04a700): a launch waits on the agent's MCP session,
+  # ~20s each under load, and inline it held every `stop_agent` push behind the
+  # whole restore. This process owns the queue; the task asks it for the next
+  # agent, so a stop can take one out before it is launched.
+  defp start_restore(socket, []), do: socket
 
-        {:error, reason} ->
-          Logger.warning(
-            "[CmsHarness] could not restore agent #{agent["agent_id"]} in " <>
-              "#{agent["working_copy"]}: #{inspect(reason)}"
-          )
+  defp start_restore(socket, agents) do
+    client = self()
+    {:ok, _task} = Task.start_link(fn -> run_restore(client) end)
+    assign(socket, :restore_queue, agents)
+  end
+
+  defp run_restore(client) do
+    case GenServer.call(client, :next_restore, :infinity) do
+      {:launch, agent} ->
+        restore_one(agent)
+        run_restore(client)
+
+      :done ->
+        :ok
+    end
+  end
+
+  defp restore_one(agent) do
+    case CmsHarness.Agents.launch(agent) do
+      {:ok, _} ->
+        Logger.info("[CmsHarness] restored agent #{agent["agent_id"]}")
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not restore agent #{agent["agent_id"]} in " <>
+            "#{agent["working_copy"]}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  # A stop for the agent being launched waits for that launch, then stops it.
+  # One still queued is dropped and answered stopped: it never runs.
+  defp stop_or_hold(%{assigns: %{restoring: id}} = socket, id, ref) when is_binary(id),
+    do: assign(socket, :held_stops, [ref | socket.assigns[:held_stops] || []])
+
+  defp stop_or_hold(socket, agent_id, ref) do
+    queue = socket.assigns[:restore_queue] || []
+
+    case Enum.split_with(queue, &(&1["agent_id"] == agent_id)) do
+      {[_queued | _], rest} ->
+        socket |> assign(:restore_queue, rest) |> push_stop_result(ref, :ok)
+
+      {[], _queue} ->
+        push_stop_result(socket, ref, CmsHarness.Agents.halt(agent_id))
+    end
+  end
+
+  # The task asking again means the last launch returned.
+  defp stop_held(%{assigns: %{restoring: id}} = socket) when is_binary(id) do
+    socket =
+      case socket.assigns[:held_stops] || [] do
+        [] ->
+          socket
+
+        refs ->
+          result = CmsHarness.Agents.halt(id)
+          Enum.reduce(refs, socket, &push_stop_result(&2, &1, result))
       end
-    end)
+
+    assign(socket, restoring: nil, held_stops: [])
+  end
+
+  defp stop_held(socket), do: socket
+
+  defp push_stop_result(socket, ref, result) do
+    transport().push(
+      socket,
+      socket.assigns.topic,
+      "agent_stop_result",
+      Map.put(encode_stop_result(result), "ref", ref),
+      5_000
+    )
+
+    socket
+  end
+
+  defp push_liveness(socket, :up, agent_id, _reason),
+    do:
+      transport().push(socket, socket.assigns.topic, "agent_up", %{"agent_id" => agent_id}, 5_000)
+
+  defp push_liveness(socket, :down, agent_id, reason),
+    do: push_down(socket, agent_id, inspect(reason))
+
+  # Its Keeper gave up on a crash loop: the one down the server acts on.
+  defp push_liveness(socket, :gave_up, agent_id, reason),
+    do: push_down(socket, agent_id, "gave_up: " <> inspect(reason))
+
+  defp push_down(socket, agent_id, reason) do
+    transport().push(
+      socket,
+      socket.assigns.topic,
+      "agent_down",
+      %{"agent_id" => agent_id, "reason" => reason},
+      5_000
+    )
   end
 
   # Whatever the far side called the failure, rendered without assuming it is a
@@ -2056,6 +2159,9 @@ defmodule CmsHarness.Project.ChannelClient do
   defp encode_withdraw_result({:error, :already_delivered}),
     do: %{"status" => "already_delivered"}
 
+  defp encode_withdraw_result({:error, :never_received}),
+    do: %{"status" => "never_received"}
+
   defp encode_withdraw_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
@@ -2143,6 +2249,7 @@ defmodule CmsHarness.Project.ChannelClient do
     socket =
       socket
       |> assign(:joined, false)
+      |> assign(:join_attempt, nil)
       |> pause_watcher()
       |> fail_pending(:not_connected)
 
@@ -2265,14 +2372,14 @@ defmodule CmsHarness.Project.ChannelClient do
     {:noreply, socket}
   end
 
+  # An agent in this copy came up or went down (`Liveness`). Another copy's
+  # agent is its own channel's to report; while not joined, the next join's
+  # `agents_present` carries the set.
   @impl Slipstream
-  def handle_info(:report_agents_running, %{assigns: %{joined: true}} = socket) do
-    schedule_agents_running()
-    {:noreply, report_agents_running(socket)}
-  end
+  def handle_info({:agent_liveness, kind, agent_id, root, reason}, socket) do
+    if socket.assigns.joined and Path.expand(socket.assigns.project.root) == root,
+      do: push_liveness(socket, kind, agent_id, reason)
 
-  def handle_info(:report_agents_running, socket) do
-    schedule_agents_running()
     {:noreply, socket}
   end
 
@@ -2281,12 +2388,28 @@ defmodule CmsHarness.Project.ChannelClient do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
         {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
-        {:noreply, socket}
+        {:noreply, arm_join_deadline(socket)}
 
       {:error, _} ->
         {:noreply, socket}
     end
   end
+
+  # A dial that has not joined by now never will: neither the upgrade nor the
+  # join reply has a timeout of its own. Only the current attempt's deadline
+  # counts; one from an attempt that already ended is stale.
+  def handle_info({:join_deadline, ref}, %{assigns: %{joined: false, join_attempt: ref}} = socket)
+      when is_reference(ref) do
+    Logger.warning(
+      "[CmsHarness] #{socket.assigns.project.root} did not join #{socket.assigns.topic} " <>
+        "within #{join_timeout()}ms of dialing (#{dial_stage(socket)}); dropping the " <>
+        "attempt and reconnecting."
+    )
+
+    {:noreply, abandon_dial(socket)}
+  end
+
+  def handle_info({:join_deadline, _ref}, socket), do: {:noreply, socket}
 
   def handle_info({:reply_timeout, ref}, socket) do
     case pop_in(socket.assigns.pending, [ref]) do
@@ -2349,6 +2472,19 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @impl Slipstream
+  def handle_call(:next_restore, _from, socket) do
+    socket = stop_held(socket)
+
+    case socket.assigns[:restore_queue] do
+      [agent | rest] ->
+        {:reply, {:launch, agent},
+         assign(socket, restore_queue: rest, restoring: agent["agent_id"])}
+
+      _done ->
+        {:reply, :done, socket |> assign(:restore_queue, nil)}
+    end
+  end
+
   def handle_call(:connected?, _from, socket) do
     {:reply, socket.assigns.joined, socket}
   end
@@ -2859,6 +2995,33 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # Quiet from here. It is retrying at the capped backoff and has already said so.
   defp log_refusal(_socket, _holder, _attempt), do: :ok
+
+  # Each dial gets its own ref, so a deadline outliving its attempt is ignored.
+  defp arm_join_deadline(socket) do
+    ref = make_ref()
+    Process.send_after(self(), {:join_deadline, ref}, join_timeout())
+    assign(socket, :join_attempt, ref)
+  end
+
+  # Upgraded: drop the socket, and `handle_disconnect/2` retries as for any
+  # drop. (A rejoin after a refusal dials with the old socket still up, so this
+  # may drop that one instead; the next dial still recovers.) Not upgraded:
+  # Slipstream holds no handle to drop and will send no disconnect, so the
+  # stalled connection is abandoned and the same retry runs.
+  defp abandon_dial(socket) do
+    if Slipstream.Socket.connected?(socket) do
+      transport().disconnect(socket)
+    else
+      {:ok, socket} = handle_disconnect(:join_timeout, transport().abandon(socket))
+      socket
+    end
+  end
+
+  defp dial_stage(socket) do
+    if Slipstream.Socket.connected?(socket),
+      do: "the socket upgraded, the join was never answered",
+      else: "the websocket upgrade was never answered"
+  end
 
   defp schedule_rejoin(socket) do
     Process.send_after(self(), :reconnect, backoff(socket.assigns.attempts))

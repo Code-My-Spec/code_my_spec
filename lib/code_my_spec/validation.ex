@@ -29,9 +29,9 @@ defmodule CodeMySpec.Validation do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Agents.Agent,
+      CodeMySpec.Stories,
       CodeMySpec.AgentTasks,
-      CodeMySpec.Agents,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
@@ -44,20 +44,19 @@ defmodule CodeMySpec.Validation do
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
-      CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
+      CodeMySpec.Validation.Blocking,
       CodeMySpec.WorkingCopies
     ],
     exports: :all
 
   require Logger
 
-  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.FileEdits
@@ -70,7 +69,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies
 
   # Analyzer atoms that execute as mix subprocesses → their Analysis source.
@@ -96,33 +95,17 @@ defmodule CodeMySpec.Validation do
 
   ## Options
 
-  - `:compile_output_file` - pre-recorded diagnostics JSONL (test-only)
-  - `:credo_output_file` - pre-recorded credo JSON (test-only)
-  - `:exunit_output_file` - pre-recorded ExUnit JSON (test-only)
-  - `:spex_output_file` - pre-recorded spex JSONL (test-only)
   - `:session_id` - external session id; when present, the changed-file
     set is intersected with PostToolUse-attributed edits for this
     `(session_id, agent_id)`. Problems on files attributed elsewhere
     are excluded from the block decision.
   - `:agent_id` - sub-agent id; nil means the main agent. Combined with
     `:session_id` for the FileEdits attribution lookup.
-  - `:await` - test-only; block until enqueued background runs finish before
-    the blocking check, restoring synchronous semantics for deterministic
-    specs. The stop hook never passes this.
 
-  Set by `StopController` from the `test_output_files` request param so
-  cassette-backed specs can drive the pipeline with known outputs without
-  relying on `System.cmd` side effects.
+  A stop never starts, ingests or waits on analysis (John, 2026-10-04); it
+  reads what runs already persisted. A spec that needs findings lands them as
+  an analysis run first, and only then stops.
   """
-  # The pre-recorded output options, named once so the refusal below and the
-  # doc above cannot drift apart.
-  @test_output_file_opts [
-    :compile_output_file,
-    :credo_output_file,
-    :exunit_output_file,
-    :spex_output_file
-  ]
-
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()], analysis: map()}}
           | {:error, String.t(), String.t() | nil}
@@ -202,8 +185,6 @@ defmodule CodeMySpec.Validation do
 
     analysis = run_pipeline(scope, task, changed_files, config, opts)
 
-    if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
-
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, all_changed != [], config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis, advisory_note: note}}
@@ -220,61 +201,15 @@ defmodule CodeMySpec.Validation do
   # the wire.
   #
   # Everything that is left is database work and runs unchanged: the same
-  # changed-file scoping, the same configuration modes, the same
-  # `Analysis.ensure_stale_runs/3` (dispatched to the harness rather than to a
-  # local queue), and the same blocking check. The point is that the *decision*
-  # is identical; only where the tools ran differs.
-  # Pre-recorded outputs cannot cross the channel, and saying so is the fix.
-  #
-  # `:compile_output_file` and friends name a file on *this* machine, and on
-  # this path the analyzers run on the harness's. Ignoring them and carrying on
-  # is what QA hit: a `test_output_files` post came back with the ordinary
-  # "analysis running: compiler, credo, exunit, spex -- results apply next
-  # stop", dispatched a real run against the sandbox checkout, and still showed
-  # no spex problems ninety seconds and several re-posts later. The parameter
-  # was read, accepted, and dropped, and every symptom pointed at a slow
-  # analyzer instead.
-  #
-  # Refused rather than made to work. These fixtures exist so cassette-backed
-  # specs can drive the pipeline without depending on `System.cmd` side effects;
-  # shipping host-local paths to another machine is not a smaller version of
-  # that, it is a different feature. Issue `5151df37`, story 895 -- where the
-  # report's own guess was a build-environment gate, which is not what this is:
-  # the param is extracted in every environment and honoured on the local path.
+  # changed-file scoping, the same configuration modes and the same blocking
+  # check. The point is that the *decision* is identical; only where the files
+  # were read differs.
   defp remote_validate_stop(scope, task, opts) do
-    case Keyword.take(opts, @test_output_file_opts) do
-      [] -> do_remote_validate_stop(scope, task, opts)
-      supplied -> {:error, fixtures_not_honored(supplied), nil}
-    end
-  end
-
-  defp fixtures_not_honored(supplied) do
-    names = supplied |> Keyword.keys() |> Enum.map_join(", ", &inspect/1)
-
-    """
-    `test_output_files` was supplied (#{names}) but this project's analyzers run \
-    on a harness, not here -- so those paths name files on the wrong machine \
-    and nothing would have read them.
-
-    Nothing was run and nothing was recorded. Had this been ignored, the stop \
-    would have dispatched a real analyzer run and answered "results apply next \
-    stop", which is indistinguishable from a slow analyzer.
-
-    Pre-recorded outputs are for specs driving the pipeline in-process, where \
-    the fixture and the analyzer are on the same disk. To exercise the blocking \
-    side against a harness-held copy, let the real analyzers run and assert on \
-    what they find.\
-    """
-  end
-
-  defp do_remote_validate_stop(scope, task, opts) do
     {changed_files, consume_ledger} = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
     project_changed? = project_changed?(scope, task)
 
     analysis = run_pipeline(scope, task, changed_files, config, opts)
-
-    if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
 
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
@@ -543,90 +478,50 @@ defmodule CodeMySpec.Validation do
   @doc """
   Split blocking findings into this session's and everyone else's.
 
-  A finding in a file this session never edited does not block. Several agents
-  share this repo and rebase onto main, so a warning one pushes became a hard
-  block on every other's stop — and the obvious repair on someone else's
-  in-flight file can be actively wrong, which leaves editing code you do not
-  own or staying blocked as the only two responses.
+  It no longer does — the second list is always empty. Task evaluation judges
+  the whole copy, the same way promotion does, so every blocker blocks whoever
+  stops. John, 2026-10-04 (issue 48f4eada), retired the attribution excuse.
 
-  Three things refuse to demote. Two because the failure mode points the same
-  way — a gate that quietly stops blocking is worse than one that blocks too
-  much, and it is invisible:
+  What it was: a finding in a file this session never edited did not block.
+  Several agents share this repo and rebase onto main, so a warning one pushes
+  became a hard block on every other's stop — and the obvious repair on someone
+  else's in-flight file can be actively wrong (`7a0fadeb` retargeted a preview
+  spex at the wrong endpoint), which left editing code you do not own or staying
+  blocked as the only two responses.
 
-    * A `nil` attribution set, which means attribution is *unusable* — no
-      session id, or recorded paths that join no File row in this project.
-      Nothing can be concluded from a set that means nothing.
-    * A finding with no `file_path`. A spex that died in `setup_all` has
-      nothing to attribute; unattributable is not the same as somebody else's,
-      and collapsing them drops the finding nobody can place.
+  Why it went anyway. v2.0.347 made credo's default `block_all`, but this
+  demotion ran after it, so in practice task evaluation stayed
+  changed-files-only for any agent that edited anything; whole-copy applied only
+  when there was no attribution at all. The gate's own moduledoc meanwhile read
+  as though it judged the copy. Measured across one evening: every agent, every
+  stop, `demoted N blocking finding(s) to advisory`, N never zero. A gate with
+  two answers that read as one is the metric_flow failure again, which is why
+  the excuse is removed rather than narrowed.
 
-  An **empty** set is not one of them, and used to be. It was refused on the
-  reasoning that "the session wrote nothing" and "attribution broke" are
-  indistinguishable — true when it was written, and no longer the whole
-  picture: `verify_against_ledger/3` now answers `nil` for the broken case
-  specifically, so the two arrive here as different values. What is left when a
-  session records zero edits is a session that edited nothing, and a session
-  that edited nothing cannot own a finding in a file.
+  The old rule's incidents are answered upstream now, and better:
 
-  That case was the expensive one. A QA agent writes no project files at all,
-  so it hit this on every stop and every finding blocked — `76008385` is one
-  following the advice exactly (`git log -1` on each path, confirmed neither
-  was its own, escalated to the owner rather than editing an in-flight file)
-  and being told the same thing again on the next stop, with no action
-  available that would change the answer.
+    * `split_by_story_enforcement/3` asks "is this red mine to fix" from the
+      owning story's `specs_ready` latch, not from which files were written
+      this turn — the question attribution was approximating (`a9e9caca`,
+      26 spex failures in unrelated stories, answered by the latch).
+    * `split_by_role/2` reads the role profile, so a QA or product agent is
+      not handed code work (`d91436b7`).
 
-  No special case implements this. `MapSet.member?/2` on an empty set is false
-  for everything, so the ordinary branch already demotes each finding that is
-  attributable at all — the empty-set clause had to be *removed* for the rule
-  to apply, not added.
-
-  The third refusal is **spex**, and it is the only source with a mandate test
-  of its own. `split_by_story_enforcement/3` has already asked the question this
-  demotion approximates — is this red the agent's to fix — and answered it from
-  the owning story's `specs_ready` latch rather than from which files happened
-  to be written this turn. A spex that reaches here is red on a story that was
-  green once, which is a regression in this working copy, not somebody else's
-  in-flight work.
-
-  Stacking attribution on top of that turned `spex: :block_all` into a setting
-  with no effect. Measured across one evening on this project: every agent,
-  every stop, `demoted N blocking finding(s) to advisory`, N never zero, while
-  the mode had read `:block_all` for months.
-
-  Every other source keeps demoting. They have no per-story latch, so
-  attribution is the only thing standing between an agent and a rebase's worth
-  of findings it has no mandate to fix.
-
-  Public so the property that decides whether the gate still works can be
-  asserted directly, the same reason `blocking_key/1` is.
+  Kept as a function with its old shape rather than deleted, so the call site
+  and the property this file asserts stay readable; `attributable_to?/2` is
+  gone with it. The list is still computed, because the caller's log line and
+  `verify_against_ledger/3` still want to know what attribution said — they just
+  no longer decide anything.
   """
-  # Sources whose mandate is decided before this point, so attribution must not
-  # decide it again.
-  @attribution_exempt_sources ~w(spex)
-
   @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
           {[Problems.Problem.t()], [Problems.Problem.t()]}
-  # Story 894: an agent that made no edits is blocked by nothing — and nothing
-  # means nothing, `@attribution_exempt_sources` included.
-  #
-  # The exempt list exists so a finding with no file to attribute, or a spex
-  # failure that belongs to a story rather than a file, is not silently demoted
-  # away from an agent that *was* working. Applied to a session that wrote
-  # nothing at all it does the opposite: it hands that agent every failing spex
-  # in the project. Measured 2026-08-20 — a QA session with a provably empty
-  # `git status` was refused a stop over 26 spex failures in three unrelated
-  # stories, all last touched days earlier by someone else (a9e9caca).
-  #
-  # Ownership is the whole question this function asks, and a session that
-  # edited nothing owns nothing. There is no finding it could have caused.
-  def split_unattributed(blocking, %MapSet{} = session_paths) do
-    case MapSet.size(session_paths) do
-      0 -> {[], blocking}
-      _ -> Enum.split_with(blocking, &attributable_to?(&1, session_paths))
-    end
-  end
-
   def split_unattributed(blocking, _session_paths), do: {blocking, []}
+
+  # Sources whose mandate is decided before this point, so `split_by_role/2`
+  # must not decide it again. Attribution used to read this too; 48f4eada
+  # removed that half, and the role half is a different question — see the
+  # comment on `split_by_role/2`.
+  @attribution_exempt_sources ~w(spex)
 
   # The attribution-exempt sources block only the roles that fix code.
   #
@@ -636,56 +531,15 @@ defmodule CodeMySpec.Validation do
   # gives those roles no problems; this is the gate reading the same rule.
   # No role (a Claude Code session) keeps the exemption as it was.
   defp split_by_role(blocking, role) do
-    if Menu.holds_problems?(role),
+    if RoleProfile.holds_problems?(role),
       do: {blocking, []},
       else: Enum.split_with(blocking, &(&1.source not in @attribution_exempt_sources))
   end
 
-  defp attributable_to?(problem, session_paths) do
-    problem.source in @attribution_exempt_sources or
-      not is_binary(problem.file_path) or
-      MapSet.member?(session_paths, problem.file_path)
-  end
-
-  # Loudly, because this is the gate declining to block. A demotion that is
-  # right is uninteresting and a demotion that is wrong is invisible in the
-  # response — the log is the only place the difference shows up.
-  #
-  # The empty-set case says so separately, because it is the one that can hide a
-  # broken recorder. "Findings in files it never edited" is a comparison; "this
-  # session recorded no edits at all" is the absence of one, and a PostToolUse
-  # hook that stopped recording produces exactly that shape while looking like
-  # an ordinary read-only session. Nothing here can tell them apart — the
-  # demotion is correct for the ordinary one and wrong for the broken one — so
-  # the log names the condition and lets a reader who sees it on a session that
-  # was plainly writing files draw the conclusion.
-  defp log_demotions([], _session_paths, _opts), do: :ok
-
-  defp log_demotions(unattributed, %MapSet{} = session_paths, opts) do
-    if MapSet.size(session_paths) == 0 do
-      Logger.info(
-        "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted all " <>
-          "#{length(unattributed)} blocking finding(s) to advisory: this session recorded " <>
-          "no edits at all, so it can own none of them. If it did write files, the " <>
-          "PostToolUse recorder is not working and the gate is off for this session."
-      )
-    else
-      log_edited_elsewhere(unattributed, opts)
-    end
-  end
-
-  defp log_demotions(unattributed, _session_paths, opts),
-    do: log_edited_elsewhere(unattributed, opts)
-
-  defp log_edited_elsewhere(unattributed, opts) do
-    paths = unattributed |> Enum.map(& &1.file_path) |> Enum.uniq() |> Enum.take(5)
-
-    Logger.info(
-      "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted " <>
-        "#{length(unattributed)} blocking finding(s) to advisory: files it never " <>
-        "edited (#{Enum.join(paths, ", ")})"
-    )
-  end
+  # Attribution demotes nothing (48f4eada), so there is nothing to log. The
+  # loud logs that used to live here named a demotion the gate was making; with
+  # the excuse gone, a reader wanting to know what the gate blocked reads the
+  # response, which is now the only answer.
 
   # This session's edits, normalized the same way `filter_by_session_attribution`
   # normalizes them — PostToolUse stores whatever Claude passed, typically
@@ -924,22 +778,14 @@ defmodule CodeMySpec.Validation do
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
     do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
-  # A stop never starts an analyzer. Analysis is explicit — `start_analysis`, or
-  # required by promote (`.code_my_spec/rules/analysis_is_explicit.md`). Starting
-  # runs here queued compiler and credo on every stop and subagent_stop, and
-  # every leg once a scan marked them stale, which is how one project's 25-minute
-  # spex sweep held the machine's only analyzer slot in a loop (`38d87eb5`).
-  #
-  # The exception is output a caller hands over explicitly: `test_output_files`
-  # names a finished result to ingest, not a run to start. Only specs send it.
+  # A stop never starts, ingests or waits on an analyzer (John, 2026-10-04;
+  # `.code_my_spec/rules/analysis_is_explicit.md`): runs come from
+  # `start_analysis`, ready_for_qa certification and promotion. Starting runs
+  # here once queued compiler and credo on every stop, which is how one
+  # project's 25-minute spex sweep held the machine's only analyzer slot in a
+  # loop (`38d87eb5`). What is left is the in-process validators, which read
+  # the changed files and start nothing.
   @nothing_enqueued %{enqueued: [], memoized: []}
-
-  @output_file_sources %{
-    compile_output_file: "compiler",
-    credo_output_file: "credo",
-    exunit_output_file: "exunit",
-    spex_output_file: "spex"
-  }
 
   defp run_pipeline(scope, task, changed_files, config, opts) do
     if changed_files != [] do
@@ -953,14 +799,7 @@ defmodule CodeMySpec.Validation do
       StaticAnalysis.run_analyzers(scope, in_process, changed_files, config, opts)
     end
 
-    ingest_supplied_output(scope, opts)
-  end
-
-  defp ingest_supplied_output(scope, opts) do
-    case for({opt, source} <- @output_file_sources, Keyword.has_key?(opts, opt), do: source) do
-      [] -> @nothing_enqueued
-      supplied -> Analysis.ensure_stale_runs(scope, supplied, opts)
-    end
+    @nothing_enqueued
   end
 
   defp resolve_changed_files(scope, %{started_at: started_at}, _sync_result)
@@ -992,8 +831,8 @@ defmodule CodeMySpec.Validation do
         |> Enum.map(& &1.component_id)
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq(),
-      specs_ready_story_ids: specs_ready_story_ids(scope),
-      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      specs_ready_story_ids: Blocking.specs_ready_story_ids(scope),
+      criterion_story_ids: Files.bdd_spec_story_id_by_path(scope),
       spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
@@ -1008,14 +847,15 @@ defmodule CodeMySpec.Validation do
     # validator re-run in this request, with no ledger row to describe.
     sources_with_problems = Map.keys(problems_by_source)
     ledger_sources = Enum.filter(sources_with_problems, &(&1 in Run.sources()))
-    in_flight = Analysis.in_flight(scope)
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
+    setting = advisory_findings(config)
+    {blocking, never_blocks} = Enum.split_with(blocking, &can_block?(&1, setting))
+    advisory = advisory ++ never_blocks
     session_paths = session_paths(scope, opts, project_changed?)
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
     {blocking, not_this_role} = split_by_role(blocking, Keyword.get(opts, :agent_role))
     advisory = advisory ++ unattributed ++ not_this_role
-    log_demotions(unattributed, session_paths, opts)
 
     decide(blocking, advisory,
       # Computed here, from the opts that actually carry the identity.
@@ -1027,10 +867,8 @@ defmodule CodeMySpec.Validation do
       # option straight to the renderer, which is exactly the instrument error
       # of checking a probe only where it cannot fail.
       internal_agent?: internal_agent?(opts),
-      # The run each source's findings came from: commit, age and duration —
-      # and for a source being rerun, the typical duration the in-flight note
-      # compares its progress against.
-      answers: answers(scope, Enum.uniq(ledger_sources ++ in_flight)),
+      # The run each source's findings came from: commit, age and duration.
+      answers: answers(scope, ledger_sources),
       # Why a source that has never answered could not run. The analyzer's own
       # words are in `Run.output` and nothing read them back — `6f89b278` is
       # three days of blocked stops with the fix sitting in that column.
@@ -1042,9 +880,9 @@ defmodule CodeMySpec.Validation do
       # A rerun that failed behind an older answer; those findings were not re-checked.
       failed_reruns: failed_reruns(scope, sources_with_problems),
       # How to see these findings without stopping again. Only credo has one:
-      # its plain invocation hides the low-priority band that `block_changed`
-      # promotes, so `mix credo` answers "found no issues" on the very findings
-      # that block. `mix test` and `mix spex` reproduce themselves.
+      # its plain invocation hides the low-priority band, so `mix credo` can
+      # answer "found no issues" on findings this gate reports. `mix test` and
+      # `mix spex` reproduce themselves.
       reproduce_commands: %{
         "credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}
       },
@@ -1056,14 +894,6 @@ defmodule CodeMySpec.Validation do
       # How many moved to advisory, and why, so the advisory pile does not
       # absorb them silently. A gate that stops blocking has to say so.
       unattributed_count: length(unattributed),
-      # Whether a rerun of a blocking source is running — what decides whether
-      # waiting can help.
-      in_flight: in_flight,
-      # And how long it has been running. "A rerun is in flight" is the same
-      # sentence on every stop inside one run's window, so taking the advice
-      # promptly returns a byte-identical block — which is what a livelock looks
-      # like from the outside, and the opposite response is correct for each.
-      in_flight_since: Analysis.in_flight_since(scope),
       # Whose story each spex finding belongs to.
       #
       # Rule 3 of story 895: a working copy surfaces every finding about it,
@@ -1079,18 +909,10 @@ defmodule CodeMySpec.Validation do
       # still a real regression by design (story 895's rule 4); this only
       # gives a reader on a checkout that never made the fix a fact to check
       # ("does my HEAD have this commit yet?") before assuming they broke it.
-      specs_ready_stamp: specs_ready_stamps_by_path(scope, blocking, scope_context),
+      specs_ready_stamp: specs_ready_stamps_by_path(scope, blocking, scope_context)
       # Which harness to wait on, so "a rerun is in flight" can name a way to
       # wait for it rather than only telling the agent to stop again.
       #
-      # `Hooks.Stop` already has this remedy: when analysis is pending it hands
-      # over `POST /api/harnesses/<id>/analysis/wait`, which blocks until the
-      # sweep lands. But that path is only reached when validation *passed* —
-      # a blocking result returns before it, so the case where waiting matters
-      # most is the one case that never heard about the endpoint (5e9fa939:
-      # three consecutive stops blocked on the same findings while a spex run
-      # grew from 0s to 5m15s, each told to stop again).
-      working_copy_id: scope.active_working_copy_id
     )
   end
 
@@ -1284,7 +1106,8 @@ defmodule CodeMySpec.Validation do
         mode = mode_for(config, field)
         problems = Map.get(problems_by_source, source, [])
 
-        {enforced, unenforced} = split_by_story_enforcement(source, problems, scope_context)
+        {enforced, unenforced} =
+          Blocking.split_by_story_enforcement(source, problems, scope_context)
 
         {block, advisory} = apply_mode(enforced, mode, scope_fn, scope_context)
         {block_acc ++ block, advisory_acc ++ advisory ++ unenforced}
@@ -1300,172 +1123,12 @@ defmodule CodeMySpec.Validation do
     Enum.split_with(problems, &(&1.severity == :error))
   end
 
-  # Spex enforcement is per-story, and it runs BEFORE the configured mode
-  # rather than as another mode. A story that has never gone green is
-  # *supposed* to be red — its specs are the contract driving the
-  # implementation that hasn't been written yet. Blocking on that is what
-  # kept `ProjectConfiguration.spex` pinned at `:off`.
-  #
-  # Demoted problems stay advisory rather than being dropped: the failure
-  # is still real and still belongs on the Problems page, it just isn't
-  # the agent's problem yet.
-  #
-  # Every other source is story-agnostic and passes through untouched.
-  # The criterion says which story it belongs to. The filename does not.
-  #
-  # This read the leading number out of `test/spex/<n>_.../` and treated it as a
-  # story id. Those numbers are directory names and have drifted from the ids:
-  # measured on this project, `811_user_sees_the_agents_task_queue_at_a_glance`
-  # derives 811 — a real story, "Onboarding lives at /app", `specs_ready` false
-  # — while the story with that title is 862, `specs_ready` true. So a latched
-  # story gated nothing (no path derives 862) and an unlatched one gated spex
-  # that were not its own.
-  #
-  # Both wrong answers are silent, because a number that resolves to *a* story
-  # looks exactly like one that resolves to the right story. A missing story
-  # would have hit the `nil` branch and been loud.
-  #
-  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/3` writes it
-  # when a spex file is created, which is why it survives a rename. 22 of this
-  # project's 25 spex problems join on it exactly.
-  #
-  # The filename parse stays as the fallback for a spex no criterion claims.
-  #
-  # An orphan blocks. That was an open question here — "there is no right answer
-  # for an orphan" — and it is settled: block *because* it is orphaned. The
-  # argument for the other side is that an unlatched spex should not block, and
-  # an orphan is unlatched by definition; the argument against, which wins, is
-  # that a spex whose story link has broken would then go quiet instead of loud,
-  # and a real regression could hide behind it. A broken link should surface as
-  # a block, not as silence.
-  #
-  # That fallback now resolves what it parses. The directory name is the story's
-  # durable **number**, and it used to be handed straight to a set of primary
-  # keys — the comparison above, made from the wrong end. Going through
-  # `story_ids_by_number` means an unmatched number answers `nil` and lands in
-  # the loud branch instead of quietly naming whichever story holds that id.
-  @doc """
-  The subset of `problems` this gate would actually enforce.
-
-  Public so `Hooks.AnalysisAlert` can count the same population the gate blocks
-  on rather than everything recorded. Reused rather than reimplemented, because
-  two copies of "what counts as enforceable" drift, and the drift is silent —
-  the alert would report a number the gate disagrees with and nobody would see
-  which was wrong.
-
-  Costs three reads, so it is only worth calling once something has landed. The
-  alert's silent path never reaches here.
-  """
-  @spec enforceable(Scope.t(), [Problems.Problem.t()]) :: [Problems.Problem.t()]
-  def enforceable(%Scope{} = scope, problems) do
-    ctx = %{
-      specs_ready_story_ids: specs_ready_story_ids(scope),
-      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
-      spec_file_story_ids: Files.bdd_spec_story_id_by_path(scope),
-      story_ids_by_number: Stories.list_story_ids_by_number(scope)
-    }
-
-    problems
-    |> Enum.group_by(& &1.source)
-    |> Enum.flat_map(fn {source, of_source} ->
-      {enforced, _advisory} = split_by_story_enforcement(source, of_source, ctx)
-      enforced
-    end)
-  end
-
-  defp split_by_story_enforcement("spex", problems, ctx) do
-    %{
-      specs_ready_story_ids: ready_ids,
-      criterion_story_ids: by_path,
-      spec_file_story_ids: by_spec_file,
-      story_ids_by_number: by_number
-    } = ctx
-
-    Enum.split_with(problems, fn problem ->
-      located?(problem) and
-        case story_id_for(problem.file_path, by_path, by_spec_file, by_number) do
-          nil -> true
-          story_id -> MapSet.member?(ready_ids, story_id)
-        end
-    end)
-  end
-
-  defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
-
-  # A finding the runner could not place is not an orphan: it has no story
-  # link to have broken. sexy_spex 0.2.1's `fail_on_error_logs` failure carries
-  # no stacktrace or spec file, the reconciler stores "unknown", and 24 of them
-  # refused metric_flow's QA agent every turn (d91436b7). Advisory, not silent.
-  defp located?(%{file_path: path}), do: is_binary(path) and path != "unknown"
-
-  # Assignment does NOT exempt a spex finding, and criterion 2406 is why.
-  #
-  # This used to also require the story to be assigned to this checkout, on the
-  # same reasoning `issues_resolved` uses: a gate whose passing state depends on
-  # work outside the gated unit is a wall, and an agent on the war-epic copy was
-  # shown 21 findings from an epic assigned to the main checkout.
-  #
-  # But `specs_ready` already answers that. The latch is *earned* — set when a
-  # story's specs have gone green — so a finding that survives it is a
-  # regression on proven behaviour, not somebody else's unfinished work. 2406
-  # states the consequence directly: "an exemption this wide would let a broken
-  # build through on every checkout that did not happen to own it."
-  #
-  # So the two guards are not both needed, and only one is right. Unready
-  # stories are held back by the latch, which is what stopped those 21 findings;
-  # ready ones block whoever is stopping, wherever they are assigned.
-
-  # Criteria first, then the file row, then the directory name.
-  #
-  # The last of those is a guess and was doing most of the work. Spex
-  # directories are named from `story.number` in some projects and `story.id` in
-  # others, so `derive_story_number/1` hands back an id where a number is
-  # expected, the lookup misses, and the problem lands in the `nil` branch —
-  # which enforces. An unwritten feature's red spec then blocks a stop as though
-  # it were a regression, and the agent is shown a backlog with no owner.
-  #
-  # Broken Oaths on 2026-09-08: 38 of 54 directories id-named, and 90 of 145
-  # spex problems enforced this way over features nobody had written yet.
-  #
-  # `files.story_id` is resolved at sync time from the spec itself and was
-  # correct for every directory of both conventions, so it goes ahead of the
-  # parse. The parse stays last rather than being deleted: a spec file that has
-  # not been synced yet has no row, and a directory name is better than nothing
-  # there.
-  defp story_id_for(file_path, by_path, by_spec_file, by_number) do
-    Map.get(by_path, file_path) ||
-      Map.get(by_spec_file, file_path) ||
-      story_id_from_path(file_path, by_number) ||
-      story_id_from_directory(file_path, by_path)
-  end
-
-  # A legacy spex directory names no story number, and a file in it whose
-  # criterion was renumbered is recorded against nothing. Unattributed, its
-  # failure blocked regardless of the story's `specs_ready` — metric_flow's
-  # unbuilt white-label and auto-enrollment spex held every promote on
-  # 2026-09-27. The directory's story is the one every recorded spec in it
-  # belongs to; a mixed directory answers nothing.
-  defp story_id_from_directory(file_path, by_path) do
-    dir = Path.dirname(file_path)
-
-    case for({path, story_id} <- by_path, Path.dirname(path) == dir, uniq: true, do: story_id) do
-      [story_id] -> story_id
-      _ -> nil
-    end
-  end
-
-  defp story_id_from_path(file_path, by_number) do
-    case Parser.derive_story_number(file_path) do
-      nil -> nil
-      number -> Map.get(by_number, number)
-    end
-  end
-
-  defp specs_ready_story_ids(scope) do
-    scope
-    |> Stories.list_specs_ready_story_ids()
-    |> MapSet.new()
-  end
+  # The blocking predicate lives in the `Validation.Blocking` leaf so Promotion
+  # and Analysis read it without depending on Validation.
+  defdelegate can_block?(problem, advisory_findings), to: Blocking
+  defdelegate advisory_findings(scope_or_config), to: Blocking
+  defdelegate blockable(scope, problems), to: Blocking
+  defdelegate enforceable(scope, problems), to: Blocking
 
   # `%{file_path => :mine | :unassigned | {:elsewhere, label}}` for spex
   # findings whose story can be identified.
@@ -1512,7 +1175,7 @@ defmodule CodeMySpec.Validation do
     pairs =
       for %{source: "spex", file_path: path} <- blocking,
           is_binary(path),
-          story_id = story_id_for(path, by_path, by_spec_file, by_number),
+          story_id = Blocking.story_id_for(path, by_path, by_spec_file, by_number),
           not is_nil(story_id),
           MapSet.member?(ready_ids, story_id),
           uniq: true do
@@ -1543,7 +1206,7 @@ defmodule CodeMySpec.Validation do
 
   defp story_assignments_for(paths, assigned, mine, labels, by_path, by_number) do
     for path <- paths,
-        story_id = Map.get(by_path, path) || story_id_from_path(path, by_number),
+        story_id = Map.get(by_path, path) || Blocking.story_id_from_path(path, by_number),
         not is_nil(story_id),
         into: %{} do
       {path, assignment_for(story_id, assigned, mine, labels)}

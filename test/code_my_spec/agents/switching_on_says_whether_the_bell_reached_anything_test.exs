@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.SwitchingOnSaysWhetherTheBellReachedAnythingTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -44,6 +45,8 @@ defmodule CodeMySpec.Agents.SwitchingOnSaysWhetherTheBellReachedAnythingTest do
         working_copy: "/tmp/bell-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

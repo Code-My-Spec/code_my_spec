@@ -3,7 +3,8 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
   Fix the issue a working copy's team is bound to (story 1091).
 
   Completing this task hands the fix to QA; it does not resolve the issue.
-  QA resolves it with a passing attempt through `submit_issue_qa_result`,
+  A passing attempt through `submit_issue_qa_result` sends the coder to land
+  the fix (`IssuePromote`), and the landing resolves the issue,
   which is also what frees the team.
   """
 
@@ -52,8 +53,9 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
     #{issue.description}
 
     Make the fix and commit it, then call `evaluate_task` with task_id "#{task.id}".
-    Completing this task hands the fix to QA — it does not resolve the issue — \
-    QA resolves it with a passing attempt through `submit_issue_qa_result`.
+    Completing this task hands the fix to QA — it does not resolve the issue. \
+    Once QA passes it you land it on main through the promotion queue, and the \
+    landing resolves the issue.
     """
   end
 end

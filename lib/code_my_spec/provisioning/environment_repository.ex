@@ -7,11 +7,21 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   "add an environment" a seven-file edit and made per-story QA environments
   impossible to express at all.
   """
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Provisioning.Environment,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Users.Scope
+    ],
+    exports: :all
+
   import Ecto.Query
 
   alias CodeMySpec.Provisioning.Environment
-  alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
 
   # What a project starts with. Not a special case — the first two rows, which
@@ -85,7 +95,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
       |> Repo.insert_or_update()
 
     # A new environment adds its steps to the setup checklist.
-    if is_nil(existing.id) and match?({:ok, _}, result), do: StepRepository.setup_changed(scope)
+    if is_nil(existing.id) and match?({:ok, _}, result), do: setup_changed(scope)
 
     result
   end
@@ -126,7 +136,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   def delete(%Scope{} = scope, name) do
     case get(scope, name) do
       nil -> :ok
-      environment -> Repo.delete(environment) && StepRepository.setup_changed(scope)
+      environment -> Repo.delete(environment) && setup_changed(scope)
     end
   end
 
@@ -213,4 +223,16 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   defp seed_host(_prefix, domain) when domain in [nil, ""], do: nil
   defp seed_host(nil, domain), do: domain
   defp seed_host(prefix, domain), do: "#{prefix}.#{domain}"
+
+  @doc """
+  Tell the requirement graph the setup checklist may have moved.
+
+  `deploy` waits on the steps this checklist still misses, so every write that
+  can change it announces, or a deploy stays unoffered after setup completes.
+  """
+  @spec setup_changed(Scope.t()) :: :ok
+  def setup_changed(%Scope{active_project_id: project_id} = scope) when is_binary(project_id),
+    do: GraphInputs.event(scope, "Provisioning", "devops_setup_changed", %{}, [], :project_wide)
+
+  def setup_changed(_scope), do: :ok
 end

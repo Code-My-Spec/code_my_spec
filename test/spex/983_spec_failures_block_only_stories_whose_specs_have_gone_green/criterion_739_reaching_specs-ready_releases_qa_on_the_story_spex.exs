@@ -21,7 +21,8 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
       given_ "a coding agent holding the story's ready-for-QA task on a clean copy",
              context do
         context = context |> a_promotable_project() |> analyzers_are_current()
-        story = a_promotable_story(context)
+        # Not yet QA'd: certification is what opens QA.
+        story = a_promotable_story(context, qa: :not_passed)
         {:ok, context |> a_held_ready_for_qa_task(story) |> Map.put(:story, story)}
       end
 

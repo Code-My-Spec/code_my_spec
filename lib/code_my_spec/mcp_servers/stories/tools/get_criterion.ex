@@ -7,10 +7,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetCriterion do
 
   use Anubis.Server.Component, type: :tool
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   schema do
     field :criterion_number, :integer, required: true, doc: "Criterion number"

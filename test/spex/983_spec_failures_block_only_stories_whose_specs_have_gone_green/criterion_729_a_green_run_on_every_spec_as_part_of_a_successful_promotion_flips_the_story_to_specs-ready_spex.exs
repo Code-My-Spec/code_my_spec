@@ -8,6 +8,10 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
   a story ready for QA stamps a commit on it and leaves this latch alone:
   that is per copy and pre-merge, and must not make the story's red spex block
   other copies' promotions.
+
+  Promotion is queued (2026-10-04): `promote` answers with the candidate's
+  place, and the latch is set when the queue lands it — so the scenario waits
+  for the agent to be told it landed.
   """
 
   use CodeMySpecSpex.Case
@@ -16,9 +20,18 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
   import CodeMySpecSpex.ReadyForQaHelpers
 
   alias CodeMySpec.Stories
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  # The queue gates and lands from its own worker, and tells the agent.
+  setup do
+    :ok = Fixtures.install_recording_agent_transport()
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
 
   defp latched?(context, story), do: Stories.get_story(context.scope, story.id).specs_ready
 
@@ -26,16 +39,32 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
     scenario "the story's spex are all green on the certifying run" do
       given_ "an agent's copy with the story's spex green and analyzers clean at HEAD",
              context do
-        context = context |> a_promotable_project() |> analyzers_are_current()
-        {:ok, Map.put(context, :story, a_promotable_story(context))}
+        context =
+          context
+          |> a_promotable_project()
+          |> an_agent_on_the_copy()
+          |> with_work_on_the_copy()
+          |> analyzers_are_current()
+
+        story = a_promotable_story(context)
+        commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
+        context = analyzers_are_current(context)
+
+        {:ok, Map.put(context, :story, story)}
       end
 
-      when_ "the story is promoted", context do
-        {:ok, Map.put(context, :response, promote(context, context.story.number))}
+      when_ "the story is promoted, and the queue lands it", context do
+        response = promote(context, context.story.number)
+
+        {:ok,
+         context
+         |> Map.put(:response, response)
+         |> Map.put(:told, what_the_agent_was_told(context))}
       end
 
       then_ "the story is latched specs-ready", context do
         refute context.response.isError, inspect(context.response)
+        assert context.told =~ "landed on main", context.told
         assert latched?(context, context.story)
         {:ok, context}
       end

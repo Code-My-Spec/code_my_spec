@@ -128,17 +128,28 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # which is the argument for checking every role's set against the
   # requirements that name it rather than against the last agent that
   # complained.
+  # The copy's own app runs the branch under test; QA starts it to test there
+  # rather than through its own connection, which is the shared harness on main.
+  # `list_problems` is granted and `clear_problems` is not (`930d9c47`). They are
+  # two different things and one grant used to carry both. A QA agent directed
+  # at Spex failures needs to *see* them -- to report what failed and to tell a
+  # real defect from a broken tree -- and that is a read. What it must not have
+  # is a move to clear them, and what must not happen is it being *held open* by
+  # them; that is `holds_problems?` below, and it stays false: a qa agent once sat
+  # unable to read, clear or stop over 47 findings it had no move for.
   @qa_tools ~w(
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
     show_component_requirements show_architecture_overview
     list_requirements show_requirement list_personas get_persona
-    list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue
-    list_qa_attempts submit_qa_result invalidate_qa_attempt
+    list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue update_issue
+    list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
     withdraw_question
     call_mcp_server
+    ensure_app_running restart_app stop_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
+    list_problems
     web_search web_fetch
     browser
     query_logs get_trace slow_spans error_summary
@@ -202,7 +213,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_dependency remove_dependency
     list_requirements show_requirement
     list_rules list_questions withdraw_question
-    list_issues get_issue create_issue resolve_issue
+    list_issues get_issue create_issue resolve_issue update_issue
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks clear_problems list_problems
@@ -242,7 +253,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # (John, step 4c).
   @product_tools ~w(
     list_stories get_story list_story_titles create_story update_story retire_story restore_story
-    add_criterion update_criterion retire_criterion restore_criterion get_criterion move_criterion
+    add_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario
     add_question resolve_question list_rules list_questions
     list_working_copies assign_epic_to_working_copy
@@ -256,7 +267,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_dependency remove_dependency
     validate_dependency_graph execute_proposal show_architecture_overview get_component
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
-    list_notifications answer_notification escalate_question withdraw_question
+    list_notifications answer_notification escalate_question withdraw_question search_answers
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
     query_logs get_trace slow_spans error_summary
@@ -277,13 +288,15 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @strong [
     {"anthropic", "claude-sonnet-5"},
     {"openai-codex", "gpt-6-astra"},
-    {"zai", "glm-5.3"}
+    {"zai", "glm-5.3"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
   ]
 
   @cheap [
     {"zai", "glm-5.3"},
     {"openai-codex", "gpt-6-astra"},
-    {"anthropic", "claude-haiku-4-5"}
+    {"anthropic", "claude-haiku-4-5"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
   ]
 
   # In role order: `roles/0` is this list's order, and so is every enum built
@@ -348,7 +361,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
       # clears them (`questions_answered`), so blocking it on them left the
       # block naming no actor (56cf5697).
       questions_block?: false,
-      questions_to: :main,
+      # Nobody is above it either: a question main could settle is the kind
+      # product would have answered itself already, and anything left is the
+      # user's call same as main's own (criterion 1990, story 1053).
+      questions_to: :user,
       tools: @product_tools,
       browses?: false,
       holds_problems?: false,

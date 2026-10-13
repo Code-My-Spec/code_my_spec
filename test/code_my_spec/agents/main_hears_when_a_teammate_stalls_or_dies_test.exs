@@ -1,8 +1,9 @@
 defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
   @moduledoc """
-  a31f1cd6 step 4b: main is told when a teammate dies, is reaped, or stalls —
-  once, on the transition — and is woken for it past its own open question
-  (John).
+  a31f1cd6 step 4b: main is told when a teammate is gone for good — its
+  harness gave up restarting it, or an external lane's report reaped it — or
+  stalls, once, on the transition, and is woken for it past its own open
+  question (John). A crash the harness restarts is not news.
   """
   use CodeMySpecTest.DataCase, async: false
 
@@ -11,11 +12,12 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Cadence
-  alias CodeMySpec.MainAgent.Digest
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Cadence
+  alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Notifications
   alias CodeMySpec.Staffing
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -54,23 +56,46 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
         )
       )
 
+    AgentPresence.present(agent)
+
     agent
   end
 
+  # Present, because delivery waits on presence.
   defp main(ctx, attrs \\ %{}),
-    do: agent(ctx.scope, :main, ctx.scope.active_working_copy_id, attrs)
+    do:
+      ctx.scope
+      |> agent(:main, ctx.scope.active_working_copy_id, attrs)
+      |> AgentPresence.present()
 
   defp coder(ctx, attrs \\ %{}), do: agent(ctx.scope, :coding, ctx.feature.id, attrs)
 
   defp told(%{id: id}) do
-    assert_receive {:agent_message, ^id, text}, 2_000
+    assert_receive {:agent_dispatch, ^id, ref, text}, 2_000
+    assert is_binary(ref)
     text
   end
 
   describe "a teammate dying" do
-    test "main is told who died, its role and copy, and why", ctx do
+    test "main is told who its harness gave up on, its role and copy, and why", ctx do
       main = main(ctx)
       coder = coder(ctx)
+
+      :ok = Agents.process_ended(ctx.scope, coder.id, "gave_up: {:badarg, []}")
+
+      text = told(main)
+      assert text =~ coder.id
+      assert text =~ "coding"
+      assert text =~ ctx.feature.id
+      assert text =~ "{:badarg, []}"
+      assert text =~ "stopped restarting"
+    end
+
+    test "a crash its harness restarts is not news", ctx do
+      main = main(ctx)
+      coder = coder(ctx)
+
+      :ok = Agents.process_ended(ctx.scope, coder.id, "{:badarg, []}")
 
       Agents.record_turn_event(
         ctx.scope,
@@ -79,34 +104,18 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
         []
       )
 
-      text = told(main)
-      assert text =~ coder.id
-      assert text =~ "coding"
-      assert text =~ ctx.feature.id
-      assert text =~ "exit: :killed"
-    end
-
-    test "a reaped teammate is told the same way", ctx do
-      main = main(ctx)
-      coder = coder(ctx)
-
-      :ok = Agents.record_running_on_copy(ctx.scope, ctx.feature.id, [])
-
-      text = told(main)
-      assert text =~ coder.id
-      assert text =~ "no longer reports them running"
-    end
-
-    test "three reaped in one sweep reach main as one message naming all three", ctx do
-      main = main(ctx)
-      reaped = [coder(ctx), agent(ctx.scope, :qa, ctx.feature.id, %{}), coder(ctx)]
-
-      :ok = Agents.record_running_on_copy(ctx.scope, ctx.feature.id, [])
-
-      text = told(main)
-      for %{id: id} <- reaped, do: assert(text =~ id)
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
+    end
+
+    test "an agent given up on after it was turned off is not news either", ctx do
+      main = main(ctx)
+      coder = coder(ctx, %{off_at: DateTime.utc_now(), off_by: "Harness"})
+
+      :ok = Agents.process_ended(ctx.scope, coder.id, "gave_up: {:badarg, []}")
+
+      main_id = main.id
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
 
     test "a harness report that reaps three sends one message too", ctx do
@@ -121,7 +130,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       text = told(main)
       for %{id: id} <- reaped, do: assert(text =~ id)
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
 
     test "a sweep that reaped main too sends nothing", ctx do
@@ -131,7 +140,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       {:ok, _running} = Agents.record_reported(ctx.scope, [])
 
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
 
     test "reaches main past its own open question to the user", ctx do
@@ -150,7 +159,7 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
           nil
         )
 
-      Agents.record_turn_event(ctx.scope, coder.id, %{"kind" => "agent_died", "text" => "x"}, [])
+      :ok = Agents.process_ended(ctx.scope, coder.id, "gave_up: x")
 
       assert told(main) =~ coder.id
     end
@@ -159,10 +168,10 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       main = main(ctx, %{continuous: false})
       coder = coder(ctx)
 
-      Agents.record_turn_event(ctx.scope, coder.id, %{"kind" => "agent_died", "text" => "x"}, [])
+      :ok = Agents.process_ended(ctx.scope, coder.id, "gave_up: x")
 
       main_id = main.id
-      refute_receive {:agent_message, ^main_id, _}, 300
+      refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
   end
 

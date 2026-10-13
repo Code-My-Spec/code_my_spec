@@ -8,13 +8,44 @@ defmodule CmsHarness.Agents.Shell do
   harness (the same leak that sent spex harnesses to the real server).
   """
 
-  @doc "The executor handed to Alloy as `:bash_executor`."
+  @doc "Runs a command without a deadline, returning its output and exit status."
   @spec run(String.t(), String.t() | nil) :: {String.t(), non_neg_integer()}
   def run(command, dir) do
     opts = [stderr_to_stdout: true, env: scrubbed_env()]
     opts = if dir, do: Keyword.put(opts, :cd, dir), else: opts
 
     System.cmd("bash", ["-rc", command], opts)
+  end
+
+  @doc "Runs with a deadline, retaining output even when the executor times out."
+  def run(command, dir, timeout) do
+    {:ok, capture} = StringIO.open("")
+
+    try do
+      opts = [stderr_to_stdout: true, env: scrubbed_env(), into: IO.binstream(capture, :line)]
+      opts = if dir, do: Keyword.put(opts, :cd, dir), else: opts
+
+      task =
+        Task.Supervisor.async_nolink(Alloy.TaskSupervisor, fn ->
+          System.cmd("bash", ["-rc", command], opts)
+        end)
+
+      result = Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill)
+      {_, output} = StringIO.contents(capture)
+
+      case result do
+        {:ok, {_, exit_code}} ->
+          {:ok, "#{output}\nexit code: #{exit_code}"}
+
+        {:exit, reason} ->
+          {:error, "Executor crashed: #{inspect(reason)}\n#{output}"}
+
+        nil ->
+          {:error, "Command timed out after #{timeout}ms. Partial output follows:\n#{output}"}
+      end
+    after
+      StringIO.close(capture)
+    end
   end
 
   @doc "Unsets every variable that describes the harness rather than the project."

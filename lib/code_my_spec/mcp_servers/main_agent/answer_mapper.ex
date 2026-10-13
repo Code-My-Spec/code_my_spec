@@ -116,7 +116,7 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
   end
 
   def error(:missing_id) do
-    refuse("`id` is required — from `list_notifications`.")
+    refuse("`notification_id` is required — from `list_notifications`.")
   end
 
   def error(:not_found) do
@@ -137,6 +137,13 @@ defmodule CodeMySpec.McpServers.MainAgent.AnswerMapper do
       refuse(
         "That question is not yours to answer: product answers the criteria questions " <>
           "routed to it, and the rest are main's or the user's."
+      )
+
+  def error(:with_user),
+    do:
+      refuse(
+        "That question is the user's: it was routed straight to them, not through main, " <>
+          "so only they can settle it."
       )
 
   def error(reason), do: refuse("Could not do that: #{inspect(reason)}")

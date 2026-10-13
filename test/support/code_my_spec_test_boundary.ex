@@ -31,7 +31,9 @@ defmodule CodeMySpecTest do
       CmsHarnessTest,
       CodeMySpec,
       CodeMySpec.Agents,
+      CodeMySpec.Embeddings,
       CodeMySpec.McpServers,
+      CodeMySpec.PromotionQueue,
       CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.TempFile,
@@ -54,7 +56,9 @@ defmodule CodeMySpecTest do
     # installs it and drives it (listen, reset, pause/release, fail, model) on
     # a criterion's behalf — story 1087's embeddings-airtight work.
     exports: [
+      AgentPresence,
       FakeWorkspaceRunner,
+      HexTarballFixtures,
       RecordingAgentTransport,
       RecordingEmbeddingServing,
       TurnEventRelay,

@@ -1,7 +1,7 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.UpdatePersona do
   @moduledoc """
   Updates an existing persona's metadata (name, slug, headline, persona_type).
-  Identifies the persona by id or slug. Research text on disk is unaffected —
+  Identifies the persona by persona_id or slug. Research text on disk is unaffected —
   if you change the slug, move the `.code_my_spec/personas/<slug>/` folder
   yourself.
   """
@@ -13,8 +13,8 @@ defmodule CodeMySpec.McpServers.Personas.Tools.UpdatePersona do
   alias CodeMySpec.Personas
 
   schema do
-    field :id, :string, doc: "UUID of the persona to update. Provide id or slug."
-    field :slug, :string, doc: "Current slug of the persona. Provide id or slug."
+    field :persona_id, :string, doc: "UUID of the persona to update. Provide persona_id or slug."
+    field :slug, :string, doc: "Current slug of the persona. Provide persona_id or slug."
     field :name, :string, doc: "New display name."
     field :new_slug, :string, doc: "New slug (URL-safe identifier). Optional."
     field :headline, :string, doc: "New headline."
@@ -40,7 +40,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.UpdatePersona do
     end
   end
 
-  defp fetch_persona(scope, %{id: id}) when is_binary(id) and id != "" do
+  defp fetch_persona(scope, %{persona_id: id}) when is_binary(id) and id != "" do
     case Personas.get_persona(scope, id) do
       nil -> {:error, :not_found}
       persona -> {:ok, persona}
@@ -54,7 +54,7 @@ defmodule CodeMySpec.McpServers.Personas.Tools.UpdatePersona do
     end
   end
 
-  defp fetch_persona(_scope, _params), do: {:error, "must provide id or slug"}
+  defp fetch_persona(_scope, _params), do: {:error, "must provide persona_id or slug"}
 
   defp build_attrs(params) do
     %{}

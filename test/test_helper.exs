@@ -17,6 +17,10 @@ System.at_exit(fn _ -> File.rm_rf(served_roots_dir) end)
 sops_exclusions = if CodeMySpec.Provisioning.Sops.available?(), do: [], else: [:sops]
 
 ExUnit.start(
+  # A push behind a DB write and a PubSub hop overran ExUnit's 100ms default in a
+  # loaded gate (conversation_channel_test, 2026-10-06). A passing assert returns
+  # as soon as its message arrives; only a failure waits the full second.
+  assert_receive_timeout: 1_000,
   # :docker builds a real image on this machine — seconds, and it needs a
   # working daemon. Run it with `mix test --include docker` when the build
   # sequence changes.

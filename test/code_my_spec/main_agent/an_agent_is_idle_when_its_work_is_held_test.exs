@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AnAgentIsIdleWhenItsWorkIsHeldTest do
+defmodule CodeMySpec.Agents.Main.AnAgentIsIdleWhenItsWorkIsHeldTest do
   @moduledoc """
   The main agent's "this agent has work" is what that agent would be offered.
 
@@ -12,12 +12,13 @@ defmodule CodeMySpec.MainAgent.AnAgentIsIdleWhenItsWorkIsHeldTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.TaskOwner
   alias CodeMySpecSpex.FullSatisfactionFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup :register_log_in_setup_account
@@ -48,6 +49,8 @@ defmodule CodeMySpec.MainAgent.AnAgentIsIdleWhenItsWorkIsHeldTest do
         working_copy: "/tmp/held-#{System.unique_integer([:positive])}",
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

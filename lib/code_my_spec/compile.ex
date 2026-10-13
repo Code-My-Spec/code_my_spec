@@ -28,6 +28,7 @@ defmodule CodeMySpec.Compile do
 
   - `cwd` - Working directory to run the command in (optional)
   - `output_file` - Path for diagnostics JSONL output (optional, defaults to temp file)
+  - `force` - recompile everything (`--force`), so no diagnostic is skipped
 
   ## Returns
 
@@ -65,7 +66,7 @@ defmodule CodeMySpec.Compile do
     Logger.debug("[Compile] env=#{inspect(cmd_opts[:env])}")
 
     {output, exit_code} =
-      Environments.cmd(env, "mix", ["compile", "--return-errors"], cmd_opts)
+      Environments.cmd(env, "mix", compile_args(opts), cmd_opts)
 
     Logger.debug("[Compile] exit_code=#{exit_code}")
 
@@ -344,4 +345,13 @@ defmodule CodeMySpec.Compile do
   # project that *does* have the `:diagnostics` compiler could write the file
   # this one then read. See `CodeMySpec.TempFile`.
   defp create_temp_file_path, do: TempFile.path("compile_diagnostics", ".jsonl")
+
+  # `force: true` recompiles everything, so every module's diagnostics are
+  # reported — an incremental compile only reports what it recompiled, and the
+  # gate passed a boundary violation another analyzer had already compiled.
+  defp compile_args(opts) do
+    if Keyword.get(opts, :force, false),
+      do: ["compile", "--return-errors", "--force"],
+      else: ["compile", "--return-errors"]
+  end
 end

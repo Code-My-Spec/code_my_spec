@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.HealthController do
     |> put_status(if health.healthy, do: 200, else: 503)
     |> json(%{
       status: if(health.healthy, do: "ok", else: "unhealthy"),
+      version: to_string(Application.spec(:code_my_spec, :vsn)),
       database: database(health.database),
       pending_migrations: health.pending_migrations,
       harness_connected: health.harness_connected

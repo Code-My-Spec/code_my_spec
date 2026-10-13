@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.RetiringAnAgentHandsOffItsQuestionsTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Notifications
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -35,6 +36,8 @@ defmodule CodeMySpec.Agents.RetiringAnAgentHandsOffItsQuestionsTest do
         working_copy: "/tmp/handoff-#{System.unique_integer([:positive])}",
         working_copy_id: copy_id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

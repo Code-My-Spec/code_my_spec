@@ -13,6 +13,8 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.CodeMode
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.LocalServer
@@ -37,10 +39,27 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        {:reply, Response.tool() |> Response.text(docs(scope, params)), frame}
+        {:reply, Response.tool() |> Response.text(docs(scope, params, carried(frame))), frame}
 
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
+    end
+  end
+
+  # What the caller carries, so a page can say "you have it" or "you do not"
+  # rather than asserting one for everyone.
+  #
+  #  is the identity  put on the
+  # connection. A caller with no agent (a person, an operator session) gets
+  #  — nothing is scoped away from them, which is what every other tool
+  # in this server already assumes.
+  defp carried(frame) do
+    with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
+         scope <- frame.assigns[:current_scope],
+         {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
+      ToolSets.for_role(agent.role) || :all
+    else
+      _ -> :all
     end
   end
 
@@ -49,13 +68,13 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # eighty-five tools undiscoverable — an agent has no other way to learn that
   # `browser_wait_for_text` exists. So they are named, and named as belonging
   # somewhere else, which is the part a bare listing would get wrong.
-  defp docs(scope, params) do
+  defp docs(scope, params, carried) do
     machine = Layer.machine_catalog(scope, nil, @docs_timeout)
 
     case requested_names(params) do
       [] -> CodeMode.docs(Layer.catalog(scope), opts(params)) <> machine_note(machine)
-      [one] -> page(scope, machine, one)
-      many -> Enum.map_join(many, "\n\n---\n\n", &page(scope, machine, &1))
+      [one] -> page(scope, machine, one, carried)
+      many -> Enum.map_join(many, "\n\n---\n\n", &page(scope, machine, &1, carried))
     end
   end
 
@@ -83,7 +102,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # A name in neither is said so plainly. That is the whole point of asking: an
   # agent that guessed needs to hear it guessed, and the catalog it used to get
   # back reads as an answer.
-  defp page(scope, machine, name) do
+  defp page(scope, machine, name, carried) do
     cond do
       Map.has_key?(machine, name) ->
         machine_page(machine, name)
@@ -92,7 +111,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
         CodeMode.docs(Layer.catalog(scope), name: name)
 
       direct?(name) ->
-        direct_page(name)
+        direct_page(name, carried)
 
       true ->
         "`#{name}` is not a tool on this project or this machine. " <>
@@ -121,19 +140,40 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # pointing the other way.
   defp direct?(name), do: Enum.any?(LocalServer.__components__(), &(&1.name == name))
 
-  defp direct_page(name) do
+  # Whether the caller has it is a fact about the role, and it was assumed
+  # rather than checked: the page told every reader the tool was in its list.
+  # True for Claude Code, which is handed the whole spine; false for one of our
+  # own agents, which carries a role's grants (`e809c0db`). The page says which
+  # it is so an agent that does not carry it stops reaching for it and an agent
+  # that does is not talked out of it.
+  defp direct_page(name, carried) do
     """
     `#{name}` is a tool on this server, but not one `run_script` can call.
 
-    Call it directly, the way you call `run_script` itself — its schema is
-    already in your tool list. A few tools are kept out of scripts on purpose:
-    they wait on a person, or they spawn something, and neither belongs inside
-    a sandbox with a deadline.
+    #{direct_carry(name, carried)}
+    A few tools are kept out of scripts on purpose: they wait on a person, or
+    they spawn something, and neither belongs inside a sandbox with a deadline.
 
     `tool_docs` documents the scriptable catalog, which is why there is no page
     for it here.
     """
     |> String.trim()
+  end
+
+  defp direct_carry(_name, :all) do
+    "You carry it directly — call it the way you call `run_script` itself, " <>
+      "as a tool of your own."
+  end
+
+  defp direct_carry(name, carried) when is_list(carried) do
+    if name in carried do
+      "You carry it directly — call it the way you call `run_script` itself, " <>
+        "as a tool of your own."
+    else
+      "You do not carry it: it is not one of the tools this role is given. " <>
+        "Do not call it — an agent directed at it is refused. If you need what " <>
+        "it does, say so rather than working around it."
+    end
   end
 
   # Rendered by the same code that renders ours, off the schema the machine

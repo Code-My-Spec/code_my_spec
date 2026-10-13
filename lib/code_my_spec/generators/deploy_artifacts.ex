@@ -24,7 +24,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   """
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Provisioning.Repository
+  alias CodeMySpec.Projects.Project
 
   @type result :: {:ok, [String.t()]} | {:error, term()}
 
@@ -45,7 +45,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     do: Macro.underscore(name)
 
   def otp_app_name(project),
-    do: project |> Repository.default_name() |> String.replace("-", "_")
+    do: project |> Project.slug() |> String.replace("-", "_")
 
   @doc """
   Write every missing artifact, leaving anything already present alone.
@@ -389,7 +389,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  defp kamal_config(app, image, host, environment, registry, telemetry_host) do
+  defp kamal_config(app, image, host, environment, registry, _telemetry_host) do
     service_name = "#{app}#{if environment == "prod", do: "", else: "-#{environment}"}"
 
     """
@@ -399,7 +399,10 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     #{kamal_ssh_block()}
     servers:
       web:
-        - #{host}
+        hosts:
+          - #{host}
+        options:
+          network: db_net
 
     proxy:
       ssl: true
@@ -425,8 +428,9 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         # Names this deploy to the project's own telemetry collector, so
         # traces and logs land under the right ServiceName with no manual
         # config on Sam's part (criterion 1713/1855).
-        OTEL_SERVICE_NAME: #{service_name}
-        OTEL_EXPORTER_OTLP_ENDPOINT: https://#{telemetry_host}
+        OTEL_SERVICE_NAME: #{service_name}-web
+        OTEL_EXPORTER_OTLP_ENDPOINT: http://cms-otel-collector:4318
+        OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
       secret:
         - SECRET_KEY_BASE
         - DATABASE_URL

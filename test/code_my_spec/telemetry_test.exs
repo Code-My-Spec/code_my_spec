@@ -3,6 +3,7 @@ defmodule CodeMySpec.TelemetryTest do
 
   alias CodeMySpec.ProjectsFixtures
   alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Provisioning.TelemetryStep
   alias CodeMySpec.Telemetry
   alias CodeMySpec.UsersFixtures
 
@@ -16,7 +17,7 @@ defmodule CodeMySpec.TelemetryTest do
 
   describe "run/3" do
     test "requires the environment's server to exist first", %{scope: scope} do
-      assert {:error, reason} = Telemetry.run(scope, "uat")
+      assert {:error, reason} = TelemetryStep.run(scope, "uat")
       assert reason =~ "server"
     end
 
@@ -27,7 +28,7 @@ defmodule CodeMySpec.TelemetryTest do
 
       probe = fn _opts -> {:ok, %{logs: 1, traces: 1}} end
 
-      assert {:ok, resources} = Telemetry.run(scope, "uat", run_probe: probe)
+      assert {:ok, resources} = TelemetryStep.run(scope, "uat", run_probe: probe)
       assert Enum.any?(resources, &(&1.kind == "telemetry_collector"))
 
       assert Enum.any?(
@@ -42,11 +43,35 @@ defmodule CodeMySpec.TelemetryTest do
       probe = fn _opts -> {:error, "the collector is not running"} end
 
       assert {:error, "the collector is not running"} =
-               Telemetry.run(scope, "uat", run_probe: probe)
+               TelemetryStep.run(scope, "uat", run_probe: probe)
     end
   end
 
   describe "check/3" do
+    test "retains the latest result and timestamp separately for each project and environment", %{
+      scope: scope
+    } do
+      assert Telemetry.last_check(scope, "uat") == nil
+      checked_at = ~U[2026-10-03 12:00:00.000000Z]
+      unavailable = fn _opts -> %{reachable: false, reads: :error, writes: :error} end
+
+      first = Telemetry.check(scope, "uat", check_probe: unavailable, now: fn -> checked_at end)
+      assert Telemetry.last_check(scope, "uat") == first
+      assert Telemetry.last_check(scope, "prod") == nil
+
+      other_project = ProjectsFixtures.project_fixture(scope)
+      other_scope = %{scope | active_project_id: other_project.id, active_project: other_project}
+      assert Telemetry.last_check(other_scope, "uat") == nil
+
+      healthy = fn _opts -> %{reachable: true, reads: :ok, writes: :refused} end
+      later = DateTime.add(checked_at, 60, :second)
+      latest = Telemetry.check(scope, "uat", check_probe: healthy, now: fn -> later end)
+      assert Telemetry.last_check(scope, "uat") == latest
+      assert latest.checked_at == later
+      assert Telemetry.last_check(scope, "prod") == nil
+      assert Telemetry.last_check(other_scope, "uat") == nil
+    end
+
     test "reports the injected probe's reachability, reads and writes", %{scope: scope} do
       probe = fn _opts -> %{reachable: true, reads: :ok, writes: :refused} end
 

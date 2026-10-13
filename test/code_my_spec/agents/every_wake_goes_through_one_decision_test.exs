@@ -14,13 +14,14 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Devops.Starter
   alias CodeMySpec.Notifications
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -69,6 +70,8 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     agent
   end
@@ -223,7 +226,9 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
 
       refute response.isError
       coding_id = coding.id
-      assert_received {:agent_message, ^coding_id, "use postgres"}
+      assert_received {:agent_dispatch, ^coding_id, ref, "use postgres"}
+      assert is_binary(ref)
+      refute_received {:agent_message, _, _}
 
       text =
         response |> Response.to_protocol() |> Map.fetch!("content") |> Enum.map_join(& &1["text"])

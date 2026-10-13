@@ -35,9 +35,9 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CmsHarness.Web.McpController => :loopback,
     CmsHarness.Web.MessagesController => :loopback,
     CmsHarness.Web.PermissionController => :loopback,
-    CodeMySpecLocalWeb.BootstrapController => :loopback,
-    CodeMySpecLocalWeb.PermissionController => :loopback,
     CodeMySpec.Workspaces.Runner.Docker => :loopback,
+    # QA's probe of an MCP server it was pointed at; its tests start that server.
+    CodeMySpec.McpServers.Qa.Tools.CallMcpServer => :loopback,
 
     # Stubbable through a differently-named knob rather than `{Req.Test, Mod}`.
     # Fine, but it means this file cannot check them — if one of these grows a

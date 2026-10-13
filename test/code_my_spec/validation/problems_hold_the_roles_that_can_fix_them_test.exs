@@ -16,7 +16,7 @@ defmodule CodeMySpec.Validation.ProblemsHoldTheRolesThatCanFixThemTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProblemsFixtures
 
-  alias CodeMySpec.Validation.Menu
+  alias CodeMySpec.Agents.Menu
 
   setup do
     scope = full_scope_fixture()

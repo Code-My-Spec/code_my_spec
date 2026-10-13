@@ -60,6 +60,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
       project ->
         if connected?(socket) do
           Agents.subscribe(socket.assigns.current_scope)
+          Agents.subscribe_presence(socket.assigns.current_scope)
           schedule_tick()
         end
 
@@ -72,6 +73,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
       when event in [:agents_reported, :agent_started, :agent_stopped] do
     {:noreply, load(socket, socket.assigns.project)}
   end
+
+  # An agent's process came up or went down (`Agents.Presence`).
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket),
+    do: {:noreply, load(socket, socket.assigns.project)}
 
   # Re-render on a timer as well as on news. Every liveness line is elapsed
   # time computed at render, so a page that only redraws when an agent moves
@@ -344,10 +349,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   # failure is honest, withholding the box buys nothing and costs the operator
   # the explanation.
   #
-  # `:stopped` still filters, because that one is reliable — the outcome of
+  # Off or retired still filters, because that one is reliable — the outcome of
   # somebody asking, not an inference about a process.
   defp reachable_chats(%{chats: chats}) when is_list(chats),
-    do: Enum.filter(chats, &(&1.agent.engine == :alloy and &1.agent.status != :stopped))
+    do: Enum.filter(chats, &(&1.agent.engine == :alloy and Agents.on_duty?(&1.agent)))
 
   defp reachable_chats(_row), do: []
 

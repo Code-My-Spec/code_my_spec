@@ -20,6 +20,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
   alias CodeMySpec.Notifications
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -50,6 +51,8 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
         working_copy: "/tmp/blocker-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

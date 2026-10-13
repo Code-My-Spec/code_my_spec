@@ -28,6 +28,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
           id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           compile_warnings: compile_mode(),
+          advisory_findings: compile_mode(),
           credo: analyzer_mode(),
           exunit: analyzer_mode(),
           spex: analyzer_mode(),
@@ -44,7 +45,9 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
 
     # Analyzer modes
     field :compile_warnings, Ecto.Enum, values: @compile_modes, default: :block
-    field :credo, Ecto.Enum, values: @analyzer_modes, default: :block_changed
+    # Whole copy, as promotion judges it (John, 2026-10-04): a finding in a
+    # file the session did not touch still lands on main.
+    field :credo, Ecto.Enum, values: @analyzer_modes, default: :block_all
     field :exunit, Ecto.Enum, values: @analyzer_modes, default: :block_all
     # Off for NEW projects, on for existing ones (see the migration that
     # flips established projects to `:block_all`). A project on its first
@@ -75,6 +78,12 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # `:high` or `:critical` to tighten, or lower to `:low` / `:info`
     # to make everything block.
     field :fix_issues_min_severity, Ecto.Enum, values: @severities, default: :medium
+
+    # Whether an advisory finding (`:info` — low-priority credo, low sobelow)
+    # can block anything: promotion, task evaluation, the stop hook. Advisory
+    # never blocks by default (John, 2026-10-04); this is the switch if that
+    # changes. Read through `Validation.can_block?/2` everywhere.
+    field :advisory_findings, Ecto.Enum, values: @compile_modes, default: :dont_block
 
     # Story 704 — TTL for sub-agent registrations (Session.active_subagents/2
     # filters out registrations whose last_heartbeat_at exceeds this).
@@ -111,6 +120,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     |> cast(attrs, [
       :project_id,
       :compile_warnings,
+      :advisory_findings,
       :credo,
       :exunit,
       :spex,

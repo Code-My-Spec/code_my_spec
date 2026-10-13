@@ -1,16 +1,17 @@
 defmodule CodeMySpec.BddRulesTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.BddRules
   alias CodeMySpec.BddRules.Rule
+  alias CodeMySpec.Files
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.AcceptanceCriteriaFixtures
 
-  describe "delete_rule/2 cascade" do
+  describe "delete_rule/3 cascade" do
     test "retires scenarios linked to the rule, leaving standalone criteria" do
       scope = full_scope_fixture()
       story = story_fixture(scope, %{criteria: []})
@@ -19,7 +20,7 @@ defmodule CodeMySpec.BddRulesTest do
       scenario = criterion_fixture(scope, story, %{rule_id: rule.id})
       standalone = criterion_fixture(scope, story)
 
-      assert {:ok, deleted} = BddRules.delete_rule(scope, rule)
+      assert {:ok, deleted} = delete(scope, rule)
       assert deleted.id == rule.id
 
       # The linked scenario must leave the story, not linger active with a nil
@@ -36,7 +37,7 @@ defmodule CodeMySpec.BddRulesTest do
       story = story_fixture(scope, %{criteria: []})
       rule = insert_rule(scope, story)
 
-      assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
+      assert {:ok, _deleted} = delete(scope, rule)
       refute Repo.get(Rule, rule.id)
     end
 
@@ -47,7 +48,7 @@ defmodule CodeMySpec.BddRulesTest do
       rule = insert_rule(scope, story)
       scenario = criterion_fixture(scope, story, %{rule_id: rule.id})
 
-      assert {:error, :cross_account} = BddRules.delete_rule(other, rule)
+      assert {:error, :cross_account} = delete(other, rule)
       assert Repo.get(Criterion, scenario.id)
       assert Repo.get(Rule, rule.id)
     end
@@ -65,7 +66,7 @@ defmodule CodeMySpec.BddRulesTest do
       verified = verified_criterion_fixture(scope, story, %{rule_id: rule.id})
 
       assert {:error, {:criteria_verified_or_specced, descriptions}} =
-               BddRules.delete_rule(scope, rule)
+               delete(scope, rule)
 
       assert descriptions == [verified.description]
       assert Repo.get(Criterion, verified.id), "the criterion must survive the refusal"
@@ -91,7 +92,7 @@ defmodule CodeMySpec.BddRulesTest do
       tracked!(scope, specced.spec_path)
 
       assert {:error, {:criteria_verified_or_specced, descriptions}} =
-               BddRules.delete_rule(scope, rule)
+               delete(scope, rule)
 
       assert descriptions == [specced.description]
       assert Repo.get(Criterion, specced.id)
@@ -113,7 +114,7 @@ defmodule CodeMySpec.BddRulesTest do
       tracked!(scope, retired.spec_path)
       retired |> Ecto.Changeset.change(retired_at: DateTime.utc_now()) |> Repo.update!()
 
-      assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
+      assert {:ok, _deleted} = delete(scope, rule)
     end
 
     test "a spec_path whose file is gone does not hold the rule" do
@@ -126,7 +127,7 @@ defmodule CodeMySpec.BddRulesTest do
         spec_path: "test/spex/1_a_story/criterion_3_spex.exs"
       })
 
-      assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
+      assert {:ok, _deleted} = delete(scope, rule)
     end
 
     test "still deletes a rule whose scenarios are neither verified nor specced" do
@@ -135,9 +136,15 @@ defmodule CodeMySpec.BddRulesTest do
       rule = insert_rule(scope, story)
       scenario = criterion_fixture(scope, story, %{rule_id: rule.id})
 
-      assert {:ok, _deleted} = BddRules.delete_rule(scope, rule)
+      assert {:ok, _deleted} = delete(scope, rule)
       assert Repo.get(Criterion, scenario.id).retired_at
     end
+  end
+
+  # What both callers do: read which claimed specs are tracked, then delete.
+  defp delete(scope, rule) do
+    tracked = Files.tracked_in_project(scope, BddRules.claimed_spec_paths(rule))
+    BddRules.delete_rule(scope, rule, tracked)
   end
 
   defp tracked!(scope, path) do

@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb.ANamedConversationIsNotSubstitutedTest do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup [:register_log_in_setup_account]
 
@@ -74,6 +75,8 @@ defmodule CodeMySpecWeb.ANamedConversationIsNotSubstitutedTest do
         working_copy: "/tmp/main-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(

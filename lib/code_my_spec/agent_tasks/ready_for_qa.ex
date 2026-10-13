@@ -26,10 +26,14 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   alias CodeMySpec.Promotion
   alias CodeMySpec.Stories
 
+  # The step that makes the story's specs pass, not one that waits for them:
+  # a story on an existing surface has no other implementation node, so an
+  # agent told to wait cancelled it and was offered it again (bab9a2a5).
   def dispatch(_node) do
-    "Certify this story's working copy for QA: a clean tree, a clean run of " <>
-      "every analyzer at HEAD, and the story's own specs green there. Use when a " <>
-      "story's specs exist and its implementation is ready to be tested."
+    "Make this story's specs pass: implement what they need, fix what the " <>
+      "analyzers find, and commit. Then completing it certifies the copy for QA: " <>
+      "a clean tree, a clean run of every analyzer at HEAD, and the story's own " <>
+      "specs green there."
   end
 
   def command(scope, task) do
@@ -81,6 +85,8 @@ defmodule CodeMySpec.AgentTasks.ReadyForQa do
   defp stamp_verdict(story),
     do: {:ok, :invalid, "Story #{story.number} is not certified for QA yet. " <> complete_again()}
 
+  # A clean certifying run stamps the story: every red spex refuses it at
+  # certification, so clean means every criterion's spex is green.
   defp certified({:ok, %{head: head}}, scope, story) do
     {:ok, stamped} = Stories.set_qa_ready(scope, story, head)
     stamp_verdict(stamped)

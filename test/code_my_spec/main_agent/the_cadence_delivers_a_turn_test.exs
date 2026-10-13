@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
+defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
   @moduledoc """
   The cadence is for a continuous main only (John): each tick gives it exactly
   one turn, work or no work, carrying the check-in and its own work offer.
@@ -11,19 +11,20 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.Cadence
+  alias CodeMySpec.Agents.Main.CheckInReport
+  alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Main.OpenQuestion
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.MainAgent
-  alias CodeMySpec.MainAgent.AgentWork
-  alias CodeMySpec.MainAgent.Cadence
-  alias CodeMySpec.MainAgent.CheckInReport
-  alias CodeMySpec.MainAgent.Digest
-  alias CodeMySpec.MainAgent.OpenQuestion
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Staffing
   alias CodeMySpecSpex.ProjectStateFixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -75,6 +76,8 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     agent
   end
@@ -221,7 +224,9 @@ defmodule CodeMySpec.MainAgent.TheCadenceDeliversATurnTest do
       main_id = main.id
       refute_received {:work_turn_requested, _id, _ref, _prompt}
       assert_received {:wake, %{agent_id: ^main_id, event: :teammate_stalled, result: :ok}}
-      assert_receive {:agent_message, ^main_id, text}, 2_000
+      assert_receive {:agent_dispatch, ^main_id, ref, text}, 2_000
+      assert is_binary(ref)
+      refute_received {:agent_message, ^main_id, _}
       assert text =~ "a1b2c3d4"
     end
 

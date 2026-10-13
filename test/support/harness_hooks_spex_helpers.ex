@@ -287,12 +287,11 @@ defmodule CodeMySpecSpex.HarnessHooks do
   the cloud on the harness's copy. Returns once the cloud has announced the
   run finished, with its status.
 
-  `recording` is the tool's own output for the run — the fixtures the stop
-  hook's `test_output_files` used to name — or `nil` for a clean run. See
-  `CodeMySpecSpex.HarnessReports.result/3`.
+  `recording` is the tool's own output for the run, or `nil` for a clean run.
+  See `CodeMySpecSpex.HarnessReports.result/3`.
 
-  This is what a spex uses to say "the compiler found this", now that the
-  stop hook refuses `test_output_files` for a copy a harness holds.
+  This is what a spex uses to say "the compiler found this": a stop never
+  starts or ingests analysis, so findings are landed as a run first.
   """
   @spec land_analysis(map(), String.t(), String.t() | nil) :: atom()
   def land_analysis(%{harness: %{root: root}, scope: scope} = context, source, recording \\ nil) do
@@ -404,6 +403,48 @@ defmodule CodeMySpecSpex.HarnessHooks do
     if meta.event == "agent_turn_event" and copy_id(meta) == config.id and
          meta.params["agent_id"] == config.agent_id do
       send(config.test, {:live_harness, config.ref, :handled, :ok})
+    end
+  end
+
+  @doc """
+  Run `trigger`, which asks this copy's harness to rescan, and return once the
+  manifest it sends has been handled by the cloud.
+
+  Switching a copy on asks for a rescan (`Agents.set_working_copy_loop`), and
+  the manifest lands later over the socket and wakes the copy's agents through
+  the graph. A scenario that goes on before it has landed has a wake from its
+  own setup arriving in the middle of the step it is measuring (74870eb6).
+
+  Reconciled inline under test, so the handled event means the rows are
+  written; settle the graph after this to run the wake it causes.
+  """
+  @spec await_manifest(map(), (-> any())) :: :ok
+  def await_manifest(%{harness: %{root: root, working_copy_id: id}}, trigger)
+      when is_function(trigger, 0) do
+    ref = {__MODULE__, :manifest, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        ref,
+        [:phoenix, :channel_handled_in],
+        &__MODULE__.handle_manifest/4,
+        %{id: id, test: self(), ref: ref}
+      )
+
+    try do
+      trigger.()
+      await_step(ref, :manifest, root, "the harness never sent the manifest its rescan asked for")
+    after
+      :telemetry.detach(ref)
+    end
+
+    :ok
+  end
+
+  @doc "Telemetry handler for `await_manifest/2`: any manifest from this copy arrived."
+  def handle_manifest([:phoenix, :channel_handled_in], _measure, meta, config) do
+    if meta.event == "observations" and copy_id(meta) == config.id do
+      send(config.test, {:live_harness, config.ref, :manifest, :ok})
     end
   end
 

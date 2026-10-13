@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1169Spex do
   end
 
   spex "QA is told the copy's app is down rather than left to discover it blind",
-       criterion: 1169 do
+    criterion: 1169 do
     scenario "the story's own copy is not answering" do
       given_ "a story ready for QA on its own working copy", context do
         context = CodeMySpecSpex.FullSatisfactionFixtures.apply_without_qa_story(context)

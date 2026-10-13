@@ -28,14 +28,14 @@ defmodule CodeMySpec.PublicUrl do
   def base, do: build(CodeMySpecWeb.Endpoint)
 
   @doc """
-  Returns the local CLI server's base URL, e.g. `"http://127.0.0.1:4003"`.
+  Returns the local harness server's base URL, e.g. `"http://127.0.0.1:4003"`.
 
-  Reads from the local endpoint's `:url` / `:http` config under
-  `:code_my_spec, CodeMySpecLocalWeb.Endpoint`. Used by MCP-tool
+  Reads from the harness endpoint's `:url` / `:http` config under
+  `:code_my_spec, CmsHarness.Web.Endpoint`. Used by MCP-tool
   responses that point the agent at the local sign-in screen.
   """
   @spec local_base() :: String.t()
-  def local_base, do: build(CodeMySpecLocalWeb.Endpoint)
+  def local_base, do: build(CmsHarness.Web.Endpoint)
 
   defp build(endpoint_key) do
     cfg = Application.get_env(:code_my_spec, endpoint_key, [])

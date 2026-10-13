@@ -14,7 +14,14 @@ defmodule CodeMySpec.Staffing do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      # Offboarding removes the copy's derived rows before its own; the
+      # contexts that own them sit below WorkingCopies' callers, not under it.
+      CodeMySpec.Components,
+      CodeMySpec.Files,
+      CodeMySpec.Problems,
       CodeMySpec.Projects,
+      CodeMySpec.Repo,
+      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies,
       # Offboarding a copy that was sharing a device's tunnel has to drop its
@@ -26,14 +33,52 @@ defmodule CodeMySpec.Staffing do
 
   require Logger
 
+  import Ecto.Query
+
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpec.Workspaces.PreviewTunnel
+
+  @gate_copy_needed [:code_my_spec, :promotion_queue, :gate_copy_needed]
+
+  @doc """
+  Attach the handler that makes a project's promotion gate copy when its queue
+  asks for one. Called once, after the application tree starts.
+
+  The queue sits below this module, so it asks by event rather than by call. A
+  gate copy is a checkout with no agents: the queue builds and gates batches in
+  it, and nobody works there.
+  """
+  def attach do
+    :telemetry.attach(
+      {__MODULE__, :gate_copy},
+      @gate_copy_needed,
+      &__MODULE__.handle_event/4,
+      nil
+    )
+  end
+
+  @doc false
+  def handle_event(@gate_copy_needed, _measurements, %{scope: scope, label: label}, _config) do
+    case mint(scope, label: label, roles: [], prepare: true) do
+      {:ok, copy, _staffed} ->
+        Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
+
+      {:error, reason} ->
+        Logger.error("[Staffing] could not make the promotion gate copy: #{inspect(reason)}")
+    end
+  catch
+    kind, reason ->
+      Logger.error(
+        "[Staffing] making the promotion gate copy failed: #{Exception.format_banner(kind, reason)}"
+      )
+  end
 
   @doc """
   Make a working copy for this project and staff it.
@@ -96,7 +141,10 @@ defmodule CodeMySpec.Staffing do
       # goes with it. `ensure_deploy_key/2` mints one if the project has none —
       # a new project does not get one at creation, and everything that must
       # authenticate as the project has to ask for it first.
-      "deploy_key" => opts[:deploy_key] || deploy_key(scope)
+      "deploy_key" => opts[:deploy_key] || deploy_key(scope),
+      # A copy that must build and test before anything uses it — the promotion
+      # gate — is prepared by the project's own recipe before it is served.
+      "prepare" => opts[:prepare] == true
     }
 
     with {:ok, %{root: root, working_copy_id: id} = made} <-
@@ -149,13 +197,45 @@ defmodule CodeMySpec.Staffing do
   @doc """
   End the agents on a working copy, then offboard it.
 
-  See `WorkingCopies.offboard/2` for what offboarding removes and what it never
-  touches. Answers its counts plus `agents_stopped` and `agents_left_running`.
+  Then remove the copy and everything derived from it: files and problems
+  unconditionally; components only where they have no files **and** no story
+  link; then the row. Answers those counts plus `agents_stopped` and
+  `agents_left_running`.
 
   Refuses rather than offboarding, without removing anything, when a shared
   copy's preview could not be released — see the reasoning inline. The copy
   stays exactly as it was; offboarding it is safe to retry once whatever
   Cloudflare error caused it clears.
+
+  ## Why this is an act and not a sweep
+
+  It used to happen on its own, to any copy quiet longer than a configured
+  window, riding on whichever agent next synced components. That model is gone.
+  It could not tell a checkout that had been deleted from an agent that was
+  simply busy, because the only thing it had to go on was elapsed time — and it
+  got that wrong in the expensive direction, reading two mid-session harnesses
+  as 2:21 and 2:25 idle against a two hour window.
+
+  What replaced it: the harness says whether the path is still there, that shows
+  up as a warning, and a person decides. The cost is that an orphan blocks until
+  somebody clears it. That is the better failure — a visible thing waiting for a
+  click, rather than an invisible one deleting a working agent's state.
+
+  ## Why the row goes too
+
+  The old rule kept it, on the argument that identity lives in
+  `.cms_harness.json` so a returning agent presents the id it always had. A
+  removed checkout took that file with it, so there is nothing left to present
+  and nothing to come back to. A copy that reappears at the same path is
+  onboarded, which mints a new id — see 891.
+
+  ## What it never does
+
+  Touch the checkout. The row is ours and the directory is not, and a server
+  that deletes somebody's files because they clicked a button in a list is not a
+  trade anyone asked for. Offboarding a copy whose checkout still exists leaves
+  it exactly where it is, config file and all — it will simply not be recognised
+  until it onboards again.
   """
   @spec offboard(Scope.t(), WorkingCopy.t()) ::
           {:ok, map()} | {:error, :not_yours} | {:error, {:preview_not_released, term()}}
@@ -192,13 +272,76 @@ defmodule CodeMySpec.Staffing do
     # either exists to clean up — a hostname kept serving whatever now runs
     # on that port, with nothing left to notice or release it. Refusing loudly
     # and leaving the row in place is what keeps that state findable.
-    with :ok <- release_shared_preview(copy),
-         {:ok, counts} <- WorkingCopies.offboard(scope, copy) do
+    with :ok <- release_shared_preview(copy) do
+      counts = remove(scope, copy)
+      WorkingCopies.released(id)
       {:ok, Map.merge(counts, agents)}
     end
   end
 
   def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+
+  defp remove(scope, %WorkingCopy{project_id: project_id, id: id} = copy) do
+    Repo.transaction(fn ->
+      {files, _} =
+        Repo.delete_all(
+          from f in CodeMySpec.Files.File,
+            where: f.project_id == ^project_id and f.working_copy_id == ^id
+        )
+
+      {problems, _} =
+        Repo.delete_all(
+          from p in CodeMySpec.Problems.Problem,
+            where: p.project_id == ^project_id and p.working_copy_id == ^id
+        )
+
+      components = reclaim_orphan_components(project_id)
+      :ok = WorkingCopies.delete(scope, copy)
+
+      %{files: files, problems: problems, components: components}
+    end)
+    |> case do
+      {:ok, counts} ->
+        counts
+
+      {:error, reason} ->
+        # Loud, never swallowed. An offboard that fails quietly leaves the orphan
+        # in place and reports success, which is indistinguishable from one that
+        # had nothing to remove.
+        raise "offboard failed for working copy #{id}: #{inspect(reason)}"
+    end
+  end
+
+  # Two plain subqueries rather than correlated `exists`. The component set is
+  # small and this is legible: anything a file or a story points at is kept,
+  # everything else on the project goes.
+  #
+  # The story link is the one that matters. A component somebody wrote a story
+  # against is authored work, and spending it to clear derived rows would make
+  # this destructive in a way no warning covers.
+  defp reclaim_orphan_components(project_id) do
+    referenced_by_files =
+      from f in CodeMySpec.Files.File,
+        where: f.project_id == ^project_id and not is_nil(f.component_id),
+        select: f.component_id
+
+    referenced_by_stories =
+      from s in CodeMySpec.Stories.Story,
+        where: s.project_id == ^project_id and not is_nil(s.component_id),
+        select: s.component_id
+
+    keep =
+      (Repo.all(referenced_by_files) ++ Repo.all(referenced_by_stories))
+      |> Enum.uniq()
+
+    {components, _} =
+      Repo.delete_all(
+        from c in CodeMySpec.Components.Component,
+          where: c.project_id == ^project_id and c.id not in ^keep
+      )
+
+    components
+  end
 
   defp release_shared_preview(copy) do
     case PreviewTunnel.release(copy) do
@@ -252,7 +395,7 @@ defmodule CodeMySpec.Staffing do
   defp stop_agents_on(scope, working_copy_id) do
     scope
     |> Agents.list_agents()
-    |> Enum.filter(&(&1.working_copy_id == working_copy_id and &1.status != :stopped))
+    |> Enum.filter(&(&1.working_copy_id == working_copy_id and is_nil(&1.retired_at)))
     |> Enum.reduce(%{agents_stopped: 0, agents_left_running: []}, fn agent, acc ->
       case Agents.retire_agent(scope, agent.id,
              by: Agents.actor(scope),

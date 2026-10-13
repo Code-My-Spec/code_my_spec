@@ -1,6 +1,6 @@
 defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
   @moduledoc """
-  Give a running agent something to do, and wait for the turn.
+  Give a running agent a message and return its delivery disposition.
 
   Without this an agent could be started, listed and stopped, and never asked
   to do anything — it came up idle and stayed idle until somebody stopped it.
@@ -12,16 +12,16 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
   written down. To a supervised process it is a call, and this is the surface
   on top of it.
 
-  Blocking on purpose: an operator sending work wants to know it landed. A turn
-  can take minutes, so the far side answers from a task rather than holding its
-  channel, and this waits for that answer.
+  Wait only for admission: an idle agent starts, and a busy agent queues the
+  message for its next turn boundary. The response arrives in the agent's
+  conversation. Queuing does not count as delivery when judging its Offer.
   """
 
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.Agents.AgentsMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Utils.MapAccess

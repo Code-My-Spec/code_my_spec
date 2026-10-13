@@ -24,7 +24,7 @@ defmodule CmsHarness.AnalyzerEnvTest do
   # `TestDatabase.partition_for/1` reads the recorded partition and refuses a copy
   # with none, so a fixture standing in for a checkout records one too.
   defp onboarded_copy do
-    {:ok, cwd} = Briefly.create(directory: true)
+    cwd = CodeMySpec.TempFile.owned_dir("test")
     File.mkdir_p!(Path.join(cwd, ".claude"))
 
     File.write!(
@@ -69,8 +69,8 @@ defmodule CmsHarness.AnalyzerEnvTest do
   end
 
   test "two working copies do not share an analyzer build" do
-    {:ok, a} = Briefly.create(directory: true)
-    {:ok, b} = Briefly.create(directory: true)
+    a = CodeMySpec.TempFile.owned_dir("test")
+    b = CodeMySpec.TempFile.owned_dir("test")
 
     refute AnalyzerEnv.build_path(a) == AnalyzerEnv.build_path(b)
   end

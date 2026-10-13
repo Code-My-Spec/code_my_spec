@@ -45,4 +45,35 @@ defmodule CodeMySpec.Utils.Utf8 do
       trim_partial_char(binary_part(chunk, 0, byte_size(chunk) - 1))
     end
   end
+
+  @doc """
+  Scrubs `binary` to valid, printable UTF-8 without dropping it.
+
+  For content that may be invalid *throughout* rather than only at a
+  truncation boundary — a stored turn whose raw bytes were never valid UTF-8
+  to begin with, so `valid_prefix/2`'s boundary trim does not apply. Null
+  bytes and other non-printable control characters (besides `\\n`, `\\t`,
+  `\\r`) are stripped; any remaining invalid sequences are reinterpreted as
+  Latin-1 and re-encoded, which keeps every byte as *some* character rather
+  than discarding the content a strict decode would reject (issue 5df56711:
+  encoding an unscrubbed turn for an MCP response crashed the whole session).
+  """
+  @spec scrub(binary()) :: binary()
+  def scrub(binary) when is_binary(binary) do
+    binary
+    |> String.replace(<<0>>, "")
+    |> String.replace(~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/, "")
+    |> ensure_printable()
+  end
+
+  defp ensure_printable(text) do
+    if String.valid?(text) do
+      text
+    else
+      case :unicode.characters_to_binary(text, :latin1, :utf8) do
+        binary when is_binary(binary) -> binary
+        _ -> ""
+      end
+    end
+  end
 end

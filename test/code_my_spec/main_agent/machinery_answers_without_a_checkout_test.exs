@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.MachineryAnswersWithoutACheckoutTest do
+defmodule CodeMySpec.Agents.Main.MachineryAnswersWithoutACheckoutTest do
   @moduledoc """
   `check_machinery` degrades when the caller named a project and no checkout,
   rather than crashing.
@@ -25,7 +25,7 @@ defmodule CodeMySpec.MainAgent.MachineryAnswersWithoutACheckoutTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
 
   test "a scope with a project and no checkout still gets a report" do
     scope = full_scope_fixture()

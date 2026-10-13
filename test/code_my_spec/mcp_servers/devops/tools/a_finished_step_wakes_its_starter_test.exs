@@ -14,6 +14,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep
   alias CodeMySpec.Projects
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -32,7 +33,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
     # The step runs in a detached task, which checks out its own connection.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
-    {:ok, working_dir} = Briefly.create(directory: true)
+    working_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     scope = %{scope | environment: Environment.new(:local, working_dir)}
     {:ok, _} = Projects.update_project(scope, scope.active_project, %{domain: "example.com"})
@@ -46,6 +47,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
         working_copy: working_dir,
         working_copy_id: scope.active_working_copy_id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent}
   end

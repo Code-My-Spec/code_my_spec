@@ -21,11 +21,10 @@ defmodule CodeMySpec.BddRules do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Stories,
       CodeMySpec.Personas,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
-      CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],
@@ -101,9 +100,22 @@ defmodule CodeMySpec.BddRules do
     end
   end
 
-  @doc "Deletes a Rule (PM-side admin action). Broadcasts on success."
-  def delete_rule(scope, %CodeMySpec.BddRules.Rule{} = rule) do
-    case impl().delete_rule(scope, rule) do
+  @doc """
+  The spec paths the rule's live criteria claim — the paths `delete_rule/3`
+  needs told whether they are still tracked.
+  """
+  def claimed_spec_paths(%CodeMySpec.BddRules.Rule{} = rule), do: impl().claimed_spec_paths(rule)
+
+  @doc """
+  Deletes a Rule (PM-side admin action). Broadcasts on success.
+
+  Refused while a live criterion is verified or its spec is still tracked.
+  `tracked_spec_paths` is which of `claimed_spec_paths/1` the project's files
+  still hold: `Files` owns that table and sits above this context, so the
+  caller reads it.
+  """
+  def delete_rule(scope, %CodeMySpec.BddRules.Rule{} = rule, tracked_spec_paths) do
+    case impl().delete_rule(scope, rule, tracked_spec_paths) do
       {:ok, deleted} = ok ->
         broadcast(scope, {:bdd_rule_deleted, deleted})
         ok

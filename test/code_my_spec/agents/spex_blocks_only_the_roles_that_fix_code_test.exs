@@ -13,7 +13,6 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
   import CodeMySpec.{AnalysisFixtures, DevicesFixtures, ProblemsFixtures}
   import CodeMySpec.{StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Configurations
@@ -21,12 +20,13 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
 
   @mine "lib/my_app/mine.ex"
   @spex_path "test/spex/811_provisioning/criterion_6493_a_step_reports_its_provider_spex.exs"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}
 
     Configurations.get_or_create(scope)
@@ -41,7 +41,7 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
 
     story = story_fixture(scope)
 
-    {:ok, _} =
+    {:ok, criterion} =
       AcceptanceCriteria.create_criterion(scope, story, %{
         description: "a step reports its provider",
         spec_path: @spex_path

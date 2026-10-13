@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.TheCadenceWatchesAMainAgentTest do
+defmodule CodeMySpec.Agents.Main.TheCadenceWatchesAMainAgentTest do
   @moduledoc """
   Who the cadence is started for, and how a stood-down project gets back.
 
@@ -22,7 +22,7 @@ defmodule CodeMySpec.MainAgent.TheCadenceWatchesAMainAgentTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent.Cadence
+  alias CodeMySpec.Agents.Main.Cadence
 
   defp agent(scope, attrs) do
     {:ok, agent} =
@@ -63,12 +63,21 @@ defmodule CodeMySpec.MainAgent.TheCadenceWatchesAMainAgentTest do
       assert seeded?(scope)
     end
 
-    test "but not a project whose main agent has stopped" do
+    # By intent: a main agent on duty whose process is down is being started or
+    # restored, and is watched; one turned off is nobody to deliver a digest to.
+    test "but not a project whose main agent was turned off" do
       scope = full_scope_fixture()
-      _main = agent(scope, %{role: "main", status: :stopped, continuous: true})
+
+      _main =
+        agent(scope, %{
+          role: "main",
+          continuous: true,
+          off_at: DateTime.utc_now(),
+          off_by: "a test"
+        })
 
       refute seeded?(scope),
-             "a stopped main agent is nobody to deliver a digest to, continuous or not"
+             "a main agent turned off is nobody to deliver a digest to, continuous or not"
     end
 
     test "and not a project with busy agents and no main among them" do

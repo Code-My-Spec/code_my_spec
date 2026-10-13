@@ -71,6 +71,243 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "rendering recorded turns" do
+    test "routine confirmations collapse while human messages and failures stay visible", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      legacy =
+        "The reload from your promotion is confirmed: the application at /tmp/app is up and serving abc."
+
+      {:ok, _} = Conversations.add_message(conversation, :operator, legacy, "operator")
+
+      {:ok, _} =
+        Conversations.add_message(
+          conversation,
+          :operator,
+          "Please check the deployment",
+          "operator"
+        )
+
+      {:ok, _} =
+        Conversations.add_message(
+          conversation,
+          :operator,
+          "Correction: deployment failed",
+          "operator"
+        )
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "details[data-test='routine-notice']:not([open])", legacy)
+      assert has_element?(view, "[data-test='message']", "Please check the deployment")
+      assert has_element?(view, "[data-test='message']", "Correction: deployment failed")
+      refute has_element?(view, "[data-test='message']", legacy)
+    end
+
+    # 5150cd98: each confirmation was one line, but a landing and its reload
+    # still stacked a line apiece and buried the feed.
+    test "a run of promotion notices folds into one line", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      landed =
+        "Your promotion of story 1060 (270fe9b484b2) landed on main in a batch with 3 other candidate(s)."
+
+      reload =
+        "The reload from your promotion is confirmed: the application at /tmp/app is up and serving abc."
+
+      for text <- [landed, reload, reload] do
+        {:ok, _} = Conversations.add_message(conversation, :operator, text, "operator")
+      end
+
+      {:ok, _} = Conversations.add_message(conversation, :operator, "Carry on", "operator")
+      {:ok, _} = Conversations.add_message(conversation, :operator, reload, "operator")
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "details[data-test='routine-notice-run'][data-count='3']:not([open])",
+               "Promotion confirmed ×3"
+             )
+
+      assert view
+             |> render()
+             |> Floki.parse_document!()
+             |> Floki.find("[data-test='routine-notice-run']")
+             |> length() == 1
+
+      assert has_element?(view, "[data-test='message']", "Carry on")
+
+      assert has_element?(
+               view,
+               "#agent-turns > div > details[data-test='routine-notice']",
+               reload
+             )
+    end
+
+    test "a run of pending promotion notices is one row, each still withdrawable", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      for _ <- 1..2 do
+        {:ok, _} =
+          Conversations.add_message(
+            conversation,
+            :operator,
+            "The reload from your promotion is confirmed: serving abc.",
+            "promotion-notice",
+            [],
+            delivery: :pending,
+            delivery_ref: Ecto.UUID.generate()
+          )
+      end
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "[data-test='agent-pending-message'] details[data-test='pending-routine-notice'][data-count='2']",
+               "Promotion confirmed ×2"
+             )
+
+      doc = view |> render() |> Floki.parse_document!()
+      assert doc |> Floki.find("[data-test='agent-pending-message']") |> length() == 1
+      assert doc |> Floki.find("[data-test='agent-withdraw-message']") |> length() == 2
+    end
+
+    test "a pending routine notice stays withdrawable and collapses after delivery", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      {:ok, message} =
+        Conversations.add_message(
+          conversation,
+          :operator,
+          "Deployment confirmation details",
+          "promotion-notice",
+          [],
+          delivery: :pending,
+          delivery_ref: Ecto.UUID.generate()
+        )
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "details[data-test='pending-routine-notice']:not([open])")
+      assert has_element?(view, "[data-test='agent-withdraw-message']")
+      assert {:ok, _} = Conversations.set_delivery(message, :delivered)
+      refute has_element?(view, "[data-test='agent-pending-message']")
+
+      assert has_element?(
+               view,
+               "details[data-test='routine-notice']:not([open])",
+               "Deployment confirmation details"
+             )
+    end
+
+    test "a queued message enters the received transcript only on delivery", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, message} = Conversations.add_message(conversation, :user, "queued instruction")
+
+      message =
+        Repo.update!(
+          Ecto.Changeset.change(message, delivery: :pending, delivery_ref: Ecto.UUID.generate())
+        )
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='message'][data-role='user']", "queued instruction")
+      assert has_element?(view, "[data-test='agent-pending-message']", "queued instruction")
+      assert {:ok, _} = Conversations.set_delivery(message, :delivered)
+      assert has_element?(view, "[data-test='message'][data-role='user']", "queued instruction")
+      refute has_element?(view, "[data-test='agent-pending-message']")
+      {:ok, reloaded, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               reloaded,
+               "[data-test='message'][data-role='user']",
+               "queued instruction"
+             )
+    end
+
+    test "a queued answer arriving on an open page appears once and can be withdrawn", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      {:ok, message} =
+        Conversations.add_message(conversation, :operator, "Keep existing", "operator", [],
+          delivery: :pending,
+          delivery_ref: Ecto.UUID.generate()
+        )
+
+      assert has_element?(view, "[data-test='agent-pending-message']", "Keep existing")
+      send(view.pid, {:new_message, message})
+
+      assert view
+             |> render()
+             |> Floki.parse_document!()
+             |> Floki.find("[data-test='agent-pending-message']")
+             |> length() == 1
+
+      refute has_element?(view, "[data-test='message'][data-role='operator']", "Keep existing")
+      assert {:ok, _} = Conversations.set_delivery(message, :withdrawn)
+      refute has_element?(view, "[data-test='agent-pending-message']")
+      refute render(view) =~ "Keep existing"
+    end
+
+    test "failed delivery remains auditable without appearing received", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, message} = Conversations.add_message(conversation, :user, "undelivered instruction")
+
+      message =
+        Repo.update!(
+          Ecto.Changeset.change(message, delivery: :pending, delivery_ref: Ecto.UUID.generate())
+        )
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert {:ok, _} = Conversations.set_delivery(message, :failed)
+
+      refute has_element?(
+               view,
+               "[data-test='message'][data-role='user']",
+               "undelivered instruction"
+             )
+
+      assert Repo.reload!(message).delivery == :failed
+      {:ok, reloaded, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(
+               reloaded,
+               "[data-test='message'][data-role='user']",
+               "undelivered instruction"
+             )
+    end
+
     test "shows the request and the response with their roles", %{
       conn: conn,
       scope: scope,
@@ -147,44 +384,21 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='message']:not([data-agent-role='qa'])")
     end
 
-    test "a very long message is a preview you can open, not a wall", %{
+    test "a very long message renders in full, not folded", %{
       conn: conn,
       scope: scope,
       project: project
     } do
       conversation = agent_conversation(scope, project)
-
-      # The shape that prompted this: a sub-agent's work narrated back to its
-      # parent as prose rather than as `tool_use` blocks, so the tool-call
-      # collapsing never sees it. Measured at 67 kB in the live transcript.
-      wall =
-        "Called the Read tool with the following input: " <>
-          String.duplicate("defmodule Example do\n  def run, do: :ok\nend\n", 400)
+      tail = "the last line of a long message"
+      wall = String.duplicate("defmodule Example do\n  def run, do: :ok\nend\n", 400) <> tail
 
       {:ok, _} = Conversations.add_agent_message(conversation, nil, "assistant", wall)
 
       {:ok, view, html} = live(conn, show_path(project, conversation))
 
-      assert has_element?(view, "[data-test='message'][data-long='true']"),
-             "a message past the preview limit has to fold"
-
-      assert has_element?(view, "[data-test='long-message']")
-
-      # Kept, not truncated — the model received it, so it is part of the record.
-      assert html =~ "show all #{byte_size(wall)} characters"
-      assert String.contains?(html, "def run, do: :ok")
-    end
-
-    test "an ordinary message is not folded", %{conn: conn, scope: scope, project: project} do
-      conversation = agent_conversation(scope, project)
-      {:ok, _} = Conversations.add_agent_message(conversation, nil, "assistant", "short answer")
-
-      {:ok, view, _html} = live(conn, show_path(project, conversation))
-
-      refute has_element?(view, "[data-test='long-message']"),
-             "folding every message would put a click in front of every turn"
-
-      assert has_element?(view, "[data-test='message'][data-long='false']")
+      refute has_element?(view, "[data-test='message'] details")
+      assert html =~ tail
     end
   end
 
@@ -470,9 +684,6 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     defp panel_power(agent_id),
       do: "[data-test='team-agent'][data-agent-id='#{agent_id}'] [data-test='team-agent-power']"
 
-    defp panel_retired(agent_id),
-      do: "[data-test='team-agent'][data-agent-id='#{agent_id}'] [data-test='team-agent-retired']"
-
     defp open_team_panel(view) do
       render_hook(view, "viewport", %{"width" => 1200})
       render_hook(view, "toggle_panel", %{"panel" => "activity"})
@@ -571,8 +782,116 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  describe "what the agent is assigned" do
+    test "the header and the team panel link the agent's issue and story", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: "Pay by card"})
+      issue = CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{title: "Card form 500s"})
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{story_id: story.id, issue_id: issue.id})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      story_path = "/app/projects/#{project.id}/stories/#{story.number}"
+      issue_path = "/app/projects/#{project.id}/issues/#{issue.id}"
+
+      assert has_element?(
+               view,
+               "header a[data-test='assigned-story'][href='#{story_path}']",
+               "Pay by card"
+             )
+
+      assert has_element?(
+               view,
+               "header a[data-test='assigned-issue'][href='#{issue_path}']",
+               "Card form 500s"
+             )
+
+      row = "[data-test='team-agent'][data-agent-id='#{agent.id}']"
+
+      assert has_element?(
+               view,
+               "#{row} a[data-test='team-agent-story'][href='#{story_path}']",
+               "##{story.number}"
+             )
+
+      assert has_element?(view, "#{row} a[data-test='team-agent-issue'][href='#{issue_path}']")
+    end
+  end
+
+  describe "a story's progress pie" do
+    test "shows satisfied of total and follows a graph update", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      alias CodeMySpec.Requirements.Node
+
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope)
+
+      [first, _second] =
+        for name <- ["spex_written", "qa_passed"] do
+          Repo.insert!(%Node{story_id: story.id, name: name, description: name, satisfied: false})
+        end
+
+      {agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      header = "header [data-test='story-progress']"
+      row = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='story-progress']"
+
+      assert has_element?(view, header <> "[data-done='0'][data-total='2']")
+      assert has_element?(view, row <> "[data-done='0'][data-total='2']")
+
+      Repo.update!(Ecto.Changeset.change(first, satisfied: true))
+      send(view.pid, {:graph_updated, project.id})
+
+      # The graph handler enqueues send_update messages for the components.
+      # This render waits for that handler; the assertions then run after
+      # its queued component updates, matching the two-hop pattern above.
+      render(view)
+
+      assert has_element?(view, header <> "[data-done='1'][data-total='2']")
+      assert has_element?(view, row <> "[data-done='1'][data-total='2']")
+    end
+  end
+
+  describe "the team panel's turn indicator" do
+    test "shows while a turn runs and goes when it ends", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project, %{status: :running})
+
+      turn =
+        "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-turn']"
+
+      scope = %{scope | active_project_id: project.id}
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+      refute has_element?(view, turn)
+
+      CodeMySpec.Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_started"}, [])
+      assert has_element?(view, turn)
+
+      CodeMySpec.Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_ended"}, [])
+      refute has_element?(view, turn)
+    end
+  end
+
   describe "the cockpit header, since f096eba2 dropped its loop badge" do
-    test "the header shows the play/pause icon but no 'Continuous'/'Not continuous' text", %{
+    test "the header shows play/pause and power but no 'Continuous'/'Not continuous' text", %{
       conn: conn,
       scope: scope,
       project: project
@@ -586,8 +905,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       refute has_element?(view, "header [data-test='agent-loop']"),
              "the header should no longer render the loop badge/text at all"
 
-      refute has_element?(view, "header [data-test='agent-power']"),
-             "the power button moved to the team panel and should not remain in the header"
+      assert has_element?(view, "header [data-test='agent-power'][data-on='true']")
     end
   end
 

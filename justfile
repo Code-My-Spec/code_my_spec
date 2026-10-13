@@ -85,6 +85,10 @@ init-worktree name target:
 # above for the first-run version of the same miss). Both are one command, and
 # both cost a diagnosis first because they arrive in the middle of unrelated
 # work and read as the worktree being broken.
+# The promotion queue's gate copy, made by the harness when a batch first needs
+# one: set up like any worktree before anything is gated in it.
+gate-setup: worktree-setup
+
 worktree-setup:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1054,128 +1058,57 @@ package-plugin:
     @echo "Diff vs source: diff -r plugins/claude release/codemyspec-extension/plugins/codemyspec"
     @echo "Sanity check:   grep -rn 4004 release/codemyspec-extension   # should be empty"
 
-# Bump plugin.json + mix.exs to VERSION and stage them — then commit + push, then `just release`
-bump VERSION:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! echo "{{VERSION}}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-      echo "Bad version: {{VERSION}} (want N.N.N)" >&2
-      exit 1
-    fi
-    sed -i.bak -E 's/"version": "[0-9.]+"/"version": "{{VERSION}}"/' plugins/claude/.claude-plugin/plugin.json
-    sed -i.bak -E 's/"version": "[0-9.]+"/"version": "{{VERSION}}"/' plugins/codex/.codex-plugin/plugin.json
-    sed -i.bak -E 's/version: "[0-9.]+",/version: "{{VERSION}}",/' mix.exs
-    rm -f plugins/claude/.claude-plugin/plugin.json.bak plugins/codex/.codex-plugin/plugin.json.bak mix.exs.bak
-    git add plugins/claude/.claude-plugin/plugin.json plugins/codex/.codex-plugin/plugin.json mix.exs
-    echo
-    echo "Bumped to {{VERSION}}, staged. Commit (bundling other changes if you like), push, then \`just release\`."
-
-# One-shot bump + commit + push + tag — wires both files together so the marketplace manifest can't drift from mix.exs
-publish VERSION:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! echo "{{VERSION}}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-      echo "Bad version: {{VERSION}} (want N.N.N)" >&2
-      exit 1
-    fi
-    if [ -n "$(git status --porcelain plugins/claude/.claude-plugin/plugin.json mix.exs)" ]; then
-      echo "plugin.json or mix.exs already has uncommitted changes — commit or reset first" >&2
-      exit 1
-    fi
-
-    # Releases go from main, and this has to say so before it writes anything.
-    #
-    # `git push origin HEAD` pushes to a remote branch of the *same name*, so
-    # run from a worktree on `light-harness` it created `origin/light-harness`
-    # and left main without the version bump. `release` then refused, naming
-    # origin/main — which was true and unrelated to what had just gone wrong.
-    # Two steps disagreeing about which branch a release lives on.
-    # `-c fetch.recurseSubmodules=no`: a plain `git fetch` here also tries to
-    # fetch `.code_my_spec`, and from a worktree that submodule fetch fails
-    # ("Could not access submodule '.code_my_spec'") even though the fetch of
-    # `origin` itself would have succeeded — `bump`/`release` never touch the
-    # submodule and don't need its state to answer "is HEAD at origin/main".
-    git -c fetch.recurseSubmodules=no fetch origin main --quiet
-    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-      echo "✗ HEAD is not at origin/main — a release is a commit on main." >&2
-      echo >&2
-      git log --oneline --left-right HEAD...origin/main >&2
-      echo >&2
-      echo "  From a worktree: rebase onto origin/main first, or run this from" >&2
-      echo "  the main checkout. The tag has to point at a commit main has." >&2
-      exit 1
-    fi
-
-    just bump {{VERSION}}
-    git commit -m "Release v{{VERSION}}"
-    git push origin HEAD:main
-    just release
-
-# Tag HEAD with vN.N.N from plugin.json and push the tag — triggers the marketplace release CI
+# Release the web app: deploy the promoted commit HEAD is on to production.
+#
+# Our own release, not CodeMySpec's: promotion tags the certified commit
+# vX.Y.Z and stops there (John, 2026-10-04). This releases the web app only.
+# Plugin and harness releases are run by hand (release-extension.yml, dispatch).
+# Pushing the tag stays a separate, manual step.
 release:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    plugin_version=$(jq -r .version plugins/claude/.claude-plugin/plugin.json)
-    mix_version=$(grep -E '^      version:' mix.exs | sed -E 's/.*"([0-9.]+)".*/\1/')
-
-    if [ "$plugin_version" != "$mix_version" ]; then
-      echo "Version mismatch: plugin.json=$plugin_version mix.exs=$mix_version" >&2
+    tag=$(git describe --exact-match --tags --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null) || {
+      echo "HEAD carries no vX.Y.Z tag. Releases are cut from a promoted commit;" >&2
+      echo "promote first, or tag this commit by hand: git tag -a vX.Y.Z -m 'Release vX.Y.Z'" >&2
       exit 1
-    fi
-
-    tag="v$plugin_version"
-
-    if git rev-parse "$tag" >/dev/null 2>&1; then
-      echo "Tag $tag already exists locally" >&2
-      exit 1
-    fi
-
-    if [ -n "$(git status --porcelain plugins/claude/.claude-plugin/plugin.json mix.exs)" ]; then
-      echo "plugin.json or mix.exs has uncommitted changes — commit first" >&2
-      exit 1
-    fi
+    }
 
     # `origin/main` by name, not `@{u}`. The upstream of the current branch is
     # whatever that branch tracks — on a worktree branch that is often itself —
-    # so the check could pass against a branch main has never seen while the
-    # message claimed it had compared against main. A tag is permanent and
-    # points at one commit; the check that guards it should name the same ref
-    # the message does.
-    # `-c fetch.recurseSubmodules=no`: a plain `git fetch` here also tries to
-    # fetch `.code_my_spec`, and from a worktree that submodule fetch fails
-    # ("Could not access submodule '.code_my_spec'") even though the fetch of
-    # `origin` itself would have succeeded — `bump`/`release` never touch the
-    # submodule and don't need its state to answer "is HEAD at origin/main".
+    # so the check could pass against a branch main has never seen.
+    # `-c fetch.recurseSubmodules=no`: from a worktree a plain fetch also tries
+    # `.code_my_spec` and fails even when `origin` itself would succeed.
     git -c fetch.recurseSubmodules=no fetch origin main --quiet
     if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-      echo "HEAD is not at origin/main. Push first:" >&2
+      echo "HEAD is not at origin/main. Push main first:" >&2
       git log --oneline --left-right HEAD...origin/main >&2
       exit 1
     fi
 
-    git tag "$tag" HEAD
-    git push origin "$tag"
+    command -v flyctl >/dev/null || { echo "flyctl is not installed" >&2; exit 1; }
+
+    # The image has no .git, so the version goes in as a build arg.
+    version=$(scripts/version.sh)
+    echo "→ deploying $tag (version $version) to production"
+    flyctl deploy --remote-only -c fly.prod.toml --build-arg CMS_VERSION="$version"
     echo
-    echo "Tagged $tag and pushed. CI:"
-    echo "  https://github.com/Code-My-Spec/code_my_spec/actions/workflows/release-extension.yml"
-    echo "Marketplace:"
-    echo "  https://github.com/Code-My-Spec/plugins"
+    echo "Released $tag. The tag is still local; push it yourself if you want it on origin:"
+    echo "  git push origin $tag"
 
 # The CI pipeline's macOS-only half, run by hand — for when release-extension.yml
 # itself cannot run (found live: an org Actions spending cap failed every build
 # job in 7s, on both v2.0.4 and v2.0.5, silently — the run "completed" and
 # looked like nothing had gone wrong until someone read the annotation).
 #
-# This does not replace `just release`: no Windows/Linux tarballs, no MSI, no
+# This does not replace the dispatched workflow: no Windows/Linux tarballs, no MSI, no
 # Antigravity/Codex catalogs beyond what packaging already produces. It exists
 # to unblock exactly the two things that were actually load-bearing that night —
 # a client stuck on a stale plugin version could not talk to a server already
 # moved forward, and Homebrew had nothing newer to offer either — without
 # waiting on a billing fix.
 #
-# Requires `HEAD` at the tag `just release` already pushed (run that first, or
-# at least `just bump` + commit + push), and admin access to both
+# Requires `HEAD` at a pushed vX.Y.Z tag, and admin access to both
 # Code-My-Spec/plugins and Code-My-Spec/homebrew-tap — the same access the
 # CI's repo-scoped tokens have, here standing in as whoever runs this.
 # Manual macOS-only substitute for release-extension.yml when its CI can't run.
@@ -1187,10 +1120,10 @@ publish_claude_extension VERSION:
       exit 1
     fi
 
-    plugin_version=$(jq -r .version plugins/claude/.claude-plugin/plugin.json)
-    if [ "$plugin_version" != "{{VERSION}}" ]; then
-      echo "plugin.json is at $plugin_version, not {{VERSION}} — run \`just bump {{VERSION}}\`," >&2
-      echo "commit, and push first. This publishes what's already tagged; it does not tag." >&2
+    head_tag=$(git describe --exact-match --tags --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null || true)
+    if [ "$head_tag" != "v{{VERSION}}" ]; then
+      echo "HEAD is tagged '${head_tag:-nothing}', not v{{VERSION}}. This publishes what's" >&2
+      echo "already tagged; it does not tag. Check out v{{VERSION}} first." >&2
       exit 1
     fi
 

@@ -51,6 +51,17 @@ defmodule CmsHarness.Agents.ProviderTest do
   # eb09b076: `claude -p` compacting a ~1M-token resumed session took about
   # 180s, the old wall clock was 180s, and every retry re-ran the same
   # compaction into the same kill.
+  describe "how long one codex call may run" do
+    test "as long as a claude-code call: a turn runs whole test files and spex" do
+      {:ok, codex} = Provider.options("openai-codex", %{}, timeout_ms: nil)
+      {:ok, claude} = Provider.options("claude-code", %{}, timeout_ms: nil)
+      {Alloy.Provider.Codex, codex_config} = Keyword.fetch!(codex, :provider)
+      {Alloy.Provider.ClaudeCode, claude_config} = Keyword.fetch!(claude, :provider)
+
+      assert codex_config.timeout_ms == claude_config.timeout_ms
+    end
+  end
+
   describe "how long one claude-code call may run" do
     test "long enough for the CLI to compact a full session" do
       {:ok, opts} = Provider.options("claude-code", %{}, timeout_ms: nil)
@@ -76,6 +87,17 @@ defmodule CmsHarness.Agents.ProviderTest do
              "a hardcoded model is a guess about the account's plan. This shipped " <>
                "as gpt-5.4 and every codex agent on a ChatGPT account failed its " <>
                "first turn on a model that account does not serve."
+    end
+
+    test "a codex agent borrows the home's login, not its config" do
+      {:ok, opts} = Provider.options("openai-codex", %{})
+      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+
+      assert config.codex_home == Path.expand("~/.codex")
+
+      assert config.ignore_user_config,
+             "the home's config.toml brings its owner's plugins, MCP servers, approval " <>
+               "reviewer and default model to every call"
     end
 
     test "a codex agent uses the model it was given" do

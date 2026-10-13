@@ -20,7 +20,7 @@ defmodule CmsHarnessTest.Projects do
 
   Idempotent because more than one spex file in one `mix spex` run would
   otherwise raise on the second call: the tree's own processes are globally
-  named (`CmsHarness.Registry`, `CmsHarness.ProjectSupervisor`,
+  named (`CmsHarness.Registry`, `CmsHarness.CopiesSupervisor`,
   `CmsHarness.AnalysisSlots`), so only the first caller in a BEAM actually
   starts anything.
 
@@ -196,8 +196,8 @@ defmodule CmsHarnessTest.Projects do
   """
   def stop_project(root) do
     case Registry.lookup(CmsHarness.Registry, {:project, root}) do
-      [{pid, _}] ->
-        DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
+      [{_pid, _}] ->
+        CmsHarness.Copy.Supervisor.unserve(root)
         await_unregistered(root)
 
       [] ->

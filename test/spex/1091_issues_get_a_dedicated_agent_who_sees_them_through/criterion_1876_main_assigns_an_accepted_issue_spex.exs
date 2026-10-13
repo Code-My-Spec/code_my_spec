@@ -74,6 +74,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1876Spex do
           entry = Enum.find(entries, &String.starts_with?(&1, agent.id <> "\n"))
           assert entry, "The work listing must include teammate #{agent.id}"
           assert entry =~ context.scope.active_working_copy_id
+
           assert entry =~ context.issue_id,
                  "Teammate #{agent.id} must show issue #{context.issue_id} as its assignment"
         end

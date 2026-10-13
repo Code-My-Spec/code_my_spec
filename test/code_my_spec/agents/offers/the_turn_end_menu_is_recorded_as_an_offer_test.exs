@@ -8,7 +8,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   import CodeMySpec.{AnalysisFixtures, DevicesFixtures, ProblemsFixtures}
   import CodeMySpec.{StoriesFixtures, UsersFixtures}
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
   alias CodeMySpec.Agents.Offers
@@ -20,6 +19,8 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.AcceptanceCriteria
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @mine "lib/my_app/mine.ex"
@@ -53,6 +54,8 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
         working_copy: "/tmp/menu-offer-#{System.unique_integer([:positive])}",
         working_copy_id: ctx.copy.id
       })
+
+    AgentPresence.present(agent)
 
     {:ok, _} =
       Conversations.find_or_create_agent_conversation(
@@ -103,7 +106,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
   describe "problems" do
     setup ctx do
-      {:ok, tmp} = Briefly.create(directory: true)
+      tmp = CodeMySpec.TempFile.owned_dir("test")
       scope = %{ctx.scope | cwd: tmp, environment: Environment.new(:local, tmp)}
 
       Configurations.get_or_create(scope)
@@ -117,7 +120,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
       {:ok, _} = FileSync.sync(scope, base_dir: tmp)
       story = story_fixture(scope)
 
-      {:ok, _} =
+      {:ok, criterion} =
         AcceptanceCriteria.create_criterion(scope, story, %{
           description: "a step reports its provider",
           spec_path: @spex_path
@@ -167,7 +170,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
     :ok = AnalysisReport.deliver(scope, "credo", [%{severity: :error}], agent.id)
 
     message = dispatched(agent.id)
-    assert message =~ "Your credo run finished: 1 problem"
+    assert message =~ "Your credo run finished: 1 blocking problem"
 
     assert [offer] = Offers.list_for_agent(agent.id)
     assert {offer.kind, offer.subject_type, offer.subject_key} == {:problems, "analysis", "credo"}
@@ -180,7 +183,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
 
     :ok = AnalysisReport.deliver(scope, "credo", [], agent.id)
 
-    assert dispatched(agent.id) =~ "no problems"
+    assert dispatched(agent.id) =~ "no blocking problems"
     assert Offers.list_for_agent(agent.id) == []
   end
 end

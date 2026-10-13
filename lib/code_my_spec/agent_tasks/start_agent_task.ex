@@ -72,7 +72,15 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       "persona_research" => AgentTasks.PersonaResearch,
       "release" => AgentTasks.Release,
       "init" => AgentTasks.Init,
-      "issue_fix" => AgentTasks.IssueFix
+      "issue_fix" => AgentTasks.IssueFix,
+      # Not started through here in practice — `Agents.IssueWork` creates this
+      # task directly once a team's fix is done — but registered for the same
+      # reason `issue_fix` is: `Evaluator.custom_evaluate_modules/0` requires
+      # it, and the consistency test (`ConsistencyTest`) checks every such
+      # module is reachable from here.
+      "issue_qa" => AgentTasks.IssueQa,
+      # Created by `Agents.IssueWork` once QA passes the fix, like `issue_qa`.
+      "issue_promote" => AgentTasks.IssuePromote
     }
   end
 

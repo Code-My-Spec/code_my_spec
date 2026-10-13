@@ -10,6 +10,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Sessions
+  alias CodeMySpecTest.AgentPresence
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -307,6 +308,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTaskTest do
         working_copy_id: scope.active_working_copy_id,
         status: :running
       })
+
+    AgentPresence.present(agent)
 
     agent
   end

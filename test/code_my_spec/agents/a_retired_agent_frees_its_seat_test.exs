@@ -19,13 +19,14 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.TurnOnAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Staffing
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -72,6 +73,8 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
         working_copy: root,
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope: scope, copy: copy, agent: agent, frame: %Frame{assigns: %{current_scope: scope}}}
   end

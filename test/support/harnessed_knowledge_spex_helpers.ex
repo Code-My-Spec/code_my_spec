@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.HarnessedKnowledgeHelpers do
   @doc "A checkout of the project, its scope and its directory. `main?: true` designates it."
   @spec checkout(map(), keyword()) :: map()
   def checkout(context, opts \\ []) do
-    {:ok, dir} = Briefly.create(directory: true)
+    dir = CodeMySpec.TempFile.owned_dir("test")
 
     {:ok, copy} =
       WorkingCopies.issue(context.scope, nil,

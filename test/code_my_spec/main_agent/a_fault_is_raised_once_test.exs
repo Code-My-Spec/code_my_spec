@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
+defmodule CodeMySpec.Agents.Main.AFaultIsRaisedOnceTest do
   @moduledoc """
   A fault that persists is reported once, not once per call that notices it.
 
@@ -32,9 +32,10 @@ defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Issues
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   @fault "The machinery is serving no tools"
 
@@ -47,7 +48,7 @@ defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
 
     :ok = WorkingCopies.record_machine_tools(copy, [])
 
-    {:ok, _agent} =
+    {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
         provider: "anthropic",
         engine: :alloy,
@@ -56,6 +57,8 @@ defmodule CodeMySpec.MainAgent.AFaultIsRaisedOnceTest do
         working_copy: "/tmp/toolless-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     %{scope | active_working_copy_id: copy.id}
   end

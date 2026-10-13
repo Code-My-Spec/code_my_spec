@@ -6,10 +6,10 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   spex across all stories.
   """
 
-  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
+  alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
@@ -74,7 +74,8 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   # (`get_story` returns nil, the `with` falls through to `[]`). Either way a
   # real spex failure stops reaching the agent that should fix it.
   defp filter_relevant_problems(scope, problems) do
-    by_path = AcceptanceCriteria.spec_path_story_ids(scope)
+    # The spex file's own story, from the criterion its stamp names.
+    by_path = Files.bdd_spec_story_id_by_path(scope)
     # The directory name is the story's durable number, not its id. Resolving it
     # here rather than comparing it to ids is what makes "belongs to no story"
     # answer nil instead of naming whichever story happens to hold that id.

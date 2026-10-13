@@ -24,6 +24,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -50,6 +51,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
         working_copy: "/tmp/withheld-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    AgentPresence.present(agent)
 
     frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
     %{scope: scope, agent: agent, frame: frame, node: node}
@@ -102,7 +105,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOf
     {:reply, listed, _} = ListNotifications.execute(%{}, main)
     assert text(listed) =~ request.id
 
-    {:reply, decided, _} = AnswerNotification.execute(%{id: request.id, decision: "allow"}, main)
+    {:reply, decided, _} =
+      AnswerNotification.execute(%{notification_id: request.id, decision: "allow"}, main)
+
     refute decided.isError, text(decided)
     {:reply, after_, _} = ListNotifications.execute(%{}, main)
     refute text(after_) =~ request.id

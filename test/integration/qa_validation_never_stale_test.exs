@@ -43,7 +43,7 @@ defmodule CodeMySpec.Integration.QaValidationNeverStaleTest do
   end
 
   test "a persisted qa_validation problem keeps blocking across stops without ever being labelled stale" do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
@@ -96,7 +96,7 @@ defmodule CodeMySpec.Integration.QaValidationNeverStaleTest do
     spex_jsonl = Path.expand("test/fixtures/validation/spex_green.jsonl")
 
     turn1 =
-      Validation.validate_stop(scope, nil,
+      stop(scope,
         compile_output_file: compile_jsonl,
         spex_output_file: spex_jsonl
       )
@@ -108,7 +108,7 @@ defmodule CodeMySpec.Integration.QaValidationNeverStaleTest do
     # still on record and must still block — but it must never claim to be
     # stale, because nothing will ever run to un-stale it.
     turn2 =
-      Validation.validate_stop(scope, nil,
+      stop(scope,
         compile_output_file: compile_jsonl,
         spex_output_file: spex_jsonl
       )
@@ -122,4 +122,9 @@ defmodule CodeMySpec.Integration.QaValidationNeverStaleTest do
            "qa_validation has no ledger row and can never gain one — labelling it " <>
              "stale promises a rerun ensure_stale_runs/3 never requests, got:\n#{reason2}"
   end
+
+  # A stop never starts or ingests analysis (John, 2026-10-04): the recorded
+  # outputs land as completed runs first, and the stop reads what they found.
+  defp stop(scope, opts),
+    do: Validation.validate_stop(scope, nil, CodeMySpecSpex.Fixtures.land_outputs(scope, opts))
 end

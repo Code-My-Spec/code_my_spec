@@ -120,9 +120,10 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
 
   `mix credo` prints "Showing priority issues: ↑ ↗ →" and suppresses the ↓ ↘
   band. This runs `--all --all-priorities`, so a low-priority finding here is
-  invisible to the obvious local check — and `block_changed` promotes exactly
-  those to blocking once they sit in a file the session touched. Five of them
-  blocked a stop against files whose `mix credo` said "found no issues".
+  invisible to the obvious local check. Those are advisory (`:info`) and block
+  only when the project's `advisory_findings` setting says so
+  (`Validation.can_block?/2`); five of them once blocked a stop against files
+  whose `mix credo` said "found no issues".
 
   Read off `@selection_args` rather than retyped, because a hint that has
   drifted from the run is worse than none: it would be confidently wrong.
@@ -143,9 +144,9 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   """
   @spec reproduce_note() :: String.t()
   def reproduce_note do
-    "plain `mix credo` shows only the ↑ ↗ → band and will call these files " <>
-      "clean; these findings are promoted from ↓ ↘ because your session edited " <>
-      "the file"
+    "plain `mix credo` shows only the ↑ ↗ → band and can call these files " <>
+      "clean; this run includes ↓ ↘, which block only when the project's " <>
+      "advisory_findings setting is Block"
   end
 
   defp build_args(opts, cwd) do

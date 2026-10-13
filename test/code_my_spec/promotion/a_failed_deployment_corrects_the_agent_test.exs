@@ -17,9 +17,10 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   the fix shipped with nothing covering this path at all, and the risk it carries
   runs this way: an early return that swallows real failures too.
 
-  So this drives a restart that fails outright — a recipe that exits non-zero,
-  which is neither a lost acknowledgement nor ambiguous — and asserts the agent
-  is told, through the delivery path rather than through a log line.
+  So this drives a restart that fails outright — the running copy answers the
+  app verb with the app down, which is neither a lost acknowledgement nor
+  ambiguous — and asserts the agent is told, through the delivery path rather
+  than through a log line.
   """
 
   use CodeMySpecTest.DataCase, async: false
@@ -28,14 +29,21 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  import Phoenix.ChannelTest
+
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
+  alias CodeMySpecWeb.HarnessProjectChannel
+  alias CodeMySpecWeb.UserSocket
   alias Ecto.Adapters.SQL.Sandbox
+
+  @endpoint CodeMySpecWeb.Endpoint
 
   setup do
     previous = Application.get_env(:code_my_spec, :agent_transport)
@@ -57,7 +65,11 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   end
 
   # The same two-checkout shape the async-deployment test uses, with the one
-  # difference that is the whole point: the restart recipe fails.
+  # difference that is the whole point: the restart fails.
+  #
+  # The failure arrives on the running copy's own channel, which is the seam
+  # `Runner.restart/3` actually uses. A justfile recipe cannot fail a restart
+  # any more, and a copy with no harness at all fails for a different reason.
   defp a_project_whose_restart_fails do
     running_root = CodeMySpec.TempFile.dir("failed-restart-running")
     File.mkdir_p!(running_root)
@@ -65,11 +77,6 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
     git!(running_root, ["config", "user.email", "spex@example.com"])
     git!(running_root, ["config", "user.name", "Spex"])
     File.write!(Path.join(running_root, "app.ex"), "defmodule App do\nend\n")
-
-    File.write!(Path.join(running_root, "justfile"), """
-    restart:
-        @echo "the migration blew up" && exit 1
-    """)
 
     git!(running_root, ["add", "-A"])
     git!(running_root, ["commit", "-q", "-m", "base"])
@@ -84,6 +91,52 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
     end)
 
     {running_root, agent_root}
+  end
+
+  # The running copy joins, so `AppTransport.restart_app/2` has a channel to
+  # reach. The join is what issues the working copy — with the device it
+  # announces from and the root it serves — so this replaces the plain
+  # `a_copy/3` the running checkout used to get: two joins on one copy are
+  # refused, and correctly so.
+  defp the_running_copy_joins(context, running_root) do
+    {:ok, reply, socket} =
+      UserSocket
+      |> socket("failed-restart-running", %{scope: context.scope})
+      |> subscribe_and_join(
+        HarnessProjectChannel,
+        "harness_project:#{context.project.id}",
+        %{
+          "root" => running_root,
+          "label" => "the checkout the dev app runs in",
+          "device" => %{"id" => device_fixture(context.scope).id},
+          "app_verbs" => ["reload_app"]
+        }
+      )
+
+    {reply, socket}
+  end
+
+  # Answer one app verb the way a copy whose app came back down does. An
+  # `app_status` other than `"serving"` decodes to `{:error, ...}` in
+  # `Runner.decode_app_result/1` — neither a lost acknowledgement nor a
+  # timeout, so it classifies as a genuine failure.
+  defp answer_app_down(socket, verb) do
+    assert_push ^verb, %{"ref" => ref}, 5_000
+
+    reply_ref =
+      push(socket, verb <> "_result", %{
+        "ref" => ref,
+        "status" => "ok",
+        "app_status" => "down",
+        "app_url" => nil,
+        "app_commit" => nil
+      })
+
+    receive do
+      %Phoenix.Socket.Reply{ref: ^reply_ref, status: :ok} -> :ok
+    after
+      1_000 -> flunk("#{verb}_result was never acknowledged")
+    end
   end
 
   defp a_story_with_linked_spex(scope) do
@@ -111,9 +164,20 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
 
   test "a restart that really failed is retracted to the agent that was told QA could start" do
     scope = full_scope_fixture()
+    # The scope's own project, not a second one minted beside it: the join
+    # issues the running copy into whichever project its payload names, and a
+    # promotion reads `main` off the scope's project. Two different projects
+    # here means the running copy joins into one nothing is looking at.
+    context = %{scope: scope, project: scope.active_project}
+
     {running_root, agent_root} = a_project_whose_restart_fails()
 
-    a_copy(scope, running_root, "the checkout the dev app runs in")
+    # The running copy joins first and so is the project's first checkout —
+    # which is what designates it main. Promote merges into main, so a running
+    # copy minted after the agent's would leave the promotion aimed at the
+    # agent's own worktree and nothing here would mean what it says.
+    {_running_reply, running_socket} = the_running_copy_joins(context, running_root)
+
     agent_copy = a_copy(scope, agent_root, "the coding agent's copy")
 
     {:ok, agent} =
@@ -124,6 +188,8 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
         working_copy: agent_root,
         working_copy_id: agent_copy.id
       })
+
+    AgentPresence.present(agent)
 
     File.write!(
       Path.join(agent_root, "app.ex"),
@@ -139,6 +205,11 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
 
     assert {:ok, %{merged: "story/x"}} =
              Promotion.promote(scope, story.number, notify: agent.id)
+
+    # The promotion's own reload/restart is answered down on the running copy's
+    # channel: this is the failed deployment the correction is about.
+    answer_app_down(running_socket, "reload_app")
+    answer_app_down(running_socket, "restart_app")
 
     agent_id = agent.id
 

@@ -25,6 +25,8 @@ alias CodeMySpec.Users.User
 alias CodeMySpec.UserPreferences
 
 email = "qa@codemyspec.local"
+# Only for `POST /dev/sign-in` (dev routes): the UI has no password form.
+password = "qa-dev-sign-in"
 # The QA user's own account, and the dev user is added to it as a member so the
 # fixture project still shows up in the local project list.
 #
@@ -116,11 +118,6 @@ user =
     nil ->
       {:ok, user} = Users.register_user(%{email: email})
 
-      # No password. There is no password form — `/users/log-in` offers GitHub,
-      # Google, and a magic link, and the page says so ("Passwordless from day
-      # one"). Setting one gave the seed's own output a credential that could
-      # not be used, and every per-story brief copied it out of the QA plan.
-      #
       # Confirmed, or this user cannot log in at all: an unconfirmed account's
       # magic link is refused on purpose, to prevent session fixation.
       {:ok, user} = user |> User.confirm_changeset() |> Repo.update()
@@ -143,6 +140,13 @@ user =
 
       user
   end
+
+# `/dev/sign-in` checks a password; without one QA fell back to the magic link,
+# whose click hangs the browser driver.
+{:ok, {user, _expired}} =
+  Users.update_user_password(user, %{password: password, password_confirmation: password})
+
+IO.puts("  user: #{email} signs in with POST /dev/sign-in, password #{password}")
 
 scope = UserPreferences.scope_for(user)
 
@@ -445,13 +449,13 @@ Local path:   #{local_path}
 QA stories:
 #{stories_block}
 
-Log in — passwordless, so this is the whole procedure:
-  1. /users/log-in, enter the email above, "Email me a login link"
-  2. /dev/mailbox — the local adapter catches it
-  3. the link is minted with the configured host
-     (https://dev.codemyspec.com/users/log-in/<token>); rewrite the origin to
-     http://127.0.0.1:4000 before following it, or you leave the local app
-  4. it lands on /app. Single-use — a re-run needs a fresh link.
+Log in — no mailbox, no login form:
+  1. POST /dev/sign-in with email=#{email} and password=#{password};
+     it answers with a one-time login URL
+  2. open its sign_in_url in the browser, with the origin rewritten to the
+     app you are testing (http://127.0.0.1:<port>); it lands on /app
+  Single-use — a re-run needs a fresh URL. The magic-link button hangs the
+  browser driver; don't use it unless you are testing mail.
 
 For local web (port 4003), the same project resolves via X-Working-Dir or
 Plugs.WorkingDirScope as long as `local_path` matches PWD on each request.

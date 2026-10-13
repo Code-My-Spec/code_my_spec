@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
+  alias CodeMySpecTest.AgentPresence
   alias Ecto.Adapters.SQL.Sandbox
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -39,6 +40,8 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
         working_copy_id: context.copy.working_copy_id
       })
 
+    AgentPresence.present(agent)
+
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
         context.scope.active_account_id,
@@ -50,6 +53,9 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
   end
 
   defp loop_badge(continuous?), do: "[data-test='agent-loop'][data-continuous='#{continuous?}']"
+
+  defp play_pause(continuous?),
+    do: "[data-test='team-agent-working'][data-working='#{continuous?}']"
 
   describe "the conversation page" do
     # f096eba2: the header dropped the word ("Continuous"/"Not continuous")
@@ -97,17 +103,14 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
       render_hook(view, "viewport", %{"width" => 1200})
       render_hook(view, "toggle_panel", %{"panel" => "activity"})
 
-      assert has_element?(view, "[data-test='team-agent']" <> " " <> loop_badge(false)),
-             "the team panel does not say which agent is out of the loop"
-
       assert has_element?(
                view,
-               "[data-test='team-agent'][data-agent-id='#{idle.id}'] " <> loop_badge(false)
+               "[data-test='team-agent'][data-agent-id='#{idle.id}'] " <> play_pause(false)
              )
 
       assert has_element?(
                view,
-               "[data-test='team-agent'][data-agent-id='#{working.id}'] " <> loop_badge(true)
+               "[data-test='team-agent'][data-agent-id='#{working.id}'] " <> play_pause(true)
              )
     end
 
@@ -135,13 +138,13 @@ defmodule CodeMySpecWeb.AnAgentSaysWhetherItIsInTheLoopTest do
 
       assert has_element?(
                view,
-               "[data-test='team-agent'][data-agent-id='#{other_agent.id}'] " <> loop_badge(true)
+               "[data-test='team-agent'][data-agent-id='#{other_agent.id}'] " <> play_pause(true)
              ),
              "the clicked row's own agent should now be continuous"
 
       assert has_element?(
                view,
-               "[data-test='team-agent'][data-agent-id='#{open_agent.id}'] " <> loop_badge(false)
+               "[data-test='team-agent'][data-agent-id='#{open_agent.id}'] " <> play_pause(false)
              ),
              "the open conversation's agent should be unaffected by a different row's click"
 

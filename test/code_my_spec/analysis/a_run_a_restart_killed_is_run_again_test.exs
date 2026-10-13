@@ -18,6 +18,7 @@ defmodule CodeMySpec.Analysis.ARunARestartKilledIsRunAgainTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @restart "the shared dev server was restarted at 2026-09-30T14:00:33Z — this run was killed by that restart"
@@ -47,6 +48,9 @@ defmodule CodeMySpec.Analysis.ARunARestartKilledIsRunAgainTest do
         working_copy: "/tmp/rerun-#{System.unique_integer([:positive])}",
         working_copy_id: copy.id
       })
+
+    # Present: the answer is delivered to an agent whose process is alive.
+    AgentPresence.present(agent)
 
     %{scope: scope, agent: agent, copy: copy}
   end

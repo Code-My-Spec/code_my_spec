@@ -31,7 +31,7 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
   @domain "competing-mx-drill.example.com"
 
   setup do
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
 
     {:ok, project} =

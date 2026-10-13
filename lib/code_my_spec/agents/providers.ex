@@ -49,6 +49,7 @@ defmodule CodeMySpec.Agents.Providers do
     "openai-codex" => %{integration_provider: :openai, kind: :oauth},
     "anthropic" => %{integration_provider: :anthropic, kind: :api_key},
     "zai" => %{integration_provider: :zai, kind: :api_key},
+    "deepinfra" => %{integration_provider: :deepinfra, kind: :api_key},
     "claude-code" => %{integration_provider: nil, kind: :local}
   }
 

@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Staffing
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @deploy_key :crypto.strong_rand_bytes(64) |> Base.encode16(case: :lower)
@@ -40,6 +41,8 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
         working_copy_id: scope.active_working_copy_id
       })
 
+    AgentPresence.present(main)
+
     {:ok, _} =
       Conversations.find_or_create_agent_conversation(
         scope.active_account_id,
@@ -60,6 +63,7 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
   defp assert_main_told_nothing_and_triage_is_owed(%{scope: scope, main: %{id: main_id}}) do
     await_dispatches()
     refute_received {:agent_message, ^main_id, _}
+    refute_received {:agent_dispatch, ^main_id, _, _}
 
     assert {false, _} = IssuesChecker.triaged?(scope, nil)
     assert Requirements.offered_to?(:product, "issues_triaged")
@@ -95,7 +99,12 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
         "severity" => "medium"
       })
 
-    assert_reply ref, :ok, %{id: _issue_id}
+    reply =
+      receive do
+        %Phoenix.Socket.Reply{ref: ^ref} = reply -> reply
+      end
+
+    assert %Phoenix.Socket.Reply{status: :ok, payload: %{id: _issue_id}} = reply
     assert_main_told_nothing_and_triage_is_owed(ctx)
   end
 end

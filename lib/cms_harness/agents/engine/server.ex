@@ -4,6 +4,7 @@ defmodule CmsHarness.Agents.Engine.Server do
   use GenServer, restart: :temporary
 
   alias CmsHarness.Agents.Engine.Impl
+  alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
 
   def start_link(opts) do
@@ -36,7 +37,9 @@ defmodule CmsHarness.Agents.Engine.Server do
     ref = Impl.new_ref()
 
     case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
-      {:queued, state} -> {:reply, {:ok, {:queued, ref}}, state}
+      {:queued, state} ->
+        :ok = Keeper.queued(state.agent_id, ref)
+        {:reply, {:ok, {:queued, ref}}, state}
     end
   end
 
@@ -52,7 +55,9 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   def handle_call({:send, ref, message, timeout}, _from, state) do
     case State.offer(state, %{ref: ref, message: message, timeout: timeout}) do
-      {:queued, state} -> {:reply, {:ok, :queued}, state}
+      {:queued, state} ->
+        :ok = Keeper.queued(state.agent_id, ref)
+        {:reply, {:ok, :queued}, state}
     end
   end
 
@@ -87,9 +92,13 @@ defmodule CmsHarness.Agents.Engine.Server do
   end
 
   def handle_call({:withdraw, ref}, _from, state) do
+    receipt = Keeper.withdraw(state.agent_id, ref)
+
     case State.withdraw(state, ref) do
-      :already_delivered -> {:reply, {:error, :already_delivered}, state}
       {:ok, state} -> {:reply, :ok, state}
+      # A receipt survives an engine crash or harness restart that its queue
+      # does not.
+      :already_delivered -> {:reply, receipt, state}
     end
   end
 
@@ -103,8 +112,17 @@ defmodule CmsHarness.Agents.Engine.Server do
         {:DOWN, task_ref, :process, _pid, reason},
         %{turn: %{task: %Task{ref: task_ref}}} = state
       ) do
-    Impl.settle(state, {:error, reason})
+    Impl.abort_turn(state, {:turn_waiter_failed, reason})
   end
+
+  def handle_info({:turn_ceiling, task_ref}, %{turn: %{task: %Task{ref: task_ref}}} = state) do
+    Impl.abort_turn(state, :turn_ceiling_exceeded)
+  end
+
+  # Cancelled timers and completed tasks can already have messages in transit.
+  def handle_info({:turn_ceiling, _ref}, state), do: {:noreply, state}
+  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
 
   def handle_info({:EXIT, alloy, reason}, %{alloy: alloy} = state), do: {:stop, reason, state}
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}

@@ -25,6 +25,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Validators
@@ -42,6 +44,29 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
       {:error, atom} ->
         {:reply, Response.error(Response.tool(), inspect(atom)), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(_params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+      running = running_by_copy(scope)
+      {:ok, Enum.map(WorkingCopies.list_harnesses(scope), &row(&1, Map.get(running, &1.id, [])))}
+    end
+  end
+
+  # String keys and plain values: these cross into a Lua VM, where an atom
+  # key and a struct are not things that exist.
+  defp row(copy, agents) do
+    %{
+      "id" => copy.id,
+      "root" => copy.root,
+      "main" => copy.main,
+      "agents" => Enum.map(agents, &agent_row/1)
+    }
+  end
+
+  defp agent_row({agent, lifecycle}) do
+    %{"role" => to_string(agent.role), "status" => to_string(lifecycle)}
   end
 
   defp render(scope) do
@@ -75,12 +100,17 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies do
   defp describe_agents([]), do: "nothing running"
 
   defp describe_agents(agents) do
-    Enum.map_join(agents, ", ", &"#{&1.role} (#{&1.status})")
+    Enum.map_join(agents, ", ", fn {agent, lifecycle} -> "#{agent.role} (#{lifecycle})" end)
   end
 
+  # Every agent on duty, with its derived state: one still starting is shown as
+  # starting rather than left off the list.
   defp running_by_copy(scope) do
+    present = Agents.present_ids(scope)
+
     scope
-    |> Agents.list_running()
-    |> Enum.group_by(& &1.working_copy_id)
+    |> Agents.list_on_duty()
+    |> Enum.map(&{&1, Agents.lifecycle(&1, present)})
+    |> Enum.group_by(fn {agent, _} -> agent.working_copy_id end)
   end
 end

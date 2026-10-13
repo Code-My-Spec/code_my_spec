@@ -25,7 +25,9 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
   @end_turn_opts [
     compile_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl"),
     exunit_output_file: Path.expand("test/fixtures/validation/pipeline_clean_run/exunit.json"),
-    spex_output_file: Path.expand("test/fixtures/validation/pipeline_spex_failure/spex.jsonl")
+    spex_output_file: Path.expand("test/fixtures/validation/pipeline_spex_failure/spex.jsonl"),
+    # The run lands before the turn ends: a turn end starts no analysis.
+    await: true
   ]
 
   setup :register_log_in_setup_account
@@ -40,6 +42,19 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
   spex "Only a coding agent is told the tree's problem count at its turn end", criterion: 1606 do
     scenario "A failing spec is counted in the coder's turn-end menu and not in main's" do
       given_ :synced_context_component
+
+      # The failing spec the recorded run names. A finding on a file that is
+      # not on disk is cleared by the next sync, which every stop runs.
+      given_ "the failing spec is in the working copy", context do
+        :ok =
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            "test/spex/example_context_spex.exs",
+            "defmodule ExampleContextSpex do\nend\n"
+          )
+
+        {:ok, context}
+      end
 
       given_ "a continuous coding agent and a continuous main agent on a working copy", context do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)

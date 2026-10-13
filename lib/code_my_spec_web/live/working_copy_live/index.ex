@@ -68,6 +68,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
       _project ->
         if connected?(socket) do
           Agents.subscribe(socket.assigns.current_scope)
+          Agents.subscribe_presence(socket.assigns.current_scope)
           schedule_tick()
         end
 
@@ -82,6 +83,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
       when event in [:agents_reported, :agent_started, :agent_stopped] do
     {:noreply, load(socket)}
   end
+
+  # An agent's process came up or went down (`Agents.Presence`).
+  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket),
+    do: {:noreply, load(socket)}
 
   # Re-render on a timer as well as on news. Every liveness line is elapsed
   # time computed at render, so a page that only redraws when an agent moves

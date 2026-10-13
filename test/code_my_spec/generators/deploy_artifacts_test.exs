@@ -107,6 +107,22 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       body
     end
 
+    test "both environments send traces to the collector on the shared Docker network" do
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"] do
+        body = config(path, @opts)
+
+        assert body =~ "OTEL_EXPORTER_OTLP_ENDPOINT: http://cms-otel-collector:4318"
+        assert body =~ "OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf"
+        assert body =~ "network: db_net"
+        refute body =~ "OTEL_EXPORTER_OTLP_ENDPOINT: https://"
+      end
+    end
+
+    test "traces use the same service and role identity as Docker logs" do
+      assert config("config/deploy.yml", @opts) =~ "OTEL_SERVICE_NAME: my_app-web\n"
+      assert config("config/deploy.uat.yml", @opts) =~ "OTEL_SERVICE_NAME: my_app-uat-web\n"
+    end
+
     test "logs into ghcr for a project that was never given its own registry" do
       body = config("config/deploy.yml", @opts)
 
@@ -215,7 +231,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
 
     defp write_and_resolve(body, assertion) do
-      {:ok, dir} = Briefly.create(directory: true)
+      dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
       File.write!(path, body <> "\nbuilder:\n  arch: amd64\n")
 
@@ -252,7 +268,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     # (and caught a first draft that produced invalid YAML under `keys_only`'s
     # indentation) — this is that same proof, kept.
     test "kamal itself parses the ssh block into keys_only when the env var is set" do
-      {:ok, dir} = Briefly.create(directory: true)
+      dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
       # Kamal validates the whole config; a fresh project's own generated
       # `files/1` output does not include `builder:`, so one is added here
@@ -272,7 +288,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
 
     test "kamal falls back to its own default ssh behavior when the env var is unset" do
-      {:ok, dir} = Briefly.create(directory: true)
+      dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
       File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
 
@@ -354,7 +370,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
   # important is worth running for real, not just grepping.
   describe "bin/deploy" do
     setup do
-      {:ok, tmp} = Briefly.create(directory: true)
+      tmp = CodeMySpec.TempFile.owned_dir("test")
       bin_dir = Path.join(tmp, "bin")
       File.mkdir_p!(bin_dir)
 
@@ -497,7 +513,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       # somewhere real to push to instead of failing on a remote that does
       # not exist — this test is about what the script does after that
       # succeeds, not about proving push itself works.
-      {:ok, bare} = Briefly.create(directory: true)
+      bare = CodeMySpec.TempFile.owned_dir("test")
       {_, 0} = System.cmd("git", ["init", "-q", "--bare"], cd: bare)
       {_, 0} = System.cmd("git", ["remote", "add", "origin", bare], cd: tmp)
 

@@ -184,6 +184,18 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert length(results) == 2
     end
 
+    test "ready_stories_without_epic/1 excludes a story already promoted (issue b6462c09)" do
+      scope = full_scope_fixture()
+
+      unpromoted = story_fixture(scope)
+      _promoted = story_fixture(scope, %{promoted_version: "1.2.3"})
+
+      results = StoriesRepository.ready_stories_without_epic(scope)
+
+      assert [found] = results
+      assert found.id == unpromoted.id
+    end
+
     test "search_text/2 searches title and description" do
       scope = full_scope_fixture()
 

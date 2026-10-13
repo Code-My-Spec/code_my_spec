@@ -40,11 +40,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.AgentPerformance.TokenUsage
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Devices
   alias CodeMySpec.Files
@@ -59,12 +62,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
-  alias CodeMySpec.MainAgent
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
+  alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Promotion
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -91,10 +94,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            ),
          {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
-         {:ok, harness} <- Devices.attach(harness, device),
+         {:ok, harness} <- WorkingCopies.attach_device(harness, device),
          :ok <-
            record_machine_tools(harness, payload["machine_tools"], payload["machine_tool_docs"]),
          :ok <- record_browser_status(harness, payload["browser_status"]),
+         # What this harness says it is running, from its own `state.json`
+         # (00bd7d4a). A restart's result arrives as a reply or a push, and a
+         # harness that restarted mid-reply â or whose socket dropped and
+         # reconnected â leaves the last write here naming a commit the app is
+         # not serving, which promotion now keys on. A join is the one moment
+         # the harness is provably talking to us, so this is where the two
+         # converge. An older harness sends nothing and the row is left alone.
+         :ok <- report_app_state(harness, payload["app"]),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
          scope = put_harness_scope(scope, harness),
@@ -111,6 +122,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # lands in this channel's mailbox and is pushed once the join returns
       # (cc578c21).
       Analysis.resume_orphaned(scope, claimed_runs(payload))
+      PromotionQueue.copy_joined(scope, harness)
 
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
@@ -189,6 +201,31 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # says "this machine reported nothing", the other "this machine has no
   # browser". Both end with an agent that has no browser tools, and only the
   # second is a thing the operator can act on.
+  # The app the joining harness says it is running. Absent from an older
+  # harness, which is not "the app is down": one says "not reported", the other
+  # "reported down", and only the second is a fact about the app. So an absent
+  # field writes nothing rather than clearing the row.
+  defp report_app_state(_harness, nil), do: :ok
+
+  defp report_app_state(harness, %{} = reported) do
+    case reported["status"] do
+      status when status in ~w(serving erroring down starting) ->
+        WorkingCopies.record_app_status(harness, %{
+          status: status,
+          url: reported["url"],
+          commit: reported["commit"],
+          serving_commit: reported["serving_commit"]
+        })
+
+        :ok
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp report_app_state(_harness, _other), do: :ok
+
   defp record_machine_tools(_harness, nil, _docs), do: :ok
 
   defp record_machine_tools(harness, names, docs) when is_list(names) do
@@ -340,6 +377,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         payload["response"] || %{},
         payload["agent_role"] || "main"
       )
+
+    record_turn_tokens(scope, payload)
 
     {:noreply, socket}
   end
@@ -497,32 +536,73 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
-  # Which of this checkout's agents are actually alive, from the process table.
-  #
-  # `agents.status` is written on a clean start and a clean stop, so it is a
-  # claim about the past. `record_reported/2` exists to correct exactly that and
-  # is fed only by `LaneReporter`, which composes from Presence on *lane*
-  # topics — the Claude Code lane concept. An in-BEAM Alloy agent joins no lane,
-  # so it was invisible to the one mechanism that could have contradicted its
-  # row.
-  #
-  # Measured 2026-09-17: `f8fbe49e` and `93bdde5a` read `starting` for six hours
-  # with nothing behind them, while `wakeable?/3` accepted `:starting` and kept
-  # routing work to processes that had never started (`0c912986`).
-  #
-  # The ids come from `Engine.running/0`, a registry select filtered by
-  # `Process.alive?`, so what arrives here is the process table rather than
-  # anything we were told. Machine-wide, and reconciled per copy: this harness
-  # serves this checkout, so one of its agents absent from the machine's set is
-  # genuinely gone, and an agent on somebody else's box is never considered.
-  def handle_in("agents_running", %{"agent_ids" => ids}, socket) when is_list(ids) do
-    Agents.record_running_on_copy(
-      socket.assigns.scope,
-      socket.assigns.scope.active_working_copy_id,
-      ids
-    )
+  # The 60-second report a harness from before agent presence still sends.
+  # Liveness is Presence now (`agent_up` / `agent_down` / `agents_present`),
+  # so it says nothing this channel needs; answered rather than unmatched, so
+  # such a harness keeps its channel through a deploy's handover.
+  def handle_in("agents_running", _payload, socket), do: {:reply, :ok, socket}
 
-    {:reply, :ok, consider_once(socket)}
+  # Which agents are alive (`.code_my_spec/plans/agent-liveness-from-presence.md`).
+  # The channel process tracks an agent in `Agents.Presence` while the harness
+  # says its process is up, and Presence drops every key this channel tracked
+  # the moment the channel dies — a harness exit or a dropped socket needs no
+  # report.
+  #
+  # The copy's first agent up after a join sweeps again (`consider_once/2`):
+  # the sweep on `agents_present` runs before the harness has restored anyone.
+  #
+  # Every up is also that agent's own bell (`Agents.came_up/2`) — off this
+  # process, for the same `:calling_self` reason as the sweep.
+  def handle_in("agent_up", %{"agent_id" => id}, socket) when is_binary(id) do
+    was_present? = MapSet.member?(present_agents(socket), id)
+    socket = track_agents(socket, [id])
+    scope = socket.assigns.scope
+
+    if not was_present? and MapSet.member?(present_agents(socket), id) do
+      {:ok, _pid} =
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          Agents.came_up(scope, id)
+        end)
+    end
+
+    {:reply, :ok, consider_once(socket, :first_up)}
+  end
+
+  # A down the operator did not ask for is a crash: `Agents.process_ended/3`
+  # decides whether it is restarted. Off this process — a restart asks the
+  # harness through this channel, and calling from here is `:calling_self`.
+  def handle_in("agent_down", %{"agent_id" => id} = payload, socket) when is_binary(id) do
+    reason = payload["reason"]
+    Logger.info("[AgentPresence] #{id} down on #{copy_id(socket)}: #{reason}")
+    scope = socket.assigns.scope
+
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Agents.process_ended(scope, id, reason)
+      end)
+
+    {:reply, :ok, ended(socket, id, reason)}
+  end
+
+  # The harness's whole set, on join: track what is new, untrack what is gone,
+  # and sweep the copy for work — a harness that has just (re)connected is the
+  # case with something to catch.
+  #
+  # `gave_up` (a newer harness) names the agents its Keepers gave up on, which
+  # stay marked across a reconnect rather than reading as starting again.
+  def handle_in("agents_present", %{"agent_ids" => ids} = payload, socket) when is_list(ids) do
+    stuck = List.wrap(payload["gave_up"])
+    stuck_ids = Enum.map(stuck, & &1["agent_id"])
+    tracked = MapSet.union(present_agents(socket), gave_up_agents(socket))
+    socket = track_agents(socket, ids)
+    gone = MapSet.to_list(MapSet.difference(tracked, MapSet.new(ids ++ stuck_ids)))
+
+    socket =
+      Enum.reduce(stuck, untrack_agents(socket, gone), fn entry, socket ->
+        mark_gave_up(socket, entry["agent_id"], entry["reason"], entry["at"])
+      end)
+
+    {:reply, :ok, consider_once(socket, :present)}
   end
 
   # What the box is carrying, from the box.
@@ -537,7 +617,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # saturated, two checkouts on one machine share its processors, and a figure
   # per copy would report the same saturation twice and let the two disagree.
   def handle_in("machine_load", load, socket) when is_map(load) do
-    Devices.record_load(socket.assigns.scope.active_working_copy_id, load)
+    socket.assigns.scope.active_working_copy_id
+    |> WorkingCopies.device_of()
+    |> Devices.record_load(load)
+
     {:reply, :ok, socket}
   end
 
@@ -790,7 +873,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     interrupted = Agents.interrupted_turns(running)
     :ok = Agents.account_for_interrupted_turns(scope, running)
 
-    agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for()))
+    tools = ToolRegistry.registry()
+    agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
 
     {:reply, {:ok, %{"agents" => agents}},
      assign(
@@ -962,18 +1046,25 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # message *is* the re-registration, so by the time it returns there is
   # something to ask about.
   #
-  # Once per join, not per report. `agents_running` arrives with every manifest,
-  # and admission is guarded but not free — `graph_work?/2` is a graph read per
-  # idle agent. A join is a harness that has just (re)connected, which is the
-  # case with something to catch.
+  # Twice per join at most, keyed by what triggered it: the join's
+  # `agents_present` (`:present`) and the copy's first agent coming up after it
+  # (`:first_up`) — the first runs before the harness has restored anyone.
+  # Admission is guarded but not free — `graph_work?/2` is a graph read per
+  # idle agent.
   #
   # In a Task because `Transport.Harness` resolves this copy's holder and calls
   # it, and the holder is this channel: calling from here is `:calling_self`,
   # which kills the channel and cancels every agent's turn on the copy. That is
   # the outage this session started with.
-  defp consider_once(%{assigns: %{considered_agents?: true}} = socket), do: socket
+  defp consider_once(socket, trigger) do
+    swept = socket.assigns[:swept] || MapSet.new()
 
-  defp consider_once(socket) do
+    if MapSet.member?(swept, trigger),
+      do: socket,
+      else: socket |> assign(:swept, MapSet.put(swept, trigger)) |> sweep()
+  end
+
+  defp sweep(socket) do
     scope = socket.assigns.scope
     copy_id = scope.active_working_copy_id
     interrupted = socket.assigns[:interrupted_turns] || %{}
@@ -995,13 +1086,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # The retry-time wakes of agents refused until later, which lived in the
       # process a restart took down.
       Agents.RefusalWake.rearm(scope, copy_id)
-
-      # 73d0d505: neither call above reaches a role a restart killed outright
-      # rather than merely interrupted -- both require `status == :running`,
-      # and an agent the harness never reported back in is `:stopped`. Gated
-      # on `stopped_reason == :reaped` so a role a person deliberately stopped
-      # stays stopped; see `Agents.restart_reaped_agents/2`.
-      Agents.restart_reaped_agents(scope, copy_id)
 
       # 1b450fc3: every existing caller of `ensure_cadence/1` (`agents.ex`
       # watch_over/2, set_copy_continuous/3, set_agent_continuous/3) fires on a
@@ -1029,7 +1113,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       MainAgent.ensure_cadence(scope)
     end)
 
-    assign(socket, :considered_agents?, true)
+    socket
   end
 
   # Unknown copy answers false. A correction we cannot attribute to the main
@@ -1073,9 +1157,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # `Agents.record_started/3` writes together. Until this existed that function
   # had no callers at all: `start_agent/2` minted a config directory and left a
   # row at `:starting` that no machine was ever told about.
+  #
+  # The request is built here rather than by `Agents.Transport.Harness`: its
+  # tool index reads the MCP servers, which `Agents` sits below.
   @impl true
-  def handle_call({:start_agent, request}, from, socket) do
+  def handle_call({:start_agent, %Agents.Agent{} = agent}, from, socket) do
     ref = Integer.to_string(System.unique_integer([:positive]))
+    request = LaunchRequest.for(agent, ToolRegistry.registry())
 
     push(socket, "start_agent", Map.put(request, "ref", ref))
 
@@ -1363,6 +1451,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp decode_withdraw_result(%{"status" => "already_delivered"}),
     do: {:error, :already_delivered}
 
+  defp decode_withdraw_result(%{"status" => "never_received"}),
+    do: {:error, :never_received}
+
   defp decode_withdraw_result(%{"reason" => reason}) when is_binary(reason),
     do: {:error, decode_reason(reason)}
 
@@ -1396,7 +1487,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # least these keys," so a stricter-looking clause added below this one
   # would never be reached.
   defp decode_app_result(%{"status" => "ok", "app_status" => status} = msg)
-       when status in ~w(serving erroring down) do
+       when status in ~w(serving erroring down starting) do
     {:ok,
      %{
        status: status,
@@ -1786,12 +1877,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The words come from `Responses`, which is where the other two doors get
   # theirs. A third rendering of "what happened to your promotion" is a third
   # thing to keep in step, and this module exists because two already were.
+  # Inside the harness's own 20-minute wait for this reply, so a candidate still
+  # queued is answered as queued rather than as a timeout.
+  @promotion_wait_ms :timer.minutes(18)
+
   defp promote_for_caller(scope, story_number) do
-    result = Promotion.promote(scope, story_number)
+    result = PromotionQueue.promote_and_wait(scope, story_number, [], @promotion_wait_ms)
 
     {:ok, %{"status" => promotion_status(result), "report" => PromotionResponses.text(result)}}
   end
 
+  defp promotion_status({:ok, %{queued: _}}), do: "queued"
+  defp promotion_status({:ok, %{queue_outcome: _}}), do: "promoted"
   defp promotion_status({:ok, %{pending: _}}), do: "pending"
   defp promotion_status({:ok, _report}), do: "promoted"
   defp promotion_status({:error, _refusal}), do: "refused"
@@ -1896,6 +1993,123 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
     |> assign(:pending_manifest, nil)
   end
+
+  # -- Agent presence -----------------------------------------------------------
+
+  # Only this copy's agents: an id the harness reports for another copy, or for
+  # an agent this project does not have, is not this channel's to track. One
+  # already tracked is skipped — a second `track` is `:already_tracked`, and a
+  # repeated up must not take the channel, and every agent's presence, with it.
+  defp track_agents(socket, ids) do
+    {recovered, ids} = Enum.split_with(ids, &MapSet.member?(gave_up_agents(socket), &1))
+    socket = Enum.reduce(recovered, socket, &recover(&2, &1))
+
+    {own, foreign} =
+      ids
+      |> Enum.reject(&MapSet.member?(present_agents(socket), &1))
+      |> Enum.split_with(&own_agent?(socket, &1))
+
+    for id <- foreign,
+        do: Logger.warning("[AgentPresence] #{id} is not an agent of copy #{copy_id(socket)}")
+
+    present =
+      for id <- own, reduce: present_agents(socket) do
+        present ->
+          {:ok, _ref} =
+            Agents.Presence.track(self(), presence_topic(socket), id, %{
+              working_copy_id: copy_id(socket),
+              since: DateTime.utc_now()
+            })
+
+          Logger.info("[AgentPresence] #{id} up on #{copy_id(socket)}")
+          MapSet.put(present, id)
+      end
+
+    assign(socket, :present_agents, present)
+  end
+
+  defp untrack_agents(socket, ids) do
+    for id <- ids, reduce: socket do
+      socket ->
+        :ok = Agents.Presence.untrack(self(), presence_topic(socket), id)
+
+        socket
+        |> assign(:present_agents, MapSet.delete(present_agents(socket), id))
+        |> assign(:gave_up_agents, MapSet.delete(gave_up_agents(socket), id))
+    end
+  end
+
+  # Its Keeper gave up on a crash loop: kept, marked, so the agent reads as
+  # stuck rather than starting until main restarts it. Any other down is gone.
+  defp ended(socket, id, "gave_up: " <> reason), do: mark_gave_up(socket, id, reason, nil)
+  defp ended(socket, id, _reason), do: untrack_agents(socket, [id])
+
+  # Kept tracked, marked as given up on — `Agents.Presence.gave_up/2` reads it,
+  # and nothing counts it as running.
+  defp mark_gave_up(socket, id, reason, at) do
+    meta = %{
+      working_copy_id: copy_id(socket),
+      state: :gave_up,
+      reason: reason,
+      at: parse_at(at)
+    }
+
+    cond do
+      tracked?(socket, id) ->
+        {:ok, _} = Agents.Presence.update(self(), presence_topic(socket), id, meta)
+
+      own_agent?(socket, id) ->
+        {:ok, _} = Agents.Presence.track(self(), presence_topic(socket), id, meta)
+
+      true ->
+        :ok
+    end
+
+    Logger.info("[AgentPresence] #{id} given up on, on #{copy_id(socket)}: #{reason}")
+
+    socket
+    |> assign(:present_agents, MapSet.delete(present_agents(socket), id))
+    |> assign(:gave_up_agents, MapSet.put(gave_up_agents(socket), id))
+  end
+
+  # Back up after being given up on — main restarted it: running again.
+  defp recover(socket, id) do
+    {:ok, _ref} =
+      Agents.Presence.update(self(), presence_topic(socket), id, %{
+        working_copy_id: copy_id(socket),
+        since: DateTime.utc_now()
+      })
+
+    Logger.info("[AgentPresence] #{id} up on #{copy_id(socket)}, after being given up on")
+
+    socket
+    |> assign(:gave_up_agents, MapSet.delete(gave_up_agents(socket), id))
+    |> assign(:present_agents, MapSet.put(present_agents(socket), id))
+  end
+
+  defp tracked?(socket, id),
+    do: MapSet.member?(present_agents(socket), id) or MapSet.member?(gave_up_agents(socket), id)
+
+  defp parse_at(at) when is_binary(at) do
+    case DateTime.from_iso8601(at) do
+      {:ok, at, _offset} -> at
+      _ -> DateTime.utc_now()
+    end
+  end
+
+  defp parse_at(_at), do: DateTime.utc_now()
+
+  defp own_agent?(socket, id) do
+    match?(
+      {:ok, %{working_copy_id: copy}} when copy == socket.assigns.scope.active_working_copy_id,
+      Agents.fetch_agent(socket.assigns.scope, id)
+    )
+  end
+
+  defp present_agents(socket), do: Map.get(socket.assigns, :present_agents, MapSet.new())
+  defp gave_up_agents(socket), do: Map.get(socket.assigns, :gave_up_agents, MapSet.new())
+  defp presence_topic(socket), do: Agents.presence_topic(socket.assigns.scope.active_project_id)
+  defp copy_id(socket), do: socket.assigns.scope.active_working_copy_id
 
   # Everything this harness had running dies with it: the queue was on the other
   # machine. Leaving those rows `:running` would make every later stop for this
@@ -2451,7 +2665,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # find it.
   #
   # Corrects any agent's stale `working_copy` snapshot in the same beat as
-  # the working copy's own root, not just at read time — `LaunchRequest.for/1`
+  # the working copy's own root, not just at read time — `LaunchRequest.for/2`
   # sends `agent.working_copy` verbatim on a restore, so a row started against
   # the old path would otherwise keep offering it forever, and restore fails
   # with `:working_copy_missing` against a checkout that just joined correctly.
@@ -2497,6 +2711,50 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # "sprite" stays as the last resort rather than the default it used to be.
   # Reached now only when a harness names no working copy and sends no id, it is
   # a real fallback instead of the label every Claude Code session got.
+  # A turn's own tokens, kept whether or not the proxy can also place it in a
+  # conversation -- `payload["agent_role"]` plus the copy already running on
+  # this socket is how `record_turn` finds "which agent", since the wire
+  # never names one directly.
+  defp record_turn_tokens(scope, payload) do
+    role = payload["agent_role"] || "main"
+
+    case Agents.find_by_working_copy_and_role(scope, scope.active_working_copy_id, role) do
+      nil ->
+        :ok
+
+      agent ->
+        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, payload["response"] || %{})
+        mirror_failed_tool_results(scope, agent, payload["request"] || %{})
+    end
+  end
+
+  # A tool failure on this turn landed on the session conversation
+  # `ConversationRecorder.record_turn` just wrote to -- keyed by
+  # `session_external_id`, which has no agent of its own to point back to
+  # (`Conversations.find_or_create_agent_conversation/3`'s own moduledoc).
+  # Mirrored here, failures only, the same restraint `Agents.write_turn_event/3`
+  # already applies to the `agent_turn_event` lane ("a success has nothing to
+  # record that the call itself did not already say"), so
+  # `AgentPerformance.ToolFailures` has something to read for this lane too.
+  defp mirror_failed_tool_results(scope, agent, request) do
+    request
+    |> ConversationRecorder.tool_results()
+    |> Enum.filter(& &1.failed?)
+    |> Enum.each(fn result ->
+      with {:ok, conversation} <-
+             Conversations.find_or_create_agent_conversation(
+               scope.active_account_id,
+               scope.active_project_id,
+               agent.id
+             ) do
+        Conversations.add_tool_result(conversation, result.call_id, result.name, result.text,
+          failed?: true,
+          agent_role: to_string(agent.role)
+        )
+      end
+    end)
+  end
+
   defp session_external_id(scope, payload) do
     case payload["session_id"] do
       id when is_binary(id) and id != "" -> id

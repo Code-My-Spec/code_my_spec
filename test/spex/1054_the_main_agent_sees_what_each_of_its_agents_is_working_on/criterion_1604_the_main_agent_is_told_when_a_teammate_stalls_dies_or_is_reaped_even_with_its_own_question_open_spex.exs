@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.WorkingCopyHelpers, only: [join_working_copy_socket: 4, agent_down: 3]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -67,12 +68,16 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
         {:ok, context}
       end
 
-      when_ "the coder's process dies", context do
-        :ok =
-          CodeMySpec.Agents.record_turn_event(context.scope, context.coder.id, %{
-            "kind" => "agent_died",
-            "text" => "** (EXIT) killed"
-          })
+      # Since v2.0.372 a crash is restarted by the agent's Keeper and main is not
+      # woken for it; main is told when the harness gives up on the agent, which
+      # is what "dies" means for a teammate now.
+      when_ "the coder's harness gives up on its crashing process", context do
+        {_copy, socket} =
+          join_working_copy_socket(context, context.coder.working_copy, "coder's copy",
+            working_copy_id: context.coder.working_copy_id
+          )
+
+        :ok = agent_down(socket, context.coder.id, "gave_up: ** (EXIT) killed")
 
         {:ok, context}
       end
@@ -81,7 +86,12 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
         main_id = context.main.id
         coder_id = context.coder.id
 
-        assert_receive {:agent_message, ^main_id, text}, 2_000
+        # `notify_main` always dispatches (`Transport.dispatch_message`),
+        # whether or not main currently holds a turn open; a separate,
+        # unrelated work-offer sweep may also wake main with the generic
+        # prompt since it is idle, but that is not this criterion's message.
+        assert_receive {:agent_dispatch, ^main_id, ref, text}, 2_000
+        assert is_binary(ref)
 
         assert text =~ coder_id or text =~ String.slice(coder_id, 0, 8),
                "main was told something, but not which teammate died:\n#{text}"

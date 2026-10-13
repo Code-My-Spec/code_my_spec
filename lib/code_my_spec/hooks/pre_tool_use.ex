@@ -21,6 +21,8 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   require Logger
 
+  alias CodeMySpec.Hooks.CommandShape
+
   # Every MCP server this plugin ships, not just the local one. The tools are
   # named `mcp__plugin_codemyspec_<server>__*`, and the cloud server
   # (`cms_cloud`) takes the same `session_id` the local one does — matching
@@ -282,33 +284,115 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   defp source_for("credo"), do: "credo"
   defp source_for("test"), do: "exunit"
 
+  # Only the test segment of a compound command is routed (`CommandShape`):
+  # `MIX_ENV=test mix test x 2>&1 | tail -20` keeps its redirect and pipe. A
+  # segment after `cd` routes when the directory is inside this copy; a `cd`
+  # anywhere else may be another copy, and passes through. `mix compile`/`credo`
+  # still route only as a whole command.
   defp maybe_rewrite_test_command(scope, params, port, served_by) do
     command = get_in(params, ["tool_input", "command"]) || ""
+    root = Map.get(scope || %{}, :cwd) || Map.get(params, "cwd")
 
     with %{active_project_id: project_id} when not is_nil(project_id) <- scope,
-         {:ok, endpoint} <- analysis_endpoint(scope, served_by),
-         {:ok, task, source, args} <- classify_test_command(command) do
-      replacement = build_curl(port, endpoint, source, args)
-
-      Logger.info(
-        "[PreToolUse] Rewriting mix #{task} → analysis API (#{source}, args: #{inspect(args)})"
-      )
-
-      %{
-        "hookSpecificOutput" => %{
-          "hookEventName" => "PreToolUse",
-          "permissionDecision" => "allow",
-          "permissionDecisionReason" =>
-            "Routed mix #{task} through the CodeMySpec analysis service (shared run record, single-flight)",
-          "updatedInput" => %{
-            "command" => replacement,
-            "timeout" => @rewrite_timeout_ms
-          }
-        }
-      }
+         nil <- nested_checkout(params, command),
+         {:ok, endpoint} <- analysis_endpoint(scope, served_by) do
+      case route_command(command, root, port, endpoint) do
+        {:routed, replacement, what} -> rewrite(replacement, what)
+        :pass -> rewrite_whole(command, port, endpoint)
+      end
     else
+      :nested -> %{}
       _ -> no_rewrite(scope, command)
     end
+  end
+
+  # A subagent's worktree is another tree; the copy's harness would run the test
+  # in the copy. Not routed (Harness, 2026-10-05: in-app agents rarely spawn
+  # subagents, so not worth the plumbing).
+  defp nested_checkout(%{"nested_checkout" => dir}, command) when is_binary(dir) do
+    if CommandShape.test?(command), do: log_decision("not routed", [:nested_checkout], [])
+    :nested
+  end
+
+  defp nested_checkout(_params, _command), do: nil
+
+  @doc """
+  `command` with its mix test/spex segments routed through the analysis service
+  for the copy at `root`, or `:pass`. Every test decision is logged with the
+  command's shape. The PreToolUse hook and an in-app agent's own bash tool
+  (`CmsHarness.Agents.Tools.Bash`) both route through this.
+  """
+  @spec route_command(
+          String.t(),
+          String.t() | nil,
+          pos_integer(),
+          {:local | :harness, String.t()}
+        ) ::
+          {:routed, String.t(), String.t()} | :pass
+  def route_command(command, root, port, endpoint) do
+    case CommandShape.route(command, &route_segment(&1, root, port, endpoint)) do
+      {:routed, replacement, classes, mixes} ->
+        log_decision("routed", classes, mixes)
+        {:routed, replacement, Enum.map_join(mixes, ", ", &"mix #{&1.task}")}
+
+      {:pass, classes} ->
+        if CommandShape.test?(command), do: log_decision("not routed", classes, [])
+        :pass
+    end
+  end
+
+  @doc "How long a routed run may take: a suite, not a shell one-liner."
+  def rewrite_timeout_ms, do: @rewrite_timeout_ms
+
+  defp route_segment(%{cd: cd, source: source, args: args}, root, port, endpoint) do
+    if cd == nil or inside?(cd, root),
+      do: {:ok, build_curl(port, endpoint, source, args)},
+      else: :pass
+  end
+
+  # Paths only: the server deciding for a proxied copy cannot see its disk. A
+  # relative `cd` is taken from the session's directory, which is in the copy.
+  defp inside?(:unknown, _root), do: false
+  defp inside?(_cd, root) when not is_binary(root), do: false
+
+  defp inside?(cd, root) do
+    root = Path.expand(root)
+    dir = Path.expand(cd, root)
+    dir == root or String.starts_with?(dir, root <> "/")
+  end
+
+  defp rewrite_whole(command, port, endpoint) do
+    case classify_test_command(command) do
+      {:ok, task, source, args} when task in ["compile", "credo"] ->
+        rewrite(build_curl(port, endpoint, source, args), "mix #{task}")
+
+      _ ->
+        %{}
+    end
+  end
+
+  # Every mix test/spex decision, with the command's shape, so a shape that is
+  # never routed shows up as one rather than as silence.
+  defp log_decision(decision, classes, mixes) do
+    Logger.info(
+      "[PreToolUse] mix test/spex #{decision} (shape: #{Enum.join(classes, ", ")})" <>
+        Enum.map_join(mixes, "", &" #{&1.source} #{inspect(&1.args)}")
+    )
+  end
+
+  defp rewrite(replacement, what) do
+    %{
+      "hookSpecificOutput" => %{
+        "hookEventName" => "PreToolUse",
+        "permissionDecision" => "allow",
+        "permissionDecisionReason" =>
+          "Routed #{what} through the CodeMySpec analysis service (shared run record, single-flight)",
+        "updatedInput" => %{
+          "command" => replacement,
+          "timeout" => @rewrite_timeout_ms
+        }
+      }
+    }
   end
 
   # `%{}` means "no opinion", and it was the answer to two different questions:
@@ -401,20 +485,20 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # from a real test run was the opposite of that.
   #
   # So the two are split at the transport instead of glued into the body:
-  # `-o`/`-w` send the response body to a file and the HTTP status to stdout
-  # on their own, the endpoint answers 200 for a clean run and something
-  # else for anything short of it (see both `AnalysisController`s), and this
-  # script re-emits the body untouched and exits 0 or 1 to match — the same
-  # two numbers a real `mix test`/`mix spex` would have given back.
+  # `-o`/`-w` send the response body to a file, and the HTTP status and the
+  # run's `x-exit-status` header to stdout. The script re-emits the body
+  # untouched and exits with the tool's own status, as `mix test` would have.
+  # A harness that sends no header is read by HTTP status: 0 on 200, else 1.
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
     url = "http://localhost:#{port}#{path(endpoint)}"
 
     script =
-      "t=$(mktemp); c=$(curl -sS -o \"$t\" -w '%{http_code}' -X POST '#{url}' " <>
-        "-H 'Content-Type: application/json' " <>
+      "t=$(mktemp); c=$(curl -sS -o \"$t\" -w '%{http_code} %header{x-exit-status}' " <>
+        "-X POST '#{url}' -H 'Content-Type: application/json' " <>
         header(endpoint) <>
-        "--data #{shell_quote(payload)}); cat \"$t\"; rm -f \"$t\"; [ \"$c\" = 200 ]"
+        "--data #{shell_quote(payload)}); " <>
+        ~S{cat "$t"; rm -f "$t"; set -- $c; [ -n "$2" ] && exit "$2"; [ "$1" = 200 ]}
 
     "sh -c " <> shell_quote(script)
   end

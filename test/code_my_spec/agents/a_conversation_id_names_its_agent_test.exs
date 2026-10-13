@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.Repo
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   @plain_not_found "No agent or conversation with that id exists here"
@@ -65,6 +66,8 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
         working_copy_id: copy.id
       })
 
+    AgentPresence.present(agent)
+
     {:ok, conversation} =
       Conversations.find_or_create_agent_conversation(
         scope.active_account_id,
@@ -103,7 +106,10 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
       MessageAgent.execute(%{agent_id: ctx.conversation.id, message: "carry on"}, ctx.frame)
 
     refute response.isError, text(response)
-    assert_received {:agent_message, ^agent_id, "carry on"}
+    assert_received {:agent_dispatch, ^agent_id, ref, "carry on"}
+    assert is_binary(ref)
+    assert text(response) =~ "Queued"
+    refute_received {:agent_message, _, _}
   end
 
   test "a conversation from another account is not found", ctx do

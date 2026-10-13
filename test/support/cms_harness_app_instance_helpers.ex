@@ -51,21 +51,26 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     %{root: root, working_copy_id: working_copy_id}
   end
 
-  # Two attempts, no sleep — against a scripted `Runner` that already knows
-  # its answer, waiting the production 15×1000ms for "an app that fails to
-  # boot is reported, not waited on" would make that criterion's own subject
-  # true of the spex proving it.
+  # A 10ms poll rather than the production 1s — against a scripted `Runner`
+  # that already knows its answer, a real-second poll would make "an app that
+  # fails to boot is reported, not waited on" true of the spex proving it.
   defp use_fast_health_wait do
-    previous_attempts = Application.get_env(:code_my_spec, :app_instance_health_wait_attempts)
     previous_interval = Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms)
 
-    Application.put_env(:code_my_spec, :app_instance_health_wait_attempts, 2)
-    Application.put_env(:code_my_spec, :app_instance_health_wait_interval_ms, 0)
+    Application.put_env(:code_my_spec, :app_instance_health_wait_interval_ms, 10)
 
-    on_exit(fn ->
-      put_or_delete(:app_instance_health_wait_attempts, previous_attempts)
-      put_or_delete(:app_instance_health_wait_interval_ms, previous_interval)
-    end)
+    on_exit(fn -> put_or_delete(:app_instance_health_wait_interval_ms, previous_interval) end)
+  end
+
+  @doc """
+  Shrink the timeout an `AppInstance` call is given to `ms`, restored on exit.
+  A start settles by three quarters of it, so a test of an app that never
+  answers waits that long rather than the production 90s.
+  """
+  def set_op_timeout(ms) do
+    previous = Application.get_env(:code_my_spec, :app_instance_op_timeout_ms)
+    Application.put_env(:code_my_spec, :app_instance_op_timeout_ms, ms)
+    on_exit(fn -> put_or_delete(:app_instance_op_timeout_ms, previous) end)
   end
 
   defp put_or_delete(key, nil), do: Application.delete_env(:code_my_spec, key)
@@ -75,7 +80,7 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   Shrink a first start's 10-minute ceiling to `ms`, restored on exit — for a
   criterion about what happens once that ceiling passes, where the
   production default would mean actually waiting 10 minutes. Combined with
-  `app_instance_rig/1`'s own fast health-wait interval (0ms), the background
+  `app_instance_rig/1`'s own fast health-wait interval (10ms), the background
   check this schedules fires on its very next tick, so a spex can
   `assert_receive` the resulting `app_status` push instead of sleeping for
   either duration.
@@ -96,8 +101,17 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     previous_idle = Application.get_env(:code_my_spec, :app_instance_idle_timeout_ms)
     previous_interval = Application.get_env(:code_my_spec, :app_instance_idle_check_interval_ms)
 
-    Application.put_env(:code_my_spec, :app_instance_idle_timeout_ms, Keyword.fetch!(opts, :idle_ms))
-    Application.put_env(:code_my_spec, :app_instance_idle_check_interval_ms, Keyword.fetch!(opts, :check_interval_ms))
+    Application.put_env(
+      :code_my_spec,
+      :app_instance_idle_timeout_ms,
+      Keyword.fetch!(opts, :idle_ms)
+    )
+
+    Application.put_env(
+      :code_my_spec,
+      :app_instance_idle_check_interval_ms,
+      Keyword.fetch!(opts, :check_interval_ms)
+    )
 
     on_exit(fn ->
       put_or_delete(:app_instance_idle_timeout_ms, previous_idle)
@@ -227,8 +241,11 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   # on.
   defp stop_app_instance(root) do
     case Registry.lookup(CmsHarness.Registry, {:app_instance, root}) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(CmsHarness.AppInstanceSupervisor, pid)
-      [] -> :ok
+      [{pid, _}] ->
+        DynamicSupervisor.terminate_child(CmsHarness.Copy.Supervisor.apps(root), pid)
+
+      [] ->
+        :ok
     end
   end
 
@@ -257,7 +274,8 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   # stale-message bug it was. `harness_id` is this rig's own working copy
   # id, unique per call, so only this test's own join can satisfy it.
   defp await_connected(root, working_copy_id) do
-    assert_receive {:joined, _project_id, %{"harness_id" => ^working_copy_id}}, 10_000,
+    assert_receive {:joined, _project_id, %{"harness_id" => ^working_copy_id}},
+                   10_000,
                    "the copy's harness never connected to the fake server (root: #{root})"
   end
 

@@ -22,6 +22,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
@@ -55,6 +56,8 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
         working_copy_id: copy.id
       })
 
+    AgentPresence.present(agent)
+
     agent
   end
 
@@ -68,7 +71,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     assert_receive {:agent_dispatch, id, _ref, message}
     assert id == agent.id
     assert message =~ "spex run finished"
-    assert message =~ "2 problems"
+    assert message =~ "2 blocking problems"
     assert message =~ "list_problems"
   end
 
@@ -82,12 +85,30 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
   end
 
-  test "warnings alone are not worth waking anyone for", ctx do
+  # 4a4cb998: this counted errors only, so a run whose warnings blocked
+  # certification told its asker "no problems". Counted by the gate's own rule.
+  test "a compiler warning is reported as blocking", ctx do
     agent(ctx.scope, ctx.copy, :alloy)
 
-    AnalysisReport.deliver(ctx.scope, "spex", [problem(:warning), problem(:warning)])
+    AnalysisReport.deliver(ctx.scope, "compiler", [%{severity: :warning, source: "compiler"}])
 
-    refute_receive {:agent_dispatch, _id, _ref, _message}, 100
+    assert_receive {:agent_dispatch, _id, _ref, message}
+    assert message =~ "compiler run finished: 1 blocking problem"
+  end
+
+  # Advisory never blocks (John, 2026-10-04): it wakes no one, and the asker
+  # hears it counted as advisory rather than called clean or dirty.
+  test "advisory findings alone wake no one, and the asker is told they are advisory", ctx do
+    bystander = agent(ctx.scope, ctx.copy, :alloy)
+    asker = agent(ctx.scope, ctx.copy, :alloy)
+    bystander_id = bystander.id
+
+    AnalysisReport.deliver(ctx.scope, "credo", [%{severity: :info, source: "credo"}], asker.id)
+
+    assert_receive {:agent_dispatch, id, _ref, message}
+    assert id == asker.id
+    assert message =~ "no blocking problems in this working copy (1 advisory)"
+    refute_receive {:agent_dispatch, ^bystander_id, _ref, _message}, 100
   end
 
   # The other consumer has its own path. Telling it here as well would tell it
@@ -157,7 +178,7 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
       assert_receive {:agent_dispatch, id, _ref, message}
       assert id == qa.id
 
-      assert message =~ "no problems in this working copy",
+      assert message =~ "no blocking problems in this working copy",
              "a green run is still an answer to whoever asked for it"
     end
 

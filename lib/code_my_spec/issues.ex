@@ -362,12 +362,27 @@ defmodule CodeMySpec.Issues do
 
   @doc """
   Flip whose turn it is on an issue already assigned to a copy: the coder's
-  until it submits a fix, QA's until it submits a non-passing attempt.
+  until it submits a fix, QA's until it submits a non-passing attempt, the
+  coder's again (`:promote`) to land a fix QA passed.
   """
-  @spec set_awaiting_role(Scope.t(), Issue.t(), :coding | :qa) ::
+  @spec set_awaiting_role(Scope.t(), Issue.t(), :coding | :qa | :promote) ::
           {:ok, Issue.t()} | {:error, term()}
-  def set_awaiting_role(%Scope{} = scope, %Issue{} = issue, role) when role in [:coding, :qa] do
+  def set_awaiting_role(%Scope{} = scope, %Issue{} = issue, role)
+      when role in [:coding, :qa, :promote] do
     with {:ok, updated} <- IssuesRepository.update_awaiting_role(issue, role) do
+      broadcast(scope, {:updated, updated})
+      {:ok, updated}
+    end
+  end
+
+  @doc "The accepted issue assigned to `working_copy_id`'s team, or nil."
+  @spec assigned_to_copy(Scope.t(), Ecto.UUID.t()) :: Issue.t() | nil
+  defdelegate assigned_to_copy(scope, working_copy_id), to: IssuesRepository
+
+  @doc "Record the commit an issue's fix landed on main at."
+  @spec record_fix_landed(Scope.t(), Issue.t(), String.t()) :: {:ok, Issue.t()} | {:error, term()}
+  def record_fix_landed(%Scope{} = scope, %Issue{} = issue, commit) do
+    with {:ok, updated} <- IssuesRepository.update_landed_commit(issue, commit) do
       broadcast(scope, {:updated, updated})
       {:ok, updated}
     end

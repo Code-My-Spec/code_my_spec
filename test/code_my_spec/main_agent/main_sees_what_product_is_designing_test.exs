@@ -1,4 +1,4 @@
-defmodule CodeMySpec.MainAgent.MainSeesWhatProductIsDesigningTest do
+defmodule CodeMySpec.Agents.Main.MainSeesWhatProductIsDesigningTest do
   @moduledoc """
   `list_agent_work` names the epic product is designing (a31f1cd6, step 4d).
 
@@ -8,9 +8,10 @@ defmodule CodeMySpec.MainAgent.MainSeesWhatProductIsDesigningTest do
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.MainAgent
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup :register_log_in_setup_account
@@ -40,6 +41,8 @@ defmodule CodeMySpec.MainAgent.MainSeesWhatProductIsDesigningTest do
           attrs
         )
       )
+
+    AgentPresence.present(agent)
 
     agent
   end

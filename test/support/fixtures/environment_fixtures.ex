@@ -22,6 +22,10 @@ defmodule CodeMySpec.EnvironmentFixtures do
     the same value across multiple calls to share state (rare — usually
     tests want isolation).
   - `:metadata` — arbitrary map stored on the env for test bookkeeping.
+  - `:shell_module` — a module shaped like `CodeMySpecSpex.Fakes.Shell`
+    (`cmd(env, command, args, opts)`) to model this environment's shell with.
+    Scoped to the returned env, not global — two concurrent tests can each
+    pass their own (or none) without one resetting the other's.
 
   ## Examples
 
@@ -41,7 +45,8 @@ defmodule CodeMySpec.EnvironmentFixtures do
     {:ok, env} =
       Environments.create(:memory,
         working_dir: working_dir,
-        metadata: Keyword.get(opts, :metadata, %{})
+        metadata: Keyword.get(opts, :metadata, %{}),
+        shell_module: Keyword.get(opts, :shell_module)
       )
 
     env

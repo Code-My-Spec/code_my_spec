@@ -41,7 +41,13 @@ defmodule CmsHarness.Agents.Provider do
   # errors.
   @zai_model "glm-5.3"
 
-  @claude_exec_timeout_ms :timer.minutes(10)
+  # DeepInfra's OpenAI-compatible endpoint. The model is a default only; an
+  # agent's own model setting overrides it.
+  @deepinfra_base "https://api.deepinfra.com/v1/openai"
+  @deepinfra_model "deepseek-ai/DeepSeek-V3.1"
+
+  # One budget for both CLI providers: a turn runs whole test files and spex.
+  @cli_exec_timeout_ms :timer.minutes(10)
 
   @type credential :: map()
 
@@ -104,6 +110,12 @@ defmodule CmsHarness.Agents.Provider do
   #
   # `workdir: working_copy`, as for claude-code: left unset, `codex exec` runs
   # in Alloy's temp dir holding only `prompt.txt` (5001c099).
+  #
+  # `ignore_user_config`: the home lends its login, not its owner's setup. Its
+  # `config.toml` carried plugins and MCP servers (~2.5k input tokens on every
+  # call), an auto-review approver (203 reviewer threads on two agents in a
+  # day) and a default model. The model is ours to set, from the agent's own
+  # settings above; without one, Codex's default.
   def options("openai-codex", credential, opts) do
     {:ok,
      [
@@ -113,8 +125,10 @@ defmodule CmsHarness.Agents.Provider do
             model: Keyword.get(opts, :model),
             workdir: Keyword.get(opts, :working_copy),
             codex_home: codex_home(credential),
-            timeout_ms: Keyword.get(opts, :timeout_ms) || 180_000
-          }}
+            ignore_user_config: true,
+            timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
+          }
+          |> with_command_runner()}
      ]}
   end
 
@@ -137,6 +151,23 @@ defmodule CmsHarness.Agents.Provider do
               chat_path: "/chat/completions",
               api_key: api_key,
               model: Keyword.get(opts, :model) || @zai_model,
+              req_options: Keyword.get(opts, :req_options) || []
+            }}
+       ]}
+    end
+  end
+
+  def options("deepinfra", credential, opts) do
+    with {:ok, api_key} <- fetch(credential, :api_key) do
+      {:ok,
+       [
+         provider:
+           {Alloy.Provider.OpenAICompat,
+            %{
+              api_url: Keyword.get(opts, :base_url) || @deepinfra_base,
+              chat_path: "/chat/completions",
+              api_key: api_key,
+              model: Keyword.get(opts, :model) || @deepinfra_model,
               req_options: Keyword.get(opts, :req_options) || []
             }}
        ]}
@@ -187,16 +218,31 @@ defmodule CmsHarness.Agents.Provider do
           %{
             model: Keyword.get(opts, :model) || "claude-sonnet-5",
             workdir: Keyword.get(opts, :working_copy),
-            timeout_ms: Keyword.get(opts, :timeout_ms) || @claude_exec_timeout_ms
-          }}
+            timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
+          }
+          |> with_command_runner()}
      ]}
   end
 
   def options(_provider, _credential, _opts), do: {:error, :unknown_provider}
 
+  # What runs `codex` and `claude` in place of the real CLI, from config. Unset
+  # everywhere but test, where it is pinned to a recording the way HTTP clients
+  # are pinned to `Req.Test`: a spex whose project connected OpenAI launched a
+  # real `codex exec` on every run, about four million uncached tokens a day.
+  defp with_command_runner(config) do
+    case Application.get_env(:code_my_spec, __MODULE__, [])[:command_runner] do
+      {module, function} ->
+        Map.put(config, :command_runner, &apply(module, function, [&1, &2, &3]))
+
+      nil ->
+        config
+    end
+  end
+
   @doc "Every provider this harness can run an agent on."
   @spec names() :: [String.t()]
-  def names, do: ["anthropic", "openai-codex", "zai", "claude-code"]
+  def names, do: ["anthropic", "openai-codex", "zai", "deepinfra", "claude-code"]
 
   # This machine's Codex home, which the CLI already owns.
   #

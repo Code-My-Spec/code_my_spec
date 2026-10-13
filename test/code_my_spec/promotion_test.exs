@@ -83,7 +83,7 @@ defmodule CodeMySpec.PromotionTest do
 
   describe "a merge already in progress" do
     setup do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "--initial-branch=main"])
@@ -202,7 +202,7 @@ defmodule CodeMySpec.PromotionTest do
     # premises are superseded by the same change — divergence itself, not
     # just a conflict, is what gets refused now.
     setup do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "--initial-branch=main"])
@@ -289,7 +289,7 @@ defmodule CodeMySpec.PromotionTest do
 
   describe "a promotion originates a version" do
     setup do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "--initial-branch=main"])
@@ -299,7 +299,7 @@ defmodule CodeMySpec.PromotionTest do
       %{root: root, git: git, env: Environment.new(:local, root)}
     end
 
-    test "bumps mix.exs's patch version, tags the commit, and reports it",
+    test "tags the certified commit with the next patch, commits nothing, and reports it",
          %{root: root, git: git, env: env} do
       File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
       {_, 0} = git.(["add", "."])
@@ -311,15 +311,48 @@ defmodule CodeMySpec.PromotionTest do
       {_, 0} = git.(["commit", "-m", "side's work"])
       {_, 0} = git.(["checkout", "main"])
 
+      {side, 0} = git.(["rev-parse", "side"])
+
       assert {:ok, %{version: "1.2.4"}} = Steps.merge(env, root, "side")
 
-      assert File.read!(Path.join(root, "mix.exs")) =~ ~s(version: "1.2.4")
+      {head, 0} = git.(["rev-parse", "HEAD"])
+      assert head == side, "main's HEAD has to be the certified commit itself"
+      assert File.read!(Path.join(root, "mix.exs")) =~ ~s(version: "1.2.3")
 
-      {tags, 0} = git.(["tag", "--list"])
-      assert tags =~ "v1.2.4"
+      {tagged, 0} = git.(["rev-parse", "v1.2.4^{commit}"])
+      assert tagged == side
+      assert {"tag\n", 0} = git.(["cat-file", "-t", "v1.2.4"])
 
-      {status, 0} = git.(["status", "--porcelain"])
-      assert status == "", "the version bump has to land as a commit, not sit uncommitted"
+      # The next promote counts from the tag, not from mix.exs.
+      {_, 0} = git.(["checkout", "-b", "later", "side"])
+      File.write!(Path.join(root, "h.txt"), "more work\n")
+      {_, 0} = git.(["add", "h.txt"])
+      {_, 0} = git.(["commit", "-m", "more work"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: "1.2.5"}} = Steps.merge(env, root, "later")
+    end
+
+    test "a tag it cannot create is an error, not a silent nil",
+         %{root: root, git: git, env: env} do
+      File.write!(Path.join(root, "mix.exs"), ~s([\n  version: "1.2.3",\n]\n))
+      {_, 0} = git.(["add", "."])
+      {_, 0} = git.(["commit", "-m", "base"])
+      # The tag this promote would make is already taken, on a commit main
+      # cannot reach, so the nearest tag is still mix.exs's 1.2.3.
+      {_, 0} = git.(["checkout", "-b", "elsewhere"])
+      {_, 0} = git.(["commit", "--allow-empty", "-m", "elsewhere"])
+      {_, 0} = git.(["tag", "v1.2.4"])
+      {_, 0} = git.(["checkout", "main"])
+
+      {_, 0} = git.(["checkout", "-b", "side"])
+      File.write!(Path.join(root, "g.txt"), "the story's work\n")
+      {_, 0} = git.(["add", "g.txt"])
+      {_, 0} = git.(["commit", "-m", "side's work"])
+      {_, 0} = git.(["checkout", "main"])
+
+      assert {:ok, %{version: nil, version_error: reason}} = Steps.merge(env, root, "side")
+      assert reason =~ "v1.2.4"
     end
 
     # The target's submodule checkout is not moved by `git merge`, so a bump
@@ -327,7 +360,7 @@ defmodule CodeMySpec.PromotionTest do
     # the branch brought. Every promote dropped `.code_my_spec` bumps this way.
     test "the version bump does not revert a submodule pointer the branch moved",
          %{root: root, git: git, env: env} do
-      {:ok, sub} = Briefly.create(directory: true)
+      sub = CodeMySpec.TempFile.owned_dir("test")
       sub_git = fn args -> System.cmd("git", args, cd: sub, stderr_to_stdout: true) end
       {_, 0} = sub_git.(["init", "--initial-branch=main"])
 
@@ -561,7 +594,7 @@ defmodule CodeMySpec.PromotionTest do
     # the submodule as dirty in the superproject at all, and "regenerated on
     # every task" is a rewrite of a file the submodule already tracks.
     test "does not refuse a checkout whose only dirt is inside the submodule" do
-      {:ok, submodule_root} = Briefly.create(directory: true)
+      submodule_root = CodeMySpec.TempFile.owned_dir("test")
       sub_git = fn args -> System.cmd("git", args, cd: submodule_root, stderr_to_stdout: true) end
 
       {_, 0} = sub_git.(["init", "-q", "--initial-branch=main"])
@@ -571,7 +604,7 @@ defmodule CodeMySpec.PromotionTest do
       {_, 0} = sub_git.(["add", "-A"])
       {_, 0} = sub_git.(["commit", "-q", "-m", "initial brief"])
 
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "-q", "--initial-branch=main"])
@@ -605,7 +638,7 @@ defmodule CodeMySpec.PromotionTest do
     end
 
     test "still refuses when the checkout itself has uncommitted work" do
-      {:ok, root} = Briefly.create(directory: true)
+      root = CodeMySpec.TempFile.owned_dir("test")
       git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
 
       {_, 0} = git.(["init", "-q", "--initial-branch=main"])

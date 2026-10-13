@@ -47,16 +47,19 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   alias Alloy.Agent.Server
   alias CmsHarness.Agents.Compaction
+  alias CmsHarness.Agents.Engine.Execution
+  alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
+  alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
-  alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
-  alias CmsHarness.Mcp.Transport
+  alias CmsHarness.Copy.Supervisor, as: Copy
+  alias CmsHarness.Mcp.Session
   alias CodeMySpec.Agents.ToolIndex
+  alias CodeMySpec.McpServers.ToolRegistry
 
   @registry CmsHarness.Registry
-  @supervisor CmsHarness.AgentSupervisor
 
   # How many times round the agent loop before a turn is cut off.
   #
@@ -72,6 +75,11 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # finish inside one turn rather than being restarted from the top with its
   # context re-established every 25 calls.
   @max_turns 150
+
+  # Spilled tool results older than this are pruned when an agent starts. Not
+  # cleared outright: the server restarts an agent with its history, and the
+  # notices in it name these files.
+  @spill_max_age_seconds 24 * 60 * 60
 
   # How long a turn may run, regardless of who sent the message.
   #
@@ -90,6 +98,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # Thirty minutes because a browser QA pass is minutes of real waiting: pages
   # load, LiveViews settle, and 150 steps of that is not four minutes. It is a
   # ceiling on a runaway, not a budget.
+  #
+  # A ceiling on a runaway, not a budget. The engine owns this deadline:
+  # a GenServer call timeout alone does not stop Alloy's running turn.
+  # Queue advancement requires a result or confirmed execution shutdown.
   @turn_timeout :timer.minutes(30)
 
   @type start_opts :: [
@@ -128,19 +140,36 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # harness serves. Sessions are opened in `init/1` now, where the agent
          # is the thing at risk.
          {:ok, _alloy_opts} <- alloy_options(opts, nil) do
-      case DynamicSupervisor.start_child(@supervisor, {CmsHarness.Agents.Engine.Server, opts}) do
-        {:ok, pid} ->
+      # Under its own `Keeper`, which restarts it on a crash and gives up on a
+      # crash loop. The engine watches itself into `Liveness` from `init/1`, so
+      # every restart is an up; the Keeper is watched here, once, so its giving
+      # up is a single final down.
+      case start_keeper(working_copy, opts) do
+        {:ok, keeper} ->
           Logger.info("[CmsHarness] agent #{agent_id} running in #{working_copy}")
-          {:ok, %{agent_id: agent_id, pid: pid}}
+          :ok = Liveness.watch_keeper(agent_id, keeper, working_copy)
+          started(agent_id)
 
-        {:error, {:already_started, pid}} ->
-          {:ok, %{agent_id: agent_id, pid: pid}}
+        {:error, {:already_started, _keeper}} ->
+          started(agent_id)
 
         {:error, reason} ->
           Logger.warning(describe_start_failure(agent_id, working_copy, reason))
           {:error, reason}
       end
     end
+  end
+
+  # Under its copy's agents supervisor (`Copy.Supervisor`), so the copy going
+  # takes its agents with it.
+  defp start_keeper(working_copy, opts) do
+    with {:ok, _copy} <- Copy.ensure(working_copy) do
+      DynamicSupervisor.start_child(Copy.agents(working_copy), {Keeper, opts})
+    end
+  end
+
+  defp started(agent_id) do
+    with {:ok, pid} <- whereis(agent_id), do: {:ok, %{agent_id: agent_id, pid: pid}}
   end
 
   @doc """
@@ -212,13 +241,16 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   Take back a message the agent has not picked up yet.
 
+  `{:error, :never_received}` when this harness never queued it, which is
+  what a queue dropped by a restart leaves behind.
+
   `{:error, :already_delivered}` when it has. That refusal is the point: a turn
   ends while somebody is reaching for the control, and reporting success there
   leaves them believing the agent was stopped while it acts on the thing they
   thought they took back.
   """
   @spec withdraw(String.t(), String.t()) ::
-          :ok | {:error, :already_delivered | :not_running}
+          :ok | {:error, :already_delivered | :never_received | :not_running}
   def withdraw(agent_id, ref) do
     with {:ok, pid} <- whereis(agent_id) do
       GenServer.call(pid, {:withdraw, ref})
@@ -312,8 +344,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
   """
   @spec stop(String.t()) :: :ok | {:error, :not_running}
   def stop(agent_id) do
-    case whereis(agent_id) do
-      {:ok, pid} -> DynamicSupervisor.terminate_child(@supervisor, pid)
+    case Keeper.whereis(agent_id) do
+      {:ok, keeper, root} -> DynamicSupervisor.terminate_child(Copy.agents(root), keeper)
       {:error, _} = error -> error
     end
   end
@@ -357,15 +389,19 @@ defmodule CmsHarness.Agents.Engine.Impl do
   def init(opts) do
     # Opened here rather than during validation, and unlinked: this process is
     # the right thing for a session's failure to reach, and nothing above it is.
-    {:ok, alloy_opts} = alloy_options(opts, mcp_session(opts))
+    agent_id = Keyword.fetch!(opts, :agent_id)
+    {:ok, alloy_opts} = alloy_options(opts, Session.client(agent_id))
+    {alloy_opts, interrupted} = restored(alloy_opts, Keeper.recall(agent_id))
+    prune_spilled(spill_dir(agent_id))
 
     case Server.start_link(alloy_opts) do
       {:ok, alloy} ->
         Process.flag(:trap_exit, true)
+        :ok = Liveness.watch(agent_id, self(), Keyword.fetch!(opts, :working_copy))
 
         {:ok,
          %{
-           agent_id: Keyword.fetch!(opts, :agent_id),
+           agent_id: agent_id,
            working_copy: Keyword.fetch!(opts, :working_copy),
            # Kept so `agent_tools/1` answers about this agent rather than
            # recomputing what a fresh one would be given.
@@ -380,16 +416,58 @@ defmodule CmsHarness.Agents.Engine.Impl do
            on_event: Keyword.get(opts, :on_event),
            on_draft: Keyword.get(opts, :on_draft),
            alloy: alloy,
+           alloy_opts: alloy_opts,
            # The turn in flight, or nil. One at a time — an agent working two
            # turns at once in one checkout is two agents editing one tree.
            turn: nil,
            # What is waiting for it, oldest first.
            queue: []
-         }}
+         }
+         |> settle_interrupted(interrupted)}
 
       {:error, reason} ->
         {:stop, reason}
     end
+  end
+
+  # A restart, after a crash: the history the agent had when it last wrote it
+  # down (`Keeper`), not the one the server sent at its first start — that is a
+  # fresh agent with a stale memory. A turn that was in flight is told to it
+  # the way `recover_turn/2` tells one an abort interrupted.
+  defp restored(alloy_opts, nil), do: {alloy_opts, nil}
+
+  defp restored(alloy_opts, %{messages: messages, in_flight: nil}),
+    do: {Keyword.put(alloy_opts, :messages, messages), nil}
+
+  defp restored(alloy_opts, %{messages: messages, in_flight: message}) do
+    interrupted =
+      messages ++
+        [
+          Alloy.Message.user(message),
+          Alloy.Message.user(
+            "The preceding turn was interrupted: this agent's process crashed and was " <>
+              "restarted. Its actions may have taken effect; inspect the current state " <>
+              "before retrying."
+          )
+        ]
+
+    {Keyword.put(alloy_opts, :messages, interrupted), message}
+  end
+
+  # The crashed turn is over, said out loud, so the server does not show the
+  # agent mid-turn forever; and written down as settled, so a second crash
+  # before the next turn does not tell it twice.
+  defp settle_interrupted(state, nil), do: state
+
+  defp settle_interrupted(state, _message) do
+    :ok =
+      Keeper.remember(state.agent_id, %{
+        messages: Keyword.fetch!(state.alloy_opts, :messages),
+        in_flight: nil
+      })
+
+    announce_turn_end(state, {:error, :crashed})
+    state
   end
 
   # Asked, not killed.
@@ -400,18 +478,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # than being lost with the process.
   @impl true
   def terminate(reason, state) do
-    # The session goes with the agent that opened it.
-    #
-    # `connect/2` unlinks the client's supervisor deliberately, so nothing here
-    # took it down and a stopped agent left its client registered under a name
-    # the next launch needs — which is how a restart could leave an agent worse
-    # off than before it (`4078e7bf`, `dfa1ee9e`).
-    #
-    # The copy's browser session is not this and must not be stopped here:
-    # `CmsHarness.Browser.Owner` holds it for the copy, and it closes when the
-    # copy stops being served.
-    disconnect_mcp(state.mcp_client)
-
+    # The MCP session is not closed here: it is the Keeper's child
+    # (`Mcp.Session`) and closes itself when the Keeper stops it. Nor the copy's
+    # browser session, which `CmsHarness.Browser.Owner` holds for the copy.
     run_on_stop(state.on_stop)
     Logger.info("[CmsHarness] agent #{state.agent_id} stopped")
     announce_death(state, reason)
@@ -420,11 +489,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   # A process that goes for any reason but a stop, said out loud on its way.
   #
-  # The agent is `:temporary` under its supervisor, and its transcript is the
-  # server's: a fresh process here would come back with no memory. So this
-  # reports and the server restarts it with its history. Before this a crash
-  # was a `stopped` line in `harness.log` and the agent was simply absent —
-  # list_agent_work dropped it, and nobody noticed for fifteen minutes
+  # Its `Keeper` restarts it; this is the cause, on the agent's own thread.
+  # Before this a crash was a `stopped` line in `harness.log` and nothing else
   # (2999a0cb).
   #
   # Last, after the MCP session is closed: a relaunch must not find this
@@ -438,12 +504,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
     Logger.warning("[CmsHarness] agent #{state.agent_id} died: #{text}")
     state.on_event.(state.agent_id, %{event: :agent_died, text: text})
   end
-
-  # `nil` on every path where the session was never opened — a machine that
-  # could not authenticate gets one from `mcp_session/1`, and the agent still
-  # works without it.
-  defp disconnect_mcp(nil), do: :ok
-  defp disconnect_mcp(client), do: Transport.impl().disconnect(client)
 
   defp run_on_stop(fun) when is_function(fun, 0), do: fun.()
   defp run_on_stop(_), do: :ok
@@ -460,20 +520,75 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # that caller waits, which `awaiting` settles; it is not how long the agent
   # may work. Threading it in made the two the same thing and cost a QA run.
   def start_turn(state, ref, message, _timeout, awaiting) do
+    checkpoint = state.alloy |> :sys.get_state() |> Alloy.Agent.State.materialize()
+
+    :ok =
+      Keeper.remember(state.agent_id, %{messages: checkpoint.messages, in_flight: message}, ref)
+
     announce_delivery(state, ref)
     announce_turn_start(state)
 
+    task = Task.async(fn -> run_turn(state, message, :infinity) end)
+    timer = Process.send_after(self(), {:turn_ceiling, task.ref}, @turn_timeout)
+
     %{
-      task: Task.async(fn -> run_turn(state, message, @turn_timeout) end),
+      task: task,
+      timer: timer,
+      checkpoint: checkpoint,
+      message: message,
       awaiting: awaiting,
       ref: ref
     }
+  end
+
+  # Losing the waiting task does not establish that execution stopped. The
+  # deadline and abnormal waiter exits both require confirmed Alloy shutdown
+  # before a replacement can receive anything from the queue.
+  def abort_turn(state, reason) do
+    Process.cancel_timer(state.turn.timer)
+    Process.unlink(state.alloy)
+
+    case Execution.stop(state.alloy) do
+      :ok ->
+        Task.shutdown(state.turn.task, :brutal_kill)
+        recover_turn(state, reason)
+
+      {:error, failure} ->
+        {:stop, {:turn_shutdown_unconfirmed, reason, failure}, state}
+    end
+  end
+
+  defp recover_turn(state, reason) do
+    recovered =
+      state.turn.checkpoint
+      |> Alloy.Agent.State.append_messages([
+        Alloy.Message.user(state.turn.message),
+        Alloy.Message.user(
+          "The preceding turn was interrupted (#{inspect(reason)}). " <>
+            "Its actions may have taken effect; inspect the current state before retrying."
+        )
+      ])
+      |> Alloy.Agent.State.materialize()
+
+    case Server.start_link(Keyword.put(state.alloy_opts, :messages, recovered.messages)) do
+      {:ok, alloy} ->
+        :sys.replace_state(alloy, fn _fresh -> recovered end)
+        settle(%{state | alloy: alloy}, {:error, reason})
+
+      {:error, failure} ->
+        {:stop, {:turn_recovery_failed, failure}, state}
+    end
   end
 
   # A turn ended: whoever was waiting hears about it, and whatever was waiting
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   def settle(state, result) do
+    Process.cancel_timer(state.turn.timer)
+
+    :ok =
+      Keeper.remember(state.agent_id, %{messages: Server.messages(state.alloy), in_flight: nil})
+
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
     announce_turn_end(state, result)
@@ -641,8 +756,15 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # message is complete, so without this the answer exists only as tokens this
   # engine drops — and a turn that ran perfectly left a transcript holding the
   # question and no reply.
+  # DeepSeek on DeepInfra sometimes returns a tool call as text in its own
+  # markup instead of a structured call: nothing runs and the turn ends on it,
+  # leaving the agent idle. That turn failed, so it is reported as one and
+  # re-offered.
+  @leaked_tool_call "your tool call came back as text (<｜DSML｜ …>) and did not run; make it again as a real tool call"
+
   defp announce_outcome(state, {:ok, %{text: text}}) when is_binary(text) and text != "" do
     state.on_event.(state.agent_id, %{event: :message, text: text})
+    if leaked_tool_call?(text), do: report_failure(state, @leaked_tool_call)
   end
 
   # A turn that finished and said nothing.
@@ -681,6 +803,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
   end
 
   defp announce_outcome(_state, _result), do: :ok
+
+  defp leaked_tool_call?(text), do: String.contains?(text, "｜DSML｜")
 
   defp report_failure(state, reason) do
     state.on_event.(state.agent_id, %{event: :turn_failed, text: failure_text(reason)})
@@ -840,52 +964,29 @@ defmodule CmsHarness.Agents.Engine.Impl do
   main alone.
 
   One list for the index and the engine: the direct tools are
-  `ToolIndex.carried/0`, each resolved to `CmsHarness.Agents.Tools.<Name>` by
+  `ToolIndex.carried/1`, each resolved to `CmsHarness.Agents.Tools.<Name>` by
   its MCP name. Two hand-kept lists drifted: the index named `health` and
   `promote_sync` and this answered `Unknown tool` (1a7b1e4c).
   """
   @spec tools(keyword()) :: [module()]
   def tools(_opts) do
-    [Alloy.Tool.Core.Read, Alloy.Tool.Core.Write, Alloy.Tool.Core.Edit, Alloy.Tool.Core.Bash] ++
-      Enum.map(ToolIndex.carried(), &direct_tool/1)
+    [
+      Alloy.Tool.Core.Read,
+      Alloy.Tool.Core.Write,
+      Alloy.Tool.Core.Edit,
+      CmsHarness.Agents.Tools.Bash
+    ] ++
+      Enum.map(ToolIndex.carried(ToolRegistry.registry()), &direct_tool/1)
   end
 
   @doc false
   @spec direct_tool(String.t()) :: module()
   def direct_tool(name), do: Module.concat(CmsHarness.Agents.Tools, Macro.camelize(name))
 
-  # One session per agent, started with it.
-  #
-  # `initialize` is a round trip, and paying it on every `run_script` would put
-  # back the latency that running the script beside the data took out.
-  #
-  # Failure is not fatal. A machine that cannot reach the server right now
-  # still has a checkout the agent can read and edit, and the two tools say so
-  # when called rather than the agent refusing to exist.
-  defp mcp_session(opts) do
-    agent_id = Keyword.get(opts, :agent_id)
-    working_copy_id = Keyword.get(opts, :working_copy_id)
-    root = Keyword.get(opts, :working_copy)
-
-    with true <- is_binary(agent_id),
-         {:ok, client} <- CmsHarness.Mcp.connect(agent_id, working_copy_id, root) do
-      client
-    else
-      other ->
-        Logger.warning(
-          "[CmsHarness] agent #{inspect(agent_id)} has no MCP session " <>
-            "(#{inspect(other)}); it can read and edit its checkout and cannot " <>
-            "reach the project's tools until it restarts"
-        )
-
-        nil
-    end
-  end
-
   @doc """
   What a direct call to a tool the engine does not carry is told.
 
-  `reach` is the launch request's `tool_reach` (`ToolIndex.reach/1`); `nil`
+  `reach` is the launch request's `tool_reach` (`ToolIndex.reach/2`); `nil`
   from an older server keeps the run_script hint. `direct_names` are the
   engine's own tools.
   """
@@ -988,6 +1089,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
+       # Alloy bounds the whole loop by this and gives each request what is left
+       # of it as its receive timeout; its two-minute default starved an HTTP
+       # agent's request to a second once its tools had spent the rest.
+       |> Keyword.put(:timeout_ms, @turn_timeout)
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).
@@ -996,11 +1101,16 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
        |> Keyword.put(:unknown_tool, unknown_tool_hook(opts))
+       # A result over 10k characters goes to a file, and the agent is shown
+       # its head and tail and where the rest is. Truncating instead dropped
+       # whatever ran past the cap with no way back to it: a `cat a b c` lost
+       # `c`. Outside the checkout, so it never dirties the tree a promotion
+       # needs clean.
+       |> Keyword.put(:tool_result_spill, dir: spill_dir(Keyword.fetch!(opts, :agent_id)))
        |> Keyword.put(:context, %{
          working_directory: working_copy,
-         allowed_paths: [working_copy],
+         allowed_paths: [working_copy, spill_dir(Keyword.fetch!(opts, :agent_id))],
          bash_restricted: true,
-         bash_executor: &Shell.run/2,
          # Which agent this is, and it has to be here rather than only in
          # `Agents.tool_context/1` — that function had no production caller at
          # all, so the shape it describes was one only the specs ever built.
@@ -1013,6 +1123,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # 33d707a2. It is also why the analyzer alert never reached a running
          # agent — `AgentAlert` appends only for a caller that named itself.
          agent_id: Keyword.fetch!(opts, :agent_id),
+         # The copy whose harness runs its `mix test` (`Tools.Bash`).
+         working_copy_id: Keyword.get(opts, :working_copy_id),
          # The agent's own MCP session, so a script it runs acts with exactly
          # its authority. Nil when the machine could not authenticate, which
          # the tools report rather than crashing on — an agent that can still
@@ -1025,6 +1137,30 @@ defmodule CmsHarness.Agents.Engine.Impl do
          on_compaction: compaction_reporter(opts)
        })
        |> Keyword.put(:messages, resumed(Keyword.get(opts, :messages)))}
+    end
+  end
+
+  @doc "Where an agent's tool results too long to deliver are saved."
+  @spec spill_dir(String.t()) :: String.t()
+  def spill_dir(agent_id),
+    do: Path.join([CmsHarness.Config.local_state_dir(), "agent_output", agent_id])
+
+  defp prune_spilled(dir) do
+    cutoff = System.os_time(:second) - @spill_max_age_seconds
+
+    for name <- ls(dir),
+        path = Path.join(dir, name),
+        match?({:ok, %{mtime: mtime}} when mtime < cutoff, File.stat(path, time: :posix)) do
+      File.rm(path)
+    end
+
+    :ok
+  end
+
+  defp ls(dir) do
+    case File.ls(dir) do
+      {:ok, names} -> names
+      {:error, _} -> []
     end
   end
 

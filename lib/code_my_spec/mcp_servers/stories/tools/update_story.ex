@@ -3,8 +3,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   Updates a user story.
 
   A story's criteria are not touched here. They change only through the
-  criterion tools (`add_criterion`, `update_criterion`, `retire_criterion`),
-  so each keeps its number for life.
+  criterion tools (`add_criterion`, `retire_criterion`), so each keeps
+  its number for life.
 
   ## Tags
 

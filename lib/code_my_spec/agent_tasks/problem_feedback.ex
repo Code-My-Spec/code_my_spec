@@ -48,18 +48,18 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedback do
   end
 
   @doc """
-  Merge requirement feedback and problem feedback into an evaluate result tuple.
+  The evaluate result for a task: met requirements pass, whatever problems are
+  persisted.
 
-  Returns {:ok, :valid} when both are nil, or {:ok, :invalid, feedback} with
-  combined feedback when either or both have content.
+  A task completes when its requirement is met, even on a red run (John,
+  2026-10-04): red blocks at promotion and ready_for_qa certification, and the
+  stop reports it as feedback. Problems only ride along as context on a task
+  that is already invalid for its requirements.
   """
   @spec combine(String.t() | nil, String.t() | nil) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
-  def combine(nil, nil), do: {:ok, :valid}
+  def combine(nil, _problem_feedback), do: {:ok, :valid}
   def combine(req_feedback, nil) when is_binary(req_feedback), do: {:ok, :invalid, req_feedback}
-
-  def combine(nil, problem_feedback) when is_binary(problem_feedback),
-    do: {:ok, :invalid, problem_feedback}
 
   def combine(req_feedback, problem_feedback)
       when is_binary(req_feedback) and is_binary(problem_feedback) do

@@ -21,7 +21,11 @@ defmodule CodeMySpecWeb do
     top_level?: true,
     deps: [
       CodeMySpec,
-      CodeMySpec.AcceptanceCriteria,
+      CodeMySpec.Agents.Agent,
+      CodeMySpec.PromotionQueue,
+      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Provisioning.Hetzner,
+      CodeMySpec.Stories,
       CodeMySpec.Accounts,
       CodeMySpec.Activity,
       CodeMySpec.Agents,
@@ -65,7 +69,6 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Issues,
       CodeMySpec.Knowledge,
       CodeMySpec.Logging,
-      CodeMySpec.MainAgent,
       CodeMySpec.Mail,
       CodeMySpec.McpServers,
       CodeMySpec.Migration,
@@ -91,7 +94,6 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Servers,
       CodeMySpec.Sessions,
       CodeMySpec.Staffing,
-      CodeMySpec.Stories,
       CodeMySpec.Tags,
       # Closing an issue from the page or the API frees the tasks waiting on it.
       CodeMySpec.TaskOwner,
@@ -101,6 +103,8 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
+      # Attaches `Validation.RunReconciled` at app start.
+      CodeMySpec.Validation,
       CodeMySpec.WorkingCopies,
       CodeMySpec.Workspaces,
       # The desktop user's scope, in place of a session (bb8bc042).

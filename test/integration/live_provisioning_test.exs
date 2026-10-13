@@ -56,7 +56,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
 
     # A real working tree with a file in it — the state a freshly
     # generated project is in when the repository step runs.
-    {:ok, tmp} = Briefly.create(directory: true)
+    tmp = CodeMySpec.TempFile.owned_dir("test")
     File.write!(Path.join(tmp, "README.md"), "# cms-live-proof\n")
 
     scope = full_scope_fixture()
