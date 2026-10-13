@@ -18,7 +18,6 @@ defmodule CmsHarnessTest.LiveHarness do
 
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Channel
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarnessTest.ConnectHeaders
   alias CmsHarnessTest.Projects
   alias Phoenix.ConnTest
@@ -200,7 +199,7 @@ defmodule CmsHarnessTest.LiveHarness do
   """
   @spec end_turn(String.t(), String.t(), map()) :: :ok
   def end_turn(root, agent_id, event),
-    do: ChannelClient.report_turn_event(root, agent_id, event)
+    do: Channel.report_turn_event(root, agent_id, event)
 
   @doc """
   POST a hook to the harness, the way Claude Code's plugin does, and decode the

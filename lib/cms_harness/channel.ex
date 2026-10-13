@@ -359,4 +359,34 @@ defmodule CmsHarness.Channel do
         :ok
     end
   end
+
+  @doc """
+  One fragment of the text an agent is writing, for the live view.
+
+  Never stored. Fragments are gathered per agent and pushed as the whole draft
+  so far, every 100ms at most — so a view that missed one push is corrected
+  by the next rather than showing a sentence with a hole in it.
+  """
+  def report_draft(root, agent_id, %{payload: text} = envelope) when is_binary(text) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:draft, agent_id, Map.get(envelope, :turn), text})
+      [] -> :ok
+    end
+  end
+
+  def report_draft(_root, _agent_id, _envelope), do: :ok
+
+  @doc """
+  Tell the server about one step an agent took.
+
+  Cast rather than called: the agent is mid-turn and waiting on nothing here,
+  and a server that is slow to take a step must not slow the work down.
+  """
+  @spec report_turn_event(String.t(), String.t(), map()) :: :ok
+  def report_turn_event(root, agent_id, envelope) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:turn_event, agent_id, envelope})
+      [] -> :ok
+    end
+  end
 end

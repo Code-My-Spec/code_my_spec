@@ -25,7 +25,6 @@ defmodule CmsHarness.Agents do
   alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Channel
-  alias CmsHarness.Project.ChannelClient
 
   @doc """
   Start the agent this request describes.
@@ -242,14 +241,14 @@ defmodule CmsHarness.Agents do
   # finds no registry entry and stops — which is the right answer, because
   # there is nowhere to report to.
   defp drafter_for(nil, working_copy),
-    do: fn agent_id, envelope -> ChannelClient.report_draft(working_copy, agent_id, envelope) end
+    do: fn agent_id, envelope -> Channel.report_draft(working_copy, agent_id, envelope) end
 
   defp drafter_for(_on_event, _working_copy), do: nil
 
   defp reporter_for(working_copy) do
     fn agent_id, envelope ->
       warn_on_tool_failure(agent_id, envelope)
-      ChannelClient.report_turn_event(working_copy, agent_id, envelope)
+      Channel.report_turn_event(working_copy, agent_id, envelope)
       report_head_at_turn_end(working_copy, envelope)
     end
   end
