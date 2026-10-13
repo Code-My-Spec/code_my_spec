@@ -9,24 +9,31 @@ defmodule CodeMySpecDesktop.Application do
 
   use Boundary,
     top_level?: true,
-    deps: [CmsHarness, CodeMySpecDesktop, CodeMySpecWeb]
+    deps: [
+      CmsHarness,
+      CodeMySpec.Integrations,
+      CodeMySpec.Utils,
+      CodeMySpecDesktop,
+      CodeMySpecWeb
+    ]
 
   use Application
 
-  alias CodeMySpecDesktop.Browser
+  alias CodeMySpec.Integrations.DesktopClients
+  alias CodeMySpec.Utils.Browser
   alias CodeMySpecDesktop.FirstBoot
 
   @impl true
   def start(type, _args) do
     CmsHarness.Application.prepare_host()
     FirstBoot.ensure_database()
-    CodeMySpecDesktop.OAuthClients.configure()
+    DesktopClients.configure()
     CodeMySpecWeb.Application.start(type, children: &children/1)
   end
 
   def children(web_children) do
     Enum.flat_map(web_children, fn
-      {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot, CodeMySpecDesktop.OAuthHandoff]
+      {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot, CodeMySpec.Integrations.OAuthHandoff]
       child -> [child]
     end) ++
       [CmsHarness.Supervisor, view(Application.fetch_env!(:code_my_spec, :base_url) <> "/app")]

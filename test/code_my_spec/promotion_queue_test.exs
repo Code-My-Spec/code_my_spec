@@ -122,6 +122,9 @@ defmodule CodeMySpec.PromotionQueueTest do
 
       {:run_analysis, runs} ->
         send(test, {:run_analysis_on, working_copy_id, runs})
+
+      {:cancel_analysis, reason} ->
+        send(test, {:cancel_analysis_on, working_copy_id, reason})
     end
 
     answer(test, working_copy_id)
@@ -285,6 +288,50 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "assets"
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
+  end
+
+  # 2026-10-12: a batch ejected on its first finding left its other analyzers
+  # running in the gate copy, and the next batch reset the tree under them.
+  test "an ejected batch's runs in the gate copy are stopped", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    gate = gate_scope(ctx)
+    clean_runs_at(ctx, a.commit)
+    problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex"})
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected}} = settle(entry)
+    gate_id = ctx.gate.id
+    assert_receive {:cancel_analysis_on, ^gate_id, reason}, 5_000
+    assert reason =~ "left the gate"
+  end
+
+  test "the next batch is not built while a run is still going in the gate copy", ctx do
+    gate = gate_scope(ctx)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+    gate_id = ctx.gate.id
+    _ = Analysis.start_run(gate, "exunit", [])
+    assert_receive {:run_analysis_on, ^gate_id, _left_running}, 5_000
+    assert Analysis.running_on?(gate)
+
+    b = candidate(ctx, "b", "main", "b.ex", "b\n")
+    entry = queue(ctx, b)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert_receive {:cancel_analysis_on, ^gate_id, reason}, 5_000
+    assert reason =~ "needed for the next batch"
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    :sys.get_state(worker)
+    assert Repository.get(entry.id).status == :queued
+
+    {:ok, _closed} = Analysis.fail_in_flight(gate, :cancelled)
+    send(worker, :next)
+    assert_receive {:run_analysis_on, ^gate_id, _runs}, 15_000
   end
 
   # 87bc9721, 2026-10-05: the gate refused on exunit while spex was still running

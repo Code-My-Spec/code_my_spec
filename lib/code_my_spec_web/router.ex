@@ -645,8 +645,6 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/next-task", Tasks.NextTaskLive
       live "/projects/:project_id/tasks", Tasks.TaskQueueLive
       live "/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
-      live "/projects/:project_id/architecture/components", ArchitectureLive, :components_graph
-      live "/projects/:project_id/architecture/overview", ArchitectureLive, :overview
       live "/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
 
       live "/projects/:project_id/agent-performance", AgentPerformanceLive.Index, :index
@@ -758,7 +756,7 @@ defmodule CodeMySpecWeb.Router do
 
   # The desktop app's loopback redirect (http://127.0.0.1:<port>/callback), the
   # one path Cloudflare's public client accepts. The provider is whichever flow
-  # the returned state was parked under (CodeMySpecDesktop.OAuthHandoff).
+  # the returned state was parked under (CodeMySpec.Integrations.OAuthHandoff).
   scope "/", CodeMySpecWeb do
     pipe_through :browser
 

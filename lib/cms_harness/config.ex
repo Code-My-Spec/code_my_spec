@@ -84,13 +84,7 @@ defmodule CmsHarness.Config do
   device of one.
   """
   @spec local_state_dir() :: String.t()
-  def local_state_dir do
-    case System.get_env("CMS_PROJECT_DIR") do
-      dir when is_binary(dir) and dir != "" -> Path.dirname(dir)
-      _ -> "~/.codemyspec"
-    end
-    |> Path.expand()
-  end
+  defdelegate local_state_dir, to: CodeMySpec.Paths
 
   @doc """
   Where this harness generates a project nobody chose a directory for.

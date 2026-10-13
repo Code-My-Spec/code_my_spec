@@ -29,8 +29,13 @@ defmodule CodeMySpec.Agents.Mailbox do
     end)
   end
 
-  @doc "Called in the admission transaction, after the message and its offer exist."
-  def admit(agent, message, event) do
+  @doc """
+  Called in the admission transaction, after the message and its offer exist.
+
+  `send_now: true` lets the message into a running turn at its next tool
+  boundary (`take_send_now/3`); otherwise it waits for the turn to end.
+  """
+  def admit(agent, message, event, opts \\ []) do
     scope = %CodeMySpec.Users.Scope{
       active_account_id: agent.account_id,
       active_project_id: agent.project_id
@@ -45,6 +50,7 @@ defmodule CodeMySpec.Agents.Mailbox do
           message_id: message.id,
           delivery_ref: message.delivery_ref,
           event: to_string(event),
+          send_now: Keyword.get(opts, :send_now, false),
           state: :queued
         })
       end)
@@ -87,7 +93,9 @@ defmodule CodeMySpec.Agents.Mailbox do
         Repo.one(
           from e in Entry,
             where: e.agent_id == ^agent_id and e.state == :queued,
-            order_by: e.id,
+            # A message sent now that no tool boundary took goes ahead of the
+            # rest when the turn ends.
+            order_by: [desc_nulls_last: e.send_now, asc: e.id],
             limit: 1
         )
 
@@ -111,6 +119,11 @@ defmodule CodeMySpec.Agents.Mailbox do
 
   defp claim_entry(_agent, _active, _entry), do: nil
 
+  @lost_turn "Your turn ended while the harness could not reach the server, so how it " <>
+               "ended was not recorded. Everything that was recorded is above; a call with " <>
+               "no recorded result may or may not have taken effect. Carry on from your " <>
+               "last step."
+
   @doc "The current engine reports its generation and executing ref after startup/reconnect."
   def ready(scope, agent_id, generation, current_ref) do
     Repo.transaction(fn ->
@@ -123,6 +136,7 @@ defmodule CodeMySpec.Agents.Mailbox do
         )
 
       result = reconcile_engine(agent, active, generation, current_ref)
+      :ok = recover_unreported_turn(agent, active, current_ref)
 
       if is_nil(current_ref),
         do: agent |> Ecto.Changeset.change(turn_started_at: nil) |> Repo.update!()
@@ -149,6 +163,19 @@ defmodule CodeMySpec.Agents.Mailbox do
   # and was restarted. The turn carries on.
   defp reconcile_engine(agent, _entry, _new_generation, _ref), do: carry_on_locked(agent)
 
+  # A turn this side saw start, that the engine says is over, and that no entry
+  # here accounts for: a work or cadence turn whose `turn_ended` went out while
+  # the channel was down. Nothing settled it, so its offer stayed open and the
+  # agent sat idle until something else woke it — main's check-in at 00:25,
+  # cut by a server restart, until its next cadence (2026-10-13).
+  defp recover_unreported_turn(%{turn_started_at: %DateTime{}} = agent, nil, nil) do
+    :ok = Offers.supersede_queued(agent.id)
+    _ = carry_on_locked(agent, @lost_turn)
+    :ok
+  end
+
+  defp recover_unreported_turn(_agent, _active, _ref), do: :ok
+
   @carry_on "The harness restarted part-way through your turn. Everything up to that " <>
               "point is above, including each call you made and what it returned; a call " <>
               "with no recorded result may or may not have taken effect. Carry on from " <>
@@ -173,7 +200,7 @@ defmodule CodeMySpec.Agents.Mailbox do
     |> publish_transition()
   end
 
-  defp carry_on_locked(agent) do
+  defp carry_on_locked(agent, text \\ @carry_on) do
     now = DateTime.utc_now()
 
     for entry <-
@@ -206,7 +233,7 @@ defmodule CodeMySpec.Agents.Mailbox do
     ref = Ecto.UUID.generate()
 
     {:ok, message} =
-      Conversations.add_message(conversation, :operator, @carry_on, "system:restart", [],
+      Conversations.add_message(conversation, :operator, text, "system:restart", [],
         delivery: :pending,
         delivery_ref: ref
       )
@@ -331,6 +358,74 @@ defmodule CodeMySpec.Agents.Mailbox do
     end)
   end
 
+  @doc """
+  The messages sent now to an agent mid-turn, taken at a tool boundary.
+
+  Asked by the engine after each round of tool calls. Each one is consumed and
+  completed here, in the same transaction, before the engine hands it to the
+  model: it is delivered inside the turn whose entry is already consumed, so it
+  has no turn of its own to finish. Only the engine that holds that turn may
+  take them.
+  """
+  def take_send_now(scope, agent_id, generation) when is_binary(generation) do
+    Repo.transaction(fn ->
+      agent = scope |> lock_agent!(agent_id) |> in_turn!(generation)
+      now = DateTime.utc_now()
+
+      for entry <-
+            Repo.all(
+              from e in Entry,
+                where: e.agent_id == ^agent_id and e.state == :queued and e.send_now == true,
+                order_by: e.id
+            ),
+          do: take_now(entry, agent, generation, now)
+    end)
+    |> taken()
+  end
+
+  defp in_turn!(%Agent{mailbox_generation: generation} = agent, generation) do
+    if Repo.exists?(
+         from e in Entry,
+           where: e.agent_id == ^agent.id and e.state == :consumed and e.generation == ^generation
+       ),
+       do: agent,
+       else: Repo.rollback(:no_turn)
+  end
+
+  defp in_turn!(_agent, _generation), do: Repo.rollback(:stale_engine)
+
+  defp take_now(entry, agent, generation, now) do
+    change_entry(entry, %{
+      state: :completed,
+      generation: generation,
+      consumed_at: now,
+      finished_at: now
+    })
+
+    {:ok, message} =
+      Conversations.set_delivery(Repo.get!(Message, entry.message_id), :delivered,
+        broadcast: false
+      )
+
+    CompletionHandoffs.delivered(entry.message_id, agent)
+    message
+  end
+
+  defp taken({:ok, messages}) do
+    Enum.each(messages, &publish/1)
+    {:ok, Enum.map(messages, &Message.text/1)}
+  end
+
+  defp taken(error), do: error
+
+  @doc "Let a queued message into the running turn at its next tool boundary."
+  def send_now(scope, agent_id, ref) do
+    transition(scope, agent_id, ref, fn
+      %{state: :queued} = entry -> change_entry(entry, %{send_now: true})
+      _ -> Repo.rollback(:already_delivered)
+    end)
+  end
+
   @doc "Withdrawal and consumption arbitrate on the same durable claim."
   def withdraw(scope, agent_id, ref) do
     case transition(scope, agent_id, ref, fn
@@ -373,6 +468,9 @@ defmodule CodeMySpec.Agents.Mailbox do
             delivery_diagnostic:
               "Legacy delivery is unconfirmed; it will not be replayed automatically."
         }
+
+      {message, %{state: :queued, send_now: true} = entry} ->
+        %{message | mailbox_state: "send_now", delivery_diagnostic: entry.diagnostic}
 
       {message, entry} ->
         %{message | mailbox_state: to_string(entry.state), delivery_diagnostic: entry.diagnostic}

@@ -77,6 +77,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.StoryProgress
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
+  alias Phoenix.LiveView.JS
 
   import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
 
@@ -731,6 +732,60 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     """
   end
 
+  attr :message, :any, required: true
+
+  # One line until asked: a brief can run to a screen, and the queue sits above
+  # the composer. Toggled client-side so a patch does not fold it back up.
+  defp queued_text(assigns) do
+    assigns =
+      assign(assigns,
+        id: "queued-#{assigns.message.delivery_ref}",
+        text: Message.text(assigns.message)
+      )
+
+    ~H"""
+    <div class="flex min-w-0 flex-1 items-baseline gap-2">
+      <span id={@id} data-test="queued-message-text" class="min-w-0 flex-1 truncate">
+        {@text}
+      </span>
+      <button
+        :if={long?(@text)}
+        type="button"
+        data-test="queued-message-read-more"
+        class="link link-hover shrink-0 opacity-70"
+        phx-click={
+          JS.toggle_class("truncate whitespace-pre-wrap break-words", to: "##{@id}")
+          |> JS.toggle(to: "##{@id}-more")
+          |> JS.toggle(to: "##{@id}-less")
+        }
+      >
+        <span id={"#{@id}-more"}>Read more</span>
+        <span id={"#{@id}-less"} class="hidden">Show less</span>
+      </button>
+    </div>
+    """
+  end
+
+  defp long?(text), do: String.contains?(text, "\n") or String.length(text) > 100
+
+  attr :message, :any, required: true
+
+  # Story 1051: into the running turn at its next tool call, rather than when
+  # the turn ends.
+  defp send_now_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="send_now"
+      phx-value-ref={@message.delivery_ref}
+      data-test="agent-send-now"
+      class="btn btn-xs btn-ghost"
+    >
+      Send now
+    </button>
+    """
+  end
+
   defp page_title(project, nil), do: "#{project.name} · Agent conversation"
 
   defp page_title(project, conversation),
@@ -907,26 +962,45 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> withdrawn(socket)
   end
 
+  def handle_event("send_now", %{"ref" => ref}, socket) do
+    case Agents.send_now(socket.assigns.current_scope, socket.assigns.conversation.agent_id, ref) do
+      {:ok, _entry} ->
+        {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
+
+      {:error, :already_delivered} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "The agent already has that message.")
+         |> assign(:pending, pending_for(socket.assigns.conversation))}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "That message could not be sent now (#{inspect(reason)}).")}
+    end
+  end
+
   # The questions this session asked. They belong here rather than only on a
   # page of their own: a question read without the work that prompted it is a
   # question you cannot answer well.
   def handle_event("answer_question", params, socket) do
-    # The submitted form does not name which question it was; a conversation can
-    # hold several, and only one is ever pending, so that is the one being
-    # answered. Answered ones render without a form.
-    case Enum.find(socket.assigns.questions, &(&1.status == "pending")) do
+    # By the form's own request id. Taking the first pending question answered
+    # an older one when an agent had two open, with the newer one's form.
+    case Enum.find(socket.assigns.questions, &(&1.id == params["request_id"])) do
       nil ->
-        {:noreply, socket}
+        {:noreply, put_flash(socket, :error, "That question is no longer here.")}
 
       request ->
         answers = Notifications.collect_answers(request.questions, params)
-        _ = Notifications.answer_question_request(request.id, answers)
+
+        {kind, message} =
+          ChatComponents.answer_flash(Notifications.answer_question_request(request.id, answers))
 
         # Re-fold as well as re-read. The run was split so the form could sit
         # inside it; once answered there is nothing to sit there, and the calls
         # belong back in one collapsed item.
         {:noreply,
          socket
+         |> put_flash(kind, message)
          |> assign(:questions, questions_for(socket.assigns.conversation))
          |> assign_turns(socket.assigns.messages)}
     end
@@ -1557,6 +1631,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     do:
       {:noreply,
        put_flash(socket, :error, "That message could not be taken back (#{inspect(reason)}).")}
+
+  defp mailbox_label("send_now"), do: "at its next tool call"
+  defp mailbox_label(nil), do: "queued"
+  defp mailbox_label(state), do: state
 
   defp drop_ref(socket, ref), do: Enum.reject(socket.assigns.pending, &(&1.delivery_ref == ref))
 
@@ -2253,14 +2331,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             />
           </div>
         </details>
-        <span :if={run == []} class="min-w-0 whitespace-pre-wrap break-words">
-          {Message.text(message)}
-        </span>
+        <.queued_text :if={run == []} message={message} />
         <span class="opacity-60">
-          {message.delivery_diagnostic || message.mailbox_state || "queued"}
+          {message.delivery_diagnostic || mailbox_label(message.mailbox_state)}
         </span>
+        <.send_now_button
+          :if={length(run) < 2 and message.mailbox_state == "queued"}
+          message={message}
+        />
         <.withdraw_button
-          :if={length(run) < 2 and message.mailbox_state in ["queued", "claimed"]}
+          :if={length(run) < 2 and message.mailbox_state in ["queued", "claimed", "send_now"]}
           message={message}
         />
       </div>

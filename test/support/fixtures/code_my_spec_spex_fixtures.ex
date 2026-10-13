@@ -30,6 +30,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.AgentHarness,
       CodeMySpec.AgentTasks,
       CodeMySpec.Agents,
+      # `launch_agent/1` names the carried tools the way the channel's launch does.
+      CodeMySpec.McpServers,
       CodeMySpec.Analysis,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
@@ -123,6 +125,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Mailbox, as: AgentMailbox
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Analysis.Reconciler
@@ -146,6 +149,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Mail.Email
   alias CodeMySpec.Mail.Mailbox
   alias CodeMySpec.Mail.ResendClient
+  alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Cloudflare
   alias CodeMySpec.Provisioning.Credentials
@@ -1182,8 +1186,8 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defdelegate google_integration_fixture(user, attrs \\ %{}), to: IntegrationsFixtures
 
-  defdelegate find_or_register_oauth_user(provider, attrs), to: Users
-  defdelegate find_or_register_oauth_user(provider, attrs, opts), to: Users
+  defdelegate find_or_register_oauth_user(provider, attrs), to: CodeMySpec.Integrations
+  defdelegate find_or_register_oauth_user(provider, attrs, opts), to: CodeMySpec.Integrations
 
   defdelegate dispatch_analytics_event(event, payload), to: CodeMySpec.Analytics, as: :dispatch
 
@@ -3170,8 +3174,13 @@ defmodule CodeMySpecSpex.Fixtures do
     callbacks = mailbox_callbacks(request["agent_id"])
 
     request
+    |> Map.put_new(
+      "direct_tools",
+      ToolIndex.carried(ToolRegistry.registry())
+    )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
+    |> Map.put("on_send_now", callbacks[:on_send_now])
     |> CmsHarness.Agents.launch()
   end
 
@@ -3190,6 +3199,9 @@ defmodule CodeMySpecSpex.Fixtures do
       end,
       on_consume: fn id, ref, generation ->
         CodeMySpec.Agents.Mailbox.consume(scope, id, ref, generation)
+      end,
+      on_send_now: fn id, generation ->
+        CodeMySpec.Agents.Mailbox.take_send_now(scope, id, generation)
       end
     ]
   end

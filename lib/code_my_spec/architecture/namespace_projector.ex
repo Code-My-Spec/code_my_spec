@@ -38,7 +38,8 @@ defmodule CodeMySpec.Architecture.NamespaceProjector do
 
     * `:show_types` - Include component type badges (default: true)
     * `:show_descriptions` - Include component descriptions (default: true)
-    * `:max_depth` - Limit tree depth to specified level (default: nil - unlimited)
+    * `:max_depth` - Limit tree depth to specified level (default: nil - unlimited);
+      a node whose subtree is cut shows `(+N)`, the components hidden below it
     * `:filter_prefix` - Show only components matching namespace prefix (default: nil - all)
 
   ## Examples
@@ -211,7 +212,8 @@ defmodule CodeMySpec.Architecture.NamespaceProjector do
       Enum.join(prefix),
       connector,
       node.segment,
-      format_component_info(node.component, show_types, show_descriptions)
+      format_component_info(node.component, show_types, show_descriptions),
+      hidden_below(node, max_depth, depth)
     ]
 
     line = line_parts |> Enum.reject(&(&1 == "")) |> Enum.join()
@@ -230,6 +232,19 @@ defmodule CodeMySpec.Architecture.NamespaceProjector do
       )
 
     [line | children_lines]
+  end
+
+  # Where max_depth cuts a subtree off, say how many components it hid.
+  defp hidden_below(%{children: [_ | _]} = node, max_depth, depth)
+       when is_integer(max_depth) and depth + 1 >= max_depth,
+       do: " (+#{count_components(node.children)})"
+
+  defp hidden_below(_node, _max_depth, _depth), do: ""
+
+  defp count_components(nodes) do
+    Enum.reduce(nodes, 0, fn node, acc ->
+      acc + if(node.component, do: 1, else: 0) + count_components(node.children)
+    end)
   end
 
   defp format_component_info(nil, _show_types, _show_descriptions), do: ""

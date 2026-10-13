@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.AgentPresence
@@ -109,7 +110,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   test "assigning an issue clears the active story and queued reservations", ctx do
     pick(ctx.scope, ctx.first)
     copy_id = ctx.scope.active_working_copy_id
-    {:ok, _} = WorkingCopies.reserve_story(ctx.scope, copy_id, ctx.second.id)
+    {:ok, _} = Stories.reserve_story(ctx.scope, copy_id, ctx.second.id)
     issue = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{status: :accepted})
 
     {:ok, coding} =
@@ -203,7 +204,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
     pick(ctx.scope, ctx.first)
 
     {:ok, _} =
-      WorkingCopies.reserve_story(ctx.scope, ctx.scope.active_working_copy_id, ctx.second.id)
+      Stories.reserve_story(ctx.scope, ctx.scope.active_working_copy_id, ctx.second.id)
 
     {:ok, landed} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, ctx.first, "2.0.99")
 

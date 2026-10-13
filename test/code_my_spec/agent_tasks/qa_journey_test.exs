@@ -106,7 +106,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
 
     test "names the architecture tool for the component graph", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaJourney.command(scope, task)
-      assert prompt =~ "show_architecture_overview"
+      assert prompt =~ "show_namespace_hierarchy"
     end
 
     test "notes existing journey tests when present", %{scope: scope, task: task} do

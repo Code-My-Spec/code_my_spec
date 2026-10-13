@@ -8,9 +8,9 @@ defmodule CodeMySpecWeb.UserAuth do
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
+  alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
-  alias CodeMySpecDesktop.Identity
   alias CodeMySpecWeb.Plugs.IntakeSession
   alias ExOauth2Provider.AccessTokens
 
@@ -72,7 +72,7 @@ defmodule CodeMySpecWeb.UserAuth do
   Will reissue the session token if it is older than the configured age.
   """
   def fetch_current_scope_for_user(conn, opts) do
-    if scope = Identity.scope(),
+    if scope = DesktopUser.scope(),
       do: assign(conn, :current_scope, scope),
       else: fetch_session_scope(conn, opts)
   end
@@ -278,7 +278,7 @@ defmodule CodeMySpecWeb.UserAuth do
   def on_mount(:require_sudo_mode, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
-    if Identity.active?() or Users.sudo_mode?(socket.assigns.current_scope.user, -10) do
+    if DesktopUser.active?() or Users.sudo_mode?(socket.assigns.current_scope.user, -10) do
       {:cont, socket}
     else
       socket =
@@ -333,7 +333,7 @@ defmodule CodeMySpecWeb.UserAuth do
 
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
-      Identity.scope() || session_scope(session)
+      DesktopUser.scope() || session_scope(session)
     end)
   end
 

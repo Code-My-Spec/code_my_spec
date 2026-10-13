@@ -57,6 +57,14 @@ defmodule CmsHarness.AnalysisSlots do
   module cannot solve by waiting longer, and the stop hook re-enqueues what is
   stale on the next pass regardless.
 
+  ## Two lanes
+
+  A run of named test files waits in its own lane, `:fast`, not behind whole
+  suites in `:full`. A coder's thirty-second `mix test path` waited fifteen
+  minutes behind the promotion gate's full sweeps, past its own shell limit, so
+  it retried and the queue grew (2026-10-12). Each lane has its own limit;
+  within one working copy, `AnalysisServer` still runs one thing at a time.
+
   ## Released by death, not by discipline
 
   The caller is monitored and the slot comes back when it exits. There is no
@@ -83,8 +91,17 @@ defmodule CmsHarness.AnalysisSlots do
   Call from the process that will do the work — the slot is held for that
   process's lifetime.
   """
-  @spec acquire() :: :ok | :busy
-  def acquire, do: GenServer.call(__MODULE__, :acquire, wait_ceiling() + 5_000)
+  @spec acquire(lane()) :: :ok | :busy
+  def acquire(lane \\ :full) when lane in [:full, :fast],
+    do: GenServer.call(__MODULE__, {:acquire, lane}, wait_ceiling() + 5_000)
+
+  @typedoc "`:fast` for runs of named test files, `:full` for everything else."
+  @type lane :: :full | :fast
+
+  @doc "The lane a run waits in: named test files are fast, a whole sweep is full."
+  @spec lane(String.t(), [String.t()]) :: lane()
+  def lane(source, [_ | _]) when source in ["exunit", "spex"], do: :fast
+  def lane(_source, _args), do: :full
 
   @doc """
   How long `acquire/0` waits for a slot before giving up and answering
@@ -107,58 +124,86 @@ defmodule CmsHarness.AnalysisSlots do
   Configurable as `:analysis_slots` for a machine that is only running one
   thing, or a much larger one.
   """
-  @spec limit() :: pos_integer()
-  def limit do
+  @spec limit(lane()) :: pos_integer()
+  def limit(lane \\ :full)
+
+  def limit(:full) do
     Application.get_env(:code_my_spec, :analysis_slots) ||
       max(1, div(System.schedulers_online(), 4))
   end
 
+  # As many as the full lane by default: a targeted run is a handful of files,
+  # so the pair costs far less than two suites.
+  def limit(:fast) do
+    Application.get_env(:code_my_spec, :analysis_fast_slots) ||
+      max(1, div(System.schedulers_online(), 4))
+  end
+
   @doc "How many slots are in use right now. For diagnostics and tests."
-  @spec in_use() :: non_neg_integer()
-  def in_use, do: GenServer.call(__MODULE__, :in_use)
+  @spec in_use(lane()) :: non_neg_integer()
+  def in_use(lane \\ :full), do: GenServer.call(__MODULE__, {:in_use, lane})
 
   @doc "How many callers are waiting for a slot right now. For diagnostics and tests."
-  @spec waiting() :: non_neg_integer()
-  def waiting, do: GenServer.call(__MODULE__, :waiting)
+  @spec waiting(lane()) :: non_neg_integer()
+  def waiting(lane \\ :full), do: GenServer.call(__MODULE__, {:waiting, lane})
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @impl true
-  def init(_opts), do: {:ok, %{held: %{}, waiting: :queue.new()}}
+  def init(_opts) do
+    {:ok,
+     %{
+       lanes: %{
+         full: %{held: %{}, waiting: :queue.new()},
+         fast: %{held: %{}, waiting: :queue.new()}
+       }
+     }}
+  end
 
   @impl true
-  def handle_call(:acquire, {pid, _tag} = from, %{held: held} = state) do
-    if map_size(held) >= limit() do
+  def handle_call({:acquire, lane}, {pid, _tag} = from, state) do
+    %{held: held, waiting: waiting} = state.lanes[lane]
+
+    if map_size(held) >= limit(lane) do
       Logger.info(
-        "[CmsHarness] an analyzer run is waiting for a machine-wide slot: " <>
-          "#{map_size(held)} already running (limit #{limit()}), waiting up to " <>
+        "[CmsHarness] an analyzer run is waiting for a machine-wide #{lane} slot: " <>
+          "#{map_size(held)} already running (limit #{limit(lane)}), waiting up to " <>
           "#{wait_ceiling()}ms."
       )
 
-      timer_ref = Process.send_after(self(), {:wait_timeout, from}, wait_ceiling())
-      {:noreply, %{state | waiting: :queue.in({from, pid, timer_ref}, state.waiting)}}
+      timer_ref = Process.send_after(self(), {:wait_timeout, lane, from}, wait_ceiling())
+      {:noreply, put_lane(state, lane, :waiting, :queue.in({from, pid, timer_ref}, waiting))}
     else
-      {:reply, :ok, grant(state, pid)}
+      {:reply, :ok, grant(state, lane, pid)}
     end
   end
 
-  def handle_call(:in_use, _from, state), do: {:reply, map_size(state.held), state}
-  def handle_call(:waiting, _from, state), do: {:reply, :queue.len(state.waiting), state}
+  def handle_call({:in_use, lane}, _from, state),
+    do: {:reply, map_size(state.lanes[lane].held), state}
+
+  def handle_call({:waiting, lane}, _from, state),
+    do: {:reply, :queue.len(state.lanes[lane].waiting), state}
 
   @impl true
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{held: held} = state) do
-    state = %{state | held: Map.delete(held, ref)}
-    {:noreply, maybe_grant_next(state)}
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+    case Enum.find(state.lanes, fn {_lane, %{held: held}} -> Map.has_key?(held, ref) end) do
+      {lane, %{held: held}} ->
+        {:noreply,
+         state |> put_lane(lane, :held, Map.delete(held, ref)) |> maybe_grant_next(lane)}
+
+      nil ->
+        {:noreply, state}
+    end
   end
 
-  # The waiter may already have been granted a slot (raced `maybe_grant_next/1`
+  # The waiter may already have been granted a slot (raced `maybe_grant_next/2`
   # between the timer firing and this message being processed) — in which case
   # it is no longer in `waiting` and there is nothing to time out.
-  def handle_info({:wait_timeout, from}, state) do
-    case take_waiting(state.waiting, from) do
+  def handle_info({:wait_timeout, lane, from}, state) do
+    case take_waiting(state.lanes[lane].waiting, from) do
       {:ok, waiting} ->
         GenServer.reply(from, :busy)
-        {:noreply, %{state | waiting: waiting}}
+        {:noreply, put_lane(state, lane, :waiting, waiting)}
 
       :not_found ->
         {:noreply, state}
@@ -167,17 +212,22 @@ defmodule CmsHarness.AnalysisSlots do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp grant(state, pid) do
+  defp put_lane(state, lane, key, value),
+    do: %{state | lanes: Map.update!(state.lanes, lane, &Map.put(&1, key, value))}
+
+  defp grant(state, lane, pid) do
     ref = Process.monitor(pid)
-    %{state | held: Map.put(state.held, ref, pid)}
+    put_lane(state, lane, :held, Map.put(state.lanes[lane].held, ref, pid))
   end
 
-  defp maybe_grant_next(%{held: held, waiting: waiting} = state) do
-    with true <- map_size(held) < limit(),
+  defp maybe_grant_next(state, lane) do
+    %{held: held, waiting: waiting} = state.lanes[lane]
+
+    with true <- map_size(held) < limit(lane),
          {{:value, {from, pid, timer_ref}}, rest} <- :queue.out(waiting) do
       Process.cancel_timer(timer_ref)
       GenServer.reply(from, :ok)
-      grant(%{state | waiting: rest}, pid)
+      state |> put_lane(lane, :waiting, rest) |> grant(lane, pid)
     else
       _ -> state
     end

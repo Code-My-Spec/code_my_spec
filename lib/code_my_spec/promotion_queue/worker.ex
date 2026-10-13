@@ -44,6 +44,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @batch_cap 1
   @gate_label "promotion-gate"
   @recheck_ms 120_000
+  @gate_wait_ms 15_000
   @retry_ms 300_000
   @inflight_limit_ms 30 * 60_000
 
@@ -73,7 +74,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
        phase: :idle,
        batch: nil,
        timer: nil,
-       reserved_entries: []
+       reserved_entries: [],
+       # When the queue began waiting for the gate copy's runs to stop.
+       gate_wait_since: nil
      }}
   end
 
@@ -121,6 +124,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # Another copy's run finished while a green batch waits for in-flight runs.
   def handle_info({:analysis, _run}, %{phase: :landing} = state), do: land(state)
+
+  # A run finished while the queue waits for the gate copy to go quiet.
+  def handle_info({:analysis, _run}, %{phase: :idle, gate_wait_since: since} = state)
+      when not is_nil(since),
+      do: next(state)
+
   def handle_info({:analysis, _run}, state), do: {:noreply, state}
 
   def handle_info({:validation_hold, %{status: :released}}, %{phase: :idle} = state),
@@ -232,6 +241,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp build_in_gate_copy(state, entries, base) do
     with {:ok, gate} <- gate_copy(state.scope),
          gate_scope = scope_for(state.scope, gate),
+         :ok <- gate_quiet(gate_scope, gate_wait_since(state)),
          environment = WorkingCopies.environment(gate_scope),
          {:ok, built} <-
            Runner.build_batch(
@@ -264,9 +274,68 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           gating(state, in_batch, gate, base, built.head)
       end
     else
+      {:error, :gate_busy} -> wait_for_gate(state)
       {:error, reason} -> could_not_build(state, reason)
     end
   end
+
+  # The tree and test databases are not swapped under a run still going in the
+  # gate copy: the last batch's exunit hung its full thirty minutes when the
+  # next batch reset them underneath it (2026-10-12). Asked to stop again in
+  # case the first request was lost, then waited for.
+  #
+  # Bounded like the wait on other copies' runs: a row nothing will ever close
+  # (its harness went and no sweep came) would otherwise hold the queue forever.
+  defp gate_quiet(gate_scope, waiting_since) do
+    cond do
+      not Analysis.running_on?(gate_scope) ->
+        :ok
+
+      waited_out?(waiting_since) ->
+        Logger.error(
+          "[PromotionQueue] the gate copy's runs did not stop in " <>
+            "#{div(@inflight_limit_ms, 60_000)} minutes; building over them"
+        )
+
+        :ok
+
+      true ->
+        Analysis.cancel_on(gate_scope, "the gate copy is needed for the next batch")
+        {:error, :gate_busy}
+    end
+  end
+
+  # Read rather than matched: a worker running when this field was added holds
+  # a state without it, and a code reload hands that state to this code
+  # (KeyError, 2026-10-12).
+  defp gate_wait_since(state), do: Map.get(state, :gate_wait_since)
+
+  defp waited_out?(nil), do: false
+
+  defp waited_out?(since),
+    do: System.monotonic_time(:millisecond) - since > @inflight_limit_ms
+
+  defp wait_for_gate(state) do
+    requeue(state.reserved_entries)
+    Logger.info("[PromotionQueue] waiting for the gate copy's runs to stop before building")
+
+    state =
+      %{state | phase: :idle, batch: nil, reserved_entries: []}
+      |> Map.put(:gate_wait_since, gate_wait_since(state) || System.monotonic_time(:millisecond))
+      |> cancel_timer()
+
+    {:noreply, %{state | timer: Process.send_after(self(), :next, @gate_wait_ms)}}
+  end
+
+  # A batch that leaves the gate copy, for any reason, leaves no runs there. A
+  # batch on a candidate's own copy started none, and that copy's runs are its
+  # agent's.
+  defp release_gate(%{batch: %{gate: %WorkingCopy{label: @gate_label}} = batch}) do
+    Analysis.cancel_on(batch.scope, "the batch at #{batch.head} left the gate")
+    :ok
+  end
+
+  defp release_gate(_state), do: :ok
 
   # `gate` is the copy the batch commit is checked out in and certified on:
   # the gate copy, or a lone level candidate's own copy.
@@ -304,7 +373,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     # unanswered, nothing else was due to ask, and the queue sat for over an
     # hour behind it.
     send(self(), :gate)
-    {:noreply, recheck_later(%{state | phase: :gating, batch: batch, reserved_entries: []})}
+
+    {:noreply,
+     %{state | phase: :gating, batch: batch, reserved_entries: []}
+     |> Map.put(:gate_wait_since, nil)
+     |> recheck_later()}
   end
 
   defp could_not_build(state, reason) do
@@ -410,6 +483,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         {:noreply, %{state | phase: :landing, batch: Map.put(batch, :swept, swept)}}
 
       failing ->
+        release_gate(state)
         for {entry, reason} <- failing, do: eject(state.scope, entry, Map.get(reason, :reason))
         requeue(batch.entries -- Enum.map(failing, &elem(&1, 0)))
         next(idle(state))
@@ -423,6 +497,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       # Not a finding about the code: the gate could not run (an analyzer
       # would not start, the tree was dirty). Nothing to eject; try again.
       Logger.error("[PromotionQueue] gate could not run: #{describe(reason)}; retrying")
+      release_gate(state)
       requeue(batch.entries)
       {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
     else
@@ -433,6 +508,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # Whose change is red: a batch of one is ejected with `reason`; a larger one
   # is split until it is.
   defp bisect(%{batch: %{entries: [single]}} = state, reason) do
+    release_gate(state)
     eject(state.scope, single, reason)
     next(idle(state))
   end
@@ -447,6 +523,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         "gating the first #{length(first)} of #{length(batch.entries)}"
     )
 
+    release_gate(state)
     requeue(batch.entries)
     build(%{state | phase: :idle, batch: nil}, Enum.map(first, &Repository.get(&1.id)))
   end

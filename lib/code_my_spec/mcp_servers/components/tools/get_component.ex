@@ -1,9 +1,10 @@
 defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
   @moduledoc """
   One component as its record describes it: type, description, provenance,
-  parent, what it depends on and the files that belong to it. By id or by
-  module name. Components are records (3aeb66cf); this is how an agent reads
-  one without listing the whole architecture.
+  parent, what it depends on (each marked planned and/or in code) and the
+  files that belong to it. By id or by module name. Components are records
+  (3aeb66cf); this is how an agent reads one without listing the whole
+  architecture.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -11,6 +12,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
   alias Anubis.Server.Response
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component, as: Record
+  alias CodeMySpec.Components.Dependency
   alias CodeMySpec.Files
   alias CodeMySpec.McpServers.Components.ComponentsMapper
   alias CodeMySpec.McpServers.Validators
@@ -60,8 +62,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
       dependencies:
         scope
         |> Components.list_component_dependencies(component.id)
-        |> Enum.map(& &1.target_component.module_name)
-        |> Enum.sort(),
+        |> Enum.map(&dependency/1)
+        |> Enum.sort_by(& &1.module_name),
       files:
         scope
         |> Files.list_component_files(component.id)
@@ -70,4 +72,12 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponent do
         |> Enum.sort()
     })
   end
+
+  # Planned: an architect authored the edge. In code: the last sync saw a call.
+  defp dependency(%Dependency{} = dep),
+    do: %{
+      module_name: dep.target_component.module_name,
+      planned: dep.provenance == :authored,
+      in_code: dep.in_code
+    }
 end

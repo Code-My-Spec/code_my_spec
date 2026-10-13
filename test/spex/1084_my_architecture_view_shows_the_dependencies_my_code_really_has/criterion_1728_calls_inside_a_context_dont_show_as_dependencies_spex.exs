@@ -38,49 +38,23 @@ defmodule CodeMySpecSpex.Story1084.Criterion1728Spex do
         {:ok, context}
       end
 
-      when_ "Sam opens the architecture view", context do
-        {:ok, _view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/architecture/overview")
-
-        {:ok, Map.put(context, :html, html)}
+      when_ "Sam reads Billing's record", context do
+        {:ok, Map.put(context, :deps, dependencies(context, "Billing"))}
       end
 
       then_ "no dependency is shown for the call to Billing's own Invoice module", context do
-        section = component_section(context.html, "Billing")
-
-        refute section =~ "Invoice",
-               "expected the intra-context call to Invoice to be hidden: #{section}"
+        refute Map.has_key?(context.deps, "Billing.Invoice"),
+               "expected the intra-context call to Invoice to be hidden: #{inspect(context.deps)}"
 
         {:ok, context}
       end
 
       then_ "a call from Billing to Accounts is shown", context do
-        section = component_section(context.html, "Billing")
-
-        assert section =~ "Accounts",
-               "expected the cross-context call to Accounts to be shown: #{section}"
+        assert Map.has_key?(context.deps, "Accounts"),
+               "expected the cross-context call to Accounts to be shown: #{inspect(context.deps)}"
 
         {:ok, context}
       end
     end
-  end
-
-  defp component_section(html, name) do
-    {_, _, prose_children} =
-      html |> Floki.parse_document!() |> Floki.find(".prose") |> List.first()
-
-    start_idx =
-      Enum.find_index(prose_children, fn
-        {"h3", _, _} = node -> Floki.text(node) == name
-        _ -> false
-      end)
-
-    prose_children
-    |> Enum.drop(start_idx + 1)
-    |> Enum.take_while(fn
-      {tag, _, _} -> tag not in ["h2", "h3"]
-      _ -> true
-    end)
-    |> Floki.text()
   end
 end

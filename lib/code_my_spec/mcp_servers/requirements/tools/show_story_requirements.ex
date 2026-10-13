@@ -44,12 +44,21 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
       story ->
         # The rows, not a fresh computation of the whole project to show one
         # story's requirements.
-        {nodes, _computed_at} = Requirements.cached_all(scope)
+        {nodes, _computed_at} = Requirements.cached_all(at_story_copy(scope, story))
         reqs = Enum.filter(nodes, &(&1.entity_type == "story" and &1.entity_id == story.id))
 
         {:reply, story_response(story, reqs, scope), frame}
     end
   end
+
+  # Read where the story is assigned. A story's requirements are computed at
+  # its own copy, so main asking from the main copy read 1092 as 0/0 while
+  # team 2's copy held 5/8 (2026-10-12), and main had to take its agents'
+  # word for where the story stood.
+  defp at_story_copy(scope, %{working_copy_id: copy_id}) when is_binary(copy_id),
+    do: %{scope | active_working_copy_id: copy_id}
+
+  defp at_story_copy(scope, _story), do: scope
 
   defp resolve_story(scope, ref) do
     if number?(ref),

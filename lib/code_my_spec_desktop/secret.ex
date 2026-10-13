@@ -19,5 +19,5 @@ defmodule CodeMySpecDesktop.Secret do
     end
   end
 
-  def default_path, do: Path.join(CmsHarness.Config.local_state_dir(), "desktop_secret")
+  def default_path, do: Path.join(CodeMySpec.Paths.local_state_dir(), "desktop_secret")
 end

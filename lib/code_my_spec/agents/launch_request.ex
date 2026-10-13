@@ -119,6 +119,9 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.
       "tool_reach" => ToolIndex.reach(agent, tools),
+      # The tools the engine carries directly, by MCP name. The harness builds
+      # its tool modules from these rather than reading the server's registry.
+      "direct_tools" => ToolIndex.carried(tools),
       # How a tool call physically happens on the engine running this agent.
       #
       # `claude-code` emulates tool calling — the CLI runs with `--tools ""` and

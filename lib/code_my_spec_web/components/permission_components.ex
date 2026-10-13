@@ -54,8 +54,7 @@ defmodule CodeMySpecWeb.PermissionComponents do
     >
       <div class="card-body">
         <h2 class="card-title text-lg">
-          <.icon name="hero-shield-check" class="size-5 text-primary" />
-          Claude Code permission request
+          <.icon name="hero-shield-check" class="size-5 text-primary" /> Permission request
         </h2>
 
         <div class="mt-2 space-y-3">

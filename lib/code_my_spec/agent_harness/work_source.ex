@@ -13,7 +13,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
 
   Requirement resolution reuses the same path `get_next_requirement` uses:
   `Requirements.story_execution/2` scoped to the active story and lane role,
-  rendered to directive text via `RequirementsMapper`. Only the sub-agent roles
+  rendered to directive text via `Requirements.Directives`. Only the sub-agent roles
   (`coding` / `qa`) auto-pull; `product` is interview-driven and `manager` is the
   puller, so both resolve to `:none`.
   """
@@ -23,9 +23,8 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
 
   alias CodeMySpec.AgentHarness
   alias CodeMySpec.LocalScope
-  alias CodeMySpec.McpServers.Requirements.RequirementsMapper
-  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Directives
   alias CodeMySpec.WorkingCopies
 
   # Role string -> requirement `role`. Roles absent here don't auto-pull.
@@ -90,9 +89,7 @@ defmodule CodeMySpec.AgentHarness.WorkSource do
            %{
              requirement_name: node.name,
              prompt:
-               RequirementsMapper.format_story_execution(
-                 StoryRefs.number_execution(scope, execution)
-               )
+               Directives.format_story_execution(Directives.number_execution(scope, execution))
            }}
 
         _ ->

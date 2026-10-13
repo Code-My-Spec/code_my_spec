@@ -12,7 +12,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion2080Spex do
   alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.Stories
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -34,7 +33,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2080Spex do
             description: "Reserved on this copy, not yet active."
           )
 
-        {:ok, _} = WorkingCopies.reserve_story(context.scope, copy_id, second.id)
+        {:ok, _} = Stories.reserve_story(context.scope, copy_id, second.id)
 
         issue =
           Fixtures.issue_fixture(context.scope, %{
@@ -52,7 +51,8 @@ defmodule CodeMySpecSpex.Story1091.Criterion2080Spex do
          })}
       end
 
-      when_ "the project-level issue, unlinked to any story, is assigned to that working copy", context do
+      when_ "the project-level issue, unlinked to any story, is assigned to that working copy",
+            context do
         {:reply, assigned, _frame} =
           AssignIssueToWorkingCopy.execute(
             %{issue_id: context.issue_id, working_copy_id: context.scope.active_working_copy_id},
@@ -77,7 +77,8 @@ defmodule CodeMySpecSpex.Story1091.Criterion2080Spex do
         {:ok, context}
       end
 
-      then_ "the issue is assigned to the copy and becomes the whole team's active issue", context do
+      then_ "the issue is assigned to the copy and becomes the whole team's active issue",
+            context do
         {:reply, bag, _frame} =
           ListIssues.execute(
             %{

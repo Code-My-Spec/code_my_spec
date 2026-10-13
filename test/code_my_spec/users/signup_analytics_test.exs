@@ -24,6 +24,7 @@ defmodule CodeMySpec.Users.SignupAnalyticsTest do
   use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.Analytics
+  alias CodeMySpec.Integrations
   alias CodeMySpec.Users
 
   import CodeMySpec.UsersFixtures
@@ -56,7 +57,7 @@ defmodule CodeMySpec.Users.SignupAnalyticsTest do
     test "fires with method=oauth_<provider> when new OAuth user is created" do
       attrs = %{provider_user_id: unique_provider_id(), email: unique_user_email()}
 
-      {:ok, user, :new} = Users.find_or_register_oauth_user(:github, attrs)
+      {:ok, user, :new} = Integrations.find_or_register_oauth_user(:github, attrs)
 
       assert_receive {:analytics_event, :sign_up, %{user_id: user_id, method: "oauth_github"}}
       assert user_id == user.id
@@ -69,7 +70,7 @@ defmodule CodeMySpec.Users.SignupAnalyticsTest do
       email = unique_user_email()
 
       {:ok, _user, :new} =
-        Users.find_or_register_oauth_user(:github, %{
+        Integrations.find_or_register_oauth_user(:github, %{
           provider_user_id: provider_user_id,
           email: email
         })
@@ -82,7 +83,7 @@ defmodule CodeMySpec.Users.SignupAnalyticsTest do
       flush_analytics_messages()
 
       {:ok, _, :existing} =
-        Users.find_or_register_oauth_user(:github, %{
+        Integrations.find_or_register_oauth_user(:github, %{
           provider_user_id: provider_user_id,
           email: email
         })
@@ -95,7 +96,7 @@ defmodule CodeMySpec.Users.SignupAnalyticsTest do
       flush_analytics_messages()
 
       {:ok, _, :existing} =
-        Users.find_or_register_oauth_user(:github, %{
+        Integrations.find_or_register_oauth_user(:github, %{
           provider_user_id: unique_provider_id(),
           email: existing.email
         })
@@ -121,7 +122,7 @@ defmodule CodeMySpec.Users.SignupAnalyticsTest do
 
       attrs = %{provider_user_id: unique_provider_id(), email: unique_user_email()}
 
-      assert {:ok, _user, :new} = Users.find_or_register_oauth_user(:github, attrs)
+      assert {:ok, _user, :new} = Integrations.find_or_register_oauth_user(:github, attrs)
     end
   end
 

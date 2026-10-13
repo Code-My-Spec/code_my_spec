@@ -52,13 +52,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
+  alias CmsHarness.Agents.SendNow
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
   alias CmsHarness.Project.ChannelClient
-  alias CodeMySpec.Agents.ToolIndex
-  alias CodeMySpec.McpServers.ToolRegistry
 
   @registry CmsHarness.Registry
 
@@ -96,14 +95,18 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # property of the caller, and it governs how long *it* waits — `awaiting` —
   # not how long the agent works.
   #
-  # Thirty minutes because a browser QA pass is minutes of real waiting: pages
-  # load, LiveViews settle, and 150 steps of that is not four minutes. It is a
-  # ceiling on a runaway, not a budget.
+  # No wall-clock ceiling on a turn (John, 2026-10-12). A thirty-minute one cut
+  # a coder's legitimate test runs off, told it nothing was carried out, and
+  # re-sent the same request into the same wait. Each tool call has its own
+  # limit, `@max_turns` bounds a runaway, and a turn is recorded as it goes.
   #
-  # A ceiling on a runaway, not a budget. The engine owns this deadline:
-  # a GenServer call timeout alone does not stop Alloy's running turn.
-  # Queue advancement requires a result or confirmed execution shutdown.
-  @turn_timeout :timer.minutes(30)
+  # Alloy still wants a number for the whole loop, so this is one nobody meets.
+  @loop_deadline :timer.hours(24)
+
+  # What Alloy would otherwise hand each HTTP request as its receive timeout:
+  # whatever is left of the loop's deadline, so a request that went quiet would
+  # wait out the day.
+  @request_idle_timeout :timer.minutes(10)
 
   @type start_opts :: [
           agent_id: String.t(),
@@ -335,6 +338,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
     # Opened here rather than during validation, and unlinked: this process is
     # the right thing for a session's failure to reach, and nothing above it is.
     agent_id = Keyword.fetch!(opts, :agent_id)
+    # Before the options, so the tool boundary's send-now asker names it.
+    generation = new_ref()
+    opts = Keyword.put(opts, :generation, generation)
     {:ok, alloy_opts} = alloy_options(opts, Session.client(agent_id))
     {alloy_opts, interrupted} = restored(alloy_opts, Keeper.recall(agent_id))
     prune_spilled(spill_dir(agent_id))
@@ -343,7 +349,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
       {:ok, alloy} ->
         Process.flag(:trap_exit, true)
         :ok = Liveness.watch(agent_id, self(), Keyword.fetch!(opts, :working_copy))
-        generation = new_ref()
         :ok = register_mailbox(opts, agent_id, generation)
 
         {:ok,
@@ -510,11 +515,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
     announce_turn_start(state, ref)
 
     task = Task.async(fn -> run_turn(state, message, :infinity) end)
-    timer = Process.send_after(self(), {:turn_ceiling, task.ref}, @turn_timeout)
 
     %{
       task: task,
-      timer: timer,
       checkpoint: checkpoint,
       message: message,
       awaiting: awaiting,
@@ -522,11 +525,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
     }
   end
 
-  # Losing the waiting task does not establish that execution stopped. The
-  # deadline and abnormal waiter exits both require confirmed Alloy shutdown
-  # before a replacement can consume another mailbox message.
+  # Losing the waiting task does not establish that execution stopped. An
+  # abnormal waiter exit requires confirmed Alloy shutdown before a replacement
+  # can consume another mailbox message.
   def abort_turn(state, reason) do
-    Process.cancel_timer(state.turn.timer)
     Process.unlink(state.alloy)
 
     case Execution.stop(state.alloy) do
@@ -565,8 +567,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   def settle(state, result) do
-    Process.cancel_timer(state.turn.timer)
-
     :ok =
       Keeper.remember(state.agent_id, %{messages: Server.messages(state.alloy), in_flight: nil})
 
@@ -878,20 +878,21 @@ defmodule CmsHarness.Agents.Engine.Impl do
   `turn_off_agent` and the rest) is not here: it is scriptable, and granted to
   main alone.
 
-  One list for the index and the engine: the direct tools are
-  `ToolIndex.carried/1`, each resolved to `CmsHarness.Agents.Tools.<Name>` by
-  its MCP name. Two hand-kept lists drifted: the index named `health` and
-  `promote_sync` and this answered `Unknown tool` (1a7b1e4c).
+  One list for the index and the engine: the direct tools are the launch
+  request's `direct_tools` (`ToolIndex.carried/1` on the server), each resolved
+  to `CmsHarness.Agents.Tools.<Name>` by its MCP name. Two hand-kept lists
+  drifted: the index named `health` and `promote_sync` and this answered
+  `Unknown tool` (1a7b1e4c).
   """
   @spec tools(keyword()) :: [module()]
-  def tools(_opts) do
+  def tools(opts) do
     [
       Alloy.Tool.Core.Read,
       Alloy.Tool.Core.Write,
       Alloy.Tool.Core.Edit,
       CmsHarness.Agents.Tools.Bash
     ] ++
-      Enum.map(ToolIndex.carried(ToolRegistry.registry()), &direct_tool/1)
+      Enum.map(Keyword.get(opts, :direct_tools) || [], &direct_tool/1)
   end
 
   @doc false
@@ -973,7 +974,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
              base_url: Keyword.get(opts, :base_url),
              # Machine-local, like `on_stop` and `on_event`: it is a function,
              # so it cannot cross the wire and nothing on the wire sets it.
-             req_options: Keyword.get(opts, :req_options),
+             req_options:
+               Keyword.put_new(
+                 Keyword.get(opts, :req_options) || [],
+                 :receive_timeout,
+                 @request_idle_timeout
+               ),
              # The subprocess providers (`claude-code`, `openai-codex`) run
              # in it instead of their default of a fresh temp dir per call.
              working_copy: working_copy
@@ -1007,11 +1013,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # Alloy bounds the whole loop by this and gives each request what is left
        # of it as its receive timeout; its two-minute default starved an HTTP
        # agent's request to a second once its tools had spent the rest.
-       |> Keyword.put(:timeout_ms, @turn_timeout)
+       |> Keyword.put(:timeout_ms, @loop_deadline)
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).
-       |> Keyword.put(:middleware, [Compaction, ToolResults])
+       # `SendNow` lets a message sent now in at the tool boundary (story 1051).
+       |> Keyword.put(:middleware, [Compaction, ToolResults, SendNow])
        # A code-mode tool called directly came back as a bare "Unknown tool",
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
@@ -1049,7 +1056,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # How the compaction middleware reaches the agent it is running
          # inside. Middleware is a module rather than a closure, and the thing
          # it has to report to is per-agent.
-         on_compaction: compaction_reporter(opts)
+         on_compaction: compaction_reporter(opts),
+         # Asked after each round of tool calls for messages sent now.
+         take_send_now: send_now_taker(opts)
        })
        |> Keyword.put(:messages, resumed(Keyword.get(opts, :messages)))}
     end
@@ -1145,6 +1154,42 @@ defmodule CmsHarness.Agents.Engine.Impl do
       _ ->
         nil
     end
+  end
+
+  # Nil until the engine has minted its generation: validation builds these
+  # options too, and there is no turn to deliver into.
+  #
+  # Through the engine, built here in its `init/1`: the middleware runs in the
+  # Alloy process, and the channel refuses a mailbox request from anything but
+  # the agent's engine. Asked directly, every take came back `:stale_engine`,
+  # read as nothing sent, and a message sent now waited for the turn's end.
+  defp send_now_taker(opts) do
+    with agent_id when is_binary(agent_id) <- Keyword.get(opts, :agent_id),
+         generation when is_binary(generation) <- Keyword.get(opts, :generation) do
+      case Keyword.get(opts, :on_send_now) do
+        take when is_function(take, 2) -> fn -> take.(agent_id, generation) end
+        nil -> ask_engine(self())
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  defp ask_engine(engine), do: fn -> take_from(engine) end
+
+  defp take_from(engine) do
+    GenServer.call(engine, :take_send_now, 20_000)
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
+  @doc "The messages sent now to this agent mid-turn, asked of the server as its engine."
+  def take_send_now(state) do
+    ChannelClient.mailbox(state.working_copy, %{
+      "operation" => "take_send_now",
+      "agent_id" => state.agent_id,
+      "generation" => state.generation
+    })
   end
 
   defp require_opt(opts, key) do

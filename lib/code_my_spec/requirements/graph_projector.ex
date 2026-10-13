@@ -624,89 +624,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     }
   end
 
-  @doc """
-  Components-only graph: one summary node per bounded context with
-  dependency edges between them.
-  """
-  @spec components_graph(Scope.t()) :: map()
-  def components_graph(%Scope{} = scope) do
-    %{nodes: nodes, actionable: actionable} =
-      Requirements.cached_graph_with_actionable(scope)
-
-    actionable_set =
-      MapSet.new(actionable, &node_key/1)
-
-    comp_nodes = Enum.filter(nodes, &(&1.entity_type == "component"))
-    comp_reqs_by_id = Enum.group_by(comp_nodes, & &1.entity_id)
-
-    components = Components.list_components_with_dependencies(scope)
-
-    context_ids =
-      components
-      |> Enum.filter(fn c -> RequirementsRegistry.has_children?(c.type) end)
-      |> MapSet.new(& &1.id)
-
-    child_to_context =
-      components
-      |> Enum.filter(fn c ->
-        c.parent_component_id && MapSet.member?(context_ids, c.parent_component_id)
-      end)
-      |> Map.new(fn c -> {c.id, c.parent_component_id} end)
-
-    groups =
-      components
-      |> Enum.filter(fn c -> MapSet.member?(context_ids, c.id) end)
-      |> Enum.map(fn ctx ->
-        children = Enum.filter(components, &(&1.parent_component_id == ctx.id))
-        own_reqs = Map.get(comp_reqs_by_id, ctx.id, [])
-        child_reqs = Enum.flat_map(children, fn c -> Map.get(comp_reqs_by_id, c.id, []) end)
-        {ctx.id, %{component: ctx, reqs: own_reqs ++ child_reqs}}
-      end)
-
-    standalone =
-      components
-      |> Enum.filter(fn c ->
-        !MapSet.member?(context_ids, c.id) and !Map.has_key?(child_to_context, c.id)
-      end)
-      |> Enum.map(fn c ->
-        {c.id, %{component: c, reqs: Map.get(comp_reqs_by_id, c.id, [])}}
-      end)
-
-    all_groups =
-      (groups ++ standalone) |> Enum.sort_by(fn {_id, g} -> g.component.module_name end)
-
-    # Random initial positions — sigma + force layout will organize naturally
-    sigma_nodes =
-      all_groups
-      |> Enum.map(fn {comp_id, group} ->
-        reqs = group.reqs
-        sat = Enum.count(reqs, & &1.satisfied)
-        total = length(reqs)
-        name = short_module(group.component.module_name)
-        size = 8
-
-        mk_node(
-          summary_key(comp_id),
-          "#{name} #{sat}/#{total}",
-          :rand.uniform(5000) - 2500,
-          :rand.uniform(5000) - 2500,
-          size,
-          summary_status(reqs, actionable_set),
-          entity_type: "component",
-          entity_id: comp_id
-        )
-      end)
-
-    all_keys = MapSet.new(sigma_nodes, & &1.key)
-
-    dep_edges =
-      all_groups
-      |> Enum.flat_map(&group_dep_edges(&1, child_to_context, all_keys))
-      |> Enum.uniq_by(& &1.key)
-
-    %{nodes: sigma_nodes, edges: dep_edges, layout: "force"}
-  end
-
   # -- Expanded component tree layout --
 
   # Layout a context and its children as a tree. Returns {nodes, width, height}
@@ -944,8 +861,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     }
   end
 
-  defp summary_key(comp_id), do: "ctx_#{sanitize_id(comp_id)}"
-
   defp node_key(n), do: Topology.node_key(n)
   defp nkey(n), do: key_to_string(node_key(n))
   defp key_to_string({type, id, name}), do: "#{type}_#{sanitize_id(id)}_#{name}"
@@ -990,17 +905,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   defp cls(n, actionable_set) do
     if MapSet.member?(actionable_set, node_key(n)), do: :actionable, else: :blocked
-  end
-
-  defp summary_status(reqs, actionable_set) do
-    sat = Enum.count(reqs, & &1.satisfied)
-    total = length(reqs)
-
-    cond do
-      sat == total and total > 0 -> :satisfied
-      Enum.any?(reqs, fn r -> MapSet.member?(actionable_set, node_key(r)) end) -> :actionable
-      true -> :blocked
-    end
   end
 
   defp color(:satisfied), do: @colors.satisfied
@@ -1293,29 +1197,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       layout_context_tree_nodes(comp, components, comp_reqs_by_id, actionable_set, topo)
     else
       layout_standalone_nodes(comp, comp_reqs_by_id, actionable_set, topo)
-    end
-  end
-
-  defp group_dep_edges({_id, group}, child_to_context, all_keys) do
-    from_key = summary_key(group.component.id)
-    deps = group.component.dependencies || []
-    Enum.flat_map(deps, &dep_edge(&1, from_key, child_to_context, all_keys))
-  end
-
-  defp dep_edge(dep, from_key, child_to_context, all_keys) do
-    to_key = summary_key(Map.get(child_to_context, dep.id, dep.id))
-
-    if to_key != from_key and MapSet.member?(all_keys, to_key) do
-      [
-        %{
-          key: "dep_#{from_key}->#{to_key}",
-          source: from_key,
-          target: to_key,
-          attributes: %{size: 2, color: "#6366f1", type: "arrow"}
-        }
-      ]
-    else
-      []
     end
   end
 end

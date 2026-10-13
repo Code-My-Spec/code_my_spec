@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6511Spex do
   Criterion 6511 — Rule 3: OAuth callback with missing email returns
   error and dispatches nothing.
 
-  Unit-level call into `Users.find_or_register_oauth_user/2` with
+  Unit-level call into `Integrations.find_or_register_oauth_user/2` with
   `email: nil` and no matching provider identity. Asserts
   `{:error, :missing_email}` returns AND no `:sign_up` telemetry
   event fires (verified via subscriber).
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6511Spex do
          )}
       end
 
-      when_ "Users.find_or_register_oauth_user/2 is called", context do
+      when_ "Integrations.find_or_register_oauth_user/2 is called", context do
         result =
           Fixtures.find_or_register_oauth_user(:google, %{
             provider_user_id: context.provider_user_id,

@@ -54,6 +54,7 @@ defmodule CmsHarness.Agents do
       role_brief: request["role_brief"],
       tool_index: request["tool_index"],
       tool_reach: request["tool_reach"],
+      direct_tools: request["direct_tools"],
       # Where the application is running, off the project's main working
       # copy. Only the server knows it — it is a column there — and an
       # agent that cannot answer it cannot open the thing it is testing.
@@ -91,6 +92,7 @@ defmodule CmsHarness.Agents do
       # caller.
       on_event: request["on_event"] || reporter_for(request["working_copy"]),
       on_consume: request["on_consume"],
+      on_send_now: request["on_send_now"],
       on_register:
         request["on_register"] ||
           fn agent_id, generation ->
@@ -107,6 +109,23 @@ defmodule CmsHarness.Agents do
   end
 
   def launch(_request), do: {:error, :agent_id_required}
+
+  @doc """
+  The direct tools this harness implements, by MCP name: one
+  `CmsHarness.Agents.Tools.<Name>` module each. The server's launch request
+  names which of them an agent carries (`direct_tools`); a harness started
+  without a server, in its own tests, hands an agent these.
+  """
+  @spec implemented_tools() :: [String.t()]
+  def implemented_tools do
+    {:ok, modules} = :application.get_key(:code_my_spec, :modules)
+
+    for module <- modules,
+        String.starts_with?(Atom.to_string(module), "Elixir.CmsHarness.Agents.Tools."),
+        module not in [CmsHarness.Agents.Tools.Bash, CmsHarness.Agents.Tools.Direct],
+        Code.ensure_loaded?(module) and function_exported?(module, :name, 0),
+        do: module.name()
+  end
 
   @doc """
   Stop one agent, and say whether it was there to stop.

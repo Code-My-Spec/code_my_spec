@@ -86,6 +86,9 @@ defmodule CmsHarnessTest.Machine do
       "agent_id" => agent_id,
       "api_key" => Keyword.get(opts, :api_key, "unused-in-spex"),
       "working_copy" => working_copy,
+      # No server names what it carries here, so it carries every direct tool
+      # the harness implements — what the server's launch names today.
+      "direct_tools" => Keyword.get_lazy(opts, :direct_tools, &Agents.implemented_tools/0),
       "on_stop" => Keyword.get(opts, :on_stop),
       # Isolated harness tests have no server. DB-backed fixtures override both
       # callbacks with the real mailbox authority.

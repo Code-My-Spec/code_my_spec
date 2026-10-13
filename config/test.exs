@@ -356,6 +356,8 @@ config :code_my_spec, :harness_connect_headers, CmsHarnessTest.ConnectHeaders
 config :code_my_spec, CmsHarness.Device.Client.Http,
   plug: {Req.Test, CmsHarness.Device.Client.Http}
 
+config :code_my_spec, CmsHarness.Mcp.Http, plug: {Req.Test, CmsHarness.Mcp.Http}
+
 # The CLI providers' answer to the pin above. A project that connected OpenAI
 # launches its agents on `codex exec`, and a spex that talked to one ran it for
 # real on every analysis. Replayed from a recording; an unrecorded call raises.
@@ -756,12 +758,12 @@ config :code_my_spec, :agent_eval_settle_timeout, 300_000
 config :code_my_spec, :eval_artifact_staleness, :warn
 
 # A test that runs a desktop OAuth connect must not open the machine's browser.
-config :code_my_spec, CodeMySpecDesktop.Browser, launch: false
+config :code_my_spec, CodeMySpec.Utils.Browser, launch: false
 
-# Resend client registration (CodeMySpecDesktop.OAuthClients) never reaches
+# Resend client registration (CodeMySpec.Integrations.DesktopClients) never reaches
 # Resend from a test; tests stub it with Req.Test.
-config :code_my_spec, CodeMySpecDesktop.OAuthClients,
-  plug: {Req.Test, CodeMySpecDesktop.OAuthClients}
+config :code_my_spec, CodeMySpec.Integrations.DesktopClients,
+  plug: {Req.Test, CodeMySpec.Integrations.DesktopClients}
 
 config :code_my_spec, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth,
   plug: {Req.Test, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth}

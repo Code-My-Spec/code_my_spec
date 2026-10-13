@@ -181,15 +181,22 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   # A submitted story fix after the last promotion requires a fresh shared QA
   # pass and another landing. Its submission timestamp is stable when the issue
   # is edited or ultimately resolved by promotion.
+  #
+  # A stamp with no `specs_ready_at` predates that column, so it cannot be
+  # after anything: every submitted fix is newer than the last promotion. Read
+  # as "no fix", which stranded story 1046's seven fixes on team 2's copy at
+  # 8/8 with nothing offering a promote and nothing telling main (2026-10-13).
   defp unshipped_fix(entity) do
     with {_issue_id, submitted_at} = fix <- Map.get(entity, :fix),
-         %DateTime{} = promoted_at <- Map.get(entity, :specs_ready_at),
-         :gt <- DateTime.compare(submitted_at, promoted_at) do
+         :gt <- after_promotion(submitted_at, Map.get(entity, :specs_ready_at)) do
       fix
     else
       _ -> nil
     end
   end
+
+  defp after_promotion(_submitted_at, nil), do: :gt
+  defp after_promotion(submitted_at, promoted_at), do: DateTime.compare(submitted_at, promoted_at)
 
   defp fix_not_promoted(version, issue_id, submitted_at) do
     {false,

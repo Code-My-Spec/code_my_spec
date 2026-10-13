@@ -4,6 +4,10 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
   every request's receive timeout to what is left of it. A DeepSeek coder that
   ran three test files spent the two minutes, and its next request was given a
   second and failed `:timeout` — the turn was lost, retry included.
+
+  There is no turn ceiling now (2026-10-12), so the loop's deadline is one
+  nobody meets, and each request carries its own idle bound instead of the
+  rest of that day.
   """
   use ExUnit.Case, async: false
 
@@ -16,7 +20,9 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
     :ok
   end
 
-  test "an HTTP provider's loop runs as long as the engine lets a turn run", %{tmp_dir: root} do
+  test "an HTTP provider's loop is not cut short, and each request has an idle bound", %{
+    tmp_dir: root
+  } do
     id = "agent-#{System.unique_integer([:positive])}"
 
     {:ok, _} =
@@ -34,6 +40,7 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, id})
     alloy = :sys.get_state(:sys.get_state(engine).alloy)
 
-    assert alloy.config.timeout_ms == :timer.minutes(30)
+    assert alloy.config.timeout_ms >= :timer.hours(24)
+    assert alloy.config.provider_config.req_options[:receive_timeout] == :timer.minutes(10)
   end
 end

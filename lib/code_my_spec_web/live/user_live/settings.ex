@@ -10,6 +10,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
   alias CodeMySpec.Integrations.Providers.GitHub
   alias CodeMySpec.Integrations.Providers.GitHub.DeviceAuth, as: GitHubDeviceAuth
   alias CodeMySpec.Integrations.Providers.OpenAI.DeviceAuth
+  alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users
 
   def render(assigns) do
@@ -358,7 +359,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
     socket =
       socket
       |> assign(:current_email, user.email)
-      |> assign(:desktop?, CodeMySpecDesktop.Identity.active?())
+      |> assign(:desktop?, DesktopUser.active?())
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:trigger_submit, false)
@@ -376,7 +377,7 @@ defmodule CodeMySpecWeb.UserLive.Settings do
         note: nil,
         # The desktop keeps no client secret, which GitHub's web flow needs at
         # the exchange; its device flow needs only the client id.
-        device_flow: CodeMySpecDesktop.Identity.active?(),
+        device_flow: DesktopUser.active?(),
         disconnect_warning: "You'll need to reconnect to use GitHub features."
       },
       %{

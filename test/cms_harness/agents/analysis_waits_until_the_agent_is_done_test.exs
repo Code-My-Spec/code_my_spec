@@ -159,54 +159,17 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     refute_received {:event, %{event: :turn_failed}}
   end
 
-  test "the finite ceiling stops execution before delivering queued work", %{root: root} do
+  test "a crashed waiter cannot release queued work into the old execution", %{root: root} do
     agent = start_agent(root, gated_plug(self()), self())
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
-    original = :sys.get_state(engine).alloy
 
-    :sys.replace_state(original, fn state ->
+    :sys.replace_state(:sys.get_state(engine).alloy, fn state ->
       %{state | provider_state: %{session_marker: "preserve-this-session"}}
     end)
 
-    assert {:ok, :started} = Machine.send_message(agent, "running", "original instruction")
-    assert_receive {:holding_turn, execution}, 5_000
-    assert {:error, :busy} = Machine.send_message(agent, "waiting", "queued instruction")
-    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
-    state = :sys.get_state(engine)
-    remaining = Process.read_timer(state.turn.timer)
-    assert is_integer(remaining) and remaining > 0 and remaining <= :timer.minutes(30)
-    assert state.alloy == execution
-    monitor = Process.monitor(execution)
-
-    # Deliver the real timer's message without making the test wait 30 minutes.
-    send(engine, {:turn_ceiling, state.turn.task.ref})
-    assert_receive {:event, %{event: :turn_ended}}, 5_000
-    assert {:ok, :started} = Machine.send_message(agent, "waiting", "queued instruction")
-    assert_receive {:event, %{event: :turn_started, ref: "waiting"}}, 5_000
-    refute Process.alive?(execution)
-    assert_receive {:DOWN, ^monitor, :process, ^execution, :killed}
-    assert_receive {:event, %{event: :turn_failed}}, 5_000
-    assert_receive {:event, %{event: :turn_ended}}, 5_000
-    assert {:ok, %{busy?: false}} = Engine.status(agent)
-    assert {:ok, history} = Engine.history(agent)
-    assert inspect(history) =~ "original instruction"
-    assert inspect(history) =~ "queued instruction"
-    assert inspect(history) =~ "interrupted"
-    replacement = :sys.get_state(engine).alloy
-    assert :sys.get_state(replacement).provider_state.session_marker == "preserve-this-session"
-
-    send(engine, {:turn_ceiling, state.turn.task.ref})
-    assert {:ok, %{busy?: false}} = Engine.status(agent)
-    assert Engine.running?(agent)
-    refute_received {:event, %{event: :turn_failed}}
-  end
-
-  test "a crashed waiter cannot release queued work into the old execution", %{root: root} do
-    agent = start_agent(root, gated_plug(self()), self())
     assert {:ok, :started} = Machine.send_message(agent, "running", "first")
     assert_receive {:holding_turn, execution}, 5_000
     assert {:error, :busy} = Machine.send_message(agent, "waiting", "second")
-    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
     state = :sys.get_state(engine)
 
     Process.exit(state.turn.task.pid, :kill)
@@ -218,11 +181,17 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     assert_receive {:event, %{event: :turn_failed}}, 5_000
     assert_receive {:event, %{event: :turn_ended}}, 5_000
     assert {:ok, %{busy?: false}} = Engine.status(agent)
+    assert {:ok, history} = Engine.history(agent)
+    assert inspect(history) =~ "first"
+    assert inspect(history) =~ "queued instruction"
+    assert inspect(history) =~ "interrupted"
+    replacement = :sys.get_state(engine).alloy
+    assert :sys.get_state(replacement).provider_state.session_marker == "preserve-this-session"
   end
 
   for mode <- [:direct, :supervised] do
     @tag ownership_mode: mode
-    test "ceiling stops the #{mode} subprocess before queued delivery", %{
+    test "an aborted turn stops the #{mode} subprocess before queued delivery", %{
       root: root,
       ownership_mode: mode
     } do
@@ -249,7 +218,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
       [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
       state = :sys.get_state(engine)
 
-      send(engine, {:turn_ceiling, state.turn.task.ref})
+      Process.exit(state.turn.task.pid, :kill)
 
       assert_receive {:event, %{event: :turn_ended}}, 5_000
       assert {:ok, :started} = Machine.send_message(agent, "waiting", "queued instruction")

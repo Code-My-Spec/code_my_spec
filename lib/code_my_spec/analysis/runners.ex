@@ -645,8 +645,24 @@ defmodule CodeMySpec.Analysis.Runners do
     |> String.slice(0, 300)
   end
 
-  defp cap(output) when byte_size(output) > @output_cap,
-    do: binary_part(output, 0, @output_cap) <> "\n… (truncated)"
+  # On a character boundary, as the harness's own cap does (e82d6a37): a byte
+  # cut after the first byte of a "—" left 0xe2 before the newline, Postgres
+  # refused the row, and a green exunit run was recorded as one that could not
+  # run (2026-10-12).
+  defp cap(output) do
+    output = String.replace_invalid(output)
 
-  defp cap(output), do: output
+    if byte_size(output) > @output_cap do
+      output |> binary_part(0, @output_cap) |> drop_partial_char() |> Kernel.<>("\n… (truncated)")
+    else
+      output
+    end
+  end
+
+  # The input is already valid, so only a trailing partial sequence can fail.
+  defp drop_partial_char(binary) do
+    if String.valid?(binary),
+      do: binary,
+      else: binary |> binary_part(0, byte_size(binary) - 1) |> drop_partial_char()
+  end
 end

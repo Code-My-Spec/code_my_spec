@@ -26,7 +26,12 @@ defmodule CmsHarness.Web.DashboardStatusController do
       slots: %{
         in_use: AnalysisSlots.in_use(),
         waiting: AnalysisSlots.waiting(),
-        limit: AnalysisSlots.limit()
+        limit: AnalysisSlots.limit(),
+        fast: %{
+          in_use: AnalysisSlots.in_use(:fast),
+          waiting: AnalysisSlots.waiting(:fast),
+          limit: AnalysisSlots.limit(:fast)
+        }
       },
       machine: machine_stats(),
       projects: Enum.map(Projects.list(), &project_status/1)

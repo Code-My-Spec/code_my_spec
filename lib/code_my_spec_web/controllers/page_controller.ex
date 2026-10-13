@@ -2,6 +2,7 @@ defmodule CodeMySpecWeb.PageController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Intake
+  alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpecWeb.Plugs.IntakeSession
 
   @doc """
@@ -73,7 +74,7 @@ defmodule CodeMySpecWeb.PageController do
 
   # The desktop app has no public site: its root is the app.
   def home(conn, _params) do
-    if CodeMySpecDesktop.Identity.active?(),
+    if DesktopUser.active?(),
       do: redirect(conn, to: ~p"/app"),
       else: render_home(conn)
   end

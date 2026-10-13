@@ -18,8 +18,8 @@ defmodule CodeMySpecWeb.RequirementsLive do
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.GraphReport
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Stories
@@ -407,7 +407,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
         data-graph={if is_map(@graph_data), do: Jason.encode!(@graph_data)}
         phx-update="ignore"
         class="rounded-box border border-base-300 bg-base-200"
-        style="width: 100%; height: 80vh;"
+        style="position: relative; overflow: hidden; width: 100%; height: 80vh;"
       >
       </div>
     </div>
