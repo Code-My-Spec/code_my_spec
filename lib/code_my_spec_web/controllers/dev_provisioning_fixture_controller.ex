@@ -27,6 +27,59 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
     end
   end
 
+  def prepare_agent(conn, params) do
+    origin = URI.to_string(%URI{scheme: to_string(conn.scheme), host: conn.host, port: conn.port})
+
+    with {:ok, scope} <- authenticate(params),
+         {:ok, project} <- Projects.get_project(scope, params["project_id"]),
+         {:ok, fixture} <-
+           CodeMySpecWeb.DevProvisioningAgentFixture.prepare(scope, project, origin) do
+      json(conn, fixture)
+    else
+      _ -> refuse(conn)
+    end
+  end
+
+  def start_agent(conn, params) do
+    with {:ok, scope} <- authenticate(params),
+         {:ok, project} <- Projects.get_project(scope, params["project_id"]),
+         {:ok, _} <- QaFixture.snapshot(project.id),
+         {:ok, copy} <- CodeMySpec.WorkingCopies.fetch(params["working_copy_id"]),
+         true <-
+           copy.project_id == project.id and copy.main and
+             is_binary(project.local_path) and copy.root == project.local_path do
+      scope = %{
+        scope
+        | active_project: project,
+          active_project_id: project.id,
+          active_working_copy_id: copy.id,
+          cwd: copy.root
+      }
+
+      with {:ok, agent} <-
+             CodeMySpec.Agents.start_agent(scope, %{
+               role: :main,
+               engine: :alloy,
+               provider: "claude-code",
+               working_copy_id: copy.id,
+               working_copy: copy.root
+             }),
+           {:ok, agent, _} <- CodeMySpec.Agents.set_agent_continuous(scope, agent.id, true) do
+        json(conn, %{
+          agent_id: agent.id,
+          working_copy_id: copy.id,
+          status: agent.status,
+          continuous: agent.continuous
+        })
+      else
+        {:error, reason} ->
+          conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
+      end
+    else
+      _ -> refuse(conn)
+    end
+  end
+
   def inspect_fixture(conn, params) do
     with {:ok, scope} <- authenticate(params),
          {:ok, _project} <- Projects.get_project(scope, params["project_id"]),

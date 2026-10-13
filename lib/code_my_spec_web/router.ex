@@ -456,6 +456,14 @@ defmodule CodeMySpecWeb.Router do
 
       post "/provisioning-fixtures", DevProvisioningFixtureController, :create
 
+      post "/provisioning-fixtures/:project_id/start-agent",
+           DevProvisioningFixtureController,
+           :start_agent
+
+      post "/provisioning-fixtures/:project_id/prepare-agent",
+           DevProvisioningFixtureController,
+           :prepare_agent
+
       post "/provisioning-fixtures/:project_id/inspect",
            DevProvisioningFixtureController,
            :inspect_fixture

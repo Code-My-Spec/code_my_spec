@@ -40,6 +40,76 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
     assert [%{"kind" => "domain"}] = registered["resources"]
   end
 
+  test "prepares an isolated agent runtime without exposing its token", %{
+    conn: conn,
+    credentials: credentials
+  } do
+    created = conn |> post("/dev/provisioning-fixtures", credentials) |> json_response(200)
+    path = "/dev/provisioning-fixtures/#{created["project_id"]}/prepare-agent"
+
+    prepared =
+      build_conn() |> Map.put(:host, "localhost") |> post(path, credentials) |> json_response(200)
+
+    refute Map.has_key?(prepared, "token")
+    runtime = prepared["runtime_path"] |> File.read!() |> Jason.decode!()
+    assert runtime["fixture"] == "story-963"
+    assert runtime["project_id"] == created["project_id"]
+    assert runtime["working_copy_id"] == prepared["working_copy_id"]
+    token = ExOauth2Provider.AccessTokens.get_by_token(runtime["token"], otp_app: :code_my_spec)
+    assert token
+    assert ExOauth2Provider.AccessTokens.is_accessible?(token)
+    assert token.expires_in == 3600
+    assert Bitwise.band(File.stat!(prepared["runtime_path"]).mode, 0o777) == 0o600
+    assert {:ok, copy} = CodeMySpec.WorkingCopies.fetch(prepared["working_copy_id"])
+    assert copy.project_id == created["project_id"]
+    assert copy.root == prepared["root"]
+    assert copy.main
+
+    assert build_conn()
+           |> Map.put(:host, "localhost")
+           |> post(path, credentials)
+           |> json_response(422)
+  end
+
+  test "refuses agent preparation for ordinary projects", %{
+    scope: scope,
+    credentials: credentials
+  } do
+    path = "/dev/provisioning-fixtures/#{scope.active_project_id}/prepare-agent"
+
+    assert build_conn()
+           |> Map.put(:host, "localhost")
+           |> post(path, credentials)
+           |> json_response(422)
+  end
+
+  test "refuses starting an agent on an ordinary project or another project's copy", %{
+    scope: scope,
+    credentials: credentials
+  } do
+    ordinary = "/dev/provisioning-fixtures/#{scope.active_project_id}/start-agent"
+    params = Map.put(credentials, :working_copy_id, scope.active_working_copy_id)
+    assert build_conn() |> post(ordinary, params) |> json_response(422)
+
+    created =
+      build_conn() |> post("/dev/provisioning-fixtures", credentials) |> json_response(200)
+
+    fixture = "/dev/provisioning-fixtures/#{created["project_id"]}/start-agent"
+    assert build_conn() |> post(fixture, params) |> json_response(422)
+  end
+
+  test "refuses preparing a runtime for a nonlocal server", %{credentials: credentials} do
+    created =
+      build_conn() |> post("/dev/provisioning-fixtures", credentials) |> json_response(200)
+
+    path = "/dev/provisioning-fixtures/#{created["project_id"]}/prepare-agent"
+
+    assert build_conn()
+           |> Map.put(:host, "example.com")
+           |> post(path, credentials)
+           |> json_response(422)
+  end
+
   test "refuses missing credentials", %{conn: conn} do
     assert conn |> post("/dev/provisioning-fixtures", %{}) |> json_response(422)
   end

@@ -44,6 +44,24 @@ For refusal/hold scenarios use an absent resource, since verification of an exis
 
 Fixtures last for the app process lifetime. After restart, create a new fixture; old marked fixture projects fail closed rather than using real providers. The stored project rows remain available for evidence. Controls simulate one resource per step/environment and do not model associated infrastructure within real providers.
 
+## Dedicated agent fixture for criterion 568
+
+On the local development server, create a fresh provisioning fixture as above. POST the same email/password to `/dev/provisioning-fixtures/PROJECT_ID/prepare-agent`. This returns `working_copy_id`, `root`, and `runtime_path`. Preparation is allowed once per fresh fixture and only for a loopback HTTP server.
+
+From this CodeMySpec checkout, run the following in a separate terminal and keep it running:
+
+```sh
+MIX_ENV=harness mix run --no-start priv/repo/qa_963_harness.exs /RETURNED/runtime.json
+```
+
+The bootstrap runs a real harness with a dedicated device identity, state directory and dynamically assigned loopback port. The runtime file contains a one-hour OAuth token for the authenticated QA user, stored with mode 0600 inside a mode 0700 directory. It is not returned in the API response. Do not print, copy into evidence, or commit that file. This uses existing OAuth authentication; it does not change the deploy-key exchange used by real copies.
+
+Once the fixture working copy is connected, POST email/password plus `working_copy_id` to `/dev/provisioning-fixtures/PROJECT_ID/start-agent`. It starts a main Alloy agent using the existing local `claude-code` provider and enables continuous mode for that agent. The machine must already have a working Claude CLI login. The response names the agent; verify its running/present state in the normal agent UI. An unsuccessful start is not delivery evidence.
+
+Refuse an absent simulated provider resource, then click Run in the console. Open this project's agent conversation and record the exact provider error, attempted action, and a subsequent agent response. A queued message or console escalation alone does not pass criterion 568. Do not authorize real infrastructure work for this disposable fixture.
+
+After the pass, switch this fixture agent off through the normal UI and stop its dedicated harness with Ctrl-C. Preserve the project and conversation as evidence. If the token expires or the app restarts, create a fresh fixture. Do not restart or reconfigure the shared harness.
+
 ## Agent delivery prerequisites
 
 The simulator creates provider state, not an agent or a connected working copy. To verify criterion 568 through a live agent, the fixture project needs its own designated main working copy, a connected model provider, and a present main agent with continuous mode enabled. Use the normal project onboarding and agent controls for these prerequisites. Never attach another project's agent to the fixture.
@@ -51,6 +69,10 @@ The simulator creates provider state, not an agent or a connected working copy. 
 An errored provisioning step publishes its persisted failure to Agents. The repair message names the project, step, environment, attempted action and verbatim provider error. Confirm delivery in the project's agent conversation; console escalation markup alone is insufficient evidence. Successful and paused steps do not request repair.
 
 Existing agent wake rules remain in force: a non-continuous, off or unavailable agent is not evidence of successful delivery. Missing startup prerequisites are logged and leave the original provider failure intact. For an eligible continuous main agent that is still becoming ready, the message remains in the durable mailbox until presence permits delivery. The transport rechecks off and retired state before sending. Starting an agent does not enable continuous mode automatically.
+
+## Working-agent fixture verification, 2026-10-13
+
+Live implementation check on port 63664: project `3190ae3b-678b-425a-91ef-89f17bf2936e`, working copy `9bde954a-755a-44e6-9d49-88c9e4424fed`, agent `28cef137-a74b-4c1f-8b1d-d0b1ffdcc4e7` (candid-ember). The dedicated harness joined, the agent started with status running, and a domain refusal triggered through the console reached its conversation with the exact provider error and attempted action. The agent responded that it was investigating the domain failure and called diagnostic tools. Screenshot: `/tmp/qa963-live-agent-refusal.png`. The agent was then turned off through the normal UI. This is implementation evidence; independent story QA must create a fresh fixture and record its own outcome.
 
 ## Implementation verification, 2026-10-13
 
