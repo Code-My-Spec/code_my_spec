@@ -925,22 +925,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
-  def handle_in(
-        "agent_mailbox",
-        %{"operation" => "take_send_now", "agent_id" => id, "generation" => generation},
-        socket
-      ) do
-    scope = socket.assigns.scope
-
-    with {:ok, agent} <- Agents.fetch_agent(scope, id),
-         true <- agent.working_copy_id == scope.active_working_copy_id,
-         {:ok, texts} <- Agents.Mailbox.take_send_now(scope, id, generation) do
-      {:reply, {:ok, %{messages: texts}}, socket}
-    else
-      _ -> {:reply, {:error, %{reason: "no messages sent now could be taken"}}, socket}
-    end
-  end
-
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
     Agents.record_turn_event(socket.assigns.scope, agent_id, event)
     settle_draft(socket, agent_id, event)
@@ -1732,6 +1716,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # topic has already answered — the class of bug story 891 exists to remove.
   def handle_info(:rescan, socket) do
     push(socket, "rescan", %{})
+    {:noreply, socket}
+  end
+
+  # A message sent now to a busy agent (story 1051): the machine stops its turn.
+  def handle_info({:interrupt_turn, agent_id}, socket) do
+    push(socket, "interrupt_turn", %{"agent_id" => agent_id})
     {:noreply, socket}
   end
 

@@ -1024,6 +1024,17 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # A message sent now to a busy agent (story 1051): stop its turn so the
+  # message is the next one. Off this process, because stopping waits on the
+  # agent's turn to shut down and this one carries every hook and report.
+  def handle_message(_topic, "interrupt_turn", %{"agent_id" => agent_id}, socket) do
+    Task.Supervisor.start_child(Sync.task_supervisor(socket.assigns.project.root), fn ->
+      CmsHarness.Agents.interrupt(agent_id)
+    end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "cancel_analysis", payload, socket) do
     root = socket.assigns.project.root
     reason = Map.get(payload, "reason") || "cancelled by the server"

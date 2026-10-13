@@ -52,9 +52,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
-  alias CmsHarness.Agents.SendNow
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Agents.TurnProgress
   alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
@@ -521,7 +521,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
       checkpoint: checkpoint,
       message: message,
       awaiting: awaiting,
-      ref: ref
+      ref: ref,
+      # The transcript at the turn's last tool boundary (`TurnProgress`), so a
+      # turn stopped part-way keeps what it did. Nil until its first round.
+      progress: nil
     }
   end
 
@@ -540,6 +543,50 @@ defmodule CmsHarness.Agents.Engine.Impl do
         {:stop, {:turn_shutdown_unconfirmed, reason, failure}, state}
     end
   end
+
+  @doc """
+  Stop the running turn so a message sent now can be the next one (story
+  1051), keeping everything the turn did up to its last tool boundary.
+
+  The agent is told it was stopped and why, and the turn ends as interrupted;
+  the server delivers the message sent now next, ahead of anything queued. A
+  turn stopped before its first round of tool calls keeps its prompt.
+  """
+  def interrupt_turn(state) do
+    Process.unlink(state.alloy)
+
+    case Execution.stop(state.alloy) do
+      :ok ->
+        Task.shutdown(state.turn.task, :brutal_kill)
+        resume_interrupted(state)
+
+      {:error, failure} ->
+        {:stop, {:turn_shutdown_unconfirmed, :interrupted, failure}, state}
+    end
+  end
+
+  defp resume_interrupted(state) do
+    kept = state.turn.progress || started_with(state.turn)
+
+    messages =
+      kept ++
+        [
+          Alloy.Message.user(
+            "You were stopped part-way through this turn so a message sent to you now " <>
+              "could reach you; it follows. Everything you did up to your last completed " <>
+              "tool call is above. A call that was running when you were stopped was cut " <>
+              "off and may or may not have taken effect."
+          )
+        ]
+
+    case Server.start_link(Keyword.put(state.alloy_opts, :messages, messages)) do
+      {:ok, alloy} -> settle(%{state | alloy: alloy}, {:error, :interrupted})
+      {:error, failure} -> {:stop, {:turn_recovery_failed, failure}, state}
+    end
+  end
+
+  defp started_with(turn),
+    do: turn.checkpoint.messages ++ [Alloy.Message.user(turn.message)]
 
   defp recover_turn(state, reason) do
     recovered =
@@ -1017,8 +1064,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # `ToolResults` keeps a tool's failure from killing the agent: an error
        # struct in a result block cannot be JSON-encoded for the next request
        # (2999a0cb).
-       # `SendNow` lets a message sent now in at the tool boundary (story 1051).
-       |> Keyword.put(:middleware, [Compaction, ToolResults, SendNow])
+       # `TurnProgress` keeps the engine's copy of the turn current, so a turn
+       # stopped for a message sent now keeps what it did (story 1051).
+       |> Keyword.put(:middleware, [Compaction, ToolResults, TurnProgress])
        # A code-mode tool called directly came back as a bare "Unknown tool",
        # and the main agent answered it by starting a second coder instead of
        # restarting the first.
@@ -1057,8 +1105,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
          # inside. Middleware is a module rather than a closure, and the thing
          # it has to report to is per-agent.
          on_compaction: compaction_reporter(opts),
-         # Asked after each round of tool calls for messages sent now.
-         take_send_now: send_now_taker(opts)
+         # Told after each round of tool calls what the turn has done so far.
+         on_progress: progress_reporter(opts)
        })
        |> Keyword.put(:messages, resumed(Keyword.get(opts, :messages)))}
     end
@@ -1157,39 +1205,18 @@ defmodule CmsHarness.Agents.Engine.Impl do
   end
 
   # Nil until the engine has minted its generation: validation builds these
-  # options too, and there is no turn to deliver into.
-  #
-  # Through the engine, built here in its `init/1`: the middleware runs in the
-  # Alloy process, and the channel refuses a mailbox request from anything but
-  # the agent's engine. Asked directly, every take came back `:stale_engine`,
-  # read as nothing sent, and a message sent now waited for the turn's end.
-  defp send_now_taker(opts) do
-    with agent_id when is_binary(agent_id) <- Keyword.get(opts, :agent_id),
-         generation when is_binary(generation) <- Keyword.get(opts, :generation) do
-      case Keyword.get(opts, :on_send_now) do
-        take when is_function(take, 2) -> fn -> take.(agent_id, generation) end
-        nil -> ask_engine(self())
-      end
-    else
-      _ -> nil
+  # options too, and there is no turn to report on. Built in the engine's
+  # `init/1`, so `self()` is the engine; the middleware runs in the Alloy
+  # process and sends to it.
+  defp progress_reporter(opts) do
+    case Keyword.get(opts, :generation) do
+      generation when is_binary(generation) ->
+        engine = self()
+        fn messages -> send(engine, {:turn_progress, messages}) end
+
+      _ ->
+        nil
     end
-  end
-
-  defp ask_engine(engine), do: fn -> take_from(engine) end
-
-  defp take_from(engine) do
-    GenServer.call(engine, :take_send_now, 20_000)
-  catch
-    :exit, _ -> {:error, :no_reply}
-  end
-
-  @doc "The messages sent now to this agent mid-turn, asked of the server as its engine."
-  def take_send_now(state) do
-    Channel.mailbox(state.working_copy, %{
-      "operation" => "take_send_now",
-      "agent_id" => state.agent_id,
-      "generation" => state.generation
-    })
   end
 
   defp require_opt(opts, key) do

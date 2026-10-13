@@ -358,67 +358,7 @@ defmodule CodeMySpec.Agents.Mailbox do
     end)
   end
 
-  @doc """
-  The messages sent now to an agent mid-turn, taken at a tool boundary.
-
-  Asked by the engine after each round of tool calls. Each one is consumed and
-  completed here, in the same transaction, before the engine hands it to the
-  model: it is delivered inside the turn whose entry is already consumed, so it
-  has no turn of its own to finish. Only the engine that holds that turn may
-  take them.
-  """
-  def take_send_now(scope, agent_id, generation) when is_binary(generation) do
-    Repo.transaction(fn ->
-      agent = scope |> lock_agent!(agent_id) |> in_turn!(generation)
-      now = DateTime.utc_now()
-
-      for entry <-
-            Repo.all(
-              from e in Entry,
-                where: e.agent_id == ^agent_id and e.state == :queued and e.send_now == true,
-                order_by: e.id
-            ),
-          do: take_now(entry, agent, generation, now)
-    end)
-    |> taken()
-  end
-
-  defp in_turn!(%Agent{mailbox_generation: generation} = agent, generation) do
-    if Repo.exists?(
-         from e in Entry,
-           where: e.agent_id == ^agent.id and e.state == :consumed and e.generation == ^generation
-       ),
-       do: agent,
-       else: Repo.rollback(:no_turn)
-  end
-
-  defp in_turn!(_agent, _generation), do: Repo.rollback(:stale_engine)
-
-  defp take_now(entry, agent, generation, now) do
-    change_entry(entry, %{
-      state: :completed,
-      generation: generation,
-      consumed_at: now,
-      finished_at: now
-    })
-
-    {:ok, message} =
-      Conversations.set_delivery(Repo.get!(Message, entry.message_id), :delivered,
-        broadcast: false
-      )
-
-    CompletionHandoffs.delivered(entry.message_id, agent)
-    message
-  end
-
-  defp taken({:ok, messages}) do
-    Enum.each(messages, &publish/1)
-    {:ok, Enum.map(messages, &Message.text/1)}
-  end
-
-  defp taken(error), do: error
-
-  @doc "Let a queued message into the running turn at its next tool boundary."
+  @doc "Put a queued message at the head of the queue, to be the agent's next turn (story 1051)."
   def send_now(scope, agent_id, ref) do
     transition(scope, agent_id, ref, fn
       %{state: :queued} = entry -> change_entry(entry, %{send_now: true})

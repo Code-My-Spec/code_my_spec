@@ -3182,7 +3182,6 @@ defmodule CodeMySpecSpex.Fixtures do
     )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
-    |> Map.put("on_send_now", callbacks[:on_send_now])
     |> CmsHarness.Agents.launch()
   end
 
@@ -3201,9 +3200,6 @@ defmodule CodeMySpecSpex.Fixtures do
       end,
       on_consume: fn id, ref, generation ->
         CodeMySpec.Agents.Mailbox.consume(scope, id, ref, generation)
-      end,
-      on_send_now: fn id, generation ->
-        CodeMySpec.Agents.Mailbox.take_send_now(scope, id, generation)
       end
     ]
   end
