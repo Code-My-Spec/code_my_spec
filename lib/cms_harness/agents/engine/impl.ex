@@ -689,6 +689,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # mid-run answers `{:ok, %Alloy.Result{status: :error}}` — an ok tuple
   # carrying a failure, which is exactly the shape that gets read as success by
   # a clause matching only the first.
+  # An interrupt was asked for, so a message sent now goes next; reported as a
+  # failure, the server offered the turn again and flagged the agent stalled.
+  defp announce_outcome(_state, {:error, :interrupted}), do: :ok
   defp announce_outcome(state, {:error, reason}), do: report_failure(state, reason)
 
   defp announce_outcome(state, {:ok, %{status: :error, error: reason}}),
