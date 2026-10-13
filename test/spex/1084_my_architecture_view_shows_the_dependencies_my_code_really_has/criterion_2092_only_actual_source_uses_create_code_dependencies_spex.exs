@@ -40,10 +40,10 @@ defmodule CodeMySpecSpex.Story1084.Criterion2092Spex do
       end
 
       then_ "alias and config evidence do not create a dependency", context do
-        section = billing_section(context)
+        deps = billing_deps(context)
 
-        refute section =~ "Accounts",
-               "expected no Accounts dependency from alias/config alone: #{section}"
+        refute Map.has_key?(deps, "Accounts"),
+               "expected no Accounts dependency from alias/config alone: #{inspect(deps)}"
 
         {:ok, context}
       end
@@ -70,47 +70,24 @@ defmodule CodeMySpecSpex.Story1084.Criterion2092Spex do
       end
 
       then_ "the call creates an observed code dependency", context do
-        section = billing_section(context)
-        marker = dependency_marker(section, "Accounts")
-        assert marker, "expected an Accounts dependency marker in Billing's section: #{section}"
-        assert marker =~ "in code", "expected the call to mark Accounts as in code: #{marker}"
+        deps = billing_deps(context)
+
+        assert %{"in_code" => true} = deps["Accounts"],
+               "expected the call to mark Accounts as in code: #{inspect(deps)}"
+
         {:ok, context}
       end
     end
   end
 
-  defp billing_section(context) do
-    {:ok, _view, html} =
-      live(context.conn, "/app/projects/#{context.project.id}/architecture/overview")
+  # get_component's dependencies for Billing, keyed relative to the app.
+  defp billing_deps(context) do
+    app = ComponentGraphHelpers.app(context)
 
-    component_section(html, "Billing")
-  end
-
-  defp component_section(html, name) do
-    {_, _, prose_children} =
-      html |> Floki.parse_document!() |> Floki.find(".prose") |> List.first()
-
-    start_idx =
-      Enum.find_index(prose_children, fn
-        {"h3", _, _} = node -> Floki.text(node) == name
-        _ -> false
-      end)
-
-    prose_children
-    |> Enum.drop(start_idx + 1)
-    |> Enum.take_while(fn
-      {tag, _, _} -> tag not in ["h2", "h3"]
-      _ -> true
+    context
+    |> ComponentGraphHelpers.dependencies("#{app}.Billing")
+    |> Map.new(fn {module, evidence} ->
+      {String.replace_prefix(module, app <> ".", ""), evidence}
     end)
-    |> Floki.text()
   end
-
-  defp dependency_marker(section_text, module_name) do
-    ~r/#{Regex.escape(module_name)}[^()]*\(([^)]*)\)/
-    |> Regex.run(section_text)
-    |> marker_from_match()
-  end
-
-  defp marker_from_match([_, marker]), do: marker
-  defp marker_from_match(_), do: nil
 end

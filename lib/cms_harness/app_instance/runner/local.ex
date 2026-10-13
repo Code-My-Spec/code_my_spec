@@ -104,8 +104,20 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   # worse than the opaque refusal. Closing that case needs the issue's option
   # (1) — read the port off the listening socket, or have it recorded at
   # onboarding — which is the deliberate pass it asks for, not this.
+  #
+  # Comment lines are skipped: Phoenix's generated dev.exs carries a commented
+  # `port: 4001` HTTPS example, which read as main's HTTPS port once nothing
+  # else declared one.
   def declared_port(content, env_var) do
+    content = uncommented(content)
     env_port(content, env_var) || literal_port(content)
+  end
+
+  defp uncommented(content) do
+    content
+    |> String.split("\n")
+    |> Enum.reject(&String.match?(&1, ~r/^\s*#/))
+    |> Enum.join("\n")
   end
 
   # The original shape, and any env-var name: the variable must be the one

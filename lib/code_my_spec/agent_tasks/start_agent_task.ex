@@ -377,7 +377,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp architecture_reference do
-    "For the component graph and dependencies, call `show_architecture_overview`."
+    "For the component tree call `show_namespace_hierarchy`; for one component and its dependencies, `get_component`."
   end
 
   # Validation

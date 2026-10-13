@@ -96,7 +96,7 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
     """
     ## Architecture
 
-    Read the contexts with `show_architecture_overview` — every `<App>`
+    Read the contexts with `show_namespace_hierarchy` — every `<App>`
     context that isn't already a dep of the spec boundary belongs on the
     project-local deny list (plus `<App>.Repo`).\
     """

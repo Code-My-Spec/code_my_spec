@@ -47,7 +47,7 @@ defmodule CodeMySpec.AgentTasks.DevelopLiveViewTest do
 
       assert {:ok, prompt} = DevelopLiveView.command(scope, task)
       assert prompt =~ "Develop LiveView: DashboardLive"
-      assert prompt =~ "show_architecture"
+      assert prompt =~ "show_namespace_hierarchy"
       assert prompt =~ "LiveView last"
       refute prompt =~ "spec-writer"
     end

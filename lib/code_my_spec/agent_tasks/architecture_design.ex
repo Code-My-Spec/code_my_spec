@@ -359,7 +359,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
         The project has #{component_count} existing components. Read them:
 
-        - `show_architecture_overview` for the whole graph
+        - `show_namespace_hierarchy` for the namespace tree (a prefix and depth open one subtree)
         - `get_component` for one component and its dependencies
         - Use `validate_dependency_graph` tool to check for circular dependencies
         """

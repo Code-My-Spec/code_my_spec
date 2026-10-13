@@ -124,7 +124,7 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
       gaps
     else
       [
-        "`#{local_dir}/` has no project-local Credo check (`*.ex`) — write `<app>_spex_denies.ex` filling in @denied_whole_modules with stdlib bypasses (File, Port, :file) plus internal app contexts from `show_architecture_overview`."
+        "`#{local_dir}/` has no project-local Credo check (`*.ex`) — write `<app>_spex_denies.ex` filling in @denied_whole_modules with stdlib bypasses (File, Port, :file) plus internal app contexts from `show_namespace_hierarchy`."
         | gaps
       ]
     end
