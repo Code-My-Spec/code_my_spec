@@ -137,7 +137,8 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
       expected = StopDecision.decide(ctx.scope, agent)
       :ok = StopDecision.deliver(ctx.scope, agent, [])
 
-      assert dispatched(agent.id) == expected
+      # `decide/2` and `deliver/3` each render the run's age, a second apart at worst.
+      assert without_ages(dispatched(agent.id)) == without_ages(expected)
       assert expected =~ "Fix these problems"
 
       assert [offer] = Offers.list_for_agent(agent.id)
@@ -185,4 +186,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
     assert dispatched(agent.id) =~ "no blocking problems"
     assert Offers.list_for_agent(agent.id) == []
   end
+
+  defp without_ages(text), do: String.replace(text, ~r/finished \d+s ago/, "finished _ ago")
 end
