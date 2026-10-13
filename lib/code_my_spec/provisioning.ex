@@ -363,6 +363,7 @@ defmodule CodeMySpec.Provisioning do
   @spec run_step(Scope.t(), atom(), String.t() | nil, keyword()) ::
           {:ok, Step.t()} | {:halt, Step.t(), String.t()}
   def run_step(%Scope{} = scope, key, environment, opts) do
+    opts = CodeMySpec.Provisioning.QaFixture.options(scope, opts, environment)
     execute = Keyword.get(opts, :execute, &execute_step/3)
     scope = reread_project(scope)
     previous = StepRepository.get(scope, key, environment)
@@ -690,6 +691,8 @@ defmodule CodeMySpec.Provisioning do
   @spec verify(Scope.t(), atom(), keyword()) ::
           {:ok, :satisfied, [map()]} | {:ok, :absent} | {:error, term()}
   def verify(%Scope{} = scope, key, opts \\ []) do
+    opts = CodeMySpec.Provisioning.QaFixture.options(scope, opts)
+
     case Keyword.get(opts, :verify) do
       nil -> Steps.verify(key, scope, opts)
       verifier -> verifier.(scope, key)

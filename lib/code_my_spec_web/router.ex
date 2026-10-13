@@ -454,6 +454,16 @@ defmodule CodeMySpecWeb.Router do
       post "/sign-in", DevSignInController, :create
       post "/sign-up", DevSignInController, :register
 
+      post "/provisioning-fixtures", DevProvisioningFixtureController, :create
+
+      post "/provisioning-fixtures/:project_id/inspect",
+           DevProvisioningFixtureController,
+           :inspect_fixture
+
+      post "/provisioning-fixtures/:project_id/control",
+           DevProvisioningFixtureController,
+           :control
+
       # Thinning a working copy that has collected more agents than it can feed.
       # Three coding agents on one checkout is three stories in flight and seven
       # concurrent analyzer runs against one Postgres — observable through
