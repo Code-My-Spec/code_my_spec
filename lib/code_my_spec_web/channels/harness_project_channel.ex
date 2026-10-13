@@ -1628,6 +1628,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def decode_fs_result(%{"error" => %{} = reason}), do: {:error, reason}
 
   def decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
+
+  # File contents that are not text, which the harness sends as base64
+  # (`ChannelClient.encode_fs_result/1`).
+  def decode_fs_result(%{"ok" => true, "result_base64" => encoded}) when is_binary(encoded),
+    do: {:ok, Base.decode64!(encoded)}
+
   def decode_fs_result(%{"ok" => true}), do: :ok
   def decode_fs_result(other), do: {:error, {:unreadable_fs_result, other}}
 

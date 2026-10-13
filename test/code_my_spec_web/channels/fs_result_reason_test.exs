@@ -93,5 +93,25 @@ defmodule CodeMySpecWeb.FsResultReasonTest do
     end
   end
 
+  # A screenshot read for QA's evidence went into the JSON reply as raw PNG; the
+  # encoder raised and took the copy's channel, and both agents' turns, down
+  # (2026-10-13).
+  describe "a file that is not text" do
+    @png <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82>>
+
+    test "crosses the wire and comes back byte for byte" do
+      sent = ChannelClient.encode_fs_result({:ok, @png})
+
+      assert HarnessProjectChannel.decode_fs_result(json_round_trip(sent)) == {:ok, @png}
+    end
+
+    test "text still crosses as itself" do
+      sent = ChannelClient.encode_fs_result({:ok, "# Brief\n"})
+
+      assert sent["result"] == "# Brief\n"
+      assert HarnessProjectChannel.decode_fs_result(json_round_trip(sent)) == {:ok, "# Brief\n"}
+    end
+  end
+
   defp json_round_trip(map), do: map |> Jason.encode!() |> Jason.decode!()
 end

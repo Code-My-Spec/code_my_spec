@@ -1842,6 +1842,16 @@ defmodule CmsHarness.Project.ChannelClient do
   # from a fixed list; the round trip is pinned in `FsResultReasonTest`.
   @doc false
   def encode_fs_result(:ok), do: %{"ok" => true}
+  # Bytes that are not text travel as base64: a screenshot read for QA's
+  # evidence went into the JSON reply as raw PNG, the encoder raised, and the
+  # crash took this copy's channel and both its agents' turns down
+  # (2026-10-13). `decode_fs_result/1` on the server reverses it.
+  def encode_fs_result({:ok, result}) when is_binary(result) do
+    if String.valid?(result),
+      do: %{"ok" => true, "result" => result},
+      else: %{"ok" => true, "result_base64" => Base.encode64(result)}
+  end
+
   def encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
   # A refusal with structure keeps it.
   #
