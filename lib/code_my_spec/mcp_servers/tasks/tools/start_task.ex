@@ -452,13 +452,29 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp qa_eligible_to_start(_scope, _owner, _requirement), do: :ok
 
-  defp eligible_to_resume(scope, owner, requirement) do
-    role = if match?(%Agent{}, owner), do: owner.role, else: nil
+  # An issue task's own eligibility is answered by `Work.actionable/3` as
+  # usual — the issue-dispatch rules are exactly what should decide it.
+  defp eligible_to_resume(scope, owner, %{entity_type: "issue"} = requirement) do
+    resume_eligible?(Work.actionable(scope, resume_role(owner), owner), requirement)
+  end
 
+  # A story-type task's own eligibility must not be bypassed by an unrelated
+  # issue binding: `Work.actionable/3` answers "what should be dispatched
+  # next" and hides every story-graph node while the owner holds an issue
+  # (`Work.work_for/4`'s own moduledoc), which wrongly refused to resume a
+  # real, still-eligible story task whenever its owner also happened to hold
+  # an issue (issue ae97b26c). `Work.story_actionable/3` answers the same
+  # question without that bypass, while still respecting another agent
+  # withholding the same work.
+  defp eligible_to_resume(scope, owner, requirement) do
+    resume_eligible?(Work.story_actionable(scope, resume_role(owner), owner), requirement)
+  end
+
+  defp resume_role(owner), do: if(match?(%Agent{}, owner), do: owner.role, else: nil)
+
+  defp resume_eligible?(nodes, requirement) do
     eligible? =
-      scope
-      |> Work.actionable(role, owner)
-      |> Enum.any?(fn node ->
+      Enum.any?(nodes, fn node ->
         node.name == requirement.name and node.entity_type == requirement.entity_type and
           to_string(node.entity_id) == to_string(requirement.entity_id)
       end)
