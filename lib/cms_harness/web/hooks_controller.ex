@@ -17,9 +17,9 @@ defmodule CmsHarness.Web.HooksController do
 
   require Logger
 
+  alias CmsHarness.Channel
   alias CmsHarness.Config
   alias CmsHarness.HookDecision
-  alias CmsHarness.Channel
   alias CmsHarness.Projects
   alias CmsHarness.WorkingCopyWalk
 

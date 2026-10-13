@@ -55,9 +55,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.SendNow
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
-  alias CmsHarness.Channel
 
   @registry CmsHarness.Registry
 

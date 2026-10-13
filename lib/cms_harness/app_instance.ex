@@ -51,8 +51,8 @@ defmodule CmsHarness.AppInstance do
   require Logger
 
   alias CmsHarness.AppInstance.Runner
-  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Channel
+  alias CmsHarness.Copy.Supervisor, as: Copy
 
   # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
   # test proving the idle-stop path fires should not have to wait 30 real

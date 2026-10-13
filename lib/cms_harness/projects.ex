@@ -25,8 +25,8 @@ defmodule CmsHarness.Projects do
 
   require Logger
 
-  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Channel
+  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.ServedRoots
   alias CmsHarness.WorkingCopies.Create

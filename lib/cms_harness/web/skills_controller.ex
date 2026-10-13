@@ -35,8 +35,8 @@ defmodule CmsHarness.Web.SkillsController do
 
   require Logger
 
-  alias CmsHarness.HookDecision
   alias CmsHarness.Channel
+  alias CmsHarness.HookDecision
   alias CmsHarness.Projects
 
   def start(conn, params) do

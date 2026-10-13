@@ -18,8 +18,8 @@ defmodule CmsHarness.Web.RejoinControllerTest do
   use CmsHarnessTest.ConnCase, async: false
 
   alias CmsHarness.Agents.Liveness
-  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Channel
+  alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer

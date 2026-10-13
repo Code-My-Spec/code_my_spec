@@ -15,15 +15,15 @@ defmodule CmsHarness.Channel do
 
   @default_decision_timeout 10_000
 
-  @doc false
+  @doc "How long a hook decision may wait on the server."
   def decision_timeout,
     do: Application.get_env(:code_my_spec, :harness_decision_timeout, @default_decision_timeout)
 
-  @doc false
+  @doc "How long an awaited analyzer run may take."
   def analysis_timeout,
     do: Application.get_env(:code_my_spec, :harness_analysis_await_timeout, :timer.minutes(32))
 
-  @doc false
+  @doc "How long an awaited promotion may take."
   def promotion_timeout,
     do: Application.get_env(:code_my_spec, :harness_promotion_await_timeout, :timer.minutes(20))
 

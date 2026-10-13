@@ -3,8 +3,8 @@ defmodule CmsHarness.Agents.ShellTest do
 
   alias CmsHarness.Agents.Engine.Impl
   alias CmsHarness.Agents.Shell
-  alias CmsHarness.Config
   alias CmsHarness.Agents.Tools.Bash
+  alias CmsHarness.Config
 
   # The CMS probe is this test's own. MIX_ENV is put back as it was; the
   # module is sync, so no async test reads it meanwhile.

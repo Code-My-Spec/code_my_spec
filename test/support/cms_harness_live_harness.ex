@@ -16,8 +16,8 @@ defmodule CmsHarnessTest.LiveHarness do
   may not reach the cloud app and a spex may not reach `CmsHarness`.
   """
 
-  alias CmsHarness.HarnessConfig
   alias CmsHarness.Channel
+  alias CmsHarness.HarnessConfig
   alias CmsHarnessTest.ConnectHeaders
   alias CmsHarnessTest.Projects
   alias Phoenix.ConnTest

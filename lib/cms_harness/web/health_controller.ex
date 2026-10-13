@@ -11,8 +11,8 @@ defmodule CmsHarness.Web.HealthController do
   use Phoenix.Controller, formats: [:json]
 
   alias ClientUtils.Harness.Onboarding
-  alias CmsHarness.Config
   alias CmsHarness.Channel
+  alias CmsHarness.Config
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Projects
   alias CodeMySpec.BootVersion

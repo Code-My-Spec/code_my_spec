@@ -14,8 +14,8 @@ defmodule CmsHarness.Sync do
 
   require Logger
 
-  alias CmsHarness.HarnessConfig
   alias CmsHarness.Channel
+  alias CmsHarness.HarnessConfig
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner
