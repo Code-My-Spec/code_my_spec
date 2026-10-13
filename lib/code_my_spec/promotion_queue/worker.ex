@@ -411,9 +411,27 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp gate_runs(%{batch: batch} = state) do
     case Promotion.gate(batch.scope, batch.head) do
-      {:ok, swept} -> stories_green(state, swept)
+      {:ok, swept} -> assets_build(state, swept)
       {:pending, _pending} -> {:noreply, recheck_later(state)}
       {:error, reason} -> red(state, reason)
+    end
+  end
+
+  # None of compiler, credo, exunit or spex run the project's asset pipeline,
+  # so a broken JS import landed with every one of them green (issue
+  # 47568b2a: story 1092's own echarts import failed esbuild from the
+  # moment the batch landed, with nothing in the gate having noticed).
+  # Checked here, once the analyzer ledger is already green, rather than
+  # added as a fifth analyzer source: that would mean every Problem/Run/UI
+  # surface that assumes `Run.sources()` learning a new member, which is a
+  # larger decision than this fix (the same reasoning this codebase already
+  # applies to `sobelow`, deliberately left out of that ledger).
+  defp assets_build(%{batch: batch} = state, swept) do
+    environment = WorkingCopies.environment(batch.scope)
+
+    case Runner.build_assets(environment, batch.gate.root, batch.gate.id) do
+      {:ok, _} -> stories_green(state, swept)
+      {:error, reason} -> bisect(state, reason.reason)
     end
   end
 

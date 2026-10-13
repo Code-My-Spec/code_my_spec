@@ -265,6 +265,31 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 
+  # Issue 47567b2a: none of compiler, credo, exunit or spex run the
+  # project's asset pipeline, so story 1092's own broken `echarts` import
+  # failed esbuild from the moment the batch landed, with every analyzer
+  # green.
+  test "a broken asset build is ejected, and nothing lands", ctx do
+    mix_exs = """
+    defmodule App.MixProject do
+      use Mix.Project
+
+      def project, do: [app: :app, version: "0.1.0"]
+    end
+    """
+
+    a = candidate(ctx, "a", "main", "mix.exs", mix_exs)
+    clean_runs_at(ctx, a.commit)
+
+    entry = queue(ctx, a)
+    before = git!(ctx.main_root, ["rev-parse", "HEAD"])
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
+    assert result["reason"] =~ "assets"
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
+  end
+
   # 2026-10-12: a batch ejected on its first finding left its other analyzers
   # running in the gate copy, and the next batch reset the tree under them.
   test "an ejected batch's runs in the gate copy are stopped", ctx do
@@ -487,6 +512,27 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert {:ok, %{status: :landed, result: result}} = settle(on_main)
     assert result["already_on_main"] == true, "it rode a batch: #{inspect(result)}"
+  end
+
+  # 8951606c/52d2006d, 2026-10-05: a candidate an earlier batch had already
+  # carried forward -- an ancestor of main, never its own tip -- was gated as
+  # though new and ejected over a failure nothing on it could have produced.
+  # `on_main/3`'s ancestry check, not `gating/5`'s equality against main's
+  # exact HEAD, is what has to catch this: the candidate's own commit is no
+  # longer main's tip by the time it is re-queued.
+  test "a candidate main has since moved past still lands as already on main", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    git!(ctx.main_root, ["merge", "--quiet", "--ff-only", a.commit])
+
+    moved = candidate(ctx, "b", "main", "b.ex", "b\n")
+    git!(ctx.main_root, ["merge", "--quiet", "--ff-only", moved.commit])
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed, result: result}} = settle(entry)
+    assert result["already_on_main"] == true
+    assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == ctx.gate.id)) == []
   end
 
   # A lone candidate's own copy is reused only for a certification it already

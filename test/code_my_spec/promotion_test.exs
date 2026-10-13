@@ -146,6 +146,60 @@ defmodule CodeMySpec.PromotionTest do
     end
   end
 
+  describe "a submodule's own worktree is unreachable" do
+    # Issue 31670689: a different worktree shares this checkout's
+    # .code_my_spec gitdir (a known-bad layout; the standard one gives each
+    # worktree its own) and ran `git submodule update` in it, rewriting
+    # core.worktree to a path that is only valid from THAT worktree. Any
+    # command here that needs the submodule's own status -- `git diff` on
+    # the superproject included -- then fails with git's own wrapper
+    # message ("'git status --porcelain=2' failed in submodule <name>"),
+    # which read as a raw git error and blocked every promote for 1.5h.
+    setup do
+      root = CodeMySpec.TempFile.owned_dir("test")
+      git = fn args -> System.cmd("git", args, cd: root, stderr_to_stdout: true) end
+
+      sub = CodeMySpec.TempFile.owned_dir("sub")
+      sub_git = fn args -> System.cmd("git", args, cd: sub, stderr_to_stdout: true) end
+      {_, 0} = sub_git.(["init", "--initial-branch=main"])
+      {_, 0} = sub_git.(["commit", "--allow-empty", "-m", "init"])
+
+      {_, 0} = git.(["init", "--initial-branch=main"])
+      {_, 0} = git.(["config", "user.email", "t@example.com"])
+      {_, 0} = git.(["config", "user.name", "T"])
+      {_, 0} = git.(["-c", "protocol.file.allow=always", "submodule", "add", sub, ".code_my_spec"])
+      {_, 0} = git.(["commit", "-m", "add submodule"])
+
+      # The break itself: core.worktree rewritten to a path valid only from
+      # some other worktree, exactly what a `git submodule update` run
+      # there would have done to a gitdir this checkout's own submodule
+      # shares with it.
+      sub_root = Path.join(root, ".code_my_spec")
+
+      {_, 0} =
+        System.cmd("git", ["config", "core.worktree", "../../../elsewhere/not-this-checkout"],
+          cd: sub_root
+        )
+
+      %{root: root, env: Environment.new(:local, root)}
+    end
+
+    test "a promote names the submodule and the fix, not a raw git error", %{root: root, env: env} do
+      assert {:error, %{reason: reason}} = Steps.merge(env, root, "main")
+
+      assert reason =~ ".code_my_spec",
+             "the refusal does not even name which submodule is unreachable. Got: #{reason}"
+
+      assert reason =~ "core.worktree",
+             "the refusal does not name the actual cause (a broken core.worktree), only " <>
+               "a raw git error — which read as this checkout's own corruption and led an " <>
+               "agent to `git init && git commit` to manufacture a clean tree. Got: #{reason}"
+
+      assert reason =~ "different worktree",
+             "the refusal does not say this came from outside the checkout. Got: #{reason}"
+    end
+  end
+
   describe "a restart whose acknowledgement never comes back" do
     # Promotion restarts the application on the running copy; the running copy
     # is :4000; every harness channel is served by :4000. So the happy path ends
