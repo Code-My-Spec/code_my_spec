@@ -336,12 +336,17 @@ defmodule CodeMySpec.Files.ComponentSync do
     })
   end
 
-  defp sync_discovered_dependencies(_scope, _files, _component_map, true, _env),
+  # An incremental sync answers only for the modules its changed files declare:
+  # their edges are reconciled, every other edge is left to the files that name it.
+  # It reads stored evidence only. It runs inside manifest acceptance, where
+  # reading a file asks the harness the channel itself serves.
+  defp sync_discovered_dependencies(_scope, [], _component_map, true, _env),
     do: %{status: :deferred, unavailable: [], unresolved: []}
 
-  defp sync_discovered_dependencies(scope, files, component_map, false, env) do
+  defp sync_discovered_dependencies(scope, files, component_map, incremental?, env) do
+    env = if incremental?, do: nil, else: env
     observation = dependency_observations(scope, files, component_map, env)
-    reconcile_discovered_dependencies(scope, observation)
+    reconcile_discovered_dependencies(scope, observation, incremental?)
 
     if observation.unavailable != [] do
       Logger.warning(
@@ -360,6 +365,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   defp dependency_observations(_scope, [], _component_map, _env),
     do: %{
       pairs: MapSet.new(),
+      source_ids: MapSet.new(),
       evidence: [],
       unavailable: [%{reason: :no_source_snapshot}],
       unresolved: []
@@ -370,11 +376,18 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     Enum.reduce(
       files,
-      %{pairs: MapSet.new(), evidence: [], unavailable: [], unresolved: []},
+      %{
+        pairs: MapSet.new(),
+        source_ids: MapSet.new(),
+        evidence: [],
+        unavailable: [],
+        unresolved: []
+      },
       fn file, acc ->
         case dependency_evidence(file, env) do
           %{"status" => "ok", "references" => references} = evidence ->
             pairs = Enum.flat_map(references, &evidence_pair(&1, component_map, by_id))
+            sources = evidence_sources(evidence, component_map)
 
             location = %{
               path: file.path,
@@ -385,6 +398,7 @@ defmodule CodeMySpec.Files.ComponentSync do
             %{
               acc
               | pairs: MapSet.union(acc.pairs, MapSet.new(pairs)),
+                source_ids: MapSet.union(acc.source_ids, sources),
                 evidence: [Map.put(location, :observation, evidence) | acc.evidence],
                 unresolved:
                   Enum.map(evidence["unresolved"] || [], &Map.put(&1, "file", file.path)) ++
@@ -460,6 +474,13 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   defp evidence_pair(_reference, _component_map, _by_id), do: []
 
+  defp evidence_sources(evidence, component_map) do
+    for name <- evidence["modules"] || [],
+        %Component{id: id} <- [Map.get(component_map, name)],
+        into: MapSet.new(),
+        do: id
+  end
+
   # A context names itself; anything else climbs to the nearest ancestor that
   # does, the same reach `ConventionalPaths` and `format_context_section`
   # assume a child always has. A component with no context ancestor (a root
@@ -482,7 +503,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   # An `:authored` row is never deleted here — a planned edge outlives the
   # code catching up to it, same as `cleanup_removed/2` never prunes an
   # authored component.
-  defp reconcile_discovered_dependencies(scope, observation) do
+  defp reconcile_discovered_dependencies(scope, observation, incremental?) do
     found = observation.pairs
 
     existing =
@@ -510,9 +531,17 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     existing
     |> Map.values()
-    |> Enum.filter(&(removable_observation?(&1, observation) and stale_in_code?(&1, found)))
+    |> Enum.filter(
+      &(answered_for?(&1, observation, incremental?) and removable_observation?(&1, observation) and
+          stale_in_code?(&1, found))
+    )
     |> Enum.each(&retire_discovered_dependency(scope, &1))
   end
+
+  defp answered_for?(_dependency, _observation, false), do: true
+
+  defp answered_for?(dependency, observation, true),
+    do: MapSet.member?(observation.source_ids, dependency.source_component_id)
 
   defp stale_in_code?(dependency, found) do
     dependency.in_code and

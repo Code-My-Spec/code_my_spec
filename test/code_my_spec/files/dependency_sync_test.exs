@@ -219,6 +219,64 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     assert id == original.id
   end
 
+  test "an incremental sync retires the edges its changed file stopped naming, and only those",
+       %{scope: scope} do
+    billing = component(scope, "MyApp.Billing")
+    reports = component(scope, "MyApp.Reports")
+    accounts = component(scope, "MyApp.Accounts")
+
+    for source <- [billing, reports] do
+      {:ok, _} =
+        Components.create_dependency(scope, %{
+          source_component_id: source.id,
+          target_component_id: accounts.id,
+          provenance: :discovered,
+          in_code: true
+        })
+    end
+
+    scanned_file(scope, "lib/my_app/billing.ex", "MyApp.Billing", """
+    defmodule MyApp.Billing do
+      def charge(order), do: {:ok, order}
+    end
+    """)
+
+    scanned_file(scope, "lib/my_app/reports.ex", "MyApp.Reports", """
+    defmodule MyApp.Reports do
+      def publish(report), do: {:ok, report}
+    end
+    """)
+
+    assert {:ok, _} =
+             ComponentSync.sync_from_files(scope,
+               environment: nil,
+               changed_paths: ["lib/my_app/billing.ex"]
+             )
+
+    assert is_nil(Components.get_dependency_between(scope, billing.id, accounts.id))
+    assert %{in_code: true} = Components.get_dependency_between(scope, reports.id, accounts.id)
+  end
+
+  test "an incremental sync records a call its changed file makes", %{scope: scope} do
+    billing = component(scope, "MyApp.Billing")
+    accounts = component(scope, "MyApp.Accounts")
+
+    scanned_file(scope, "lib/my_app/billing.ex", "MyApp.Billing", """
+    defmodule MyApp.Billing do
+      def charge(order), do: MyApp.Accounts.fetch(order)
+    end
+    """)
+
+    assert {:ok, _} =
+             ComponentSync.sync_from_files(scope,
+               environment: nil,
+               changed_paths: ["lib/my_app/billing.ex"]
+             )
+
+    assert %{provenance: :discovered, in_code: true} =
+             Components.get_dependency_between(scope, billing.id, accounts.id)
+  end
+
   test "a dependency report is read-only", %{scope: scope} do
     billing = component(scope, "MyApp.Billing")
     accounts = component(scope, "MyApp.Accounts")
