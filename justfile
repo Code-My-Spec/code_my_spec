@@ -499,7 +499,29 @@ reload:
 # `refresh-harness`'s own `pull=false`: this recipe runs after a promotion
 # has already merged the branch onto this checkout — there is nothing new
 # to pull, only a harness to bring current with what is already on disk.
+#
+# Only when the harness's own code or its wire contract moved since the build
+# it is running. A restart stops every agent on every copy mid-turn, and an
+# unconditional one did that on every landing: three to five cut turns an hour
+# for one team on 2026-10-13. Everything else reaches :4000 by code reload.
+# Diffed from the harness's reported build, so skipped landings accumulate and
+# the next one that needs a restart catches them all; an unreadable build
+# restarts, since a skipped restart that was needed is the worse failure.
 after-promote:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    built="$(curl -s --max-time 10 http://localhost:4004/health | sed -nE 's/.*"build":"([0-9a-f]+)".*/\1/p')"
+    if [ -n "$built" ] && git cat-file -e "${built}^{commit}" 2>/dev/null; then
+        changed="$(git diff --name-only "$built" HEAD -- lib/cms_harness lib/code_my_spec_web/channels lib/code_my_spec/hooks mix.exs mix.lock config)"
+        if [ -z "$changed" ]; then
+            echo "→ harness stays up: nothing it runs or speaks changed since $built"
+            exit 0
+        fi
+        echo "→ restarting the harness; changed since $built:"
+        echo "$changed" | head -20
+    else
+        echo "→ restarting the harness: could not read the build it is running"
+    fi
     just refresh-harness 4004 false
 
 # Pull main into the running checkout without restarting — the code reloader takes it.
