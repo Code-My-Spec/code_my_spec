@@ -32,7 +32,7 @@ defmodule CodeMySpec.Google do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Integrations, CodeMySpec.Users, CodeMySpec.Users.Scope],
+    deps: [CodeMySpec.Integrations, CodeMySpec.Users.Scope],
     exports: :all
 
   alias CodeMySpec.Google.Auth

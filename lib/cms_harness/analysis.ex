@@ -134,6 +134,15 @@ defmodule CmsHarness.Analysis do
       (output |> String.trim() |> String.slice(0, 400))
   end
 
+  @doc """
+  Run a mix command in `env`'s checkout the way an analyzer run is: if mix
+  refused because `deps/` is behind `mix.lock`, fetch once and run it again.
+  For the promotion gate's test-database reset, which a candidate moving the
+  lock wedged (2026-10-12).
+  """
+  @spec heal(Environment.t(), (-> term())) :: term()
+  def heal(env, run), do: heal_stale_deps(run, fn -> deps_get(env) end)
+
   # The checkout's own `deps/`, which every analyzer and the agent share. MIX_ENV
   # set rather than inherited: the harness runs as `harness`, an env a project's
   # config need not define, and `deps.get` fetches for every env regardless.

@@ -4,7 +4,13 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
   Pulls remote issues into the local DB, scans the filesystem, classifies
   and validates files, creates/updates components, and backfills file
-  ownership. After sync, the computed requirement graph is up to date.
+  ownership, then recomputes the requirement graph.
+
+  The recompute is what makes "after sync, the graph is up to date" true. The
+  event projection only moves rows that already exist, so a story coming back
+  into the graph (made ready, or reopened after a promotion) had no
+  requirements at all until something recomputed (2026-10-12, stories 1046 and
+  1092 at 0/0).
   """
 
   use Anubis.Server.Component, type: :tool
@@ -14,6 +20,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Requirements
 
   schema do
   end
@@ -35,8 +42,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
     with {:ok, file_result} <- FileSync.sync(scope, environment: environment),
          {:ok, comp_result} <-
-           FileComponentSync.sync_from_files(scope, environment: environment) do
-      text = format_result(file_result, comp_result)
+           FileComponentSync.sync_from_files(scope, environment: environment),
+         {:ok, requirements} <- recompute(scope) do
+      text = format_result(file_result, comp_result, requirements)
       {:reply, Response.tool() |> Response.text(text), frame}
     else
       # `cwd` is set for any resolved scope and is not the claim "there is a
@@ -78,8 +86,11 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   defp remote_sync(scope, frame) do
     {:ok, _components} = FileComponentSync.sync_from_files(scope)
 
-    case Analysis.request_rescan(scope) do
-      :ok ->
+    case {recompute(scope), Analysis.request_rescan(scope)} do
+      {{:error, reason}, _rescan} ->
+        {:reply, Response.tool() |> Response.error("Recompute failed: #{inspect(reason)}"), frame}
+
+      {{:ok, requirements}, :ok} ->
         text = """
         # Rescan requested
 
@@ -96,11 +107,14 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
         discovered component whose module main no longer has is gone, whatever \
         another checkout still holds. A module only on a feature copy becomes a \
         component once it is promoted.
+
+        The requirement graph was recomputed from what this server holds now: \
+        #{requirements} requirements. The manifest moves them again when it lands.
         """
 
         {:reply, Response.tool() |> Response.text(text), frame}
 
-      {:error, {:harness_not_registered, _details}} ->
+      {_recomputed, {:error, {:harness_not_registered, _details}}} ->
         text = """
         Nothing to sync from here — this server holds no working copy, and no \
         harness is currently registered for this project to ask.
@@ -114,12 +128,19 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
         {:reply, Response.tool() |> Response.text(text), frame}
 
-      {:error, reason} ->
+      {_recomputed, {:error, reason}} ->
         {:reply, Response.tool() |> Response.error("Rescan failed: #{inspect(reason)}"), frame}
     end
   end
 
-  defp format_result(file_result, comp_result) do
+  defp recompute(scope) do
+    case Requirements.recompute(scope) do
+      {{nodes, _edges}, _actionable, _checked_at} -> {:ok, length(nodes)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp format_result(file_result, comp_result, requirements) do
     files = file_result.total_files
     changed = length(file_result.changed_paths)
     components = length(comp_result.all_components)
@@ -129,6 +150,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
     - Files: #{files} (#{changed} changed)
     - Components: #{components}
+    - Requirements: #{requirements} (recomputed)
 
     Call `get_next_requirement` to find your next task.
     """

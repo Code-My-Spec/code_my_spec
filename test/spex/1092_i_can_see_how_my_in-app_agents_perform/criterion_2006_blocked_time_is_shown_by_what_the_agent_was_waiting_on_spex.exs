@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2006Spex do
   end
 
   spex "Agents blocked on questions and tap-outs show the time and who they are waiting on",
-       criterion: 2006 do
+    criterion: 2006 do
     scenario "agents waited on a question and a tap-out during a period" do
       given_ "one agent blocked on a tap-out and another blocked on a question to the user",
              context do
@@ -67,12 +67,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2006Spex do
       end
 
       when_ "I look at blocked time", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 
       then_ "I see the time spent waiting on each cause", context do
         assert context.html =~ "question", "blocked time on a question is not shown"
+
         assert context.html =~ "tap-out" or context.html =~ "tap out",
                "blocked time on a tap-out is not shown"
 

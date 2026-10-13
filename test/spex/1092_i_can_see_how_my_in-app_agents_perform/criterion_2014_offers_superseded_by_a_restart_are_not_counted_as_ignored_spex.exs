@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
   end
 
   spex "A queued offer a restart overtakes before delivery is superseded, not ignored",
-       criterion: 2014 do
+    criterion: 2014 do
     scenario "a resume offer was superseded when the harness restarted" do
       given_ "a busy agent with a message queued for its next turn", context do
         reply = join_working_copy(context, "/tmp/spex-2014", "the checkout")
@@ -64,7 +64,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
       end
 
       then_ "offer health shows it as superseded", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
 
         assert html =~ "superseded",
                "the offer the restart overtook before delivery is not shown as superseded"

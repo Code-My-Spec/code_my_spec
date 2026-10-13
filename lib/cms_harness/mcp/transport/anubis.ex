@@ -1,9 +1,8 @@
 defmodule CmsHarness.Mcp.Transport.Anubis do
   @moduledoc """
-  A real MCP session over streamable HTTP.
+  A real MCP session: over streamable HTTP with `Mcp.Http`, over stdio with
+  `anubis_mcp`'s client.
 
-  Nothing here hand-rolls a protocol: `anubis_mcp` is already a dependency and
-  its client does the handshake, holds the session id and correlates replies.
   What this adds is the shape the rest of the harness expects, and the choice of
   what a tool's answer looks like by the time an `Alloy.Tool` returns it.
   """
@@ -12,6 +11,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   @behaviour CmsHarness.Mcp.Transport
 
+  alias CmsHarness.Mcp.Http
   alias CmsHarness.Token
 
   @client_name "cms-harness"
@@ -29,6 +29,24 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # it, which cost a second crash loop on top of the first.
   @impl true
   def connect(name, opts) do
+    case Keyword.get(opts, :command) do
+      nil -> connect_http(opts)
+      _command -> connect_client(name, opts)
+    end
+  end
+
+  # Over HTTP a call is one request in the caller's process (`Mcp.Http`), so a
+  # slow call fails alone instead of taking the client, and the agent, with it.
+  defp connect_http(opts) do
+    with {:ok, headers} <- headers(opts) do
+      opts
+      |> Keyword.fetch!(:base_url)
+      |> Kernel.<>(Keyword.fetch!(opts, :mcp_path))
+      |> Http.open(headers, Keyword.get(opts, :protocol_version, @protocol_version))
+    end
+  end
+
+  defp connect_client(name, opts) do
     with {:ok, headers} <- headers(opts),
          {:ok, supervisor} <- start_client(name, opts, headers) do
       # Unlinked, deliberately. `Anubis.Client.start_link/1` links its
@@ -119,6 +137,8 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   end
 
   @impl true
+  def disconnect(%Http{} = client), do: Http.close(client)
+
   def disconnect(name) do
     case GenServer.whereis(name) do
       pid when is_pid(pid) -> stop_leaked(pid)
@@ -300,23 +320,11 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   def transport_name(name) when is_atom(name), do: Module.concat(name, Transport)
   def transport_name(other), do: other
 
-  # Two shapes, because the servers this harness talks to come in two.
-  #
-  # Ours is HTTP and authenticated: the route the proxy already proved. A
-  # third-party one on this machine is a subprocess speaking JSON-RPC over its
-  # own stdin and stdout — `vibium mcp` is exactly that — and has no URL and no
-  # credential, because it is not reached across anything.
-  defp transport(opts, headers) do
-    case Keyword.get(opts, :command) do
-      nil ->
-        {:streamable_http,
-         base_url: Keyword.fetch!(opts, :base_url),
-         mcp_path: Keyword.fetch!(opts, :mcp_path),
-         headers: headers}
-
-      command ->
-        {:stdio, command: command, args: Keyword.get(opts, :args, [])}
-    end
+  # Only a third-party server on this machine still comes through Anubis: a
+  # subprocess speaking JSON-RPC over its own stdin and stdout, as `vibium mcp`
+  # does, with no URL and no credential. Ours is HTTP (`connect_http/1`).
+  defp transport(opts, _headers) do
+    {:stdio, command: Keyword.fetch!(opts, :command), args: Keyword.get(opts, :args, [])}
   end
 
   # The credential is fetched here rather than by the caller, because whether
@@ -368,6 +376,14 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   def call(client, tool, arguments), do: call(client, tool, arguments, [])
 
   @impl true
+  def call(%Http{} = client, tool, arguments, opts) do
+    case Http.call_tool(client, tool, arguments, opts) do
+      {:ok, %{"isError" => true} = result} -> {:error, text(%{result: result})}
+      {:ok, result} -> {:ok, text(%{result: result})}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   def call(client, tool, arguments, opts) do
     case Anubis.Client.call_tool(client, tool, arguments, opts) do
       {:ok, %{is_error: true} = response} -> {:error, text(response)}
@@ -382,6 +398,8 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   end
 
   @impl true
+  def list_tools(%Http{} = client), do: Http.list_tools(client)
+
   def list_tools(client) do
     case Anubis.Client.list_tools(client) do
       {:ok, %{result: %{"tools" => tools}}} -> {:ok, tools}

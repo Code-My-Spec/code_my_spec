@@ -475,7 +475,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       <div class="card-body">
         <h2 class="card-title text-lg">
           <.icon name="hero-chat-bubble-left-right" class="size-5 text-primary" />
-          {@request.title || "Claude Code has a question"}
+          {@request.title || "A question for you"}
         </h2>
 
         <div :if={@request.status == "answered"} data-test="question-answered" class="mt-2">
@@ -605,6 +605,21 @@ defmodule CodeMySpecWeb.ChatComponents do
     </div>
     """
   end
+
+  @doc """
+  The flash for what `Notifications.answer_question_request/3` answered.
+
+  Shared by every host of `question/1`, so a refused answer reads the same
+  wherever it was given rather than as "Answer sent".
+  """
+  @spec answer_flash({:ok, term()} | {:error, term()}) :: {:info | :error, String.t()}
+  def answer_flash({:ok, _request}), do: {:info, "Answer sent."}
+
+  def answer_flash({:error, :empty_answer}),
+    do: {:error, "Pick an option or type an answer first."}
+
+  def answer_flash({:error, {:already_resolved, _status}}), do: {:info, "Already answered."}
+  def answer_flash({:error, reason}), do: {:error, "The answer was not sent: #{inspect(reason)}"}
 
   # A question with no options is answered as free text (a textarea).
   defp free_form?(question), do: (question["options"] || []) == []

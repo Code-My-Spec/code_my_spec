@@ -18,10 +18,7 @@ defmodule CodeMySpec.Embeddings do
     top_level?: true,
     deps: [
       CodeMySpec.Dependencies,
-      CodeMySpec.Environments,
-      CodeMySpec.Paths,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],
     exports: :all

@@ -51,7 +51,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
-      CodeMySpec.PromotionQueue,
+      CodeMySpec.PromotionQueue.Waits,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
@@ -231,12 +231,19 @@ defmodule CodeMySpec.Agents do
     |> Enum.flat_map(fn agent ->
       agent.tasks
       |> List.wrap()
-      |> Enum.filter(
-        &(&1.story_id == story_id or
-            (not is_nil(component_id) and &1.component_id == component_id))
-      )
+      |> Enum.filter(&own_or_unattributed?(&1, story_id, component_id))
       |> Enum.map(&Map.from_struct/1)
     end)
+  end
+
+  # Restricted to tasks with no story_id of their own: a component shared by
+  # several stories otherwise pulls each sibling story's own story-scoped
+  # tasks into every other sibling's cycle time too (issue 9c2107a6). See
+  # `Sessions.list_tasks_for_story/3` for why the component_id fallback
+  # exists at all.
+  defp own_or_unattributed?(task, story_id, component_id) do
+    task.story_id == story_id or
+      (is_nil(task.story_id) and not is_nil(component_id) and task.component_id == component_id)
   end
 
   @doc """
@@ -2794,7 +2801,9 @@ defmodule CodeMySpec.Agents do
   defp reoffer_failed_turn(conversation, agent, failure) do
     request = Conversations.last_request_text(conversation)
 
-    if is_binary(request) and String.starts_with?(request, @failed_turn) do
+    # Trimmed: a notice re-sent with a leading space passed as a new request and
+    # nested inside itself (2026-10-12).
+    if is_binary(request) and String.starts_with?(String.trim_leading(request), @failed_turn) do
       Conversations.add_message(
         conversation,
         :operator,
@@ -2819,7 +2828,8 @@ defmodule CodeMySpec.Agents do
     """
     #{@failed_turn}#{failure}
 
-    Nothing from it was carried out. The request was:
+    What it did before it failed is above, and may have taken effect; check \
+    before redoing any of it. The request was:
 
     #{request}
 

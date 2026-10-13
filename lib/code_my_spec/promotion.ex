@@ -57,7 +57,6 @@ defmodule CodeMySpec.Promotion do
     top_level?: true,
     deps: [
       CodeMySpec.Analysis,
-      CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Files,

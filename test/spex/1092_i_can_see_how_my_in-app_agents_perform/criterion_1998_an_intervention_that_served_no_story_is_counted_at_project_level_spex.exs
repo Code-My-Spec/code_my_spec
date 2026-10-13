@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1998Spex do
   end
 
   spex "Restarting the app while no team holds a story is a project-level intervention",
-       criterion: 1998 do
+    criterion: 1998 do
     scenario "no team is holding a story" do
       given_ "a checkout with no team holding a story", context do
         {reply, socket} =
@@ -65,7 +65,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion1998Spex do
       end
 
       then_ "the restart is counted as a project-level intervention", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
 
         assert html =~ "project" and html =~ "restart",
                "the restart made while no team held a story is not shown as a project-level intervention"

@@ -6,7 +6,7 @@ defmodule CodeMySpec.Files.DependencyEvidence do
   compiles the source being inspected.
   """
 
-  @version 1
+  @version 2
 
   @spec extract(binary()) :: map()
   def extract(source) when is_binary(source) do
@@ -18,8 +18,7 @@ defmodule CodeMySpec.Files.DependencyEvidence do
           refs: MapSet.new(),
           unresolved: MapSet.new(),
           modules: MapSet.new(),
-          boundaries: MapSet.new(),
-          imported?: false
+          boundaries: MapSet.new()
         }
 
         {_aliases, evidence} = walk(ast, nil, %{}, state)
@@ -61,7 +60,6 @@ defmodule CodeMySpec.Files.DependencyEvidence do
 
   # Each walk returns its lexical aliases and an explicit evidence accumulator.
   defp walk({:defmodule, meta, [name_ast, body]}, current, aliases, state) do
-    inherited_imports? = state.imported?
     name = module_name(name_ast, current, aliases)
 
     if is_nil(name) do
@@ -76,7 +74,6 @@ defmodule CodeMySpec.Files.DependencyEvidence do
       child_aliases = aliases
       state = %{state | modules: MapSet.put(state.modules, name)}
       {_child_aliases, state} = walk(body, name, child_aliases, state)
-      state = %{state | imported?: inherited_imports?}
       child_alias = name |> String.split(".") |> List.last()
       {Map.put(aliases, child_alias, name), state}
     end
@@ -137,7 +134,6 @@ defmodule CodeMySpec.Files.DependencyEvidence do
        when kind in [:use, :import, :require] do
     state = record_target(kind, args, meta, current, aliases, state)
     state = record_boundary(kind, args, current, aliases, state)
-    state = if kind == :import, do: %{state | imported?: true}, else: state
     {_, state} = walk_children(args, current, aliases, state)
     {aliases, state}
   end
@@ -152,6 +148,19 @@ defmodule CodeMySpec.Files.DependencyEvidence do
 
     {_, state} = walk(fields, current, aliases, state)
     {aliases, state}
+  end
+
+  # `copy.root`: field access on a value, written without parentheses. Read as
+  # a dynamic module call it marked 899 of 1,309 files uncertain, and an
+  # uncertain file's stale edges are never retracted (2026-10-12).
+  defp walk({{:., _, [target, field]}, meta, []}, current, aliases, state)
+       when is_atom(field) and not is_atom(target) and
+              elem(target, 0) not in [:__aliases__, :__MODULE__] do
+    if Keyword.get(meta, :no_parens, false) do
+      walk(target, current, aliases, state)
+    else
+      {aliases, add_unresolved(state, current, line(meta), "dynamic_module_call")}
+    end
   end
 
   defp walk({{:., _, [target, function]}, meta, args}, current, aliases, state)
@@ -188,10 +197,7 @@ defmodule CodeMySpec.Files.DependencyEvidence do
        when name in [:def, :defp, :defmacro, :defmacrop, :defguard, :defguardp] and is_list(args) do
     # Function heads contain patterns and guard syntax; visit only the body.
     state = walk_function_head(List.first(args), current, aliases, state)
-    imported_before_body? = state.imported?
-
     state = walk_function_bodies(List.last(args), current, aliases, state)
-    state = %{state | imported?: imported_before_body?}
 
     {aliases, state}
   end
@@ -217,39 +223,9 @@ defmodule CodeMySpec.Files.DependencyEvidence do
 
   defp walk({:__aliases__, _, _}, _current, aliases, state), do: {aliases, state}
 
-  defp walk({name, meta, args}, current, aliases, state)
-       when is_atom(name) and is_list(args) and state.imported? and
-              name not in [
-                :if,
-                :unless,
-                :case,
-                :cond,
-                :with,
-                :for,
-                :receive,
-                :try,
-                :raise,
-                :throw,
-                :send,
-                :spawn,
-                :apply,
-                :def,
-                :defp,
-                :defmacro,
-                :defmacrop,
-                :alias,
-                :import,
-                :require,
-                :use,
-                :quote,
-                :fn,
-                :super,
-                :__block__
-              ] do
-    state = add_unresolved(state, current, line(meta), "unqualified_call_with_import")
-    {_, state} = walk_children(args, current, aliases, state)
-    {aliases, state}
-  end
+  # An unqualified call after `import` reaches the imported module (already a
+  # reference, from the import itself), a local function or Kernel; none is an
+  # edge the import did not record, so it marks nothing uncertain.
 
   defp walk(list, current, aliases, state) when is_list(list),
     do:
@@ -270,12 +246,10 @@ defmodule CodeMySpec.Files.DependencyEvidence do
   end
 
   defp walk_scoped(children, current, aliases, state) do
-    inherited_imports? = state.imported?
-
     state =
       Enum.reduce(children, state, fn child, acc ->
         {_local_aliases, acc} = walk(child, current, aliases, acc)
-        %{acc | imported?: inherited_imports?}
+        acc
       end)
 
     {aliases, state}

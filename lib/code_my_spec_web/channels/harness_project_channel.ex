@@ -1735,6 +1735,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  def handle_info({:cancel_analysis, reason}, socket) do
+    push(socket, "cancel_analysis", %{"reason" => reason})
+    {:noreply, socket}
+  end
+
   # This copy was offboarded, so tell the machine to stop serving it.
   #
   # `WorkingCopies.offboard/2` sends this after the transaction commits, so the

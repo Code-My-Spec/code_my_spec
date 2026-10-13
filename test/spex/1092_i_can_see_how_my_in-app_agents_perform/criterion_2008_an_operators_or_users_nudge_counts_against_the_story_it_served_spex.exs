@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -36,9 +37,23 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
   end
 
   spex "Restarting the agent working a story counts the restart against that story",
-       criterion: 2008 do
+    criterion: 2008 do
     scenario "the user restarted an agent while it worked a story" do
       given_ "a released story with a coding agent working it", context do
+        # Story work happens on feature copies, never the main one
+        # (`Assignment.assign_team/3` refuses with `:main_copy`), so the main
+        # copy has to exist and be designated *before* the join below. Without
+        # it the join is the project's first checkout and is itself marked main
+        # (`WorkingCopies.only_checkout?/2`), `SetActiveStory` refuses, and the
+        # agent is left holding no story for this criterion to count against.
+        {:ok, main_copy} =
+          WorkingCopies.issue(context.scope, nil,
+            label: "the main checkout",
+            device: Fixtures.device_fixture(context.scope)
+          )
+
+        {:ok, _} = WorkingCopies.designate_main(context.scope, main_copy.id)
+
         reply = join_working_copy(context, "/tmp/spex-2008", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -49,11 +64,16 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
             acceptance_criteria: ["It works"]
           )
 
-        frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-
+        # The agent has to exist *before* the story is selected: `SetActiveStory`
+        # fans the story out to the copy's team (`Assignment.assign_team/3`) and
+        # refuses with `:no_team` when the copy is unstaffed. Selecting first
+        # leaves the agent created afterwards holding no story, so the restart
+        # this criterion counts never lands against one.
         {:ok, _integration} = Fixtures.connect_provider(scope, :zai)
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2008")
+
+        frame = %Frame{assigns: %{current_scope: scope}}
+        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
 
         {:ok,
          context |> Map.put(:scope, scope) |> Map.put(:story, story) |> Map.put(:agent, agent)}
@@ -73,7 +93,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
       end
 
       then_ "the restart is counted as a manual intervention on that story", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
 
         assert html =~ context.story.title and html =~ "restart",
                "the agent's restart is not shown as a manual intervention against the story it was working"

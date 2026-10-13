@@ -37,12 +37,12 @@ defmodule CmsHarness.AnalysisSlotsTest do
   # Registers its own cleanup, so a failing assertion cannot leave a slot held
   # into the next test — which would fail that one for the previous one's
   # reason.
-  defp holder do
+  defp holder(lane \\ :full) do
     test = self()
 
     pid =
       spawn(fn ->
-        send(test, {:took, AnalysisSlots.acquire()})
+        send(test, {:took, AnalysisSlots.acquire(lane)})
 
         receive do
           :stop -> :ok
@@ -187,6 +187,50 @@ defmodule CmsHarness.AnalysisSlotsTest do
       wait_until(fn -> AnalysisSlots.in_use() == 0 end)
 
       assert {_next, :ok} = holder(), "a killed run held its slot forever"
+    end
+  end
+
+  # A coder's thirty-second `mix test path` waited fifteen minutes behind the
+  # promotion gate's full sweeps (2026-10-12).
+  describe "lanes" do
+    setup do
+      previous =
+        {Application.get_env(:code_my_spec, :analysis_slots),
+         Application.get_env(:code_my_spec, :analysis_fast_slots)}
+
+      Application.put_env(:code_my_spec, :analysis_slots, 1)
+      Application.put_env(:code_my_spec, :analysis_fast_slots, 1)
+
+      on_exit(fn ->
+        {full, fast} = previous
+        Application.put_env(:code_my_spec, :analysis_slots, full)
+        Application.put_env(:code_my_spec, :analysis_fast_slots, fast)
+      end)
+    end
+
+    test "a run of named test files does not wait behind full sweeps" do
+      {_sweep, :ok} = holder(:full)
+      assert {_targeted, :ok} = holder(:fast)
+      assert AnalysisSlots.in_use(:full) == 1
+      assert AnalysisSlots.in_use(:fast) == 1
+    end
+
+    test "each lane keeps its own limit" do
+      {_first, :ok} = holder(:fast)
+      test = self()
+      spawn(fn -> send(test, {:took, AnalysisSlots.acquire(:fast)}) end)
+      refute_receive {:took, _}, 100
+      assert AnalysisSlots.waiting(:fast) == 1
+      assert AnalysisSlots.waiting(:full) == 0
+    end
+
+    test "named test files are fast; sweeps, the compiler and credo are full" do
+      assert AnalysisSlots.lane("exunit", ["test/a_test.exs"]) == :fast
+      assert AnalysisSlots.lane("spex", ["test/spex/1092_story"]) == :fast
+      assert AnalysisSlots.lane("exunit", []) == :full
+      assert AnalysisSlots.lane("spex", []) == :full
+      assert AnalysisSlots.lane("compiler", ["--force"]) == :full
+      assert AnalysisSlots.lane("credo", []) == :full
     end
   end
 

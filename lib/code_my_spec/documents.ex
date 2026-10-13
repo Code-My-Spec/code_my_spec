@@ -6,8 +6,6 @@ defmodule CodeMySpec.Documents do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Environments,
-      CodeMySpec.Paths
     ],
     exports: :all
 

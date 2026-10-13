@@ -61,7 +61,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2012Spex do
       end
 
       then_ "I see how many stories and issue fixes each team landed for that week", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
 
         assert html =~ context.agent.working_copy_id,
                "the promoting team's own identity is not shown"

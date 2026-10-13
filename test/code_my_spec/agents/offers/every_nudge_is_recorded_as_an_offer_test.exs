@@ -336,5 +336,25 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       refute_receive {:agent_dispatch, _, _, _}, 300
       assert [%{kind: :retry}] = Offers.list_for_agent(agent.id)
     end
+
+    # A notice re-sent from the cockpit with a leading space nested inside
+    # itself, once per failure (2026-10-12).
+    test "a re-sent notice with leading space is still recognized as a retry", ctx do
+      agent = agent(ctx.scope, %{role: "main", continuous: false})
+      Agents.record_turn_event(ctx.scope, agent.id, %{"kind" => "turn_started"})
+      conversation = CodeMySpecSpex.Fixtures.agent_conversation(ctx.scope, agent)
+
+      Conversations.add_message(
+        conversation,
+        :operator,
+        "  Your last turn failed: earlier\n\nThe request was: build it",
+        "operator"
+      )
+
+      Agents.record_turn_event(ctx.scope, agent.id, %{"kind" => "turn_failed", "text" => @failure})
+
+      refute_receive {:agent_dispatch, _, _, _}, 300
+      assert Offers.list_for_agent(agent.id) == []
+    end
   end
 end

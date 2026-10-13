@@ -24,7 +24,6 @@ defmodule CodeMySpec.Intake do
       CodeMySpec.Personas,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies

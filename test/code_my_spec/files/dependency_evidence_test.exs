@@ -85,7 +85,20 @@ defmodule CodeMySpec.Files.DependencyEvidenceTest do
              ["dynamic_apply", "dynamic_module_call"]
   end
 
-  test "imports produce unresolved call evidence and Boundary config stays data" do
+  test "field access on a value is not a module call" do
+    result =
+      DependencyEvidence.extract("""
+      defmodule App.Runner do
+        alias App.Accounts
+        def run(copy, state), do: Accounts.fetch(copy.root, state.copy.id)
+      end
+      """)
+
+    assert [%{"target" => "App.Accounts"}] = result["references"]
+    assert result["unresolved"] == []
+  end
+
+  test "an import is the reference, its calls add no uncertainty, and Boundary config stays data" do
     result =
       DependencyEvidence.extract("""
       defmodule App.Policy do
@@ -98,8 +111,7 @@ defmodule CodeMySpec.Files.DependencyEvidenceTest do
     assert Enum.map(result["references"], &{&1["target"], &1["kind"]}) ==
              [{"App.Helpers", "macro"}, {"Boundary", "macro"}]
 
-    assert Enum.map(result["unresolved"], & &1["reason"]) ==
-             ["unqualified_call_with_import"]
+    assert result["unresolved"] == []
 
     refute Enum.any?(result["references"], &(&1["target"] in ["App.Accounts", "App.Billing"]))
   end

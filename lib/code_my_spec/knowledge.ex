@@ -28,7 +28,6 @@ defmodule CodeMySpec.Knowledge do
     deps: [
       CodeMySpec.Environments,
       CodeMySpec.LocalScope,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],

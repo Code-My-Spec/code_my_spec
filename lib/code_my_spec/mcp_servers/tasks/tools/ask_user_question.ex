@@ -213,7 +213,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
     do: Notifications.create_session_question_request(scope, user_id, attrs, task_ref, session_id)
 
   defp title_or_default(title) when is_binary(title) and title != "", do: title
-  defp title_or_default(_title), do: "Claude has a question"
+  defp title_or_default(_title), do: "A question for you"
 
   defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
   defp working_copy_id(_scope), do: nil

@@ -62,7 +62,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestionTest do
   test "no title falls back to something rather than nothing", %{scope: scope} do
     {:reply, _response, _} = AskUserQuestion.execute(%{questions: [a_question()]}, frame(scope))
 
-    assert latest(scope).title == "Claude has a question"
+    assert latest(scope).title == "A question for you"
   end
 
   test "the options survive in the shape the renderer reads", %{scope: scope} do

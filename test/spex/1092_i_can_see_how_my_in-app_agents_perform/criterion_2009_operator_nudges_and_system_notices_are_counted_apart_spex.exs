@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
   end
 
   spex "One operator message counts as one intervention, whatever the harness also reported",
-       criterion: 2009 do
+    criterion: 2009 do
     scenario "an agent received harness notices and one operator message during a story" do
       given_ "a released story with an agent that sent several harness turn events", context do
         {:ok, main_copy} =
@@ -83,13 +83,17 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
       end
 
       then_ "interventions are counted", context do
-        {:ok, _index, html} = live(context.conn, index_path(context))
+        {:ok, index, _html} = live(context.conn, index_path(context))
+        html = render_async(index)
         {:ok, Map.put(context, :html, html)}
       end
 
       then_ "only the operator and user messages count as interventions", context do
         assert context.html =~ context.story.title and
-                 Regex.match?(~r/data-test="story-interventions">\s*<span>1<\/span>/, context.html),
+                 Regex.match?(
+                   ~r/data-test="story-interventions">\s*<span>1<\/span>/,
+                   context.html
+                 ),
                "the story's intervention count is not exactly the one operator message that was sent"
 
         {:ok, context}

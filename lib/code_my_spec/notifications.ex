@@ -311,7 +311,7 @@ defmodule CodeMySpec.Notifications do
     # Send Web Push notification to the user
     notify_user(request.user_id, %{
       type: "permission_request",
-      title: "Claude Code: #{request.tool_name}",
+      title: "#{request.tool_name} needs your approval",
       body: format_tool_summary(request.tool_name, request.tool_input),
       url: permission_url(request)
     })
@@ -1049,7 +1049,7 @@ defmodule CodeMySpec.Notifications do
   defp deliver_question(request) do
     notify_user(request.user_id, %{
       type: "question_request",
-      title: request.title || "Claude Code has a question",
+      title: request.title || "A question for you",
       body: first_question_text(request.questions),
       url: question_url(request)
     })

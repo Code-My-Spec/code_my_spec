@@ -20,8 +20,10 @@ defmodule CodeMySpec.Conversations.Message do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import Ecto.Query
 
   alias CodeMySpec.Conversations.Conversation
+  alias CodeMySpec.Repo
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -115,6 +117,133 @@ defmodule CodeMySpec.Conversations.Message do
   @doc "Builds a single text part — the shape of an ordinary human message."
   @spec text_part(String.t()) :: map()
   def text_part(text), do: %{"type" => "text", "text" => text}
+
+  @doc """
+  Every message belonging to any of `agent_ids`, in one query rather than one
+  per agent.
+
+  The performance page's intervention read (issue 844907e0): a
+  `find_or_create` plus a `list_messages` per agent is a query per agent, and
+  all of them are one read. `agent_id` lives on `conversations`, not on the
+  message -- a conversation is the agent's, and `adopt_intake_conversation/2`
+  moves one onto an agent by writing that column -- so this joins back through
+  it, on the same column `find_or_create_agent_conversation/3` filters on. The
+  row's own `agent_id` comes back with the message, because a caller asking
+  for several agents has to know which one each message belongs to.
+
+  `limit_per_agent` bounds each agent's share, as `list_messages/2`'s `limit`
+  bounds one. A plain `limit` would bound the whole read instead and hand the
+  first agent all of it.
+
+  The pages that already have the conversations in hand filter on
+  `conversation_id` directly (`by_conversations/2`); joining back through
+  `conversations` to arrive at an id the caller knows is the query this module
+  does not need to repeat, and on the 188-agent project the read is the slow
+  half of the page either way (issue b118c546).
+  """
+  @spec by_agents([String.t()], keyword()) :: Ecto.Query.t()
+  def by_agents(agent_ids, opts \\ []) do
+    limit = Keyword.get(opts, :limit_per_agent)
+
+    # A map rather than the struct: `agent_id` is the conversation's field, and
+    # `select_merge` will not add a key the schema does not have -- it raises
+    # `struct Message does not have the key :agent_id`, which is the same
+    # mistake as `%{m | agent_id: c.agent_id}` one layer down.
+    from m in __MODULE__,
+      join: c in Conversation,
+      on: c.id == m.conversation_id,
+      where: c.agent_id in ^agent_ids,
+      order_by: [asc: c.agent_id, asc: m.inserted_at, asc: m.id],
+      limit: ^limit,
+      select: %{
+        agent_id: c.agent_id,
+        role: m.role,
+        sender_id: m.sender_id,
+        content: m.content,
+        tool_failed: m.tool_failed,
+        inserted_at: m.inserted_at
+      }
+  end
+
+  @doc """
+  Every message of `conversation_ids`, with the agent each belongs to.
+
+  The same rows `by_agents/2` answers, for a caller that already knows the
+  conversations -- the performance page reads every agent's id from one read
+  and can join on `conversation_id` from there rather than asking the database
+  to find the same conversations again (issue b118c546).
+
+  The content is not selected: it is the bulk of a transcript, and every count
+  the page takes is off `role`, `sender_id` and `tool_failed`. `content_of/1`
+  reads the text back for the few rows whose text is actually reported.
+  """
+  @spec by_conversations([Ecto.UUID.t()], keyword()) :: Ecto.Query.t()
+  def by_conversations(conversation_ids, opts \\ []) do
+    limit = Keyword.get(opts, :limit_per_agent)
+
+    from m in __MODULE__,
+      join: c in Conversation,
+      on: c.id == m.conversation_id,
+      where: m.conversation_id in ^conversation_ids,
+      order_by: [asc: c.agent_id, asc: m.inserted_at, asc: m.id],
+      limit: ^limit,
+      select: %{
+        id: m.id,
+        conversation_id: m.conversation_id,
+        role: m.role,
+        sender_id: m.sender_id,
+        tool_failed: m.tool_failed,
+        inserted_at: m.inserted_at
+      }
+  end
+
+  # An intervention's text alone: every other message's `content` is the bulk
+  # of a transcript (10MB against 126,990 rows on the project this was measured
+  # on, of which 5,473 are interventions) and nothing reads it.
+  @intervention_senders ["operator", "system:restart"]
+
+  @doc """
+  The interventions among `conversation_ids`: the `:operator` messages whose
+  sender says a person acted or a restart was performed, with their text.
+
+  Narrower than `by_conversations/2` on both axes a transcript is large in --
+  the sender, and `content` -- so the page's own nudge and restart counts are a
+  read of a few thousand short rows rather than of every message of every
+  agent, most of it assistant prose (issue b118c546).
+
+  The order is `inserted_at` within an agent, which is what an intervention
+  list is read in; callers group by `agent_id` themselves.
+  """
+  @spec interventions([Ecto.UUID.t()], keyword()) :: Ecto.Query.t()
+  def interventions(conversation_ids, opts \\ []) do
+    limit = Keyword.get(opts, :limit_per_agent)
+
+    from m in __MODULE__,
+      join: c in Conversation,
+      on: c.id == m.conversation_id,
+      where: m.conversation_id in ^conversation_ids,
+      where: m.role == :operator and m.sender_id in ^@intervention_senders,
+      order_by: [asc: c.agent_id, asc: m.inserted_at, asc: m.id],
+      limit: ^limit,
+      select: %{
+        id: m.id,
+        conversation_id: m.conversation_id,
+        role: m.role,
+        sender_id: m.sender_id,
+        content: m.content,
+        inserted_at: m.inserted_at
+      }
+  end
+
+  @doc "The text parts of each of `ids`, keyed by id, for the rows whose text is reported."
+  @spec content_of([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [map()]}
+  def content_of([]), do: %{}
+
+  def content_of(ids) do
+    from(m in __MODULE__, where: m.id in ^ids, select: {m.id, m.content})
+    |> Repo.all()
+    |> Map.new()
+  end
 
   @doc false
   def changeset(message, attrs) do
