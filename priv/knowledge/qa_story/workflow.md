@@ -136,3 +136,45 @@ Rules:
   statuses record an audit row but leave the requirement open.
 - Resubmitting on the same `task_id` is allowed — each call creates a new
   attempt; the latest is canonical.
+- Every scenario entry requires an `observation`, whatever its own
+  `status` — a scenario submitted without one is rejected.
+- When zero measurements are obtainable for a scenario (a command hangs,
+  tooling is down, nothing comes back), there is no `blocked` or
+  `inconclusive` verdict to reach for — `status` is one of `pass` /
+  `partial` / `fail` and nothing else. Submit `status: "partial"`, with
+  one scenario per probe attempted whose `observation` records what was
+  run and what came back (e.g. "ran mix spex on criterion_1261; command
+  timed out at 60000ms, no stdout, stderr or scenario results returned"),
+  and the blocker's issue id in `issue_ids`. The inability to measure
+  *is* the observation — what is missing is the measurement, not the
+  observation. Do not submit `fail`: that asserts the behavior is
+  broken, which was never observed, and leaves a false failing record
+  someone later has to disprove.
+
+## The submit_issue_qa_result contract
+
+Story 1091's issue-side counterpart: one QA pass on a single issue rather
+than a whole story.
+
+```
+submit_issue_qa_result(
+  issue_id: <issue being tested>,
+  task_id: <your active qa_complete task id on this issue>,
+  status: "pass" | "partial" | "fail",
+  scenarios: [
+    %{name: "...", status: "pass|partial|fail", observation: "..."},
+    ...
+  ],
+  issue_ids: [<ids filed via create_issue this pass>]
+)
+```
+
+Same discipline as `submit_qa_result`: `partial` or `fail` must carry at
+least one id in `issue_ids`, rejected otherwise; every scenario entry
+needs an `observation` regardless of status; the unmeasurable-case policy
+above applies here too. `status: "pass"` resolves the issue and frees the
+team bound to it. Any other status leaves the issue open and bound, and
+the coder is offered it again — including a `partial` that only means
+"could not be measured", which still bounces back to a coder with nothing
+to act on. Worth revisiting if this keeps happening; not a reason to
+submit something other than `partial` in the meantime.
