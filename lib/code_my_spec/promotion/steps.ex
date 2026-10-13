@@ -945,10 +945,45 @@ defmodule CodeMySpec.Promotion.Steps do
 
   # Paths git considers unmerged. Empty when no merge is in progress, which is
   # the ordinary case and the one that costs a single command.
+  #
+  # "'git status --porcelain=2' failed in submodule <name>" is git's own
+  # wrapper message for a submodule's status check failing for any reason --
+  # most often its gitdir's `core.worktree` naming a path that no longer
+  # exists. That happens when a `git submodule update` run in some OTHER
+  # worktree that happened to share this submodule's gitdir rewrote
+  # `core.worktree` to point at itself: a worktree whose own `.code_my_spec`
+  # is a linked worktree of THIS checkout's submodule repo, rather than its
+  # own, can break this checkout from entirely outside it (67cf1eaa). The
+  # inner git error varies by version ("cannot chdir to", "Invalid path"),
+  # so this detects git's own wrapper line, not the inner text. Named here
+  # rather than left as the raw error, which otherwise reads as this
+  # checkout's own corruption and invites exactly the wrong fix (reinit,
+  # reclone) for a config line that only needs resetting.
   defp unmerged(env, root) do
     case git(env, root, ["diff", "--name-only", "--diff-filter=U"]) do
       {out, 0} -> {:ok, String.split(out, "\n", trim: true)}
-      {out, _} -> {:error, %{reason: "could not read #{root}'s merge state: #{String.trim(out)}"}}
+      {out, _} -> {:error, merge_state_error(out, root)}
+    end
+  end
+
+  defp merge_state_error(out, root) do
+    case Regex.run(~r/failed in submodule (\S+)/, out) do
+      [_, submodule] ->
+        %{
+          reason:
+            "could not read #{root}'s merge state: its #{submodule} submodule's own " <>
+              "status check failed, most likely because its gitdir's core.worktree " <>
+              "points at a path that no longer exists. Something outside this " <>
+              "checkout -- most likely a `git submodule update` run in a different " <>
+              "worktree sharing this submodule's gitdir -- rewrote it. Fix: reset " <>
+              "core.worktree in the submodule's gitdir config (`git -C " <>
+              "#{root}/#{submodule} rev-parse --git-dir` finds it) to the correct " <>
+              "relative path back to #{root}/#{submodule}, then retry. Raw error: " <>
+              String.trim(out)
+        }
+
+      nil ->
+        %{reason: "could not read #{root}'s merge state: #{String.trim(out)}"}
     end
   end
 
