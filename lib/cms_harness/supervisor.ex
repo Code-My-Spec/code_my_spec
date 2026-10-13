@@ -30,6 +30,14 @@ defmodule CmsHarness.Supervisor do
   and a second `Application` in one OTP app was never an option.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CmsHarness,
+      CmsHarness.Web,
+      CodeMySpec.BootVersion
+    ]
+
   use Supervisor
 
   def start_link(opts \\ []) do
@@ -38,6 +46,10 @@ defmodule CmsHarness.Supervisor do
 
   @impl true
   def init(_opts) do
+    # A served copy's channel chain, named here at the top so the copy
+    # supervisor below does not depend on the layer it starts.
+    :ok = CmsHarness.Copy.Supervisor.serve_with(CmsHarness.Project.Supervisor)
+
     # Where this harness's code came from, recorded before anything runs. A
     # harness runs what it booted with, and when its checkout moves underneath
     # it the two can disagree about the channel contract — which surfaces as an

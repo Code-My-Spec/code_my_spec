@@ -46,37 +46,24 @@ defmodule CmsHarness do
     deps: [
       CmsHarness.Channel,
       CodeMySpec,
-      # `ToolIndex.carried/1`, the one list of direct tools an agent carries.
-      CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,
-      CodeMySpec.CodeMode,
       CodeMySpec.Compile,
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.Generators,
-      # `Hooks.PreToolUse.route_command/4`: an in-app agent's `mix test` is
-      # routed the way a Claude Code agent's is.
-      CodeMySpec.Hooks,
-      # `CmsHarness.Application` installs the harness's log handler.
-      CodeMySpec.Logging,
       # `cms migrate` (`CmsHarness.Migrate`) — a separate one-shot boot, not
       # the harness.
       CodeMySpec.Migration,
-      CodeMySpec.Users.Scope,
       CodeMySpec.LocalScope,
       CodeMySpec.Paths,
-      CodeMySpec.Permissions,
       CodeMySpec.Projects,
-      # The three disk operations a promotion performs. The gate stays on the
-      # server because it reads the database; `Steps` runs where the checkout
-      # is, which is here — see `CodeMySpec.Promotion.Runner`.
-      CodeMySpec.Promotion,
       CodeMySpec.RecordingLock,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
-      CodeMySpec.Utils,
+      # `mix cms.harness.onboard` (classified here) records the copy and its
+      # preview address.
       CodeMySpec.WorkingCopies,
       CodeMySpec.Workspaces
     ],

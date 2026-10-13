@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Fixtures do
     exports: [GraphVerification, StoryIssueBag],
     deps: [
       CmsHarness,
+      CmsHarness.Agents,
+      CmsHarness.Project,
       CodeMySpec,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Embeddings,

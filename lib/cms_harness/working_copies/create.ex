@@ -37,7 +37,7 @@ defmodule CmsHarness.WorkingCopies.Create do
   require Logger
 
   alias ClientUtils.Harness.Onboarding
-  alias CmsHarness.Agents.Shell
+  alias CmsHarness.Config
 
   # The recipe a project owns for making a copy of itself.
   #
@@ -282,7 +282,7 @@ defmodule CmsHarness.WorkingCopies.Create do
     System.cmd("just", args,
       cd: root,
       stderr_to_stdout: true,
-      env: Shell.scrubbed_env()
+      env: Config.scrubbed_env()
     )
   end
 

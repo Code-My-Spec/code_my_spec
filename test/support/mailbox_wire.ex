@@ -1,6 +1,10 @@
 defmodule CodeMySpecTest.MailboxWire do
   @moduledoc false
-  use Boundary, top_level?: true, deps: [CmsHarness, CodeMySpecWeb], exports: :all
+  use Boundary,
+    top_level?: true,
+    deps: [CmsHarness, CmsHarness.Project, CodeMySpecWeb],
+    exports: :all
+
   alias CodeMySpecWeb.HarnessProjectChannel
 
   # Real engine + both channel handlers + database. Only the websocket bytes

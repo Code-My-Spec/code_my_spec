@@ -28,6 +28,7 @@ defmodule CodeMySpecTest do
     # which is where it lived before and why nobody used it.
     deps: [
       CmsHarness,
+      CmsHarness.Agents,
       CmsHarnessTest,
       CodeMySpecTest.MailboxWire,
       CodeMySpec,

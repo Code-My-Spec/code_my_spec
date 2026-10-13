@@ -15,6 +15,17 @@ defmodule CmsHarness.Web do
   single boundary containing one thing.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CmsHarness,
+      CmsHarness.Channel,
+      CmsHarness.Project,
+      CodeMySpec.BootVersion,
+      CodeMySpec.Permissions
+    ],
+    exports: :all
+
   alias CmsHarness.Web.Endpoint
 
   # The server needs this and cannot know it. `pre-tool-use` rewrites the agent's

@@ -299,4 +299,14 @@ defmodule CmsHarness.Config do
     do: :persistent_term.put({__MODULE__, :local_port}, port)
 
   def record_local_port(_port), do: :ok
+
+  @doc "Unsets every variable that describes the harness rather than the project."
+  @spec scrubbed_env() :: [{String.t(), nil}]
+  def scrubbed_env do
+    for {name, _} <- System.get_env(), harness_only?(name), do: {name, nil}
+  end
+
+  defp harness_only?("MIX_ENV"), do: true
+  defp harness_only?("CMS_" <> _), do: true
+  defp harness_only?(_), do: false
 end

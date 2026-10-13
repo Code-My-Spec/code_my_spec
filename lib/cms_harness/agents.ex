@@ -22,6 +22,18 @@ defmodule CmsHarness.Agents do
   options, and the engine owns the loop.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CmsHarness,
+      CmsHarness.Channel,
+      CodeMySpec.CodeMode,
+      # `Hooks.PreToolUse.route_command/4`: an in-app agent's `mix test` is
+      # routed the way a Claude Code agent's is.
+      CodeMySpec.Hooks
+    ],
+    exports: :all
+
   alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Channel
