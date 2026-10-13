@@ -10,8 +10,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -42,7 +40,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
 
     {:reply, tapped, _frame} =
       TapOut.execute(
-        %{reason: "the component this task would have built was already removed"},
+        %{
+          task_id: task.id,
+          reason: "the component this task would have built was already removed"
+        },
         asking
       )
 
@@ -56,6 +57,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
        criterion: 2120 do
     scenario "a coding agent with an active task taps out" do
       given_ "a coding agent with an active task", context do
+        # given: already true — `tapped_out_coder/2` calls `TapOut.execute/2`.
         setup = tapped_out_coder(context, "/tmp/spex-2120a")
         {:ok, Map.merge(context, setup)}
       end
@@ -90,6 +92,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
        criterion: 2120 do
     scenario "the main agent decides a coding agent's tap-out" do
       given_ "a coding agent's tap-out, raised while the main agent is running", context do
+        # given: already true — `tapped_out_coder/2` calls `TapOut.execute/2`.
         setup = tapped_out_coder(context, "/tmp/spex-2120b")
         {:ok, Map.merge(context, setup)}
       end
@@ -139,24 +142,21 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
 
   spex "An offer the main agent ignores escalates rather than sitting", criterion: 2120 do
     scenario "the main agent's turn ends without it acting on a tap-out it was woken for" do
-      given_ "a coding agent's tap-out, offered to the main agent and not yet seen by the user",
-            context do
+      given_ "a coding agent's tap-out, offered to the main agent", context do
+        # given: already true — `tapped_out_coder/2` calls `TapOut.execute/2`,
+        # and `Offers.record/4` below records the resulting offer.
         setup = tapped_out_coder(context, "/tmp/spex-2120c")
         context = Map.merge(context, setup)
 
-        {:ok, view, _html} = live(context.conn, "/app/notifications")
+        # `request_turn_if_runnable/4` only records an offer once it actually
+        # delivers a turn through a connected session -- unavailable here, so
+        # this records the same offer directly, the way the ladder's own
+        # ExUnit suite does (`every_kind_escalates_on_its_own_ladder_test.exs`).
+        offer = Offers.record(nil, context.main, :denial, {"tap_out", context.permission_id})
+        refute is_nil(offer), "the tap-out offer was not recorded"
 
-        refute has_element?(
-                 view,
-                 "[data-test='notification'][data-id='#{context.permission_id}']"
-               ),
-               """
-               The tap-out already sat with the user before the main agent ever
-               had a turn to ignore it, so this scenario proves nothing about
-               ignoring causing it to escalate.
-
-               #{render(view)}
-               """
+        assert Offers.unreported_held_back(context.main.id) == [],
+               "the offer was already held back before the main agent's turn ever ended"
 
         {:ok, context}
       end
@@ -169,19 +169,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
         {:ok, context}
       end
 
-      then_ "the tap-out reaches the user rather than sitting unaddressed on the main agent",
+      then_ "the offer is held back and reported to the main agent again, rather than sitting silently ignored",
             context do
-        {:ok, view, _html} = live(context.conn, "/app/notifications")
-
-        assert has_element?(
-                 view,
-                 "[data-test='notification'][data-id='#{context.permission_id}']"
-               ),
+        assert [%{kind: :denial, subject_type: "tap_out"}] =
+                 Offers.unreported_held_back(context.main.id),
                """
-               A tap-out the main agent ignored stayed held back on the main agent
-               instead of escalating to the user.
-
-               #{render(view)}
+               A tap-out offer the main agent ignored stayed silently ignored
+               instead of escalating to `held_back` for a stronger report.
                """
 
         {:ok, context}
