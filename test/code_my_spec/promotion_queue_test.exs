@@ -262,6 +262,31 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 
+  # Issue 47567b2a: none of compiler, credo, exunit or spex run the
+  # project's asset pipeline, so story 1092's own broken `echarts` import
+  # failed esbuild from the moment the batch landed, with every analyzer
+  # green.
+  test "a broken asset build is ejected, and nothing lands", ctx do
+    mix_exs = """
+    defmodule App.MixProject do
+      use Mix.Project
+
+      def project, do: [app: :app, version: "0.1.0"]
+    end
+    """
+
+    a = candidate(ctx, "a", "main", "mix.exs", mix_exs)
+    clean_runs_at(ctx, a.commit)
+
+    entry = queue(ctx, a)
+    before = git!(ctx.main_root, ["rev-parse", "HEAD"])
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
+    assert result["reason"] =~ "assets"
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
+  end
+
   # 87bc9721, 2026-10-05: the gate refused on exunit while spex was still running
   # at the head, and triage re-read the copy's problems for every source —
   # spex's included, from its run at the commit before. A finding red on main

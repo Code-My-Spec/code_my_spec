@@ -812,6 +812,47 @@ defmodule CodeMySpec.Promotion.Steps do
     |> normalize()
   end
 
+  @doc """
+  Build the project's static assets (`mix assets.build` -- esbuild and
+  tailwind) in the gate checkout at `root`, so a bundle the running app
+  could not actually serve does not land green.
+
+  None of `compiler`, `credo`, `exunit` or `spex` run the asset pipeline, so
+  a broken JS import landed with every one of them green (issue 47568b2a:
+  story 1092's `echarts` import failed esbuild from the moment the batch
+  landed; the dev app ran every LiveView page with no JavaScript at all,
+  and nothing in the gate had noticed).
+
+  Skipped, not failed, when `root` has no `mix.exs`: a fixture exercising
+  the queue's own mechanics (a bare git repo with no Phoenix project in it)
+  has no assets to build and is not what this check is for.
+
+  `MIX_ENV=test`, the same env `reset_test_databases/3`'s comment already
+  established the gate's analyzers reuse the build from.
+  """
+  @spec build_assets(Environments.Environment.t(), String.t()) :: result()
+  def build_assets(env, root) do
+    case Environments.stat(env, Path.join(root, "mix.exs")) do
+      {:ok, _} ->
+        env
+        |> Environments.cmd("mix", ["assets.build"],
+          cd: root,
+          stderr_to_stdout: true,
+          env: [{"MIX_ENV", "test"}]
+        )
+        |> normalize()
+        |> asset_build_result(root)
+
+      {:error, _} ->
+        {:ok, %{skipped: true}}
+    end
+  end
+
+  defp asset_build_result({_out, 0}, _root), do: {:ok, %{}}
+
+  defp asset_build_result({out, _status}, root),
+    do: {:error, %{reason: "the project's assets failed to build in #{root}:\n#{String.trim(out)}"}}
+
   # No merge in progress is the ordinary case, not a failure.
   defp ok_or_not_merging({_out, 0} = ok), do: ok
   defp ok_or_not_merging({_out, _}), do: {"", 0}

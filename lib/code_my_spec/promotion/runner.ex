@@ -111,6 +111,19 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.reset_test_databases(env, root, []) end
       )
 
+  @doc "Build the project's static assets in the gate checkout (`Steps.build_assets/2`)."
+  @spec build_assets(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
+  def build_assets(environment, root, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_build_assets",
+        %{"root" => root},
+        @reset_timeout,
+        fn env -> Steps.build_assets(env, root) end
+      )
+
   @doc "Which of `commits` `base` already contains (`Steps.contained/4`)."
   @spec contained(
           Environment.t() | nil,
