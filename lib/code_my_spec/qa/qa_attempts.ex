@@ -64,8 +64,22 @@ defmodule CodeMySpec.Qa.QaAttempts do
         end
       end)
       |> tap(&announce_graph_change(scope, &1))
+      |> tap(&announce_story_passed(scope, &1))
     end
   end
+
+  # A current pass, announced for Agents: a story whose work is already on main
+  # finishes here rather than at a landing, and its team is free then
+  # (`Agents.Events`). Qa sits below Promotion and Agents, so it says what
+  # happened and does not decide what follows.
+  defp announce_story_passed(scope, {:ok, %QaAttempt{status: :pass, stale: false} = attempt}) do
+    :telemetry.execute([:code_my_spec, :qa, :story_passed], %{}, %{
+      scope: scope,
+      story_id: attempt.story_id
+    })
+  end
+
+  defp announce_story_passed(_scope, _result), do: :ok
 
   # Historical reviews cannot attribute findings or return newer fixes.
   defp apply_review_findings(_scope, _attempt, _review, false), do: :ok
