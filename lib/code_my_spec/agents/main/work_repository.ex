@@ -43,6 +43,7 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
+  alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @doc "What each running agent on this project is doing."
@@ -244,12 +245,19 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
     |> MapSet.new()
   end
 
-  # Every checkout's problems in one read, keyed by copy.
+  # Every checkout's problems that can block, in one read, keyed by copy.
   #
   # `Problems.list_project_problems/2` narrows to the scope's own working copy,
   # which is right for a stop decision and wrong here: this view is about
   # somebody else's checkout as much as its own.
-  defp problems_by_copy(%Scope{active_project_id: project_id}) do
+  #
+  # Only what `Blocking.can_block?/2` says may block. Advisory findings were
+  # counted too, so every check-in put team 2 under "Needs you: 45 checkout
+  # problems" for credo :info findings the gate passed on every batch, and a
+  # main told forty-five things need it learns to skip the line (2026-10-13).
+  defp problems_by_copy(%Scope{active_project_id: project_id} = scope) do
+    advisory = Blocking.advisory_findings(scope)
+
     from(p in Problem,
       where: p.project_id == ^project_id,
       order_by: [asc: p.file_path, asc: p.line],
@@ -263,6 +271,7 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
       }
     )
     |> Repo.all()
+    |> Enum.filter(&Blocking.can_block?(&1, advisory))
     |> Enum.group_by(& &1.working_copy_id)
   end
 
