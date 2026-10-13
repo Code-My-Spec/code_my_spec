@@ -1,28 +1,18 @@
 defmodule CodeMySpec.Agents.Offers do
   @moduledoc """
   Every nudge the harness sends an agent, as an offer with an observed outcome
-  (b75b0198), and now the record these decisions are read back from (story
-  1080, John 2026-10-13): at most one open offer per agent asks it to act
-  (criterion 2161), a declined one stays held back from that agent until
-  main acts (criterion 2055), and an ignored one climbs its kind's own
-  ladder to the same `held_back` rung (criteria 2056, 2063, 2160). The
-  earlier "record only, nothing reads these rows" rule is retired: `Work`'s
-  `offerable/2`, `released_tasks/2` and `rung/4` all read `standing/1` to
-  decide what is offered and how, and `Agents.tell_main_held_back/2` reads
-  `unreported_held_back/1` to decide what reaches main. Each nudge path
-  still calls `record/4` once, after recording its message, and the turn-end
-  path still calls `settle_turn/1` once.
+  (b75b0198, step 1).
+
+  Record only. Each nudge path calls `record/4` once, after recording its
+  message, and the turn-end path calls `settle_turn/1` once. Nothing reads these
+  rows to decide anything, so neither call may change what is sent or whether.
 
   ## Expectations, by kind
 
     * `:work` — `start_task` on the subject this turn, resuming a held task
-      included (criterion 1865); a task-scoped `tap_out`, or a claim
-      cancelled before the turn ends, settles as `:ignored` — not
-      `:declined`: neither is a decline (criterion 2162), and only
-      `:ignored` keeps the ladder moving without resetting it on a claim
-      that was immediately dropped (7169d3cf). A questions-only offer (main)
-      wants a waiting question answered, escalated or put to the user
-      (criterion 1866).
+      included (criterion 1865); a task-scoped `tap_out` on it is `:declined`
+      with its reason. A questions-only offer (main) wants a waiting question
+      answered, escalated or put to the user (criterion 1866).
     * `:problems`, `:menu`, `:retry`, `:answer`, `:stalled` — any tool call
       after delivery. An answer's text is in the delivered message, so it wants
       no fetch. `:stalled` is main told a teammate stalled, on `agent:<id>`.
@@ -695,23 +685,13 @@ defmodule CodeMySpec.Agents.Offers do
     tasks = tasks_on(agent, offer.subject_key)
 
     cond do
-      # Not declined (criterion 2162: a tap-out is not a decline -- only an
-      # explicit `reject_offer` is). Not claimed either, or calling start_task
-      # and tapping out in the same turn would read as accepted and reset the
-      # ladder. :ignored is the only answer left, and it is the right one: the
-      # agent did not do this kind's accepting action (start_task), so this
-      # offer climbs the same ladder an untouched one would, reaching
-      # held_back (and main) after the same three laps (criterion 2160).
-      Enum.any?(tasks, &tapped_out_since?(&1, offer.inserted_at)) ->
-        %{status: :ignored}
+      tapped = Enum.find(tasks, &tapped_out_since?(&1, offer.inserted_at)) ->
+        %{status: :declined, reason: tapped.blocked_reason}
 
-      # Claimed and cancelled is not declined either (same rule, same reason:
-      # 7169d3cf's concern was the ladder resetting on a claim that was
-      # immediately dropped, not that dropping it should count as a refusal).
-      # :ignored keeps the ladder moving without manufacturing a decline the
-      # agent never made.
+      # Claimed and cancelled is declined, or the claim would reset the ladder
+      # and the agent could take and drop the same work forever (7169d3cf).
       Enum.any?(tasks, &cancelled_since?(&1, offer.inserted_at)) ->
-        %{status: :ignored}
+        %{status: :declined, reason: "claimed and cancelled"}
 
       true ->
         claimed_if(

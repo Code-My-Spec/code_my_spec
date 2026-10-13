@@ -23,8 +23,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
   alias Ecto.Adapters.SQL.Sandbox
 
   @work_prompt "Eligible work is available. Call get_next_requirement to see it, " <>
-                 "then claim it with start_task. No task has been selected or assigned for you. " <>
-                 "If this is not yours to do, call `reject_offer` with your reason."
+                 "then claim it with start_task. No task has been selected or assigned for you."
 
   setup :register_log_in_setup_account
   setup :setup_active_project
