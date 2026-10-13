@@ -44,6 +44,14 @@ For refusal/hold scenarios use an absent resource, since verification of an exis
 
 Fixtures last for the app process lifetime. After restart, create a new fixture; old marked fixture projects fail closed rather than using real providers. The stored project rows remain available for evidence. Controls simulate one resource per step/environment and do not model associated infrastructure within real providers.
 
+## Agent delivery prerequisites
+
+The simulator creates provider state, not an agent or a connected working copy. To verify criterion 568 through a live agent, the fixture project needs its own designated main working copy, a connected model provider, and a present main agent with continuous mode enabled. Use the normal project onboarding and agent controls for these prerequisites. Never attach another project's agent to the fixture.
+
+An errored provisioning step publishes its persisted failure to Agents. The repair message names the project, step, environment, attempted action and verbatim provider error. Confirm delivery in the project's agent conversation; console escalation markup alone is insufficient evidence. Successful and paused steps do not request repair.
+
+Existing agent wake rules remain in force: a non-continuous, off or unavailable agent is not evidence of successful delivery. Missing startup prerequisites are logged and leave the original provider failure intact. For an eligible continuous main agent that is still becoming ready, the message remains in the durable mailbox until presence permits delivery. The transport rechecks off and retired state before sending. Starting an agent does not enable continuous mode automatically.
+
 ## Implementation verification, 2026-10-13
 
 - `MIX_ENV=test mix test test/code_my_spec/provisioning/qa_fixture_test.exs`: 7 tests, 0 failures.

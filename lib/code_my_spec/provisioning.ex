@@ -1153,6 +1153,10 @@ defmodule CodeMySpec.Provisioning do
       announce(scope, {:provisioning, :step, row})
     end
 
+    if row.state == :errored do
+      :telemetry.execute([:code_my_spec, :provisioning, :failed], %{}, %{scope: scope, step: row})
+    end
+
     row
   end
 end

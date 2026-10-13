@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.Events do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
 
+  @provisioning_failed [:code_my_spec, :provisioning, :failed]
   @task_completed [:code_my_spec, :tasks, :completed]
   @task_released [:code_my_spec, :tasks, :released]
   @issue_qa_passed [:code_my_spec, :qa, :issue_passed]
@@ -39,6 +40,7 @@ defmodule CodeMySpec.Agents.Events do
     :telemetry.attach_many(
       {__MODULE__, :handlers},
       [
+        @provisioning_failed,
         @task_completed,
         @task_released,
         @issue_qa_passed,
@@ -57,6 +59,12 @@ defmodule CodeMySpec.Agents.Events do
   end
 
   @doc false
+  def handle_event(@provisioning_failed, _measurements, %{scope: scope, step: step}, _config) do
+    CodeMySpec.Agents.ProvisioningFailure.deliver(scope, step)
+  catch
+    kind, reason -> log(:provisioning_failed, kind, reason)
+  end
+
   # A completed task can unblock work for the copy's other agents. Off the
   # caller's process: a missed nudge is the acceptable failure, and the next
   # completion sends it again.

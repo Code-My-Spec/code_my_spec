@@ -77,6 +77,7 @@ defmodule CodeMySpec.Agents.Wake do
           | :teammate_died
           | :team_free
           | :offer_held_back
+          | :provisioning_failed
 
   @type hold ::
           {:off, Agent.t()}
@@ -100,6 +101,7 @@ defmodule CodeMySpec.Agents.Wake do
     :cadence,
     :teammate_stalled,
     :teammate_died,
+    :provisioning_failed,
     :team_free,
     :offer_held_back
   ]
@@ -158,6 +160,7 @@ defmodule CodeMySpec.Agents.Wake do
     teammate_question: :hold,
     teammate_stalled: :hold,
     teammate_died: :hold,
+    provisioning_failed: :hold,
     team_free: :wake,
     # Main is roused for a held-back offer even when it is not continuous: the
     # work is stuck on a teammate and only main can move it (criterion 2063).
@@ -165,6 +168,21 @@ defmodule CodeMySpec.Agents.Wake do
   }
 
   @telemetry [:code_my_spec, :agents, :wake]
+
+  @doc "Admission may retain a repair message while its eligible agent becomes present."
+  def allow_admission?(
+        _scope,
+        %Agent{role: :main, continuous: true, status: status} = agent,
+        :provisioning_failed
+      )
+      when status in [:starting, :running] do
+    case Transport.deliverable(agent) do
+      :ok -> :ok
+      {:error, reason} -> {:hold, reason}
+    end
+  end
+
+  def allow_admission?(scope, agent, event), do: allow?(scope, agent, event)
 
   @doc "Every event kind."
   @spec events() :: [event()]

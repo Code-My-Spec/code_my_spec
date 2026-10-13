@@ -28,7 +28,8 @@ defmodule CodeMySpec.Agents.WakeTest do
       :findings,
       :cadence,
       :teammate_stalled,
-      :teammate_died
+      :teammate_died,
+      :provisioning_failed
     ],
     product: [:work_offer, :nudge, :resume, :teammate_question],
     coding: [:work_offer, :nudge, :resume, :findings],
@@ -57,7 +58,8 @@ defmodule CodeMySpec.Agents.WakeTest do
     :findings,
     :cadence,
     :teammate_stalled,
-    :teammate_died
+    :teammate_died,
+    :provisioning_failed
   ]
   @collects_when_back [:question_answered, :blocker_resolved]
 

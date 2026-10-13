@@ -1658,6 +1658,13 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc "Record a provisioning failure for its project's agent, including during startup."
+  def notify_provisioning_failure(%Scope{} = scope, agent_id, text) when is_binary(text) do
+    with {:ok, %Agent{role: :main} = agent} <- AgentsRepository.fetch_agent(scope, agent_id) do
+      notify(scope, agent, :provisioning_failed, text, nil, nil)
+    end
+  end
+
   defp notify(scope, main, event, text, offer, instruction_offer) do
     ref = Ecto.UUID.generate()
 
@@ -2362,7 +2369,7 @@ defmodule CodeMySpec.Agents do
   end
 
   defp admit_if_allowed(agent, message, event, offered, admit_opts) do
-    case Wake.allow?(agent_scope(agent), agent, event) do
+    case Wake.allow_admission?(agent_scope(agent), agent, event) do
       :ok ->
         Mailbox.admit(agent, message, event, admit_opts)
         {message, :ok}
