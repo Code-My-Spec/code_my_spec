@@ -34,7 +34,8 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
 
         sync_project(context)
 
-        base = Fixtures.get_component_by_module_name(context.scope, "BaseContext.Item")
+        # The chain's root is the context: its junction is where work enters it.
+        base = Fixtures.get_component_by_module_name(context.scope, "BaseContext")
         middle = Fixtures.get_component_by_module_name(context.scope, "MiddleContext")
         surface_ctx = Fixtures.get_component_by_module_name(context.scope, "SurfaceContext")
         surface = Fixtures.get_component_by_module_name(context.scope, "SurfaceContext.HomeLive")
@@ -82,10 +83,10 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
           |> Enum.filter(&String.starts_with?(&1, "component_"))
 
         base_first_key =
-          GraphAssertions.node_key("component", context.base.id, "implementation_file")
+          GraphAssertions.node_key("component", context.base.id, "dependencies_met")
 
         assert component_targets == [base_first_key],
-               "expected bdd_specs_exist's only component kickoff edge to be BaseContext.implementation_file (the chain's root), got: #{inspect(component_targets)}"
+               "expected bdd_specs_exist's only component kickoff edge to be BaseContext.dependencies_met (the chain's root), got: #{inspect(component_targets)}"
 
         {:ok, context}
       end
@@ -100,11 +101,13 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
               {"surface context (S)", context.surface_ctx},
               {"surface liveview", context.surface}
             ] do
-          comp_first_key =
-            GraphAssertions.node_key("component", comp.id, "implementation_file")
+          # A context's entry is its junction; a LiveView's is its own file.
+          for name <- ["dependencies_met", "implementation_file"] do
+            comp_first_key = GraphAssertions.node_key("component", comp.id, name)
 
-          refute GraphAssertions.edge?(context.graph, bdd_exist_key, comp_first_key),
-                 "expected no kickoff edge from bdd_specs_exist to #{label} (subsumed by deeper path)"
+            refute GraphAssertions.edge?(context.graph, bdd_exist_key, comp_first_key),
+                   "expected no kickoff edge from bdd_specs_exist to #{label} (subsumed by deeper path)"
+          end
         end
 
         {:ok, context}

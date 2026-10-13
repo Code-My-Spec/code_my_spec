@@ -189,6 +189,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  defp check(%{check_type: :always}, _scope, _entity, _files, _ctx), do: {true, %{}}
+
   # Fallback for definitions without check_type (legacy or unknown)
   defp check(%{check_type: nil, name: name}, _scope, _entity, _files, _ctx) do
     {false, %{reason: "No check_type defined for requirement: #{name}"}}

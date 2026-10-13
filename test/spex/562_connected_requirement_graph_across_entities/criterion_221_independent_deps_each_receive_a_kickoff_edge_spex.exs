@@ -37,8 +37,9 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
-        dep_a = Fixtures.get_component_by_module_name(context.scope, "DepA.Item")
-        dep_b = Fixtures.get_component_by_module_name(context.scope, "DepB.Item")
+        # Each dep is entered at its context's junction.
+        dep_a = Fixtures.get_component_by_module_name(context.scope, "DepA")
+        dep_b = Fixtures.get_component_by_module_name(context.scope, "DepB")
         surface_ctx = Fixtures.get_component_by_module_name(context.scope, "FanCtx")
         surface = Fixtures.get_component_by_module_name(context.scope, "FanCtx.FanLive")
 
@@ -75,16 +76,16 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
         dep_a_key =
-          GraphAssertions.node_key("component", context.dep_a.id, "implementation_file")
+          GraphAssertions.node_key("component", context.dep_a.id, "dependencies_met")
 
         dep_b_key =
-          GraphAssertions.node_key("component", context.dep_b.id, "implementation_file")
+          GraphAssertions.node_key("component", context.dep_b.id, "dependencies_met")
 
         assert GraphAssertions.edge?(context.graph, bdd_exist_key, dep_a_key),
-               "expected bdd_specs_exist → DepA.implementation_file to be present"
+               "expected bdd_specs_exist → DepA.dependencies_met to be present"
 
         assert GraphAssertions.edge?(context.graph, bdd_exist_key, dep_b_key),
-               "expected bdd_specs_exist → DepB.implementation_file to be present"
+               "expected bdd_specs_exist → DepB.dependencies_met to be present"
 
         {:ok, context}
       end

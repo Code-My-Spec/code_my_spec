@@ -34,6 +34,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           | :field_present
           | :field_true
           | :delegate
+          | :always
 
   @type node_scope :: :parent | :child | :self
 
@@ -91,7 +92,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     # Read from the deploys table, which only records a deploy after its own
     # health probe answered.
     :deployed,
-    :all_deployed
+    :all_deployed,
+    # A junction, never work: `dependencies_met` on containers.
+    :always
   ]
 
   @primary_key false
