@@ -817,6 +817,57 @@ defmodule CodeMySpec.Promotion.Steps do
     |> normalize()
   end
 
+  @doc """
+  Build the project's static assets (`mix assets.build` -- esbuild and
+  tailwind) in the gate checkout at `root`, so a bundle the running app
+  could not actually serve does not land green.
+
+  None of `compiler`, `credo`, `exunit` or `spex` run the asset pipeline, so
+  a broken JS import landed with every one of them green (issue 47568b2a:
+  story 1092's `echarts` import failed esbuild from the moment the batch
+  landed; the dev app ran every LiveView page with no JavaScript at all,
+  and nothing in the gate had noticed).
+
+  Skipped, not failed, when `root` has no `mix.exs`: a fixture exercising
+  the queue's own mechanics (a bare git repo with no Phoenix project in it)
+  has no assets to build and is not what this check is for.
+
+  `MIX_ENV=test`, the same env `reset_test_databases/3`'s comment already
+  established the gate's analyzers reuse the build from.
+  """
+  @spec build_assets(Environments.Environment.t(), String.t()) :: result()
+  def build_assets(env, root) do
+    if loadable_mix_exs?(env, root) do
+      env
+      |> Environments.cmd("mix", ["assets.build"],
+        cd: root,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}]
+      )
+      |> normalize()
+      |> asset_build_result(root)
+    else
+      {:ok, %{skipped: true}}
+    end
+  end
+
+  # Not every `mix.exs` in this project's own fixtures is a real, loadable
+  # module -- several write a bare `version: "X.Y.Z"` literal on purpose, for
+  # `mix_version/2`'s own regex read, with no `defmodule` wrapper at all. A
+  # real project's `mix.exs` always has one; a fixture's bare literal does
+  # not, which is the distinction this checks instead of mere existence.
+  defp loadable_mix_exs?(env, root) do
+    case Environments.read_file(env, Path.join(root, "mix.exs")) do
+      {:ok, content} -> String.contains?(content, "defmodule")
+      {:error, _} -> false
+    end
+  end
+
+  defp asset_build_result({_out, 0}, _root), do: {:ok, %{}}
+
+  defp asset_build_result({out, _status}, root),
+    do: {:error, %{reason: "the project's assets failed to build in #{root}:\n#{String.trim(out)}"}}
+
   @refusal """
   fn env, database ->
     cond do
@@ -941,10 +992,45 @@ defmodule CodeMySpec.Promotion.Steps do
 
   # Paths git considers unmerged. Empty when no merge is in progress, which is
   # the ordinary case and the one that costs a single command.
+  #
+  # "'git status --porcelain=2' failed in submodule <name>" is git's own
+  # wrapper message for a submodule's status check failing for any reason --
+  # most often its gitdir's `core.worktree` naming a path that no longer
+  # exists. That happens when a `git submodule update` run in some OTHER
+  # worktree that happened to share this submodule's gitdir rewrote
+  # `core.worktree` to point at itself: a worktree whose own `.code_my_spec`
+  # is a linked worktree of THIS checkout's submodule repo, rather than its
+  # own, can break this checkout from entirely outside it (67cf1eaa). The
+  # inner git error varies by version ("cannot chdir to", "Invalid path"),
+  # so this detects git's own wrapper line, not the inner text. Named here
+  # rather than left as the raw error, which otherwise reads as this
+  # checkout's own corruption and invites exactly the wrong fix (reinit,
+  # reclone) for a config line that only needs resetting.
   defp unmerged(env, root) do
     case git(env, root, ["diff", "--name-only", "--diff-filter=U"]) do
       {out, 0} -> {:ok, String.split(out, "\n", trim: true)}
-      {out, _} -> {:error, %{reason: "could not read #{root}'s merge state: #{String.trim(out)}"}}
+      {out, _} -> {:error, merge_state_error(out, root)}
+    end
+  end
+
+  defp merge_state_error(out, root) do
+    case Regex.run(~r/failed in submodule (\S+)/, out) do
+      [_, submodule] ->
+        %{
+          reason:
+            "could not read #{root}'s merge state: its #{submodule} submodule's own " <>
+              "status check failed, most likely because its gitdir's core.worktree " <>
+              "points at a path that no longer exists. Something outside this " <>
+              "checkout -- most likely a `git submodule update` run in a different " <>
+              "worktree sharing this submodule's gitdir -- rewrote it. Fix: reset " <>
+              "core.worktree in the submodule's gitdir config (`git -C " <>
+              "#{root}/#{submodule} rev-parse --git-dir` finds it) to the correct " <>
+              "relative path back to #{root}/#{submodule}, then retry. Raw error: " <>
+              String.trim(out)
+        }
+
+      nil ->
+        %{reason: "could not read #{root}'s merge state: #{String.trim(out)}"}
     end
   end
 
@@ -1004,8 +1090,17 @@ defmodule CodeMySpec.Promotion.Steps do
 
   # The superproject check matters: in an uninitialised submodule directory
   # `git -C` would find the superproject and check the SHA out *there*.
+  #
+  # Refused ahead of the checkout when the submodule's own tree is dirty,
+  # rather than letting `git checkout` decide: a plain checkout only refuses
+  # a path whose committed content actually differs between the two commits,
+  # and leaves an uncommitted edit outside that diff sitting in place but now
+  # against a detached HEAD the next `git status` reads as clean against —
+  # silently stranding whatever was there (issue 42559860: a QA subagent's
+  # rewritten brief, reverted mid-pass with no signal it had happened).
   defp check_out_pinned(env, sub, source, pinned) do
     with :ok <- ensure_submodule(env, sub, pinned),
+         :ok <- ensure_clean(env, sub, pinned),
          :ok <- ensure_present(env, sub, source, pinned),
          {:ok, _} <- sub_git(env, sub, ["checkout", "--quiet", pinned], pinned),
          {:ok, ^pinned} <- sub_git(env, sub, ["rev-parse", "HEAD"], pinned) do
@@ -1013,6 +1108,22 @@ defmodule CodeMySpec.Promotion.Steps do
     else
       {:ok, other} -> {:error, pinned, "checked out, but HEAD is #{other}"}
       {:error, _, _} = error -> error
+    end
+  end
+
+  defp ensure_clean(env, sub, pinned) do
+    case sub_git(env, sub, ["status", "--porcelain"], pinned) do
+      {:ok, ""} ->
+        :ok
+
+      {:ok, dirty} ->
+        {:error, pinned,
+         "#{sub} has uncommitted work this checkout would strand:\n#{dirty}\n" <>
+           "Commit or discard it in #{sub} before promoting, or this promote would " <>
+           "silently check out over it."}
+
+      error ->
+        error
     end
   end
 

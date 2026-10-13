@@ -1356,6 +1356,13 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_reset_test_databases", %{"root" => root}),
     do: with_served_root(root, &reset_test_databases/1)
 
+  # The gate's asset build (`Steps.build_assets/2`), healed for stale deps the
+  # same way: it runs mix in the gate checkout too. The server's half landed
+  # without this one, so every batch was ejected "this harness does not
+  # implement promotion_build_assets" (2026-10-13).
+  defp apply_promotion("promotion_build_assets", %{"root" => root}),
+    do: with_served_root(root, &build_assets/1)
+
   defp apply_promotion("promotion_changed", %{"root" => root, "from" => from, "to" => to}),
     do: with_served_root(root, &Steps.changed(Environment.new(:local, &1), &1, from, to))
 
@@ -1390,6 +1397,14 @@ defmodule CmsHarness.Project.ChannelClient do
 
     env
     |> CmsHarness.Analysis.heal(fn -> reset_as_text(reset.()) end)
+    |> reset_as_map()
+  end
+
+  defp build_assets(root) do
+    env = Environment.new(:local, root)
+
+    env
+    |> CmsHarness.Analysis.heal(fn -> reset_as_text(Steps.build_assets(env, root)) end)
     |> reset_as_map()
   end
 

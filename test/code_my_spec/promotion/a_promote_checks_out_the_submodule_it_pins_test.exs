@@ -60,6 +60,7 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
 
   defp answer(@main, ["reset", "--keep", @base]), do: {"", 0}
   defp answer(@sub, ["rev-parse", "--show-superproject-working-tree"]), do: {@main <> "\n", 0}
+  defp answer(@sub, ["status", "--porcelain"]), do: {"", 0}
   defp answer(@sub, ["cat-file", "-e", @new_pin <> "^{commit}"]), do: fetched?()
   defp answer(@sub, ["fetch" | _]), do: fetch()
   defp answer(@sub, ["checkout", "--quiet", @new_pin]), do: checkout()
@@ -196,6 +197,23 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
 
     refute_received {:git, @sub, _}
     assert_receive :restarted, 2_000
+  end
+
+  # 42559860: a QA subagent's rewritten brief was destroyed mid-pass with no
+  # signal it had happened, because the checkout that pins the submodule did
+  # not check whether anything uncommitted was there first.
+  test "a dirty submodule refuses the checkout rather than being checked out over" do
+    dirty = %{
+      {@sub, ["status", "--porcelain"]} => {" M qa/1009/brief.md\n", 0}
+    }
+
+    assert {:error, %{reason: reason}} = promote(dirty)
+
+    assert reason =~ "qa/1009/brief.md"
+    assert reason =~ "uncommitted work"
+    refute_received {:git, @sub, ["checkout" | _]}
+    assert_received {:git, @main, ["reset", "--keep", @base]}
+    refute_receive :restarted, 200
   end
 
   # 8b27cc4c: metric_flow tracks `.code_my_spec` as ordinary files. Its tree SHA

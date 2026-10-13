@@ -60,4 +60,27 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
     assert {:ok, %{id: id, status: :queued, commit: "c2"}} = enqueue(ctx, "c2")
     refute id == first.id
   end
+
+  # Issue 97b27e62: the worker reads a copy's queued entry once
+  # (`Repository.queued/2`), then reserves it later with `move/3`. If a
+  # second promote on the same copy retargets that same still-queued row
+  # to a new commit in between -- legitimate on its own, per "a new commit
+  # while one waits moves the waiting entry to it" above -- the struct the
+  # worker is still holding is now stale. Reserving it must not carry that
+  # staleness forward: the worker went on to build, gate and land the
+  # *old* commit while the row claimed the new one, and the second
+  # promote's own requester never heard a true outcome.
+  test "reserving a stale read lands on the entry's current commit, not the one it was read at",
+       ctx do
+    {:ok, stale} = enqueue(ctx, "c1")
+    {:ok, retargeted} = enqueue(ctx, "c2")
+
+    assert retargeted.id == stale.id,
+           "the premise failed: the second promote did not retarget the first entry"
+
+    assert {:ok, %{id: id, commit: "c2", status: :gating}} =
+             Repository.move(stale, :gating, %{batch_id: Ecto.UUID.generate()})
+
+    assert id == stale.id
+  end
 end
