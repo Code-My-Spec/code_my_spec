@@ -29,7 +29,7 @@ procedure.
   arrangement.
 - `priv/knowledge/bdd/spex/writing_a_spex.md` — file layout, DSL,
   setup template.
-- `show_architecture_overview` — the project's contexts, which the
+- `show_namespace_hierarchy` — the project's contexts, which the
   agent mines for project-specific denies in step 2.
 
 ## Step 1 — install the framework Credo checks
@@ -62,7 +62,7 @@ can mirror its AST traversal in the project-local check.
 This check carries the whole-module deny list — both the universal
 stdlib bypasses and the project's internal contexts.
 
-Read the contexts with `show_architecture_overview`. Identify internal
+Read the contexts with `show_namespace_hierarchy`. Identify internal
 namespaces specs must NOT reach.
 
 **Baseline (every project should include these):**

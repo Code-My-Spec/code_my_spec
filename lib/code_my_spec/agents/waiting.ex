@@ -28,7 +28,7 @@ defmodule CodeMySpec.Agents.Waiting do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis
-  alias CodeMySpec.PromotionQueue
+  alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -105,7 +105,7 @@ defmodule CodeMySpec.Agents.Waiting do
   # `@all`, like `provisioning`: the task stays open until the landing, so no
   # path here has anything useful to say about it.
   defp check(:promotion, _scope, agent) do
-    case PromotionQueue.awaited_by(agent.id) do
+    case Waits.awaited_by(agent.id) do
       nil -> nil
       entry -> {:promotion, entry.id}
     end

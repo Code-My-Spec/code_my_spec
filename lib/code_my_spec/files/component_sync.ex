@@ -428,7 +428,7 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   defp dependency_evidence(%File{validation_errors: errors, path: path}, environment) do
     case stored_component_data(errors) do
-      %{"dependency_evidence" => %{"version" => 1} = evidence} ->
+      %{"dependency_evidence" => %{"version" => 2} = evidence} ->
         evidence
 
       _ when is_nil(environment) ->

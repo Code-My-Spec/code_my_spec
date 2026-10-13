@@ -35,11 +35,7 @@ defmodule CodeMySpec.AgentHarness do
     deps: [
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
-      CodeMySpec.Environments,
-      CodeMySpec.Projects,
-      CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.LocalScope,
       CodeMySpec.WorkingCopies

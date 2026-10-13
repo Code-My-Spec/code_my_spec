@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5582Spex do
         component = context.component
         project = context.project
 
-        assert prompt =~ "show_architecture_overview",
+        assert prompt =~ "show_namespace_hierarchy",
                "expected the prompt to say where the design is read, got: #{prompt}"
 
         refute prompt =~ ".spec.md",

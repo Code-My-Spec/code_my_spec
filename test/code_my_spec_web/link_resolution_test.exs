@@ -283,7 +283,6 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     # each one separately would make the sidebar a sitemap.
     "/app/projects/:project_id/stories/scheduler",
     "/app/projects/:project_id/requirements/stories",
-    "/app/projects/:project_id/architecture/overview",
     "/app/projects/:project_id/architecture/namespaces",
     # The console's own sections: reached from its own sidebar once you're
     # on `/console`, same as the tabs above — only the surface itself,

@@ -49,7 +49,6 @@ defmodule CodeMySpec.Utils.Data do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],
     exports: :all

@@ -114,7 +114,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     items =
       [
         ctx.qa_plan_exists && "- `#{Paths.qa_plan()}` — QA infrastructure",
-        "- `show_architecture_overview` — component graph",
+        "- `show_namespace_hierarchy` — component tree",
         ctx.journey_plan_exists && "- `#{Paths.qa_journey_plan()}` — existing plan",
         ctx.journey_result_exists && "- `#{Paths.qa_journey_result()}` — existing result",
         !ctx.qa_plan_exists &&

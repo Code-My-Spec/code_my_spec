@@ -55,8 +55,8 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     - **Read before you write.** The task prompt tells you which components, rules, and existing
       files to read. Do it.
     - **One requirement at a time.** The graph handles ordering. Don't skip ahead.
-    - Components and their dependencies are records: read one with `get_component`, all of
-      them with `show_architecture_overview`; no spec file describes them. Rules live in `#{base}/rules/`.
+    - Components and their dependencies are records: read one with `get_component`, the tree
+      of them with `show_namespace_hierarchy`; no spec file describes them. Rules live in `#{base}/rules/`.
     #{@claude_md_end_marker}
     """
   end
@@ -248,7 +248,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
 
     | Need | Where |
     |---|---|
-    | Component graph with types and deps | `show_architecture_overview` tool |
+    | Component tree with types | `show_namespace_hierarchy` tool |
     | One component and its dependencies | `get_component` tool |
     | Architecture decisions | `#{base}/architecture/decisions/` |
     | Implementation status | `#{base}/status/#{app}.md` |

@@ -39,7 +39,8 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponentTest do
       {:ok, _} =
         CodeMySpec.Components.create_dependency(scope, %{
           source_component_id: user.id,
-          target_component_id: repo.id
+          target_component_id: repo.id,
+          provenance: :authored
         })
 
       CodeMySpec.Repo.insert!(%CodeMySpec.Files.File{
@@ -58,7 +59,9 @@ defmodule CodeMySpec.McpServers.Components.Tools.GetComponentTest do
 
       assert got["id"] == user.id
       assert got["parent"] == "MyApp.Accounts"
-      assert got["dependencies"] == ["MyApp.Repo"]
+      assert got["dependencies"] == [
+               %{"module_name" => "MyApp.Repo", "planned" => true, "in_code" => false}
+             ]
       assert got["files"] == ["lib/my_app/accounts/user.ex"]
     end
 

@@ -15,7 +15,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
-  alias CodeMySpec.PromotionQueue
+  alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -700,7 +700,7 @@ defmodule CodeMySpec.Agents.Work do
   defp awaiting_landing?(agent, task) do
     case subject(agent, task) do
       nil -> false
-      {type, id} -> PromotionQueue.open_for(agent.id, type, id)
+      {type, id} -> Waits.open_for(agent.id, type, id)
     end
   end
 

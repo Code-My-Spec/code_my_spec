@@ -10,7 +10,8 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   fails where it was refused rather than somewhere downstream.
 
   Reads go through `show_architecture` (edges between contexts and surface
-  components, as Mermaid), `get_component` and `list_components`.
+  components, as Mermaid), `get_component` (with each dependency's planned and
+  in-code evidence) and `list_components`.
   """
 
   import ExUnit.Assertions
@@ -290,6 +291,17 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
     id = Fixtures.get_component_by_module_name(context.scope, module).id
     {:reply, reply, _} = GetComponent.execute(%{component_id: id}, frame(context))
     reply |> ok!("get_component #{module}") |> response_text() |> Jason.decode!()
+  end
+
+  @doc """
+  `get_component`'s dependencies for `module`, keyed by target module name:
+  `%{"planned" => bool, "in_code" => bool}` each.
+  """
+  def dependencies(context, module) do
+    context
+    |> component(module)
+    |> Map.fetch!("dependencies")
+    |> Map.new(fn dep -> {dep["module_name"], Map.take(dep, ["planned", "in_code"])} end)
   end
 
   @doc "Whether a spec file sits at `module`'s conventional path."

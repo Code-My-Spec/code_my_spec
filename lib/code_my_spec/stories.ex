@@ -11,7 +11,6 @@ defmodule CodeMySpec.Stories do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
-      CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
