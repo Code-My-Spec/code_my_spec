@@ -442,6 +442,27 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert result["already_on_main"] == true, "it rode a batch: #{inspect(result)}"
   end
 
+  # 8951606c/52d2006d, 2026-10-05: a candidate an earlier batch had already
+  # carried forward -- an ancestor of main, never its own tip -- was gated as
+  # though new and ejected over a failure nothing on it could have produced.
+  # `on_main/3`'s ancestry check, not `gating/5`'s equality against main's
+  # exact HEAD, is what has to catch this: the candidate's own commit is no
+  # longer main's tip by the time it is re-queued.
+  test "a candidate main has since moved past still lands as already on main", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    git!(ctx.main_root, ["merge", "--quiet", "--ff-only", a.commit])
+
+    moved = candidate(ctx, "b", "main", "b.ex", "b\n")
+    git!(ctx.main_root, ["merge", "--quiet", "--ff-only", moved.commit])
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed, result: result}} = settle(entry)
+    assert result["already_on_main"] == true
+    assert Run |> Repo.all() |> Enum.filter(&(&1.working_copy_id == ctx.gate.id)) == []
+  end
+
   # A lone candidate's own copy is reused only for a certification it already
   # holds; anything still to run goes to the gate copy, out of reach of whoever
   # keeps editing the requester's copy.
