@@ -25,7 +25,6 @@ defmodule CodeMySpec.Git do
       CodeMySpec.Environments,
       CodeMySpec.Integrations,
       CodeMySpec.LocalScope,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],

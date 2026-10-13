@@ -35,7 +35,6 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Agents.Agent,
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Qa.Invalidations,
-      CodeMySpec.Qa.Invalidation,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Configurations,
       CodeMySpec.Environments,

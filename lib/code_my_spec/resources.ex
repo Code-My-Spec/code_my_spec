@@ -33,7 +33,6 @@ defmodule CodeMySpec.Resources do
     top_level?: true,
     deps: [
       CodeMySpec.LocalScope,
-      CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.Provisioning.Hetzner,

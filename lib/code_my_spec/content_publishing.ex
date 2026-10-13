@@ -20,7 +20,6 @@ defmodule CodeMySpec.ContentPublishing do
       CodeMySpec.Environments,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],
     exports: :all

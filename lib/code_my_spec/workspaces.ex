@@ -22,7 +22,6 @@ defmodule CodeMySpec.Workspaces do
       CodeMySpec.Projects,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],

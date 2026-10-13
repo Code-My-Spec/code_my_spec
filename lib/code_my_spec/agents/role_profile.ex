@@ -130,6 +130,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # complained.
   # The copy's own app runs the branch under test; QA starts it to test there
   # rather than through its own connection, which is the shared harness on main.
+  # It shares and unshares that app's preview address too: some criteria are
+  # about the tunnel, and only ever the caller's own copy (John, 2026-10-12).
   # `list_problems` is granted and `clear_problems` is not (`930d9c47`). They are
   # two different things and one grant used to carry both. A QA agent directed
   # at Spex failures needs to *see* them -- to report what failed and to tell a
@@ -146,7 +148,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
     withdraw_question
     call_mcp_server
-    ensure_app_running restart_app stop_app
+    ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks list_session_subagents list_notifications

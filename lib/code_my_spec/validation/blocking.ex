@@ -15,7 +15,6 @@ defmodule CodeMySpec.Validation.Blocking do
       CodeMySpec.BddSpecs,
       CodeMySpec.Configurations,
       CodeMySpec.Files,
-      CodeMySpec.Problems,
       CodeMySpec.Users.Scope
     ],
     exports: :all

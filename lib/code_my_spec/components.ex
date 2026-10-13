@@ -6,7 +6,6 @@ defmodule CodeMySpec.Components do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope

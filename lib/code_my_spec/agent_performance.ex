@@ -12,6 +12,22 @@ defmodule CodeMySpec.AgentPerformance do
   and the read.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.AgentTasks,
+      CodeMySpec.Agents,
+      CodeMySpec.Agents.Agent,
+      CodeMySpec.Conversations,
+      CodeMySpec.Qa,
+      CodeMySpec.Qa.QaAttempt,
+      CodeMySpec.Repo,
+      CodeMySpec.Sessions,
+      CodeMySpec.Stories,
+      CodeMySpec.Users.Scope
+    ],
+    exports: :all
+
   alias CodeMySpec.AgentPerformance.BlockedTime
   alias CodeMySpec.AgentPerformance.Chart
   alias CodeMySpec.AgentPerformance.CycleTime
