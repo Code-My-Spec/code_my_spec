@@ -58,8 +58,7 @@ defmodule CodeMySpec.Agents.Main.AResolvedQuestionIsARecordMainCanCiteTest do
           "title" => "a question",
           "questions" => [%{"question" => "Should X ship this cycle?", "options" => []}],
           "holder" => "main_agent"
-        },
-        nil
+        }
       )
 
     %{scope: scope, story: story, request: request}
