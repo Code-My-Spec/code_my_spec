@@ -18,6 +18,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Stories
+  alias CodeMySpec.WorkingCopies
 
   schema do
     field :story_number, :integer,
@@ -40,9 +41,31 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
          {:ok, assigned} <- Agents.assign_team(scope, copy_id, story_id) do
       {:reply, Response.text(Response.tool(), message(assigned, params)), frame}
     else
+      {:error, :story_assigned_elsewhere} ->
+        {:reply, Response.error(Response.tool(), held_elsewhere(scope_of(frame), params)), frame}
+
       {:error, reason} ->
         {:reply, Response.error(Response.tool(), error_message(reason)), frame}
     end
+  end
+
+  # Which copy holds it, and how to free it. The refusal named neither, so main
+  # handed story 1046 to team 2, was refused, and asked John which copy held it
+  # because its tools did not say (2026-10-12).
+  defp held_elsewhere(scope, %{story_number: number}) do
+    with %{working_copy_id: copy_id} when is_binary(copy_id) <-
+           Stories.get_story_by_number(scope, number),
+         {:ok, copy} <- WorkingCopies.fetch(copy_id) do
+      "Story #{number} is assigned to working copy #{copy.label || copy_id} (#{copy_id}). " <>
+        "Free it with unassign_story_from_working_copy, then select it again."
+    else
+      _ -> error_message(:story_assigned_elsewhere)
+    end
+  end
+
+  defp scope_of(frame) do
+    {:ok, scope} = Validators.validate_local_scope(frame)
+    scope
   end
 
   defp message(nil, _params),
