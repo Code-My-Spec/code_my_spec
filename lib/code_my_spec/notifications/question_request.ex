@@ -79,6 +79,10 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     # and so the main agent can tell its own escalations apart on the way back.
     field :escalation_reason, :string
 
+    # The holder that handed it to the user (`main_agent` or `product_agent`),
+    # told the user's answer as well as the asker.
+    field :escalated_by, :string
+
     # Why the asker took it back, when it did (`status: "withdrawn"`).
     field :withdrawn_reason, :string
 
@@ -120,6 +124,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :overruled,
       :answer_history,
       :escalation_reason,
+      :escalated_by,
       :withdrawn_reason,
       :session_external_id
     ])

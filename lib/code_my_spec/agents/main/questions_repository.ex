@@ -260,10 +260,14 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
     |> QuestionRequest.changeset(%{
       "holder" => "user",
       "escalation_reason" => reason,
+      "escalated_by" => escalator(request.holder),
       "questions" => framed(request.questions, as)
     })
     |> Repo.update()
   end
+
+  defp escalator(holder) when holder in ["main_agent", "product_agent"], do: holder
+  defp escalator(_holder), do: nil
 
   # A permission has no `questions` to frame and no `holder` column at all —
   # `OpenQuestion.from_permission/4` computes holder from this pair instead,
