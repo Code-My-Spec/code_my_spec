@@ -2,11 +2,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1874Spex do
   @moduledoc """
   Story 1080 — Every nudge to an agent is recorded with its outcome.
   Criterion 1874 — Claiming a work offer and then cancelling its task settles
-  the offer as declined, so the escalation ladder does not reset.
+  the offer as ignored, so the escalation ladder keeps moving but is not told
+  this was a refusal the agent never made.
 
   7169d3cf: metric_flow QA claimed and cancelled `qa_journey_wallaby` and was
   handed it straight back, over and over. A claim resets the ladder; a claim
   that is cancelled must not.
+
+  Superseded by John's 2026-10-13 design on story 1080 (criterion 2162: a
+  tap-out or a cancel is not a decline -- only an explicit `reject_offer` is).
+  The original concern still holds and is still met: `:ignored` keeps the
+  ladder moving the same way `:declined` would have, without the offer
+  reading as a refusal.
   """
 
   use CodeMySpecSpex.Case
@@ -28,7 +35,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1874Spex do
     :ok
   end
 
-  spex "A claim that is cancelled is a decline", criterion: 1874 do
+  spex "A claim that is cancelled is not claimed, and not a decline", criterion: 1874 do
     scenario "a coder starts the offered work and cancels it" do
       given_ "a coder offered work, mid-turn", context do
         {:ok, offered_work(context)}
@@ -47,8 +54,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1874Spex do
         {:ok, context}
       end
 
-      then_ "the work offer is declined, not claimed", context do
-        assert [%{status: "declined", reason: "claimed and cancelled"} | _] =
+      then_ "the work offer is ignored, not claimed and not declined", context do
+        assert [%{status: "ignored"} | _] =
                  context
                  |> offers(context.coder, %{kind: "work"})
                  |> Enum.reverse(),

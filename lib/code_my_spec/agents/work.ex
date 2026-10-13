@@ -34,8 +34,12 @@ defmodule CodeMySpec.Agents.Work do
   # So the prompt talked the agent out of the loop the prompt was sent to start.
   # `Tools.GetNextRequirement` and `Tools.StartTask` are on the engine's list;
   # nothing else named here was.
+  # Names the way to refuse it from the first offer, not only once escalated
+  # (criterion 2158): without it, an agent that should not take this work had
+  # no way to say so until it had already been offered twice.
   @prompt "Eligible work is available. Call get_next_requirement to see it, " <>
-            "then claim it with start_task. No task has been selected or assigned for you."
+            "then claim it with start_task. No task has been selected or assigned for you. " <>
+            "If this is not yours to do, call `reject_offer` with your reason."
 
   def consider_project(scope, reason, except_agent_ids \\ []) do
     scope
@@ -845,7 +849,10 @@ defmodule CodeMySpec.Agents.Work do
   # same sentence said again, which is what the ladder exists to avoid.
   defp offer_prompt(scope, agent, {"task", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.id == id))
-    base = "Your blocker was released; #{resume_instruction(scope, tasks)}"
+
+    base =
+      "Your blocker was released; #{resume_instruction(scope, tasks)} " <>
+        "If this is not yours to resume, call `reject_offer` with your reason."
 
     case rung(agent, :unblocked, "task", id) do
       :remind -> base <> "\n\n" <> remind()
@@ -855,7 +862,9 @@ defmodule CodeMySpec.Agents.Work do
 
   defp offer_prompt(scope, agent, {"tap_out", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.blocker_id == id))
-    "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
+
+    "Your tap-out was declined; #{resume_instruction(scope, tasks)} " <>
+      "If this is not yours to resume, call `reject_offer` with your reason."
   end
 
   # The extra text is chosen by the offer's rung on its own ladder (criteria

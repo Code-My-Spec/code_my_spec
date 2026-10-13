@@ -57,7 +57,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
     end
   end
 
-  spex "A work offer is declined by a tap-out on it", criterion: 1675 do
+  # A tap-out is not a decline (criterion 2162, John 2026-10-13): only an
+  # explicit `reject_offer` is. Settling it as `:ignored` keeps the ladder
+  # moving -- it still reaches `held_back` after the same three laps
+  # (criterion 2160) -- without manufacturing a refusal the agent never made.
+  spex "A work offer is not declined by a tap-out on it", criterion: 1675 do
     scenario "the coder starts the work and taps out of it" do
       given_ "a coder offered work, mid-turn", context do
         :ok = Fixtures.install_recording_agent_transport()
@@ -78,10 +82,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
         {:ok, context}
       end
 
-      then_ "the work offer is declined, with its reason", context do
+      then_ "the work offer is ignored, not declined", context do
         assert [offer] = offers(context, context.coder, %{kind: "work"}), listing(context)
-        assert offer.status == "declined"
-        assert offer.reason =~ "Needs a product call."
+        assert offer.status == "ignored"
         {:ok, context}
       end
     end
