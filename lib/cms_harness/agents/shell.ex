@@ -9,11 +9,12 @@ defmodule CmsHarness.Agents.Shell do
   """
 
   alias CmsHarness.Agents.Engine.Execution
+  alias CmsHarness.Config
 
   @doc "Runs a command without a deadline, returning its output and exit status."
   @spec run(String.t(), String.t() | nil) :: {String.t(), non_neg_integer()}
   def run(command, dir) do
-    opts = [stderr_to_stdout: true, env: scrubbed_env()]
+    opts = [stderr_to_stdout: true, env: Config.scrubbed_env()]
     opts = if dir, do: Keyword.put(opts, :cd, dir), else: opts
 
     System.cmd("bash", ["-rc", command], opts)
@@ -24,7 +25,12 @@ defmodule CmsHarness.Agents.Shell do
     {:ok, capture} = StringIO.open("")
 
     try do
-      opts = [stderr_to_stdout: true, env: scrubbed_env(), into: IO.binstream(capture, :line)]
+      opts = [
+        stderr_to_stdout: true,
+        env: Config.scrubbed_env(),
+        into: IO.binstream(capture, :line)
+      ]
+
       opts = if dir, do: Keyword.put(opts, :cd, dir), else: opts
 
       task =
@@ -65,14 +71,4 @@ defmodule CmsHarness.Agents.Shell do
 
   defp cleanup_status({:error, reason}),
     do: "Local command subprocess termination unconfirmed: #{inspect(reason)}."
-
-  @doc "Unsets every variable that describes the harness rather than the project."
-  @spec scrubbed_env() :: [{String.t(), nil}]
-  def scrubbed_env do
-    for {name, _} <- System.get_env(), harness_only?(name), do: {name, nil}
-  end
-
-  defp harness_only?("MIX_ENV"), do: true
-  defp harness_only?("CMS_" <> _), do: true
-  defp harness_only?(_), do: false
 end

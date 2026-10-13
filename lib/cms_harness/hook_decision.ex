@@ -28,7 +28,8 @@ defmodule CmsHarness.HookDecision do
   is the property that matters. Allowed-and-silent would not be.
   """
 
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
+
   alias CodeMySpec.BootVersion
 
   @deciding_hooks ~w(stop subagent-stop)
@@ -538,7 +539,7 @@ defmodule CmsHarness.HookDecision do
     do: %{holds_channel?: holds_a_channel?()}
 
   defp channel_state(:no_reply, working_dir) when is_binary(working_dir),
-    do: %{joined_ago: ChannelClient.joined_ago(working_dir)}
+    do: %{joined_ago: Channel.joined_ago(working_dir)}
 
   defp channel_state(_reason, _working_dir), do: %{}
 

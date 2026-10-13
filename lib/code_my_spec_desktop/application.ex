@@ -11,6 +11,7 @@ defmodule CodeMySpecDesktop.Application do
     top_level?: true,
     deps: [
       CmsHarness,
+      CmsHarness.Application,
       CodeMySpec.Integrations,
       CodeMySpec.Utils,
       CodeMySpecDesktop,

@@ -16,8 +16,8 @@ defmodule CmsHarnessTest.LiveHarness do
   may not reach the cloud app and a spex may not reach `CmsHarness`.
   """
 
+  alias CmsHarness.Channel
   alias CmsHarness.HarnessConfig
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarnessTest.ConnectHeaders
   alias CmsHarnessTest.Projects
   alias Phoenix.ConnTest
@@ -157,11 +157,11 @@ defmodule CmsHarnessTest.LiveHarness do
   rescans on rejoin.
   """
   @spec sync_now(String.t()) :: :ok
-  def sync_now(root), do: ChannelClient.request_sync(root)
+  def sync_now(root), do: Channel.request_sync(root)
 
   @doc """
   Report a finished analyzer run the way the harness's analysis queue does:
-  `ChannelClient.deliver_analysis_result/2`, which pushes `analysis_result`
+  `Channel.deliver_analysis_result/2`, which pushes `analysis_result`
   over the copy's socket for the cloud to convert and reconcile.
 
   `result` is the wire map `CmsHarness.Analysis.run/4` answers — see
@@ -169,7 +169,7 @@ defmodule CmsHarnessTest.LiveHarness do
   """
   @spec deliver_analysis_result(String.t(), integer(), String.t(), map()) :: :ok
   def deliver_analysis_result(root, run_id, source, result) do
-    ChannelClient.deliver_analysis_result(root, %{
+    Channel.deliver_analysis_result(root, %{
       "run_id" => run_id,
       "source" => source,
       "status" => "ok",
@@ -180,11 +180,11 @@ defmodule CmsHarnessTest.LiveHarness do
   @doc """
   Report that the harness's analysis queue started a run — the commit it
   started on and whether the tree was clean — as the queue reports it:
-  `ChannelClient.deliver_analysis_started/2`.
+  `Channel.deliver_analysis_started/2`.
   """
   @spec deliver_analysis_started(String.t(), integer(), String.t(), String.t()) :: :ok
   def deliver_analysis_started(root, run_id, source, commit) do
-    ChannelClient.deliver_analysis_started(root, %{
+    Channel.deliver_analysis_started(root, %{
       "run_id" => run_id,
       "source" => source,
       "start_commit" => commit,
@@ -199,7 +199,7 @@ defmodule CmsHarnessTest.LiveHarness do
   """
   @spec end_turn(String.t(), String.t(), map()) :: :ok
   def end_turn(root, agent_id, event),
-    do: ChannelClient.report_turn_event(root, agent_id, event)
+    do: Channel.report_turn_event(root, agent_id, event)
 
   @doc """
   POST a hook to the harness, the way Claude Code's plugin does, and decode the

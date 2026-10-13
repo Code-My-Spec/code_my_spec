@@ -7,7 +7,7 @@ defmodule CmsHarness.SyncMachineLoadTest do
   `CmsHarness.Sync.measure_machine_load/1` — the real public entry point,
   called on its own timer independent of any scan — the same way
   `CmsHarness.SyncGitStateTest` drives `measure_checkout/1`: a fake channel
-  registered where `CmsHarness.Project.ChannelClient.deliver_machine_load/2`
+  registered where `Channel.deliver_machine_load/2`
   looks one up by root, standing in for the real one.
 
   `sysctl`/`vm_stat` are recorded rather than run live: this box's own load
@@ -19,6 +19,7 @@ defmodule CmsHarness.SyncMachineLoadTest do
   use ExUnit.Case, async: false
   use ExCliVcr
 
+  alias CmsHarness.Channel
   alias CmsHarness.Sync
 
   setup do

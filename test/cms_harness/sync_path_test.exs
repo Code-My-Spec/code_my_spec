@@ -24,6 +24,7 @@ defmodule CmsHarness.SyncPathTest do
 
   import CmsHarnessTest.Projects
 
+  alias CmsHarness.Channel
   alias CmsHarness.Project.{ChannelClient, Watcher}
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
@@ -48,7 +49,7 @@ defmodule CmsHarness.SyncPathTest do
   defp restore_project_id(value), do: System.put_env("CMS_PROJECT_ID", value)
 
   defp await_connected(root, attempts \\ 100) do
-    eventually(fn -> ChannelClient.connected?(root) end, attempts)
+    eventually(fn -> Channel.connected?(root) end, attempts)
   end
 
   defp eventually(fun, attempts \\ 100) do
@@ -306,7 +307,7 @@ defmodule CmsHarness.SyncPathTest do
 
       FakeServer.disconnect_everyone(server)
 
-      assert eventually(fn -> not ChannelClient.connected?(project.root) end),
+      assert eventually(fn -> not Channel.connected?(project.root) end),
              "the client has to notice the connection went"
 
       assert eventually(fn -> not Watcher.watching?(project.root) end),
@@ -326,14 +327,14 @@ defmodule CmsHarness.SyncPathTest do
       assert_receive {:observations, _, _}, 5_000
 
       FakeServer.disconnect_everyone(server)
-      assert eventually(fn -> not ChannelClient.connected?(project.root) end)
+      assert eventually(fn -> not Channel.connected?(project.root) end)
 
       # Changed while nobody was watching.
       write(project.root, "lib/demo/invoices.ex", "defmodule Demo.Invoices do\nend\n")
 
       FakeServer.start()
 
-      assert eventually(fn -> ChannelClient.connected?(project.root) end, 200)
+      assert eventually(fn -> Channel.connected?(project.root) end, 200)
       assert_receive {:observations, _, observations}, 10_000
 
       assert "lib/demo/invoices.ex" in Enum.map(observations, & &1["path"]),
@@ -350,7 +351,7 @@ defmodule CmsHarness.SyncPathTest do
       assert await_connected(project.root)
 
       assert {:ok, %{"decision" => "block", "reason" => "finish task 7"}} =
-               ChannelClient.decide_hook(project.root, "stop", %{})
+               Channel.decide_hook(project.root, "stop", %{})
     end
 
     test "an answer that never comes is an error, never an allow", %{project: project} do
@@ -358,13 +359,13 @@ defmodule CmsHarness.SyncPathTest do
       {:ok, _} = Projects.ensure_started(project.root)
       assert await_connected(project.root)
 
-      assert {:error, :no_reply} = ChannelClient.decide_hook(project.root, "stop", %{})
+      assert {:error, :no_reply} = Channel.decide_hook(project.root, "stop", %{})
     end
 
     test "with no channel at all it is not_connected, which reads differently", %{
       project: project
     } do
-      assert {:error, :not_connected} = ChannelClient.decide_hook(project.root, "stop", %{})
+      assert {:error, :not_connected} = Channel.decide_hook(project.root, "stop", %{})
     end
   end
 
@@ -377,7 +378,7 @@ defmodule CmsHarness.SyncPathTest do
       {:ok, _} = Projects.ensure_started(project.root)
       assert_receive {:observations, _, _}, 5_000
 
-      ChannelClient.deliver_observations(project.root, [])
+      Channel.deliver_observations(project.root, [])
 
       refute_receive {:observations, _, []}, 500
     end

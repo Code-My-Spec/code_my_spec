@@ -4,6 +4,7 @@ defmodule CmsHarness.Agents.ShellTest do
   alias CmsHarness.Agents.Engine.Impl
   alias CmsHarness.Agents.Shell
   alias CmsHarness.Agents.Tools.Bash
+  alias CmsHarness.Config
 
   # The CMS probe is this test's own. MIX_ENV is put back as it was; the
   # module is sync, so no async test reads it meanwhile.
@@ -22,7 +23,7 @@ defmodule CmsHarness.Agents.ShellTest do
   defp restore(name, value), do: System.put_env(name, value)
 
   test "an agent's command is run with MIX_ENV and the harness's CMS_ variables unset" do
-    unset = Shell.scrubbed_env()
+    unset = Config.scrubbed_env()
 
     assert {"CMS_SHELL_TEST_PROBE", nil} in unset
     assert {"MIX_ENV", nil} in unset
@@ -111,7 +112,7 @@ defmodule CmsHarness.Agents.ShellTest do
     do: Application.put_env(:code_my_spec, endpoint, previous)
 
   test "it leaves every other variable alone" do
-    names = for {name, nil} <- Shell.scrubbed_env(), do: name
+    names = for {name, nil} <- Config.scrubbed_env(), do: name
 
     refute "HOME" in names
     refute "PATH" in names

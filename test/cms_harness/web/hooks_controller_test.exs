@@ -4,10 +4,11 @@ defmodule CmsHarness.Web.HooksControllerTest do
   matters, because it is the one where a wrong answer is invisible.
   """
 
-    # Sync: `CmsHarnessTest.ConnCase` clears CMS_TOKEN and friends in setup, and
+  # Sync: `CmsHarnessTest.ConnCase` clears CMS_TOKEN and friends in setup, and
   # OS environment variables are node-global rather than per-test.
   use CmsHarnessTest.ConnCase, async: false
 
+  alias CmsHarness.Channel
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
@@ -160,7 +161,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
   defp await_connected(root, attempts \\ 100) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      halt_when_connected(ChannelClient.connected?(root))
+      halt_when_connected(Channel.connected?(root))
     end)
   end
 

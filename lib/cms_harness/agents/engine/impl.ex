@@ -55,9 +55,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.SendNow
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
-  alias CmsHarness.Project.ChannelClient
 
   @registry CmsHarness.Registry
 
@@ -488,7 +488,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
           fun.(state.agent_id, ref, state.generation)
 
         _ ->
-          ChannelClient.mailbox(state.working_copy, %{
+          Channel.mailbox(state.working_copy, %{
             "operation" => "consume",
             "agent_id" => state.agent_id,
             "ref" => ref,
@@ -1185,7 +1185,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   @doc "The messages sent now to this agent mid-turn, asked of the server as its engine."
   def take_send_now(state) do
-    ChannelClient.mailbox(state.working_copy, %{
+    Channel.mailbox(state.working_copy, %{
       "operation" => "take_send_now",
       "agent_id" => state.agent_id,
       "generation" => state.generation

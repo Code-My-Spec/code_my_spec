@@ -25,8 +25,8 @@ defmodule CmsHarness.Projects do
 
   require Logger
 
+  alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.ServedRoots
   alias CmsHarness.WorkingCopies.Create
@@ -154,7 +154,7 @@ defmodule CmsHarness.Projects do
   and "I could not ask" cannot be confused at the point where it matters.
   """
   @spec connected?(String.t()) :: boolean()
-  def connected?(root), do: ChannelClient.connected?(root)
+  def connected?(root), do: Channel.connected?(root)
 
   @doc """
   Stop serving a working copy, releasing its channel and its watchers.

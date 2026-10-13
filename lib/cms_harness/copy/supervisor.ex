@@ -24,8 +24,6 @@ defmodule CmsHarness.Copy.Supervisor do
 
   use Supervisor, restart: :temporary
 
-  alias CmsHarness.Project
-
   @copies CmsHarness.CopiesSupervisor
 
   def start_link(root), do: Supervisor.start_link(__MODULE__, root, name: via(root))
@@ -57,6 +55,18 @@ defmodule CmsHarness.Copy.Supervisor do
   end
 
   @doc """
+  Name the supervisor that serves a copy — its channel chain. Called once by
+  `CmsHarness.Supervisor` at boot, so this supervisor, which everything below
+  the channel uses to find a copy's agents and app, does not depend on the
+  channel layer it starts.
+  """
+  @spec serve_with(module()) :: :ok
+  def serve_with(module) when is_atom(module),
+    do: :persistent_term.put({__MODULE__, :served_by}, module)
+
+  defp served_by, do: :persistent_term.get({__MODULE__, :served_by})
+
+  @doc """
   Serve `project` in its copy: its channel chain, under the copy.
   `{:started, pid}`, or `{:already_started, pid}` when it was served already.
   """
@@ -64,7 +74,7 @@ defmodule CmsHarness.Copy.Supervisor do
           {:started | :already_started, pid()} | {:error, term()}
   def serve(root, project) do
     with {:ok, copy} <- ensure(root) do
-      case Supervisor.start_child(copy, {Project.Supervisor, project: project}) do
+      case Supervisor.start_child(copy, {served_by(), project: project}) do
         {:ok, pid} -> {:started, pid}
         {:error, {:already_started, pid}} -> {:already_started, pid}
         {:error, _} = error -> error
@@ -79,8 +89,8 @@ defmodule CmsHarness.Copy.Supervisor do
   @spec unserve(String.t()) :: :ok | {:error, :not_serving}
   def unserve(root) do
     with {:ok, copy} <- whereis(root),
-         :ok <- Supervisor.terminate_child(copy, Project.Supervisor) do
-      Supervisor.delete_child(copy, Project.Supervisor)
+         :ok <- Supervisor.terminate_child(copy, served_by()) do
+      Supervisor.delete_child(copy, served_by())
     else
       _ -> {:error, :not_serving}
     end

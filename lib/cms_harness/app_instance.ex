@@ -51,8 +51,8 @@ defmodule CmsHarness.AppInstance do
   require Logger
 
   alias CmsHarness.AppInstance.Runner
+  alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
-  alias CmsHarness.Project.ChannelClient
 
   # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
   # test proving the idle-stop path fires should not have to wait 30 real
@@ -568,7 +568,7 @@ defmodule CmsHarness.AppInstance do
   # directly (a spex, an operator) — `record_app_status/2` never reads it,
   # so carrying it is not a schema change.
   defp deliver_app_status(state, reason \\ nil) do
-    ChannelClient.deliver_app_status(state.root, %{
+    Channel.deliver_app_status(state.root, %{
       "status" => state.status,
       "url" => url(state.port, state.status),
       "commit" => state.commit,
