@@ -338,10 +338,13 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # An incremental sync answers only for the modules its changed files declare:
   # their edges are reconciled, every other edge is left to the files that name it.
+  # It reads stored evidence only. It runs inside manifest acceptance, where
+  # reading a file asks the harness the channel itself serves.
   defp sync_discovered_dependencies(_scope, [], _component_map, true, _env),
     do: %{status: :deferred, unavailable: [], unresolved: []}
 
   defp sync_discovered_dependencies(scope, files, component_map, incremental?, env) do
+    env = if incremental?, do: nil, else: env
     observation = dependency_observations(scope, files, component_map, env)
     reconcile_discovered_dependencies(scope, observation, incremental?)
 
