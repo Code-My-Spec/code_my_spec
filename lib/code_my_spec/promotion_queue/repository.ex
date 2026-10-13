@@ -29,23 +29,43 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     end
   end
 
+  # Transactional, and the match re-checked under its own lock: a plain
+  # read-then-write here raced the worker reserving the very row this found
+  # -- `move/3` holds a `FOR UPDATE` lock across the whole reservation, so an
+  # unlocked `Repo.update()` on the same row would simply block until that
+  # commits and then overwrite it anyway, retargeting an entry the worker had
+  # already started building, gating and landing under its old commit (issue
+  # 97b27e62: the new promotion's own requester then heard nothing true about
+  # it -- the worker's outcome described the stale candidate it was actually
+  # processing). Re-reading `waiting_for_copy/2` under this transaction's own
+  # lock means that block ends with the row already moved off `:queued`, so
+  # it is correctly left alone and a fresh entry is inserted instead.
   defp enqueue_new(%{project_id: project_id, working_copy_id: copy_id} = attrs) do
-    case waiting_for_copy(project_id, copy_id) do
-      nil ->
-        attrs |> Entry.enqueue_changeset() |> Repo.insert() |> broadcast()
+    Repo.transaction(fn ->
+      case waiting_for_copy(project_id, copy_id) do
+        nil ->
+          case attrs |> Entry.enqueue_changeset() |> Repo.insert() do
+            {:ok, entry} -> entry
+            {:error, error} -> Repo.rollback(error)
+          end
 
-      %Entry{} = waiting ->
-        waiting
-        |> Ecto.Changeset.change(
-          commit: attrs.commit,
-          subject_type: attrs[:subject_type],
-          subject_id: attrs[:subject_id],
-          requested_by_agent_id: attrs[:requested_by_agent_id],
-          restart: attrs.restart
-        )
-        |> Repo.update()
-        |> broadcast()
-    end
+        %Entry{} = waiting ->
+          changeset =
+            Ecto.Changeset.change(waiting,
+              commit: attrs.commit,
+              subject_type: attrs[:subject_type],
+              subject_id: attrs[:subject_id],
+              requested_by_agent_id: attrs[:requested_by_agent_id],
+              restart: attrs.restart
+            )
+
+          case Repo.update(changeset) do
+            {:ok, entry} -> entry
+            {:error, error} -> Repo.rollback(error)
+          end
+      end
+    end)
+    |> broadcast()
   end
 
   defp open_at(project_id, copy_id, commit) do
@@ -59,11 +79,16 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     )
   end
 
+  # `FOR UPDATE`: this is the read a concurrent `move/3` reservation's own
+  # lock is meant to be waited out by (see `enqueue_new/1`'s moduledoc
+  # comment) -- an unlocked read here would see the row as still `:queued`
+  # while that reservation is in flight and retarget it regardless.
   defp waiting_for_copy(project_id, copy_id) do
     Repo.one(
       from(e in Entry,
         where:
           e.project_id == ^project_id and e.working_copy_id == ^copy_id and e.status == :queued,
+        lock: "FOR UPDATE",
         limit: 1
       )
     )
@@ -168,18 +193,33 @@ defmodule CodeMySpec.PromotionQueue.Repository do
       Repo.transaction(fn ->
         CodeMySpec.Analysis.ValidationHolds.lock(entry.project_id)
 
-        if status == :gating and entry.status != :gating and
-             not CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(entry.project_id),
+        # Re-fetched and locked rather than trusting the struct the caller is
+        # holding: `enqueue_new/1`'s `waiting_for_copy/2` retargets a still
+        # `:queued` entry to a new commit/subject in place, with no lock of
+        # its own, so a promote on the same working copy arriving between
+        # this entry being read by `reserve_next/1` and this move committing
+        # could overwrite its commit and subject out from under a reservation
+        # already in flight -- the worker then built, gated and landed the
+        # entry's *old* commit while its row claimed the new one, and the
+        # new promotion's own requester never heard a true outcome (issue
+        # 97b27e62). Locking here makes that concurrent update block until
+        # this transaction commits the status change; once it is no longer
+        # `:queued`, `waiting_for_copy/2` stops matching it and a genuinely
+        # new entry is created instead.
+        locked = Repo.one!(from(e in Entry, where: e.id == ^entry.id, lock: "FOR UPDATE"))
+
+        if status == :gating and locked.status != :gating and
+             not CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(locked.project_id),
            do: Repo.rollback(:validation_held)
 
         if status == :gating do
-          case CodeMySpec.Promotion.HandoffGate.check(entry.project_id, entry.working_copy_id) do
+          case CodeMySpec.Promotion.HandoffGate.check(locked.project_id, locked.working_copy_id) do
             :ok -> :ok
             {:error, _} -> Repo.rollback(:completion_handoff_pending)
           end
         end
 
-        case entry |> Entry.status_changeset(Map.put(attrs, :status, status)) |> Repo.update() do
+        case locked |> Entry.status_changeset(Map.put(attrs, :status, status)) |> Repo.update() do
           {:ok, updated} -> updated
           {:error, error} -> Repo.rollback(error)
         end
