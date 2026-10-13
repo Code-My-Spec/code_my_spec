@@ -7,6 +7,7 @@ defmodule CmsHarness.Web.SkillsControllerTest do
 
   use CmsHarnessTest.ConnCase, async: false
 
+  alias CmsHarness.Channel
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
@@ -109,7 +110,7 @@ defmodule CmsHarness.Web.SkillsControllerTest do
 
   defp await_connected(root, attempts \\ 100) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      halt_when_connected(ChannelClient.connected?(root))
+      halt_when_connected(Channel.connected?(root))
     end)
   end
 

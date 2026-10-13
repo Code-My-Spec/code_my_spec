@@ -32,7 +32,7 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   alias CmsHarness.Analysis
   alias CmsHarness.AnalysisSlots
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
   alias CmsHarness.Sync
   alias CodeMySpec.Environments.Environment
 
@@ -192,7 +192,7 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
 
     for entry <- held, run_id <- [entry.run_id | Map.get(entry, :tied_run_ids, [])] do
-      ChannelClient.deliver_analysis_result(state.project.root, %{
+      Channel.deliver_analysis_result(state.project.root, %{
         "run_id" => run_id,
         "source" => entry.source,
         "status" => "superseded",
@@ -233,7 +233,7 @@ defmodule CmsHarness.Project.AnalysisServer do
         %{running: %{run_id: run_id, source: source} = running} = state
       ) do
     for id <- [run_id | Map.get(running, :tied_run_ids, [])] do
-      ChannelClient.deliver_analysis_started(state.project.root, %{
+      Channel.deliver_analysis_started(state.project.root, %{
         "run_id" => id,
         "source" => source,
         "start_commit" => tree.commit,
@@ -611,7 +611,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   # Sent rather than logged, because the reader is the agent being told to stop
   # again, and the harness log is the one place it is not looking.
   defp push_result(root, run_id, source, {:ok, result}, tied_to, tree) do
-    ChannelClient.deliver_analysis_result(
+    Channel.deliver_analysis_result(
       root,
       Map.merge(tree, %{
         "run_id" => run_id,
@@ -630,7 +630,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp push_result(root, run_id, source, {:error, reason}, _tied_to, tree) do
     Logger.error("[CmsHarness] #{source} run #{run_id} did not produce a result: #{reason}")
 
-    ChannelClient.deliver_analysis_result(
+    Channel.deliver_analysis_result(
       root,
       Map.merge(tree, %{
         "run_id" => run_id,

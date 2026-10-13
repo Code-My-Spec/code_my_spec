@@ -17,6 +17,7 @@ defmodule CmsHarness.AnalysisPathTest do
   import CmsHarnessTest.Projects
   import ExUnit.CaptureLog
 
+  alias CmsHarness.Channel
   alias CmsHarness.Project.{AnalysisServer, ChannelClient}
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
@@ -97,7 +98,7 @@ defmodule CmsHarness.AnalysisPathTest do
 
   defp await_connected(root, attempts \\ 200) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      connected_step(ChannelClient.connected?(root))
+      connected_step(Channel.connected?(root))
     end)
   end
 

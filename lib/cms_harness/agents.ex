@@ -22,9 +22,21 @@ defmodule CmsHarness.Agents do
   options, and the engine owns the loop.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CmsHarness,
+      CmsHarness.Channel,
+      CodeMySpec.CodeMode,
+      # `Hooks.PreToolUse.route_command/4`: an in-app agent's `mix test` is
+      # routed the way a Claude Code agent's is.
+      CodeMySpec.Hooks
+    ],
+    exports: :all
+
   alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.ToolResults
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
 
   @doc """
   Start the agent this request describes.
@@ -96,7 +108,7 @@ defmodule CmsHarness.Agents do
       on_register:
         request["on_register"] ||
           fn agent_id, generation ->
-            ChannelClient.mailbox(request["working_copy"], %{
+            Channel.mailbox(request["working_copy"], %{
               "operation" => "register",
               "agent_id" => agent_id,
               "generation" => generation
@@ -241,14 +253,14 @@ defmodule CmsHarness.Agents do
   # finds no registry entry and stops — which is the right answer, because
   # there is nowhere to report to.
   defp drafter_for(nil, working_copy),
-    do: fn agent_id, envelope -> ChannelClient.report_draft(working_copy, agent_id, envelope) end
+    do: fn agent_id, envelope -> Channel.report_draft(working_copy, agent_id, envelope) end
 
   defp drafter_for(_on_event, _working_copy), do: nil
 
   defp reporter_for(working_copy) do
     fn agent_id, envelope ->
       warn_on_tool_failure(agent_id, envelope)
-      ChannelClient.report_turn_event(working_copy, agent_id, envelope)
+      Channel.report_turn_event(working_copy, agent_id, envelope)
       report_head_at_turn_end(working_copy, envelope)
     end
   end

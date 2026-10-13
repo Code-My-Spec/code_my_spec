@@ -12,6 +12,17 @@ defmodule CmsHarness.Application do
   one-shot import of a local CLI database to the cloud that starts the Repo,
   runs, and halts. It never runs alongside the harness.
   """
+
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CmsHarness,
+      CmsHarness.Agents,
+      # Installs the harness's log handler.
+      CodeMySpec.Logging
+    ],
+    exports: :all
+
   use Application
 
   alias CmsHarness.Agents.ProviderTelemetry

@@ -24,7 +24,7 @@ defmodule CmsHarness.Web.AnalysisController do
 
   require Logger
 
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
   alias CmsHarness.WorkingCopies
 
   # "sobelow" deliberately excluded — see the comment on CodeMySpec.Analysis.Run's
@@ -65,7 +65,7 @@ defmodule CmsHarness.Web.AnalysisController do
     case WorkingCopies.root(working_copy_id) do
       {:ok, root} ->
         Logger.info("[CmsHarness] waiting for analysis to go idle")
-        reply_wait(conn, ChannelClient.await_idle(root))
+        reply_wait(conn, Channel.await_idle(root))
 
       :unknown ->
         fail(conn, 404, "this machine does not serve harness id #{working_copy_id}")
@@ -102,7 +102,7 @@ defmodule CmsHarness.Web.AnalysisController do
     case WorkingCopies.root(working_copy_id) do
       {:ok, root} ->
         Logger.info("[CmsHarness] agent run: #{source} #{Enum.join(args, " ")}")
-        reply(conn, ChannelClient.await_analysis(root, source, args))
+        reply(conn, Channel.await_analysis(root, source, args))
 
       # Nothing to fall back to: this harness does not serve that working copy,
       # so it cannot run the suite and must not pretend the run happened. The
