@@ -67,6 +67,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.SandboxAllowance
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Users.Scope
@@ -100,8 +101,14 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   # -- Client --
 
-  def start_link({project_id, scope}) do
-    GenServer.start_link(__MODULE__, {project_id, scope}, name: via(project_id))
+  def start_link({project_id, scope}), do: start_link({project_id, scope, nil})
+
+  # `owner` is the process whose sandbox connection this one uses under test.
+  # The allowance is taken in `init/1`, before the first compute this process
+  # sends itself; granted by the caller after `start_child` returned, it raced
+  # that compute and an async test's watcher stopped on its first query.
+  def start_link({project_id, scope, owner}) do
+    GenServer.start_link(__MODULE__, {project_id, scope, owner}, name: via(project_id))
   end
 
   def via(project_id), do: {:via, Registry, {CodeMySpec.Requirements.Registry, project_id}}
@@ -128,7 +135,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
     if pass_enabled?() do
       case DynamicSupervisor.start_child(
              CodeMySpec.Requirements.WatcherSupervisor,
-             {__MODULE__, {project_id, watcher_scope(scope)}}
+             {__MODULE__, {project_id, watcher_scope(scope), self()}}
            ) do
         {:ok, pid} -> {:ok, allow_sandbox(pid)}
         {:error, {:already_started, pid}} -> {:ok, allow_sandbox(pid)}
@@ -165,6 +172,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # toggle — runs inline in the process that is asking, sandboxed or not.
   # No-op outside a sandboxed pool (dev, prod, drill/e2e), same guard this
   # codebase already uses for `real_pool?/0`.
+  defp allow_projector(project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+      [{pid, _}] -> SandboxAllowance.grant(pid)
+      [] -> :ok
+    end
+  end
+
   defp allow_sandbox(pid) do
     if Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] == Sandbox do
       Sandbox.allow(Repo, self(), pid)
@@ -241,6 +255,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
       # recent reader.
       [{pid, _}] ->
         allow_sandbox(pid)
+        allow_projector(project_id)
         GenServer.call(pid, {:settle, vantage}, 30_000)
 
       [] ->
@@ -277,7 +292,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   # -- Server --
 
   @impl true
-  def init({project_id, scope}) do
+  def init({project_id, scope, owner}) do
+    SandboxAllowance.take(owner)
     # So `terminate/2` runs and can take this watcher's in-flight wake with it.
     Process.flag(:trap_exit, true)
 

@@ -65,13 +65,20 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.SandboxAllowance
   alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Users.Scope
 
   # -- Client --
 
-  def start_link({project_id, scope}) do
-    GenServer.start_link(__MODULE__, {project_id, scope}, name: via(project_id))
+  def start_link({project_id, scope}), do: start_link({project_id, scope, nil})
+
+  # `owner` is the process whose sandbox connection this one uses under test.
+  # The allowance is taken in `init/1`, before the first compute this process
+  # sends itself; granted by the caller after `start_child` returned, it raced
+  # that compute and an async test's watcher stopped on its first query.
+  def start_link({project_id, scope, owner}) do
+    GenServer.start_link(__MODULE__, {project_id, scope, owner}, name: via(project_id))
   end
 
   def via(project_id),
@@ -90,7 +97,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     if Shadow.enabled?() do
       case DynamicSupervisor.start_child(
              CodeMySpec.Requirements.WatcherSupervisor,
-             {__MODULE__, {project_id, scope}}
+             {__MODULE__, {project_id, scope, self()}}
            ) do
         {:ok, pid} -> {:ok, pid}
         {:error, {:already_started, pid}} -> {:ok, pid}
@@ -131,8 +138,14 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   def settle(project_id, requested) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
-      [{pid, _}] -> GenServer.call(pid, {:drain, requested}, 30_000)
-      [] -> :ok
+      # Re-granted from each reader, as `GraphWatcher.settle/2` does: the
+      # projector outlives whoever started it.
+      [{pid, _}] ->
+        SandboxAllowance.grant(pid)
+        GenServer.call(pid, {:drain, requested}, 30_000)
+
+      [] ->
+        :ok
     end
   catch
     :exit, _ -> :ok
@@ -159,7 +172,8 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # -- Server --
 
   @impl true
-  def init({project_id, scope}) do
+  def init({project_id, scope, owner}) do
+    SandboxAllowance.take(owner)
     # So a supervisor's `:shutdown` waits for the drain in flight, as
     # `GraphWatcher` does. This process drains the moment a mark lands, off a
     # PubSub message, so it is the writer most often mid-transaction when a
