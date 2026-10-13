@@ -37,12 +37,6 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
   @merged "2222222222222222222222222222222222222222"
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
-
     # What Promotion reports, heard here directly. Delivering it to the agent is
     # `Agents.Events`' job, behind wake gates and a global transport; asserting
     # on the delivery made this test depend on all of that, and in the full
@@ -131,6 +125,7 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
 
   defp promote_with_a_dropped_ack(serving_after) do
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
 
     {:ok, running} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, running} = WorkingCopies.report_root(running, @main)

@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2874Spex do
         agent = Fixtures.running_agent(context.scope)
         start_agent(agent.id, working_copy: agent.working_copy)
 
-        machine_out_of_reach()
+        machine_out_of_reach(context)
 
         {:ok, context |> Map.put(:agent, agent)}
       end

@@ -1,0 +1,123 @@
+defmodule CodeMySpecTest.AgentTransportRouter do
+  @moduledoc """
+  The test suite's agent transport: each test routes its own project.
+
+  A test used to swap `:agent_transport` in the application env, which is one
+  global key, so every such test ran `async: false` and a straggling Task from
+  one test could deliver into the next one's mailbox. Here a test registers the
+  transport for the project it created, from its own process:
+
+      AgentTransportRouter.route(scope, CodeMySpecTest.RecordingAgentTransport)
+
+  The registration dies with the test process, and no other test can see it,
+  because no other test uses that project. A project nobody routed gets
+  `CodeMySpecTest.InProcessAgentTransport`, the suite's default.
+
+  The registering process is the route's owner: a recording transport sends
+  what it was asked to deliver there.
+  """
+
+  @behaviour CodeMySpec.Agents.Transport
+
+  @default CodeMySpecTest.InProcessAgentTransport
+
+  @doc """
+  Start the registry if it is not running. `mix spex` loads no test helper, so
+  the first route starts it; it is unlinked so it outlives that test.
+  """
+  def start do
+    case Registry.start_link(keys: :unique, name: __MODULE__) do
+      {:ok, pid} -> Process.unlink(pid)
+      {:error, {:already_started, _pid}} -> :ok
+    end
+
+    :ok
+  end
+
+  @doc """
+  Route `project`'s agent traffic to `module`, owned by the calling process.
+
+  `project` is a project id, a scope, or a context carrying a scope.
+  Routing again replaces the earlier route.
+  """
+  @spec route(term(), module()) :: :ok
+  def route(project, module) do
+    id = project_id(project)
+    start()
+    Registry.unregister(__MODULE__, id)
+    {:ok, _} = Registry.register(__MODULE__, id, module)
+    :ok
+  end
+
+  @doc "The process that routed `project_id`, or nil."
+  @spec owner(String.t() | nil) :: pid() | nil
+  def owner(project_id) do
+    case lookup(project_id) do
+      {pid, _module} -> pid
+      nil -> nil
+    end
+  end
+
+  defp transport(project_id) do
+    case lookup(project_id) do
+      {_pid, module} -> module
+      nil -> @default
+    end
+  end
+
+  defp lookup(nil), do: nil
+
+  defp lookup(project_id) do
+    case Process.whereis(__MODULE__) && Registry.lookup(__MODULE__, project_id) do
+      [entry] -> entry
+      _none -> nil
+    end
+  end
+
+  defp project_id(id) when is_binary(id), do: id
+  defp project_id(%{active_project_id: id}) when is_binary(id), do: id
+  defp project_id(%{scope: scope}), do: project_id(scope)
+
+  defp copy_project_id(working_copy_id) do
+    case CodeMySpec.WorkingCopies.fetch(working_copy_id) do
+      {:ok, copy} -> copy.project_id
+      _ -> nil
+    end
+  end
+
+  @impl true
+  def start_agent(copy, agent, timeout),
+    do: transport(agent.project_id).start_agent(copy, agent, timeout)
+
+  @impl true
+  def dispatch_message(copy, agent, ref, message, timeout),
+    do: transport(agent.project_id).dispatch_message(copy, agent, ref, message, timeout)
+
+  @impl true
+  def request_work_turn(copy, agent, ref, message, timeout),
+    do: transport(agent.project_id).request_work_turn(copy, agent, ref, message, timeout)
+
+  @impl true
+  def stop_agent(copy, agent, timeout),
+    do: transport(agent.project_id).stop_agent(copy, agent, timeout)
+
+  @impl true
+  def interrupt_turn(copy, agent) do
+    module = transport(agent.project_id)
+
+    if function_exported?(module, :interrupt_turn, 2),
+      do: module.interrupt_turn(copy, agent),
+      else: {:error, :unsupported}
+  end
+
+  @impl true
+  def call_machine_tool(copy, tool, arguments, timeout),
+    do: transport(copy_project_id(copy)).call_machine_tool(copy, tool, arguments, timeout)
+
+  @impl true
+  def create_working_copy([first | _] = candidates, request, timeout),
+    do: transport(copy_project_id(first)).create_working_copy(candidates, request, timeout)
+
+  def create_working_copy([], request, timeout),
+    do: @default.create_working_copy([], request, timeout)
+end

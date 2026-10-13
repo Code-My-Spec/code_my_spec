@@ -28,10 +28,7 @@ defmodule CodeMySpec.Agents.ATaskClosedEarlierInARunIsNotADeclineTest do
   setup :setup_active_project
 
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     # Real coding work on the board, so there is an offer to be charged with.
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)

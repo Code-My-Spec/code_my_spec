@@ -30,9 +30,9 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    Fixtures.use_recording_transport()
+    Fixtures.use_recording_transport(context)
   end
 
   spex "A role's claim rate reflects the offers its agents actually claimed",

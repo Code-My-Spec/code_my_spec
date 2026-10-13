@@ -33,10 +33,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
     Slice.assert_active(Slice.next(ctx, %{agent_id: coding.id}), ctx, "complete")
 
     # Installed after the fixtures, which swap the transport themselves.
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    CodeMySpecTest.RecordingAgentTransport.listen()
+    CodeMySpecTest.RecordingAgentTransport.listen(ctx)
 
     # The backfill: nobody on the copy holds a story.
     Repo.update_all(Agent, set: [story_id: nil, continuous: true])

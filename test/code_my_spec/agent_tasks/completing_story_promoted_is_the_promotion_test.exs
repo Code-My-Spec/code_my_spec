@@ -113,11 +113,6 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   end
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
-
     # A promotion's restart tells the agent from a detached task.
     Sandbox.mode(Repo, {:shared, self()})
     :ok
@@ -127,6 +122,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     {qa, git} = Keyword.pop(opts, :qa, :passed)
     git = Map.merge(%{contains_main: true, status: ""}, Map.new(git))
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
 
     {:ok, running} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, running} = WorkingCopies.report_root(running, @main)
@@ -170,6 +166,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     {:ok, _} = Stories.set_qa_ready(scope, story, @head)
     {:ok, _} = passed_qa_attempt(scope, story_id: story.id)
   end
+
   defp qa(_scope, _story, :not_passed), do: :ok
 
   defp queued(scope) do

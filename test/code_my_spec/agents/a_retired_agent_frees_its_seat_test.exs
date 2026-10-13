@@ -30,13 +30,9 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    CodeMySpecTest.AgentTransportRouter.route(scope, RecordingAgentTransport)
+    RecordingAgentTransport.listen(scope)
     integration_fixture(scope.user, %{provider: :anthropic})
 
     root = "/workspace/retire-#{System.unique_integer([:positive])}"
@@ -148,7 +144,7 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   end
 
   test "retiring on an unreachable machine still retires, frees the seat and says so", ctx do
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.UnreachableMachine)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, CodeMySpecTest.UnreachableMachine)
 
     assert {:ok, retired, {:unreachable, machine}} =
              Agents.retire_agent(ctx.scope, ctx.agent.id, by: "Harness")

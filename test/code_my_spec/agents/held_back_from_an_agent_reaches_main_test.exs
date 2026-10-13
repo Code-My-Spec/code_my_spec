@@ -28,7 +28,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
   setup :setup_active_project
 
   setup ctx do
-    :ok = Fixtures.install_recording_agent_transport()
+    :ok = Fixtures.install_recording_agent_transport(ctx)
 
     {:ok, _} = WorkingCopies.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
 

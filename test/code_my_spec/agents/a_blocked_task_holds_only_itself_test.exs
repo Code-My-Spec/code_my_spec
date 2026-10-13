@@ -34,7 +34,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   setup :setup_active_project
 
   setup ctx do
-    :ok = Fixtures.install_recording_agent_transport()
+    :ok = Fixtures.install_recording_agent_transport(ctx)
     ctx = FullSatisfactionFixtures.apply(ctx)
 
     {:ok, _} =

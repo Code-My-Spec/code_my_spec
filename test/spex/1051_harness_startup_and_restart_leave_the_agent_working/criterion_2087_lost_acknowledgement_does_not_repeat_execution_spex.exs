@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2087Spex do
     scenario "Durable mailbox authority" do
       given_ "the real engine consumes a message but its acknowledgement is lost", ctx do
         ctx = H.start(ctx)
-        H.transport(H.LostAck)
+        H.transport(ctx, H.LostAck)
         HeldProvider.hold()
 
         assert {:ok, :started} =

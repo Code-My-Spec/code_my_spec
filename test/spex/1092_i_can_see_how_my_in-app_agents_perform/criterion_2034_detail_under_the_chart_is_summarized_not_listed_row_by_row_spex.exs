@@ -22,9 +22,9 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    Fixtures.use_recording_transport()
+    Fixtures.use_recording_transport(context)
   end
 
   spex "The chart's detail is a summary, not a row for each nudge",

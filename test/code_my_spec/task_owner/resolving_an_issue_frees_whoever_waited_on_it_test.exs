@@ -40,12 +40,8 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
 
     {:ok, copy} =
       CodeMySpec.WorkingCopies.issue(scope, nil,

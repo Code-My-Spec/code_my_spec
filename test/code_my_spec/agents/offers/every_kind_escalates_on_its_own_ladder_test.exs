@@ -24,8 +24,8 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
     :ok
   end
 

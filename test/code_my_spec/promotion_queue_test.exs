@@ -432,10 +432,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # first live batch, 2026-10-05: a gate copy minted without its envs could not
   # boot the test suite. That is the gate copy's to fix, and it ejects too.)
   test "a candidate whose gate run fails is ejected, naming the analyzer", ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
     agent = an_agent(ctx, a.copy)
@@ -581,10 +578,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # next gate's first runs. Those say nothing about whether the gate copy can
   # run them, and counting them held a batch whose analyzers ran fine.
   test "runs a harness going away orphaned are not failures of the batch", ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
     agent = an_agent(ctx, a.copy)

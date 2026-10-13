@@ -32,7 +32,7 @@ defmodule CodeMySpec.Notifications.AnsweringAQuestionPutsTheAgentBackToWorkTest 
 
   setup :register_log_in_setup_account
   setup :setup_active_project
-  setup do: CodeMySpecSpex.Fixtures.install_recording_agent_transport()
+  setup context, do: CodeMySpecSpex.Fixtures.install_recording_agent_transport(context)
 
   # Staffed after the graph settles, so the only thing that can admit a turn is
   # the answer under test — `GraphWatcher.settle/1` fires its own

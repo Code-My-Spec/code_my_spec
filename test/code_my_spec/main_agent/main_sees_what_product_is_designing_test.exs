@@ -17,11 +17,8 @@ defmodule CodeMySpec.Agents.Main.MainSeesWhatProductIsDesigningTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+  setup context do
+    RecordingAgentTransport.listen(context)
     :ok
   end
 

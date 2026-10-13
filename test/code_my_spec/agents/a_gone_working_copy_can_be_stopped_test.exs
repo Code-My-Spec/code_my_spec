@@ -22,11 +22,10 @@ defmodule CodeMySpec.Agents.AGoneWorkingCopyCanBeStoppedTest do
   alias CodeMySpecTest.UnreachableMachine
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+    scope = full_scope_fixture()
+    CodeMySpecTest.AgentTransportRouter.route(scope, UnreachableMachine)
 
-    %{scope: full_scope_fixture()}
+    %{scope: scope}
   end
 
   test "an agent on a working copy that no longer exists is stopped, not refused", %{

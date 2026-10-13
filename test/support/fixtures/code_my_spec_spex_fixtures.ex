@@ -941,18 +941,8 @@ defmodule CodeMySpecSpex.Fixtures do
   `OperatorMessagesWaitForDeliveryTest` and its siblings use to exercise
   `message_agent`/`restart_agent` without one.
   """
-  @spec use_recording_transport() :: :ok
-  def use_recording_transport do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous)
-    end)
-
-    RecordingAgentTransport.listen()
-    :ok
-  end
+  @spec use_recording_transport(term()) :: :ok
+  def use_recording_transport(project), do: RecordingAgentTransport.listen(project)
 
   @doc """
   Put an agent mid-turn, the way a turn actually starts.
@@ -3295,20 +3285,17 @@ defmodule CodeMySpecSpex.Fixtures do
   criterion cannot name `CodeMySpecTest`, and should not. Needed for
   criterion 1376 (story 1046) — `Promotion.tell_the_agent/4`'s correction on
   a failed restart is a fire-and-forget dispatch with no other observable
-  surface: no DB row, no MCP response. Restores the previous transport on
-  exit; the config key is global, so this is `async: false` territory.
+  surface: no DB row, no MCP response. Routes only `project`, so tests that
+  each route their own project can run concurrently.
   """
-  @spec install_recording_agent_transport() :: :ok
-  def install_recording_agent_transport do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
+  @spec install_recording_agent_transport(term()) :: :ok
+  def install_recording_agent_transport(project),
+    do: CodeMySpecTest.RecordingAgentTransport.listen(project)
 
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous)
-    end)
-
-    CodeMySpecTest.RecordingAgentTransport.listen()
-  end
+  @doc "Route `project`'s agent traffic to `transport`, for this test alone."
+  @spec route_agent_transport(term(), module()) :: :ok
+  def route_agent_transport(project, transport),
+    do: CodeMySpecTest.AgentTransportRouter.route(project, transport)
 
   @doc "Say what this scope's working copy machine can do, as a join would."
   def record_machine_tools(%Scope{active_working_copy_id: id}, names) do

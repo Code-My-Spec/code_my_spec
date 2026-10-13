@@ -24,14 +24,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion2017Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
   spex "A queued promote task stays open and silent until the queue decides it",
-       criterion: 2017 do
+    criterion: 2017 do
     scenario "a promotion queued behind main's own movement lands after a wait" do
       given_ "a story branch main has moved past", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

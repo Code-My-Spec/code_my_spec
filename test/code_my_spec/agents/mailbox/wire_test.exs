@@ -19,13 +19,8 @@ defmodule CodeMySpec.Agents.Mailbox.WireTest do
     agent = Fixtures.running_agent(scope, working_copy: root)
     wire = start_supervised!({Wire, {root, scope}})
     provider = HeldProvider.start()
-    prior = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, WireTransport)
-
-    on_exit(fn ->
-      CmsHarness.Agents.halt(agent.id)
-      Application.put_env(:code_my_spec, :agent_transport, prior)
-    end)
+    CodeMySpecTest.AgentTransportRouter.route(scope, WireTransport)
+    on_exit(fn -> CmsHarness.Agents.halt(agent.id) end)
 
     assert %{"status" => "ok"} =
              GenServer.call(
