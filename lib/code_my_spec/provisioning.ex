@@ -821,7 +821,13 @@ defmodule CodeMySpec.Provisioning do
 
       case safe_verify(scope, step.key, verify_opts) do
         {:ok, :satisfied, resources} ->
-          mark(scope, step.key, environment, :done, %{resources: resources, verified_at: now})
+          mark(scope, step.key, environment, :done, %{
+            resources:
+              Enum.map(resources, fn resource ->
+                resource |> resource_attrs() |> Map.put(:observed_in_latest_run, true)
+              end),
+            verified_at: now
+          })
 
         {:ok, :absent} ->
           # State only — the recorded resources stay. `:absent` can mean a
@@ -1073,8 +1079,10 @@ defmodule CodeMySpec.Provisioning do
 
     earlier
     |> Enum.reject(&MapSet.member?(made_this_run, {&1.kind, &1.location}))
-    |> Enum.map(&Map.from_struct/1)
-    |> Enum.concat(refreshed)
+    |> Enum.map(fn resource ->
+      resource |> Map.from_struct() |> Map.put(:observed_in_latest_run, false)
+    end)
+    |> Enum.concat(Enum.map(refreshed, &Map.put(&1, :observed_in_latest_run, true)))
   end
 
   # Verify's list is the provider's answer about what exists, and it overrules —
@@ -1119,6 +1127,8 @@ defmodule CodeMySpec.Provisioning do
       end
 
     Enum.map(resources, fn resource ->
+      resource = resource |> resource_attrs() |> Map.put(:observed_in_latest_run, true)
+
       case Map.fetch(ours, {field(resource, :kind), field(resource, :location)}) do
         {:ok, origin} -> Map.put(resource, :origin, origin)
         :error -> resource
@@ -1133,6 +1143,9 @@ defmodule CodeMySpec.Provisioning do
   # whose satisfied path returns them, which is a crash rather than a wrong
   # answer and took the whole walk down with it.
   defp field(resource, key), do: Map.get(resource, key)
+
+  defp resource_attrs(%_{} = resource), do: Map.from_struct(resource)
+  defp resource_attrs(resource) when is_map(resource), do: resource
 
   defp mark(scope, key, environment, state, attrs) do
     previous = StepRepository.get(scope, key, environment)

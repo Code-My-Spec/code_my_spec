@@ -26,6 +26,11 @@ defmodule CodeMySpec.Provisioning.QaFixtureTest do
     assert StepRepository.get(scope, :server).state == :done
     assert {:ok, rebuilt} = Provisioning.run_step(scope, :server, nil, [])
     assert rebuilt.state == :done
+    assert [historical] = Enum.reject(rebuilt.resources, & &1.observed_in_latest_run)
+    assert historical.identifier == hd(first.resources).identifier
+    assert [current] = Enum.filter(rebuilt.resources, & &1.observed_in_latest_run)
+    refute current.identifier == historical.identifier
+    assert StepRepository.get(scope, :server).resources == rebuilt.resources
     assert {:ok, after_rebuild} = QaFixture.snapshot(scope.active_project_id)
     assert length(after_rebuild.resources) == 1
     refute hd(after_rebuild.resources).identifier == hd(before.resources).identifier
