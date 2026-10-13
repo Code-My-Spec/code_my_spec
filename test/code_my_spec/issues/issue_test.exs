@@ -164,6 +164,27 @@ defmodule CodeMySpec.Issues.IssueTest do
     end
   end
 
+  describe "devops_only?/1" do
+    test "true when the description names run_devops_setup as the fix" do
+      issue = %Issue{
+        description:
+          "UAT deploy for story 50 held pending infrastructure review. Run run_devops_setup once the review clears."
+      }
+
+      assert Issue.devops_only?(issue)
+    end
+
+    test "false for an ordinary bug description" do
+      issue = %Issue{description: "The signup form submits twice on a slow network."}
+
+      refute Issue.devops_only?(issue)
+    end
+
+    test "false when there is no description" do
+      refute Issue.devops_only?(%Issue{description: nil})
+    end
+  end
+
   # Fixture functions
 
   defp valid_attrs(overrides \\ %{}) do

@@ -12,7 +12,8 @@ defmodule CodeMySpec.Requirements.StoryIssueGraph do
     |> Enum.filter(fn issue ->
       issue.story_id == story.id and issue.status == :accepted and
         is_nil(issue.assigned_working_copy_id) and
-        Issue.blocking?(issue, threshold)
+        Issue.blocking?(issue, threshold) and
+        not Issue.devops_only?(issue)
     end)
     |> Enum.sort_by(& &1.id)
   end
