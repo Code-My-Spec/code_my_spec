@@ -76,9 +76,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
 
     {:ok, _} =
       AgentsRepository.update_agent(scope, fresh, %{
-        turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second),
-        work_request_id: nil,
-        work_requested_at: nil
+        turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)
       })
 
     Agents.record_turn_event(

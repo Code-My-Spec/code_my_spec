@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1668Spex do
       end
 
       given_ "five minutes pass without it starting that turn", context do
-        :ok = Fixtures.age_work_reservation(context.scope, context.coder, 301)
+        :ok = Fixtures.age_turn_request(context.scope, context.coder, 301)
         {:ok, context}
       end
 

@@ -7,6 +7,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
   Rendering suggests no answer or lifecycle change on main's behalf.
   """
 
+  alias CodeMySpec.Agents.CompletionHandoffs
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Main.Machinery
@@ -63,7 +64,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
 
         rows ->
           "Completions awaiting your acknowledgement:\n" <>
-            Enum.map_join(rows, "\n", &CodeMySpec.Agents.CompletionHandoffs.message/1)
+            Enum.map_join(rows, "\n", &CompletionHandoffs.message/1)
       end,
       work(Keyword.get(opts, :work?, false)),
       "agents: #{length(digest.work) - length(attention)} settled; #{length(attention)} needing attention; " <>
@@ -138,9 +139,15 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
         "#{length(entry.problems)} checkout problems"
 
       true ->
-        "STALLED: unclaimed work; inspect before intervening"
+        stall_reason(entry)
     end
   end
+
+  # A turn handed over and never started says what was offered and when.
+  defp stall_reason(%{unstarted_turn: nil}),
+    do: "STALLED: unclaimed work; inspect before intervening"
+
+  defp stall_reason(entry), do: AgentWork.unclaimed_work(entry)
 
   defp machinery_alarm(%Digest{work: [_ | _] = work} = digest) do
     if Enum.all?(work, &AgentWork.provider_blocked?/1),

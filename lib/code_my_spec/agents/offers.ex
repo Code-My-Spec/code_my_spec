@@ -3,9 +3,19 @@ defmodule CodeMySpec.Agents.Offers do
   Every nudge the harness sends an agent, as an offer with an observed outcome
   (b75b0198, step 1).
 
-  Record only. Each nudge path calls `record/4` once, after recording its
-  message, and the turn-end path calls `settle_turn/1` once. Nothing reads these
-  rows to decide anything, so neither call may change what is sent or whether.
+  Each nudge path calls `record/4` once, after recording its message, and the
+  turn-end path calls `settle_turn/1` once; neither may change what is sent or
+  whether.
+
+  ## A turn on its way
+
+  A nudge that wakes an agent with a turn of its own goes through
+  `dispatch/3` instead, under the agent's row lock, and the offer is stamped
+  `turn_requested_at`. Open, with no turn running and inside the TTL, that offer
+  is the one thing that says a turn is on its way (`in_flight?/1`): `Work`
+  hands out no second turn while it stands, and main is not told the agent
+  stalled. This replaced a reservation on the agent row that said the same
+  thing without saying what was handed.
 
   ## Expectations, by kind
 
@@ -182,7 +192,7 @@ defmodule CodeMySpec.Agents.Offers do
 
   def record_or_link(recorded, agent, kind, subject), do: record(recorded, agent, kind, subject)
 
-  defp supersede_and_insert(agent, kind, type, key) do
+  defp supersede_and_insert(agent, kind, type, key, turn_requested_at \\ nil) do
     now = DateTime.utc_now()
     same = same_subject(agent.id, kind, type, key)
     attempt = attempt(same)
@@ -191,7 +201,7 @@ defmodule CodeMySpec.Agents.Offers do
       set: [status: :superseded, outcome_at: now, updated_at: now]
     )
 
-    insert_offer(agent, kind, type, key, attempt)
+    insert_offer(agent, kind, type, key, attempt, turn_requested_at)
   end
 
   defp serialized(agent_id, fun) do
@@ -205,6 +215,157 @@ defmodule CodeMySpec.Agents.Offers do
       end
     end)
   end
+
+  # A turn handed to a harness reports started within seconds; nothing
+  # legitimate stays unstarted for minutes. It has to lapse because what closes
+  # it needs a live process: a harness that dies after accepting the turn
+  # leaves the offer open, and an open turn request blocks every other wake.
+  # Measured 2026-09-22 when this was the agent row's reservation: one survived
+  # three harness restarts and held its agent for two hours.
+  @turn_request_ttl_seconds 300
+
+  @never_started "never started"
+
+  @doc """
+  Record an offer handed to the agent's harness as a turn of its own:
+  `record/4`'s offer, stamped `turn_requested_at`.
+
+  `Work` calls this under the agent's row lock, after deciding the agent is
+  runnable, so two events racing to wake one agent hand out one turn. The
+  prompt is linked afterwards with `link_prompt/2`. Unlike `record/4`, a failed
+  write is returned, not logged: here it means no turn was handed.
+  """
+  @spec dispatch(Agent.t(), Offer.kind(), subject()) :: {:ok, Offer.t()} | {:error, term()}
+  def dispatch(%Agent{id: agent_id} = agent, kind, {type, key}) when is_binary(agent_id) do
+    key = subject_key(key)
+    now = DateTime.utc_now()
+
+    serialized(agent_id, fn ->
+      lapse(agent_id, now)
+      supersede_and_insert(agent, kind, type, key, now)
+    end)
+  end
+
+  # A turn request past the TTL never started. Superseded, as any offer made
+  # again is (criterion 1668), and noted, because that note is what tells the
+  # next request apart from a first offer: without it every re-offer to a
+  # harness that swallows turns read as a fresh hand-over, and the stall was
+  # never reported.
+  defp lapse(agent_id, now) do
+    agent_id
+    |> turn_requests()
+    |> where([o], o.turn_requested_at <= ^cutoff())
+    |> Repo.update_all(
+      set: [status: :superseded, note: @never_started, outcome_at: now, updated_at: now]
+    )
+  end
+
+  @doc "Link `offer` to the message its prompt was recorded as. Answers the offer."
+  @spec link_prompt(Offer.t() | nil, term()) :: Offer.t() | nil
+  def link_prompt(%Offer{} = offer, recorded) do
+    link(offer, recorded)
+    offer
+  end
+
+  def link_prompt(nil, _recorded), do: nil
+
+  @doc "Whether a turn has been handed to this agent's harness and is still on its way."
+  @spec in_flight?(String.t()) :: boolean()
+  def in_flight?(agent_id) when is_binary(agent_id) do
+    agent_id |> turn_requests() |> where([o], o.turn_requested_at > ^cutoff()) |> Repo.exists?()
+  end
+
+  def in_flight?(_agent_id), do: false
+
+  @doc """
+  The newest turn handed to this agent since its last turn that never started
+  there — open past the TTL, lapsed, or undelivered — or nil. A stall with its reason:
+  what was offered, and when. A turn still inside the TTL is not one; a turn
+  the agent took and finished since is the end of it.
+  """
+  @spec unstarted_turn(String.t()) :: Offer.t() | nil
+  def unstarted_turn(agent_id) when is_binary(agent_id) do
+    since = last_turn_settled_at(agent_id)
+
+    from(o in Offer,
+      where:
+        o.agent_id == ^agent_id and not is_nil(o.turn_requested_at) and
+          (o.status == :undelivered or o.note == @never_started or
+             (o.status == :open and o.turn_requested_at <= ^cutoff())),
+      order_by: [desc: o.turn_requested_at],
+      limit: 1
+    )
+    |> after_turn(since)
+    |> Repo.one()
+  end
+
+  def unstarted_turn(_agent_id), do: nil
+
+  @settled_by_a_turn [:claimed, :ignored, :declined, :n_a]
+
+  defp last_turn_settled_at(agent_id) do
+    from(o in Offer,
+      where:
+        o.agent_id == ^agent_id and not is_nil(o.turn_requested_at) and
+          o.status in ^@settled_by_a_turn,
+      select: max(o.outcome_at)
+    )
+    |> Repo.one()
+  end
+
+  defp after_turn(query, nil), do: query
+  defp after_turn(query, at), do: where(query, [o], o.turn_requested_at > ^at)
+
+  @doc """
+  Close a turn request decided against before it went out: the agent moved
+  between the read that chose the offer and the lock that took it. Only an open
+  offer moves. Always `:ok`.
+  """
+  @spec withdraw(Offer.t() | nil) :: :ok
+  def withdraw(%Offer{id: id}) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where([o], o.id == ^id and o.status == :open)
+    |> Repo.update_all(set: [status: :superseded, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
+  def withdraw(_offer), do: :ok
+
+  @doc """
+  Close every turn handed to this agent's harness: the process it went to is
+  gone (a harness restart, a stop, a reap). A turn that never started there was
+  never delivered, so its offer is `:undelivered`; one that started was cut, and
+  its offer is `:superseded`. `started?` is whether a turn was running. Always
+  `:ok`.
+  """
+  @spec abandon_turns(String.t(), boolean()) :: :ok
+  def abandon_turns(agent_id, started? \\ false)
+
+  def abandon_turns(agent_id, started?) when is_binary(agent_id) do
+    now = DateTime.utc_now()
+    status = if started?, do: :superseded, else: :undelivered
+
+    agent_id
+    |> turn_requests()
+    |> Repo.update_all(set: [status: status, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
+  def abandon_turns(_agent_id, _started?), do: :ok
+
+  defp turn_requests(agent_id) do
+    where(
+      Offer,
+      [o],
+      o.agent_id == ^agent_id and o.status == :open and not is_nil(o.turn_requested_at)
+    )
+  end
+
+  defp cutoff, do: DateTime.add(DateTime.utc_now(), -@turn_request_ttl_seconds, :second)
 
   @doc """
   Mark an offer whose delivery failed or was held (criterion 1676). Only an
@@ -868,7 +1029,7 @@ defmodule CodeMySpec.Agents.Offers do
     since |> where([o], o.status != :undelivered) |> Repo.aggregate(:count) |> Kernel.+(1)
   end
 
-  defp insert_offer(agent, kind, type, key, attempt) do
+  defp insert_offer(agent, kind, type, key, attempt, turn_requested_at) do
     %{
       account_id: agent.account_id,
       project_id: agent.project_id,
@@ -879,7 +1040,8 @@ defmodule CodeMySpec.Agents.Offers do
       subject_key: key,
       attempt: attempt,
       status: :open,
-      template_version: Map.fetch!(@template_versions, kind)
+      template_version: Map.fetch!(@template_versions, kind),
+      turn_requested_at: turn_requested_at
     }
     |> Offer.changeset()
     |> Repo.insert()

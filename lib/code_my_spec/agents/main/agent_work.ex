@@ -38,6 +38,8 @@ defmodule CodeMySpec.Agents.Main.AgentWork do
           last_said_at: DateTime.t() | nil,
           blocked_reasons: [String.t()],
           tapped_out?: boolean(),
+          turn_in_flight?: boolean(),
+          unstarted_turn: CodeMySpec.Agents.Offer.t() | nil,
           continuous?: boolean() | nil,
           turn_started_at: DateTime.t() | nil,
           provider_refusal: String.t() | nil,
@@ -70,8 +72,10 @@ defmodule CodeMySpec.Agents.Main.AgentWork do
     :turn_timeouts,
     :machine_tools,
     :damped,
+    :unstarted_turn,
     blocked_reasons: [],
     tapped_out?: false,
+    turn_in_flight?: false,
     idle?: false,
     team_free?: false,
     problems: []
@@ -162,6 +166,11 @@ defmodule CodeMySpec.Agents.Main.AgentWork do
       "damped after #{n} declines of #{req || "its offer"} until " <>
         "#{DateTime.to_iso8601(until)} — message_agent it, or take the work"
 
+  def unclaimed_work(%AgentWork{unstarted_turn: %{} = offer}),
+    do:
+      "STALLED: offered #{offered(offer)} at #{DateTime.to_iso8601(offer.turn_requested_at)} " <>
+        "and the turn never started — message_agent it"
+
   def unclaimed_work(%AgentWork{task_status: :blocked}),
     do:
       "STALLED: only blocked work in hand while the graph holds work for its role, and " <>
@@ -171,4 +180,9 @@ defmodule CodeMySpec.Agents.Main.AgentWork do
     do:
       "STALLED: no task claimed while the graph holds work for its role, and no turn " <>
         "open to claim it — message_agent it"
+
+  @doc "What a turn request offered, as a check-in names it."
+  @spec offered(CodeMySpec.Agents.Offer.t()) :: String.t()
+  def offered(%{kind: kind, subject_type: type, subject_key: nil}), do: "#{kind} (#{type})"
+  def offered(%{kind: kind, subject_key: key}), do: "#{kind} #{key}"
 end

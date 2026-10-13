@@ -23,8 +23,11 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
   """
   use CodeMySpecSpex.Case, async: false
 
+  import Ecto.Query
+
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
@@ -82,22 +85,18 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
       |> Repo.update()
 
     {:ok, held} =
-      AgentsRepository.update_agent(scope, held, %{
-        turn_started_at: turn_started_at,
-        work_request_id: nil,
-        work_requested_at: nil
-      })
+      AgentsRepository.update_agent(scope, held, %{turn_started_at: turn_started_at})
 
     assert not is_nil(Agent.active_task(held)), "the premise is an agent holding a task"
     held
   end
 
-  # Reaching `reserve/1` stamps a ref, and the dispatch that follows is what
-  # this is really asking about. Observed on the row rather than the return
-  # value for the same reason the stranded-reservation test does it.
+  # Admitting the turn writes its turn request, and the dispatch that follows is
+  # what this is really asking about. Observed on the offers rather than the
+  # return value for the same reason the stranded-turn-request test does it.
   defp offered_a_turn?(agent_id) do
-    not is_nil(Repo.get(Agent, agent_id).work_request_id) or
-      Repo.get(Agent, agent_id).work_requested_at != nil
+    from(o in Offer, where: o.agent_id == ^agent_id and not is_nil(o.turn_requested_at))
+    |> Repo.exists?()
   end
 
   # `request_work_turn/5` is the path a resume takes, and `RecordingAgentTransport`

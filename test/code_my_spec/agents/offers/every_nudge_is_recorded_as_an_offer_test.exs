@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.TaskOwner
+  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -77,12 +78,9 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
     Enum.map(offer.messages, &(Repo.get!(Message, &1.message_id) |> Message.text()))
   end
 
-  defp end_reservation(scope, agent) do
-    {:ok, fresh} = AgentsRepository.fetch_agent(scope, agent.id)
-
-    {:ok, _} =
-      AgentsRepository.update_agent(scope, fresh, %{work_request_id: nil, work_requested_at: nil})
-  end
+  # The offered turn never started and its turn request has lapsed, so the
+  # agent can be offered again while the first offer is still open.
+  defp end_turn_request(scope, agent), do: Fixtures.age_turn_request(scope, agent.id, 301)
 
   describe "the work offer" do
     test "records a work offer on the head of its work, linked to the prompt it sent", ctx do
@@ -110,7 +108,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       agent = agent(ctx.scope)
 
       {:ok, _ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
-      end_reservation(ctx.scope, agent)
+      end_turn_request(ctx.scope, agent)
       {:ok, _ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
 
       assert [first, second] = Offers.list_for_agent(agent.id)

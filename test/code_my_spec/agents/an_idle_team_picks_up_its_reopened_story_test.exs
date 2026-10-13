@@ -11,6 +11,8 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
   import CodeMySpec.IssuesFixtures
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offer
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -92,7 +94,8 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
                      500,
                      "the idle continuous coder is offered the reopened story"
 
-      Work.release(ctx.scope, coding_id, ref)
+      # The test takes the task itself, so the turn it was handed is withdrawn.
+      :ok = Offers.withdraw(%Offer{id: ref})
 
       start(ctx, ctx.coding, issue)
 

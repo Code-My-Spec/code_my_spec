@@ -107,11 +107,9 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
   # nothing claimed.
   defp ignored(scope, agent) do
     {:ok, agent} =
-      AgentsRepository.update_agent(scope, reload(scope, agent), %{
-        turn_started_at: nil,
-        work_request_id: nil,
-        work_requested_at: nil
-      })
+      AgentsRepository.update_agent(scope, reload(scope, agent), %{turn_started_at: nil})
+
+    :ok = Offers.settle_turn(agent)
 
     {:ok, _agent} =
       Work.record_decline(scope, agent, DateTime.add(DateTime.utc_now(), -30, :second))

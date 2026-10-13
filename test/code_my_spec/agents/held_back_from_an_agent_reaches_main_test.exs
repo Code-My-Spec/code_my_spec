@@ -144,9 +144,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
 
     {:ok, _} =
       AgentsRepository.update_agent(ctx.scope, Repo.get!(Agent, agent_id), %{
-        turn_started_at: start,
-        work_request_id: nil,
-        work_requested_at: nil
+        turn_started_at: start
       })
 
     Agents.record_turn_event(
