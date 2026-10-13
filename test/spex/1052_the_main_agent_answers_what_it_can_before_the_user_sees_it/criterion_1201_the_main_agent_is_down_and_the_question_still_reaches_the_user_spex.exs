@@ -59,7 +59,12 @@ defmodule CodeMySpecSpex.Story1052.Criterion3221Spex do
 
       when_ "an agent asks a question", context do
         id =
-          ask(context, "Should refunds older than ninety days be allowed?", ["Allow", "Refuse"])
+          ask(
+            context,
+            "Should refunds older than ninety days be allowed?",
+            ["Allow", "Refuse"],
+            ensure_main_on_duty: false
+          )
 
         {:ok, Map.put(context, :question_id, id)}
       end

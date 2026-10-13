@@ -242,13 +242,16 @@ defmodule CodeMySpec.Notifications do
     from(a in Agent, where: not is_nil(a.off_at) or not is_nil(a.retired_at), select: a.id)
   end
 
+  # Unlike `pending_query`, not filtered by holder: criterion 1197 is exactly
+  # this distinction — removing the interruption while main or product holds
+  # it is not removing the record once it is resolved, so the user's history
+  # always carries what they fielded on their behalf.
   defp resolved_query(schema, user_id) do
     from(r in schema,
       where: r.user_id == ^user_id and r.status != "pending",
       order_by: [desc: r.inserted_at],
       limit: @resolved_limit
     )
-    |> held_by_user(schema)
   end
 
   defp resolved_page_query(schema, user_id, limit, before) do
@@ -257,7 +260,6 @@ defmodule CodeMySpec.Notifications do
       order_by: [desc: r.inserted_at, desc: r.id],
       limit: ^limit
     )
-    |> held_by_user(schema)
     |> before_cursor(before)
   end
 
