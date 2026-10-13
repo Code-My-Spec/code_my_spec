@@ -165,22 +165,55 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   that prompted it — and a decision made while answering one project's question
   is still that person's decision.
   """
+  # Matched word by word, ranked by how many words a question holds. Agents
+  # pass keywords, and a whole-query phrase match found none of them.
   @spec search_answers(Scope.t(), String.t()) :: [map()]
   def search_answers(%Scope{user: %{id: user_id}}, query) when is_binary(query) do
-    pattern = "%#{query}%"
+    case search_words(query) do
+      [] ->
+        []
 
-    from(q in QuestionRequest,
-      where: q.user_id == ^user_id and q.status == "answered",
-      where:
-        fragment("?::text ILIKE ?", q.questions, ^pattern) or
-          fragment("?::text ILIKE ?", q.answers, ^pattern),
-      order_by: [desc: q.updated_at],
-      limit: 20
-    )
-    |> Repo.all()
+      words ->
+        any_word =
+          Enum.reduce(words, dynamic(false), fn word, acc ->
+            dynamic(
+              [q],
+              ^acc or fragment("?::text ILIKE ?", q.questions, ^"%#{word}%") or
+                fragment("?::text ILIKE ?", q.answers, ^"%#{word}%")
+            )
+          end)
+
+        from(q in QuestionRequest,
+          where: q.user_id == ^user_id and q.status == "answered",
+          where: ^any_word,
+          order_by: [desc: q.updated_at],
+          limit: 200
+        )
+        |> Repo.all()
+        |> Enum.map(&{&1, matched_words(&1, words)})
+        |> Enum.sort_by(fn {_q, score} -> score end, :desc)
+        |> Enum.take(20)
+        |> Enum.map(&elem(&1, 0))
+    end
   end
 
   def search_answers(%Scope{}, _query), do: []
+
+  defp search_words(query) do
+    query
+    |> String.downcase()
+    |> String.split(~r/[^\p{L}\p{N}_-]+/u, trim: true)
+    |> Enum.filter(&(String.length(&1) >= 2))
+    |> Enum.uniq()
+    |> Enum.map(&String.replace(&1, ["\\", "%", "_"], fn c -> "\\" <> c end))
+  end
+
+  defp matched_words(question, words) do
+    text =
+      String.downcase(Jason.encode!(question.questions) <> " " <> Jason.encode!(question.answers))
+
+    Enum.count(words, &String.contains?(text, String.replace(&1, "\\", "")))
+  end
 
   @doc "One answered question by id, or nil."
   @spec fetch_answered(Scope.t(), String.t()) :: QuestionRequest.t() | nil
