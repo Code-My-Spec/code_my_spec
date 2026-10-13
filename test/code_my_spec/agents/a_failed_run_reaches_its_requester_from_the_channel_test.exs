@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.AFailedRunReachesItsRequesterFromTheChannelTest do
   Asserted as the property the transport needs: the delivery comes from some
   process other than the one announcing the failure.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
@@ -18,22 +18,18 @@ defmodule CodeMySpec.Agents.AFailedRunReachesItsRequesterFromTheChannelTest do
 
   defmodule CallerReportingTransport do
     def dispatch_message(_copy_id, agent, _ref, message, _timeout) do
-      send(:persistent_term.get({__MODULE__, :test}), {:dispatched, agent.id, message, self()})
+      send(
+        CodeMySpecTest.AgentTransportRouter.owner(agent.project_id),
+        {:dispatched, agent.id, message, self()}
+      )
+
       {:ok, :started}
     end
   end
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CallerReportingTransport)
-    :persistent_term.put({CallerReportingTransport, :test}, self())
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous)
-      :persistent_term.erase({CallerReportingTransport, :test})
-    end)
-
     scope = full_scope_fixture()
+    CodeMySpecTest.AgentTransportRouter.route(scope, CallerReportingTransport)
 
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{

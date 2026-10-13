@@ -45,8 +45,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
 
     # The correction is sent from the detached restart task, which checks
     # out its own connection.
@@ -241,7 +241,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
       CodeMySpecSpex.PromotionHelpers.join_main_working_copy_socket(
         context,
         running_root,
-        "the checkout the dev app runs in", app_verbs: ["reload_app"])
+        "the checkout the dev app runs in",
+        app_verbs: ["reload_app"]
+      )
 
     agent =
       CodeMySpecSpex.PromotionHelpers.join_local_working_copy(

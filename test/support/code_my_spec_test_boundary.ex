@@ -42,6 +42,7 @@ defmodule CodeMySpecTest do
       CodeMySpec.UserPreferences,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
+      CodeMySpec.WorkingCopies,
       CodeMySpec.Workspaces
     ],
     # `TurnEventRelay` is exported for the same reason the other two are:
@@ -59,6 +60,7 @@ defmodule CodeMySpecTest do
     # a criterion's behalf — story 1087's embeddings-airtight work.
     exports: [
       AgentPresence,
+      AgentTransportRouter,
       FakeWorkspaceRunner,
       HexTarballFixtures,
       RecordingAgentTransport,

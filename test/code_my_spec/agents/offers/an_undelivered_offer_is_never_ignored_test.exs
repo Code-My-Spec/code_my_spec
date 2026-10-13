@@ -24,11 +24,9 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(Repo, {:shared, self()})
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+    CodeMySpecTest.AgentTransportRouter.route(context, UnreachableMachine)
     :ok
   end
 

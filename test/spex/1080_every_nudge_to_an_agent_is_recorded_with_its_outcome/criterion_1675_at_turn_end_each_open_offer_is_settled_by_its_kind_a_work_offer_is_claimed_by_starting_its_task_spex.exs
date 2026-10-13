@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   spex "A work offer is claimed by starting its task", criterion: 1675 do
     scenario "the coder starts the work it was offered" do
       given_ "a coder offered work, mid-turn", context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         {:ok, offered_work(context)}
       end
 
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   spex "A work offer is declined by a tap-out on it", criterion: 1675 do
     scenario "the coder starts the work and taps out of it" do
       given_ "a coder offered work, mid-turn", context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         {:ok, offered_work(context)}
       end
 
@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   spex "A work offer not taken is ignored", criterion: 1675 do
     scenario "the coder ends its turn without starting anything" do
       given_ "a coder offered work, mid-turn", context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         {:ok, offered_work(context)}
       end
 
@@ -113,7 +113,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
     scenario "a coder handed the menu acts on it" do
       given_ "a coder holding a task was handed the menu and has started its next turn",
              context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         {:ok, handed_the_menu(context)}
       end
 
@@ -136,7 +136,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
     scenario "a coder handed the menu does nothing" do
       given_ "a coder holding a task was handed the menu and has started its next turn",
              context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         {:ok, handed_the_menu(context)}
       end
 
@@ -155,7 +155,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   spex "An answer is claimed by any tool call after it", criterion: 1675 do
     scenario "an asker woken with its answer gets on with something" do
       given_ "an idle coder woken with the answer to its question, now mid-turn", context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         {:ok, woken_with_answer(context)}
       end
 
@@ -179,7 +179,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   spex "An answer with no tool call after it is ignored", criterion: 1675 do
     scenario "an asker woken with its answer does nothing" do
       given_ "an idle coder woken with the answer to its question, now mid-turn", context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         {:ok, woken_with_answer(context)}
       end
 
@@ -200,7 +200,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   spex "Being unblocked is claimed by resuming the task", criterion: 1675 do
     scenario "a coder let back onto its task resumes it" do
       given_ "a coder whose blocking question was answered, now mid-turn", context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
         context = coder_holding_a_task(context)
         question = ask(context, context.coder)
         :ok = user_answers(context, question, "Yes")
@@ -239,7 +239,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
     scenario "a coder resumed after a restart ends its turn" do
       given_ "a coder told to resume its task after its harness came back, mid-turn",
              context do
-        :ok = Fixtures.install_recording_agent_transport()
+        :ok = Fixtures.install_recording_agent_transport(context)
 
         context = coder_holding_a_task(context)
         :ok = report_agents_present(context, [context.coder])

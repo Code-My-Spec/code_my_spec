@@ -50,9 +50,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
       )
 
     {:ok, _} = Mailbox.register(scope, agent.id, "engine-one")
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, AcceptingTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+    CodeMySpecTest.AgentTransportRouter.route(scope, AcceptingTransport)
     %{scope: scope, agent: agent, conversation: conversation}
   end
 
@@ -140,7 +138,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
   end
 
   test "busy leaves the only payload queued in the database", ctx do
-    Application.put_env(:code_my_spec, :agent_transport, BusyTransport)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, BusyTransport)
     {message, _} = admit(ctx, "first")
     assert {:ok, :queued} = Mailbox.pump(ctx.scope, ctx.agent.id)
     assert [%{state: :queued}] = Mailbox.entries(ctx.scope, ctx.agent.id)
@@ -280,7 +278,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
 
     Application.put_env(:code_my_spec, :test_mailbox_owner, self())
     on_exit(fn -> Application.delete_env(:code_my_spec, :test_mailbox_owner) end)
-    Application.put_env(:code_my_spec, :agent_transport, CurrentEngineTransport)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, CurrentEngineTransport)
 
     assert {:ok, :started} = Mailbox.pump(ctx.scope, ctx.agent.id)
     assert_received {:dispatched, text}
@@ -295,7 +293,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
   end
 
   test "a restart caught before consumption puts the claim back, behind the carry-on", ctx do
-    Application.put_env(:code_my_spec, :agent_transport, BusyTransport)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, BusyTransport)
     {message, _} = admit(ctx, "not yet taken")
     {:ok, entry} = Repo.transaction(fn -> Mailbox.entries(ctx.scope, ctx.agent.id) end)
     [%{} = queued] = entry
@@ -317,7 +315,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
   end
 
   test "lost transport acknowledgement cannot obscure committed consumption", ctx do
-    Application.put_env(:code_my_spec, :agent_transport, LostAckTransport)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, LostAckTransport)
     {message, _} = admit(ctx, "accepted once")
     assert {:ok, :started} = Mailbox.pump(ctx.scope, ctx.agent.id)
     assert Repo.get!(Conversations.Message, message.id).delivery == :delivered

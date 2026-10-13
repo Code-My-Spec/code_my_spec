@@ -9,7 +9,7 @@ defmodule CodeMySpec.Agents.Main.TheEscalatorHearsTheUsersAnswerTest do
   it (2026-10-13).
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.QuestionRoutingHelpers
 
@@ -22,10 +22,7 @@ defmodule CodeMySpec.Agents.Main.TheEscalatorHearsTheUsersAnswerTest do
   setup :setup_active_project
 
   setup context do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(context)
 
     main =
       Fixtures.running_agent(context.scope, role: "main", working_copy: "/tmp/escalator-main")

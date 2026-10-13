@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3211Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentProcessHelpers, only: [machine_out_of_reach: 0, running?: 1]
+  import CodeMySpecSpex.AgentProcessHelpers, only: [machine_out_of_reach: 1, running?: 1]
   import CodeMySpecSpex.HarnessLifecycleHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3211Spex do
     scenario "An agent refuses to start without its tools" do
       given_ "an agent's tools cannot be resolved at launch", context do
         context = given_a_feature_checkout(context, "spex_3211")
-        machine_out_of_reach()
+        machine_out_of_reach(context)
 
         {:ok, context}
       end

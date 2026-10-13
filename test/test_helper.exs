@@ -336,3 +336,5 @@ Application.put_env(:code_my_spec, :environment, CodeMySpec.Support.RecordingEnv
 
 # Don't let GC reap the owner — pin it for the full test run.
 Process.put(:test_backend_owner, owner)
+
+:ok = CodeMySpecTest.AgentTransportRouter.start()

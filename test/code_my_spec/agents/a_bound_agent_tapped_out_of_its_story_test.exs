@@ -24,7 +24,7 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
   setup :setup_active_project
 
   setup ctx do
-    :ok = Fixtures.install_recording_agent_transport()
+    :ok = Fixtures.install_recording_agent_transport(ctx)
     ctx = ctx |> coding_work_waiting() |> issue_accepted()
     coder = Fixtures.running_agent(ctx.scope, role: "coding", continuous: true)
     Map.merge(ctx, %{coder: coder.id, frame: agent_frame(ctx, coder.id)})

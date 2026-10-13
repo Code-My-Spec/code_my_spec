@@ -136,14 +136,7 @@ defmodule CodeMySpecSpex.MailboxHelpers do
     end
   end
 
-  def transport(module) do
-    prior = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, module)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, prior)
-    end)
-  end
+  def transport(project, module), do: Fixtures.route_agent_transport(project, module)
 
   defmodule Unconfirmed do
     @moduledoc false

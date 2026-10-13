@@ -27,10 +27,7 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
   # running agent in a background task, and main, holding a question, is
   # offered it. Each test then drives what main does with that offer.
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     CodeMySpec.WorkingCopies.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
 

@@ -28,12 +28,8 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   @spex_path "test/spex/811_provisioning/criterion_6493_a_step_reports_its_provider_spex.exs"
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
 
     {:ok, copy} =
       CodeMySpec.WorkingCopies.issue(scope, nil,

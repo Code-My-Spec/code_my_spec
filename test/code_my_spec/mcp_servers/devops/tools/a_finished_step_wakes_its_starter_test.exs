@@ -19,22 +19,19 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AFinishedStepWakesItsStarterTest do
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    previous_transport = Application.get_env(:code_my_spec, :agent_transport)
     previous_async = Application.get_env(:code_my_spec, :provisioning_run_async)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
     Application.put_env(:code_my_spec, :provisioning_run_async, true)
 
     on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous_transport)
       Application.put_env(:code_my_spec, :provisioning_run_async, previous_async)
     end)
 
-    RecordingAgentTransport.listen()
     # The step runs in a detached task, which checks out its own connection.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     working_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     scope = put_fixture_environment(scope, Environment.new(:local, working_dir))
     {:ok, _} = Projects.update_project(scope, scope.active_project, %{domain: "example.com"})
 

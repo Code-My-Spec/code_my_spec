@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.AStoryPassingQaAlreadyOnMainFreesItsTeamTest do
   landing announced the team free, and team 2 sat idle for seven hours with
   main never told (2026-10-13).
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import Ecto.Query
   import CodeMySpec.UsersFixtures
@@ -26,12 +26,8 @@ defmodule CodeMySpec.Agents.AStoryPassingQaAlreadyOnMainFreesItsTeamTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     {:ok, _} = Staffing.designate_main(scope, scope.active_working_copy_id)
     main = agent(scope, :main, scope.active_working_copy_id)
 

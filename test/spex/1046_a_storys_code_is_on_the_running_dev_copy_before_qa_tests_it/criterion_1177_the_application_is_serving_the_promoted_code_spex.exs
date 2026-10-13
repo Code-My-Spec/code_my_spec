@@ -20,8 +20,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3170Spex do
   setup :setup_active_project
 
   # The joins go through a real channel, which runs in a process of its own.
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end

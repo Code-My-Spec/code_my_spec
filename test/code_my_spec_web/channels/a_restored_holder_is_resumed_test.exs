@@ -34,10 +34,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
   setup ctx do
     Sandbox.mode(Repo, {:shared, self()})
 
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     {:ok, _reply, socket} =
       UserSocket
