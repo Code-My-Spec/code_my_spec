@@ -957,8 +957,17 @@ defmodule CodeMySpec.Promotion.Steps do
 
   # The superproject check matters: in an uninitialised submodule directory
   # `git -C` would find the superproject and check the SHA out *there*.
+  #
+  # Refused ahead of the checkout when the submodule's own tree is dirty,
+  # rather than letting `git checkout` decide: a plain checkout only refuses
+  # a path whose committed content actually differs between the two commits,
+  # and leaves an uncommitted edit outside that diff sitting in place but now
+  # against a detached HEAD the next `git status` reads as clean against —
+  # silently stranding whatever was there (issue 42559860: a QA subagent's
+  # rewritten brief, reverted mid-pass with no signal it had happened).
   defp check_out_pinned(env, sub, source, pinned) do
     with :ok <- ensure_submodule(env, sub, pinned),
+         :ok <- ensure_clean(env, sub, pinned),
          :ok <- ensure_present(env, sub, source, pinned),
          {:ok, _} <- sub_git(env, sub, ["checkout", "--quiet", pinned], pinned),
          {:ok, ^pinned} <- sub_git(env, sub, ["rev-parse", "HEAD"], pinned) do
@@ -966,6 +975,22 @@ defmodule CodeMySpec.Promotion.Steps do
     else
       {:ok, other} -> {:error, pinned, "checked out, but HEAD is #{other}"}
       {:error, _, _} = error -> error
+    end
+  end
+
+  defp ensure_clean(env, sub, pinned) do
+    case sub_git(env, sub, ["status", "--porcelain"], pinned) do
+      {:ok, ""} ->
+        :ok
+
+      {:ok, dirty} ->
+        {:error, pinned,
+         "#{sub} has uncommitted work this checkout would strand:\n#{dirty}\n" <>
+           "Commit or discard it in #{sub} before promoting, or this promote would " <>
+           "silently check out over it."}
+
+      error ->
+        error
     end
   end
 
