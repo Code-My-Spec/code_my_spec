@@ -89,6 +89,18 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
     assert {{true, _}, {true, _}} = verdicts(ctx.scope, story)
   end
 
+  # Story 1046 carried 2.0.11 from before `specs_ready_at` was written, so a
+  # submitted fix compared against nothing and read as already on main: seven
+  # fixes sat at 8/8 on team 2's copy with nothing offering the promote
+  # (2026-10-13).
+  test "a stamp with no promotion time is older than any submitted fix", ctx do
+    {:ok, story} = Stories.update_story(ctx.scope, ctx.story, %{promoted_version: "2.0.11"})
+    issue = submit(ctx.scope, story)
+
+    assert {{false, %{reason: reason}}, {false, _}} = verdicts(ctx.scope, story)
+    assert reason =~ issue.id
+  end
+
   # The verdict above is the mechanism; this is the issue's own claim, that
   # nobody is offered the promote. It asks the graph, which is what an offer
   # reads, rather than `RunningCopy` directly.
