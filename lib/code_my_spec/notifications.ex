@@ -954,19 +954,20 @@ defmodule CodeMySpec.Notifications do
         result =
           Repo.transaction(fn ->
             with {:ok, task} <- question_task(session, task_ref),
-                 attrs = Map.put(attrs, "task_id", task && task.id),
-                 {:ok, request} <- insert_question_request(user_id, attrs),
-                 :ok <- block_question_task(scope, session, task, request) do
-              request
+                 attrs =
+                   Map.merge(attrs, %{
+                     "task_id" => task && task.id,
+                     "story_id" => task && task.story_id
+                   }),
+                 {:ok, outcome} <- save_or_reuse_question_request(user_id, attrs),
+                 :ok <- block_question_task(scope, session, task, request_from(outcome)) do
+              outcome
             else
               {:error, reason} -> Repo.rollback(reason)
             end
           end)
 
-        with {:ok, request} <- result do
-          deliver_question(request)
-          {:ok, request}
-        end
+        deliver_if_new(result)
     end
   end
 
@@ -984,20 +985,73 @@ defmodule CodeMySpec.Notifications do
           )
 
         with {:ok, task} <- question_task(owner, task_ref),
-             attrs = Map.merge(attrs, %{"agent_id" => agent_id, "task_id" => task && task.id}),
-             {:ok, request} <- insert_question_request(scope.user.id, attrs),
-             :ok <- block_question_task(scope, owner, task, request) do
-          request
+             attrs =
+               Map.merge(attrs, %{
+                 "agent_id" => agent_id,
+                 "task_id" => task && task.id,
+                 "story_id" => task && task.story_id
+               }),
+             {:ok, outcome} <- save_or_reuse_question_request(scope.user.id, attrs),
+             :ok <- block_question_task(scope, owner, task, request_from(outcome)) do
+          outcome
         else
           {:error, reason} -> Repo.rollback(reason)
         end
       end)
 
-    with {:ok, request} <- result do
-      deliver_question(request)
-      {:ok, request}
+    deliver_if_new(result)
+  end
+
+  # Issue fe683550: an agent whose wake decided to ask again before the
+  # answer to its last identical question had arrived used to get a brand
+  # new row, a brand new push, and a brand new wait — the exact repro was a
+  # re-ask 58s after the first had already been answered. Reusing an open or
+  # just-answered duplicate instead means the new blocker resolves against an
+  # answer that may already be sitting there, rather than queueing behind one
+  # nobody is going to send twice.
+  @dedup_window_seconds 120
+
+  defp save_or_reuse_question_request(user_id, attrs) do
+    case duplicate_question_request(user_id, attrs) do
+      nil ->
+        with {:ok, request} <- insert_question_request(user_id, attrs), do: {:ok, {:new, request}}
+
+      %QuestionRequest{} = request ->
+        {:ok, {:duplicate, request}}
     end
   end
+
+  defp request_from({_tag, request}), do: request
+
+  defp deliver_if_new({:ok, {:new, request}}) do
+    deliver_question(request)
+    {:ok, request}
+  end
+
+  defp deliver_if_new({:ok, {:duplicate, request}}), do: {:ok, request}
+  defp deliver_if_new(error), do: error
+
+  defp duplicate_question_request(user_id, %{"questions" => [_ | _] = questions} = attrs) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@dedup_window_seconds, :second)
+
+    QuestionRequest
+    |> where([q], q.user_id == ^user_id and q.questions == ^questions)
+    |> where([q], q.status == "pending" or (q.status == "answered" and q.updated_at > ^cutoff))
+    |> scoped_to_same_story_or_task(attrs)
+    |> order_by([q], desc: q.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp duplicate_question_request(_user_id, _attrs), do: nil
+
+  defp scoped_to_same_story_or_task(query, %{"story_id" => story_id}) when not is_nil(story_id),
+    do: where(query, [q], q.story_id == ^story_id)
+
+  defp scoped_to_same_story_or_task(query, %{"task_id" => task_id}) when not is_nil(task_id),
+    do: where(query, [q], q.task_id == ^task_id)
+
+  defp scoped_to_same_story_or_task(query, _attrs), do: where(query, [q], false)
 
   defp question_task(nil, _task_ref), do: {:error, :owner_not_found}
   defp question_task(_owner, nil), do: {:ok, nil}

@@ -51,6 +51,12 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
   schema "question_requests" do
     field :title, :string
     field :task_id, :string
+
+    # Copied off the task at creation, the same way `task_id` is, so a
+    # duplicate ask for the same story can be found without walking every
+    # session's embedded tasks to resolve one.
+    field :story_id, :integer
+
     field :questions, {:array, :map}, default: []
     field :status, :string, default: "pending"
     field :answers, :map, default: %{}
@@ -110,6 +116,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :user_id,
       :agent_id,
       :task_id,
+      :story_id,
       :conversation_message_id,
       :title,
       :questions,
