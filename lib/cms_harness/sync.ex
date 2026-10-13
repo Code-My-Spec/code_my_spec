@@ -15,7 +15,7 @@ defmodule CmsHarness.Sync do
   require Logger
 
   alias CmsHarness.HarnessConfig
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner
@@ -90,7 +90,7 @@ defmodule CmsHarness.Sync do
             "the channel's call, and it says so on the next line."
         )
 
-        ChannelClient.deliver_observations(project.root, [])
+        Channel.deliver_observations(project.root, [])
 
       {:ok, observations} ->
         Logger.info(
@@ -100,7 +100,7 @@ defmodule CmsHarness.Sync do
 
         log_unclassified(env, project.root)
 
-        ChannelClient.deliver_observations(project.root, observations)
+        Channel.deliver_observations(project.root, observations)
     end
   end
 
@@ -120,7 +120,7 @@ defmodule CmsHarness.Sync do
       # `Macro.underscore/1` — so this is the inverse of that, not a second
       # format decision.
       name when is_binary(name) ->
-        ChannelClient.deliver_module_name(root, Macro.camelize(name))
+        Channel.deliver_module_name(root, Macro.camelize(name))
         report_health_route(env, root, name)
 
       nil ->
@@ -221,7 +221,7 @@ defmodule CmsHarness.Sync do
   @spec measure_machine_load(String.t()) :: :ok
   def measure_machine_load(root) do
     case machine_load() do
-      load when map_size(load) > 0 -> ChannelClient.deliver_machine_load(root, load)
+      load when map_size(load) > 0 -> Channel.deliver_machine_load(root, load)
       _ -> :ok
     end
   end
@@ -360,7 +360,7 @@ defmodule CmsHarness.Sync do
       {:ok, %{preview_url: url}} when is_binary(url) and url != "" ->
         status = preview_status(env, url)
         Logger.info("[CmsHarness] #{url} is #{status}")
-        ChannelClient.deliver_preview_status(root, status)
+        Channel.deliver_preview_status(root, status)
 
       _ ->
         :ok
@@ -460,7 +460,7 @@ defmodule CmsHarness.Sync do
 
   defp report_head_commit(env, root) do
     case Environments.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
-      {sha, 0} -> ChannelClient.deliver_head_commit(root, String.trim(sha))
+      {sha, 0} -> Channel.deliver_head_commit(root, String.trim(sha))
       _ -> :ok
     end
   end
@@ -482,7 +482,7 @@ defmodule CmsHarness.Sync do
         {:error, {:health_route_piped, _}} -> "health_route_piped"
       end
 
-    ChannelClient.deliver_health_route_status(root, status)
+    Channel.deliver_health_route_status(root, status)
   end
 
   # What the scan walked past.

@@ -24,6 +24,7 @@ defmodule CmsHarness.Agents do
 
   alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Channel
   alias CmsHarness.Project.ChannelClient
 
   @doc """
@@ -96,7 +97,7 @@ defmodule CmsHarness.Agents do
       on_register:
         request["on_register"] ||
           fn agent_id, generation ->
-            ChannelClient.mailbox(request["working_copy"], %{
+            Channel.mailbox(request["working_copy"], %{
               "operation" => "register",
               "agent_id" => agent_id,
               "generation" => generation

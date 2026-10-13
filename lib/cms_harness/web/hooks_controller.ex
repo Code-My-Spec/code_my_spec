@@ -19,7 +19,7 @@ defmodule CmsHarness.Web.HooksController do
 
   alias CmsHarness.Config
   alias CmsHarness.HookDecision
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
   alias CmsHarness.Projects
   alias CmsHarness.WorkingCopyWalk
 
@@ -115,7 +115,7 @@ defmodule CmsHarness.Web.HooksController do
   end
 
   defp ask(hook, project, working_dir, params) do
-    case ChannelClient.decide_hook(project.root, hook, relativize_paths(project, params)) do
+    case Channel.decide_hook(project.root, hook, relativize_paths(project, params)) do
       {:ok, decision} when is_map(decision) ->
         decision
 

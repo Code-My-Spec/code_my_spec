@@ -8,7 +8,7 @@ defmodule CmsHarnessTest.AnalysisResults do
   same parsing bug fixed seven times and missed once that `WorkingCopyHelpers`
   already learned this lesson about.
 
-  Both read off the real wire: `ChannelClient.connected?/1` is the harness's
+  Both read off the real wire: `Channel.connected?/1` is the harness's
   own liveness check, and a result arrives as `{:analysis_result, project_id,
   payload}` because `CmsHarnessTest.FakeServer.listen/1` was told to notify
   this process — nothing here is a poll of internal state standing in for the
@@ -17,14 +17,14 @@ defmodule CmsHarnessTest.AnalysisResults do
 
   import ExUnit.Assertions
 
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
 
   @doc "Block until the harness at `root` has joined the fake server."
   @spec await_connected(String.t(), pos_integer()) :: true
   def await_connected(root, attempts \\ 200) do
     result =
       Enum.reduce_while(1..attempts, false, fn _, _ ->
-        connected_step(ChannelClient.connected?(root))
+        connected_step(Channel.connected?(root))
       end)
 
     assert result, "#{root}'s harness never connected to the fake server"

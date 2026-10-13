@@ -15,7 +15,7 @@ defmodule CmsHarness.Web.MessagesController do
 
   require Logger
 
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
   alias CmsHarness.Projects
   alias CmsHarness.WorkingCopies
   alias Plug.Conn.Status
@@ -98,7 +98,7 @@ defmodule CmsHarness.Web.MessagesController do
   end
 
   # The record is sent after the response is composed and never awaited — see
-  # ChannelClient.record_turn/2. A turn that reached the agent has succeeded
+  # Channel.record_turn/2. A turn that reached the agent has succeeded
   # whatever the server later does with the record of it.
   defp record(conn, request, response) do
     case working_copy(conn) do
@@ -125,7 +125,7 @@ defmodule CmsHarness.Web.MessagesController do
         )
 
       root ->
-        ChannelClient.record_turn(root, %{
+        Channel.record_turn(root, %{
           # nil, not "sprite". A sprite sets this header and means it; Claude
           # Code sends nothing, and inventing a label here is what put every
           # session into one conversation. Absent means "you work it out" — the

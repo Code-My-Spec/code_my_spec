@@ -35,7 +35,8 @@ defmodule CmsHarness.Web.PromotionController do
 
   require Logger
 
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
+
   alias CmsHarness.WorkingCopies
 
   @doc """
@@ -49,7 +50,7 @@ defmodule CmsHarness.Web.PromotionController do
       {:ok, root} ->
         story_number = params["story_number"]
         Logger.info("[CmsHarness] promoting story #{story_number} from #{root}")
-        reply(conn, ChannelClient.await_promotion(root, story_number))
+        reply(conn, Channel.await_promotion(root, story_number))
 
       # Nothing to fall back to: this harness does not serve that working copy,
       # so it cannot promote it and must not pretend the promotion happened.
