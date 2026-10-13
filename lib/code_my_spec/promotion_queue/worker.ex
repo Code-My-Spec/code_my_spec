@@ -46,7 +46,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @recheck_ms 120_000
   @gate_wait_ms 15_000
   @retry_ms 300_000
-  @inflight_limit_ms 30 * 60_000
+  @gate_wait_limit_ms 30 * 60_000
 
   @doc false
   def start_link({project_id, %Scope{} = scope}) do
@@ -121,9 +121,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       do: gate(state),
       else: {:noreply, state}
   end
-
-  # Another copy's run finished while a green batch waits for in-flight runs.
-  def handle_info({:analysis, _run}, %{phase: :landing} = state), do: land(state)
 
   # A run finished while the queue waits for the gate copy to go quiet.
   def handle_info({:analysis, _run}, %{phase: :idle, gate_wait_since: since} = state)
@@ -284,7 +281,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # next batch reset them underneath it (2026-10-12). Asked to stop again in
   # case the first request was lost, then waited for.
   #
-  # Bounded like the wait on other copies' runs: a row nothing will ever close
+  # Bounded: a row nothing will ever close
   # (its harness went and no sweep came) would otherwise hold the queue forever.
   defp gate_quiet(gate_scope, waiting_since) do
     cond do
@@ -294,7 +291,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       waited_out?(waiting_since) ->
         Logger.error(
           "[PromotionQueue] the gate copy's runs did not stop in " <>
-            "#{div(@inflight_limit_ms, 60_000)} minutes; building over them"
+            "#{div(@gate_wait_limit_ms, 60_000)} minutes; building over them"
         )
 
         :ok
@@ -313,7 +310,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp waited_out?(nil), do: false
 
   defp waited_out?(since),
-    do: System.monotonic_time(:millisecond) - since > @inflight_limit_ms
+    do: System.monotonic_time(:millisecond) - since > @gate_wait_limit_ms
 
   defp wait_for_gate(state) do
     requeue(state.reserved_entries)
@@ -358,7 +355,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       scope: scope_for(state.scope, gate),
       base: base,
       head: head,
-      green_since: nil,
       # When gating began: a run that failed before it could say which commit
       # it started on counts against this batch only if it is this batch's.
       since: DateTime.add(DateTime.utc_now(), -1, :second)
@@ -581,25 +577,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # -- Land -------------------------------------------------------------------
 
-  # Landing restarts the app every copy's harness serves, so it waits for runs
-  # in flight elsewhere — bounded, because a wedged run must not hold the queue.
-  defp land(%{batch: batch} = state) do
-    state = cancel_timer(state)
-    batch = %{batch | green_since: batch.green_since || System.monotonic_time(:millisecond)}
-    elsewhere = Analysis.running_elsewhere(batch.scope, batch.gate.id)
-    waited = System.monotonic_time(:millisecond) - batch.green_since
-
-    if elsewhere != [] and waited < @inflight_limit_ms do
-      Logger.info(
-        "[PromotionQueue] batch at #{batch.head} is green; waiting for runs in flight on " <>
-          "#{length(elsewhere)} other copy(ies) before landing"
-      )
-
-      {:noreply, recheck_later(%{state | batch: batch}, :land)}
-    else
-      on_current_main(%{state | batch: batch}, &do_land/1)
-    end
-  end
+  # A green batch lands at once. It used to wait up to thirty minutes for runs
+  # in flight on other copies, because landing restarted the harness under
+  # them; a landing now restarts it only when the harness's own code moved
+  # (`after-promote`), and with two teams always running something the wait
+  # held every landing for its full bound (2026-10-13).
+  defp land(state), do: on_current_main(state, &do_land/1)
 
   # The batch was certified on `base`. If main moved on while it gated —
   # anything committed to main another way — it cannot land as certified: it

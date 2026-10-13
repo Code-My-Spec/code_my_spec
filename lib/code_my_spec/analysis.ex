@@ -534,10 +534,6 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  @doc "Working copies with a run in flight, other than `except_copy_id`."
-  @spec running_elsewhere(Scope.t(), Ecto.UUID.t() | nil) :: [Ecto.UUID.t()]
-  defdelegate running_elsewhere(scope, except_copy_id), to: RunsRepository
-
   @doc "Whether the scope's working copy has a run still open."
   @spec running_on?(Scope.t()) :: boolean()
   defdelegate running_on?(scope), to: RunsRepository
