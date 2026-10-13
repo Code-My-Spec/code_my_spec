@@ -1,0 +1,191 @@
+defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
+  @moduledoc """
+  Story 1060 — The main agent answers what it can and escalates only what it
+  cannot.
+  Criterion 2120 — A coding, QA or product agent's tap-out is offered to the
+  main agent as work: main is woken with an offer naming the agent, its task
+  and the reason, settles it with answer_notification, and an offer main
+  ignores escalates rather than sitting.
+  """
+
+  use CodeMySpecSpex.Case
+
+  @endpoint CodeMySpecWeb.Endpoint
+
+  import CodeMySpecSpex.WorkingCopyHelpers
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
+  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
+  alias CodeMySpecSpex.Fixtures
+  alias Ecto.Adapters.SQL.Sandbox
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  defp tapped_out_coder(context, path) do
+    reply = join_working_copy(context, path, "the checkout")
+    scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
+
+    main = Fixtures.running_agent(scope, role: "main", working_copy: path)
+    coder = Fixtures.running_agent(scope, role: "coding", working_copy: path)
+    {coder, task} = Fixtures.agent_task_fixture(scope, coder, story_id: 1060)
+    asking = %Frame{assigns: %{current_scope: scope, agent_id: coder.id}}
+
+    {:reply, tapped, _frame} =
+      TapOut.execute(
+        %{reason: "the component this task would have built was already removed"},
+        asking
+      )
+
+    refute tapped.isError, inspect(tapped)
+    [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
+
+    %{scope: scope, main: main, coder: coder, task: task, permission_id: permission_id}
+  end
+
+  spex "The main agent is woken with an offer naming the agent, its task and the reason",
+       criterion: 2120 do
+    scenario "a coding agent with an active task taps out" do
+      given_ "a coding agent with an active task", context do
+        setup = tapped_out_coder(context, "/tmp/spex-2120a")
+        {:ok, Map.merge(context, setup)}
+      end
+
+      when_ "its tap-out is raised", context do
+        {:ok, context}
+      end
+
+      then_ "the main agent's own waiting work names the agent, its task and the reason",
+            context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+        text = response_text(listing)
+
+        assert text =~ context.coder.id and text =~ context.task.id and
+                 text =~ "already removed",
+               """
+               The main agent was woken with an offer, but what it is offered
+               does not name the agent, its task and the reason — the main agent
+               had to go looking for all three itself.
+
+               listing:
+               #{text}
+               """
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "The main agent settles a tap-out it was woken for with answer_notification",
+       criterion: 2120 do
+    scenario "the main agent decides a coding agent's tap-out" do
+      given_ "a coding agent's tap-out, raised while the main agent is running", context do
+        setup = tapped_out_coder(context, "/tmp/spex-2120b")
+        {:ok, Map.merge(context, setup)}
+      end
+
+      when_ "the main agent settles it with answer_notification", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, decided, _frame} =
+          AnswerNotification.execute(
+            %{
+              notification_id: context.permission_id,
+              decision: "deny",
+              answer: "the component this task would have built was already removed"
+            },
+            frame
+          )
+
+        {:ok, Map.put(context, :decided, decided)}
+      end
+
+      then_ "it is settled, not left pending", context do
+        refute context.decided.isError,
+               """
+               The main agent could not settle a tap-out it was woken for with
+               answer_notification.
+
+               reply:
+               #{response_text(context.decided)}
+               """
+
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        refute response_text(listing) =~ context.permission_id,
+               """
+               A tap-out the main agent already settled with answer_notification
+               still shows up as its own waiting work.
+
+               listing:
+               #{response_text(listing)}
+               """
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "An offer the main agent ignores escalates rather than sitting", criterion: 2120 do
+    scenario "the main agent's turn ends without it acting on a tap-out it was woken for" do
+      given_ "a coding agent's tap-out, offered to the main agent and not yet seen by the user",
+            context do
+        setup = tapped_out_coder(context, "/tmp/spex-2120c")
+        context = Map.merge(context, setup)
+
+        {:ok, view, _html} = live(context.conn, "/app/notifications")
+
+        refute has_element?(
+                 view,
+                 "[data-test='notification'][data-id='#{context.permission_id}']"
+               ),
+               """
+               The tap-out already sat with the user before the main agent ever
+               had a turn to ignore it, so this scenario proves nothing about
+               ignoring causing it to escalate.
+
+               #{render(view)}
+               """
+
+        {:ok, context}
+      end
+
+      when_ "the main agent's turn ends having done nothing about it", context do
+        # Settling at turn end is what the harness itself does after every
+        # turn (`Offers.settle_turn/1`); there is no MCP tool for "a turn just
+        # ended" to drive instead.
+        assert :ok = Offers.settle_turn(context.main)
+        {:ok, context}
+      end
+
+      then_ "the tap-out reaches the user rather than sitting unaddressed on the main agent",
+            context do
+        {:ok, view, _html} = live(context.conn, "/app/notifications")
+
+        assert has_element?(
+                 view,
+                 "[data-test='notification'][data-id='#{context.permission_id}']"
+               ),
+               """
+               A tap-out the main agent ignored stayed held back on the main agent
+               instead of escalating to the user.
+
+               #{render(view)}
+               """
+
+        {:ok, context}
+      end
+    end
+  end
+end
