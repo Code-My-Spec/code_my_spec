@@ -23,6 +23,33 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
   defp activity_path(project), do: "/app/projects/#{project.id}/console/activity"
   defp settings_path(project), do: "/app/projects/#{project.id}/console/settings"
 
+  test "a satisfied provider check refreshes the open page and survives reopening", %{
+    conn: conn,
+    project: project,
+    scope: scope
+  } do
+    alias CodeMySpec.Provisioning
+    alias CodeMySpec.Provisioning.QaFixture
+    alias CodeMySpec.ProvisioningPlan.StepRepository
+
+    assert :ok = QaFixture.register(project.id, scope.active_account_id)
+    assert {:ok, _} = Provisioning.run_step(scope, :server, nil, [])
+    {:ok, view, _} = live(conn, resource_path(project, :servers))
+    assert has_element?(view, "[data-test='checked-note'][data-step='server']", "unchecked")
+
+    assert {:ok, checked} = Provisioning.run_step(scope, :server, nil, [])
+    timestamp = DateTime.to_iso8601(checked.verified_at)
+    assert has_element?(view, "[data-step='server'][data-verified-at='#{timestamp}']")
+    assert has_element?(view, "[data-test='checked-note'][data-step='server']", "checked")
+
+    assert {:ok, before_open} = QaFixture.snapshot(project.id)
+    {:ok, reopened, _} = live(conn, resource_path(project, :servers))
+    assert has_element?(reopened, "[data-step='server'][data-verified-at='#{timestamp}']")
+    assert StepRepository.get(scope, :server).verified_at == checked.verified_at
+    assert {:ok, after_open} = QaFixture.snapshot(project.id)
+    assert after_open.events == before_open.events
+  end
+
   describe "every section mounts" do
     test "overview", %{conn: conn, project: project} do
       {:ok, _view, html} = live(conn, path(project))

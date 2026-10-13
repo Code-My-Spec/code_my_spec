@@ -79,6 +79,29 @@ defmodule CodeMySpec.Provisioning.QaFixtureTest do
     assert opts[:execute].(expired, :server, []) == expected
   end
 
+  test "satisfied checks persist and broadcast their time without graph invalidation", %{
+    scope: scope
+  } do
+    assert {:ok, _} = Provisioning.run_step(scope, :server, nil, [])
+    assert {:ok, _} = Provisioning.run_step(scope, :storage, "prod", [])
+    :ok = Provisioning.subscribe(scope)
+    before_count = length(CodeMySpec.Requirements.Invalidations.pending(scope.active_project_id))
+    before_check = DateTime.utc_now()
+
+    assert {:ok, server} = Provisioning.run_step(scope, :server, nil, [])
+    assert {:ok, storage} = Provisioning.run_step(scope, :storage, "prod", [])
+
+    assert DateTime.compare(server.verified_at, before_check) in [:eq, :gt]
+    assert DateTime.compare(storage.verified_at, before_check) in [:eq, :gt]
+    assert StepRepository.get(scope, :server).verified_at == server.verified_at
+    assert StepRepository.get(scope, :storage, "prod").verified_at == storage.verified_at
+    assert_receive {:provisioning, :step, ^server}
+    assert_receive {:provisioning, :step, ^storage}
+
+    assert length(CodeMySpec.Requirements.Invalidations.pending(scope.active_project_id)) ==
+             before_count
+  end
+
   test "environment resources and verification remain separate", %{scope: scope} do
     assert {:ok, prod} = Provisioning.run_step(scope, :storage, "prod", [])
     assert {:ok, uat} = Provisioning.run_step(scope, :storage, "uat", [])

@@ -373,7 +373,8 @@ defmodule CodeMySpec.Provisioning do
       {:ok, :satisfied, resources} ->
         {:ok,
          mark(scope, key, environment, :done, %{
-           resources: still_ours(scope, key, environment, resources)
+           resources: still_ours(scope, key, environment, resources),
+           verified_at: DateTime.utc_now()
          })}
 
       {:ok, :absent} ->
@@ -1144,13 +1145,11 @@ defmodule CodeMySpec.Provisioning do
         Map.merge(attrs, %{state: state, position: Sequence.position(key)})
       )
 
-    # A reverify that reconfirms an already-done step writes a fresh
-    # `verified_at` without changing `state` — announcing that anyway is the
-    # "still done" confirmation that flooded every open tab's `load/2` once
-    # per already-done step on every single mount (a69525bd). Mount no
-    # longer reverifies at all, but a manual re-check still shouldn't repeat
-    # that flood.
-    if is_nil(previous) or previous.state != row.state do
+    # Manual verification updates the displayed check time even when the
+    # state stays done. Mount performs no checks. Graph invalidation remains
+    # state-based in StepRepository; this notification refreshes open views.
+    if is_nil(previous) or previous.state != row.state or
+         previous.verified_at != row.verified_at do
       announce(scope, {:provisioning, :step, row})
     end
 
