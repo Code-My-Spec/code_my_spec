@@ -29,6 +29,7 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
           holder: String.t(),
           escalation_reason: String.t() | nil,
           asked_at: DateTime.t(),
+          story_id: integer() | nil,
           agent_id: Ecto.UUID.t() | nil,
           agent_role: atom() | nil,
           agent_status: atom() | nil,
@@ -44,6 +45,7 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
     :holder,
     :escalation_reason,
     :asked_at,
+    :story_id,
     :agent_id,
     :agent_role,
     :agent_status,
@@ -70,6 +72,7 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
       holder: request.holder,
       escalation_reason: request.escalation_reason,
       asked_at: request.inserted_at,
+      story_id: request.story_id,
       agent_id: request.agent_id,
       agent_role: field(agent, :role),
       agent_status: lifecycle(agent),
@@ -140,16 +143,30 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   defp permission_question(%{escalated_as: as}) when is_binary(as), do: as
   defp permission_question(request), do: permission_text(request)
 
-  defp permission_text(%{tool_name: "tap_out"}) do
+  # Criterion 2120: offering a teammate's tap-out to the main agent as work
+  # means naming what it is work on -- the agent is already in `render/1`'s
+  # own fields, but the task and the reason the agent gave lived only in
+  # `tool_input`, which this text never read. A main agent offered this had
+  # to go find both itself before it could act.
+  defp permission_text(%{tool_name: "tap_out"} = request) do
     "This agent asked to leave the autonomous loop and is waiting on a decision. " <>
       "Until one is recorded it cannot be woken — a pending permission request " <>
-      "refuses the wake the same way an unanswered question does."
+      "refuses the wake the same way an unanswered question does." <>
+      tap_out_task(request) <> tap_out_reason(request)
   end
 
   defp permission_text(%{tool_name: tool_name, tool_input: input}) do
     "This agent asked permission to call `#{tool_name}` and is waiting on a " <>
       "decision. Until one is recorded it cannot be woken. Input: #{inspect(input)}"
   end
+
+  defp tap_out_task(%{task_id: task_id}) when is_binary(task_id), do: "\n  task: #{task_id}"
+  defp tap_out_task(_request), do: ""
+
+  defp tap_out_reason(%{tool_input: %{"reason" => reason}}) when is_binary(reason) and reason != "",
+    do: "\n  reason: #{reason}"
+
+  defp tap_out_reason(_request), do: ""
 
   @doc "The question text, for a listing that shows one line per question."
   @spec texts(t()) :: [String.t()]

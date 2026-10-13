@@ -67,7 +67,8 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Epics,
       CodeMySpec.Faults,
       CodeMySpec.Notifications,
-      CodeMySpec.Problems
+      CodeMySpec.Problems,
+      CodeMySpec.Questions
     ],
     exports: :all
 
