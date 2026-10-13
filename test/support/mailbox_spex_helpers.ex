@@ -72,6 +72,17 @@ defmodule CodeMySpecSpex.MailboxHelpers do
   end
 
   @doc """
+  The model calls its tool, and the turn's next request is held: the agent is
+  mid-turn with one tool call done (story 1051, criterion 2179).
+  """
+  def still_working_after_a_tool_call(ctx) do
+    before = length(HeldProvider.seen())
+    HeldProvider.release_with_tool_call("read", %{"file_path" => ctx.note_path}, then: :hold)
+    await(fn -> length(HeldProvider.seen()) > before end)
+    ctx
+  end
+
+  @doc """
   What the agent's model was sent in the request after `boundary/1`.
 
   By position, not the latest: once the turn ends, a queued message starts the

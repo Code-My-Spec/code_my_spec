@@ -53,10 +53,15 @@ defmodule CmsHarness.Agents.Engine.Server do
     end
   end
 
-  # The send-now middleware runs in the Alloy process, and the channel takes a
-  # mailbox request only from the agent's engine, so the engine asks for it.
-  def handle_call(:take_send_now, _from, state) do
-    {:reply, Impl.take_send_now(state), state}
+  # A message sent now to a busy agent (story 1051): the turn stops here and
+  # the message is the next one. Nothing running is nothing to stop.
+  def handle_call(:interrupt, _from, %{turn: nil} = state), do: {:reply, :idle, state}
+
+  def handle_call(:interrupt, _from, state) do
+    case Impl.interrupt_turn(state) do
+      {:noreply, state} -> {:reply, :ok, state}
+      {:stop, reason, state} -> {:stop, reason, {:error, reason}, state}
+    end
   end
 
   def handle_call(:alloy, _from, state) do
@@ -91,6 +96,11 @@ defmodule CmsHarness.Agents.Engine.Server do
 
     {:noreply, state}
   end
+
+  def handle_info({:turn_progress, messages}, %{turn: %{} = turn} = state),
+    do: {:noreply, %{state | turn: %{turn | progress: messages}}}
+
+  def handle_info({:turn_progress, _messages}, state), do: {:noreply, state}
 
   def handle_info({task_ref, result}, %{turn: %{task: %Task{ref: task_ref}}} = state) do
     Process.demonitor(task_ref, [:flush])

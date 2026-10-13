@@ -16,9 +16,11 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
   message for its next turn boundary. The response arrives in the agent's
   conversation. Queuing does not count as delivery when judging its Offer.
 
-  `send_now` lets the message into a busy agent's running turn at its next
-  tool boundary instead (story 1051). A queued message's id is in the reply,
-  so `withdraw_message` can take it back until the agent has it.
+  `send_now` stops a busy agent's running turn so the message is its next one
+  (story 1051); the agent keeps what it did up to its last completed tool call.
+  For a correction to work in progress, use it: queued, the message waits out
+  the very work it corrects. A queued message's id is in the reply, so
+  `withdraw_message` can take it back until the agent has it.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -39,8 +41,9 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
 
     field :send_now, :boolean,
       doc:
-        "Reach a busy agent at its next tool call, inside its running turn, instead of " <>
-          "when the turn ends. Nothing is cancelled."
+        "Stop a busy agent's running turn so this message is its next one, instead of " <>
+          "waiting for the turn to end. The agent keeps what it did up to its last " <>
+          "completed tool call. Use it to correct work in progress."
   end
 
   @impl true

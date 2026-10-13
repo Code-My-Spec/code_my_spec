@@ -61,19 +61,20 @@ defmodule CodeMySpecTest.InProcessAgentTransport do
 
         Mailbox.consume(scope, id, ref, generation)
       end)
-      |> Map.put("on_send_now", fn id, generation ->
-        scope = %CodeMySpec.Users.Scope{
-          active_account_id: agent.account_id,
-          active_project_id: agent.project_id,
-          active_working_copy_id: agent.working_copy_id
-        }
-
-        Mailbox.take_send_now(scope, id, generation)
-      end)
 
     # Presence is the channel's to keep, and there is no channel here.
     :ok = CodeMySpecTest.PresenceRelay.relay(agent)
     Agents.launch(request)
+  end
+
+  # The engine is in this VM, so the interrupt goes straight to it: what the
+  # channel's `interrupt_turn` push does on a real machine (story 1051).
+  @impl true
+  def interrupt_turn(_working_copy_id, agent) do
+    case Agents.interrupt(agent.id) do
+      result when result in [:ok, :idle] -> :ok
+      error -> error
+    end
   end
 
   @impl true

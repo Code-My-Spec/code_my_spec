@@ -29,6 +29,9 @@ defmodule CmsHarness.Agents.ShellTimeoutTest do
     assert output =~ "exit code: 7"
   end
 
+  # Three seconds against a thirty-second sleep, as the test above: at 500 ms a
+  # loaded gate machine had not yet run the `printf` when the timeout fired, and
+  # the batch was ejected for output that was never printed (2026-10-13).
   test "timeout retains output without a trailing newline" do
     assert {:error, output} = Shell.run("printf partial-marker; sleep 30", nil, 3_000)
     assert output =~ "timed out"

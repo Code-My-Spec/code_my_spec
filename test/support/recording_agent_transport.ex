@@ -38,11 +38,18 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
 
   defp drain_since(before, deadline \\ System.monotonic_time(:millisecond) + 500) do
     new_children =
-      CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new() |> MapSet.difference(before)
+      CodeMySpec.TaskSupervisor
+      |> Task.Supervisor.children()
+      |> MapSet.new()
+      |> MapSet.difference(before)
 
     cond do
-      Enum.empty?(new_children) -> :ok
-      System.monotonic_time(:millisecond) >= deadline -> :ok
+      Enum.empty?(new_children) ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        :ok
+
       true ->
         Process.sleep(10)
         drain_since(before, deadline)
@@ -53,6 +60,12 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
   def dispatch_message(_working_copy_id, agent, ref, message, _timeout) do
     send(owner(), {:agent_dispatch, agent.id, ref, message})
     {:ok, :started}
+  end
+
+  @impl true
+  def interrupt_turn(_working_copy_id, agent) do
+    send(owner(), {:turn_interrupted, agent.id})
+    :ok
   end
 
   @impl true

@@ -40,8 +40,8 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   names itself — a `nil` id three steps later reads as a routing failure when
   it was a malformed ask.
   """
-  @spec ask(map(), String.t(), [String.t()]) :: String.t()
-  def ask(context, question, options \\ ["Yes", "No"]) do
+  @spec ask(map(), String.t(), [String.t()], keyword()) :: String.t()
+  def ask(context, question, options \\ ["Yes", "No"], opts \\ []) do
     params = %{
       questions: [
         %{
@@ -51,7 +51,10 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
       ]
     }
 
-    ensure_main_on_duty(context.scope)
+    # Criterion 1201's own premise is nobody on duty to hold it — forcing one
+    # into existence here would be the one scenario this guarantees can never
+    # run.
+    if Keyword.get(opts, :ensure_main_on_duty, true), do: ensure_main_on_duty(context.scope)
     {:reply, reply, _frame} = AskUserQuestion.execute(params, asking_frame(context))
 
     refute reply.isError,

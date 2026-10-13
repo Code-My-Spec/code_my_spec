@@ -2295,6 +2295,8 @@ defmodule CodeMySpec.Agents do
              Keyword.get(opts, :sender_id, "operator"),
              Keyword.take(opts, [:send_now])
            ) do
+      if Keyword.get(opts, :send_now), do: interrupt_if_busy(scope, agent.id)
+
       result =
         deliver_recorded(agent, admission, timeout)
         |> record_dispatch_result(message, offered)
@@ -2495,13 +2497,35 @@ defmodule CodeMySpec.Agents do
     do: Mailbox.withdraw(scope, id, ref)
 
   @doc """
-  Let a message already waiting for the turn to end into the running turn, at
-  its next tool boundary (story 1051). A message the agent has already taken is
-  refused as delivered.
+  Send a message that is waiting for the turn to end now (story 1051): it goes
+  to the front of the queue, and a busy agent's turn is stopped so it is the
+  next one. The agent keeps what it did up to its last completed tool call. A
+  message the agent has already taken is refused as delivered.
+
+  This used to let the message in at the turn's next tool boundary, and the
+  server only handed it over inside a turn the mailbox had started: a turn the
+  graph started never took it, and a correction to team 2's coder waited out
+  sixteen minutes of the work it was correcting (John, 2026-10-13).
   """
   @spec send_now(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, term()} | {:error, term()}
-  def send_now(%Scope{} = scope, id, ref) when is_binary(ref),
-    do: Mailbox.send_now(scope, id, ref)
+  def send_now(%Scope{} = scope, id, ref) when is_binary(ref) do
+    with {:ok, _} = sent <- Mailbox.send_now(scope, id, ref) do
+      interrupt_if_busy(scope, id)
+      sent
+    end
+  end
+
+  # Mid-turn is the row's `turn_started_at`. Idle, the message already starts
+  # the next turn and there is nothing to stop.
+  defp interrupt_if_busy(scope, id) do
+    case AgentsRepository.fetch_agent(scope, id) do
+      {:ok, %Agent{turn_started_at: %DateTime{}} = agent} ->
+        Transport.interrupt_turn(agent.working_copy_id, agent)
+
+      _idle_or_gone ->
+        :ok
+    end
+  end
 
   @doc """
   Write one step an agent took to the conversation it belongs to.

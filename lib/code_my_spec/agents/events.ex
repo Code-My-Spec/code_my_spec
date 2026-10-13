@@ -15,6 +15,7 @@ defmodule CodeMySpec.Agents.Events do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.IssueAssignment
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
@@ -31,6 +32,7 @@ defmodule CodeMySpec.Agents.Events do
   @tap_out_denied [:code_my_spec, :notifications, :tap_out_denied]
   @decision_reached [:code_my_spec, :notifications, :decision_reached]
   @answer_reached [:code_my_spec, :notifications, :answer_reached]
+  @escalated_answer_reached [:code_my_spec, :notifications, :escalated_answer_reached]
 
   @doc "Attach every handler. Called once, after the application tree starts."
   def attach do
@@ -46,7 +48,8 @@ defmodule CodeMySpec.Agents.Events do
         @decline_cleared,
         @tap_out_denied,
         @decision_reached,
-        @answer_reached
+        @answer_reached,
+        @escalated_answer_reached
       ],
       &__MODULE__.handle_event/4,
       nil
@@ -203,6 +206,17 @@ defmodule CodeMySpec.Agents.Events do
     :ok
   catch
     kind, reason -> log(:answer_reached, kind, reason)
+  end
+
+  def handle_event(@escalated_answer_reached, _measurements, meta, _config) do
+    case MainAgent.escalator(meta.scope, meta.asker, meta.escalated_by) do
+      nil -> :ok
+      agent -> _ = Agents.send_to_agent(agent.id, meta.text, :own_reply)
+    end
+
+    :ok
+  catch
+    kind, reason -> log(:escalated_answer_reached, kind, reason)
   end
 
   # `catch`, not `rescue`: an exit (a sandbox owner gone, a call timing out)

@@ -1024,6 +1024,17 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # A message sent now to a busy agent (story 1051): stop its turn so the
+  # message is the next one. Off this process, because stopping waits on the
+  # agent's turn to shut down and this one carries every hook and report.
+  def handle_message(_topic, "interrupt_turn", %{"agent_id" => agent_id}, socket) do
+    Task.Supervisor.start_child(Sync.task_supervisor(socket.assigns.project.root), fn ->
+      CmsHarness.Agents.interrupt(agent_id)
+    end)
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "cancel_analysis", payload, socket) do
     root = socket.assigns.project.root
     reason = Map.get(payload, "reason") || "cancelled by the server"
@@ -1831,6 +1842,16 @@ defmodule CmsHarness.Project.ChannelClient do
   # from a fixed list; the round trip is pinned in `FsResultReasonTest`.
   @doc false
   def encode_fs_result(:ok), do: %{"ok" => true}
+  # Bytes that are not text travel as base64: a screenshot read for QA's
+  # evidence went into the JSON reply as raw PNG, the encoder raised, and the
+  # crash took this copy's channel and both its agents' turns down
+  # (2026-10-13). `decode_fs_result/1` on the server reverses it.
+  def encode_fs_result({:ok, result}) when is_binary(result) do
+    if String.valid?(result),
+      do: %{"ok" => true, "result" => result},
+      else: %{"ok" => true, "result_base64" => Base.encode64(result)}
+  end
+
   def encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
   # A refusal with structure keeps it.
   #

@@ -1,7 +1,9 @@
 defmodule CodeMySpecWeb.UserSessionControllerTest do
   use CodeMySpecTest.ConnCase, async: true
 
+  import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
+  alias CodeMySpec.Accounts
   alias CodeMySpec.Users
 
   setup do
@@ -123,6 +125,30 @@ defmodule CodeMySpecWeb.UserSessionControllerTest do
                "The link is invalid or it has expired."
 
       assert redirected_to(conn) == ~p"/users/log-in"
+    end
+  end
+
+  describe "GET /users/log-in/:token - a token minted directly through Users.mint_login_token/1" do
+    # Issue a0880cf1: a QA seed signs QA in as an account's owner by finding
+    # that owner via Accounts.get_account_owner/1 and minting a login token
+    # for them directly (CodeMySpecWeb.DevSignInController's own mechanism,
+    # just without going through a password). This pins that the owner found
+    # that way really is who the resulting URL signs in as.
+    test "signs in as the account's owner, not whoever minted it", %{conn: conn, user: user} do
+      account = account_with_owner_fixture(user)
+      owner = Accounts.get_account_owner(account.id)
+      assert owner.id == user.id
+
+      token = Users.mint_login_token(owner)
+
+      conn = get(conn, ~p"/users/log-in/#{token}")
+
+      assert get_session(conn, :user_token)
+      assert redirected_to(conn) == ~p"/app"
+
+      conn = get(conn, ~p"/")
+      response = html_response(conn, 200)
+      assert response =~ owner.email
     end
   end
 

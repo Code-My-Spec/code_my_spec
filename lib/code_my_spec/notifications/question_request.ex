@@ -51,6 +51,12 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
   schema "question_requests" do
     field :title, :string
     field :task_id, :string
+
+    # Copied off the task at creation, the same way `task_id` is, so a
+    # duplicate ask for the same story can be found without walking every
+    # session's embedded tasks to resolve one.
+    field :story_id, :integer
+
     field :questions, {:array, :map}, default: []
     field :status, :string, default: "pending"
     field :answers, :map, default: %{}
@@ -78,6 +84,10 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     # question that arrived with a reason rather than one that simply appeared,
     # and so the main agent can tell its own escalations apart on the way back.
     field :escalation_reason, :string
+
+    # The holder that handed it to the user (`main_agent` or `product_agent`),
+    # told the user's answer as well as the asker.
+    field :escalated_by, :string
 
     # Why the asker took it back, when it did (`status: "withdrawn"`).
     field :withdrawn_reason, :string
@@ -110,6 +120,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :user_id,
       :agent_id,
       :task_id,
+      :story_id,
       :conversation_message_id,
       :title,
       :questions,
@@ -120,6 +131,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :overruled,
       :answer_history,
       :escalation_reason,
+      :escalated_by,
       :withdrawn_reason,
       :session_external_id
     ])

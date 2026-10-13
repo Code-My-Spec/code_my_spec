@@ -118,6 +118,18 @@ defmodule CodeMySpec.Agents.Transport.Harness do
     end
   end
 
+  @impl true
+  def interrupt_turn(working_copy_id, %Agent{} = agent) do
+    case holder(working_copy_id) do
+      {:ok, pid} ->
+        send(pid, {:interrupt_turn, agent.id})
+        :ok
+
+      :none ->
+        {:error, :harness_not_connected}
+    end
+  end
+
   # The channel holding this copy, or nothing.
   #
   # Through `Analysis.executor_holder/1` rather than a `Registry.lookup/2` of

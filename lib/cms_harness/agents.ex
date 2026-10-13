@@ -104,7 +104,6 @@ defmodule CmsHarness.Agents do
       # caller.
       on_event: request["on_event"] || reporter_for(request["working_copy"]),
       on_consume: request["on_consume"],
-      on_send_now: request["on_send_now"],
       on_register:
         request["on_register"] ||
           fn agent_id, generation ->
@@ -161,6 +160,13 @@ defmodule CmsHarness.Agents do
   @doc "Request coalescible work on an idle engine; this carries no queued instruction."
   def request_work_turn(agent_id, ref, text, timeout \\ 180_000),
     do: Engine.request_work_turn(agent_id, ref, text, timeout)
+
+  @doc """
+  Stop this agent's running turn so a message sent now is its next one (story
+  1051). It keeps what it did up to its last completed tool call.
+  """
+  @spec interrupt(String.t()) :: :ok | :idle | {:error, term()}
+  defdelegate interrupt(agent_id), to: Engine
 
   @doc """
   Whether the agent currently has an executing turn.

@@ -225,7 +225,16 @@ defmodule CodeMySpec.Notifications do
       where: is_nil(r.agent_id) or r.agent_id not in subquery(stopped_agent_ids()),
       order_by: [desc: r.inserted_at]
     )
+    |> held_by_user(schema)
   end
+
+  # Criteria 2075/2076/2123: a question main or product is still holding, or
+  # handed to each other, is not the user's to see yet — only `holder ==
+  # "user"` rows belong in their inbox. A permission request has no `holder`
+  # column; its own visibility to the user is a separate concern this filter
+  # leaves untouched.
+  defp held_by_user(query, QuestionRequest), do: where(query, [r], r.holder == "user")
+  defp held_by_user(query, PermissionRequest), do: query
 
   # Off or retired: nobody means it to run. An agent on duty whose process is
   # down — restoring, or crashed — is still meant to answer.
@@ -233,6 +242,10 @@ defmodule CodeMySpec.Notifications do
     from(a in Agent, where: not is_nil(a.off_at) or not is_nil(a.retired_at), select: a.id)
   end
 
+  # Unlike `pending_query`, not filtered by holder: criterion 1197 is exactly
+  # this distinction — removing the interruption while main or product holds
+  # it is not removing the record once it is resolved, so the user's history
+  # always carries what they fielded on their behalf.
   defp resolved_query(schema, user_id) do
     from(r in schema,
       where: r.user_id == ^user_id and r.status != "pending",
@@ -954,19 +967,20 @@ defmodule CodeMySpec.Notifications do
         result =
           Repo.transaction(fn ->
             with {:ok, task} <- question_task(session, task_ref),
-                 attrs = Map.put(attrs, "task_id", task && task.id),
-                 {:ok, request} <- insert_question_request(user_id, attrs),
-                 :ok <- block_question_task(scope, session, task, request) do
-              request
+                 attrs =
+                   Map.merge(attrs, %{
+                     "task_id" => task && task.id,
+                     "story_id" => task && task.story_id
+                   }),
+                 {:ok, outcome} <- save_or_reuse_question_request(user_id, attrs),
+                 :ok <- block_question_task(scope, session, task, request_from(outcome)) do
+              outcome
             else
               {:error, reason} -> Repo.rollback(reason)
             end
           end)
 
-        with {:ok, request} <- result do
-          deliver_question(request)
-          {:ok, request}
-        end
+        deliver_if_new(result)
     end
   end
 
@@ -984,20 +998,73 @@ defmodule CodeMySpec.Notifications do
           )
 
         with {:ok, task} <- question_task(owner, task_ref),
-             attrs = Map.merge(attrs, %{"agent_id" => agent_id, "task_id" => task && task.id}),
-             {:ok, request} <- insert_question_request(scope.user.id, attrs),
-             :ok <- block_question_task(scope, owner, task, request) do
-          request
+             attrs =
+               Map.merge(attrs, %{
+                 "agent_id" => agent_id,
+                 "task_id" => task && task.id,
+                 "story_id" => task && task.story_id
+               }),
+             {:ok, outcome} <- save_or_reuse_question_request(scope.user.id, attrs),
+             :ok <- block_question_task(scope, owner, task, request_from(outcome)) do
+          outcome
         else
           {:error, reason} -> Repo.rollback(reason)
         end
       end)
 
-    with {:ok, request} <- result do
-      deliver_question(request)
-      {:ok, request}
+    deliver_if_new(result)
+  end
+
+  # Issue fe683550: an agent whose wake decided to ask again before the
+  # answer to its last identical question had arrived used to get a brand
+  # new row, a brand new push, and a brand new wait — the exact repro was a
+  # re-ask 58s after the first had already been answered. Reusing an open or
+  # just-answered duplicate instead means the new blocker resolves against an
+  # answer that may already be sitting there, rather than queueing behind one
+  # nobody is going to send twice.
+  @dedup_window_seconds 120
+
+  defp save_or_reuse_question_request(user_id, attrs) do
+    case duplicate_question_request(user_id, attrs) do
+      nil ->
+        with {:ok, request} <- insert_question_request(user_id, attrs), do: {:ok, {:new, request}}
+
+      %QuestionRequest{} = request ->
+        {:ok, {:duplicate, request}}
     end
   end
+
+  defp request_from({_tag, request}), do: request
+
+  defp deliver_if_new({:ok, {:new, request}}) do
+    deliver_question(request)
+    {:ok, request}
+  end
+
+  defp deliver_if_new({:ok, {:duplicate, request}}), do: {:ok, request}
+  defp deliver_if_new(error), do: error
+
+  defp duplicate_question_request(user_id, %{"questions" => [_ | _] = questions} = attrs) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@dedup_window_seconds, :second)
+
+    QuestionRequest
+    |> where([q], q.user_id == ^user_id and q.questions == ^questions)
+    |> where([q], q.status == "pending" or (q.status == "answered" and q.updated_at > ^cutoff))
+    |> scoped_to_same_story_or_task(attrs)
+    |> order_by([q], desc: q.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp duplicate_question_request(_user_id, _attrs), do: nil
+
+  defp scoped_to_same_story_or_task(query, %{"story_id" => story_id}) when not is_nil(story_id),
+    do: where(query, [q], q.story_id == ^story_id)
+
+  defp scoped_to_same_story_or_task(query, %{"task_id" => task_id}) when not is_nil(task_id),
+    do: where(query, [q], q.task_id == ^task_id)
+
+  defp scoped_to_same_story_or_task(query, _attrs), do: where(query, [q], false)
 
   defp question_task(nil, _task_ref), do: {:error, :owner_not_found}
   defp question_task(_owner, nil), do: {:ok, nil}
@@ -1195,6 +1262,7 @@ defmodule CodeMySpec.Notifications do
       # nobody, because nothing in front of the agent changed.
       {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :answered)
       deliver_answer_content(updated, released > 0)
+      tell_escalator(updated)
       {:ok, updated}
     end
   end
@@ -1256,6 +1324,42 @@ defmodule CodeMySpec.Notifications do
       _released_or_gone ->
         :ok
     end
+  end
+
+  # The agent that handed the question up hears the answer too: it escalated
+  # it, and an answer that went only to the asker left product unable to act
+  # on the user's decision or even read it (2026-10-13).
+  defp tell_escalator(%{escalated_by: by, agent_id: asker_id} = request)
+       when is_binary(by) and is_binary(asker_id) do
+    case Repo.get(Agent, asker_id) do
+      %Agent{} = asker ->
+        announce(:escalated_answer_reached, %{
+          scope: owner_scope(asker),
+          asker: asker,
+          escalated_by: by,
+          text: escalator_message(request, asker)
+        })
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp tell_escalator(_request), do: :ok
+
+  defp escalator_message(%{questions: questions, answers: answers} = request, asker) do
+    body =
+      Enum.map_join(questions, "\n\n", fn question ->
+        text = MapAccess.get(question, :question)
+        "Q: #{text}\nA: #{said(answers, text)}"
+      end)
+
+    """
+    The user answered question #{request.id}, which you escalated for the \
+    #{asker.role} agent #{asker.id}. The asker has the answer too.
+
+    #{body}
+    """
   end
 
   # What the agent reads mid-turn. Self-contained, because it is arriving in

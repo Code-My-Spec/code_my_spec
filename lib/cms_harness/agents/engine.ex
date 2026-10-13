@@ -26,6 +26,9 @@ defmodule CmsHarness.Agents.Engine do
 
   def status(agent_id), do: call(agent_id, :status)
 
+  @doc "Stop the running turn for a message sent now (story 1051). `:idle` when none runs."
+  def interrupt(agent_id), do: call(agent_id, :interrupt)
+
   def agent_tools(agent_id), do: optional_call(agent_id, :tools, [])
   def mcp_client(agent_id), do: optional_call(agent_id, :mcp_client, nil)
 
