@@ -22,7 +22,10 @@ defmodule CodeMySpec.Requirements.NestedDependencyEdgesTest do
     watcher = component("watcher", "module", requirements.id)
     edges = edges([namespace, faults, requirements, watcher])
 
-    assert edge(faults, watcher) in edges
+    # Through the context's junction: the dependency gates it once, and it
+    # gates each child.
+    assert %{from: key(faults), to: junction(requirements)} in edges
+    assert %{from: junction(requirements), to: key(watcher)} in edges
     assert edge(watcher, requirements) in edges
   end
 
@@ -47,5 +50,6 @@ defmodule CodeMySpec.Requirements.NestedDependencyEdgesTest do
   end
 
   defp key(component), do: {"component", component.id, "implementation_file"}
+  defp junction(component), do: {"component", component.id, "dependencies_met"}
   defp edge(from, to), do: %{from: key(from), to: key(to)}
 end

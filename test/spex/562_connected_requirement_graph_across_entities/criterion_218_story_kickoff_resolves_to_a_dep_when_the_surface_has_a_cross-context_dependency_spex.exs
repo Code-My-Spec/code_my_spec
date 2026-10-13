@@ -41,8 +41,10 @@ defmodule CodeMySpecSpex.Story562.Criterion5649Spex do
         bdd_exist_key =
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
 
+        # A context's first requirement is the junction its dependencies gate
+        # its children through.
         dep_first_key =
-          GraphAssertions.node_key("component", context.dep_context.id, "implementation_file")
+          GraphAssertions.node_key("component", context.dep_context.id, "dependencies_met")
 
         assert GraphAssertions.edge?(context.graph, bdd_exist_key, dep_first_key),
                "expected bdd_specs_exist to kickoff at the dep's first requirement (#{dep_first_key})"

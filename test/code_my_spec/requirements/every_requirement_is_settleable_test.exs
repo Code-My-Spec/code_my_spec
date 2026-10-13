@@ -30,7 +30,10 @@ defmodule CodeMySpec.Requirements.EveryRequirementIsSettleableTest do
   # nothing currently needs one; kept as a real map, not deleted, because the
   # next name that genuinely is settled some other way should have a reason
   # written here rather than the test being loosened to `true`.
-  @not_via_handlers %{}
+  @not_via_handlers %{
+    "dependencies_met" =>
+      "a container's dependency junction: `check_type: :always`, so no event can move it"
+  }
 
   @component_types ~w(context coordination_context live_context controller schema
                       behaviour json liveview liveview_component other)

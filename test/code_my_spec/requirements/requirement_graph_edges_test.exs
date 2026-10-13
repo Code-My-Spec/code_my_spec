@@ -298,11 +298,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      # Should have entry edge to context (direct dependency)
+      # Should have entry edge to context (direct dependency), at the junction
+      # its dependencies gate it through
       ctx_entry =
         Enum.find(edges, fn e ->
           e.from == {"story", story.id, "bdd_specs_exist"} and
-            e.to == {"component", context.id, "implementation_file"}
+            e.to == {"component", context.id, "dependencies_met"}
         end)
 
       assert ctx_entry, "should have entry edge to direct dependency context"
@@ -456,7 +457,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       assert Enum.any?(edges, fn e ->
                e.from == {"story", story.id, "bdd_specs_exist"} and
-                 e.to == {"component", context.id, "implementation_file"}
+                 e.to == {"component", context.id, "dependencies_met"}
              end),
              "the real, file-backed dependency context must still be reached"
     end
@@ -482,8 +483,14 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       assert Enum.all?(
                Enum.filter(nodes, &(&1.entity_type == "component")),
-               &(&1.name == "implementation_file")
+               &(&1.name in ["implementation_file", "dependencies_met"])
              )
+
+      # Dependencies gate the children through the context's junction.
+      assert %{
+               from: {"component", parent.id, "dependencies_met"},
+               to: {"component", child.id, "implementation_file"}
+             } in edges
 
       assert %{
                from: {"component", child.id, "implementation_file"},

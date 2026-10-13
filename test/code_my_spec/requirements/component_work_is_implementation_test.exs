@@ -9,7 +9,13 @@ defmodule CodeMySpec.Requirements.ComponentWorkIsImplementationTest do
           ~w(context coordination_context live_context controller schema behaviour json liveview liveview_component repository module infrastructure) do
       definitions = Definitions.graph_for_type(type)
       ids = MapSet.new(definitions, & &1.id)
-      assert Enum.all?(definitions, &(&1.name == "implementation_file"))
+      # Work is implementation; the one other node is a container's dependency
+      # junction, which is never work.
+      assert Enum.all?(definitions, fn definition ->
+               definition.name == "implementation_file" or
+                 (definition.name == "dependencies_met" and definition.check_type == :always and
+                    is_nil(definition.satisfied_by))
+             end)
 
       assert Enum.all?(definitions, fn definition ->
                Enum.all?(definition.prerequisites, &MapSet.member?(ids, &1))
