@@ -716,6 +716,14 @@ defmodule CodeMySpec.Agents.Main do
   defp why(:no_precedent),
     do: "no earlier decision of yours covers this"
 
+  defp why(:no_citation),
+    do: "the main agent had nothing to cite from its own reading, so this is yours to decide"
+
+  defp why({:not_inspected, citation}),
+    do:
+      "the main agent cited #{inspect(citation)}, which does not match anything in its own " <>
+        "session, so this is yours to decide"
+
   defp why(reason), do: "the main agent could not answer this: #{inspect(reason)}"
 
   @doc """
@@ -1067,6 +1075,19 @@ defmodule CodeMySpec.Agents.Main do
     fits?(scope, question, Keyword.get(opts, :precedent_id))
   end
 
+  # Issue da5a5ebf: `record` and `precedent` are the only two bases, and
+  # neither covers an answer grounded in the answerer's own reading -- a code
+  # review, a config file, project state read through its own tools. Six
+  # occurrences of the same refusal: a correct, substance-backed answer with
+  # nowhere to go, because what it rests on is not a project row and is not an
+  # earlier answered question either. `inspected` (criteria 2180, 2181) is
+  # that third basis: the citation is checked against the answerer's own
+  # session, the same way `record` is checked against the project's rows, so
+  # this cannot become a free pass for "I looked at something" either.
+  defp verify("inspected", scope, _question, _answer, opts) do
+    inspected?(scope, Keyword.get(opts, :inspector_id), Keyword.get(opts, :citation))
+  end
+
   defp verify(basis, _scope, _question, _answer, _opts), do: {:error, {:unknown_basis, basis}}
 
   # The project has to actually contain the answer.
@@ -1191,6 +1212,32 @@ defmodule CodeMySpec.Agents.Main do
   defp texts(%{questions: questions}) do
     Enum.map(questions, fn question -> MapAccess.get(question, :question) end)
   end
+
+  # A citation is a claim about the answerer's own session, and a claim about
+  # a session is checkable the same way a claim about the project is: it has
+  # to name something actually there. `read_agent_conversation/3` is already
+  # how everything else reads a session back; this is the first caller that
+  # checks what it reads rather than just displaying it.
+  defp inspected?(_scope, nil, _citation), do: {:error, :no_citation}
+  defp inspected?(_scope, _inspector_id, citation) when citation in [nil, ""] do
+    {:error, :no_citation}
+  end
+
+  defp inspected?(scope, inspector_id, citation) do
+    case read_agent_conversation(scope, inspector_id) do
+      {:ok, %{turns: turns}} ->
+        turns
+        |> Enum.map_join("\n", &turn_line/1)
+        |> String.contains?(citation)
+        |> inspected(citation)
+
+      {:error, _reason} ->
+        {:error, :no_citation}
+    end
+  end
+
+  defp inspected(true, _citation), do: {:ok, :inspected}
+  defp inspected(false, citation), do: {:error, {:not_inspected, citation}}
 
   # An answer the user already gave says so.
   #
