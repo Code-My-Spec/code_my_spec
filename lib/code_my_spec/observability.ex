@@ -28,7 +28,7 @@ defmodule CodeMySpec.Observability do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.ProjectSecrets, CodeMySpec.Users, CodeMySpec.Users.Scope],
+    deps: [CodeMySpec.ProjectSecrets, CodeMySpec.Users.Scope],
     exports: :all
 
   alias CodeMySpec.Observability.ClickHouseClient

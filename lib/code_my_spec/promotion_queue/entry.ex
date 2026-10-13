@@ -11,6 +11,7 @@ defmodule CodeMySpec.PromotionQueue.Entry do
   or nothing.
   """
 
+  use Boundary, top_level?: true, deps: [], exports: :all
   use Ecto.Schema
 
   import Ecto.Changeset

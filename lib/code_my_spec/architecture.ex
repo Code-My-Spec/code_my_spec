@@ -11,9 +11,7 @@ defmodule CodeMySpec.Architecture do
     deps: [
       CodeMySpec.Components,
       CodeMySpec.Documents,
-      CodeMySpec.Environments,
       CodeMySpec.Files,
-      CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope

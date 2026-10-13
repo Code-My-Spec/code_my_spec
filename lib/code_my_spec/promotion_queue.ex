@@ -30,13 +30,14 @@ defmodule CodeMySpec.PromotionQueue do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Promotion,
+      CodeMySpec.PromotionQueue.Entry,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
-    exports: [Entry, Worker]
+    exports: [Worker]
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Promotion
@@ -208,25 +209,6 @@ defmodule CodeMySpec.PromotionQueue do
   @doc "A queue entry by id, or nil."
   @spec get(Ecto.UUID.t()) :: Entry.t() | nil
   def get(id), do: Repository.get(id)
-
-  @doc """
-  The open candidate this agent asked for, or nil.
-
-  Open is `:queued` or `:gating`: the landing or ejection will reach the
-  requester. A resolved entry is the agent's own turn to take.
-  """
-  @spec awaited_by(Ecto.UUID.t()) :: Entry.t() | nil
-  def awaited_by(agent_id), do: Repository.awaited_by(agent_id)
-
-  @doc """
-  Whether this agent's task on `subject` waits on the queue.
-
-  An open entry for the task's own subject means the wait is the queue's and
-  nothing the agent does shortens it.
-  """
-  @spec open_for(Ecto.UUID.t(), String.t(), String.t()) :: boolean()
-  def open_for(agent_id, subject_type, subject_id),
-    do: Repository.open_for(agent_id, subject_type, subject_id)
 
   @doc "What to tell the caller that enqueued."
   @spec queued_text({:ok, map()} | {:error, map()}) :: String.t()

@@ -3,7 +3,7 @@ defmodule CodeMySpec.Utils do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Paths, CodeMySpec.Repo],
+    deps: [CodeMySpec.Paths],
     exports: :all
 
   require Logger
