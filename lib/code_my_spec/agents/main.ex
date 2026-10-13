@@ -49,6 +49,7 @@ defmodule CodeMySpec.Agents.Main do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Questions
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
@@ -1087,8 +1088,10 @@ defmodule CodeMySpec.Agents.Main do
   # behind them, and 3220 and 3222 exist because a cited record can still be
   # the wrong one.
   defp recorded?(scope, question, answer) do
-    [&epic_membership/2, &fleet/2, &filed_issues/2]
-    |> Enum.any?(fn reading -> reading.(scope, answer) end)
+    readings = [&epic_membership/2, &fleet/2, &filed_issues/2]
+
+    (Enum.any?(readings, fn reading -> reading.(scope, answer) end) or
+       resolved_questions(scope, question, answer))
     |> supported(question)
   end
 
@@ -1128,6 +1131,21 @@ defmodule CodeMySpec.Agents.Main do
 
   defp short_id(id) when is_binary(id), do: String.slice(id, 0, 8)
   defp short_id(_id), do: nil
+
+  # Issue 5a78b7c4: a resolved Question (BDD red card) is a record main
+  # itself just wrote, on a story, the same way an accepted issue is one
+  # someone else already filed - and the original three readings missed it
+  # entirely. `question` carries no story of its own until it is one of
+  # these, so there is nothing to check without it.
+  defp resolved_questions(_scope, %{story_id: nil}, _answer), do: false
+
+  defp resolved_questions(scope, %{story_id: story_id}, answer) do
+    scope
+    |> Questions.list_questions_for_story(story_id)
+    |> Enum.filter(&(&1.status == :resolved))
+    |> Enum.map(&short_id(&1.id))
+    |> names?(answer)
+  end
 
   # A needle short enough to appear by accident makes every answer recorded,
   # which is the failure the basis exists to prevent. A copy rooted at `/`, or
