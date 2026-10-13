@@ -708,11 +708,6 @@ defmodule CodeMySpec.Agents.Main do
   defp why(:not_recorded),
     do: "the project does not record an answer to this, so it is yours to decide"
 
-  defp why(:precedent_does_not_fit),
-    do:
-      "this resembles something you decided before, and differs in a way that could " <>
-        "change the answer — so it is yours rather than ours to carry forward"
-
   defp why(:no_precedent),
     do: "no earlier decision of yours covers this"
 
@@ -1071,8 +1066,8 @@ defmodule CodeMySpec.Agents.Main do
     recorded?(scope, question, answer)
   end
 
-  defp verify("precedent", scope, question, _answer, opts) do
-    fits?(scope, question, Keyword.get(opts, :precedent_id))
+  defp verify("precedent", scope, _question, _answer, opts) do
+    fits?(scope, Keyword.get(opts, :precedent_id))
   end
 
   # Issue da5a5ebf: `record` and `precedent` are the only two bases, and
@@ -1187,30 +1182,24 @@ defmodule CodeMySpec.Agents.Main do
   defp supported(true, _question), do: {:ok, :record}
   defp supported(false, _question), do: {:error, :not_recorded}
 
-  # A precedent is the same question, not a similar one.
-  #
-  # 3258's whole subject. A search returns similar text by construction, so the
-  # claim has to be checked — and "same" is the question's own text, because any
-  # looser rule is the stretching the criterion forbids.
-  defp fits?(_scope, _question, nil), do: {:error, :no_precedent}
+  # Criterion 1228 ("a precedent is the same question, not a similar one")
+  # required the precedent's question text to match exactly, to stop a
+  # search-found, merely-similar answer being stretched over a different
+  # case. Retired by product (John, 2026-10-13, question 839bf593): never
+  # asked for, and it meant a precedent stating a general rule could never
+  # fit a differently-worded question either -- the rule had to be
+  # re-derived, or answered off the record, every time it came up worded
+  # differently (issue f43e1c5b). Criteria 2182/2183 are what replaces it:
+  # citing a precedent by id is the answerer's own judgement that it
+  # applies, and the only thing checked is that the id really is an
+  # answered question -- the citation is on the record either way.
+  defp fits?(_scope, nil), do: {:error, :no_precedent}
 
-  defp fits?(scope, question, precedent_id) do
-    scope
-    |> QuestionsRepository.fetch_answered(precedent_id)
-    |> same_question?(question)
-  end
-
-  defp same_question?(nil, _question), do: {:error, :no_precedent}
-
-  defp same_question?(earlier, question) do
-    matched(texts(earlier) == texts(question), earlier)
-  end
-
-  defp matched(false, _earlier), do: {:error, :precedent_does_not_fit}
-  defp matched(true, earlier), do: {:ok, {:precedent, earlier}}
-
-  defp texts(%{questions: questions}) do
-    Enum.map(questions, fn question -> MapAccess.get(question, :question) end)
+  defp fits?(scope, precedent_id) do
+    case QuestionsRepository.fetch_answered(scope, precedent_id) do
+      nil -> {:error, :no_precedent}
+      earlier -> {:ok, {:precedent, earlier}}
+    end
   end
 
   # A citation is a claim about the answerer's own session, and a claim about
