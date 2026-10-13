@@ -119,6 +119,11 @@ defmodule CodeMySpec.Agents.Mailbox do
 
   defp claim_entry(_agent, _active, _entry), do: nil
 
+  @lost_turn "Your turn ended while the harness could not reach the server, so how it " <>
+               "ended was not recorded. Everything that was recorded is above; a call with " <>
+               "no recorded result may or may not have taken effect. Carry on from your " <>
+               "last step."
+
   @doc "The current engine reports its generation and executing ref after startup/reconnect."
   def ready(scope, agent_id, generation, current_ref) do
     Repo.transaction(fn ->
@@ -131,6 +136,7 @@ defmodule CodeMySpec.Agents.Mailbox do
         )
 
       result = reconcile_engine(agent, active, generation, current_ref)
+      :ok = recover_unreported_turn(agent, active, current_ref)
 
       if is_nil(current_ref),
         do: agent |> Ecto.Changeset.change(turn_started_at: nil) |> Repo.update!()
@@ -157,6 +163,19 @@ defmodule CodeMySpec.Agents.Mailbox do
   # and was restarted. The turn carries on.
   defp reconcile_engine(agent, _entry, _new_generation, _ref), do: carry_on_locked(agent)
 
+  # A turn this side saw start, that the engine says is over, and that no entry
+  # here accounts for: a work or cadence turn whose `turn_ended` went out while
+  # the channel was down. Nothing settled it, so its offer stayed open and the
+  # agent sat idle until something else woke it — main's check-in at 00:25,
+  # cut by a server restart, until its next cadence (2026-10-13).
+  defp recover_unreported_turn(%{turn_started_at: %DateTime{}} = agent, nil, nil) do
+    :ok = Offers.supersede_queued(agent.id)
+    _ = carry_on_locked(agent, @lost_turn)
+    :ok
+  end
+
+  defp recover_unreported_turn(_agent, _active, _ref), do: :ok
+
   @carry_on "The harness restarted part-way through your turn. Everything up to that " <>
               "point is above, including each call you made and what it returned; a call " <>
               "with no recorded result may or may not have taken effect. Carry on from " <>
@@ -181,7 +200,7 @@ defmodule CodeMySpec.Agents.Mailbox do
     |> publish_transition()
   end
 
-  defp carry_on_locked(agent) do
+  defp carry_on_locked(agent, text \\ @carry_on) do
     now = DateTime.utc_now()
 
     for entry <-
@@ -214,7 +233,7 @@ defmodule CodeMySpec.Agents.Mailbox do
     ref = Ecto.UUID.generate()
 
     {:ok, message} =
-      Conversations.add_message(conversation, :operator, @carry_on, "system:restart", [],
+      Conversations.add_message(conversation, :operator, text, "system:restart", [],
         delivery: :pending,
         delivery_ref: ref
       )

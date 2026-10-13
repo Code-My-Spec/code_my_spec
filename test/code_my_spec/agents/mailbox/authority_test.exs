@@ -3,6 +3,7 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
   import CodeMySpec.UsersFixtures
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Mailbox
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias Ecto.Adapters.SQL.Sandbox
@@ -107,6 +108,35 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
 
     assert Repo.reload!(ctx.agent).turn_started_at == nil
     assert_receive {:agent_turn, %{turn_started_at: nil}}
+  end
+
+  # Main's cadence check-in at 00:25 ended while the server restarted; its
+  # `turn_ended` never arrived, the offer stayed open, and main sat idle until
+  # the next cadence (2026-10-13).
+  test "a work turn whose end was never reported carries on", ctx do
+    {:ok, prompt} =
+      Conversations.add_message(ctx.conversation, :operator, "Check-in.", "operator", [])
+
+    offer = Offers.record({:ok, prompt}, ctx.agent, :check_in, {"cadence", nil})
+
+    :ok =
+      CodeMySpec.Agents.record_turn_event(ctx.scope, ctx.agent.id, %{"kind" => "turn_started"})
+
+    Mailbox.ready(ctx.scope, ctx.agent.id, "engine-one", nil)
+
+    assert [%{event: "own_reply", state: :claimed, message_id: carry_on}] =
+             Mailbox.entries(ctx.scope, ctx.agent.id)
+
+    assert [%{"text" => text}] = Repo.get!(Conversations.Message, carry_on).content
+    assert text =~ "could not reach the server"
+    assert Repo.reload!(offer).status == :superseded
+    assert Repo.reload!(ctx.agent).turn_started_at == nil
+  end
+
+  test "an idle engine with no turn under way is not carried on", ctx do
+    Mailbox.ready(ctx.scope, ctx.agent.id, "engine-one", nil)
+
+    assert Mailbox.entries(ctx.scope, ctx.agent.id) == []
   end
 
   test "busy leaves the only payload queued in the database", ctx do
