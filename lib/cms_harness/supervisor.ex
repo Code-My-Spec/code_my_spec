@@ -100,6 +100,10 @@ defmodule CmsHarness.Supervisor do
       # Claude Code POSTs its hooks to a fixed URL. This is that URL.
       CmsHarness.Web.Endpoint,
 
+      # Its bound port, for the channel to report (`Config.local_port/0`) without
+      # the channel depending on the web layer.
+      {Task, fn -> CmsHarness.Config.record_local_port(CmsHarness.Web.bound_port()) end},
+
       # Keeps saying which of this machine's checkouts are still on disk. A
       # worktree is removed by a command that tells us nothing, and the copy it
       # held stops being scanned at that exact moment, so the only way to learn

@@ -281,4 +281,22 @@ defmodule CmsHarness.Config do
       _ -> "an unknown host"
     end
   end
+
+  @doc """
+  The harness endpoint's bound port, as `record_local_port/1` was told it once
+  the endpoint started (`CmsHarness.Supervisor`); the configured port before
+  that. Recorded here so the channel can report it without depending on the
+  web layer that calls it.
+  """
+  @spec local_port() :: pos_integer() | nil
+  def local_port do
+    :persistent_term.get({__MODULE__, :local_port}, nil) ||
+      get_in(Application.get_env(:code_my_spec, CmsHarness.Web.Endpoint, []), [:http, :port])
+  end
+
+  @doc false
+  def record_local_port(port) when is_integer(port) and port > 0,
+    do: :persistent_term.put({__MODULE__, :local_port}, port)
+
+  def record_local_port(_port), do: :ok
 end

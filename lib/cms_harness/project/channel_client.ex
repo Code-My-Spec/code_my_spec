@@ -66,7 +66,6 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Project.Transport
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
-  alias CmsHarness.Web.Endpoint
   alias CmsHarness.WorkingCopies.Create
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner.ReadModel
@@ -116,24 +115,6 @@ defmodule CmsHarness.Project.ChannelClient do
   # backoff, this is roughly 48 seconds — long enough that an ordinary handover
   # never produces the loud message.
   @refusal_retries 4
-
-  # The server needs this and cannot know it. `pre-tool-use` rewrites the agent's
-  # analysis command into a curl, and that curl points at this harness's own
-  # endpoint — a URL that only means anything on the machine running the agent.
-  # The server refuses to rewrite without it rather than pointing it somewhere
-  # plausible, which would produce a command that runs and reports against the
-  # wrong process.
-  #
-  # The *bound* port, not the configured one. They agree while the port is fixed
-  # at 4005, but a configured `port: 0` means "pick one", and reading the config
-  # back would hand the server a literal 0 — a curl to localhost:0, failing in a
-  # way that says nothing about why.
-  defp local_port do
-    case Endpoint.server_info(:http) do
-      {:ok, {_ip, port}} when is_integer(port) and port > 0 -> port
-      _ -> Endpoint.config(:http)[:port]
-    end
-  end
 
   defp join_timeout,
     do: Application.get_env(:code_my_spec, :harness_join_timeout, @default_join_timeout)
@@ -2189,7 +2170,7 @@ defmodule CmsHarness.Project.ChannelClient do
            socket,
            socket.assigns.topic,
            "hook_decision",
-           %{"hook" => hook, "payload" => payload, "port" => local_port()},
+           %{"hook" => hook, "payload" => payload, "port" => Config.local_port()},
            Channel.decision_timeout()
          ) do
       {:ok, ref} ->
