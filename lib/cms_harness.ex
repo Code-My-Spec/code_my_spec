@@ -44,6 +44,7 @@ defmodule CmsHarness do
   use Boundary,
     top_level?: true,
     deps: [
+      CmsHarness.Channel,
       CodeMySpec,
       # `ToolIndex.carried/1`, the one list of direct tools an agent carries.
       CodeMySpec.Agents,

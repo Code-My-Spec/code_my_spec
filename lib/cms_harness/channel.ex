@@ -7,6 +7,8 @@ defmodule CmsHarness.Channel do
   client, which itself dispatches the server's requests to them.
   """
 
+  use Boundary, top_level?: true, deps: []
+
   require Logger
 
   alias CodeMySpec.Files.Scanner.ReadModel

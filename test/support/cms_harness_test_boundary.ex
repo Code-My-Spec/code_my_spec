@@ -19,7 +19,7 @@ defmodule CmsHarnessTest do
   # genuinely internal to the harness's own unit tests.
   use Boundary,
     top_level?: true,
-    deps: [CmsHarness, CodeMySpec.TempFile],
+    deps: [CmsHarness, CmsHarness.Channel, CodeMySpec.TempFile],
     exports: [
       Machine,
       LiveHarness,
