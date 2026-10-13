@@ -382,13 +382,28 @@ defmodule CodeMySpec.PromotionQueueTest do
   # Main moved under a green batch — something committed to it another way.
   # It cannot land as certified: it is rebuilt on the new main and gated again
   # at once, not after a retry period, and nothing is ejected.
-  test "a batch main moved under is rebuilt on the new main at once, not ejected", ctx do
+  # 2026-10-13: a green batch waited up to thirty minutes for any run on any
+  # other copy, and with two teams one was nearly always going.
+  test "a green batch lands while another copy has a run in flight", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
     clean_runs_at(ctx, a.commit)
 
-    # A run in flight on another copy holds the green batch at its landing.
     main_scope = %{ctx.scope | active_working_copy_id: ctx.main.id}
-    in_flight = AnalysisFixtures.analysis_run_fixture(main_scope, %{source: "compiler"})
+    _in_flight = AnalysisFixtures.analysis_run_fixture(main_scope, %{source: "compiler"})
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+  end
+
+  test "a batch main moved under is rebuilt on the new main at once, not ejected", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    gate = gate_scope(ctx)
+
+    # Exunit unanswered, so the batch waits at the gate for it while main moves.
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
 
     first = queue(ctx, a)
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Repository.topic(ctx.scope.active_project_id))
@@ -398,23 +413,28 @@ defmodule CodeMySpec.PromotionQueueTest do
                    when id == first.id and is_binary(batch),
                    5_000
 
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+
     File.write!(Path.join(ctx.main_root, "elsewhere.ex"), "elsewhere\n")
     git!(ctx.main_root, ["add", "-A"])
     git!(ctx.main_root, ["commit", "-q", "-m", "committed to main another way"])
     moved = git!(ctx.main_root, ["rev-parse", "HEAD"])
 
-    {:ok, _} = RunsRepository.finish_run(in_flight, :completed, %{})
+    [exunit] = RunsRepository.running_full_runs(gate, "exunit")
+    {:ok, exunit} = RunsRepository.finish_run(exunit, :completed, %{exit_status: 0})
+
+    RunsRepository.record_tree(exunit, %{
+      start_commit: a.commit,
+      start_tree_dirty: false,
+      completed_commit: a.commit
+    })
 
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       "analysis:#{ctx.scope.active_project_id}",
       {:analysis,
-       %{
-         source: "compiler",
-         status: :completed,
-         run_id: in_flight.id,
-         working_copy_id: ctx.main.id
-       }}
+       %{source: "exunit", status: :completed, run_id: exunit.id, working_copy_id: gate_id}}
     )
 
     assert_receive {:promotion_queue, %{id: id, status: :gating, batch_id: rebuilt}}
