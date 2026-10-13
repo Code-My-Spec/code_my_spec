@@ -225,7 +225,16 @@ defmodule CodeMySpec.Notifications do
       where: is_nil(r.agent_id) or r.agent_id not in subquery(stopped_agent_ids()),
       order_by: [desc: r.inserted_at]
     )
+    |> held_by_user(schema)
   end
+
+  # Criteria 2075/2076/2123: a question main or product is still holding, or
+  # handed to each other, is not the user's to see yet — only `holder ==
+  # "user"` rows belong in their inbox. A permission request has no `holder`
+  # column; its own visibility to the user is a separate concern this filter
+  # leaves untouched.
+  defp held_by_user(query, QuestionRequest), do: where(query, [r], r.holder == "user")
+  defp held_by_user(query, PermissionRequest), do: query
 
   # Off or retired: nobody means it to run. An agent on duty whose process is
   # down — restoring, or crashed — is still meant to answer.
@@ -239,6 +248,7 @@ defmodule CodeMySpec.Notifications do
       order_by: [desc: r.inserted_at],
       limit: @resolved_limit
     )
+    |> held_by_user(schema)
   end
 
   defp resolved_page_query(schema, user_id, limit, before) do
@@ -247,6 +257,7 @@ defmodule CodeMySpec.Notifications do
       order_by: [desc: r.inserted_at, desc: r.id],
       limit: ^limit
     )
+    |> held_by_user(schema)
     |> before_cursor(before)
   end
 
