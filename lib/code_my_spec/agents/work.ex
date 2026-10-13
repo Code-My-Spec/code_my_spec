@@ -1169,6 +1169,25 @@ defmodule CodeMySpec.Agents.Work do
   def actionable(%Scope{active_project_id: nil}, _role, _owner, _opts), do: []
   def actionable(scope, role, owner, opts), do: work_for(scope, role, owner, opts).actionable
 
+  @doc """
+  The story graph's own actionable list, bypassing `work_for/4`'s issue-binding
+  short-circuit.
+
+  `work_for/4`'s "an agent bound to an issue bypasses the graph entirely" rule
+  is a dispatch-priority answer to "what should this agent do next" — right
+  for `get_next_requirement`, wrong for asking whether an EXISTING, already
+  blocked story-type task is still eligible to resume. Applying the full
+  bypass there refused to resume a real, still-eligible story task for an
+  agent who also happened to hold an unrelated issue binding (issue
+  ae97b26c). This still applies `withholding/3` — another agent refusing the
+  same work is still respected — it just never falls through to issue-only
+  mode first.
+  """
+  @spec story_actionable(Scope.t(), atom() | nil, term(), keyword()) :: [map()]
+  def story_actionable(scope, role, owner \\ nil, opts \\ [])
+  def story_actionable(%Scope{active_project_id: nil}, _role, _owner, _opts), do: []
+  def story_actionable(scope, role, owner, opts), do: story_work_for(scope, role, owner, opts).actionable
+
   defp at_copy(scope, %Agent{working_copy_id: id}) when is_binary(id),
     do: %{scope | active_working_copy_id: id}
 
