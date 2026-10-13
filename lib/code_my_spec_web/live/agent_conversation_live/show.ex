@@ -983,22 +983,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # page of their own: a question read without the work that prompted it is a
   # question you cannot answer well.
   def handle_event("answer_question", params, socket) do
-    # The submitted form does not name which question it was; a conversation can
-    # hold several, and only one is ever pending, so that is the one being
-    # answered. Answered ones render without a form.
-    case Enum.find(socket.assigns.questions, &(&1.status == "pending")) do
+    # By the form's own request id. Taking the first pending question answered
+    # an older one when an agent had two open, with the newer one's form.
+    case Enum.find(socket.assigns.questions, &(&1.id == params["request_id"])) do
       nil ->
-        {:noreply, socket}
+        {:noreply, put_flash(socket, :error, "That question is no longer here.")}
 
       request ->
         answers = Notifications.collect_answers(request.questions, params)
-        _ = Notifications.answer_question_request(request.id, answers)
+
+        {kind, message} =
+          ChatComponents.answer_flash(Notifications.answer_question_request(request.id, answers))
 
         # Re-fold as well as re-read. The run was split so the form could sit
         # inside it; once answered there is nothing to sit there, and the calls
         # belong back in one collapsed item.
         {:noreply,
          socket
+         |> put_flash(kind, message)
          |> assign(:questions, questions_for(socket.assigns.conversation))
          |> assign_turns(socket.assigns.messages)}
     end

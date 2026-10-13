@@ -140,7 +140,7 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
     %{
       id: r.id,
       type: :permission,
-      title: "Claude Code: #{r.tool_name}",
+      title: "#{r.tool_name} needs your approval",
       body: tool_summary(r),
       status: r.status,
       inserted_at: r.inserted_at,
@@ -149,7 +149,7 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
   end
 
   defp first_question([%{"question" => q} | _]) when is_binary(q), do: q
-  defp first_question(_), do: "Claude Code has a question"
+  defp first_question(_), do: "A question for you"
 
   defp tool_summary(%{tool_input: %{"command" => cmd}}), do: cmd
   defp tool_summary(%{tool_input: %{"file_path" => path}}), do: path
@@ -167,12 +167,12 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
       <div class="mx-auto max-w-2xl">
         <.header>
           Notifications
-          <:subtitle>Questions and approvals from Claude Code</:subtitle>
+          <:subtitle>Questions and approvals waiting on you</:subtitle>
         </.header>
 
         <div :if={@pending == [] and @resolved == []} class="py-16 text-center opacity-60">
           <.icon name="hero-inbox" class="mx-auto size-10 mb-3" />
-          <p>Nothing here yet — Claude's questions and permission requests will show up here.</p>
+          <p>Nothing here yet — questions and approvals for you will show up here.</p>
         </div>
 
         <section :if={@pending != []} class="mt-6">
