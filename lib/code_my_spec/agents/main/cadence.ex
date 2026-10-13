@@ -349,11 +349,21 @@ defmodule CodeMySpec.Agents.Main.Cadence do
         work: MainAgent.list_agent_work(scope),
         off: MainAgent.list_off_agents(scope),
         machinery: MainAgent.check_machinery(scope),
-        questions: MainAgent.list_open_questions(scope),
+        questions: on_duty_questions(scope),
         requirements: requirements_summary(scope),
         completions: CodeMySpec.Agents.CompletionHandoffs.pending(scope)
       }
     end
+  end
+
+  # Questions whose asker is on duty. One an off or retired agent raised waits
+  # on nothing main can move, and the same check-in tells main to leave those
+  # agents off: counting them put "user 18" in every check-in from questions a
+  # month old, and kept a settled fleet reading as needing attention
+  # (2026-10-13). `list_notifications` still lists them all.
+  defp on_duty_questions(scope) do
+    on_duty = scope |> Agents.list_on_duty() |> MapSet.new(& &1.id)
+    scope |> MainAgent.list_open_questions() |> Enum.filter(&MapSet.member?(on_duty, &1.agent_id))
   end
 
   defp requirements_summary(scope) do
