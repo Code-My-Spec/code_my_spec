@@ -2,33 +2,35 @@ defmodule Mix.Tasks.Cms.Spex do
   @shortdoc "Run spex; the whole suite runs as parallel shards"
 
   @moduledoc """
-  The last step of this repo's `spex` alias.
+  What this repo's `just spex` runs, and so what the CodeMySpec gate runs.
 
-  Named files run as they always have, in this VM. The whole suite — no files
-  named — runs as four child `mix spex` processes, each on its own copy of this
-  partition's freshly migrated database, and their JSONL and exit codes are
-  merged. Nearly every spex is sync, so a single run uses one core; separate VMs
-  on separate databases keep each shard's global state its own.
+  Named files go to `mix spex` exactly as before. The whole suite — no files
+  named — runs as four child processes, each on its own copy of this partition's
+  migrated database, and their JSONL and exit codes are merged. Nearly every spex
+  is sync, so a single run uses one core; separate VMs on separate databases keep
+  each shard's global state its own.
 
-  Measured 2026-10-14: 199s for four shards against 390–480s for one run, 1763
+  Measured 2026-10-14: 141s for four shards against 390–480s for one run, 1763
   tests, 0 failures. Eight shards were no faster on a 10-core box.
 
   A shard's database is `<this database>_<n>`, recreated from this one as a
   template every run, so a migration an earlier candidate applied cannot linger
-  in it. When the template is busy (another run is connected to it) the shard is
-  created empty and its own alias migrates it.
+  in it, and with its sequences back at 1 — the small ids the gate's fresh
+  databases have, which is where an id read as a criterion number first showed
+  (892). When the template is busy (another run is connected to it) the shard is
+  created empty and its own `mix spex` alias migrates it.
   """
 
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
-  alias Mix.Tasks.Spex
-
   @shards 4
   @prefix "code_my_spec_test"
+  @reset_sequences "SELECT setval(c.oid, 1, false) FROM pg_class c WHERE c.relkind = 'S'"
 
   @impl Mix.Task
   def run(args) do
+    Mix.Task.run("compile")
     {files, jsonl, rest} = split_args(args)
 
     if files == [] and rest == [] do
@@ -40,8 +42,7 @@ defmodule Mix.Tasks.Cms.Spex do
 
   defp run_here(args) do
     refuse_unless_own_shard!()
-    Mix.Task.run("cms.check_test_migrations")
-    Spex.run(args)
+    Mix.Task.run("spex", args)
   end
 
   defp split_args(args) do
@@ -51,6 +52,9 @@ defmodule Mix.Tasks.Cms.Spex do
   end
 
   defp run_shards(jsonl) do
+    # The template has to be current; these are the `spex` alias's own first steps.
+    Mix.Task.run("ecto.create", ["--quiet"])
+    Mix.Task.run("ecto.migrate", ["--quiet"])
     base = database()
     partition = String.replace_prefix(base, @prefix, "")
     groups = groups()
@@ -84,7 +88,7 @@ defmodule Mix.Tasks.Cms.Spex do
     started = System.monotonic_time(:second)
 
     {output, status} =
-      System.cmd("mix", ["spex" | files] ++ ["--jsonl=#{path}"],
+      System.cmd("mix", ["cms.spex" | files] ++ ["--jsonl=#{path}"],
         env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", "#{partition}_#{i}"}],
         stderr_to_stdout: true
       )
@@ -128,7 +132,7 @@ defmodule Mix.Tasks.Cms.Spex do
 
     case Postgrex.query(conn, ~s[CREATE DATABASE "#{shard}" TEMPLATE "#{base}"], []) do
       {:ok, _} ->
-        :ok
+        with_admin(shard, &Postgrex.query!(&1, @reset_sequences, []))
 
       {:error, %Postgrex.Error{postgres: %{code: :object_in_use}}} ->
         Postgrex.query!(conn, ~s[CREATE DATABASE "#{shard}"], [])
@@ -142,7 +146,7 @@ defmodule Mix.Tasks.Cms.Spex do
     end
   end
 
-  defp with_admin(fun) do
+  defp with_admin(database \\ "postgres", fun) do
     {:ok, _} = Application.ensure_all_started(:postgrex)
     config = CodeMySpec.Repo.config()
 
@@ -152,7 +156,7 @@ defmodule Mix.Tasks.Cms.Spex do
         port: config[:port] || 5432,
         username: config[:username],
         password: config[:password],
-        database: "postgres"
+        database: database
       )
 
     try do

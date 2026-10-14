@@ -390,7 +390,7 @@ defmodule CodeMySpec.MixProject do
     [
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test]
+      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test, "cms.spex": :test]
     ]
   end
 
@@ -413,6 +413,7 @@ defmodule CodeMySpec.MixProject do
       spex: [
         "ecto.create --quiet",
         "ecto.migrate --quiet",
+        "cms.check_test_migrations",
         # Not `"spex --quiet"`. `--quiet` was never a switch this task's own
         # `OptionParser.parse/2` declares — quiet-by-default already comes
         # from the absence of `--verbose` (`configure_spex_mode/1`), read
@@ -422,10 +423,7 @@ defmodule CodeMySpec.MixProject do
         # path becomes `--quiet`'s own inferred value, `files` comes back
         # empty, and `mix spex <path>` silently ran the whole suite instead
         # of the one file named (f600a617).
-        #
-        # `cms.spex` runs the migration check and then `spex` for named files,
-        # and splits the whole suite into parallel shards.
-        "cms.spex"
+        "spex"
       ],
       # Same shape as `spex` above: a refusal in front of a task that was already
       # an alias. `mix ecto.migrate` runs `priv/repo/migrations` whatever MIX_ENV
