@@ -379,14 +379,11 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
   end
 
   defp connect_project(scope, path) do
-    with {:ok, result} <-
-           CodeMySpecWeb.AppLive.DesktopProject.connect(
-             scope,
-             path,
-             CmsHarness.Device.recorded_id()
-           ) do
-      {:ok, result}
-    end
+    CodeMySpecWeb.AppLive.DesktopProject.connect(
+      scope,
+      path,
+      CmsHarness.Device.recorded_id()
+    )
   end
 
   defp recorded_project(
