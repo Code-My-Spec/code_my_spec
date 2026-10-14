@@ -710,6 +710,35 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       refute has_element?(view, "#agent-writing")
     end
 
+    test "completed installation guidance survives reopening after its draft clears", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      guidance =
+        "Install pgvector for your PostgreSQL version, then verify the extension is available."
+
+      Drafts.put(conversation.id, "Install pgvector")
+      on_exit(fn -> Drafts.clear(conversation.id) end)
+      assert has_element?(view, "#agent-writing", "Install pgvector")
+
+      CodeMySpec.Agents.record_turn_event(%{scope | active_project_id: project.id}, agent.id, %{
+        "kind" => "message",
+        "text" => guidance
+      })
+
+      Drafts.clear(conversation.id)
+      assert has_element?(view, "[data-test='message'][data-role='assistant']", guidance)
+      refute has_element?(view, "#agent-writing")
+
+      {:ok, reopened, _html} = live(conn, show_path(project, conversation))
+      assert has_element?(reopened, "[data-test='message'][data-role='assistant']", guidance)
+      refute has_element?(reopened, "#agent-writing")
+    end
+
     test "a page opened mid-turn shows the draft without waiting for more", %{
       conn: conn,
       scope: scope,

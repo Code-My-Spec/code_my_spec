@@ -797,7 +797,14 @@ defmodule CodeMySpec.WorkingCopies do
   """
   @spec mark_alive(WorkingCopy.t() | Ecto.UUID.t() | nil) :: :ok
   def mark_alive(%WorkingCopy{} = harness) do
-    save(harness, %{last_seen_at: now()})
+    # `allow_stale: true`, not `save/2`'s plain update: a fresh join's own
+    # `report_root/2` and this heartbeat can race within milliseconds over a
+    # loopback connection, and a losing write here must not crash the channel
+    # that sent it (see the moduledoc above) -- the row already reflects a
+    # write at least as current as this one, which is all a heartbeat needs.
+    harness
+    |> WorkingCopy.changeset(%{last_seen_at: now()})
+    |> Repo.update(allow_stale: true)
 
     # And its machine: otherwise a device's `last_seen_at` is only its boot
     # time. A machine with no working copy still has no signal of its own.
