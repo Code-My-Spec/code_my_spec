@@ -8,7 +8,8 @@ defmodule CodeMySpecSpex.Story1112.Criterion2041Spex do
   setup :fresh_machine
   defp fresh_machine(context), do: DesktopSetupHelpers.fresh_machine(context)
 
-  spex "Setup runs in the desktop UI with the main agent assisting", criterion: 2041 do
+  spex "Desktop setup assistance distinguishes legacy history from current connectivity",
+    criterion: 2041 do
     scenario "A legacy disconnected snapshot is historical when help is requested on a live connection" do
       given_ "completed checks and a legacy connection snapshot on disk", context do
         context =
@@ -89,7 +90,9 @@ defmodule CodeMySpecSpex.Story1112.Criterion2041Spex do
         {:ok, context}
       end
     end
+  end
 
+  spex "Setup runs in the desktop UI with the main agent assisting", criterion: 2041 do
     scenario "A failed prerequisite is readable beside the main agent's help" do
       given_ "the developer opens desktop setup on a machine missing pgvector", context do
         DesktopSetupHelpers.without_pgvector(context)
