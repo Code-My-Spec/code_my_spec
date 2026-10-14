@@ -77,11 +77,11 @@ defmodule CodeMySpecDesktop.Application.Bootstrap do
 
   def handle_info({ref, result}, %{task: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
-    {:noreply, completed(result, %{state | task: nil})}
+    {:noreply, result |> completed(%{state | task: nil}) |> notify_settled()}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = state),
-    do: {:noreply, failed(reason, %{state | task: nil})}
+    do: {:noreply, reason |> failed(%{state | task: nil}) |> notify_settled()}
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{runtime_monitor: ref} = state),
     do: {:noreply, failed(reason, %{state | runtime_monitor: nil})}
@@ -96,6 +96,16 @@ defmodule CodeMySpecDesktop.Application.Bootstrap do
 
   defp failed(reason, state),
     do: %{state | phase: :setup, error: Exception.format_exit(reason)}
+
+  defp notify_settled(state) do
+    :telemetry.execute(
+      [:code_my_spec_desktop, :bootstrap, :settled],
+      %{system_time: System.system_time()},
+      %{bootstrap: self(), status: Map.take(state, [:snapshot, :error, :phase])}
+    )
+
+    state
+  end
 
   defp initial_status({:ok, snapshot}), do: {snapshot, nil}
   defp initial_status(:none), do: {nil, nil}

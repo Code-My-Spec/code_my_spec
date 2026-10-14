@@ -15,6 +15,17 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     end)
 
     parent = self()
+    handler_id = {__MODULE__, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:code_my_spec_desktop, :bootstrap, :settled],
+        &__MODULE__.handle_bootstrap_settled/4,
+        parent
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
 
     view = fn url ->
       {Task,
@@ -53,7 +64,7 @@ defmodule CodeMySpecDesktop.BootstrapTest do
 
   test "missing Postgres produces persisted guidance while the window remains available", ctx do
     assert Req.post!(ctx.url <> "/check", redirect: false).status == 303
-    status = await_settled(100)
+    status = await_settled()
     postgres = Enum.find(status.snapshot["steps"], &(&1["key"] == "postgres"))
     assert postgres["state"] == "errored"
     assert [%{"exit_status" => nil}] = postgres["commands"]
@@ -87,11 +98,11 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     )
 
     assert Req.post!(ctx.url <> "/check", redirect: false).status == 303
-    checked = await_settled(100)
+    checked = await_settled()
     assert CmsHarness.Setup.prerequisites_passed?(checked.snapshot)
     recorded = File.read!(checked.snapshot["results_path"])
     assert Req.post!(ctx.url <> "/continue", redirect: false).status == 303
-    failed = await_settled(100)
+    failed = await_settled()
     assert failed.error =~ "database_unavailable"
     assert Process.alive?(ctx.shell)
     assert DynamicSupervisor.which_children(CodeMySpecDesktop.RuntimeSupervisor) == []
@@ -100,7 +111,7 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     assert response.body =~ "database_unavailable"
     assert File.read!(checked.snapshot["results_path"]) == recorded
     assert Req.post!(ctx.url <> "/continue", redirect: false).status == 303
-    assert await_settled(100).error =~ "database_unavailable"
+    assert await_settled().error =~ "database_unavailable"
   end
 
   test "database startup failure leaves the setup window available", ctx do
@@ -121,11 +132,11 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     )
 
     assert Req.post!(ctx.url <> "/check", redirect: false).status == 303
-    checked = await_settled(100)
+    checked = await_settled()
     assert CmsHarness.Setup.prerequisites_passed?(checked.snapshot)
     recorded = File.read!(checked.snapshot["results_path"])
     assert Req.post!(ctx.url <> "/continue", redirect: false).status == 303
-    failed = await_settled(100)
+    failed = await_settled()
     assert failed.error =~ "database_unavailable"
 
     response = Req.get!(ctx.url)
@@ -145,7 +156,7 @@ defmodule CodeMySpecDesktop.BootstrapTest do
 
     response = Req.post!(ctx.url <> "/check", headers: [{"origin", origin}], redirect: false)
     assert response.status == 303
-    status = await_settled(100)
+    status = await_settled()
     assert File.regular?(status.snapshot["results_path"])
 
     assert Req.post!(ctx.url <> "/continue", headers: [{"origin", origin}], redirect: false).status ==
@@ -175,16 +186,21 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     refute File.exists?(Path.join(ctx.root, "setup"))
   end
 
-  defp await_settled(attempts) do
-    await_status(Bootstrap.status(Bootstrap), attempts)
+  def handle_bootstrap_settled(_event, _measurements, metadata, recipient) do
+    send(recipient, {:bootstrap_settled, metadata.bootstrap, metadata.status})
   end
 
-  defp await_status(%{phase: :setup} = status, _attempts), do: status
-  defp await_status(status, 0), do: flunk("Bootstrap did not settle: #{inspect(status)}")
+  defp await_settled do
+    bootstrap = Process.whereis(Bootstrap)
 
-  defp await_status(_status, attempts) do
-    Process.sleep(20)
-    await_settled(attempts - 1)
+    # Completion may arrive before the HTTP response; the mailbox retains it.
+    # ExUnit's test timeout still bounds a missing completion event.
+    receive do
+      {:bootstrap_settled, ^bootstrap, status} ->
+        assert status.phase == :setup
+        assert Bootstrap.status(Bootstrap) == status
+        status
+    end
   end
 
   defp restore_path(nil), do: System.delete_env("PATH")
