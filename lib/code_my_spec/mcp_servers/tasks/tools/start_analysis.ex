@@ -5,6 +5,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
   Sources: `spex`, `exunit`, `credo`, `compiler`. Returns as soon as the run is
   opened — it does not wait, and you should not wait for it.
 
+  `paths` scopes the run to specific files, the same way the PreToolUse hook's
+  own `mix test test/foo_test.exs` rewrite does. Scoped runs can never satisfy
+  freshness — they cover only what they name — so use this for a focused
+  validation, not as a substitute for the full sweep `ready_for_qa` reads.
+
   An agent running inside our own BEAM is sent the result as a message when the
   run lands, so the thing to do after calling this is stop. A Claude Code
   session collects it on its next tool call instead.
@@ -34,17 +39,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
 
   schema do
     field :source, :string, required: true, doc: "spex | exunit | credo | compiler"
+
+    field :paths, {:array, :string},
+      default: [],
+      doc:
+        "Scope the run to these paths (e.g. one test file), instead of the full suite. " <>
+          "Empty runs everything. A scoped run is `:partial` and can never satisfy " <>
+          "freshness on its own — it covers only what it names."
   end
 
   @impl true
-  def execute(%{source: source}, frame) when source in @sources do
+  def execute(%{source: source} = params, frame) when source in @sources do
     scope = frame.assigns[:current_scope]
     agent_id = frame.assigns[:agent_id]
+    paths = Map.get(params, :paths, [])
 
     requested_by = %{kind: "mcp_tool", tool: "start_analysis", agent_id: agent_id}
 
     response =
-      case Analysis.start_run(scope, source, [], requested_by: requested_by) do
+      case Analysis.start_run(scope, source, paths, requested_by: requested_by) do
         {:ok, :skipped, run_id} ->
           Response.tool()
           |> Response.error("#{source} run #{run_id} skipped because of compiler errors.")

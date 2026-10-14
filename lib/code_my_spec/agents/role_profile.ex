@@ -154,6 +154,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_tasks list_session_subagents list_notifications
     check_answer list_user_questions
     list_problems
+    start_analysis
     web_search web_fetch
     browser
     query_logs get_trace slow_spans error_summary

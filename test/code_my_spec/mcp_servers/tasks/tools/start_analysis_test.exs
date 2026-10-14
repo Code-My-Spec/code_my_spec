@@ -29,6 +29,41 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysisTest do
     assert run.requested_by["tool"] == "start_analysis"
   end
 
+  test "paths scopes the run to specific files instead of the full suite", %{
+    scope: scope,
+    frame: frame
+  } do
+    assert :ok = HarnessRegistry.register_executor(scope.active_working_copy_id)
+
+    assert {:reply, response, ^frame} =
+             StartAnalysis.execute(
+               %{source: "exunit", paths: ["test/code_my_spec/qa/issue_qa_resumes_test.exs"]},
+               frame
+             )
+
+    refute response.isError
+
+    assert_receive {:run_analysis,
+                    [
+                      %{
+                        "run_id" => run_id,
+                        "source" => "exunit",
+                        "args" => ["test/code_my_spec/qa/issue_qa_resumes_test.exs"]
+                      }
+                    ]}
+
+    run = RunsRepository.get_run_in_project(scope, run_id)
+    assert run.status == :running
+  end
+
+  test "omitting paths runs the full suite, as before", %{scope: scope, frame: frame} do
+    assert :ok = HarnessRegistry.register_executor(scope.active_working_copy_id)
+
+    assert {:reply, response, ^frame} = StartAnalysis.execute(%{source: "exunit"}, frame)
+    refute response.isError
+    assert_receive {:run_analysis, [%{"source" => "exunit", "args" => []}]}
+  end
+
   test "refuses a disconnected checkout when the web app has no local executor", %{
     scope: scope,
     frame: frame
