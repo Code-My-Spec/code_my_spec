@@ -25,6 +25,12 @@ defmodule CodeMySpecDesktop.Application.Runtime do
       {Phoenix.PubSub, _} = pubsub ->
         [pubsub, FirstBoot, CodeMySpec.Integrations.OAuthHandoff]
 
+      {CodeMySpec.McpServers.LocalServer, opts} ->
+        [
+          {CodeMySpec.McpServers.LocalServer,
+           Keyword.put(opts, :transport, {:streamable_http, start: true})}
+        ]
+
       child ->
         [child]
     end) ++ [CmsHarness.Supervisor]

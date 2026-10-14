@@ -13,6 +13,7 @@ defmodule CodeMySpecDesktop.Application do
       CmsHarness,
       CmsHarness.Application,
       CodeMySpec.Integrations,
+      CodeMySpec.McpServers,
       CodeMySpec.Utils,
       CodeMySpecDesktop,
       CodeMySpecWeb
