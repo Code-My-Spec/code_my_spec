@@ -1,17 +1,21 @@
-defmodule CodeMySpecSpex.Story1023.Criterion972Spex do
+defmodule CodeMySpecSpex.Story1023.Criterion2875Spex do
   @moduledoc """
-  Story 1023 — An agent I am done with stops, and stops consuming.
-  Criterion 972 — A lane leaving is not a process exiting.
+  Story 1023 — An agent I am done with stops, and stops costing.
+  Criterion 2875 — A lane leaving is not a process exiting.
 
-  Rule: A copy's page reads liveness off the process, not off the channel
-  that happens to be reporting it.
+  Rule: A stop is not reported done until something confirms the process is
+  gone.
 
-  The harness channel tracking an agent present is how the page usually knows
-  a process is alive — but the channel and the process are two different
-  things, and a channel that drops (a reconnect, a network blip) is not the
-  same fact as the process underneath it ending. A page that reads "not
-  present" as "stopped" tells the operator their agent is gone when it is
-  still running and still spending.
+  The reconcile used to write `status: :stopped, os_pid: nil` for anything
+  missing from a harness report. That is the third shipped instance of this
+  defect on the project, and it is on the hot path: the lane going away is real
+  evidence that the *lane* died, and it was being read as evidence that the
+  process did.
+
+  When the machine cannot be reached to check, the honest answer is to keep
+  saying the agent is running. An agent that looks running for another cycle is
+  a far better failure than one that looks stopped and is not — the second kind
+  is invisible and keeps spending.
   """
 
   use CodeMySpecSpex.Case
@@ -19,54 +23,75 @@ defmodule CodeMySpecSpex.Story1023.Criterion972Spex do
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecWeb.HarnessChannel
+  alias CodeMySpecWeb.UserSocket
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The page's liveness survives a channel that drops", criterion: 972 do
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  spex "The channel is not the evidence", criterion: 972 do
     scenario "A lane leaving is not a process exiting" do
       given_ "an agent whose lane has left the harness channel while its process is still alive",
              context do
         agent = Fixtures.running_agent(context.scope)
         start_agent(agent.id, working_copy: agent.working_copy)
 
-        assert running?(agent.id),
-               "the premise is a live process; without one the lane leaving proves " <>
-                 "nothing about telling the two apart"
+        # The machine cannot be reached to check, which is the case that forces
+        # the question: with no answer available, is absence enough?
+        machine_out_of_reach()
 
-        :ok = Fixtures.mark_absent(agent)
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_spex_2875", %{scope: context.scope})
+          |> subscribe_and_join(HarnessChannel, "harness:#{context.scope.active_account_id}", %{})
 
-        {:ok, context |> Map.put(:agent, agent)}
+        {:ok,
+         context
+         |> Map.put(:agent, agent)
+         |> Map.put(:socket, socket)}
       end
 
-      when_ "the page reports what is running", context do
-        {:ok, view, html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{context.scope.active_working_copy_id}"
-          )
-
-        {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
+      when_ "the harness says nothing at all — no report arrives", context do
+        # Deliberately not an empty report. An empty report is the machine
+        # saying "nothing is running here", which is evidence. Silence is the
+        # machine saying nothing, which is not — and conflating the two stops
+        # every agent on a harness that was merely restarting.
+        {:ok, context}
       end
 
-      then_ "that agent is not described as stopped on the strength of the lane going", context do
-        basis =
-          context.view
-          |> element("[data-agent-id='#{context.agent.id}'] [data-test='agent-liveness-basis']")
-          |> render()
+      then_ "no agent is described as stopped on the strength of the silence",
+            context do
+        assert running?(context.agent.id),
+               "the premise failed: the process died on its own, so this cannot " <>
+                 "distinguish a checked stop from an assumed one"
 
-        refute basis =~ ~r/stopped|not up|starting|restored/i,
-               "the agent's process is still alive and the page describes it as not " <>
-                 "running on the strength of its lane leaving the channel. basis: #{basis}"
+        {:ok, agent} = Fixtures.fetch_agent(context.scope, context.agent.id)
 
-        {:ok, Map.put(context, :basis, basis)}
+        refute agent.status == :stopped,
+               "the harness said nothing and the agent was recorded stopped anyway. " <>
+                 "It is still running and still consuming, and now nothing is " <>
+                 "looking for it — on a harness that may only have been restarting."
+
+        {:ok, Map.put(context, :after_report, agent)}
       end
 
-      then_ "and the evidence named is the process, not the channel", context do
-        assert context.basis =~ ~r/process/i,
-               "the basis shown does not name the process as the evidence for what is " <>
-                 "running — it should say the process is alive, not that a channel is " <>
-                 "(or is not) present. basis: #{context.basis}"
+      then_ "and the agent is still reachable, so the next attempt has something to act on",
+            context do
+        assert running?(context.agent.id),
+               "the report could not confirm anything and the agent is gone from " <>
+                 "the machine anyway — then the premise is wrong and this proves " <>
+                 "nothing about assuming versus checking"
+
+        assert context.after_report.id == context.agent.id,
+               "the row stopped naming the agent while it was still running, which " <>
+                 "is what makes a survivor permanently unreachable: the handle that " <>
+                 "could have ended it is gone and nothing is looking"
 
         {:ok, context}
       end

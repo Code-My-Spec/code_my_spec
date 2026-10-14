@@ -1,15 +1,26 @@
-defmodule CodeMySpecSpex.Story1023.Criterion973Spex do
+defmodule CodeMySpecSpex.Story1023.Criterion2876Spex do
   @moduledoc """
   Story 1023 — An agent I am done with stops, and stops consuming.
-  Criterion 973 — The pid survives long enough to be used.
+  Criterion 2876 — The pid survives long enough to be used.
 
-  Rule: The handle to a process is cleared only once something has confirmed
-  that process is actually gone.
+  Rule: The handle that can end a process is kept until the process is gone.
 
-  A stop that cannot reach the machine has not ended anything, so clearing
-  the pid there would throw away the only thing a second attempt could act
-  on — the same defect criterion 971 names from the operator's side of the
-  same failure.
+  `stop_agent/2` used to write `status: :stopped, os_pid: nil` in one update.
+  Clearing the group id was the part with no way back: if the process survived,
+  the only thing that could ever have reached it had just been thrown away, and
+  the row said stopped so nobody was looking.
+
+  ## The handle changed; the failure did not
+
+  There is no group id now — an agent is a supervised process and its id is the
+  handle. That does not make this criterion moot, it moves it. The irrecoverable
+  step was never "the number was deleted", it was **the record stopped pointing
+  at something that was still running**, so nothing tried again.
+
+  A stop that could not reach the machine must leave the agent exactly as it
+  found it: still running, still reachable, still asked-about. The next attempt
+  then has something to act on, which is the whole difference between a failed
+  stop and a permanent one.
   """
 
   use CodeMySpecSpex.Case
@@ -17,56 +28,54 @@ defmodule CodeMySpecSpex.Story1023.Criterion973Spex do
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "A pid is cleared only once the process behind it is confirmed gone", criterion: 973 do
+  spex "The handle outlives a stop that did not work", criterion: 973 do
     scenario "The pid survives long enough to be used" do
-      given_ "a running agent whose os_pid is recorded", context do
+      given_ "a running agent the server can name", context do
         agent = Fixtures.running_agent(context.scope)
-        agent = Fixtures.record_os_pid(agent, 4242)
         start_agent(agent.id, working_copy: agent.working_copy)
-        machine_out_of_reach(context.scope)
 
-        {:ok, context |> Map.put(:agent, agent)}
+        assert running?(agent.id),
+               "the premise is an agent that is really running; without one this " <>
+                 "criterion asserts nothing about reaching it again"
+
+        {:ok, Map.put(context, :agent, agent)}
       end
 
-      when_ "a stop is asked for and the process does not end", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
+      when_ "a stop is asked for and the machine cannot be reached", context do
+        machine_out_of_reach()
 
-        assert reply.isError,
-               "the machine could not be reached, which is the premise — a stop that " <>
-                 "succeeded anyway asserts nothing about a pid surviving one that failed"
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => context.agent.id}, frame)
+
+        {:ok, Map.put(context, :reply, reply)}
+      end
+
+      then_ "the agent is still recorded as running", context do
+        {:ok, after_stop} = Fixtures.fetch_agent(context.scope, context.agent.id)
+
+        refute after_stop.status == :stopped,
+               "the row says stopped over an agent that is still running. Nothing " <>
+                 "is looking for it any more, so nothing will try again — that is " <>
+                 "not a failed stop, it is a permanent one."
+
+        assert after_stop.id == context.agent.id,
+               "the id is the handle now; losing it would be losing the process"
 
         {:ok, context}
       end
 
-      then_ "the os_pid is still recorded", context do
-        {:ok, _view, html} =
-          live(
-            context.conn,
-            ~p"/app/projects/#{context.project.id}/working-copies/#{context.scope.active_working_copy_id}"
-          )
-
-        assert html =~ "4242",
-               "the pid was cleared by a stop that never confirmed the process was gone " <>
-                 "— the one handle anything could have used to reach it is now thrown away"
-
-        {:ok, context}
-      end
-
-      then_ "and a second attempt has something to act on", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, second, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
-
-        assert second.isError,
-               "a second attempt against the same unreachable machine reported success — " <>
-                 "with the pid gone, nothing distinguishes that from an agent that never " <>
-                 "had one"
+      then_ "and the agent really is still running, so there is something to reach",
+            context do
+        assert running?(context.agent.id),
+               "the premise of keeping the handle is that the thing it names is " <>
+                 "still there. If the agent had actually stopped, keeping the row " <>
+                 "would be the bug instead."
 
         {:ok, context}
       end

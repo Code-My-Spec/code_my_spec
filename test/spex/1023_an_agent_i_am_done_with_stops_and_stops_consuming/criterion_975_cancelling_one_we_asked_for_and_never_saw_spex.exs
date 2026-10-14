@@ -1,82 +1,106 @@
-defmodule CodeMySpecSpex.Story1023.Criterion975Spex do
+defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
   @moduledoc """
-  Story 1023 — An agent I am done with stops, and stops consuming.
-  Criterion 975 — Cancelling one we asked for and never saw.
+  Story 1023 — An agent I am done with stops, and stops costing.
+  Criterion 2880 — Cancelling one we asked for and never saw.
 
-  Rule: Stopping an agent no machine ever confirmed is not a failure.
+  Rule: An agent that never came up can still be stopped.
 
-  An agent that was asked for and never reported present has no process
-  anywhere to end. Treating that the same as a machine that refused to end a
-  real one is how cancelling a request that went nowhere turns into an error
-  about a process that never existed.
+  `:starting` means "we asked and no machine has confirmed" — a real state, and
+  the one an agent sits in whenever its copy's harness is offline at the moment
+  it was requested. The working copies page renders it as *we asked for this
+  one; no harness has confirmed it*.
+
+  Those rows have to be cancellable. An agent that cannot be stopped because it
+  never started is a row the operator can neither use nor remove, and it keeps
+  claiming a lane on the page.
+
+  There is no process here, so there is nothing to signal and nothing to
+  confirm — which is why this must not be routed through the machine at all. A
+  stop that asked an unreachable harness about a process that never existed
+  would fail, and the failure would be about the harness rather than about the
+  agent.
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
+  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Cancelling a request no machine confirmed is not a failure", criterion: 975 do
+  spex "An agent nothing confirmed can still be cancelled", criterion: 975 do
     scenario "Cancelling one we asked for and never saw" do
       given_ "an agent I asked for that no machine has confirmed, with no process id recorded",
              context do
-        {:ok, _integration} = Fixtures.connect_provider(context.scope, :openai)
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :zai)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, started, _frame} =
           StartAgent.execute(
-            %{"engine" => "alloy", "provider" => "openai-codex", "working_copy" => "copy-never-seen"},
+            %{"engine" => "alloy", "provider" => "zai", "working_copy" => "/tmp/never-came-up"},
             frame
           )
 
-        refute started.isError, response_text(started)
+        refute started.isError,
+               "the premise is an agent that was asked for: #{response_text(started)}"
 
-        agent_id = response_field(started, "Agent")
-
-        {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
-
-        assert response_text(listing) =~ agent_id,
-               "the premise is an agent on record that no machine has confirmed; without " <>
-                 "one this asserts nothing about cancelling a request that went nowhere"
-
-        {:ok, Map.put(context, :agent_id, agent_id)}
+        {:ok, Map.put(context, :started, started)}
       end
 
       when_ "I stop it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent_id}, frame)
-        {:ok, Map.put(context, :reply, reply)}
+
+        {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
+
+        agent_id =
+          ~r/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/
+          |> Regex.run(response_text(listing))
+          |> agent_id_match(listing)
+
+        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => agent_id}, frame)
+
+        {:ok, context |> Map.put(:reply, reply) |> Map.put(:agent_id, agent_id)}
       end
 
       then_ "it stops being listed as starting", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
+        refute context.reply.isError,
+               "an agent that never came up could not be cancelled: " <>
+                 "#{response_text(context.reply)}. That leaves a row the operator " <>
+                 "can neither use nor remove, still claiming a lane on the page."
 
-        refute response_text(listing) =~ context.agent_id,
-               "the agent is still listed after being cancelled — a request that went " <>
-                 "nowhere should not go on looking like one still starting"
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, after_stop, _frame} = ListAgents.execute(%{}, frame)
+
+        refute response_text(after_stop) =~ context.agent_id,
+               "the agent is still listed after being stopped. " <>
+                 "Got: #{response_text(after_stop)}"
 
         {:ok, context}
       end
 
       then_ "and nothing reports an error about a process that never existed", context do
-        refute context.reply.isError,
-               "cancelling a request no machine ever confirmed reported an error — " <>
-                 "treating it the same as a real process that refused to end is how a " <>
-                 "request that went nowhere becomes a failure. Got: " <>
+        refute response_text(context.reply) =~ ~r/harness|not connected|process/i,
+               "the cancel was routed through a machine and reported a problem " <>
+                 "with reaching it. There is no process here — the failure would " <>
+                 "be about the harness rather than about the agent, and would make " <>
+                 "an unconfirmed agent uncancellable exactly when its machine is " <>
+                 "down, which is why it is unconfirmed. Got: " <>
                  response_text(context.reply)
 
         {:ok, context}
       end
     end
   end
+
+  defp agent_id_match([id | _], _listing), do: id
+
+  defp agent_id_match(_no_match, listing),
+    do: flunk("no agent in the listing: #{response_text(listing)}")
 end
