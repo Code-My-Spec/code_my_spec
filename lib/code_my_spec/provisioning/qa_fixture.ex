@@ -11,13 +11,15 @@ defmodule CodeMySpec.Provisioning.QaFixture do
   @enabled Application.compile_env(:code_my_spec, :dev_routes, false)
   @steps ~w(repository secrets server domain dns tls deploy email inbound storage backups content widget callback_credential monitoring telemetry)
 
-  def register(project_id, account_id) when @enabled do
-    with :ok <- ensure_started() do
-      GenServer.call(__MODULE__, {:register, project_id, account_id})
+  def register(project_id, account_id) do
+    if @enabled do
+      with :ok <- ensure_started() do
+        GenServer.call(__MODULE__, {:register, project_id, account_id})
+      end
+    else
+      {:error, :disabled}
     end
   end
-
-  def register(_, _), do: {:error, :disabled}
 
   def snapshot(project_id), do: request({:snapshot, project_id})
 
@@ -30,29 +32,29 @@ defmodule CodeMySpec.Provisioning.QaFixture do
 
   def control(_, _, _, _), do: {:error, :invalid_control}
 
-  def options(scope, opts, environment \\ nil)
+  def options(scope, opts, environment \\ nil) do
+    if @enabled do
+      case request({:owns, scope.active_project_id, scope.active_account_id}) do
+        true ->
+          environment = environment || Keyword.get(opts, :environment)
 
-  def options(scope, opts, environment) when @enabled do
-    case request({:owns, scope.active_project_id, scope.active_account_id}) do
-      true ->
-        environment = environment || Keyword.get(opts, :environment)
+          Keyword.merge(opts,
+            environment: environment,
+            verify: fn _scope, key ->
+              request({:verify, scope.active_project_id, {to_string(key), environment}})
+            end,
+            execute: fn _scope, key, _opts ->
+              request({:execute, scope.active_project_id, {to_string(key), environment}}, 120_000)
+            end
+          )
 
-        Keyword.merge(opts,
-          environment: environment,
-          verify: fn _scope, key ->
-            request({:verify, scope.active_project_id, {to_string(key), environment}})
-          end,
-          execute: fn _scope, key, _opts ->
-            request({:execute, scope.active_project_id, {to_string(key), environment}}, 120_000)
-          end
-        )
-
-      _ ->
-        unavailable_fixture_options(scope, opts)
+        _ ->
+          unavailable_fixture_options(scope, opts)
+      end
+    else
+      unavailable_fixture_options(scope, opts)
     end
   end
-
-  def options(scope, opts, _environment), do: unavailable_fixture_options(scope, opts)
 
   defp unavailable_fixture_options(
          %{
