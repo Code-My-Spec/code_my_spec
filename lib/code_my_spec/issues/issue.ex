@@ -143,6 +143,7 @@ defmodule CodeMySpec.Issues.Issue do
     |> cast(attrs, @castable_fields)
     |> validate_required([:title, :severity, :description])
     |> unique_constraint([:title, :story_id, :project_id])
+    |> unique_constraint([:title, :project_id], name: :issues_title_project_id_no_story_index)
   end
 
   @doc "Changeset for setting or clearing which copy's team this issue is assigned to."

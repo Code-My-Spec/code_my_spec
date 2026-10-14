@@ -410,14 +410,40 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   defp file_fault(false, scope, working_copy, title, description) do
-    Issues.create_issue(scope, %{
+    scope
+    |> Issues.create_issue(%{
       title: title,
       severity: :high,
       scope: :framework,
       description: description,
       source_path: working_copy
     })
+    |> already_raised_if_lost_the_race(title)
   end
+
+  # Issue b2752ae3: the check above and this insert are not one atomic step, so
+  # two concurrent reads -- two main agents on two checkouts, say -- can both
+  # see no open fault and both try to file it. A title-scoped unique index (the
+  # new `issues_title_project_id_no_story_index`, since these issues carry no
+  # story_id and the existing index cannot see across nulls) turns the loser of
+  # that race into an ordinary constraint error rather than a second row. Treat
+  # it exactly like the check above would have: already raised, nothing to do.
+  defp already_raised_if_lost_the_race({:ok, issue}, _title), do: {:ok, issue}
+
+  defp already_raised_if_lost_the_race({:error, changeset}, title) do
+    if Enum.any?(changeset.errors, &constraint_error_on_title?/1) do
+      Logger.info("[MainAgent] fault already raised, not filing again: #{title}")
+      {:ok, :already_raised}
+    else
+      {:error, changeset}
+    end
+  end
+
+  defp constraint_error_on_title?({:title, {_message, opts}}) do
+    Keyword.get(opts, :constraint) == :unique
+  end
+
+  defp constraint_error_on_title?(_error), do: false
 
   @doc """
   Wake the main agent and hand it what is going on.
