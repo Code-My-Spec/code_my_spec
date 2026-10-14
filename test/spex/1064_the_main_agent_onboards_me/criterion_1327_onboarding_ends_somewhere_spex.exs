@@ -1,37 +1,31 @@
 defmodule CodeMySpecSpex.Story1064.Criterion3376Spex do
   @moduledoc """
   Story 1064 — The main agent onboards me
-  Criterion 3376 — Confirming the plan produces a project and puts the person in
+  Criterion 1327 — Confirming the plan produces a project and puts the person in
   front of the agent that runs it.
 
-  ## "Ends somewhere" is the whole criterion
+  ## Rewritten per product (2026-10-14, question 321a5627)
 
-  Onboarding that finishes by returning the visitor to where they started, or to
-  a page telling them what to do next, has not ended — it has stopped. The two
-  `then_`s are the two halves of having arrived: something exists, and they are
-  looking at the thing that will work on it.
+  The previous version of this spex asserted the destination stayed on an
+  intake-style page (`intake-transcript`, `form[phx-submit=answer]`) after
+  payment — that was `IntakeLive.Workspace`'s actual behaviour at the time,
+  not what this criterion itself says. The criterion's own words are "there
+  is a project, and they are in front of the agent that runs it" — nothing
+  about staying on intake's own page, nothing about payment. "The agent that
+  runs it" is the project's main agent, so this now checks the same landing
+  criterion 2203 (story 1064) checks for: `/app/projects/:id/agent-conversation`
+  with `[data-test='main-agent']`.
 
-  ## Why this visitor is signed in
+  ## Why cloud, with the fake workspace runner
 
-  Confirming sends an anonymous visitor to `/users/register`. That is the right
-  behaviour and it is criterion 3369's subject, but it makes a poor setting for
-  this one: a scenario that confirmed anonymously and then asserted "there is a
-  project" would be satisfied by a signup form, which is the exact vacuous pass
-  this criterion exists to rule out. Somebody has to be signed in for there to
-  be an end to arrive at.
-
-  ## Where the assertions are made
-
-  `confirm_plan/2` returns the path the confirmation navigated to rather than
-  the rendered page, and it does that on purpose — "so a spec can assert on
-  where the visitor ended up rather than assuming it". A spec that only
-  re-mounted and looked around would pass for a page rendering the same markup
-  at a different address.
-
-  Both halves are then read off that destination rather than out of the
-  database. `then_` may not go to the database, and it should not want to:
-  "there is a project" is only true if the visitor can see one, and the
-  workspace is where they see it.
+  Criterion 1058 (story 990) already proves this is the accepted way to get
+  a *working* main agent conversation in a spec: cloud's boot is something a
+  spec can make complete, through `start_workspace_runner/2`, where local's
+  cannot — local only gets a working copy once an actual external harness
+  connects, which nothing in this test drives. Reusing that exact pattern
+  rather than inventing a second one. Payment is kept because, for cloud, it
+  is genuinely part of reaching the project: `gate_new_workspace/5` does not
+  provision anything until it is confirmed.
   """
 
   use CodeMySpecSpex.Case
@@ -43,72 +37,53 @@ defmodule CodeMySpecSpex.Story1064.Criterion3376Spex do
   setup :register_and_log_in_user
 
   setup do
-    stub_local_trial()
+    start_workspace_runner([healthy?: true], boot_timeout: 5_000, poll_interval: 20)
     :ok
   end
 
   spex "the questions have been answered", criterion: 1327 do
     scenario "Onboarding ends somewhere" do
       given_ "the questions have been answered", context do
-        # `live/2` discards the conn it built, so the intake token minted on the
-        # way in would be minted again on the next call and the plan confirmed
-        # here would belong to nobody. Holding the conn keeps this one visitor.
         conn = get(context.conn, "/build")
         {:ok, live, _html} = live(conn)
 
         describe_idea(live, "a booking tool for a two-chair barbershop")
         answer_shaping_questions(live)
 
-        {:ok, context |> Map.put(:conn, conn) |> Map.put(:live, live)}
+        destination = confirm_plan(live, %{location: "cloud"})
+
+        {:ok, context |> Map.put(:conn, conn) |> Map.put(:destination, destination)}
       end
 
       when_ "onboarding finishes", context do
-        destination = confirm_plan(context.live, %{location: "local"})
+        {:ok, workspace_live, _html} = live(context.conn, context.destination)
+        render_hook(workspace_live, "payment_confirmed", %{})
 
-        {:ok, Map.put(context, :destination, destination)}
+        {:ok, context}
       end
 
       then_ "there is a project", context do
-        assert is_binary(context.destination),
-               """
-               Confirming the plan did not take the visitor anywhere. Onboarding
-               that ends by leaving somebody on the form they just submitted has
-               not finished, it has stopped.
-               """
+        html = context.conn |> get("/app/projects") |> html_response(200)
 
-        refute context.destination == "/build",
-               "confirming returned the visitor to the intake they had just completed"
+        [_, project_id] =
+          Regex.run(~r|/app/projects/([a-f0-9-]{36})|, html) ||
+            raise("expected to find a project on /app/projects, got: #{html}")
 
-        {:ok, live, _html} = live(context.conn, context.destination)
-        confirm_payment(live)
-
-        assert has_element?(live, "[data-test='local-instructions']"),
-               """
-               The visitor arrived somewhere with nothing of theirs on it. What
-               makes this an ending rather than a stop is that a project exists
-               and they can see it — here, the commands that bring up the one
-               just created for them.
-               """
-
-        {:ok, Map.put(context, :live, live)}
+        {:ok, Map.put(context, :project_id, project_id)}
       end
 
       and_ "they are in front of the agent that runs it", context do
-        assert has_element?(context.live, "[data-test='intake-transcript']"),
-               """
-               The conversation did not come with them. Signup sits between the
-               two pages and a LiveView cannot survive that navigation, so
-               continuity here has to be rebuilt rather than kept — and when the
-               rebuilding is skipped the visitor arrives at a page that looks
-               like a different product.
-               """
+        eventually(fn ->
+          {:ok, live, _html} =
+            live(context.conn, "/app/projects/#{context.project_id}/agent-conversation")
 
-        assert has_element?(context.live, "form[phx-submit=answer]"),
-               """
-               The agent is not asking anything. A transcript the person can read
-               but not reply to is a record of onboarding, not the agent that
-               takes it on from here.
-               """
+          assert has_element?(live, "[data-test='main-agent']"),
+                 """
+                 The visitor arrived somewhere with no identifiable agent running
+                 the project. A project existing is only half of having arrived --
+                 the other half is being in front of the thing that runs it.
+                 """
+        end)
 
         {:ok, context}
       end
