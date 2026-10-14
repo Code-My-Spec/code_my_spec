@@ -822,6 +822,14 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  # The server received create_working_copy_result -- whatever it makes of it
+  # from here is its own concern, but the harness now knows its reply arrived,
+  # so there is nothing left for `{:create_ack_timeout, ref}` to roll back.
+  def handle_reply(ref, _reply, %{assigns: %{pending_create_ack: pending}} = socket)
+      when is_map_key(pending, ref) do
+    {:ok, assign(socket, :pending_create_ack, Map.delete(pending, ref))}
+  end
+
   def handle_reply(ref, reply, socket) do
     socket = stamp_server_reply(socket)
 
@@ -1131,7 +1139,7 @@ defmodule CmsHarness.Project.ChannelClient do
     Task.start(fn ->
       result = Create.run(root, msg)
 
-      send(parent, {:create_working_copy_result, topic, ref, result})
+      send(parent, {:create_working_copy_result, topic, ref, root, result})
     end)
 
     {:ok, socket}
@@ -1961,15 +1969,39 @@ defmodule CmsHarness.Project.ChannelClient do
     {:noreply, socket}
   end
 
-  def handle_info({:create_working_copy_result, topic, ref, result}, socket) do
-    push(
-      socket,
-      topic,
-      "create_working_copy_result",
-      Map.put(encode_create_result(result), "ref", ref)
-    )
+  # 68d37919: pushed with a tracked native reply instead of a bare `push/3`,
+  # so a create this call actually made (never a failed one -- nothing to
+  # roll back there) can be undone if the server never acknowledges having
+  # received it. The `pending_create_ack` clause of `handle_reply/3` below
+  # clears this the moment the ack arrives; `handle_info({:create_ack_timeout,
+  # ...})` is what fires if it never does.
+  def handle_info({:create_working_copy_result, topic, ref, root, result}, socket) do
+    payload = Map.put(encode_create_result(result), "ref", ref)
+    timeout = Channel.create_ack_timeout()
 
-    {:noreply, socket}
+    case transport().push(socket, topic, "create_working_copy_result", payload, timeout) do
+      {:ok, native_ref} ->
+        Process.send_after(self(), {:create_ack_timeout, native_ref}, timeout)
+        {:noreply, remember_create_ack(socket, native_ref, root, result)}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
+  # The ack for a create_working_copy_result never arrived within
+  # Channel.create_ack_timeout/0. Still pending means it genuinely never
+  # came (handle_reply's own clause would have cleared it otherwise); roll
+  # back what this call made, if nothing has touched it since.
+  def handle_info({:create_ack_timeout, native_ref}, socket) do
+    case Map.pop(socket.assigns[:pending_create_ack] || %{}, native_ref) do
+      {nil, _pending} ->
+        {:noreply, socket}
+
+      {{root, target, base_head}, pending} ->
+        Create.rollback_if_untouched(root, target, base_head)
+        {:noreply, assign(socket, :pending_create_ack, pending)}
+    end
   end
 
   def handle_info({:tool_call_result, topic, ref, result}, socket) do
@@ -2802,5 +2834,14 @@ defmodule CmsHarness.Project.ChannelClient do
       "component_id" => entry[:component_id],
       "story_id" => entry[:story_id]
     }
+  end
+
+  # Nothing was made on a failed create, so there is nothing to track or roll
+  # back regardless of whether the server ever acks it.
+  defp remember_create_ack(socket, _native_ref, _root, {:error, _}), do: socket
+
+  defp remember_create_ack(socket, native_ref, root, {:ok, %{root: target, base_head: base_head}}) do
+    pending = socket.assigns[:pending_create_ack] || %{}
+    assign(socket, :pending_create_ack, Map.put(pending, native_ref, {root, target, base_head}))
   end
 end
