@@ -9,7 +9,7 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
   nobody meets, and each request carries its own idle bound instead of the
   rest of that day.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CmsHarness.Agents
 

@@ -13,6 +13,7 @@ defmodule CmsHarness.AppInstanceTunnelTest do
   `FakeAppInstanceRunner` — no real `cloudflared`, no real OS process.
   """
 
+  # Sync: `app_instance_rig` sets application env.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.AppInstanceHelpers

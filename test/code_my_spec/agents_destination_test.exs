@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentsDestinationTest do
   handed the wrong answer.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures

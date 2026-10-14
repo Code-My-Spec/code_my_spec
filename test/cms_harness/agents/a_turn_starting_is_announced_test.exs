@@ -23,7 +23,7 @@ defmodule CmsHarness.Agents.ATurnStartingIsAnnouncedTest do
   Driven through a real engine turn with a provider that parks the request, so
   "the agent is mid-turn" is a fact rather than a race.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CmsHarness.Project.ChannelClient
   alias CmsHarnessTest.Machine

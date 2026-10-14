@@ -548,4 +548,20 @@ defmodule CodeMySpec.Environments do
 
   def exec_file_exists?(%Environment{type: type} = env, path),
     do: impl(type).exec_file_exists?(env, path)
+
+  @doc """
+  Whether the project's justfile declares the recipe `name`.
+
+  How a project runs its own suites is the project's to say: a runner that
+  finds `spex` or `test` here runs `just <name> …` instead of `mix <name> …`,
+  with the same arguments, so the recipe must pass them through.
+  """
+  @spec recipe?(Environment.t() | nil, String.t()) :: boolean()
+  def recipe?(env, name) do
+    exec_file_exists?(env, "justfile") and
+      case cmd(env, "just", ["--list"], []) do
+        {out, 0} -> Regex.match?(~r/^\s*#{Regex.escape(name)}(\s|$)/m, out)
+        _ -> false
+      end
+  end
 end

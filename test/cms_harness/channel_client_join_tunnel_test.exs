@@ -22,7 +22,7 @@ defmodule CmsHarness.ChannelClientJoinTunnelTest do
   faked, per this project's "no live shell-outs in tests" rule.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import CmsHarnessTest.AppInstanceHelpers, only: [install_app_instance_runner: 1]
 

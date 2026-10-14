@@ -6,7 +6,7 @@ defmodule CmsHarness.Agents.AToolCallLeakedAsTextFailsTheTurnTest do
   2026-10-06, each found only by an operator reading the transcript. A turn
   that ends that way failed, so it is reported as failed and re-offered.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CmsHarnessTest.Machine
 

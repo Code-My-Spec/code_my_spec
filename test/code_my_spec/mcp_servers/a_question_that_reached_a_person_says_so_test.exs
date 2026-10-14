@@ -20,7 +20,7 @@ defmodule CodeMySpec.McpServers.AQuestionThatReachedAPersonSaysSoTest do
   which is the failure mode this is trying to avoid, not repeat.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

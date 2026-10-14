@@ -20,6 +20,7 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
   reading `:sys.get_state/1` rather than threading it through a channel.
   """
 
+  # Sync: `app_instance_rig` sets application env.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.AppInstanceHelpers

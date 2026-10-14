@@ -140,12 +140,12 @@ defmodule CodeMySpec.Requirements.Projection do
   ## Options
 
     * `:source` — `{nodes_source, edges_source}` to read instead of the tables
-      readers read. The pass passes `Shadow.pass_target/0` and
-      `Shadow.pass_edges/0`; everybody else takes the default.
+      readers read. The pass passes `GraphStore.pass_target/0` and
+      `GraphStore.pass_edges/0`; everybody else takes the default.
 
   The default is `requirements` and it is correct in both directions of
   `graph_event_is_source`, because that flag decides *which writer fills those
-  tables*, not which tables readers read. `Shadow.event_target/0` resolves to
+  tables*, not which tables readers read. `GraphStore.event_target/0` resolves to
   `requirements` precisely when the event path owns them.
 
   The pass is the one caller that means something else. `recompute_stale/4`

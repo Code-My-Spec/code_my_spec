@@ -5,7 +5,7 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   the story is placed. Coding and QA stay on their own copy's stories.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.IssuesFixtures

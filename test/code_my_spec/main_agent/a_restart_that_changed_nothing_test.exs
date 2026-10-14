@@ -16,7 +16,7 @@ defmodule CodeMySpec.Agents.Main.ARestartThatChangedNothingTest do
   real shape rather than a plausible-looking one.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

@@ -24,11 +24,11 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
   `extra 0` is the tell — the projection was behind on creation rather than
   wrong about anything it held.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -39,8 +39,8 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
   end
 
   defp settle(scope) do
-    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   defp rows_at(copy_id, component_id) do

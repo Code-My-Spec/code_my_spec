@@ -380,8 +380,18 @@ defmodule CodeMySpecSpex.Case do
     end
 
     # watch_graph/1 registers project-specific cleanup after the drain callback,
-    # so watchers stop before draining and releasing the sandbox. A global sweep
-    # here would stop watchers still in use by concurrent specs.
+    # so watchers stop before draining and releasing the sandbox.
+    #
+    # After the drain, so it runs before it: a projector stopped first starts
+    # nothing new while the drain clears what is left.
+    #
+    # Sync only. It stops every projector, which are this test's only when
+    # nothing runs beside it; from an async test it stopped the projectors of
+    # every test running alongside, whose next settle then answered `:ok` over
+    # an empty graph — 13 failures a run across the requirements tests
+    # (2026-10-14). An async test's projectors stop themselves when its
+    # sandbox owner exits (`IncrementalGraph`'s `owner_gone/2`).
+    unless tags[:async], do: on_exit(&Fixtures.stop_graph_watchers/0)
 
     # DNS resolution cannot live in a cassette — the authoritative lookup is a
     # syscall, and it has to stay authoritative because a recursive resolver

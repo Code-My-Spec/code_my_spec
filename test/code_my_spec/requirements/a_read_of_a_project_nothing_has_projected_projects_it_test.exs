@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.AReadOfAProjectNothingHasProjectedProjectsItTe
   project whose `get_next_requirement` says "All requirements satisfied" —
   which is what zero rows said. Two fixes, one for each half.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Components
   alias CodeMySpec.Requirements
@@ -20,15 +20,17 @@ defmodule CodeMySpec.Requirements.AReadOfAProjectNothingHasProjectedProjectsItTe
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
-    on_exit(fn -> Fixtures.stop_graph_watchers() end)
+  # This project's writer only: the file is async, and stopping every
+  # project's stopped the tests running beside it.
+  setup %{scope: scope} do
+    on_exit(fn -> Fixtures.stop_watching(scope) end)
     :ok
   end
 
-  # The rows the setup and the announces left, and the writers that wrote them:
+  # The rows the setup and the announces left, and the writer that wrote them:
   # a project nothing has projected has neither.
   defp unproject(%Scope{} = scope) do
-    Fixtures.stop_graph_watchers()
+    Fixtures.stop_watching(scope)
     Fixtures.forget_projection(scope)
   end
 

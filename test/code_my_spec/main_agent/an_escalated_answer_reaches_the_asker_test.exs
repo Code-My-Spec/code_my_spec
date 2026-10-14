@@ -15,7 +15,7 @@ defmodule CodeMySpec.Agents.Main.AnEscalatedAnswerReachesTheAskerTest do
   of a fix, since nothing in lib/ needed to change to make it pass.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.QuestionRoutingHelpers
 

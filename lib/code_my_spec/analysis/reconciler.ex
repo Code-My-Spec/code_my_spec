@@ -372,9 +372,9 @@ defmodule CodeMySpec.Analysis.Reconciler do
   defp patch_file_path(problem), do: problem
 
   # Every problem lands on a file path; join to Files to stamp the owning
-  # component. Without this, per-component rollups (e.g. `tests_passing`
-  # counting zero failures because Preloader filters `not is_nil(component_id)`)
-  # report satisfied while the underlying analyzer found something. Originally
+  # component. Without this, anything that rolls up problems per component by
+  # filtering on a non-nil `component_id` would count zero regardless of what
+  # the underlying analyzer actually found. Originally
   # scoped to exunit/spex only, which meant credo and compiler problems never
   # carried a component_id regardless of whether their file belonged to a
   # tracked component (2fc35efb).

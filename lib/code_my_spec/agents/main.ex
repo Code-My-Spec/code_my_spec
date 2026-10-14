@@ -410,14 +410,43 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   defp file_fault(false, scope, working_copy, title, description) do
-    Issues.create_issue(scope, %{
+    scope
+    |> Issues.create_issue(%{
       title: title,
       severity: :high,
       scope: :framework,
       description: description,
-      source_path: working_copy
+      source_path: working_copy,
+      fault_key: title
     })
+    |> already_raised_if_lost_the_race(title)
   end
+
+  # Issue b2752ae3: the check above and this insert are not one atomic step, so
+  # two concurrent reads -- two main agents on two checkouts, say -- can both
+  # see no open fault and both try to file it. `fault_key` is set only here
+  # (nothing else in the system writes it), so the unique index on it
+  # (`issues_fault_key_project_id_index`) can never collide with an unrelated
+  # issue that happens to share this one's title -- unlike the title itself,
+  # which two different callers can share by coincidence. Losing that race
+  # turns into an ordinary constraint error rather than a second row; treat
+  # it exactly like the check above would have: already raised, nothing to do.
+  defp already_raised_if_lost_the_race({:ok, issue}, _title), do: {:ok, issue}
+
+  defp already_raised_if_lost_the_race({:error, changeset}, title) do
+    if Enum.any?(changeset.errors, &constraint_error_on_fault_key?/1) do
+      Logger.info("[MainAgent] fault already raised, not filing again: #{title}")
+      {:ok, :already_raised}
+    else
+      {:error, changeset}
+    end
+  end
+
+  defp constraint_error_on_fault_key?({:fault_key, {_message, opts}}) do
+    Keyword.get(opts, :constraint) == :unique
+  end
+
+  defp constraint_error_on_fault_key?(_error), do: false
 
   @doc """
   Wake the main agent and hand it what is going on.

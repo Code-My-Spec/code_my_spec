@@ -17,7 +17,9 @@ defmodule CodeMySpecSpex.Fakes.StorageWiringTest do
 
   Incomplete, not broken. Worth remembering when the next fake looks broken.
   """
-  use ExUnit.Case, async: true
+  # Sync: the S3 client's plug lives in application env, and an async test
+  # with a cassette on the same client swaps it underneath this one.
+  use ExUnit.Case, async: false
 
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpecSpex.Fakes
@@ -102,7 +104,10 @@ defmodule CodeMySpecSpex.Fakes.StorageWiringTest do
   # 968/8015's premise: dumps *stopped* landing. A run that has just installed
   # the schedule has also just taken one, and a fresh dump reads as healthy
   # however old the rest are — so the premise has to clear what this run made.
-  test "clearing a prefix leaves the rest of the bucket alone", %{credentials: creds, agent: agent} do
+  test "clearing a prefix leaves the rest of the bucket alone", %{
+    credentials: creds,
+    agent: agent
+  } do
     {:ok, _} = Storage.ensure_bucket("sams-dumps", creds)
     :ok = Storage.put_object("sams-dumps", "dumps/prod/one.sql.gz", "PGDMP", creds)
     :ok = Storage.put_object("sams-dumps", "media/logo.png", "PNG", creds)

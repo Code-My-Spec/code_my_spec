@@ -22,7 +22,7 @@ defmodule CodeMySpec.Agents.AStrandedTurnRequestStopsBlockingATurnTest do
   Sibling of [`AReapedAgentCanBeAdmittedAgainTest`] — there the agent comes back
   from a reap, here it never appears to have left.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query
 

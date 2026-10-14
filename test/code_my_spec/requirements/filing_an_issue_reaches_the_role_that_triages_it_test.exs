@@ -33,7 +33,7 @@ defmodule CodeMySpec.Requirements.FilingAnIssueReachesTheRoleThatTriagesItTest d
   before the issue is filed and actionable after it, or the wake proves nothing.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues

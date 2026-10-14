@@ -12,7 +12,7 @@ defmodule CodeMySpec.Requirements.TopologyHashIsStableTest do
   not. This asks the second question directly, which is the cheaper of the two
   to answer and the one nothing has ever checked.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Requirements.{Freshness, Preloader}
 

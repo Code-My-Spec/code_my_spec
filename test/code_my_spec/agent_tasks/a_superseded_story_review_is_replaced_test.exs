@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentTasks.ASupersededStoryReviewIsReplacedTest do
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents

@@ -14,7 +14,7 @@ defmodule CodeMySpecWeb.DevAgentAnswerTest do
   answered on its behalf.
   """
 
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

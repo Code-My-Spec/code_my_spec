@@ -49,7 +49,9 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Handlers
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
@@ -59,8 +61,6 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Requirements.StoryExecution
   alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Stories
@@ -303,9 +303,9 @@ defmodule CodeMySpec.Requirements do
           {{[Requirement.t()], [map()]}, [Requirement.t()], DateTime.t() | nil}
           | {:error, term()}
   def recompute(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
-    :ok = Shadow.clear(scope)
-    _ = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.reproject(project_id, Projection.vantage(scope))
+    :ok = GraphStore.clear(scope)
+    _ = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.reproject(project_id, Projection.vantage(scope))
     RequirementGraph.cached_graph_with_actionable(scope)
   end
 

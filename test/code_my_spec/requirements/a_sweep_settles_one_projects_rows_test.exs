@@ -30,14 +30,14 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
   Over-satisfaction is the expensive direction: an agent is told the work is
   done and skips it.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.ProjectsFixtures
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.GraphStore
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.StoriesFixtures
   alias CodeMySpec.Users.Scope
 
@@ -71,7 +71,7 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
       # to a default, naming no exceptions — which is the shape every project
       # requirement takes and the shape a fully-defaulted population takes.
       {:ok, _written} =
-        Shadow.sweep(mine, %{
+        GraphStore.sweep(mine, %{
           entity_type: "story",
           name: "bdd_specs_exist",
           default: true,
@@ -102,7 +102,7 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
       project(mine)
 
       {:ok, _} =
-        Shadow.sweep(mine, %{
+        GraphStore.sweep(mine, %{
           entity_type: "story",
           name: "bdd_specs_exist",
           default: true,
@@ -123,13 +123,13 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
     end
   end
 
-  # Give this project rows in the shadow to sweep. A sweep settles rows and
+  # Give this project rows in the rows to sweep. A sweep settles rows and
   # never creates them, so a project the projector has never run for is
   # untouched for a reason that has nothing to do with scoping.
   defp project(%Scope{} = scope) do
     CodeMySpec.Requirements.recompute(scope)
-    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   # The vantage every project shares, and the only one where the bug is visible.

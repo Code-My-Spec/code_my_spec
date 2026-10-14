@@ -32,6 +32,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.PromotionQueue.Entry
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.Qa
+  alias CodeMySpec.Repo.SandboxAllowance
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -49,8 +50,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @gate_wait_limit_ms 30 * 60_000
 
   @doc false
-  def start_link({project_id, %Scope{} = scope}) do
-    GenServer.start_link(__MODULE__, {project_id, scope}, name: via(project_id))
+  def start_link({project_id, %Scope{} = scope}), do: start_link({project_id, scope, nil})
+
+  # `owners` are the processes whose sandbox connection this one uses under
+  # test (`SandboxAllowance.owners/0`).
+  def start_link({project_id, %Scope{} = scope, owners}) do
+    GenServer.start_link(__MODULE__, {project_id, scope, owners}, name: via(project_id))
   end
 
   @doc false
@@ -60,7 +65,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def gate_label, do: @gate_label
 
   @impl true
-  def init({project_id, scope}) do
+  def init({project_id, scope, owners}) do
+    SandboxAllowance.take(owners)
     PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "completion_handoffs:#{project_id}")

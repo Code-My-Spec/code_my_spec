@@ -390,7 +390,7 @@ defmodule CodeMySpec.MixProject do
     [
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test]
+      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test, "cms.spex": :test]
     ]
   end
 

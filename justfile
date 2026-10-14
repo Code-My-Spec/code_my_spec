@@ -1003,9 +1003,18 @@ claude-dev *args: _submodules
     # other Claude session keeps the marketplace plugin and the cms on 4003.
     claude --plugin-dir "$PLUGIN" {{args}}
 
+# The CodeMySpec gate runs its exunit lane through this recipe.
 # Run tests
+[positional-arguments]
 test *args:
-    mix test {{args}}
+    mix test "$@"
+
+# The whole suite runs as four parallel shards (`mix cms.spex`); named files run
+# as before. The CodeMySpec gate runs its spex lane through this recipe.
+# Run spex
+[positional-arguments]
+spex *args:
+    mix cms.spex "$@"
 
 # Run a specific test file/line
 test-file file:

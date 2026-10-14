@@ -264,9 +264,10 @@ defmodule CodeMySpec.Analysis.Runners do
   # Returning `{:ok, problems: []}` here was actively harmful. The Reconciler
   # clears a source's Problems wholesale before inserting, so an empty result
   # wiped every real exunit Problem and then finished the run `:completed` at
-  # the current fingerprint — and `tests_passing` checks exactly those two
-  # things (a fresh completed run, zero problems). A `mix test` that failed to
-  # start therefore reported the component's tests as passing.
+  # the current fingerprint — and a fresh completed run with zero problems is
+  # exactly what `ready_for_qa`'s own certification reads off this source. A
+  # `mix test` that failed to start therefore reported the component's tests
+  # as passing.
   #
   # Failing the run leaves it `:failed`: never fresh, never problem-clearing,
   # and re-enqueued on the next stop.

@@ -21,7 +21,7 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
   `Assignment.advance/4`, which an explicit assignment still reaches.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Qa.Verdict

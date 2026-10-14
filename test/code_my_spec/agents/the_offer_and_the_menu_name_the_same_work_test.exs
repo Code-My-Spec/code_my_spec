@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
   active, its own task blocked and then unblocked, and a teammate holding the
   head.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response

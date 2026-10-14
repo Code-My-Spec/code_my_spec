@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.AReleasedStoryBringsItsRequirementsTest do
   so the answer says whether the fault is in the graph or in the surface.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   # `/app/projects/.../stories` is a cloud-app route; the case's default
   # endpoint is the local app, where `live/2` answers 404.

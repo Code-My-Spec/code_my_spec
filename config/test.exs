@@ -108,9 +108,12 @@ requested_partition = System.get_env("MIX_TEST_PARTITION")
 # copy. A value inherited from another worktree cannot match, so the inversion
 # that this restores nothing of (issue 63265687, two sessions migrating past each
 # other) stays closed. Anything else the environment says still loses.
+#
+# `_<n>` is a spex shard of any of these (`mix cms.spex`).
 own_sub_partition? =
   is_binary(recorded_partition) and is_binary(requested_partition) and
-    requested_partition in [recorded_partition <> "a", recorded_partition <> "s"]
+    Regex.match?(~r/^#{Regex.escape(recorded_partition)}[as]?(_\d+)?$/, requested_partition) and
+    requested_partition != recorded_partition
 
 # In a linked worktree `.git` is a file pointing at the real git dir rather than
 # a directory. The primary checkout keeps the bare name.

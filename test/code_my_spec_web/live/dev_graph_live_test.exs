@@ -8,7 +8,7 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
   worse than none, because it is quoted.
   """
 
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import CodeMySpec.UsersFixtures

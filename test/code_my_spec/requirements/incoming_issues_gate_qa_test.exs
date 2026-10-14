@@ -16,7 +16,7 @@ defmodule CodeMySpec.Requirements.IncomingIssuesGateQaTest do
     * an unlinked incoming medium+ issue is offered for triage whatever its
       scope (129e82f0 was `:qa` and gated nothing).
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.AgentTasks.TriageIssues
   alias CodeMySpec.Issues

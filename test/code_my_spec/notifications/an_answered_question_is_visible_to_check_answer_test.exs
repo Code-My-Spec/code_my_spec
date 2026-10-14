@@ -15,7 +15,7 @@ defmodule CodeMySpec.Notifications.AnAnsweredQuestionIsVisibleToCheckAnswerTest 
   performs (`CheckAnswer.execute/2`), back to back with no wake or nudge in
   between, to confirm they agree.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

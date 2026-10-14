@@ -16,7 +16,7 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
   mid-turn is restarted by the harness, which ends the interrupted turn out
   loud (`Engine.Keeper`). What is left here is the way back up.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

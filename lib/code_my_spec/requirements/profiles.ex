@@ -70,20 +70,21 @@ defmodule CodeMySpec.Requirements.Profiles do
     }
   end
 
-  # Every `file_exists` and `file_valid` requirement in the graph — 76 of the
-  # 110 definitions — from one file read plus the two entity lists.
+  # What `implementation_file` (`:file_exists`, role `:implementation`) reads,
+  # plus the `:bdd_spec`-role files `bdd_specs_exist` reads (through
+  # `RequirementCalculator.bdd_specs_covered/3`, not this profile's own
+  # file_exists table) — from one file read plus the two entity lists.
   #
-  # Eight names, and each maps to exactly one role and one kind across all
-  # fifteen graphs: `spec_file`/`spec_valid` to `:spec`, `test_file`/
-  # `test_spec_alignment` to `:test`, `review_file`/`review_valid` to `:review`,
-  # `implementation_file` to `:implementation`, `bdd_specs_exist` to
-  # `:bdd_spec`. So they are a table and two shapes rather than eight handlers.
+  # `spec_file`/`spec_valid`, `test_file`/`test_spec_alignment` and
+  # `review_file`/`review_valid` were removed from the definitions (8897edfb);
+  # the component graphs that once used them now reduce to
+  # `implementation_file` alone.
   #
-  # The entity lists are here for the *unsatisfied* side. A component missing a
-  # spec needs `expected_path` in its details — `RequirementsFormatter` renders
-  # it, and it is the one thing telling an agent where to write the file — and
-  # that is per component, so those entities have to be enumerated rather than
-  # swept.
+  # The entity lists are here for the *unsatisfied* side. A component missing
+  # its implementation file needs `expected_path` in its details —
+  # `RequirementsFormatter` renders it, and it is the one thing telling an
+  # agent where to write the file — and that is per component, so those
+  # entities have to be enumerated rather than swept.
   #
   # Files are scoped to the checkout for the reason `Preloader.load/1` gives at
   # length: blended, a file present in another worktree reads as present here,
@@ -165,7 +166,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # `promoted_version`, and `stories_exist` and `work_dispatched` are about the
   # set rather than about any row.
   #
-  # Every story, not only the released ones. `Shadow.sweep/2` matches on name
+  # Every story, not only the released ones. `GraphStore.sweep/2` matches on name
   # and entity type and can only touch rows that exist, so the parked stories
   # this carries are swept over harmlessly — and filtering here would mean
   # keeping `Preloader`'s `ready_for_dev` gate in a second place, where it would

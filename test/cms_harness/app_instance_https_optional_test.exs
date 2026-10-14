@@ -10,6 +10,7 @@ defmodule CmsHarness.AppInstanceHttpsOptionalTest do
   left untouched by the refusal).
   """
 
+  # Sync: `app_instance_rig` sets application env.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.AppInstanceHelpers

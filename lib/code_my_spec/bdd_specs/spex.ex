@@ -106,7 +106,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
   defp shell_out(args, opts, environment, project_root, quiet, temp_file, caller_provided_file) do
     args = expand_directory_args(args, project_root, environment)
     spex_args = build_args(args, temp_file, quiet)
-    command = "mix " <> Enum.join(spex_args, " ")
+    program = program(environment, "spex")
+    command = program <> " " <> Enum.join(spex_args, " ")
 
     # The scrub keeps the child `mix`/`erl` off our Burrito ERTS (see
     # CodeMySpec.Environments.clean_otp_env/0), and `merge_clean_env/1` applies
@@ -152,7 +153,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     #
     # exunit already carries it: `{:test_suite_did_not_run, status, excerpt}`
     # (`runners.ex:214`). This is the same tuple one analyzer short.
-    case Environments.cmd(environment, "mix", spex_args, stderr_to_stdout: true, env: cmd_env) do
+    case Environments.cmd(environment, program, spex_args, stderr_to_stdout: true, env: cmd_env) do
       {raw_output, exit_code} ->
         result =
           parse_and_return_failures(
@@ -256,6 +257,12 @@ defmodule CodeMySpec.BddSpecs.Spex do
   defp spex_files_or_arg(files, _arg), do: files
 
   defp directory?(env, path), do: match?({:ok, _}, Environments.list_directory(env, path))
+
+  # The project's `spex` recipe when it declares one, so how the suite runs —
+  # sharded, say — is the project's choice. The arguments are the same either
+  # way: `just spex …` and `mix spex …` both begin with the recipe/task name.
+  defp program(environment, recipe),
+    do: if(Environments.recipe?(environment, recipe), do: "just", else: "mix")
 
   defp build_args(args, temp_file, quiet) do
     base_args = ["spex" | args] ++ ["--jsonl=#{temp_file}"]

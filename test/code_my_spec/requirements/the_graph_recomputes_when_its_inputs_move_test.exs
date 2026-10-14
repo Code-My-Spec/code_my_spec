@@ -19,7 +19,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   So writers announce, one watcher per project debounces and asks the
   fingerprint, and the recompute happens in one place.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -253,7 +253,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
     assert [{_pid, _}] =
              Registry.lookup(
                CodeMySpec.Requirements.Registry,
-               {ctx.scope.active_project_id, :shadow}
+               {ctx.scope.active_project_id, :graph}
              )
   end
 
@@ -263,7 +263,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
     assert [] =
              Registry.lookup(
                CodeMySpec.Requirements.Registry,
-               {ctx.scope.active_project_id, :shadow}
+               {ctx.scope.active_project_id, :graph}
              ),
            "a project with no agent in the loop needs no writer"
   end

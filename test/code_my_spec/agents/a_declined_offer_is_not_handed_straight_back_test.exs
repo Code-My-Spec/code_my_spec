@@ -33,7 +33,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   window in the third test is what keeps the fingerprint from becoming a wedge
   when the work never changes but its claimability does.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents.AgentsRepository
