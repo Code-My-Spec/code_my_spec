@@ -1177,10 +1177,13 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   def desktop_setup_main_agent(user) do
-    context =
-      %{user: user}
-      |> CodeMySpecTest.ConnCase.setup_active_account()
-      |> CodeMySpecTest.ConnCase.setup_active_project()
+    account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user)
+    account_scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account)
+    {:ok, _} = UserPreferences.select_active_account(account_scope, account.id)
+    project = CodeMySpec.ProjectsFixtures.project_fixture(account_scope, account_id: account.id)
+    scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account, project)
+    {:ok, _} = UserPreferences.select_active_project(scope, project.id)
+    context = %{user: user, account: account, project: project, scope: scope}
 
     :ok = install_recording_agent_transport(context)
     :ok = designate_main(context.scope, context.scope.active_working_copy_id)
