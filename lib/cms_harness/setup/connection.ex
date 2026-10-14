@@ -23,11 +23,41 @@ defmodule CmsHarness.Setup.Connection do
            }),
          :ok <- configure(root, copy_id, app),
          {:ok, identity} <- Projects.ensure_started(root) do
-      {:ok, Map.put(identity, :connected, Projects.connected?(root))}
+      observation = observe(root)
+      {:ok, Map.merge(identity, observation)}
     end
   end
 
   def connect(_path, _identity), do: {:error, :issued_project_and_working_copy_required}
+
+  @doc "Waits for a live connection; timeout means pending, not a confirmed failure."
+  def observe(root, timeout \\ 5_000) do
+    await_connection(root, System.monotonic_time(:millisecond) + timeout)
+  end
+
+  defp await_connection(root, deadline) do
+    connected = Projects.connected?(root)
+
+    cond do
+      connected ->
+        observation(true, "connected")
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        observation(false, "pending")
+
+      true ->
+        Process.sleep(50)
+        await_connection(root, deadline)
+    end
+  end
+
+  defp observation(connected, state) do
+    %{
+      connected: connected,
+      connection_state: state,
+      observed_at: DateTime.to_iso8601(DateTime.utc_now())
+    }
+  end
 
   defp same_project(root, expected) do
     case ProjectIdentity.resolve(root) do

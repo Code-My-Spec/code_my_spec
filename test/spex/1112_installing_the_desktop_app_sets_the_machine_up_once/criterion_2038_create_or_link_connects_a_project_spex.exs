@@ -51,6 +51,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2038Spex do
                )
 
         assert has_element?(context.view, "[data-test='project-connected'] a[href]")
+        assert_recorded_connection(context)
         {:ok, context}
       end
     end
@@ -101,6 +102,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2038Spex do
                )
 
         assert has_element?(context.view, "[data-test='project-connected'] a[href]")
+        assert_recorded_connection(context)
         assert read_machine_file!(context, Path.join(context.target, "mix.exs")) == context.source
         commands_after = read_machine_file!(context, context.command_log)
         added = String.replace_prefix(commands_after, context.commands_before, "")
@@ -108,6 +110,21 @@ defmodule CodeMySpecSpex.Story1112.Criterion2038Spex do
         {:ok, context}
       end
     end
+  end
+
+  defp assert_recorded_connection(context) do
+    [path] =
+      context.view
+      |> element("[data-test='setup-results-file'][data-path]")
+      |> render()
+      |> Floki.parse_fragment!()
+      |> Floki.attribute("data-path")
+
+    snapshot = context |> read_machine_file!(path) |> Jason.decode!()
+    connection = get_in(snapshot, ["operations", "connect", "result"])
+    assert connection["connected"] == true
+    assert connection["connection_state"] == "connected"
+    assert {:ok, _, _} = DateTime.from_iso8601(connection["observed_at"])
   end
 
   defp read_machine_file!(context, path) do

@@ -64,6 +64,22 @@ defmodule CmsHarness.SyncPathTest do
   end
 
   describe "joining" do
+    test "setup observes an established connection instead of the initial disconnected state", %{
+      project: project
+    } do
+      FakeServer.start()
+      refute Projects.connected?(project.root)
+
+      observation = Task.async(fn -> CmsHarness.Setup.Connection.observe(project.root) end)
+      assert Task.yield(observation, 50) == nil
+      {:ok, _} = Projects.ensure_started(project.root)
+
+      result = Task.await(observation, 6_000)
+      assert result.connected == true
+      assert result.connection_state == "connected"
+      assert {:ok, _, _} = DateTime.from_iso8601(result.observed_at)
+    end
+
     test "the harness joins its project's topic and takes the read model", %{project: project} do
       FakeServer.start()
 

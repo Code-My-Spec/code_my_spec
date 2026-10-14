@@ -385,22 +385,7 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
              path,
              CmsHarness.Device.recorded_id()
            ) do
-      await_connection(result.working_copy.root, System.monotonic_time(:millisecond) + 5_000)
       {:ok, result}
-    end
-  end
-
-  defp await_connection(root, deadline) do
-    cond do
-      CmsHarness.Projects.connected?(root) ->
-        :ok
-
-      System.monotonic_time(:millisecond) >= deadline ->
-        :pending
-
-      true ->
-        Process.sleep(50)
-        await_connection(root, deadline)
     end
   end
 

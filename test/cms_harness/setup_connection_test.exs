@@ -3,6 +3,14 @@ defmodule CmsHarness.Setup.ConnectionTest do
 
   alias CmsHarness.Setup.Connection
 
+  test "an unconfirmed connection is timestamped as pending rather than failed" do
+    root = Path.join(System.tmp_dir!(), "unconnected-#{System.unique_integer([:positive])}")
+    result = Connection.observe(root, 0)
+    assert result.connected == false
+    assert result.connection_state == "pending"
+    assert {:ok, _, _} = DateTime.from_iso8601(result.observed_at)
+  end
+
   test "a checkout belonging to another server is refused without changing its files" do
     root = Path.join(System.tmp_dir!(), "setup-connection-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
