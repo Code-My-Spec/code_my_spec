@@ -9,6 +9,87 @@ defmodule CodeMySpecSpex.Story1112.Criterion2041Spex do
   defp fresh_machine(context), do: DesktopSetupHelpers.fresh_machine(context)
 
   spex "Setup runs in the desktop UI with the main agent assisting", criterion: 2041 do
+    scenario "A legacy disconnected snapshot is historical when help is requested on a live connection" do
+      given_ "completed checks and a legacy connection snapshot on disk", context do
+        context =
+          Map.merge(
+            context,
+            CodeMySpecSpex.Fixtures.desktop_setup_main_agent(context.desktop_user)
+          )
+
+        project = CodeMySpecSpex.Fixtures.desktop_setup_connected_harness(context.scope)
+        {:ok, view, _} = live(context.conn, "/app")
+        view |> element("[data-test='check-prerequisites']") |> render_click()
+        render_async(view, 10_000)
+
+        path =
+          view
+          |> element("[data-test='setup-results-file']")
+          |> render()
+          |> Floki.parse_fragment!()
+          |> Floki.attribute("data-path")
+          |> hd()
+
+        snapshot = context |> read_machine_file!(path) |> Jason.decode!()
+        captured_at = "2026-01-01T00:00:00Z"
+
+        historical =
+          Map.put(snapshot, "operations", %{
+            "connect" => %{
+              "state" => "done",
+              "started_at" => captured_at,
+              "finished_at" => captured_at,
+              "result" => %{
+                "id" => project.id,
+                "working_copy_id" => project.working_copy_id,
+                "root" => project.root,
+                "connected" => false
+              }
+            }
+          })
+
+        bytes = Jason.encode!(historical, pretty: true)
+        :ok = Environments.write_file(context.machine_environment, path, bytes)
+
+        {:ok,
+         Map.merge(context, %{
+           history: historical,
+           history_bytes: bytes,
+           results_path: path,
+           commands_before: read_machine_file!(context, context.command_log)
+         })}
+      end
+
+      when_ "the developer reopens setup and requests assistance", context do
+        {:ok, view, _} = live(context.conn, "/app")
+        assert has_element?(view, "[data-test='project-connected']")
+        view |> element("[data-test='accept-install-help']") |> render_click()
+        render_async(view, 10_000)
+        agent_id = context.setup_main_agent.id
+        assert_receive {:agent_dispatch, ^agent_id, _ref, request}, 5_000
+        [instructions, encoded] = String.split(request, "\n\n", parts: 2)
+        {:ok, Map.merge(context, %{instructions: instructions, payload: Jason.decode!(encoded)})}
+      end
+
+      then_ "the agent receives separate live connectivity and unchanged historical results",
+            context do
+        assert context.payload["recorded_setup"] == context.history
+        assert context.payload["current_connection"]["connected"] == true
+        assert context.payload["current_connection"]["connection_state"] == "connected"
+
+        assert {:ok, _, _} =
+                 DateTime.from_iso8601(context.payload["current_connection"]["observed_at"])
+
+        assert context.instructions =~
+                 "historical connected=false is not evidence of a current connection failure"
+
+        assert context.instructions =~ "connect operation's finished_at for older records"
+        assert read_machine_file!(context, context.results_path) == context.history_bytes
+        assert read_machine_file!(context, context.command_log) == context.commands_before
+        {:ok, context}
+      end
+    end
+
     scenario "A failed prerequisite is readable beside the main agent's help" do
       given_ "the developer opens desktop setup on a machine missing pgvector", context do
         DesktopSetupHelpers.without_pgvector(context)
