@@ -80,6 +80,24 @@ defmodule CmsHarness.SetupTest do
     assert File.read!(first["results_path"]) == previous_bytes
   end
 
+  test "checks the shipped cms version subcommand and persists its real output", ctx do
+    File.write!(Path.join(ctx.bin, "cms"), """
+    #!/bin/sh
+    case "$*" in
+      version) printf 'code_my_spec_cli 2.0.10\\n' ;;
+      *) printf 'unsupported command\\n' >&2; exit 1 ;;
+    esac
+    """)
+
+    assert {:ok, result} = Setup.check_prerequisites(ctx.opts)
+    assert Setup.prerequisites_passed?(result)
+    cms = Enum.find(result["steps"], &(&1["key"] == "cms"))
+    assert cms["state"] == "done"
+    assert [%{"exit_status" => 0, "output" => output}] = cms["commands"]
+    assert output =~ "code_my_spec_cli 2.0.10"
+    assert {:ok, ^result} = Setup.status(ctx.opts)
+  end
+
   test "a missing executable and nonzero exit are recorded as failures", ctx do
     File.rm!(Path.join(ctx.bin, "vibium"))
 

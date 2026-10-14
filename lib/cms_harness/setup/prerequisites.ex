@@ -51,7 +51,7 @@ defmodule CmsHarness.Setup.Prerequisites do
   end
 
   defp command("elixir"), do: {"elixir", ["--version"]}
-  defp command("cms"), do: {"cms", ["--version"]}
+  defp command("cms"), do: {"cms", ["version"]}
   defp command("vibium"), do: {"vibium", ["--version"]}
 
   defp outcome(key, %{exit_status: 0, error: nil, output: output}),
