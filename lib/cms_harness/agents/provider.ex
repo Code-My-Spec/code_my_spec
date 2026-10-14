@@ -49,6 +49,16 @@ defmodule CmsHarness.Agents.Provider do
   # One budget for both CLI providers: a turn runs whole test files and spex.
   @cli_exec_timeout_ms :timer.minutes(10)
 
+  # `codex exec` refuses a prompt over 1,048,576 characters, and a turn on a
+  # fresh thread sends the whole transcript plus the system prompt, every tool
+  # definition and the response schema. Alloy compacts against a token budget
+  # it estimates at four characters a token, and with no model named that
+  # budget is its 200,000 default — so a transcript could pass the cap before
+  # it compacted. Team 3's coder did, and every turn failed on the cap from
+  # 07:35 (2026-10-14). 160,000 compacts the messages near 575,000 characters,
+  # leaving the rest of the prompt room under the cap.
+  @codex_max_tokens 160_000
+
   @type credential :: map()
 
   @doc """
@@ -128,7 +138,8 @@ defmodule CmsHarness.Agents.Provider do
             ignore_user_config: true,
             timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
           }
-          |> with_command_runner()}
+          |> with_command_runner()},
+       max_tokens: @codex_max_tokens
      ]}
   end
 

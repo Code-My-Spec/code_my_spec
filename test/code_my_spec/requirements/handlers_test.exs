@@ -3,7 +3,7 @@ defmodule CodeMySpec.Requirements.HandlersTest do
   A handler has to agree with the checker it replaces — in both directions, and
   in what it says, not only in what it decides.
 
-  The verdict is what the shadow diff compares, so a wrong one is caught
+  The verdict is what the rows-vs-recompute diff compares, so a wrong one is caught
   eventually. The *details* are not compared, which is exactly why they need
   pinning here: a handler that reads `false` correctly while explaining itself
   differently produces rows that look wrong to whoever reads them next, and
@@ -14,7 +14,7 @@ defmodule CodeMySpec.Requirements.HandlersTest do
   against.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 

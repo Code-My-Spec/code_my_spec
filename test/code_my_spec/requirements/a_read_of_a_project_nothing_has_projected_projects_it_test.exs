@@ -9,12 +9,11 @@ defmodule CodeMySpec.Requirements.AReadOfAProjectNothingHasProjectedProjectsItTe
   project whose `get_next_requirement` says "All requirements satisfied" —
   which is what zero rows said. Two fixes, one for each half.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Components
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.StoryExecution
   alias CodeMySpec.Users.Scope
   alias CodeMySpecSpex.Fixtures
 
@@ -22,19 +21,7 @@ defmodule CodeMySpec.Requirements.AReadOfAProjectNothingHasProjectedProjectsItTe
   setup :setup_active_project
 
   setup do
-    previous = %{
-      projection: Application.get_env(:code_my_spec, :graph_shadow_projection, false),
-      source: Application.get_env(:code_my_spec, :graph_event_is_source, false)
-    }
-
-    Application.put_env(:code_my_spec, :graph_event_is_source, true)
-
-    on_exit(fn ->
-      Fixtures.stop_graph_watchers()
-      Application.put_env(:code_my_spec, :graph_shadow_projection, previous.projection)
-      Application.put_env(:code_my_spec, :graph_event_is_source, previous.source)
-    end)
-
+    on_exit(fn -> Fixtures.stop_graph_watchers() end)
     :ok
   end
 
@@ -47,8 +34,6 @@ defmodule CodeMySpec.Requirements.AReadOfAProjectNothingHasProjectedProjectsItTe
 
   describe "with the event path serving" do
     test "a read projects the project and answers from the rows", %{scope: %Scope{} = scope} do
-      Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-
       {:ok, _component} =
         Components.create_component(scope, %{
           name: "Ledger",
@@ -78,30 +63,6 @@ defmodule CodeMySpec.Requirements.AReadOfAProjectNothingHasProjectedProjectsItTe
 
       assert actionable != [],
              "the rows were projected and the read still answered from before them"
-    end
-
-    test "a read of an empty graph is told there is no graph, not a finished project",
-         %{scope: %Scope{} = scope} do
-      # The projector disabled: the event path serves, and nothing can write it.
-      Application.put_env(:code_my_spec, :graph_shadow_projection, false)
-
-      {:ok, _component} =
-        Components.create_component(scope, %{
-          name: "Ledger",
-          type: "context",
-          module_name: "Ledger",
-          description: "a project nobody can project"
-        })
-
-      unproject(scope)
-      result = StoryExecution.read(scope)
-
-      assert result.status == :complete or result.status == :unavailable
-
-      refute result.reason =~ "All requirements satisfied",
-             "an empty graph read as a finished project: #{inspect(result.reason)}"
-
-      assert result.reason =~ "No requirement graph yet", inspect(result.reason)
     end
   end
 end

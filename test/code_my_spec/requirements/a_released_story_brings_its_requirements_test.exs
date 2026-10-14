@@ -9,6 +9,7 @@ defmodule CodeMySpec.Requirements.AReleasedStoryBringsItsRequirementsTest do
   so the answer says whether the fault is in the graph or in the surface.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   # `/app/projects/.../stories` is a cloud-app route; the case's default

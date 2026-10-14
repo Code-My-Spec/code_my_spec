@@ -11,7 +11,7 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
   with `SPEX_CASSETTE_MODE=record` and its two turns are a fresh `exec` and a
   `resume`.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CmsHarness.Agents
   alias CmsHarness.Agents.Engine

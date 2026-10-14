@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.AgentPerformanceHelpers
 

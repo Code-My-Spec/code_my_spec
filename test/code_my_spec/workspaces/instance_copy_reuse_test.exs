@@ -18,7 +18,7 @@ defmodule CodeMySpec.Workspaces.InstanceCopyReuseTest do
   `boot/1` short-circuits on a workspace that is still running and never reaches
   the code under test — the workspace has to actually be down.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures

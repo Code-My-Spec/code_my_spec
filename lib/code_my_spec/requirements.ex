@@ -49,7 +49,9 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Handlers
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
@@ -173,15 +175,6 @@ defmodule CodeMySpec.Requirements do
     do: name in RequirementsRegistry.requirement_names_for_role(role)
 
   @doc """
-  Which entities read stale right now — the expensive diff, run deliberately.
-
-  See `RequirementGraph.stale_entities_report/1`. Reports; changes nothing.
-  """
-  @spec stale_entities_report(Scope.t()) ::
-          {:partial, [{String.t(), term()}]} | {:all, String.t()} | {:error, term()}
-  def stale_entities_report(%Scope{} = scope), do: RequirementGraph.stale_entities_report(scope)
-
-  @doc """
   What is served against every entity recomputed from its inputs now — the
   instrument for the event path, which stamps no fingerprint. See
   `RequirementGraph.served_vs_recomputed/1`. Reports; changes nothing.
@@ -300,21 +293,23 @@ defmodule CodeMySpec.Requirements do
     do: %{rows: Projection.vantage(scope), files: Preloader.files_copy(scope)}
 
   @doc """
-  Bring this project's rows up to date, and answer from the work just done.
+  Rebuild this checkout's graph from the domain now, and answer what is served.
 
-  The write path's entry point, and the only thing that writes requirement
-  rows. `GraphWatcher` calls it when observations land; everything else reads.
-
-  Public because "recompute now" is a real operation a caller outside the
-  watcher sometimes needs — a test establishing a graph to read, a backfill, an
-  operator on a project whose watcher died. It is not a repair a reader should
-  reach for: a read that recomputes is what made a writer that announces
-  nothing indistinguishable from one that works.
+  For "recompute now": a backfill, `sync_project`, a test establishing a graph.
+  The projector forgets the vantage and seeds it whole; observations keep it
+  current from there.
   """
   @spec recompute(Scope.t()) ::
-          {{[Requirement.t()], [map()]}, [Requirement.t()], NaiveDateTime.t() | nil}
+          {{[Requirement.t()], [map()]}, [Requirement.t()], DateTime.t() | nil}
           | {:error, term()}
-  def recompute(%Scope{} = scope), do: RequirementGraph.recompute(scope)
+  def recompute(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+    :ok = GraphStore.clear(scope)
+    _ = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.reproject(project_id, Projection.vantage(scope))
+    RequirementGraph.cached_graph_with_actionable(scope)
+  end
+
+  def recompute(%Scope{}), do: {:error, :no_project}
 
   @doc """
   Returns the next actionable requirements across the entire project,

@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.ThinningACrowdedWorkingCopyTest do
   repository's `:cross_project` guard honest rather than bypassed: the write
   still goes through `stop_agent/2` with a scope that matches the agent.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository

@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Agents.UnknownDeliveryTest do
   @moduledoc "Historical messages without a mailbox entry do not authorize delivery transitions."
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

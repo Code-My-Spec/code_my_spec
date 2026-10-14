@@ -112,7 +112,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     test "notes existing journey tests when present", %{scope: scope, task: task} do
       write_file!(fixture_environment(scope), "test/journeys/registration_test.exs", """
       defmodule MyAppWeb.Journeys.RegistrationTest do
-        use MyAppWeb.FeatureCase, async: false
+        use MyAppWeb.FeatureCase, async: true
       end
       """)
 

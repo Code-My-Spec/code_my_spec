@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentPerformance.PageTest do
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.AgentPerformance.Page
   alias CodeMySpec.Stories

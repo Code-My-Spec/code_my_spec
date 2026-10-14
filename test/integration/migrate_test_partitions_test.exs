@@ -22,7 +22,7 @@ defmodule CodeMySpec.Integration.MigrateTestPartitionsTest do
   shared machine at load 20-30 before moving this out of the default sweep.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag :live
 
@@ -32,7 +32,8 @@ defmodule CodeMySpec.Integration.MigrateTestPartitionsTest do
   # Unique per test run so concurrent suites on this machine — this project's
   # own norm — never share one, and a leftover from a killed run cannot be
   # mistaken for a fresh one either.
-  defp scratch_database, do: "code_my_spec_test_migrate_partitions_#{System.unique_integer([:positive])}"
+  defp scratch_database,
+    do: "code_my_spec_test_migrate_partitions_#{System.unique_integer([:positive])}"
 
   defp drop(database) do
     Repo.__adapter__().storage_down(Keyword.put(Repo.config(), :database, database))
@@ -78,6 +79,7 @@ defmodule CodeMySpec.Integration.MigrateTestPartitionsTest do
     on_exit(fn -> drop(database) end)
 
     assert MigrateTestPartitions.migrate_if_exists(database) == :migrated
+
     assert applied_migration_count(database) > 0,
            "migrated should mean every migration on disk actually ran, not just that " <>
              "the connection succeeded"

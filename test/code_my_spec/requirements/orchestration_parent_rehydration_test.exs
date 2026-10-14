@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Requirements.OrchestrationParentRehydrationTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
@@ -31,8 +31,11 @@ defmodule CodeMySpec.Requirements.OrchestrationParentRehydrationTest do
       })
 
     {computed, _computed_edges} = RequirementGraph.compute_graph(scope)
+    _served = CodeMySpec.Requirements.recompute(scope)
     assert {:ok, ctx} = Preloader.load(scope)
-    {rehydrated, _edges} = Projection.load(scope, ctx)
+
+    {rehydrated, _edges} =
+      Projection.load(scope, ctx)
 
     compare_parent = fn id, name, node_scope ->
       computed_node =

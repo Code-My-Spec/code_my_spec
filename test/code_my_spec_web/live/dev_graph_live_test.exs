@@ -8,7 +8,7 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
   worse than none, because it is quoted.
   """
 
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import CodeMySpec.UsersFixtures
@@ -91,16 +91,18 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
 
     {:ok, view, html} = live(conn, ~p"/dev/graph")
 
-    assert html =~ "Every entity&#39;s inputs agree" or html =~ "Every entity's inputs agree",
+    assert html =~ ~r/Every entity(&#39;|')s inputs, recomputed now, agree/,
            "the premise did not hold: something was already stale before the write"
 
     # A write that reaches the database and announces nothing — the defect this
-    # page exists to find. `updated_at` is bumped because `Freshness.row_key/1`
-    # is `{id, updated_at}`, which is what a real writer moves.
+    # page exists to find. It moves a verdict (`component_linked`), because the
+    # page judges what is served against the graph recomputed now.
+    component = CodeMySpec.ComponentsFixtures.component_fixture(scope)
+
     Repo.update_all(
       from(s in "stories", where: s.id == ^story.id),
       set: [
-        description: "changed with nothing announcing it",
+        component_id: Ecto.UUID.dump!(component.id),
         updated_at: DateTime.utc_now() |> DateTime.add(60, :second) |> DateTime.to_naive()
       ]
     )

@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
   disagreed with the pass about six long-standing components in both directions
   — which staleness cannot produce — and the correlation was six for six:
 
-      component               at main   at devops   shadow said
+      component               at main   at devops   rows said
       AnswerNotification         1          0          true
       CallMcpServer              1          0          true
       ListNotifications          1          0          true
@@ -25,7 +25,7 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
       AnswerQuestion             0          1          false
       ListOpenQuestions          0          1          false
 
-  The shadow's answer tracks main's file state, never the checkout's own.
+  The rows' answer tracks main's file state, never the checkout's own.
 
   ## The ingredient this test needed
 
@@ -34,7 +34,7 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
   different shape. Production always has a default checkout; a fixture does not
   unless it is told to.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.FileSync

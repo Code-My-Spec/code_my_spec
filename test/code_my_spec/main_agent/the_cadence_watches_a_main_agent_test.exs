@@ -17,7 +17,7 @@ defmodule CodeMySpec.Agents.Main.TheCadenceWatchesAMainAgentTest do
   heal at all.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

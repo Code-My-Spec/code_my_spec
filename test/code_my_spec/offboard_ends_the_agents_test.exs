@@ -13,7 +13,7 @@ defmodule CodeMySpec.OffboardEndsTheAgentsTest do
   and still spending. Story 961 is the same concern from the other side.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

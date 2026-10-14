@@ -12,7 +12,7 @@ defmodule CmsHarness.AgentsTest do
   provider when something chats to it — so the whole start/stop lifecycle is
   exercised here for real, with a credential that is never used.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CmsHarness.Agents
   alias CmsHarness.Agents.Engine

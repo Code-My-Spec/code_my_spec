@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.IncrementalReportTest do
   that is to show it reporting a full rebuild as a full rebuild.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import Ecto.Query

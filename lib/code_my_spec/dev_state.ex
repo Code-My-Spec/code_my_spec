@@ -58,9 +58,7 @@ defmodule CodeMySpec.DevState do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -352,23 +350,16 @@ defmodule CodeMySpec.DevState do
   defp project_report(%Project{} = project) do
     copies = Repo.all(from(w in WorkingCopy, where: w.project_id == ^project.id))
     agents = AgentsRepository.list_every_agent(project_id: project.id)
-    watcher = GraphWatcher.status(project.id)
-    projector = ShadowProjector.status(project.id)
-    serving_kind = Shadow.serving_kind()
-    serving_writer = serving_status(serving_kind, watcher, projector)
+    projector = IncrementalGraph.status(project.id)
     copy_reports = Enum.map(copies, &copy_report(&1, agents))
 
     %{
       project_id: project.id,
       name: project.name,
-      graph_source: Atom.to_string(serving_kind),
-      graph_pass_enabled: GraphWatcher.pass_enabled?(),
-      graph_event_enabled: Shadow.enabled?(),
-      graph_writer: writer_report(serving_writer),
-      graph_watcher: watcher_report(watcher),
+      graph_writer: writer_report(projector),
       graph_projector: watcher_report(projector),
       working_copies: copy_reports,
-      disagreements: disagreements(project, serving_writer, agents, copy_reports)
+      disagreements: disagreements(project, projector, agents, copy_reports)
     }
   end
 
@@ -376,9 +367,6 @@ defmodule CodeMySpec.DevState do
 
   defp watcher_report(%{pending: pending, last_recompute: last}),
     do: %{watching: true, recompute_pending: pending, last_recompute: last}
-
-  defp serving_status(:event, _watcher, projector), do: projector
-  defp serving_status(:pass, watcher, _projector), do: watcher
 
   defp writer_report(nil), do: %{active: false}
 
@@ -459,7 +447,7 @@ defmodule CodeMySpec.DevState do
     unwatched =
       if is_nil(serving_writer) and in_the_loop do
         [
-          "project #{project.name} has agents in the loop and no #{Shadow.serving_kind()} graph writer — work " <>
+          "project #{project.name} has agents in the loop and no graph writer — work " <>
             "appearing will not update the graph. Reading a graph that has rows does not " <>
             "start one; restart the server or toggle an agent's loop to start its graph worker."
         ]

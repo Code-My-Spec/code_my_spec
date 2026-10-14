@@ -168,11 +168,12 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphReport
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.AcceptanceCriteria
@@ -1754,7 +1755,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def forget_projection(%Scope{} = scope) do
     scope
     |> Projection.vantages()
-    |> Enum.each(&Shadow.clear(%{scope | active_working_copy_id: &1}))
+    |> Enum.each(&GraphStore.clear(%{scope | active_working_copy_id: &1}))
   end
 
   @doc """
@@ -1829,7 +1830,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stop_watching(Scope.t()) :: :ok
   def stop_watching(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
         :ok
@@ -4340,8 +4341,22 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc "Recompute this checkout's graph now, as `sync_project` does."
+  def recompute_graph(%Scope{} = scope) do
+    _ = Requirements.recompute(scope)
+    :ok
+  end
+
+  @doc "Why the writer serving this project's reads last failed, or nil."
+  def graph_last_error(%Scope{active_project_id: project_id}) do
+    case GraphReport.writer_status(project_id) do
+      %{last_error: %{message: message}} -> message
+      _ -> nil
+    end
+  end
+
   @doc """
-  Make this project's graph watcher raise instead of recomputing.
+  Make this project's graph writer raise instead of recomputing.
 
   A different fault from `break_digest_source/1`: that one leaves the graph
   itself fine and breaks only what the main agent's digest reads. This is the

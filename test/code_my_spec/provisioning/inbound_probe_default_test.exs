@@ -26,7 +26,7 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
   under `MIX_ENV=test` (`config/test.exs`), so none of that polling costs
   real time here.
 
-  `async: false`: `fake_providers/1` puts `Req.Test` in shared mode, which is
+  `async: true`: `fake_providers/1` puts `Req.Test` in shared mode, which is
   global to the VM rather than scoped to this test's process.
   """
   use CodeMySpecTest.DataCase, async: false

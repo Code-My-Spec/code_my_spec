@@ -6,7 +6,7 @@ defmodule CodeMySpec.Agents.ProductLivesOnTheMainCopyTest do
   question blocks only the task it was asked about (story 1080).
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures

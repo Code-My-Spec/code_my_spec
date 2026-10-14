@@ -26,7 +26,7 @@ defmodule CodeMySpec.Agents.ADispatchFromInsideTheChannelIsRefusedTest do
   A refusal is something a caller can report; a dead channel is four cancelled
   turns and a rejoin.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport.Harness

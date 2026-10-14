@@ -5,7 +5,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   conflicting candidate is ejected without blocking the rest; a red candidate
   is ejected with its findings and nothing lands.
 
-  `async: false`: the queue's worker is a process under the application's
+  `async: true`: the queue's worker is a process under the application's
   supervisor, so it reads through the shared sandbox.
   """
 

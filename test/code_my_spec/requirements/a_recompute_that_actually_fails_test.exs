@@ -22,12 +22,14 @@ defmodule CodeMySpec.Requirements.ARecomputeThatActuallyFailsTest do
   takes and pass.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Faults
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphReport
   alias CodeMySpec.Requirements.GraphWatcher
 
   setup do
@@ -67,7 +69,7 @@ defmodule CodeMySpec.Requirements.ARecomputeThatActuallyFailsTest do
     :ok = GraphInputs.changed(scope.active_project_id)
     GraphWatcher.settle(scope.active_project_id)
     settled_tasks()
-    GraphWatcher.status(scope.active_project_id)
+    GraphReport.writer_status(scope.active_project_id)
   end
 
   # A healthy recompute spawns `wake_project_roles/1` off its own process — it

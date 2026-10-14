@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
   active, its own task blocked and then unblocked, and a teammate holding the
   head.
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   alias Anubis.Server.Frame

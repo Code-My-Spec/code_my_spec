@@ -16,6 +16,7 @@ defmodule CodeMySpec.Requirements.IncomingIssuesGateQaTest do
     * an unlinked incoming medium+ issue is offered for triage whatever its
       scope (129e82f0 was `:qa` and gated nothing).
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.AgentTasks.TriageIssues

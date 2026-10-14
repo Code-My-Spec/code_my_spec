@@ -29,10 +29,8 @@ defmodule CodeMySpec.Requirements.GraphReport do
 
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
-  alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -51,7 +49,7 @@ defmodule CodeMySpec.Requirements.GraphReport do
       computed_at: computed_at,
       served_from: served_from,
       watcher: watcher_report(writer_status(scope.active_project_id)),
-      last_drain: DrainCost.last(scope.active_project_id, Shadow.serving_kind()),
+      last_drain: DrainCost.last(scope.active_project_id, :event),
       vantage: Requirements.vantage_of(scope),
       nodes: Enum.map(nodes, &node_report/1),
       edges: Enum.map(edges, &edge_report/1)
@@ -87,21 +85,11 @@ defmodule CodeMySpec.Requirements.GraphReport do
   cannot disagree about whether the graph is being kept current.
   """
   @spec writer_status(Ecto.UUID.t()) :: map() | nil
-  def writer_status(project_id) do
-    case Shadow.serving_kind() do
-      :event -> ShadowProjector.status(project_id)
-      :pass -> GraphWatcher.status(project_id)
-    end
-  end
+  def writer_status(project_id), do: IncrementalGraph.status(project_id)
 
-  @doc "What to call that writer: `\"projector\"` on the event path, `\"watcher\"` otherwise."
+  @doc "What to call that writer."
   @spec writer_name() :: String.t()
-  def writer_name do
-    case Shadow.serving_kind() do
-      :event -> "projector"
-      :pass -> "watcher"
-    end
-  end
+  def writer_name, do: "projector"
 
   defp watcher_report(nil), do: %{watching: false}
 

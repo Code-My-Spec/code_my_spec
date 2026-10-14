@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   for UAT, and the node says which (a86c85dd).
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -13,11 +13,11 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   alias CodeMySpec.Provisioning
   alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
 
   setup do
     scope = full_scope_fixture()
@@ -85,16 +85,6 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
       assert offered(ctx.scope, deploy) == [deploy]
     end
 
-    test "the pass rewrites deploy when setup completes", ctx do
-      Requirements.recompute(ctx.scope)
-      assert stored_deploy(ctx.story)["waiting_on"] == "devops_setup"
-
-      complete_setup(ctx.scope)
-      Requirements.recompute(ctx.scope)
-
-      refute Map.has_key?(stored_deploy(ctx.story), "waiting_on")
-    end
-
     test "the event path settles deploy from the same answer", ctx do
       {:ok, [], sweeps} = Handlers.apply_event(ctx.scope, "devops_setup_changed", %{})
       sweep = Enum.find(sweeps, &(&1.name == "deploy"))
@@ -143,7 +133,7 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   end
 
   defp stored_deploy(story) do
-    Shadow.pass_target()
+    GraphStore.event_target()
     |> where([n], n.story_id == ^story.id and n.name == "deploy")
     |> select([n], n.details)
     |> Repo.one()

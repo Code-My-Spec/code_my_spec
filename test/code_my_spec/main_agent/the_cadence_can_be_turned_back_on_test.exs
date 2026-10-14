@@ -5,7 +5,7 @@ defmodule CodeMySpec.Agents.Main.TheCadenceCanBeTurnedBackOnTest do
   it back without one.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentsEnsureCopyAgentsTest do
   meaningful.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

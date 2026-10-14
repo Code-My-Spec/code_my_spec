@@ -4,7 +4,7 @@ defmodule CmsHarness.Agents.ALongToolResultGoesToAFileTest do
   coder's `cat a b c` lost `c` and was told only that something was truncated.
   Now it goes to a file outside the checkout that the agent can read back.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Alloy.Message
   alias Alloy.Tool.Executor

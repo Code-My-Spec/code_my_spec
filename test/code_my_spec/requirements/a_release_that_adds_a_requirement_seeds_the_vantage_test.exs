@@ -14,12 +14,12 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   requirement the templates no longer define, or lack one they do, is seeded
   like a vantage with none.
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case
-
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.StoriesFixtures
   alias CodeMySpec.Users.Scope
 
@@ -27,9 +27,6 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -38,8 +35,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
       scope = %{project_scope | active_working_copy_id: nil}
       StoriesFixtures.story_fixture(scope)
       StoriesFixtures.story_fixture(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       stories = story_count(scope)
       assert rows_named(scope, "three_amigos_complete") == stories, "the premise did not hold"
@@ -70,8 +67,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
          %{scope: %Scope{} = project_scope} do
       scope = %{project_scope | active_working_copy_id: nil}
       story = StoriesFixtures.story_fixture(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       # A row a retired definition left behind.
       [{template_row_id}] =
@@ -83,7 +80,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
 
       row =
         Repo.one!(
-          from(n in "shadow_requirements",
+          from(n in "requirements",
             where: n.id == ^template_row_id,
             select:
               map(n, [
@@ -101,7 +98,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
           )
         )
 
-      Repo.insert_all("shadow_requirements", [
+      Repo.insert_all("requirements", [
         Map.merge(row, %{name: "retired_requirement", story_id: story.id, satisfied_by: nil})
       ])
 
@@ -120,8 +117,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
     test "redraws them", %{scope: %Scope{} = project_scope} do
       scope = %{project_scope | active_working_copy_id: nil}
       StoriesFixtures.story_fixture(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       drawn = story_edge_count(scope)
       assert drawn > 0, "the premise did not hold: no story edges were drawn"
@@ -134,7 +131,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
         |> Ecto.Query.limit(1)
         |> Repo.all()
 
-      {1, _} = from(e in "shadow_requirement_edges", where: e.id == ^edge_id) |> Repo.delete_all()
+      {1, _} = from(e in "requirement_edges", where: e.id == ^edge_id) |> Repo.delete_all()
       assert story_edge_count(scope) == drawn - 1
 
       restart_projector(scope)
@@ -155,8 +152,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   defp story_edge_count(%Scope{} = scope), do: scope |> story_edges() |> Repo.aggregate(:count)
 
   defp story_edges(%Scope{active_project_id: project_id, active_working_copy_id: copy}) do
-    from(e in "shadow_requirement_edges",
-      join: n in "shadow_requirements",
+    from(e in "requirement_edges",
+      join: n in "requirements",
       on: n.id == e.from_requirement_id,
       join: s in "stories",
       on: s.id == n.story_id,
@@ -166,13 +163,13 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   end
 
   defp restart_projector(%Scope{} = scope) do
-    pid = GenServer.whereis(ShadowProjector.via(scope.active_project_id))
+    pid = GenServer.whereis(IncrementalGraph.via(scope.active_project_id))
     ref = Process.monitor(pid)
     :ok = DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
     assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
-    {:ok, fresh} = ShadowProjector.ensure_projecting(scope)
+    {:ok, fresh} = IncrementalGraph.ensure_projecting(scope)
     refute fresh == pid, "the projector did not go away, so nothing arrived"
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   defp story_count(%Scope{active_project_id: project_id}) do
@@ -187,7 +184,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   defp rows_named(%Scope{} = scope, name), do: scope |> story_rows(name) |> Repo.aggregate(:count)
 
   defp story_rows(%Scope{active_project_id: project_id, active_working_copy_id: copy}, name) do
-    from(n in "shadow_requirements",
+    from(n in "requirements",
       join: s in "stories",
       on: s.id == n.story_id,
       where: s.project_id == type(^project_id, :binary_id) and n.name == ^name,

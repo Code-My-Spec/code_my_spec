@@ -1,5 +1,5 @@
 defmodule CodeMySpec.LocalScopeTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment

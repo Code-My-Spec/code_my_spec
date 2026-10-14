@@ -16,7 +16,7 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
 
   ## Why a unit test rather than a spex
 
-  This exercises the shadow projector directly, and the shadow is development
+  This exercises the incremental graph directly, and the rows are development
   scaffolding — no rule or criterion on story 1020 asserts on it, deliberately.
   Testing the scaffolding is still worth doing; claiming it in the story is not.
 
@@ -39,37 +39,34 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
   thing to vary is the *two-checkout* case — the dev symptom was on a worktree
   whose branch lacked files that main had, and this test has only one.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.{Projection, ShadowProjector}
+  alias CodeMySpec.Requirements.{IncrementalGraph, Projection}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
   @impl_path "lib/example_context.ex"
 
   defp settle(scope) do
-    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   # What the event path says about this component's implementation file, at this
-  # checkout. Read from the shadow rows rather than the endpoint because the
+  # checkout. Read from the graph rows rather than the endpoint because the
   # endpoint serves the pass's answer, and the pass is not what is under test.
-  defp shadow_verdict(scope, component_id) do
+  defp served_verdict(scope, component_id) do
     base =
-      from(n in "shadow_requirements",
+      from(n in "requirements",
         where:
           n.component_id == type(^component_id, :binary_id) and
             n.name == "implementation_file",
@@ -104,14 +101,14 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
       {:ok, _} = FileSync.sync(scope)
       settle(scope)
 
-      assert shadow_verdict(scope, component.id) == true,
+      assert served_verdict(scope, component.id) == true,
              "the file was synced and the event path does not report it present"
 
       :ok = Environments.delete_file(env, @impl_path)
       {:ok, _} = FileSync.sync(scope)
       settle(scope)
 
-      assert shadow_verdict(scope, component.id) == false,
+      assert served_verdict(scope, component.id) == false,
              """
              The file is gone and the event path still reports it present.
 

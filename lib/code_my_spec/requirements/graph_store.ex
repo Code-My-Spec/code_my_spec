@@ -1,55 +1,15 @@
-defmodule CodeMySpec.Requirements.Shadow do
+defmodule CodeMySpec.Requirements.GraphStore do
   @moduledoc """
-  The event-derived projection, and how far it is from the real one.
+  Reads and writes the requirement graph's rows, for the event projection.
 
-  `shadow_requirements` mirrors `requirements` column for column, so the same
-  nodes land the same way and a difference between the two tables is a
-  difference in the *decision* that produced them — which is the only variable
-  under test. Everything downstream of that decision is shared.
-
-  ## What the diff means, and which direction is fatal
-
-  Three numbers, and they are not equally bad:
-
-    * `missing` — the live projection has a row the shadow does not. The event
-      path never computed that entity, so a writer owes a mark. This is the
-      direction that must reach zero: in production it is a requirement nobody
-      revisits, which costs an agent a session.
-
-    * `extra` — the shadow has a row the live projection does not. Usually the
-      shadow retained a requirement the pass no longer has. An extra requirement
-      can offer work that should not exist, so this also fails agreement.
-
-    * `disagree` — both have the row and the verdicts differ. The expensive one
-      to read, because it is either a stale shadow row (a missed mark, same as
-      `missing`) or a genuine computation difference, and the sample is what
-      tells them apart.
-
-  Agreement requires zero missing, extra and disagreeing nodes and edges.
-  Agreement with another implementation is not independent proof of correctness.
-
-  ## What the diff cannot see
-
-  It proves *coverage*, not *narrowness*. A writer that names nothing records a
-  project-wide mark, the projector reads that as "any of it" and recomputes
-  every entity, and the diff agrees — exactly as it would for a writer that
-  named its entities precisely. Verified by turning `Invalidations` off
-  entirely, which is the only thing that makes the comparison fail: a story
-  created after the seed came back as three `missing` rows, named.
-
-  So this number answers "would the event path have missed something", and the
-  cost question — how often a project-wide mark drags the whole project through
-  a recompute that a narrowed writer would have avoided — is a different
-  measurement, taken from how often those marks fire. Reading agreement as
-  evidence of narrowness is the mistake this paragraph exists to prevent.
-
-  ## Why the diff is not per event
-
-  Writing is per entity and per event — that is the point. Comparing is not:
-  it reads both projections whole, so doing it per event would cost more than
-  the thing it measures. It runs on the fingerprint pass, which is already
-  loading the context and is exactly the moment the two systems can be asked
-  the same question.
+  `IncrementalGraph` decides what each entity's requirements are; this is where
+  those answers land in `requirements` and `requirement_edges`. Writes are per
+  entity and per event: `write/3` replaces what one computation covered,
+  `put_verdict/2` and `put_verdicts/5` move a verdict a handler already knew,
+  `sweep/2` settles one requirement across every owner of a type, and
+  `write_edges/3` writes an edge set as a difference. The projection checks —
+  `projected?/1`, `definitions_covered?/2`, `incomplete_entities/2` — tell the
+  projector when a vantage's rows cannot be trusted and must be seeded.
   """
 
   import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2, select: 3]
@@ -60,9 +20,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.Node
-  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
-  alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -72,132 +30,21 @@ defmodule CodeMySpec.Requirements.Shadow do
   # it was `nil` in `delete_edges_outside/3` and `chunk_every/2` raised.
   @bind_budget 60_000
 
-  @shadow_table {"shadow_requirements", Node}
-  @real_table {"requirements", Node}
-  @shadow_edges "shadow_requirement_edges"
-  @real_edges "requirement_edges"
+  @table {"requirements", Node}
+  @edges "requirement_edges"
 
-  @doc """
-  Whether the event path has taken over the tables readers actually read.
-
-  The two projections are the same shape in two tables, and which one is
-  authoritative is the whole question this module exists to answer. While it is
-  being answered, the pass writes `requirements` — what every reader loads — and
-  the event path writes `shadow_requirements`, where being wrong costs nothing.
-
-  Flipping this swaps them. The event path takes `requirements`, the pass is
-  demoted to `shadow_requirements`, and `diff/1` goes on comparing the same two
-  things in the same direction, because it asks for its two sides by role rather
-  than by name.
-
-  Runtime rather than a deploy, for the reason the projection was built behind a
-  flag at all: this is the change that cannot be half-made. If the event path is
-  wrong about one requirement, every reader is wrong about it, and the way back
-  has to be a config change rather than a release.
-
-  ## Not yet safe to turn on
-
-  This moves the node tables and nothing else, and the halves are not
-  symmetrical. `requirements` and `shadow_requirements` carry the same three
-  owner+name unique indexes, so either writer can own either table. The edge
-  tables do not match: `requirement_edges` joins two row ids, while
-  `shadow_requirement_edges` stores the entity/name key on both ends, because
-  the event path writes edges before it knows what row ids the nodes got.
-
-  So flipping this today would hand the event path `requirements` while leaving
-  `requirement_edges` to a pass that no longer writes the rows those ids point
-  at. The way through is the machinery already here — `NodeRepository`'s
-  `ids_by_key/3` resolves exactly that mapping and `replace_edges/3` already
-  takes it — so the event path resolves its keys after writing nodes and writes
-  real edges, rather than a second edge table existing at all. Until that lands,
-  leave this alone.
-  """
-  @spec inverted?() :: boolean()
-  def inverted?, do: Application.get_env(:code_my_spec, :graph_event_is_source, false)
-
-  @doc """
-  Whether to run the comparison, as against running the event path.
-
-  Separate from `enabled?/0` because they are different costs and one flag was
-  hiding that. `ShadowProjector` is built to avoid a whole-project load — its
-  moduledoc says so in as many words, "`Preloader.load/1` is never called" —
-  and applies handlers against narrow contexts. `diff/1` opens with a full
-  `Preloader.load/2`, once per computed vantage, on every pass.
-
-  Measured on dev 2026-09-21: **814 preloads for 157 passes**, 5.2x, against a
-  preload that is the largest phase of a pass. Almost all of it was the
-  comparison, not the projection being compared.
-
-  Turning `enabled?/0` off to stop paying that turns off the event path itself
-  — the new system — and leaves the batched pass serving alone. That is
-  backwards for a project moving *to* event sourcing, and it is what this split
-  exists to prevent. The projection stays on and keeps being exercised; the
-  diff is what you switch on when you want to re-validate.
-  """
-  @spec diffing?() :: boolean()
-  def diffing?, do: Application.get_env(:code_my_spec, :graph_shadow_diff, false)
-
-  @doc """
-  Where the event path writes, and where the pass does.
-
-  Asked by role, so no call site has to know which way round the flag currently
-  is — which is the point: the ones in `NodeRepository` belong to the pass and
-  the ones here belong to the event path, and neither should change when they
-  trade tables.
-  """
+  @doc "The table the graph's nodes are written to and read from."
   @spec event_target() :: {String.t(), module()}
-  def event_target, do: if(inverted?(), do: @real_table, else: @shadow_table)
+  def event_target, do: @table
 
-  @spec pass_target() :: {String.t(), module()}
-  def pass_target, do: if(inverted?(), do: @shadow_table, else: @real_table)
-
-  @doc """
-  Which drain wrote the rows a reader is served: the event drain when
-  inverted, the pass otherwise.
-
-  What the graph JSON's `last_drain` reports. `DrainCost.last/1` answers the
-  last drain of *any* kind, and with both writers on that is whichever ran
-  last — the pass settles the projector after it writes, so it is usually the
-  event drain even where the pass is the source, and the numbers a criterion
-  read would be about the writer nobody is served from.
-  """
-  @spec serving_kind() :: :pass | :event
-  def serving_kind, do: if(inverted?(), do: :event, else: :pass)
-
+  @doc "The table the graph's edges are written to and read from."
   @spec event_edges() :: String.t()
-  def event_edges, do: if(inverted?(), do: @real_edges, else: @shadow_edges)
-
-  @spec pass_edges() :: String.t()
-  def pass_edges, do: if(inverted?(), do: @shadow_edges, else: @real_edges)
+  def event_edges, do: @edges
 
   @type entity :: {String.t(), term()}
 
-  @type report :: %{
-          missing: non_neg_integer(),
-          extra: non_neg_integer(),
-          disagree: non_neg_integer(),
-          live: non_neg_integer(),
-          shadow: non_neg_integer(),
-          edges_missing: non_neg_integer(),
-          edges_extra: non_neg_integer(),
-          live_edges: non_neg_integer(),
-          shadow_edges: non_neg_integer(),
-          sample: [String.t()],
-          edge_sample: [String.t()]
-        }
-
   @doc """
-  Whether the shadow projection is being maintained.
-
-  Separate from `Invalidations.enabled?/0`: recording marks is cheap and useful
-  on its own, where maintaining a second projection is the expensive half. Off
-  turns the experiment off without losing the marks that would let it restart.
-  """
-  @spec enabled?() :: boolean()
-  def enabled?, do: Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-
-  @doc """
-  Replace the shadow rows for everything this computation covered.
+  Replace the graph rows for everything this computation covered.
 
   `covered` and the nodes' own owners are deliberately separate inputs.
   `RequirementGraph.compute_entity/4` answers for a component's whole family —
@@ -217,7 +64,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   resolve it. The edge was still in the table and gone from the graph.
 
   Measured 2026-09-17, on a project with 27 edges: creating a component through
-  the real surface dropped the shadow's resolvable topology to 12 while the pass
+  the real surface dropped the rows' resolvable topology to 12 while the pass
   went to 33. It was invisible for as long as it existed because `log/1`
   reported node counts only, and only reprojecting topology in the same drain
   put the ids back — so a verdict-only drain orphaned edges permanently.
@@ -471,7 +318,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   @doc """
   Set one requirement's verdict, without recomputing anything around it.
 
-  What an event handler writes. `Shadow.write/3` replaces everything an entity
+  What an event handler writes. `GraphStore.write/3` replaces everything an entity
   owns and is what a recompute needs; this touches the single row the event
   settled and leaves its siblings alone — which is the whole difference between
   applying an event and re-deriving from one.
@@ -479,8 +326,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   Answers `{:ok, 0}` when no row matched, and that is information rather than a
   failure: the projection only holds rows the seed created, so a miss means the
   event named an entity this vantage has never projected. The caller counts
-  those — a handler quietly writing nothing is exactly the silent failure the
-  shadow exists to catch.
+  those — a handler quietly writing nothing is a silent failure otherwise.
   """
   @spec put_verdict(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def put_verdict(%Scope{} = scope, change) do
@@ -737,10 +583,8 @@ defmodule CodeMySpec.Requirements.Shadow do
   nodes has to call this, which is the same small set of events that already
   falls back to a recompute.
 
-  Stored as the pair of node keys the edge actually is, not as row ids. The
-  shadow's ids come from their own sequence, so an id-keyed edge would point at
-  a different requirement in each table — not missing, *wrong*, and a diff
-  comparing ids would be comparing noise.
+  Stored as the pair of node keys the edge actually is, not as row ids, so a
+  diff compares what the edge means rather than which rows happen to carry it.
   """
   @spec write_edges(Scope.t(), [%{from: tuple(), to: tuple()}], map() | nil) ::
           {:ok, non_neg_integer()}
@@ -871,106 +715,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   # The keys are gone now and the ids are the whole identity, which is the same
   # thing `requirement_edges` has always meant by an edge.
   defp edge_identity(row), do: {row.from_requirement_id, row.to_requirement_id}
-
-  @doc """
-  How far the shadow is from the live projection, for this reader's vantage.
-
-  Scoped through the *context*, not through the project's tables, and the
-  distinction is the whole difference between a meaningful number and a
-  meaningless one. `Preloader.load/1` narrows stories per working copy —
-  assigned here or unassigned — so a vantage's context holds fewer stories than
-  the project has, and `Projection.load/2` reads rows for exactly that set.
-
-  The live table holds more than that. `delete_departed/4` reaps only among the
-  entities a pass visited, so a partial recompute leaves rows standing for
-  entities that vantage's context no longer includes; `departed/2` filters them
-  out of the served graph rather than deleting them. Measured on dev: one
-  vantage's context had 38 stories where the table held rows for 121, and
-  comparing against the table reported 522 rows `missing` that the live
-  projection would never have served.
-
-  So this loads a context and asks both sides the same question. That costs a
-  preload, which is the right price for a diagnostic that is otherwise reporting
-  on the wrong population.
-  """
-  @spec diff(Scope.t()) :: report()
-  def diff(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
-    working_copy_id = Projection.vantage(scope)
-    {:ok, ctx} = Preloader.load(scope)
-    component_ids = Enum.map(ctx.components, & &1.id)
-    story_ids = Enum.map(ctx.stories, & &1.id)
-
-    live = verdicts(pass_target(), project_id, component_ids, story_ids, working_copy_id)
-    shadow = verdicts(event_target(), project_id, component_ids, story_ids, working_copy_id)
-
-    live_keys = MapSet.new(Map.keys(live))
-    shadow_keys = MapSet.new(Map.keys(shadow))
-
-    missing = MapSet.difference(live_keys, shadow_keys)
-    extra = MapSet.difference(shadow_keys, live_keys)
-
-    disagree =
-      live_keys
-      |> MapSet.intersection(shadow_keys)
-      |> Enum.filter(&(verdict(live, &1) != verdict(shadow, &1)))
-
-    live_edges =
-      edge_keys(
-        pass_target(),
-        pass_edges(),
-        project_id,
-        component_ids,
-        story_ids,
-        working_copy_id
-      )
-
-    shadow_edges =
-      edge_keys(
-        event_target(),
-        event_edges(),
-        project_id,
-        component_ids,
-        story_ids,
-        working_copy_id
-      )
-
-    %{
-      missing: MapSet.size(missing),
-      extra: MapSet.size(extra),
-      disagree: length(disagree),
-      live: map_size(live),
-      shadow: map_size(shadow),
-      edges_missing: MapSet.size(MapSet.difference(live_edges, shadow_edges)),
-      edges_extra: MapSet.size(MapSet.difference(shadow_edges, live_edges)),
-      live_edges: MapSet.size(live_edges),
-      shadow_edges: MapSet.size(shadow_edges),
-      sample: sample(missing, extra, disagree, live, shadow),
-      edge_sample: edge_sample(live_edges, shadow_edges)
-    }
-  end
-
-  def diff(%Scope{}), do: empty_report()
-
-  @doc """
-  Say where the shadow stands, on the pass that measured it.
-
-  One line, in the shape the other `[Requirements]` lines take, because this
-  number is read against them — a diff is only meaningful beside the pass that
-  produced it.
-  """
-  @spec log(report()) :: :ok
-  def log(report) do
-    clean? = Verification.clean?(report)
-
-    Logger.info(
-      "[Requirements] shadow #{if clean?, do: "agrees", else: "differs"} — " <>
-        "missing #{report.missing}, extra #{report.extra}, " <>
-        "disagree #{report.disagree} (live #{report.live}, shadow #{report.shadow}); " <>
-        "edges missing #{report.edges_missing}, extra #{report.edges_extra} " <>
-        "(live #{report.live_edges}, shadow #{report.shadow_edges})" <>
-        sample_suffix(report.sample ++ report.edge_sample)
-    )
-  end
 
   @doc """
   Whether this vantage has been projected at all.
@@ -1107,7 +851,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp covered?(held, expected),
     do: MapSet.size(held) == 0 or MapSet.equal?(held, expected)
 
-  @doc "Forget the shadow projection for this vantage, so it rebuilds from scratch."
+  @doc "Forget the rows projection for this vantage, so it rebuilds from scratch."
   @spec clear(Scope.t()) :: :ok
   def clear(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     {component_ids, story_ids} = entity_ids(project_id)
@@ -1129,31 +873,6 @@ defmodule CodeMySpec.Requirements.Shadow do
     {Repo.all(from(c in Component, where: c.project_id == ^project_id, select: c.id)),
      Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))}
   end
-
-  # `{owner, name} => satisfied`, which is the whole of what a projection
-  # claims. Everything else on a row is rehydrated from the registry at read
-  # time — `Node`'s own moduledoc says a row is "identity plus verdict" — so
-  # comparing more would be comparing the registry against itself.
-  #
-  # `checked_at` rides along for the sample, not for the comparison. A
-  # disagreement's first question is which side is fresher: the pass's
-  # per-entity fingerprint leaves analyzer freshness out (criterion 3448), so
-  # a story whose spex run went from stale to failing is settled by the event
-  # path and never restaled for the pass — measured 2026-09-21, `true` from
-  # 17:41 against `false` from 17:51, and readers on the pass told ten failing
-  # specs were passing. Without the stamps that read as the event path wrong.
-  defp verdicts(source, project_id, component_ids, story_ids, working_copy_id) do
-    source
-    |> scoped(project_id, component_ids, story_ids)
-    |> where(^copy_filter(working_copy_id))
-    |> Repo.all()
-    |> Map.new(fn row ->
-      {{row.component_id, row.story_id, row.project_id, row.issue_id, row.name},
-       {Verification.stored(row), row.checked_at}}
-    end)
-  end
-
-  defp verdict(side, key), do: side |> Map.fetch!(key) |> elem(0)
 
   defp scoped(source, project_id, component_ids, story_ids) do
     from(n in source,
@@ -1208,130 +927,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp scope_string(scope) when is_atom(scope), do: Atom.to_string(scope)
   defp scope_string(scope) when is_binary(scope), do: scope
 
-  # A handful, named, because the counts say how wrong and never say where —
-  # which is the gap `why_all/5` had to be added to close on the fingerprint
-  # side. Three of each is enough to point at the writer that owes a mark.
-  defp sample(missing, extra, disagree, live, shadow) do
-    Enum.concat([
-      missing |> Enum.take(3) |> Enum.map(&"missing #{key_label(&1)}"),
-      extra |> Enum.take(3) |> Enum.map(&"extra #{key_label(&1)}"),
-      disagree
-      |> Enum.take(3)
-      |> Enum.map(fn key ->
-        fields = Verification.changed_fields(verdict(live, key), verdict(shadow, key))
-
-        "disagree #{key_label(key)} (#{Enum.join(fields, ", ")}; live #{side_label(live, key)}, shadow #{side_label(shadow, key)})"
-      end)
-    ])
-  end
-
-  defp side_label(side, key) do
-    {answer, checked_at} = Map.fetch!(side, key)
-    "#{answer.satisfied}@#{checked_at && NaiveDateTime.to_time(checked_at)}"
-  end
-
-  defp key_label({component_id, story_id, project_id, issue_id, name}) do
-    owner =
-      cond do
-        component_id -> "component:#{String.slice(component_id, 0, 8)}"
-        story_id -> "story:#{story_id}"
-        issue_id -> "issue:#{issue_id}"
-        project_id -> "project"
-        true -> "?"
-      end
-
-    "#{owner}/#{name}"
-  end
-
-  # Which edges, not how many.
-  #
-  # A count says the topologies differ and leaves the reader to go and find out
-  # where, which for an edge means resolving four ids by hand. Three of each
-  # direction, named the way the node sample names a node.
-  defp edge_sample(live_edges, shadow_edges) do
-    Enum.concat([
-      MapSet.difference(live_edges, shadow_edges)
-      |> Enum.take(3)
-      |> Enum.map(&"edge missing #{edge_label(&1)}"),
-      MapSet.difference(shadow_edges, live_edges)
-      |> Enum.take(3)
-      |> Enum.map(&"edge extra #{edge_label(&1)}")
-    ])
-  end
-
-  defp edge_label({from, to}), do: "#{endpoint_label(from)} -> #{endpoint_label(to)}"
-
-  # `owner_key/4`'s shape, which is not `key_label/1`'s: an edge endpoint is
-  # already resolved to `{entity_type, id, name}` while a node key is still the
-  # four owner columns.
-  defp endpoint_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
-  defp endpoint_label({"story", id, name}), do: "story:#{id}/#{name}"
-  defp endpoint_label({"project", _id, name}), do: "project/#{name}"
-
-  defp sample_suffix([]), do: ""
-  defp sample_suffix(sample), do: "; " <> Enum.join(sample, ", ")
-
-  defp empty_report,
-    do: %{
-      missing: 0,
-      extra: 0,
-      disagree: 0,
-      live: 0,
-      shadow: 0,
-      edges_missing: 0,
-      edges_extra: 0,
-      live_edges: 0,
-      shadow_edges: 0,
-      sample: [],
-      edge_sample: []
-    }
-
-  # The live topology, as node-key pairs.
-  #
-  # Resolved through the rows rather than compared as ids, because the two
-  # tables' ids are independent sequences — see `write_edges/2`. Only edges with
-  # both endpoints inside this vantage's population count, which is the same
-  # filter `compute_edges/3` applies when it builds them.
-  # One projection's edges, as key pairs, whichever tables that projection owns.
-  #
-  # Both sides go through this, which is the point: an edge references rows in
-  # its own node table and the two projections number their rows differently, so
-  # comparing ids across them is meaningless. Translating each side back to
-  # `{entity_type, id, name}` against its *own* nodes is the only comparison
-  # that means anything — and it is what this function did for the live side
-  # before either side could move.
-  #
-  # Scoped by node id rather than by a project column, because only one of the
-  # two edge tables has one. Doing it this way lets the same query serve both.
-  defp edge_keys(nodes_src, edges_src, project_id, component_ids, story_ids, working_copy_id) do
-    rows =
-      nodes_src
-      |> scoped(project_id, component_ids, story_ids)
-      |> where(^copy_filter(working_copy_id))
-      |> select([n], {n.id, n.component_id, n.story_id, n.project_id, n.issue_id, n.name})
-      |> Repo.all()
-
-    key_by_id =
-      Map.new(rows, fn {id, component_id, story_id, proj_id, issue_id, name} ->
-        {id, owner_key(component_id, story_id, proj_id, issue_id, name)}
-      end)
-
-    ids = Map.keys(key_by_id)
-
-    edges_src
-    |> where([e], e.from_requirement_id in ^ids and e.to_requirement_id in ^ids)
-    |> select([e], {e.from_requirement_id, e.to_requirement_id})
-    |> Repo.all()
-    |> Enum.flat_map(fn {from_id, to_id} ->
-      case {Map.get(key_by_id, from_id), Map.get(key_by_id, to_id)} do
-        {nil, _} -> []
-        {_, nil} -> []
-        {from, to} -> [{from, to}]
-      end
-    end)
-    |> MapSet.new()
-  end
-
   # Postgres binds one parameter per column per row and counts them in a 16-bit
   # field — 65,535 for the whole statement, whatever its size — so the write has
   # to be chunked exactly as `NodeRepository.insert_every/3` chunks the node
@@ -1384,7 +979,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   # `entity_id` as text on both sides: a component's is a uuid and a story's is
-  # a bigint, and the shadow stores the pair rather than pointing at a row.
+  # a bigint, and the rows store the pair rather than pointing at a row.
   defp owner_key(component_id, _story, _project, _issue, name) when not is_nil(component_id),
     do: {"component", component_id, name}
 

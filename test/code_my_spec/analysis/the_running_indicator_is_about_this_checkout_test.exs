@@ -15,7 +15,7 @@ defmodule CodeMySpec.Analysis.TheRunningIndicatorIsAboutThisCheckoutTest do
   Tested at the repository rather than through the LiveView because the defect
   is in what the query answers, not in what the template does with it.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

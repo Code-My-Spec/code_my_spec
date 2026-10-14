@@ -24,14 +24,14 @@ defmodule CodeMySpecWeb.DevGraphLive do
   thing to watch is the set emptying as the recompute consumes what was
   announced.
 
-  While the event path serves (`Shadow.inverted?/0`), the fingerprint cannot
+  While the event path serves (`GraphStore.inverted?/0`), the fingerprint cannot
   judge it: handlers settle a row from the observation and stamp no
   fingerprint, so every row the pass wrote before the flip reads as "moved
   past" the moment any input moves, whether or not the verdict did — 447 of
   1,134 components on dev the first time this panel was read after the flip,
   every one of them right. So the panel then recomputes every entity from its
   inputs, in memory, and compares that with what is served, row for row and
-  edge for edge. Nothing here reads the shadow.
+  edge for edge. Nothing here reads the rows.
 
   A set that does not empty is the finding. It means an input moved and nothing
   said so, and it names the entities rather than leaving it to be inferred.
@@ -69,7 +69,6 @@ defmodule CodeMySpecWeb.DevGraphLive do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
 
@@ -263,7 +262,11 @@ defmodule CodeMySpecWeb.DevGraphLive do
       drain: DrainCost.last(project.id),
       drains_by_kind:
         Enum.reject(
-          [DrainCost.last(project.id, :event), DrainCost.last(project.id, :pass)],
+          [
+            DrainCost.last(project.id, :event),
+            DrainCost.last(project.id, :reseed),
+            DrainCost.last(project.id, :pass)
+          ],
           &is_nil/1
         )
     )
@@ -278,11 +281,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp assign_stale(%{assigns: %{selected: project}} = socket) do
     scope = scope_of(project)
 
-    stale =
-      if Shadow.inverted?(),
-        do: {:recomputed, Requirements.served_vs_recomputed(scope)},
-        else: Requirements.stale_entities_report(scope)
-
+    stale = {:recomputed, Requirements.served_vs_recomputed(scope)}
     assign(socket, stale: stale, stale_at: DateTime.utc_now())
   end
 
@@ -598,39 +597,6 @@ defmodule CodeMySpecWeb.DevGraphLive do
               <dd class={if @report.watcher.last_error, do: "text-error", else: ""}>
                 {(@report.watcher.last_error && @report.watcher.last_error.message) || "none"}
               </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section :if={@report.watcher} class="space-y-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
-            What the last pass caused
-          </h2>
-          <p class="text-xs opacity-60">
-            The end of the chain, and the half that a fresh row count cannot show. A pass
-            wakes the roles for work that <em>appeared</em> — the difference between its
-            actionable set and the previous pass's — so "recomputed, appeared nothing,
-            woke nobody" is the correct and common answer, and is not the same as a pass
-            that found work and told no one.
-          </p>
-          <dl class="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <dt class="opacity-60">Actionable now</dt>
-              <dd class="tabular-nums">{@report.watcher.actionable || "no pass yet"}</dd>
-            </div>
-            <div>
-              <dt class="opacity-60">Appeared on that pass</dt>
-              <dd class="font-mono text-xs">
-                {case @report.watcher.appeared do
-                  nil -> "no pass yet"
-                  [] -> "nothing new"
-                  names -> Enum.join(names, ", ")
-                end}
-              </dd>
-            </div>
-            <div>
-              <dt class="opacity-60">Last wake sent</dt>
-              <dd class="tabular-nums">{@report.watcher.last_wake || "never"}</dd>
             </div>
           </dl>
         </section>

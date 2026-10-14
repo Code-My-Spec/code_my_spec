@@ -61,7 +61,7 @@ defmodule CmsHarness.Agents.AlloyTurnRecorderTest do
   `Intake` shapers use `ReqLLM.generate_text/3` and `generate_object/4` — so this
   is the only streaming path there is.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ReqCassette
 

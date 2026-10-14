@@ -12,7 +12,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
   `ChannelClient` would — proving the round trip without booting one.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import Phoenix.ChannelTest
   import CodeMySpec.DevicesFixtures
