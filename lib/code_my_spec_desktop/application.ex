@@ -1,10 +1,10 @@
 defmodule CodeMySpecDesktop.Application do
   @moduledoc """
-  The desktop env's `mod` (bb8bc042). The web application's tree with the
-  desktop's children added: FirstBoot after PubSub and before anything reads
-  the database, then the harness after the Endpoint it talks to, then the
-  native window (or, with `CMS_BROWSER`, the default browser). The host setup a harness needs under a service supervisor (PATH,
-  `~/.codemyspec`, harness.log) and creating the database run before the tree.
+  Starts the desktop setup window before database-dependent services.
+
+  The shell serves prerequisite results and installation guidance without
+  Postgres. Once checks pass, the user can start the web application and
+  harness; startup failures leave the setup window available for recovery.
   """
 
   use Boundary,
@@ -20,24 +20,17 @@ defmodule CodeMySpecDesktop.Application do
 
   use Application
 
-  alias CodeMySpec.Integrations.DesktopClients
   alias CodeMySpec.Utils.Browser
-  alias CodeMySpecDesktop.FirstBoot
+  alias CodeMySpecDesktop.Application.Shell
 
   @impl true
-  def start(type, _args) do
+  def start(_type, _args) do
     CmsHarness.Application.prepare_host()
-    FirstBoot.ensure_database()
-    DesktopClients.configure()
-    CodeMySpecWeb.Application.start(type, children: &children/1)
-  end
 
-  def children(web_children) do
-    Enum.flat_map(web_children, fn
-      {Phoenix.PubSub, _} = pubsub -> [pubsub, FirstBoot, CodeMySpec.Integrations.OAuthHandoff]
-      child -> [child]
-    end) ++
-      [CmsHarness.Supervisor, view(Application.fetch_env!(:code_my_spec, :base_url) <> "/app")]
+    Shell.start_link(
+      view: &view/1,
+      app_url: Application.fetch_env!(:code_my_spec, :base_url) <> "/app"
+    )
   end
 
   # The native window; `CMS_BROWSER` falls back to opening the default browser.
