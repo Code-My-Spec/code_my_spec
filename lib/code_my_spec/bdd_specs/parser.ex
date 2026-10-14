@@ -124,12 +124,8 @@ defmodule CodeMySpec.BddSpecs.Parser do
   Expects directory names in format: `<story_number>_<description>` or
   `test_<unique>_<story_number>_<description>`.
 
-  A **number**, not a primary key. The two are different — on this project
-  they differ by 51 — and this function used to be called `derive_story_id`
-  and its result matched against `story.id`. That worked only while paths
-  were named from the id, and it broke silently the moment they stopped:
-  a number that resolves to *a* story looks exactly like one that resolves
-  to the right story. Callers must match `story.number`.
+  A **number**, not a primary key: callers must match `story.number`. A
+  number matched against ids resolves to *a* story, silently the wrong one.
 
   Uses anchored patterns to avoid false matches on numbers embedded in the slug
   (e.g. "509_sync_google_analytics_4_data" correctly returns 509, not 4).

@@ -7,19 +7,9 @@ defmodule CodeMySpec.WorkingCopies do
   into a gitignored file in the working copy, so a restart is the same harness
   and a fresh clone is correctly a new one.
 
-  ## Why the server issues it
-
-  Story 727's decided question, and every client-derived alternative fails a
-  real case: a checkout path collides when two containers both sit at
-  `/workspace/app`; host+path collides for exactly the containers whose
-  hostnames are generated; a Claude Code session id churns, orphaning rows, and
-  would split a parent agent from its subagents. The case that settles it is a
-  local agent and a cloud agent on the same branch — same path, different
-  machines, different uncommitted state — which nothing derivable from the
-  checkout alone can tell apart.
-
-  So the client never invents one. It announces itself, is issued an id, and
-  keeps it.
+  The server issues the id; the client never invents one. Every client-derived
+  key fails a real case (paths collide across containers, session ids churn).
+  See knowledge/promotion, "Working copies".
   """
 
   use Boundary,
@@ -52,11 +42,9 @@ defmodule CodeMySpec.WorkingCopies do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
-  # `CmsHarness.Config.label/1`'s fallback shape — "the harness at <root> on
-  # <host>" — sent by a harness that nobody has named. `display_name/1` below
-  # matches the same shape (its own regex; it only needs the path, not the
-  # host) to shorten it for display. `touch/2` uses this one to tell that
-  # shape apart from a name a person actually chose.
+  # `CmsHarness.Config.label/1`'s fallback, "the harness at <root> on <host>",
+  # sent by an unnamed harness. `touch/2` uses it to tell that shape from a
+  # name a person chose; `display_name/1` matches the same shape to shorten it.
   @auto_label_pattern ~r{^the harness at\s+\S+ on\s+\S+}
 
   @doc """
@@ -66,11 +54,12 @@ defmodule CodeMySpec.WorkingCopies do
   never connected presents `nil` and is minted one, and a checkout that has
   presents its id and is recognised.
 
-  An id that names no harness — a row deleted while its working copy still had
-  the file — mints a new one rather than failing. The alternative is a checkout
-  that cannot serve until somebody deletes a file it has no reason to suspect,
-  and the cost of the new id is a resync, which the harness does on join
-  anyway.
+  An id that names no harness (a row deleted while the checkout kept its file)
+  is first matched by device and root, then minted, rather than failing: the
+  cost of a new id is a resync, which a join does anyway.
+
+  Refuses a root that is a checkout's own `.code_my_spec/` and, when minting,
+  a join that names no device (`{:error, :no_device}`).
   """
   @spec issue(Scope.t(), String.t() | nil, keyword()) :: {:ok, WorkingCopy.t()} | {:error, term()}
   def issue(%Scope{active_project_id: project_id}, working_copy_id, opts \\ [])
@@ -85,24 +74,10 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
-  # A checkout's own `.code_my_spec/` is not a checkout.
-  #
-  # One registered itself as a second working copy on this project and
-  # reconnected for days. Analysis routed to it — it is a legitimate row on the
-  # right project — and every spex run died as `(Mix) The task "spex" could not
-  # be found`, because there is no `mix.exs` a level down. The real root's
-  # staleness never cleared, so a stop hook reported spex files as "stale, no
-  # rerun running" long after they were verified green, with nothing an agent
-  # could do to force a correctly-routed run. Issue 49e8340e.
-  #
-  # The harness diagnosed it out loud and carried on: "nothing to watch under
-  # …/.code_my_spec — no lib/, test/ or .code_my_spec/. Is this the right
-  # working directory?" A self-diagnosis nothing acts on is a log line.
-  #
-  # Refused rather than normalised to the parent, because a caller offering this
-  # root is confused about what it is holding and quietly registering it as
-  # something else would hide that. Refused *server*-side because every client
-  # reaches here, including a harness too old to carry a client-side guard.
+  # A checkout's own `.code_my_spec/` is not a checkout: registered as one it
+  # takes analysis runs that fail with no `mix.exs`. Refused, not normalised to
+  # the parent (the caller is confused and that must show), and server-side so
+  # every client, however old, is covered.
   defp refuse_metadata_dir(root) when is_binary(root) do
     case Path.basename(String.trim_trailing(root, "/")) do
       ".code_my_spec" ->
@@ -122,25 +97,11 @@ defmodule CodeMySpec.WorkingCopies do
 
   defp refuse_metadata_dir(_root), do: :ok
 
-  # Before minting, ask whether this checkout is already known.
-  #
-  # A copy that presents no id — or one this project does not recognise — used
-  # to become a new row every time, and a checkout does that on every join where
-  # its `.cms_harness.json` could not be read. Measured on this project: 52 rows
-  # for one worktree, five of them minted inside a single second, and only one
-  # of the 52 carrying any files. Everything keyed on the working copy then
-  # splits across identities that describe the same directory.
-  #
-  # `device_id` and `root` together, never root alone. Two machines share a path
-  # constantly — every container at `/workspace/app` — which is why root is
-  # recorded as reported rather than identifying, and why story 1020's criterion
-  # 2843 exists. The device is what that criterion established as the
-  # disambiguator, and one directory on one machine is one checkout.
-  #
-  # Both or neither: without a device this cannot tell two machines apart, and
-  # guessing would merge somebody else's checkout into this one. A join that
-  # carries no device still mints, which is the pre-device behaviour and is
-  # correct for a harness too old to say.
+  # Before minting, recognise a known checkout by `device_id` and `root`
+  # together — one directory on one machine is one checkout. Never root alone:
+  # paths collide across machines. Without a device nothing is recognised.
+  # Otherwise every join whose `.cms_harness.json` could not be read mints a
+  # duplicate row.
   defp recognise_or_create(project_id, label, opts) do
     case recognised(project_id, opts[:device], opts[:root]) do
       nil -> create(project_id, label, opts[:device], opts[:working_copy_id])
@@ -151,16 +112,9 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   The checkout at this root on the caller's own machine, or `nil`.
 
-  Naming a root is how every caller outside a harness names a checkout — the MCP
-  `start_agent` tool passes one and no id — and until this existed the id was
-  filled in from the caller's scope instead. That put the agent's row on the
-  caller's copy however far away the named root was, and made the main-copy guard
-  fire on starts that named somewhere else entirely.
-
-  Scoped to the caller's device on purpose: one root can exist on two machines,
-  `/workspace/app` is every container's default, and a lookup by root alone would
-  have to guess between them. A caller naming a path means the path on the box
-  they are on.
+  How callers outside a harness name a checkout (the MCP `start_agent` tool
+  passes a root, no id). Scoped to the caller's own device: one root can exist
+  on two machines, and a caller naming a path means the path on its own box.
   """
   @spec by_root(Scope.t(), String.t()) :: WorkingCopy.t() | nil
   def by_root(%Scope{active_project_id: project_id} = scope, root)
@@ -187,10 +141,8 @@ defmodule CodeMySpec.WorkingCopies do
     Repo.one(
       from w in WorkingCopy,
         where: w.project_id == ^project_id and w.device_id == ^device_id and w.root == ^root,
-        # The oldest is the one everything else already points at. A newer
-        # duplicate exists precisely because this lookup was missing, so
-        # adopting it would strand the files, problems and verdicts written
-        # under the original.
+        # The oldest: everything else already points at it, and adopting a
+        # newer duplicate would strand what was written under the original.
         order_by: [asc: w.inserted_at],
         limit: 1
     )
@@ -205,20 +157,12 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   The project's harness for writers that do not name a working copy.
 
-  A nil object, and an honest one: plenty of writers legitimately have no
-  checkout to point at — a mix task, the web UI, a fixture — and before the
-  grain change *every* writer was one of them. They all mean the same thing,
-  "the project's working copy, whichever that is", so they share one row rather
-  than each inventing a checkout that does not exist.
+  A nil object for writers with no checkout to name (a mix task, the web UI, a
+  fixture): they share one row rather than each inventing a checkout.
 
-  The id is derived from the project id, so this is idempotent without a lookup
-  and the same project always lands on the same harness. `last_seen_at` stays
-  nil because nothing ever joins as this one — that is what distinguishes it
-  from a real checkout in the operator's list.
-
-  Not a replacement for a real harness. Two *named* checkouts stay isolated;
-  this only stops unnamed writers from having to invent an identity in order to
-  write a row.
+  The id is derived from the project id (`default_id/1`), so this is idempotent
+  without a lookup. `last_seen_at` stays nil because nothing ever joins as this
+  one, which is what tells it apart from a real checkout.
   """
   @spec ensure_default(Scope.t()) :: Ecto.UUID.t()
   def ensure_default(%Scope{active_project_id: project_id}) when is_binary(project_id) do
@@ -250,16 +194,9 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   The harness with this id, with its project loaded.
 
-  Takes no scope, and that is the point: the id *is* the identity, so resolving
-  it must not depend on already knowing which project or directory is involved.
-  Every other lookup here is scoped by project because it starts from a
-  question about a project; this one starts from a harness announcing itself.
-
-  Used to answer a hook. A hook that names an id gets that harness's project
-  and root, rather than the old routing, which took the path the hook announced
-  and walked up to the nearest `mix.exs` — so one session resolved to different
-  roots depending on the subdirectory it fired from, and a checkout nested
-  under another resolved to the outer one.
+  Takes no scope: the id *is* the identity, so resolving it must not depend on
+  knowing the project or directory. A hook naming an id gets that copy's
+  project and root, never one inferred from a path.
 
   `:error` for a malformed id rather than a raise: the value arrives from a
   header and a caller must be able to tell "you sent nonsense" from "the
@@ -323,15 +260,12 @@ defmodule CodeMySpec.WorkingCopies do
 
   @doc """
   The story the team on this copy works: the one its story-scope agents
-  (coding, QA) hold, or nil when none holds one (a31f1cd6).
+  (coding, QA) hold, or nil when none holds one.
 
-  The team is the only record. The copy kept an `active_story_id` of its own
-  until John's ruling — "we don't have to record the active story on the copy,
-  it just blows through" — so a session or the main agent asking about a copy
-  reads its team's story here. `Agents.assign_team/3` is the writer.
-
-  Read schemalessly because `Agents` sits above this context. Agents in step
-  hold one story; if they ever disagree, the earliest-started one answers.
+  The team is the only record; the copy stores no active story.
+  `Agents.assign_team/3` is the writer. Read schemalessly because `Agents`
+  sits above this context. If agents ever disagree, the earliest-started
+  one answers.
   """
   @spec team_story_id(Ecto.UUID.t() | nil) :: integer() | nil
   def team_story_id(copy_id) when is_binary(copy_id) do
@@ -374,9 +308,8 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   The checkout this project's own agent runs in, or nil.
 
-  Nil is an ordinary answer rather than a fault: a project nobody has onboarded
-  a checkout for has no main copy, and the surfaces that need one say so rather
-  than inventing one. Guessing is the thing this whole idea exists to avoid.
+  Nil is an ordinary answer: surfaces that need a main copy say there is none
+  rather than guessing one.
   """
   @spec main(Scope.t()) :: WorkingCopy.t() | nil
   def main(%Scope{active_project_id: project_id}) when is_binary(project_id) do
@@ -389,12 +322,9 @@ defmodule CodeMySpec.WorkingCopies do
   A scope per project that has designated a main copy, pointed at that
   copy's own harness.
 
-  For sweeps that act on "every project's main checkout" rather than one
-  project at a time — `reconcile_lockfile/1`'s periodic backstop is the
-  first caller. Each scope selects its own copy; `environment/1` resolves a
-  runtime addressed by that copy's own id, so a read against
-  one that happens to be offline right now fails on its own and does not
-  take the rest of the sweep down with it.
+  For sweeps over every project's main checkout (e.g. the periodic
+  `FileSync.reconcile_lockfile/2` backstop). Each scope selects its own copy,
+  so one offline copy fails alone without taking the sweep down.
   """
   @spec main_copy_scopes() :: [Scope.t()]
   def main_copy_scopes do
@@ -414,29 +344,13 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Which checkout a reader that named none is answered from.
 
-  Most readers name none — a browser has no checkout, and neither does anything
-  asking about the project rather than about a tree. Their answers still have to
-  come from *some* tree, because "this component has an implementation" is only
-  ever true from somewhere, and blending every checkout is the over-satisfaction
-  direction: a file present in one worktree and absent in another reads as
-  present. Measured 2026-09-12: twenty components read as having an
-  implementation that exists only in another worktree.
+  Answers must still come from one tree: blending every checkout
+  over-satisfies (a file in one worktree reads as present everywhere).
+  `project.default_working_copy_id` wins where set; otherwise the copy
+  designated `main`. `nil` (no checkout) leaves the caller to blend.
 
-  Two fields mean "main" and the application writes only one.
-  `designate_main/2` — the button on the working-copies page — sets
-  `working_copy.main`. `Requirements.Projection.vantage/1` reads
-  `project.default_working_copy_id`, which nothing in `lib/` writes at all.
-  Measured 2026-09-12: 8 projects had designated a main copy and 1 of 55 had the
-  other field set. So the explicit setting wins where somebody made one, and
-  designating a main copy means something here where nobody did.
-
-  `nil` — a project with no checkout at all — still blends, because there is
-  nothing to blend down to and "this project has nothing" would be a worse
-  answer.
-
-  Here rather than in `Requirements`, because `Files` has to follow the same
-  rule and cannot depend on `Requirements`. It had its own, and the two
-  disagreed: see `Files.component_ids_present/1`.
+  Here rather than in `Requirements`, so `Files` (`component_ids_present/1`)
+  and `Preloader.files_vantage/1` share the one rule.
   """
   @spec reading_copy_id(Scope.t()) :: Ecto.UUID.t() | nil
   def reading_copy_id(%Scope{active_project_id: project_id}) when is_binary(project_id) do
@@ -466,15 +380,9 @@ defmodule CodeMySpec.WorkingCopies do
       {:ok, copy} ->
         broadcast_designated(scope, copy)
 
-        # Designation moves two of the three fields the graph reads: which copy
-        # is `main`, and therefore whose `preview_status` and `preview_url` are
-        # the *running* copy's. It announced nothing — the broadcast above is on
-        # this context's own topic and never reached `GraphInputs` — so moving
-        # the designation left `story_promoted` answering from the old
-        # copy until something unrelated moved the graph.
-        #
-        # Not caught by `announce_graph_change/2` either: the clearing half is
-        # an `update_all` and never passes through `save/2`.
+        # Designation moves graph inputs (which copy is `main`, so whose
+        # preview fields are the running copy's). Announced here: the clearing
+        # `update_all` never passes through `announce_graph_change/2`.
         GraphInputs.announce(project_id, "WorkingCopies", [], :project_wide)
 
         {:ok, copy}
@@ -490,24 +398,10 @@ defmodule CodeMySpec.WorkingCopies do
         Repo.rollback(:not_found)
 
       copy ->
-        # Cleared first, and never the copy being designated.
-        #
-        # The index permits one row per project with `main` true, so writing the
-        # new one while the old still holds it is a constraint violation rather
-        # than a replacement. That is why the clear is here. Excluding the target
-        # is why re-designating the copy that already holds it works.
-        #
-        # Without the exclusion this cleared the designation it was asked to
-        # make, and answered `{:ok, copy}` while doing it. The clear set the
-        # target's row to `false`; the changeset below was then built from the
-        # struct fetched *before* it, which still said `true`, so setting
-        # `main: true` was no change at all and `Repo.update/1` issued no
-        # statement. The row ended `false`, the returned struct said `true`, and
-        # the caller was told it had succeeded.
-        #
-        # Reached through the join path, which designates the first checkout to
-        # report a root — so designating that same copy again, the ordinary
-        # thing to do from the designation page, silently un-designated it.
+        # Cleared first (the unique index allows one main per project), and
+        # never the target: clearing it would leave the fetched struct saying
+        # `main: true`, so the update below would be a no-op and the row would
+        # end `false` while the caller was told it succeeded.
         from(w in WorkingCopy,
           where: w.project_id == ^project_id and w.main and w.id != ^working_copy_id
         )
@@ -532,13 +426,10 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   What this copy's machine can do beyond the server's own tools.
 
-  Written on every join rather than once, because it is a fact about the machine
-  right now: a browser installed since the last connect is one an agent started
-  after this can use, and one uninstalled is one it must not be offered.
+  Written on every join: it is a fact about the machine right now.
 
-  `:ok` either way. A machine that could not say is not a machine that failed —
-  an older harness sends nothing at all, and refusing its join over a browser
-  would take the checkout down for the tools it does have.
+  `:ok` either way: an older harness sends nothing, and a join must never be
+  refused over its tool list.
   """
   @spec record_machine_tools(WorkingCopy.t(), [String.t()], map() | nil) :: :ok
   def record_machine_tools(%WorkingCopy{} = harness, names, docs \\ nil) when is_list(names) do
@@ -549,9 +440,7 @@ defmodule CodeMySpec.WorkingCopies do
     :ok
   end
 
-  # A harness too old to send documentation still sends its names, and the
-  # column is left alone rather than blanked: what is recorded is one join stale
-  # and better than nothing, which is what overwriting it with `nil` would leave.
+  # No docs sent (an older harness): the docs column is left alone, not blanked.
   defp machine_attrs(names, docs) when is_map(docs) and map_size(docs) > 0,
     do: %{machine_tools: names, machine_tool_docs: docs}
 
@@ -560,13 +449,10 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Why this machine's browser tool list is what it is.
 
-  `"ready"`, `"absent"`, or `"unreachable"` with a reason. The distinction the
-  list alone cannot make: a machine with no vibium and one whose vibium would
-  not answer both report `[]`, and only the second is something an operator can
-  act on.
+  `"ready"`, `"absent"`, or `"unreachable"` with a reason — which the tool list
+  alone cannot say (no browser and an unanswering one both list `[]`).
 
-  `:ok` either way, on the same reasoning as `record_machine_tools/2` above — an
-  older harness sends nothing, and that is a harness, not a failure.
+  `:ok` either way, as `record_machine_tools/3`.
   """
   @spec record_browser_status(WorkingCopy.t(), String.t(), String.t() | nil) :: :ok
   def record_browser_status(%WorkingCopy{} = harness, status, error) when is_binary(status) do
@@ -582,13 +468,12 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Record whether the application this checkout runs is answering.
 
-  Reported by the machine that holds the disk, on every sync, beside the git
-  state — and for the same reason: the server has no way to reach a checkout's
-  own preview and a graph computed inside the channel process cannot ask.
+  Reported by the machine that holds the disk, on every sync: the server
+  cannot reach a checkout's preview itself. `Promotion` also claims `"serving"`
+  when it dispatches a deployment.
 
-  Three states rather than a boolean. A 500 is an application that came up and
-  is failing, which is a QA finding; a refused connection is one that is not
-  there, which is not. Told apart here so the gate can say which.
+  Three states: `erroring` (a 500, the app is up — a QA finding) is not `down`
+  (nothing answering).
   """
   @spec record_preview_status(WorkingCopy.t(), String.t()) ::
           {:ok, WorkingCopy.t()} | {:error, term()}
@@ -600,28 +485,15 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   @doc """
-  Record whether *this copy's own* app is answering — story 1108.
+  Record whether *this copy's own* app is answering. Every copy reports this:
+  each runs its own instance (own port and database), so QA can test a story's
+  branch before it is promoted. `record_preview_status/2` is the main copy's
+  tunnel address instead.
 
-  Unlike `record_preview_status/2` (measured against the tunnel `preview_url`
-  answers for, and meaningful only on the main copy today), every copy is
-  expected to report this: each working copy runs its own instance, on its
-  own port and database, so QA can test a story's branch before it is
-  promoted instead of finding out main's app silently served pre-fix code
-  (issue 2d612ae8).
-
-  `attrs` may include `:url` and `:commit`; either is left as-is when
-  omitted, so a health-probe-only report (`%{status: "serving"}`) doesn't
-  need to know the current address or commit. `status: "down"` always clears
-  `app_url` regardless of what's passed — a stopped copy has no address to
-  serve, and a stale one pointing at nothing running is the exact failure
-  this story exists to prevent.
-
-  `starting` is the fourth state, alongside the three above: a first start
-  whose cold `npm install`/compile outran the short window
-  `AppInstance.ensure_running/2` waits inline for, still running in the
-  background toward its own 10-minute ceiling. Unlike `down`, it keeps
-  `app_url` — the address is real, just not answering yet — so a caller
-  reading the row knows where the app will be once it comes up.
+  `attrs` may include `:url`, `:commit` and `:serving_commit`; omitted ones
+  keep their stored value. `"down"` always clears `app_url` (a stopped copy has
+  no address). `"starting"` — a cold first start still running in the
+  background — keeps `app_url`, since the address is real.
   """
   @spec record_app_status(WorkingCopy.t(), map()) ::
           {:ok, WorkingCopy.t()} | {:error, term()}
@@ -644,14 +516,7 @@ defmodule CodeMySpec.WorkingCopies do
     |> announce_graph_change(harness)
   end
 
-  # `record_git_state/2` was here, storing the harness's `ahead`/`behind`/`dirty`
-  # report and announcing a graph change for it. Both halves are gone.
-  #
-  # Nothing decided on the stored numbers, and the one caller that needs them —
-  # the promote gate — runs git itself rather than reading a mirror of it. What
-  # the announcement bought was a pass and a preload per checkout per sync, to
-  # discover that nothing a requirement reads had moved. See `WorkingCopy`'s
-  # schema for the measurement.
+  # No git state is stored here: the promote gate runs git itself.
 
   @doc """
   Record where a harness says its working copy is.
@@ -663,22 +528,9 @@ defmodule CodeMySpec.WorkingCopies do
   """
   @spec report_root(WorkingCopy.t(), String.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
   def report_root(%WorkingCopy{} = harness, root) when is_binary(root) do
-    # And designated, if this is the project's first checkout.
-    #
-    # Here rather than at insert, because a row is not a checkout until it says
-    # where it is: `issue/3` mints before any root is known, and fixtures,
-    # `ensure_default/1`'s nil-object row and a join that has not announced yet
-    # are all rows that will never have one.
-    #
-    # Designating one of those is the quiet failure criterion 2906 is named
-    # after. The project reports somewhere for its agent to run, an agent is
-    # started there with `working_copy: nil`, the machine refuses it, and the
-    # page says "getting ready" about a checkout that does not exist — with no
-    # error anywhere for anybody to act on.
-    #
-    # `harness.main or …` rather than the check alone: a copy that already holds
-    # the designation makes `first_copy?/1` false, so writing the bare result
-    # back would clear the main copy on its own reconnect.
+    # And designated main if it is the project's only checkout. Here rather
+    # than at insert: a row is not a checkout until it reports a root.
+    # `harness.main or …` so a reconnect never clears its own designation.
     harness
     |> save(%{
       root: Path.expand(root),
@@ -690,14 +542,9 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Record where this checkout's preview answers.
 
-  Only for the copy the project designated. The preview runs where the project
-  runs, and every worktree can run the app — so an address on a sibling checkout
-  is a second answer to a question that has one, and the panel would have to
-  pick between them with nothing to pick on.
-
-  Refused rather than ignored: onboarding a worktree with a preview URL is a
-  person believing they have set the project's preview, and silence there is the
-  failure this returns instead.
+  Only for the main copy: the project's preview has one address. Refused
+  (`:not_the_main_copy`) rather than ignored, so a person setting it on a
+  worktree is told.
   """
   @spec record_preview_url(WorkingCopy.t(), String.t() | nil) ::
           {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
@@ -711,20 +558,12 @@ defmodule CodeMySpec.WorkingCopies do
   Record the tunnel that carries this copy's preview, and the address it
   carries it to.
 
-  One write rather than three. The address is only reachable *because* of the
-  tunnel, so a copy holding an address with no credential — or a credential
-  with no address — describes a preview that cannot work, and the panel would
-  frame it anyway. Saving them together means that state is unreachable rather
-  than merely unlikely.
+  One write, so an address without its credential (or the reverse) cannot be
+  recorded.
 
-  Refused on a copy that is not the main one and has no app of its own yet —
-  provisioning a tunnel for a worktree nobody is running anything on spends a
-  real Cloudflare record on an address the panel will never read. A copy with
-  its own `app_url` is different: story 1108 already gave it something to
-  point a preview at, and `PreviewTunnel.ensure/1` (criteria 1586/1587) is
-  what decides whether that means sharing main's tunnel or nothing yet — this
-  function only ever refuses on identity, not on which of those two outcomes
-  the caller is asking it to record.
+  Refused on a copy that is neither main nor running an app of its own (no
+  `app_url`): nothing would be served there. Which tunnel such a copy gets is
+  `PreviewTunnel.ensure/1`'s decision; this refuses only on identity.
   """
   @spec record_preview_tunnel(WorkingCopy.t(), map()) ::
           {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
@@ -762,7 +601,7 @@ defmodule CodeMySpec.WorkingCopies do
 
   @doc """
   Whether any working copy still names `tunnel_id` as the tunnel carrying its
-  address — what decides a replaced tunnel may be deleted (story 1117).
+  address — what decides a replaced tunnel may be deleted.
   """
   @spec tunnel_in_use?(String.t()) :: boolean()
   def tunnel_in_use?(tunnel_id) when is_binary(tunnel_id),
@@ -771,9 +610,8 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Where this project's preview answers, or nothing.
 
-  Nothing is the ordinary state — a project whose main checkout was onboarded
-  before this existed, or one with no main checkout at all. The panel says so
-  rather than showing an empty frame.
+  Nothing is an ordinary state (no main copy, or none with an address); the
+  panel says so rather than showing an empty frame.
   """
   @spec preview_url(Scope.t()) :: String.t() | nil
   def preview_url(%Scope{} = scope) do
@@ -786,15 +624,8 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Whether this project's preview is actually answering, or nothing.
 
-  `record_preview_status/2`'s own words: reported by the machine that holds
-  the disk, on every sync — so `nil` means not "down", it means the checkout
-  has never reported at all. A URL is minted the moment a copy is issued one,
-  which can be well before the checkout that will answer it has even booted
-  — `PreviewTunnel.ensure/1` runs at instance-boot time, `cloudflared` comes
-  up inside the app it is tunneling for, and there is a real gap between the
-  two. Conflating "never reported" with "down" is how a preview that is
-  still coming up read as broken, for as long as it took the first sync to
-  land (`reference_cloudflare_tunnel_530_is_down`).
+  `nil` means never reported, not "down": a URL is minted before the app that
+  answers it has booted, and a preview still coming up must not read as broken.
   """
   @spec preview_status(Scope.t()) :: String.t() | nil
   def preview_status(%Scope{} = scope) do
@@ -816,17 +647,11 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Every working copy serving this project, most recently active first.
 
-  The order is the operator's default view — criterion 739 — and it is the
-  right default because it needs no configuration and stays correct for a
-  checkout nobody thought to classify.
+  The operator's default view: it needs no configuration.
   """
   @spec list_harnesses(Scope.t()) :: [WorkingCopy.t()]
   def list_harnesses(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    # The device comes with it. Every caller that lists copies wants to say
-    # which machine each is on — a path is not identity precisely because two
-    # machines can share one — and preloading here rather than at each call site
-    # keeps one of them from quietly rendering `%Ecto.Association.NotLoaded{}`
-    # as "no machine", which is a different and wrong claim.
+    # Device preloaded here so no caller renders `NotLoaded` as "no machine".
     Repo.all(
       from h in WorkingCopy,
         where: h.project_id == ^project_id,
@@ -842,16 +667,9 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   The scope a page showing files or problems should read with.
 
-  Those are per working copy, so a page holding a project-wide scope shows every
-  checkout's rows merged — the same path listed once per checkout, with nothing
-  saying which is which, and one checkout's failures sitting against another's
-  code. Defaulting to the most recently active harness makes the page describe
-  one checkout again.
-
-  Most recent rather than a stored preference because it needs no configuration
-  and stays right for a checkout nobody thought to classify — criterion 739.
-  A project with no harness keeps a project-wide scope, which is the honest
-  answer when nothing has ever synced.
+  Those rows are per working copy, so a project-wide scope would merge every
+  checkout's. Defaults to the most recently active copy; a project with none
+  keeps its project-wide scope.
   """
   @spec viewing(Scope.t() | nil) :: Scope.t() | nil
   def viewing(nil), do: nil
@@ -865,9 +683,8 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
-  # Scoped by project as well as id: an id from one project must not resolve
-  # against another's, or a misconfigured checkout would silently adopt a
-  # harness belonging to a project it has nothing to do with.
+  # Scoped by project as well as id: a misconfigured checkout must not adopt
+  # another project's copy.
   defp existing(_project_id, nil), do: nil
 
   defp existing(project_id, working_copy_id) do
@@ -877,31 +694,10 @@ defmodule CodeMySpec.WorkingCopies do
     end
   end
 
-  # The device is written at mint rather than attached afterwards.
-  #
-  # `Devices.attach/2` runs on the channel join, so a copy minted any other way
-  # — `mix cms.harness.onboard` posts to `/api/harnesses` — stayed device-less
-  # until a harness happened to join for that root, and never if none did.
-  # Measured on dev: 11 of 17 copies with no machine, and the newest of them
-  # minted by an onboarding twenty minutes earlier.
-  #
-  # It also breaks recognition, which is the more expensive half.
-  # `recognised/3` matches on `{project, device, root}`, so a mint that records
-  # no device cannot be recognised by the next one either — the same checkout
-  # onboarded twice is two rows, which is the duplicate this whole lookup exists
-  # to prevent.
-  # Refused rather than minted machine-less. A row that is ever seen must name a
-  # device — `seen_copies_are_on_a_machine`, `device_id IS NOT NULL OR
-  # last_seen_at IS NULL` — so minting one without would defer the failure to
-  # the first connection, where a constraint violation reads as a crash rather
-  # than as an answer.
-  #
-  # Both callers can say which machine they are. A harness join carries it in
-  # the payload; onboarding reads the identity this machine already holds and
-  # announces one if it has none. A caller that says nothing is a client too old
-  # to know about devices, and the useful thing to tell it is to update — not to
-  # write a row that nothing can attribute and that `location/1` cannot answer
-  # for.
+  # The device is written at mint, and a mint with none is refused: a seen row
+  # must name a device (`seen_copies_are_on_a_machine`), and a device-less row
+  # can never be recognised again, so the next onboard would duplicate it.
+  # Both callers (harness join, onboarding) can say which machine they are.
   defp create(project_id, label, device, working_copy_id) do
     case device_id(device) do
       nil ->
@@ -915,18 +711,8 @@ defmodule CodeMySpec.WorkingCopies do
           last_seen_at: now()
         }
 
-        # The caller's id when it has one, and only then.
-        #
-        # `mint/2` writes an id into the checkout's `.cms_harness.json` before
-        # the server is told anything, precisely so the file and the row hold
-        # one value rather than two derivations of it. This generated its own
-        # regardless, so a copy made by the tool had one id on disk and a
-        # different one in the database — and would present the file's on join,
-        # be recognised by nothing, and mint a third row.
-        #
-        # Found by running it once against a real harness. The in-process double
-        # asserts the tool's reply and never compares it to what was written,
-        # so every test passed over it.
+        # The caller's id when it has one: onboarding writes the id into
+        # `.cms_harness.json` first, and the row must hold the same value.
         %WorkingCopy{}
         |> WorkingCopy.changeset(maybe_put_id(attrs, working_copy_id))
         |> Repo.insert()
@@ -940,25 +726,9 @@ defmodule CodeMySpec.WorkingCopies do
   defp device_id(id) when is_binary(id) and id != "", do: id
   defp device_id(_device), do: nil
 
-  # A project's *only* checkout is its main one.
-  #
-  # Not the inference `designate_main/2` exists to rule out: that rule is about
-  # six checkouts of one repository, where a path, a label and a last-seen time
-  # each pick a different wrong one. With one there is nothing to choose
-  # between, and leaving it undesignated leaves a project made by `cms.new`
-  # with a checkout, no main copy and no agent — a state nobody can act on and
-  # nothing asked for.
-  #
-  # "Only" and not "first", because the two differ precisely where it matters.
-  # Keying on "no main copy yet" designates whatever reports a root while that
-  # is true — which on a project that already has six checkouts is whichever
-  # harness reconnects first, and that is the guess this rule was written to
-  # avoid. It is not hypothetical: this project has six, and turning the
-  # feature on would have designated one of them at random.
-  #
-  # So where there is a choice to make, nothing makes it. `designate_main/2` is
-  # how a person does, and the page offers it on every copy that is not already
-  # the main one.
+  # A project's *only* checkout is its main one. "Only", never "first": with
+  # several checkouts and no main, "first to report" is a random pick. Where
+  # there is a choice, a person makes it (`designate_main/2`).
   defp only_checkout?(project_id, working_copy_id) do
     not Repo.exists?(
       from w in WorkingCopy,
@@ -968,19 +738,9 @@ defmodule CodeMySpec.WorkingCopies do
     )
   end
 
-  # The label refreshes on every join *while it is still the auto-generated
-  # one* — a checkout moves, a container is recreated with a new hostname,
-  # and following that costs nothing since nobody has named this copy yet.
-  #
-  # It used to refresh unconditionally, on the theory that the label is
-  # display only so keeping it current costs nothing. That reasoning skipped
-  # the one thing a join cannot tell apart from its own default: a name a
-  # person chose with `relabel/3`. `CmsHarness.Config.label/1` sends its
-  # computed default on *every* connect, and a harness reconnects on every
-  # restart and every server-side refresh — so a rename that survived until
-  # the next reconnect was luck, not the promise `relabel/3`'s own doc makes.
-  # John: "these the names of these working copies keeps reverting to the
-  # automatically generated crap."
+  # The label refreshes on join only while it is still the auto-generated one:
+  # every connect sends the harness's default, which must never overwrite a
+  # name a person chose with `relabel/3`.
   defp touch(harness, nil), do: save(harness, %{last_seen_at: now()})
 
   defp touch(harness, label) do
@@ -1000,28 +760,13 @@ defmodule CodeMySpec.WorkingCopies do
 
   defp auto_label?(_label), do: true
 
-  # The working-copy fields the requirement graph reads, and nothing else.
-  #
-  # `Preloader.working_copy_gate_inputs/2` selects `main` for the designated
-  # copy and `preview_status`/`preview_url` for the running one;
-  # `Promotion.running_copy_check/2` reads the same three. `preview_checked_at`,
-  # `root`, `last_seen_at` and the tunnel fields are read by nobody in the
-  # graph.
+  # The working-copy fields the requirement graph reads (the preloader's
+  # working-copy gate inputs and `Promotion.running_copy_check/2`), and
+  # nothing else.
   @graph_fields [:main, :preview_status, :preview_url]
 
-  # Only when one of them actually moved.
-  #
-  # Being on `save/2`'s callers rather than `save/2` itself was not enough. A
-  # preview health poll writes `preview_status` *and* `preview_checked_at` on
-  # every check and announced unconditionally, so a status that had been
-  # `serving` for hours announced every time it was confirmed still serving:
-  # measured at ~6 announcements a minute on dev, 11,958 in the retained logs
-  # against 144 from `Issues` and 36 from `Stories` — 78% of every graph input
-  # event on this machine, for a value that was not changing.
-  #
-  # That is the same shape as the removed `record_git_state/2`, and the comment
-  # this replaces even named it while leaving the hole open. A check is not a
-  # change.
+  # Announced only when one of them actually moved: a health poll confirming
+  # an unchanged status is not a change. See knowledge/promotion, "Lessons".
   defp announce_graph_change({:ok, updated} = result, %WorkingCopy{} = before) do
     if graph_inputs_moved?(before, updated),
       do: GraphInputs.announce(updated.project_id, "WorkingCopies", [], :project_wide)
@@ -1043,48 +788,25 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Record that this harness is alive, because something it did just proved it.
 
-  Split from `issue/3`, which answers "who are you" and happens once per
-  connection. This answers "you are still here", and the difference is what the
-  operator's list reads to say how long ago a copy was last heard from.
+  Split from `issue/3` ("who are you", once per connection): this is "you are
+  still here", so `last_seen_at` stays current for a harness holding a stable
+  channel. Also marks the copy's device alive. Nothing is deleted on this
+  signal; it is shown to a person deciding.
 
-  Before this existed, `last_seen_at` was written only on channel join and on
-  onboarding — so it recorded when a harness last *connected*, and a harness
-  holding a stable channel never reconnects. The signal therefore got staler the
-  longer an agent worked without interruption. Measured on this project: two
-  harnesses whose agents were mid-session, scanning and answering hooks
-  continuously, read 2:21 and 2:25 idle against a 2 hour window, having only
-  ever run down — and at the time that window decided what got deleted, so both
-  were one sync away from losing their state to a third agent.
-
-  Nothing is deleted on this signal any more; `offboard/2` is an act somebody
-  takes and `observe_paths/2` is what warns them. But the number is still shown
-  to a person who is deciding, so it still has to mean what it says.
-
-  Best-effort on purpose. This is bookkeeping on the side of a request that has
-  real work to do, and a harness that cannot be marked alive is not a reason to
-  refuse its hook.
+  Best-effort: bookkeeping beside a request must never refuse it.
   """
   @spec mark_alive(WorkingCopy.t() | Ecto.UUID.t() | nil) :: :ok
   def mark_alive(%WorkingCopy{} = harness) do
     save(harness, %{last_seen_at: now()})
 
-    # And the machine it is on. A checkout proving it is alive is also its box
-    # proving it is alive, and without this a device's `last_seen_at` is only
-    # ever its boot time — every machine reads "Last seen" two minutes in, with
-    # its harness connected and serving.
-    #
-    # A machine with no working copy at all still has no signal of its own.
-    # That gap is real and named rather than papered over: this covers the case
-    # that exists today, where a harness serves at least one checkout.
+    # And its machine: otherwise a device's `last_seen_at` is only its boot
+    # time. A machine with no working copy still has no signal of its own.
     CodeMySpec.Devices.mark_alive(harness.device_id)
 
     :ok
   end
 
-  # A caller that names no harness has nothing to mark, and that is a normal
-  # state rather than an error: plenty of writers legitimately have no checkout
-  # to point at. Raising here would make bookkeeping on the side of a request
-  # able to fail the request.
+  # No harness named: nothing to mark, and not an error.
   def mark_alive(nil), do: :ok
 
   def mark_alive(working_copy_id) when is_binary(working_copy_id) do
@@ -1097,14 +819,9 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Give a working copy a name a person chose.
 
-  `issue/3` has always accepted a label and nothing ever set one, so every copy
-  rendered as its root — and two checkouts of one project differ in a single
-  directory somewhere deep in a path. That is not a distinction anybody reads
-  correctly at speed, and it is the condition under which somebody acts on the
-  wrong row.
-
-  Blank clears it rather than storing an empty string, so the display falls back
-  to the root instead of showing nothing.
+  A join never overwrites it (`touch/2`). Blank clears it rather than storing
+  an empty string, so the display falls back to the root. `{:error,
+  :cross_project}` for a copy on another project.
   """
   @spec relabel(Scope.t(), WorkingCopy.t(), String.t()) ::
           {:ok, WorkingCopy.t()} | {:error, Ecto.Changeset.t()}
@@ -1123,18 +840,9 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   The shortest thing that still identifies this copy.
 
-  A harness that names itself gets `CMS_HARNESS_LABEL`; one that does not gets
-  "the harness at <root> on <host>" from `CmsHarness.Config`. That default is a
-  sentence containing a path, so it reads as a name and identifies like a path —
-  90 characters where two checkouts differ in one directory. The distinguishing
-  part is the root's last segment, which is what this returns.
-
-  A label a person actually chose is returned whole: it is short because they
-  made it short, and truncating somebody's chosen name is a different kind of
-  wrong from truncating a generated one.
-
-  Extracted from `HarnessPicker.short_label/1`, which had this logic to itself
-  while every other surface rendered the full sentence.
+  The auto-generated "the harness at <root> on <host>" label shortens to the
+  root's last segment, the part that tells checkouts apart. A label a person
+  chose is returned whole. No label falls back to the root's basename.
   """
   @spec display_name(WorkingCopy.t()) :: String.t()
   def display_name(%WorkingCopy{label: label} = harness) when is_binary(label) and label != "" do
@@ -1167,18 +875,9 @@ defmodule CodeMySpec.WorkingCopies do
 
   Answered to the device itself, on announce, so it knows what to look for.
 
-  ## Why the server has to say
-
-  A harness builds its own list from the roots it has been asked to serve since
-  it started, and it is asked by a hook arriving. So a copy nobody works in
-  again is never on that list — and a copy nobody works in again is precisely
-  the one whose worktree has been deleted. The feature could not see its own
-  case, for as long as the harness was the only one keeping track.
-
-  Unfiltered by project on purpose. A device carries checkouts of whatever it
-  carries, and the reporter answers for all of them in one pass; scoping this to
-  a project would need the device to know which projects it is on before it
-  could ask, which is the wrong way round.
+  The server has to say: a harness only knows roots a hook has asked it to
+  serve, which never includes a deleted worktree nobody works in. Unfiltered by
+  project: the device answers for everything it carries in one pass.
   """
   @spec list_on_device(Device.t() | Ecto.UUID.t()) :: %{String.t() => String.t()}
   def list_on_device(%Device{id: device_id}), do: list_on_device(device_id)
@@ -1217,24 +916,10 @@ defmodule CodeMySpec.WorkingCopies do
   `path_missing_since` it already had so "missing since" means since the first
   time we were told, not since the last heartbeat.
 
-  ## Only about its own copies
+  Scoped to `device_id`, a security boundary: the ids are input from a
+  machine, which may speak only about rows that point at it.
 
-  Scoped to `device_id`, and that is the security boundary rather than a tidiness
-  one. The ids arrive from a machine, so they are input: without it, a device
-  could report somebody else's checkout missing by naming its id, and the
-  operator would be looking at a warning about a laptop that is perfectly fine.
-
-  It is also what makes two copies at the same path on two machines behave.
-  Paths collide constantly — every container at `/workspace/app` — and the
-  answer is that a device speaks only about rows that point at it.
-
-  ## A copy it does not mention is untouched
-
-  Not "absent, therefore gone". That is the whole inversion this replaced: the
-  old rule read silence as death and was one sync away from deleting two
-  mid-session agents' state, because the signal it trusted went stale while they
-  worked. A harness that has never been asked about a copy, or that is offline
-  entirely, says nothing about it, and nothing is what that means.
+  A copy it does not mention is untouched — silence is not absence.
   """
   @spec observe_paths(Device.t() | Ecto.UUID.t(), %{optional(String.t()) => boolean()}) :: :ok
   def observe_paths(%Device{id: device_id}, observations),
@@ -1247,8 +932,7 @@ defmodule CodeMySpec.WorkingCopies do
       |> Enum.split_with(fn {_id, present?} -> present? == false end)
       |> then(fn {m, p} -> {ids(m), ids(p)} end)
 
-    # Present clears unconditionally: a path that came back is back, and the
-    # warning is about right now rather than about what once happened.
+    # Present clears unconditionally: the warning is about right now.
     Repo.update_all(
       from(w in WorkingCopy,
         where: w.device_id == ^device_id and w.id in ^present and not is_nil(w.path_missing_since)
@@ -1256,10 +940,7 @@ defmodule CodeMySpec.WorkingCopies do
       set: [path_missing_since: nil]
     )
 
-    # Missing stamps only the first time. Re-stamping on every heartbeat would
-    # make a copy that vanished last week read as "missing for 30 seconds", and
-    # how long it has been gone is the only thing that tells an operator whether
-    # this was them.
+    # Missing stamps only the first time, so "missing since" stays true.
     Repo.update_all(
       from(w in WorkingCopy,
         where: w.device_id == ^device_id and w.id in ^missing and is_nil(w.path_missing_since)
@@ -1312,8 +993,7 @@ defmodule CodeMySpec.WorkingCopies do
   @doc """
   Whether this copy's checkout has been reported gone.
 
-  A predicate rather than a field read at every call site, because the nil case
-  means two things and only one reading of it is ever right here.
+  True once `observe_paths/2` has stamped `path_missing_since`.
   """
   @spec missing?(WorkingCopy.t()) :: boolean()
   def missing?(%WorkingCopy{path_missing_since: nil}), do: false
@@ -1343,25 +1023,10 @@ defmodule CodeMySpec.WorkingCopies do
     :ok
   end
 
-  # Offboarding is the one operation that should release the machine's channel
-  # and watchers, and it was the one that did not.
-  #
-  # A copy removed here stayed served there forever: still joined, still holding
-  # a project supervisor, still scanning a directory that no longer exists — and
-  # logging "This is a harness fault — a wrong working directory or an unreadable
-  # checkout" on every cycle, which is a correct guard and exactly the wrong
-  # description of a copy somebody retired on purpose. Nothing but a restart
-  # cleared it, which is why it went unnoticed. Issue 03ea1ee5.
-  #
-  # Best-effort, after the transaction, and never able to fail the offboard. The
-  # machine may be off, and a copy whose machine is gone is precisely the one an
-  # operator most needs to remove. A push that does not land costs a stale
-  # subtree until that harness next restarts — the state before this existed, so
-  # the floor is unchanged.
-  #
-  # Fire-and-forget rather than the `ref`-and-await shape `stop_agent` uses, for
-  # the same reason: there is nothing to learn from the answer that would change
-  # what we do, and waiting would hand an offboard a way to hang.
+  # Without this an offboarded copy stays served on its machine (joined,
+  # scanning a gone directory) until a restart. Best-effort and
+  # fire-and-forget, after the transaction: the machine may be off, and an
+  # offboard must never fail or hang on it.
   defp tell_the_machine(working_copy_id) do
     case HarnessRegistry.executor_holder(working_copy_id) do
       {:ok, pid, _instance} -> send(pid, {:offboarded, working_copy_id})

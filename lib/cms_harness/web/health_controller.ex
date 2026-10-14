@@ -2,10 +2,9 @@ defmodule CmsHarness.Web.HealthController do
   @moduledoc """
   Whether the harness is up, and — separately — what it can actually reach.
 
-  Those are two different facts and this endpoint keeps them apart. A health
-  check that returns 200 because the BEAM is running, while every project's
-  channel is down, is the same class of answer as a stop hook that allows
-  because it could not ask.
+  Two facts, kept apart: a 200 because the BEAM runs while every channel is
+  down would be a false green. Nothing here blocks on the network.
+  See knowledge/harness, "Health".
   """
 
   use Phoenix.Controller, formats: [:json]
@@ -18,122 +17,56 @@ defmodule CmsHarness.Web.HealthController do
   alias CodeMySpec.BootVersion
 
   def index(conn, _params) do
-    # Keyed and reported by working copy. Two checkouts of one project are two
-    # entries here; reporting them by project id showed one and hid the other.
+    # One entry per working copy, never per project.
     projects =
       Enum.map(Projects.list(), fn root ->
         %{
           root: root,
           connected: Projects.connected?(root),
           watching: Watcher.watching?(root),
-          # Belief and evidence, side by side.
-          #
-          # `connected` is this harness's own view of its socket, set at join.
-          # It cannot be wrong from where it stands, and it reported `true`
-          # throughout an incident where the server's registry held no entry for
-          # this harness and every request answered `:harness_unreachable` —
-          # both ends healthy, nothing doing a round trip.
-          #
-          # A reply is proof the server addressed us, because the server sent
-          # it. Recorded on replies that already happen, so this adds no latency
-          # and cannot hang: a health check that blocks on the network is its
-          # own outage. `nil` means the server has never answered this channel,
-          # which is a different fact from `connected: false`.
+          # Belief (`connected`, set at join) beside evidence (the last server
+          # reply, recorded on replies that already happen). `nil` means the
+          # server has never answered this channel.
           server_replied_ago_s: Channel.server_replied_ago(root),
           joined_ago_s: Channel.joined_ago(root),
-          # Whether this copy can run anything, which the two flags above do not
-          # say. `connected` is about the socket and `watching` is about the
-          # watcher; a copy can have both and still fail every analyzer.
-          #
-          # It happens without anybody doing something wrong.
-          # `ChannelClient.persist_issued_identity/2` writes `.cms_harness.json`
-          # when a join issues an id to a copy that has none — correctly, and it
-          # is all it can do, because the test partition lives in
-          # `settings.local.json` and that is onboarding's to write. The copy is
-          # then served, asked for analysis, and `resolve_partition!/2` raises
-          # for every run of it.
-          #
-          # Measured on this machine 2026-08-20: the main checkout in exactly
-          # that state, **2304 crashes in `harness.log` over 8.7 hours**, about
-          # four a minute, all four analyzers, while this endpoint reported it
-          # `connected: true, watching: true`. The failures were reported — the
-          # analyzer said it crashed, the harness sent the error, the server
-          # rejected it — and every one of those is a line nobody reads on a
-          # system that looks healthy. An agent in that checkout simply never
-          # got test results, which reads as "no test problems".
-          #
-          # A file read, not a network call. The comment above is right that a
-          # health check which blocks on the network is its own outage; this
-          # reads the copy's own settings, which is the same disk the harness is
-          # already watching.
+          # Whether this copy can run anything: without a recorded test
+          # partition every analyzer run raises, while `connected` and
+          # `watching` both read true. A file read, not a network call.
           onboarded: onboarded?(root)
         }
       end)
 
     json(conn, %{
       status: "up",
-      # Which code is answering, and whether its checkout has moved since.
-      #
-      # "Is my fix live" cost `lsof` to find the pid, then `git merge-base` to
-      # place its checkout, every time — and got answered wrong more than once,
-      # because a harness that reconnects looks identical to one running the
-      # code you just pushed. `f32c4a4a` asked for this outright: a serving-root
-      # or sha field would make it one request instead of a diagnosis.
-      #
-      # `drift` is the second half and the one that catches skew: a harness
-      # keeps running while its checkout moves under it, and a server and
-      # harness on different commits speak different channel contracts —
-      # `{:error, %{"reason" => "unmatched topic"}}` on every stop, which reads
-      # as a connection problem and is not one.
+      # Which code is answering, and whether its checkout has moved since:
+      # a harness on an older channel contract than the server fails every
+      # stop with what reads as a connection problem.
       build: BootVersion.describe(),
       build_drift: drift(),
       server_url: Config.server_url(),
       credential: match?({:ok, _}, Config.credential()),
       projects: projects,
-      # Said explicitly so that "serving nothing" cannot be read off a 200 as
-      # "everything is fine".
+      # Explicit, so "serving nothing" is never read off a 200 as fine.
       serving: length(projects),
       degraded: projects == [] or Enum.any?(projects, &degraded?/1)
     })
   end
 
-  # `connected` alone was the whole verdict, and it is belief: the harness's own
-  # view of its socket, which cannot be wrong from where it stands. Through the
-  # incident this endpoint exists to catch, it read `true` while the server's
-  # registry held no entry for this harness and every request came back
-  # unreachable — `serving 3, degraded false` the entire time.
-  #
-  # The evidence to correct that was already being *reported* and never
-  # consulted. Now it is.
+  # Belief alone is not the verdict: degraded when not connected, not
+  # onboarded, or never answered. Public so the readings can be tested without
+  # a channel.
   @doc false
-  # Public for the same reason `HookDecision.channel_age_note/1` is: the
-  # readings can then be asserted without standing up a channel and a server to
-  # not answer it.
   def degraded?(project),
     do: not project.connected or not project.onboarded or never_answered?(project)
 
-  # A copy with no recorded partition is degraded even when its socket is
-  # perfect, because `degraded` is read as "can this working copy do its job"
-  # and this one cannot: every analyzer run against it raises before it starts.
-  # Leaving it green would be the same false green `connected` alone gave —
-  # a reading that is true about the thing it measures and silent about the
-  # thing the reader wanted.
-  #
-  # It is also the one condition here a person can fix in one command, which is
-  # the argument for surfacing it rather than merely recording it.
+  # No recorded partition means every analyzer run raises: degraded, and
+  # fixable with one command.
   defp onboarded?(root) do
     match?({:ok, _partition}, Onboarding.resolve_partition(root))
   end
 
-  # Deliberately narrow. "Has not replied lately" is not evidence of anything —
-  # a harness nobody is working in legitimately goes hours without a reply, and
-  # calling that degraded would trade a false green for a false red, which is
-  # the same mistake wearing the other colour.
-  #
-  # Never answered *at all*, well after joining, is the one reading that cannot
-  # be innocent: the join succeeded locally and the server has not once
-  # addressed us. A channel that has ever been answered stays healthy however
-  # quiet it goes.
+  # Deliberately narrow: a quiet channel is not degraded. Only one never
+  # answered at all, well after joining, cannot be innocent.
   @unanswered_grace_seconds 60
 
   defp never_answered?(%{connected: true, server_replied_ago_s: nil, joined_ago_s: joined})
@@ -142,8 +75,7 @@ defmodule CmsHarness.Web.HealthController do
 
   defp never_answered?(_project), do: false
 
-  # Rendered rather than raw, because the caller is usually a human or an agent
-  # reading JSON, and `{:drifted, "abc123", "def456"}` does not survive that.
+  # Rendered for a human or agent reading JSON.
   defp drift do
     case BootVersion.drift() do
       {:drifted, booted, current} ->
@@ -155,17 +87,13 @@ defmodule CmsHarness.Web.HealthController do
     end
   end
 
-  # Named separately from a moved checkout, because the remedies differ and only
-  # one of them is "restart". A checkout behind its upstream relaunches the same
-  # commit (9c474a9d).
+  # Behind upstream: a restart alone relaunches the same commit.
   defp rendered(:behind_upstream, booted, current),
     do: "booted #{booted}, checkout behind upstream at #{current} — pull, then restart"
 
   defp rendered(_kind, booted, current), do: "booted #{booted}, checkout now #{current}"
 
-  # Answered rather than left as a condition, for the same reason the stop
-  # message answers it: a caller asking a health endpoint whether to restart
-  # should not have to run `git diff` to interpret the reply.
+  # Answers whether to restart, rather than leaving the caller to diff.
   defp verdict(true), do: " — that range changed the harness or channel modules, so restart"
   defp verdict(false), do: " — that range did not touch the harness or channel modules"
   defp verdict(:unknown), do: " — could not read that range; restart if in doubt"

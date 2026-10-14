@@ -1,58 +1,32 @@
 defmodule CodeMySpecWeb.ConsoleLive do
   @moduledoc """
-  The project console — step 6 of the provisioning-page redesign, and now
-  the only page: `/provisioning`, `ProvisioningLive` and its sidebar link
-  are retired (gate 2 of the step 6 rollout).
-
-  A new LiveView rather than new `live_action`s on the old `ProvisioningLive`:
-  the two pages' render trees didn't share a shape, and bolting a
-  sidebar-and-tabs console onto the page step 5 just finished de-nesting
-  would have undone that work. `ProvisioningLive.Components` and
-  `ProvisioningLive.ResourceFields` live on under the old namespace and are
-  still aliased here — only the top-level LiveView itself was retired.
+  The project console: provisioning, deploys, secrets, credentials and activity
+  for one project. Reuses `ProvisioningLive.Components` and
+  `ProvisioningLive.ResourceFields`; there is no separate provisioning page.
 
   ## Layout
 
-  A sidebar (Overview, Resources, Deploys, Secrets, Credentials, Activity,
-  Settings), on the right opposite the content (`drawer-end`) rather than
-  the left, plus a header `EnvironmentSwitcher` on the pages it applies to.
-  Credentials, Secrets and Settings are project-wide; Overview and Resources
-  are scoped to the selected environment via `?env=`, patched rather than
-  navigated so switching environments does not remount the page — the same
-  ?param-over-route shape `AgentConversationLive` already uses for its own
-  in-page selection. Deploys shows every environment's own card side by
-  side instead — deploying is a decision about one environment made from a
-  page showing all of them, not a resource scoped to whichever one the
-  switcher points at, so it carries no switcher at all.
+  A right-hand sidebar (`drawer-end`): Overview, Resources, Deploys, Secrets,
+  Credentials, Activity, Settings. Overview and Resources are scoped to the
+  selected environment via `?env=` (patched, not navigated). Credentials,
+  Secrets and Settings are project-wide. Deploys shows every environment's
+  card side by side and has no switcher.
 
-  ## What's real here and what's a first pass
+  ## Resources and checks
 
-  Resources groups the plan's steps per `ResourceGroups` (servers, DNS and
-  domain, mail in and out, storage and backups, publishing, feedback
-  widget — plus repository, which the plan's own list doesn't name but
-  dropping it would make it unreachable). Each group's ResourceDetail
-  Config tab reuses the exact per-step components step 5 extracted
-  (DnsConfig, DeployConfig, and so on), once per step key the group holds.
-  Checks moves probes in one at a time behind `DiagnosticsPanel`, async via
-  `start_async`/`handle_async` instead of the old page's blocking
-  `phx-submit`: storage's round-trip, the backup restore proof, the
-  content-publish verification, and the inbound-mail delivery probe are all
-  converted, each manual ("Run"/"checked … ago", no auto-run). check_domain
-  is not a diagnostic — it's the domain search/purchase/confirm setup flow
-  — so it lives on DNS and domain's Config tab instead, same markup and
-  handlers as the old page, with the Cloudflare calls behind `start_async`
-  too since both can block on a real registrar round-trip.
-  `mail_send_probe`/`refresh_mail_dns`/`widget_degradation_probe` are not
-  part of this pass and still only run from the old page.
+  Resources groups the plan's steps per `ResourceGroups` (plus repository).
+  Each group's Config tab reuses the per-step components (DnsConfig,
+  DeployConfig, ...). Checks run behind `DiagnosticsPanel` via `start_async`,
+  each manual ("Run" / "checked … ago", one result, no auto-run). Domain
+  search/purchase is a setup flow on DNS and domain's Config tab, not a check.
 
-  Activity (gate 3, story 1086) is `CodeMySpec.Activity` — a persisted,
-  append-only log, not step timestamps. Every step trigger, check probe,
-  credential save, secret write and environment edit records its own
-  entry, attributed via `Agents.actor/2` (a person's email, or "the
-  <role> agent <id>" when an MCP tool acted). Overview's "recent activity"
-  shows the project's last 10 regardless of environment; the Activity tab
-  shows everything with an environment filter; a resource tab shows only
-  its own entries (`resource` matches `ResourceGroups.for_step/1`'s key).
+  ## Activity
+
+  `CodeMySpec.Activity` is a persisted, append-only log. Every step trigger,
+  check, credential save, secret write and environment edit records an entry,
+  attributed via `Agents.actor/2`. Overview shows the last 10; the Activity tab
+  everything, filterable by environment; a resource tab its own entries
+  (`resource` matches `ResourceGroups.for_step/1`'s key).
   """
 
   use CodeMySpecWeb, :live_view
@@ -91,19 +65,11 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   @impl true
   def mount(params, _session, socket) do
-    # Same resolution as ProvisioningLive.scope_for/2 — the project in the
-    # URL, not whichever one happens to be active (criterion 8051). Kept as
-    # its own copy rather than a shared import: this page is on its own
-    # branch precisely so it can move independently of the page it is
-    # replacing, and that page's mount is settled, promoted code.
+    # The project in the URL, not whichever one happens to be active.
     case scope_for(socket.assigns.current_scope, params["project_id"]) do
       {:ok, scope} ->
-        # Same as ProvisioningLive.mount/3 — subscribed so a step's own
-        # broadcast refreshes the plan once it changes, instead of the page
-        # only finding out on the next patch. Not a "check": the run already
-        # wrote the row, this just stops trusting a stale in-memory copy of
-        # it (without this, a run's own state transitions were invisible
-        # until something else happened to patch the URL).
+        # A step's broadcast refreshes the plan; otherwise a run's own state
+        # transitions stay invisible until the next patch.
         if connected?(socket), do: Provisioning.subscribe(scope)
 
         {:ok, assign(socket, :current_scope, scope)}
@@ -157,10 +123,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
         not is_nil(environment) and socket.assigns[:telemetry_check_environment] == environment
       )
       |> assign(:telemetry_check, Telemetry.last_check(scope, environment))
-      # Each callback calls list_domains/1 independently rather than once up
-      # front, so a real Resend round-trip only happens the first time either
-      # key is actually missing — assign_new is a no-op on every later patch,
-      # same as every other assign_new above it.
+      # Each callback lists domains itself, so the Resend round-trip happens only
+      # when a key is actually missing (assign_new is a no-op on later patches).
       |> assign_new(:mail, fn -> mail_state(scope, "prod", list_domains(scope)) end)
       |> assign_new(:mail_domains, fn -> mail_domains(scope, list_domains(scope)) end)
       |> assign_new(:backups, fn -> [] end)
@@ -169,11 +133,9 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # Everything `handle_params` reads straight from the scope rather than the
-  # URL — the plan, the environment list and rows, who gets a secret. Pulled
-  # out so an event that changes one of these (add/remove an environment)
-  # can refresh the same way, without re-deriving `environment`/`resource_key`/
-  # `tab` from params that have not changed.
+  # What `handle_params` reads from the scope rather than the URL (plan,
+  # environments, secret recipients), so an event that changes them can refresh
+  # without re-deriving the URL-driven assigns.
   defp refresh(socket) do
     scope = socket.assigns.current_scope
     options = Provisioning.setup_options(scope)
@@ -191,10 +153,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
     |> assign(:domain_registered, registered_domain(scope))
   end
 
-  # A made-up :key in the URL must read as "no such resource", not crash the
-  # mount — to_existing_atom/1 raises on anything that was never a group key
-  # anywhere in this running VM, which an arbitrary path segment from the
-  # outside world absolutely can be.
+  # An unknown :key in the URL is "no such resource", not a crash:
+  # `to_existing_atom/1` raises on atoms the VM never saw.
   defp string_to_key(nil), do: nil
 
   defp string_to_key(key) do
@@ -1059,18 +1019,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
     if option in updated, do: "enabled #{option}", else: "disabled #{option}"
   end
 
-  # Every environment, not just whichever one the switcher currently points
-  # at — the old page showed every environment's deploy card side by side,
-  # and Deploys is where Sam ships to either one, not a per-environment
-  # resource view. Limiting this to @environment (fixed and caught by
-  # criteria 786-793, which drive uat specifically regardless of which
-  # environment the page happened to default to) hid every deploy but one.
+  # Every environment's deploy, not just the switcher's: Deploys ships to any.
   defp deploy_steps(plan) do
     Enum.filter(plan, &(&1.key == :deploy))
   end
 
-  # Same as ResourceDetail's own copies — see that module's comment for why
-  # these are duplicated rather than shared.
+  # Same as ResourceDetail's copies; small enough to duplicate.
   defp step_completed_at(%{state: :done, completed_at: %DateTime{} = at}),
     do: DateTime.to_iso8601(at)
 
@@ -1115,8 +1069,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp resource_activity(_scope, nil), do: []
   defp resource_activity(scope, key), do: Activity.list_for_resource(scope, key)
 
-  # Same as ProvisioningLive.scope_for/2 — see the mount/3 comment above for
-  # why this is its own copy rather than a shared import.
   defp scope_for(%{active_project: %{} = project} = scope, nil),
     do: {:ok, Resources.project_scope(scope, project)}
 
@@ -1142,8 +1094,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   @impl true
   def handle_event("generate_project", _params, socket) do
-    # Same call ProvisioningLive's "Generate deploy files" button made —
-    # moved here, not reimplemented.
     scope = socket.assigns.current_scope
     project = scope.active_project
 
@@ -1183,13 +1133,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> put_flash(:info, "Started.")}
   end
 
-  # Same as ProvisioningLive.handle_event("run_step", ...) — the per-step
-  # Run/Retry button ResourceDetail reuses from step 5's extraction carries
-  # the same `phx-click="run_step"` contract, so it needs the same handler.
-  # Missing this meant every Run/Retry click on the console crashed with no
-  # matching clause; nothing in step 6's own smoke tests exercises the
-  # button, so it went unnoticed until wiring the storage probe needed to
-  # provision a bucket through it.
+  # The per-step Run/Retry button in ResourceDetail fires `run_step`.
   def handle_event("run_step", %{"key" => key} = params, socket) do
     opts =
       case Map.get(params, "environment") do
@@ -1206,10 +1150,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> put_flash(:info, "Started.")}
   end
 
-  # Manual, async, one result — not the old page's accumulating list. Sam
-  # re-runs the probe to prove the bucket again, and that proof replaces the
-  # last one rather than piling up; "checked … ago" is what makes a stale
-  # result visible, not keeping every past attempt on screen.
+  # Manual, async, one result: a re-run replaces the last proof, and "checked …
+  # ago" shows staleness.
   def handle_event("run_storage_probe", %{"probe" => probe}, socket) do
     scope = socket.assigns.current_scope
     environment = Map.get(probe, "environment", "prod")
@@ -1228,8 +1170,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # Same manual/async/one-result shape as run_storage_probe above — ported
-  # from ProvisioningLive.handle_event("probe_restore", ...).
+  # Same manual/async/one-result shape as `run_storage_probe`.
   def handle_event("run_restore_probe", _params, socket) do
     scope = socket.assigns.current_scope
     environment = operation_environment(scope)
@@ -1245,7 +1186,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # Ported from ProvisioningLive.handle_event("content_publish", ...).
   def handle_event("run_content_publish", _params, socket) do
     scope = socket.assigns.current_scope
     opts = publish_opts(scope)
@@ -1258,10 +1198,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # Ported from ProvisioningLive.handle_event("mail_inbound_probe", ...).
-  # The old page's button is bare too — click_inbound_probe/1 drives it with
-  # render_click's own value map, which arrives here as `params["to"]`
-  # directly rather than nested under a form's own name.
+  # A bare button: `to` arrives as `params["to"]`, not nested under a form name.
   def handle_event("run_mail_inbound_probe", params, socket) do
     scope = socket.assigns.current_scope
     domain = scope.active_project.domain
@@ -1282,12 +1219,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # check_domain/confirm_purchase moved onto DNS and domain's Config tab
-  # as-is (Harness: it's the domain search/purchase/confirm setup flow, not
-  # a diagnostic, so it doesn't belong in Checks) — ported from
-  # ProvisioningLive.handle_event("check_domain"/"confirm_purchase", ...),
-  # with the Cloudflare calls behind start_async since both can block on a
-  # real registrar round-trip.
+  # Domain search/purchase is a setup flow on DNS and domain's Config tab, not a
+  # check. Cloudflare calls run in `start_async`: both can block on the registrar.
   def handle_event("check_domain", %{"domain" => %{"name" => name}}, socket) do
     name = String.trim(name)
     scope = socket.assigns.current_scope
@@ -1312,8 +1245,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # Ported from ProvisioningLive.handle_event("mail_send_probe", ...) — same
-  # manual/async/one-result shape as the other probes above.
+  # Same manual/async/one-result shape as the other probes.
   def handle_event("run_mail_send_probe", params, socket) do
     scope = socket.assigns.current_scope
     probe = Map.get(params, "probe", %{})
@@ -1332,17 +1264,12 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # Ported from ProvisioningLive.handle_event("refresh_mail_dns", ...) — a
-  # Config action rather than a Checks probe: it re-reads the outbound mail
-  # panel's own state, not a one-shot diagnostic with a "checked … ago".
+  # A Config action, not a check: re-reads the outbound mail panel's state.
   def handle_event("refresh_mail_dns", _params, socket) do
     {:noreply, refresh_mail(socket)}
   end
 
-  # Ported from ProvisioningLive.handle_event("refresh_backups", ...) — a
-  # Config action, same reasoning as refresh_mail_dns above: it re-reads
-  # whether the bucket's schedule is still landing dumps, not a one-shot
-  # diagnostic with its own "checked … ago".
+  # A Config action: re-reads whether scheduled dumps are still landing.
   def handle_event("refresh_backups", _params, socket) do
     scope = socket.assigns.current_scope
     dumps = list_backups(scope, socket.assigns.options)
@@ -1353,7 +1280,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> assign(:backup_health, Backups.health(dumps, step_opts()))}
   end
 
-  # Ported from ProvisioningLive.handle_event("widget_degradation_probe", ...).
   def handle_event("run_widget_degradation_probe", _params, socket) do
     scope = socket.assigns.current_scope
     site = site_url(scope.active_project.domain)
@@ -1386,10 +1312,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     {:noreply, socket}
   end
 
-  # Same as ProvisioningLive.handle_event("save_credentials", ...). The
-  # Credentials section reuses `CredentialsForm` as-is, which still fires
-  # this event — without a matching clause here the form submit crashed the
-  # page, same gap "run_step" had.
+  # `CredentialsForm`'s submit.
   def handle_event("save_credentials", params, socket) do
     scope = socket.assigns.current_scope
     values = Map.get(params, "credentials", params)
@@ -1417,8 +1340,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
           put_flash(socket, :info, "Nothing to save — every field was blank.")
 
         labels ->
-          # Labels only — `field.key`'s own value is the credential, and
-          # must never reach a summary any more than the flash above does.
+          # Labels only: values are credentials and never reach the log.
           Activity.record(
             scope,
             "credential_save",
@@ -1444,8 +1366,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> assign(:missing_credentials, Credentials.missing(scope))}
   end
 
-  # Same as ProvisioningLive.handle_event("put_secret", ...) — SecretsForm's
-  # own submit.
+  # `SecretsForm`'s submit.
   def handle_event("put_secret", %{"secret" => params}, socket) do
     scope = socket.assigns.current_scope
 
@@ -1456,8 +1377,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
            params["value"] || ""
          ) do
       {:ok, %{key: key, environment: environment}} ->
-        # The name, never `params["value"]` — the whole point of this
-        # criterion.
+        # The name, never the value.
         Activity.record(scope, "secret_write", "secrets", "wrote secret #{key}",
           environment: environment
         )
@@ -1472,11 +1392,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  # Same as ProvisioningLive.handle_event("add_environment"/"remove_environment",
-  # ...) — EnvironmentsForm's own submit and its confirm dialog's JS.push.
-  # `refresh/1` instead of `load/2`: adding or removing an environment
-  # changes the plan and the environment list, not the URL, so the same
-  # recompute `handle_params` does on a patch has to happen here by hand.
+  # `EnvironmentsForm`'s submit and its confirm dialog's push. `refresh/1`: the
+  # plan and environment list change, not the URL.
   def handle_event("add_environment", %{"environment" => %{"name" => name}}, socket) do
     scope = socket.assigns.current_scope
     name = String.trim(name)
@@ -1498,8 +1415,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  # Same split as add/remove environment above: `refresh/1` because toggling
-  # an option changes the plan itself, not the URL.
+  # `refresh/1`: toggling an option changes the plan, not the URL.
   def handle_event("toggle_setup_option", %{"option" => option}, socket) do
     scope = socket.assigns.current_scope
 
@@ -1558,13 +1474,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  # Same as ProvisioningLive.handle_event("confirm_apex_repoint"/
-  # "confirm_inbound_mx_repoint"/"adopt_repository"/"rename_repository", ...)
-  # — DnsConfig and RepositoryConfig fire these from the paused-step
-  # confirmations they render as-is, same gap "run_step" had. No
-  # halted_at/halt_reason here: those track a whole-sequence run, which
-  # ConsoleLive never started (see ProvisioningLive's own halt plumbing);
-  # the step's own row carries its state the same way any other step's does.
+  # Fired by DnsConfig/RepositoryConfig's paused-step confirmations. The step's
+  # own row carries its state; there is no whole-sequence run to halt here.
   def handle_event("confirm_apex_repoint", _params, socket) do
     {:noreply, run_step_and_log(socket, :dns, step_opts() ++ [confirm_apex_repoint: true])}
   end
@@ -1602,13 +1513,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
 
   defp step_opts, do: Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
-  # Every trigger of a step — the run button, a paused confirmation, an
-  # inbound probe's address form — goes through here so the activity log
-  # and the run itself can never drift apart (one records what the other
-  # just started). Logged optimistically, on trigger rather than on the
-  # async result: the row IS the state (`run_step_async/3`'s own doc), and
-  # a page already showing "Started." has started something worth a line
-  # in the log even if it later halts.
+  # Every step trigger goes through here so the activity log and the run cannot
+  # drift. Logged on trigger, not on the async result: the row is the state.
   defp run_step_and_log(socket, key, opts) do
     scope = socket.assigns.current_scope
     environment = activity_environment(key, opts, socket)
@@ -1848,18 +1754,14 @@ defmodule CodeMySpecWeb.ConsoleLive do
      |> assign(:telemetry_check_environment, nil)}
   end
 
-  # Same as ProvisioningLive.handle_info({:provisioning, :step/:finished, ...}).
-  # `refresh/1` instead of `load/2`: a broadcast only ever changes the plan
-  # and the environment-derived state, never the URL-driven `environment`/
-  # `resource_key`/`tab` assigns, so the cheaper recompute is the right one.
+  # `refresh/1`, not a full `handle_params` recompute: a broadcast changes the
+  # plan and environment state, never the URL-driven assigns.
   @impl true
   def handle_info({:provisioning, :step, row}, socket) do
     socket = refresh(socket)
 
-    # Same as ProvisioningLive's own handle_info — `refresh/1` keeps the
-    # cached mail state the same way `load/2` does; the steps that actually
-    # change it say so here, so a page that just registered a sending domain
-    # shows it without every other announce paying for a Resend round-trip.
+    # Only the mail steps refresh the cached mail state, so other broadcasts skip
+    # the Resend round-trip.
     {:noreply, if(row.key in [:email, :inbound], do: refresh_mail(socket), else: socket)}
   end
 
@@ -1873,10 +1775,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp storage_probe_field(nil, _key), do: nil
   defp storage_probe_field(result, key), do: Map.get(result, key)
 
-  # Ported from ProvisioningLive.handle_event("storage_probe", ...) and its
-  # private helpers (storage_probe/5, storage_readback/5, probe_failure/3) —
-  # same round-trip, same data shape, run inside start_async instead of
-  # inline in the handler so the page doesn't block on the provider call.
+  # Runs inside `start_async` so the page does not block on the provider.
   defp run_storage_probe(scope, environment, key, content) do
     case Storage.credentials(scope, []) do
       :none ->
@@ -1939,8 +1838,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp restore_probe_field(nil, _key), do: nil
   defp restore_probe_field(result, key), do: Map.get(result, key)
 
-  # Ported from ProvisioningLive.handle_event("probe_restore", ...) and its
-  # private helpers (list_backups/1, age_days/1, now/0).
   defp run_restore_probe(scope, environment, options) do
     dumps = list_backups(scope, options)
 
@@ -2000,8 +1897,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp content_publish_field(nil, _key), do: nil
   defp content_publish_field(result, key), do: Map.get(result, key)
 
-  # Ported from ProvisioningLive.handle_event("content_publish", ...) and
-  # publish_opts/1.
   defp run_content_publish(scope, opts) do
     case ContentPublishing.run(scope, opts) do
       %{state: :rendered} = ran ->
@@ -2052,9 +1947,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp mail_inbound_state(%{mail_inbound_result: nil}), do: "unchecked"
   defp mail_inbound_state(_assigns), do: "checked"
 
-  # Not manual-check shaped like the probes above — check_domain/
-  # confirm_purchase are a search/purchase flow, so "running" is the only
-  # state a spex needs to poll; "checked"/"unchecked" has no meaning here.
+  # A search/purchase flow, not a check: "running" or "idle".
   defp domain_search_state(%{domain_check_running?: true}), do: "running"
   defp domain_search_state(%{domain_purchase_running?: true}), do: "running"
   defp domain_search_state(_assigns), do: "idle"
@@ -2083,9 +1976,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp mail_inbound_field(nil, _key), do: nil
   defp mail_inbound_field(result, key), do: Map.get(result, key)
 
-  # Ported from ProvisioningLive.handle_event("mail_inbound_probe", ...) and
-  # its private helpers (default_inbound_address/2, inbound_probe_result/2,
-  # message_body?/1).
   defp run_mail_inbound_probe(scope, to) do
     now = DateTime.to_iso8601(DateTime.utc_now())
 
@@ -2130,9 +2020,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     "#{local}@#{domain}"
   end
 
-  # Ported from ProvisioningLive.handle_event("check_domain", ...).
-  # Adoption is checked first, and it is an ordinary way in rather than an
-  # error path: a domain Sam already owns needs no purchase offer at all.
+  # Adoption first: a domain already owned needs no purchase offer.
   defp run_domain_check(scope, name) do
     case Cloudflare.owned?(scope, name) do
       {:ok, true} ->
@@ -2146,7 +2034,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  # Ported from ProvisioningLive.handle_event("confirm_purchase", ...).
   defp run_domain_purchase(scope, name) do
     case Cloudflare.ensure_domain(scope, name, confirmed: true) do
       {:ok, :adopted} -> {:adopt, name}
@@ -2156,9 +2043,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  # Ported from ProvisioningLive.adopt_domain/2 and register_domain_on_project/3
-  # — `refresh/1` instead of `load/2` for the same reason every other
-  # mutating handler here uses it.
   defp adopt_domain(socket, name), do: register_domain_on_project(socket, name, true)
 
   defp register_domain_on_project(socket, name, adopted?) do
@@ -2183,7 +2067,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp availability_label(%{availability: :taken}), do: "taken"
   defp availability_label(_check), do: "check the dashboard"
 
-  # Ported from ProvisioningLive.registered_domain/1.
   defp registered_domain(%{active_project: %{domain: d}} = scope)
        when is_binary(d) and d != "" do
     adopted? =
@@ -2205,12 +2088,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   defp describe_domain_error(reason) when is_binary(reason), do: reason
   defp describe_domain_error(reason), do: inspect(reason)
 
-  # Ported from ProvisioningLive.handle_event("mail_send_probe", ...) and
-  # mail_state/3's own dependency chain (fetch_full_domain/2,
-  # verification_attempts/1, mail_record/2, apex_mx_records/1, resolves?/3,
-  # apex_or_qualified/2, qualify_record/2, dkim_state/1) — moved wholesale
-  # since the outbound mail panel this proof and refresh_mail_dns both read
-  # needs the same DNS/Resend state either way.
   defp run_mail_send_probe(scope, to, environment) do
     case Resend.send_probe(scope, to, environment: environment) do
       {:ok, sent} ->
@@ -2239,9 +2116,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  # Ported from ProvisioningLive.handle_event("refresh_mail_dns", ...) and
-  # refresh_mail/1 — assigns rather than assign_new, which is what
-  # "re-check" has to mean.
+  # `assign`, not `assign_new`: that is what "re-check" means.
   defp refresh_mail(socket) do
     scope = socket.assigns.current_scope
     domains = list_domains(scope)
@@ -2376,8 +2251,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  # Ported from ProvisioningLive.handle_event("widget_degradation_probe", ...)
-  # and widget_degradation/1 + probe_field/2.
   defp widget_degradation({:ok, probe}) do
     %{
       page_status: to_string(probe_field(probe, :page_status)),

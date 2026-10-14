@@ -37,18 +37,12 @@ defmodule CodeMySpec.UserPreferences do
 
     case get_user_preference(scope) do
       {:ok, preferences} ->
-        # The active project is a *fallback*, not the answer. Every LiveView
-        # under /app/projects/:project_id gets its project from the URL, put on
-        # the scope per-request by the PortableHosts, which overwrite whatever
-        # is here — so the bug this used to cause (a link landing on a page
-        # showing a different project than the one it named) stays fixed.
-        #
-        # It is still read because the REST API has no project in its URL:
-        # /api/issues is what `Issues.RemoteClient` calls from the shipped CLI,
-        # and IssuesRepository.resolve_project_id/1 has no other way to know
-        # which project a request means. Removing it 500s that endpoint.
-        # Deleting this for real means project-scoping the API routes, which
-        # is a breaking change for CLIs already in the field.
+        # The active project is a *fallback*: LiveViews under
+        # /app/projects/:project_id take it from the URL (the PortableHosts
+        # overwrite this per request). It is still read by `/api` routes, which
+        # carry no project in the URL and fall back to it when a request sends
+        # neither `X-Harness-Id` nor `X-Project-ID`
+        # (`CodeMySpecWeb.Plugs.ProjectScopeOverride`).
         %Scope{
           user: user,
           user_id: user.id,
@@ -234,9 +228,9 @@ defmodule CodeMySpec.UserPreferences do
   Refused for an account the user has no membership on — this is the one
   place `active_account_id` is written, so it is the last line of defense
   against a caller handing it an id that came from somewhere other than the
-  user's own account list (a stale token, a copy-pasted id). Without this
-  check, `Scope.for_user/1` preloads whatever `active_account_id` says with
-  no membership filter of its own, and the rest of the app trusts the scope.
+  user's own account list (a stale token, a copy-pasted id). `scope_for/1`
+  preloads whatever `active_account_id` says with no membership filter of its
+  own, and the rest of the app trusts the scope.
 
   ## Examples
 

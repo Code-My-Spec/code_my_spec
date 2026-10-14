@@ -17,10 +17,10 @@ defmodule CodeMySpec.Conversations do
       account-scoped, so any CMS user in the account can read and reply across
       every project the account owns.
 
-  A third kind of conversation — the background-agent session, keyed by harness
-  `session_external_id` instead of an end-user — has no human on the other end.
-  `get_agent_conversation/2` and `AgentConversationLive` read it; it never
-  surfaces through the operator-side inbox functions above.
+  A third kind — `type: :agent`, keyed on the agent (or, for a Claude Code lane
+  no agent row adopted, on its `session_external_id`) — has no human on the
+  other end. `AgentConversationLive` reads it; it never surfaces through the
+  operator-side inbox functions above.
   """
 
   use Boundary,
@@ -63,10 +63,9 @@ defmodule CodeMySpec.Conversations do
   @doc """
   Stop listening to one conversation's messages.
 
-  The counterpart exists because a reader can now move between conversations
-  without the process ending — the agent cockpit patches from one to the next.
-  Without this the first subscription outlives the screen that wanted it and
-  one agent's turns arrive in another's transcript.
+  A reader can move between conversations without its process ending (the
+  agent cockpit patches from one to the next); without this one agent's turns
+  arrive in another's transcript.
   """
   def unsubscribe_conversation(conversation_id),
     do: Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, conversation_topic(conversation_id))
@@ -128,12 +127,7 @@ defmodule CodeMySpec.Conversations do
   Finds a conversation keyed by an external session id, or creates it.
 
   For the threads under `type: :agent` that have no agent: a Claude Code lane
-  pushing under its own id before anything adopted it, and the story interview,
-  which is not an agent in any sense and only borrowed the shape.
-
-  This is what `find_or_create_agent_conversation/3` used to be for everything.
-  Splitting them is the point — one caller has an agent and the other does not,
-  and a single function had to pretend they were the same question.
+  pushing under its own id before anything adopted it, and the story interview.
   """
   def find_or_create_session_conversation(account_id, project_id, session_external_id) do
     case Repo.get_by(Conversation,
@@ -171,26 +165,14 @@ defmodule CodeMySpec.Conversations do
   @doc """
   Finds an agent's conversation, or creates it.
 
-  Keyed on the agent. It was keyed on `session_external_id` — `pi:<root>` — so
-  every agent on one working copy found the same row and the whole team's
-  transcript landed there. That was deliberate and it stopped serving: a copy
-  runs several lanes, their turns interleave into one thread, and a reply cannot
-  say which of them spoke.
-
-  A Claude Code lane arrives with an external id and no agent row of its own, so
-  `find_or_create_session_conversation/3` still answers that question under its
-  own name. Two callers, two questions, neither pretending to be the other.
+  Keyed on the agent, never on the working copy: a copy runs several agents,
+  and one thread per copy interleaved their turns.
 
   The one exception: a project born from guided intake already has a
-  conversation before any agent does — `Intake.convert/2` opened one to carry
-  the interview forward, keyed `"intake:<plan id>"`. The first agent this
-  project ever gets adopts that row rather than starting a second one, so the
-  interview and the agent's own turns read as one thread instead of two
-  competing for `get_agent_conversation/2`'s "most recent" pick. Scoped to the
-  `"intake:"` prefix rather than "any unclaimed session row" on purpose: a
-  project has at most one of these today, and a future session-keyed use
-  this function knows nothing about should not be silently annexed by the
-  next agent that happens to start.
+  conversation keyed `"intake:<plan id>"` (`Intake.convert/2`). The first agent
+  the project gets adopts that row, so the interview and the agent's turns read
+  as one thread. Only the `"intake:"` prefix is adopted, never any unclaimed
+  session row.
   """
   def find_or_create_agent_conversation(account_id, project_id, agent_id) do
     case Repo.get_by(Conversation, agent_id: agent_id) do
@@ -248,45 +230,10 @@ defmodule CodeMySpec.Conversations do
   message (so the operator inbox renders it live). `kind` is the harness message
   kind (`"assistant"` / `"tool"` / `"status"`); `agent_role` is the speaking lane.
   """
-  # A message with nothing in it is not a message.
-  #
-  # `parts_for/1` answers `[]` for `nil` and for `""`, so a caller with no text
-  # inserted a row whose entire content was an empty list — and it renders as
-  # the agent having spoken and said nothing.
-  #
-  # Guarded here rather than at each caller, which is the third attempt at this
-  # and the first one that can be right. I guarded `write_turn_event/3` for a
-  # missing key, then for a `nil` text, and empty rows kept arriving from a
-  # caller I had not found: 47 on one coding agent in eight minutes, stamped
-  # `agent:coding`, after two commits that were each supposed to have ended
-  # them. Whichever caller it is, it cannot write one now.
-  #
-  # The cost of those rows was a day of misdiagnosis. A coding agent showing 99
-  # empty messages against 0 substantive ones reads as a model returning
-  # nothing, and I went through a credential rotation, a provider switch and
-  # Alloy's response parsing looking for a fault that was never there.
-  #
-  # `{:ok, nil}` rather than an error: a caller with nothing to say has not done
-  # anything wrong, and every one of them ignores the message it gets back.
-  # Judged by what it renders to, not by what it looks like.
-  #
-  # Guarding the input shape was a search, and I ran it three times: `nil`, then
-  # `""`, then a blank binary, and empty rows kept arriving — because the
-  # harness sends a turn's content as a list of blocks and a turn that produced
-  # none sends `[]`. Not nil, not a binary, straight past every guard and into a
-  # row whose content is empty for a fourth reason.
-  #
-  # `parts_for/1` is the only thing that knows what a message will actually
-  # contain. Ask it once, refuse when it has nothing, and there is no fifth
-  # shape left to discover.
-  #
-  # What those rows cost: a coding agent showing 99 empty messages against 0
-  # substantive ones reads as a model returning nothing, and I spent a day
-  # inside a credential rotation, a provider switch and Alloy's response parsing
-  # looking for a fault that was never there.
-  #
-  # `{:ok, nil}` rather than an error — a caller with nothing to say has not
-  # done anything wrong, and every one of them ignores what it gets back.
+  # A message with nothing in it is not written (`{:ok, nil}`): empty rows read
+  # as a model returning nothing. Guarded here, for every caller, and judged by
+  # what it renders to (`parts_for/1`), not by input shape.
+  # See knowledge/agents/coordination, "Conversations".
   def add_agent_message(%Conversation{} = conversation, agent_role, kind, text) do
     if said_nothing?(text) do
       {:ok, nil}
@@ -295,12 +242,8 @@ defmodule CodeMySpec.Conversations do
     end
   end
 
-  # Whether anything was said, which is a different question from what to store.
-  #
-  # Trimming decides; it does not edit. The first cut of this stored the trimmed
-  # text and a 17 kB transcript came back one byte short — the record has to be
-  # what the model actually received, which is the whole argument for keeping a
-  # wall of prose rather than truncating it.
+  # Trimming decides whether anything was said; it never edits what is stored,
+  # which must be what the model received.
   defp said_nothing?(nil), do: true
   defp said_nothing?([]), do: true
   defp said_nothing?(text) when is_binary(text), do: String.trim(text) == ""
@@ -334,9 +277,8 @@ defmodule CodeMySpec.Conversations do
   after — a conversation that goes quiet mid-tool reads as broken.
 
   `agent_role` is the speaking lane. It defaults to `"product"` for the in-app
-  chat, which has only one; a harness transcript passes the real lane, because
-  a sub-agent's call showing as the parent's is a wrong attribution and there
-  is a criterion about it (8172).
+  chat, which has only one; a harness transcript passes the real lane, so a
+  sub-agent's call is not attributed to the parent.
   """
   def add_tool_call(
         %Conversation{} = conversation,
@@ -357,9 +299,7 @@ defmodule CodeMySpec.Conversations do
   @doc """
   Records what a call returned, paired to it by `call_id`.
 
-  `failed?` is the provider's `is_error`, kept as data. The recorder used to
-  fold it into the text as a `"← failed: "` prefix and the view read it back by
-  matching that string; a boolean means the view asks a field.
+  `failed?` is the provider's `is_error`, kept as data (`tool_failed`).
   """
   def add_tool_result(
         %Conversation{} = conversation,
@@ -394,8 +334,7 @@ defmodule CodeMySpec.Conversations do
   end
 
   # A model that would not stop and a provider that fell over are different
-  # events. Writing both as one turn made them indistinguishable to a reader
-  # and to a test — which is why nothing caught it.
+  # events, written as different turns.
   defp system_turn(conversation, kind, text) do
     agent_turn(conversation, %{
       role: :assistant,
@@ -408,22 +347,12 @@ defmodule CodeMySpec.Conversations do
   @doc """
   Record a message that was sent to an agent, on that agent's conversation.
 
-  For the two senders that dispatch through the transport directly rather than
-  through `Agents.dispatch_message/3` — a user's answer, and a stop decision —
-  and so record nothing themselves. Without this the message reaches the agent
-  and never appears in the transcript at all.
+  For senders that do not record through `Agents.dispatch_message` themselves;
+  without this the message reaches the agent and never appears in the
+  transcript. Written as `:operator`, the role every line that reaches an
+  agent uses (and that resume hands the model as "user").
 
-  `:operator` rather than the `:orchestrator` role this replaces. That role was
-  excluded from `Chat.Runner.to_provider_message/1`, so anything wearing it was
-  dropped from the model's context — the transcript showed it, the agent never
-  saw it, and story 985 built seven criteria on a reader that turned out not to
-  exist: "there is no tool today with which an agent reads its own
-  conversation". These two were the only ones being genuinely delivered, and
-  `:operator` is what everything else that reaches an agent already uses.
-
-  Silent when the agent has no conversation. Sending to an agent nobody is
-  watching is not an error, and refusing here would let recording a message
-  fail the send.
+  Silent when the agent has no conversation: recording must not fail the send.
   """
   @spec record_sent_to_agent(Agent.t() | String.t() | nil, String.t()) ::
           {:ok, Message.t()} | :ok
@@ -527,14 +456,10 @@ defmodule CodeMySpec.Conversations do
       conversation_id: conversation.id,
       role: role,
       origin: Keyword.get(opts, :origin),
-      # Only an operator message aimed at an agent carries these; everything
-      # else leaves them nil, which is the honest answer to a question that
-      # does not apply.
+      # Only an operator message aimed at an agent carries these.
       delivery: Keyword.get(opts, :delivery),
       delivery_ref: Keyword.get(opts, :delivery_ref),
-      # Text and files are both parts now. Callers still pass them separately
-      # because that is how the widget and the operator form send them; the
-      # split stops at this boundary.
+      # Text and files are both parts; callers pass them separately.
       content: parts_for(body) ++ Enum.map(attachments, &%{"type" => "file", "file" => &1}),
       sender_id: sender_id
     })
@@ -558,9 +483,8 @@ defmodule CodeMySpec.Conversations do
   @doc """
   Move a message from waiting to settled, and say so on the topic.
 
-  Broadcast rather than left for the next render: a page still offering to take
-  back something the agent is already acting on is the failure the ref exists
-  to prevent, and it cannot know without being told.
+  Broadcast so a page stops offering to take back a message the agent is
+  already acting on.
   """
   @spec set_delivery(Message.t(), :delivered | :withdrawn | :failed) ::
           {:ok, Message.t()} | {:error, Ecto.Changeset.t()}
@@ -614,10 +538,8 @@ defmodule CodeMySpec.Conversations do
   @doc """
   How many messages in `role` this conversation holds.
 
-  Counted in the database rather than by listing, because the caller wants a
-  number and `list_messages/2` is paged — a count taken from a page is the page
-  size once the conversation is longer than one, and the one caller that needs
-  this is a spending limit, which must not quietly stop counting at 50.
+  Counted in the database: `list_messages/2` is paged, and the caller is a
+  spending limit that must not stop counting at a page size.
   """
   @spec count_messages(Conversation.t(), atom() | String.t()) :: non_neg_integer()
   def count_messages(%Conversation{} = conversation, role) do
@@ -631,14 +553,9 @@ defmodule CodeMySpec.Conversations do
   @doc """
   Text of the conversation's most recent message in `role`, or nil if none.
 
-  Exists for the recorder's repeat check. Consecutive model turns often carry
-  an identical last request message — an injected system reminder is the usual
-  one — and writing it every time put the same block on screen twice.
-
-  Scoped to a role, because a turn writes several rows: results, then the
-  request's free text, then the response, then the calls. Compared against the
-  most recent message of *any* role, a request is always being measured against
-  the previous turn's response, so it never matches and every repeat is written.
+  For the recorder's repeat check (consecutive turns often carry an identical
+  last request message). Scoped to a role because a turn writes several rows
+  of different roles; compared against any role, nothing ever matches.
   """
   @spec last_message_text(Conversation.t(), atom()) :: String.t() | nil
   def last_message_text(%Conversation{} = conversation, role) do
@@ -701,9 +618,7 @@ defmodule CodeMySpec.Conversations do
   Write down what an agent's compaction decided to keep.
 
   Called when the machine reports a compaction, so the summary the agent is now
-  running on is the summary a restart resumes from. Deriving a second one here
-  would be a different reading of the same conversation, and the one nobody read
-  is the one that would survive.
+  running on is the summary a restart resumes from; nothing derives a second.
   """
   @spec record_checkpoint(Conversation.t(), [map()], keyword()) ::
           {:ok, Checkpoint.t()} | {:error, Ecto.Changeset.t()}
@@ -730,11 +645,9 @@ defmodule CodeMySpec.Conversations do
 
   # Everything after the row the checkpoint stopped at.
   #
-  # By the anchor row's timestamp when there is one. When there is not — the row
-  # was deleted, and the reference nullifies rather than cascades — the
-  # checkpoint's own `inserted_at` is the cut. Not "replay everything": that
-  # would hand the model the summary *and* the conversation it summarises, which
-  # is the one outcome worse than losing the anchor.
+  # By the anchor row's timestamp, or the checkpoint's own `inserted_at` when the
+  # anchor was deleted — never "replay everything", which would hand the model
+  # the summary and what it summarises.
   defp tail_after(conversation, %Checkpoint{} = checkpoint) do
     cutoff =
       case checkpoint.through_message_id && Repo.get(Message, checkpoint.through_message_id) do
@@ -748,10 +661,7 @@ defmodule CodeMySpec.Conversations do
     |> Repo.all()
   end
 
-  # Unpaginated on purpose. `list_messages/2` answers what a page renders and
-  # caps at a page size; this answers what an agent knows, and a cap
-  # here would silently be the difference between an agent that remembers
-  # yesterday and one that does not.
+  # Unpaginated on purpose: this is what an agent knows, not what a page renders.
   defp all_messages(%Conversation{} = conversation) do
     Message
     |> where([m], m.conversation_id == ^conversation.id)
@@ -883,15 +793,9 @@ defmodule CodeMySpec.Conversations do
   for rendering). Older messages load on demand.
   """
   def list_conversations(scope) do
-    # Support only. An inbox is for "someone needs you", and a machine's
-    # conversation in it costs the surface the only meaning it has — story 870's
-    # rule, which said so and was not enforced anywhere: this filtered on the
-    # account and nothing else, so every agent conversation was listed.
-    #
-    # Agent conversations are reachable from their own project surface. This is
-    # the query the support inbox reads, so it is where the separation belongs.
-    #
-    # Latest message first; a thread with no messages ranks by when it opened.
+    # Support only: an inbox is for "someone needs you"; agent conversations
+    # have their own project surface. Latest message first; a thread with no
+    # messages ranks by when it opened.
     Conversation
     |> join(:left, [c], l in subquery(last_message_at_query()), on: l.conversation_id == c.id)
     |> where([c], c.account_id == ^scope.active_account_id and c.type == :support)
@@ -932,12 +836,8 @@ defmodule CodeMySpec.Conversations do
   End-user messages that reached the scope's active project through a widget,
   newest first.
 
-  Support threads only, and `:user` turns only: the operator's replies travel
-  the other way, and an agent transcript never came through a widget at all.
-  Provisioning's widget step reads this to answer "has anything actually
-  arrived", which is a question about inbound traffic — counting our own
-  outbound replies would let a project prove its widget works by us talking to
-  it.
+  Support threads and `:user` turns only: provisioning's widget step reads this
+  to answer "has anything actually arrived", a question about inbound traffic.
   """
   @spec list_widget_messages(Scope.t(), keyword()) :: [Message.t()]
   def list_widget_messages(%Scope{} = scope, opts \\ []) do
@@ -1065,13 +965,9 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
-  The project's sprite-agent conversation — the accumulating record of every
-  background-agent turn taken while working the project. `nil` until the first
-  turn has been recorded.
-
-  Read by `AgentConversationLive`, deliberately outside `list_conversations/1`
-  and `unread_count/1` — a machine being watched is not a support thread, and
-  must never raise the inbox's unread badge or appear in its list.
+  The project's most recently updated agent conversation, or `nil`. Outside
+  `list_conversations/1` and `unread_count/1`: a machine being watched is not
+  a support thread. `list_agent_conversations/2` lists them all.
   """
   @spec get_agent_conversation(Scope.t(), Ecto.UUID.t()) :: Conversation.t() | nil
   def get_agent_conversation(%Scope{} = scope, project_id) do
@@ -1090,13 +986,7 @@ defmodule CodeMySpec.Conversations do
   Every agent conversation on a project, latest message first, each with how
   many turns it holds and when it last moved.
 
-  The counterpart to `get_agent_conversation/2`, which answers "the newest one"
-  — fine when a project had one agent, and silently hiding four when it has
-  five.
-
-  Counted in the same query rather than per row: five conversations is five
-  extra round trips today and one per agent forever after, for a number that
-  is only ever shown next to the name.
+  Counts come from the same query, not a round trip per row.
   """
   @spec list_agent_conversations(Scope.t(), Ecto.UUID.t()) :: [map()]
   def list_agent_conversations(%Scope{} = scope, project_id) do
@@ -1110,17 +1000,8 @@ defmodule CodeMySpec.Conversations do
         }
       )
 
-    # The agent's checkout comes along because it is what tells two rows apart.
-    #
-    # The row's second line used to be `session_external_id`, which read
-    # `pi:<path>` and carried the path by accident. Keying the conversation on
-    # the agent emptied that column for every agent thread, so the line rendered
-    # blank — the page lost the one fact that distinguishes three copies of the
-    # same project, which is the complaint (18f50c87) that put the path in the
-    # key to begin with.
-    #
-    # A left join, because a Claude Code lane has an external id and no agent
-    # row, and still needs its line.
+    # The agent's checkout comes along because it tells two rows apart. A left
+    # join: a Claude Code lane has no agent row and still needs its line.
     from(c in Conversation,
       left_join: n in subquery(counts),
       on: n.conversation_id == c.id,
@@ -1148,26 +1029,11 @@ defmodule CodeMySpec.Conversations do
   The show page takes its id from the URL, so this is the check that stops one
   transcript being readable from another's address.
 
-  It used to check the account alone, and that was one axis short. Two projects
-  under one account was the whole precondition: the same conversation id under
-  the second project's URL rendered the first project's agent transcript —
-  messages, restart notices and a `bash mix deps.get` tool call — under the
-  second project's chrome. The page said one project and the content was
-  another's private agent activity. Filed from a source reading as `4a470cc3`
-  and confirmed live as `7dbf9709`.
+  Account alone is one axis short: under one account, another project's URL
+  would render this project's transcript.
 
-  `mount_conversation/3` sets `active_project_id` from the URL before calling
-  this, with a comment saying it does so precisely because a downstream read
-  scopes on it. This is that read; it just was not scoping on it.
-
-  Both callers are per-project surfaces, so tightening is what they already
-  assume. `rename_agent_conversation/3` below still describes the check as
-  account-level — it is now narrower than that sentence, and deliberately.
-
-  A scope with no project answers `nil` rather than raising. Ecto refuses to
-  compare a column with `nil` in a `where`, and a scope-narrowing change that
-  turns "no project" into a crash would be the same defect `b27c54f1` reports
-  against `check_machinery` — introduced while fixing its neighbour.
+  A scope with no project answers `nil` rather than raising (Ecto refuses to
+  compare a column with `nil`).
   """
   @spec get_agent_conversation_by_id(Scope.t(), Ecto.UUID.t()) :: Conversation.t() | nil
   def get_agent_conversation_by_id(%Scope{active_project_id: nil}, _conversation_id), do: nil
@@ -1183,13 +1049,9 @@ defmodule CodeMySpec.Conversations do
   @doc """
   Give an agent conversation a name a person chose.
 
-  `session_external_id` stays the identity — it is what the recorder keys on and
-  what appears in the logs. This is the handle the index shows, because a UUID
-  tells you nothing when five agents are running.
-
-  Read through `get_agent_conversation_by_id/2` first, so the scope check is the
-  same one the show page makes: one account cannot rename another's thread, and
-  a support conversation cannot be renamed through the agent surface at all.
+  The name is a display handle; the key (agent or session id) is unchanged.
+  Read through `get_agent_conversation_by_id/2` first, so the scope check is
+  the show page's: account and project, and never a support conversation.
   """
   @spec rename_agent_conversation(Scope.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, Conversation.t()} | {:error, :not_found | Ecto.Changeset.t()}
@@ -1205,13 +1067,8 @@ defmodule CodeMySpec.Conversations do
     end
   end
 
-  # A name so a new conversation is never nameless — an index of five UUIDs is
-  # the problem this exists to avoid, and it appears before anyone has had the
-  # chance to name anything.
-  #
-  # Random rather than derived from the session id: it is stored and editable,
-  # so it does not need to be reproducible, and a derived name would silently
-  # change if the derivation ever did.
+  # A name so a new conversation is never nameless. Random: it is stored and
+  # editable, so it need not be reproducible.
   @adjectives ~w(amber brisk candid dusk eager fleet grave hollow iron jade
                  keen lucid mellow north opal patient quiet russet slate tacit
                  umber vivid warm yonder zinc)
@@ -1219,21 +1076,8 @@ defmodule CodeMySpec.Conversations do
             kestrel lantern meadow nimbus orchard pillar quarry ridge summit
             thicket vale willow yarrow)
 
-  # Unique within the project, because the name is how an operator tells two
-  # conversations apart.
-  #
-  # 25 adjectives x 23 nouns is 575 names, so two agents on one copy collide
-  # about one time in five hundred — and when they do, both rows render the
-  # same "Open <name>" link to two different transcripts. Criterion 2892 is
-  # exactly that claim ("two agents on one copy are two conversations") and it
-  # caught a real collision on 2026-09-20: an operator picks a link and has
-  # redirected the agent they were not watching, which is worse than having no
-  # link at all.
-  #
-  # A handful of attempts, then a suffix. Retrying forever on a project with
-  # 575 conversations would not terminate, and the suffix is ugly in a way that
-  # says "name me" — which is the right prompt, since the name is editable and
-  # this one was only ever a placeholder.
+  # Unique within the project: a collision renders two identical links to
+  # different transcripts. A handful of attempts (575 names), then a suffix.
   defp generated_name(account_id, project_id) do
     taken =
       from(c in Conversation,
@@ -1253,11 +1097,8 @@ defmodule CodeMySpec.Conversations do
   defp unique_suffix, do: 4 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
 
   @doc """
-  What to show for a conversation that has no name — rows created before names
-  existed, which are not worth backfilling with a name nobody chose.
-
-  The session id, shortened. It is the identity anyway, and it is what appears
-  in the logs you would go read next.
+  What to show for a conversation that has no name: the session id,
+  shortened, else "unnamed".
   """
   @spec display_name(Conversation.t()) :: String.t()
   def display_name(%Conversation{name: name}) when is_binary(name) and name != "", do: name

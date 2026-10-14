@@ -65,13 +65,8 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
     end)
   end
 
-  # The other half of what stops an agent, and it was missing.
-  #
-  # `Notifications.awaiting_answer?/1` — the predicate `StopDecision.wake/2`
-  # consults before it will wake anything — is `pending_question? or
-  # pending_permission?`. A listing that unions only the first half cannot
-  # explain the gate, so an agent held off the graph by a `tap_out` shows up
-  # here as nothing at all.
+  # Permission requests are the other half of what an agent waits on: a listing
+  # of questions alone shows an agent held by a `tap_out` as waiting on nothing.
   #
   # That is not hypothetical. Agent `880c7713` asked to leave the loop at 12:38,
   # nobody recorded a decision, and it spent seven hours unreachable while

@@ -2,6 +2,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   @moduledoc """
   Generate BDD specification files for a story whose three-amigos session
   is complete but whose specs haven't been written yet.
+
+  The evaluator takes the `bdd_specs_exist` requirement's own verdict from the
+  harness's file records, so the task and the requirement cannot disagree.
   """
 
   alias CodeMySpec.BddSpecs
@@ -32,8 +35,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Command — slim prompt that points at framework + project BDD knowledge
   # ============================================================================
 
-  # 8a186121: a coder that cannot retire a criterion deleted its spec or asked
-  # the user. Retiring is product's; this is the path to it.
+  # Retiring a criterion is product's; this is the coder's path to it.
   @obsolete_criterion "If a criterion is obsolete or wrong, don't delete its spec; file an " <>
                         "app issue on the story (`create_issue`) naming the criterion and why; " <>
                         "product retires or rewrites it."
@@ -54,7 +56,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   end
 
   # ============================================================================
-  # Evaluate — file exists, parses, compiles, uses Spex.Case, has scenarios
+  # Evaluate — every criterion covered by a valid spec in the file records
   # ============================================================================
 
   @spec evaluate(term(), map()) ::
@@ -222,23 +224,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
   end
 
-  # What this project actually has, rather than what a template hoped it
-  # would have.
-  #
-  # This named `four_surfaces_quick_reference.md`, `surfaces.md` and
-  # `cassettes.md`. Broken Oaths has `index.md` and nothing else, so an agent
-  # following the prompt spent two `read_knowledge` calls on files that do not
-  # exist before listing the directory and finding the real one — reported as
-  # `0e501e3d`, and the same shape as the war.spec.md and buildings.spec.md
-  # reports beside it.
-  #
-  # A prompt naming files inside somebody else's repository is asserting a fact
-  # about a place it does not control. The file records are the fact: the
-  # harness syncs `.code_my_spec/knowledge/**` like anything else, so the answer
-  # is already here and does not have to be guessed.
-  #
-  # Named files, not just the directory, because "go and list it" spends a turn
-  # on something the server can answer for free.
+  # What this project actually has, from the synced file records, rather than
+  # file names a template guessed. Named files, not just the directory, saves
+  # the agent a listing turn.
   defp project_knowledge(scope) do
     case knowledge_files(scope) do
       [] ->
@@ -265,9 +253,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     |> Enum.uniq()
     |> Enum.sort()
   rescue
-    # A prompt is not the place to fail over a listing. Naming nothing is
-    # recoverable — the agent lists the directory, which is what it had to do
-    # before this existed.
+    # A prompt is not the place to fail over a listing; naming nothing is
+    # recoverable.
     _error -> []
   end
 
@@ -290,9 +277,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
             """
           end
 
-        # Nothing was read. That is two different facts, and telling an agent
-        # the wrong one is expensive in opposite directions — so ask the file
-        # report before saying which.
+        # Nothing was read: ask the file report which of two facts it is.
         _ ->
           unread_framing(scope, component, module_name)
       end
@@ -304,16 +289,11 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
   end
 
-  # A read that returned nothing means one of two things, and they want opposite
-  # advice. On a light harness the server holds no working copy, so *every* read
-  # returns nothing — and this used to answer "this component is a stub, invent
-  # the API" for a 200-line implemented module. An agent that believes it writes
-  # spex against an interface it made up while a working one exists, and the
-  # spex then fail in ways that look like implementation gaps.
-  #
-  # The file report knows which it is without a disk. A row means the file is
-  # there and this server simply cannot open it; no row means there is genuinely
-  # nothing to read, which is the case `stub_framing/1` was written for.
+  # An empty read wants opposite advice depending on why. On a light harness
+  # every read is empty, and "this is a stub, invent the API" for an implemented
+  # module produces spex against a made-up interface. An implementation file
+  # row means the file exists and this server cannot open it; no row means a
+  # real stub.
   defp unread_framing(scope, component, module_name) do
     case implementation_files(scope, component) do
       [] ->
@@ -340,11 +320,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp implementation_files(_scope, _component), do: []
 
-  # "Open the file to see the public API" is bad advice when there is no
-  # public API — a component created by `create_component` is a stub, and the
-  # specs about to be written are what define its interface. An agent told to
-  # go read it opens an empty module, learns nothing, and has to work out on
-  # its own that the instruction did not apply.
+  # A stub has no public API to read; the specs about to be written define it.
   defp stub_framing(path) do
     """
     Source: `#{path}` — **this component is a stub.** There is no
@@ -358,11 +334,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
   end
 
-  # A module with no function definitions. `defstruct`/`use`/`alias` alone
-  # still count as a stub — none of them give a spec-writer a surface to
-  # drive. Deliberately textual: this runs against a file read through the
-  # environment, and parsing it to decide how to phrase a prompt would buy
-  # precision nobody needs.
+  # A module with no function definitions (`defstruct`/`use`/`alias` alone
+  # give no surface to drive). Textual on purpose: precision is not needed to
+  # phrase a prompt.
   defp stub_source?(source) do
     not Regex.match?(~r/^\s{2,}(def|defdelegate|defmacro)\s/m, source)
   end
@@ -392,9 +366,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     end
   end
 
-  # Component-type-aware hint that routes the agent to the right section
-  # of the project's four_surfaces doc. Avoids inlining per-type skeletons
-  # — those live in the knowledge corpus already.
+  # Component-type hint for the likely surface; the project's BDD knowledge
+  # carries the real decision table.
   defp surface_hint_section(component) do
     hint = surface_hint(component.type)
 
@@ -423,17 +396,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       Enum.map_join(criteria, "\n\n", fn criterion ->
         spec_path = BddSpecs.spec_file_path(story, criterion)
 
-        # "Suggested", not "expected", and it says why. A criterion that has no
-        # file yet gets a path derived from its description; once a file exists
-        # the criterion adopts *that* path and this line reports it back.
-        #
-        # Calling it "expected" reads as a requirement, and it costs a rename:
-        # a spec written at a slightly different slug is already correct and
-        # already adopted, and renaming it to match this line is what makes the
-        # evaluator report it missing. That happened on story 967 — the
-        # description held an apostrophe, the derived slug dropped it, the
-        # written file kept it as an underscore, and following this line broke
-        # a file that was fine.
+        # "Suggested", not "expected": the `criterion:` option binds the file,
+        # not its path, and renaming an adopted spec to match a derived slug
+        # breaks it.
         """
         ### Criterion #{criterion.number}: #{criterion.description}
         #{criterion_body(criterion)}
@@ -452,26 +417,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     """
   end
 
-  # The scenario already said which surface it drives — "calls
-  # list_qa_attempts", "navigates to the story page", "writes result.md" — so
-  # read it off the `when_` step instead of asking the agent to re-derive it.
-  #
-  # This is per criterion on purpose. A story's criteria routinely span
-  # surfaces (an MCP tool and the LiveView that shows its result), which is
-  # exactly the case one sentence above the list cannot describe, and the case
-  # where the component-type hint degrades to "depends".
-  # The scenario itself, which this prompt has promised since it was written —
-  # "Write the spex against the surfaces named in the scenario bodies below" —
-  # and never printed. A coding agent on story 1001 said so exactly: "lists only
-  # criterion titles, but omits the promised scenario bodies", and then asked
-  # which peace flow it was supposed to encode. It could not know. The four
-  # bodies were on the rows it had been handed.
-  #
-  # In the prompt rather than behind a tool call. `story.criteria` is already
-  # loaded, a body is ~150 characters, and for a stub component the paragraph
-  # above says these *are* the contract — so this is the one thing the work
-  # cannot start without. Progressive disclosure earns its keep on material that
-  # is large, optional, or usually unneeded; this is none of the three.
+  # The scenario body, inline: for a stub component it is the contract, and it
+  # is short and already loaded.
   defp criterion_body(%{body: body}) when is_binary(body) do
     body |> String.trim() |> fenced()
   end
@@ -481,16 +428,13 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp fenced(""), do: no_scenario()
   defp fenced(body), do: "\n```gherkin\n" <> body <> "\n```\n"
 
-  # A criterion with no body is a title and nothing else, and saying so beats
-  # printing an empty fence: the agent needs to know the scenario is missing
-  # rather than assume it was omitted from the prompt again — which, given the
-  # bug this replaced, is exactly the assumption it would make.
-  #
-  # Whitespace counts as none. A body of `"  \n "` renders an empty fence that
-  # reads as "the scenario is here and says nothing".
+  # A missing (or whitespace-only) body is said outright, so the agent does not
+  # assume the prompt omitted it.
   defp no_scenario,
     do: "\n_No scenario recorded for this criterion — it is a title only._\n"
 
+  # The surface read off the scenario's `when_` steps, per criterion, since a
+  # story's criteria often span surfaces.
   defp criterion_surface_line(%{body: body}) when is_binary(body) do
     case infer_surface(when_steps(body)) do
       nil -> ""
@@ -512,9 +456,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # or a file is describing that surface even if it also says "calls". The
   # bare-verb MCP pattern is last among the specific ones for that reason.
   #
-  # Returns nil rather than guessing. A wrong surface is worse than none here,
-  # because the agent has no reason to doubt it and will write the whole spec
-  # against it.
+  # Returns nil rather than guessing: the agent has no reason to doubt a wrong
+  # surface.
   defp infer_surface(text) do
     Enum.find_value(
       [
@@ -619,11 +562,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp module_path(_env, _), do: nil
 
-  # The prompt describes the project's source tree, so every probe in it has to
-  # be asked of the machine holding that tree. Built against cwd, these sections
-  # silently came back empty on a sprite — the spec-writer was told the component
-  # had no @moduledoc and no sibling specs, which is a plausible-looking answer
-  # rather than a visible failure.
+  # Every probe of the source tree is asked of the machine holding it, never
+  # this server's cwd.
   defp environment(scope), do: CodeMySpec.AgentTasks.environment(scope)
 
   defp inferred_path_hint(module_name) when is_binary(module_name) do
@@ -672,9 +612,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # ============================================================================
 
   # The requirement's own verdict, from the same function and the same rows,
-  # so the task cannot pass while `bdd_specs_exist` stays unsatisfied — the
-  # spin in 94327fe2, where this checked a derived path on any working copy and
-  # the requirement checked this copy's bound files.
+  # so the task cannot pass while `bdd_specs_exist` stays unsatisfied.
   defp validate_story_specs(scope, story) do
     criteria = story.criteria || []
     specs = scope |> Files.list_files() |> Enum.filter(&(&1.role == :bdd_spec))
@@ -696,9 +634,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     end
   end
 
-  # Where it looked, so a refusal can be checked against the rows in one step.
-  # "Not found" once hid three unrelated scoping defects (dca0bea9, d5fd302e,
-  # 6b2810a8) because it named the file and not the scope.
+  # Where it looked, so a refusal can be checked against the rows in one step;
+  # a "not found" that names no scope hides scoping defects.
   defp looked_in(scope) do
     "\n\nLooked in: project #{inspect(scope.active_project_id)}" <>
       ", working copy #{inspect(scope.active_working_copy_id)}"
@@ -733,16 +670,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Helpers
   # ============================================================================
 
-  # `mix.exs` first, because it is the app name the project actually compiles
-  # under. When it cannot be read, the project's own module name — not
-  # `my_app`.
-  #
-  # That placeholder reached agents as real instructions. On a light harness the
-  # server has no working copy, so this read never succeeds, and the prompt told
-  # spec-writers to `use MyAppSpex.Case` and pointed at
-  # `test/support/my_app_spex_case.ex` — none of which exist in any project. The
-  # surrounding prose names real criteria and real paths, so the placeholders
-  # read as deliberate rather than as an unsubstituted template.
+  # `mix.exs` first, the app name the project compiles under; otherwise the
+  # project's module name. `my_app` is the last resort: placeholders in a prompt
+  # read as real instructions.
   defp derive_app_name(scope) do
     env = CodeMySpec.AgentTasks.environment(scope)
 
@@ -758,8 +688,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp app_name_from_project(_scope), do: "my_app"
 
-  # A `mix.exs` that was read but whose `app:` could not be found falls back the
-  # same way, for the same reason: `my_app` is a name no project has.
+  # A `mix.exs` with no `app:` falls back the same way.
   defp extract_app_name(content, scope) do
     case Regex.run(~r/app:\s*:(\w+)/, content) do
       [_, name] -> name

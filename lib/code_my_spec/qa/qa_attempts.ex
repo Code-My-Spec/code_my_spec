@@ -3,8 +3,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
   Domain functions for QA attempt lifecycle.
 
   Each story accumulates an ordered log of QA attempts submitted by agents.
-  The latest attempt with `status: :pass` and no associated invalidation
-  satisfies the `qa_complete` requirement for the story.
+  Whether they satisfy `qa_complete` is `CodeMySpec.Qa.Verdict`'s call: the
+  newest non-stale attempt must be a certified, uninvalidated pass.
   """
 
   import Ecto.Query, warn: false
@@ -142,18 +142,10 @@ defmodule CodeMySpec.Qa.QaAttempts do
     end
   end
 
-  # A submitted attempt is what `qa_complete` is computed from, so the graph
-  # moved — and a pass is the case that matters most, because it unblocks
-  # whatever was waiting behind the story.
-  #
-  # After the transaction commits, not inside it: `GraphWatcher` recomputes on
-  # this, and a recompute that read the attempt before it committed would decide
-  # from a row that might roll back. Only on success for the same reason.
-  # The event also retains its story fallback mark: a failed review can reset
-  # submission nodes and certification inside this same transaction. The narrow
-  # recompute must run after commit, alongside the updated QA verdict.
-  # The entities ride along so a consumer with no handler for this kind still
-  # falls back to recomputing the story.
+  # After commit and only on success: a recompute must not read a row that
+  # might roll back. The story entities ride along so a consumer with no
+  # handler for this kind still recomputes the story (a failed review can reset
+  # submission nodes in the same transaction).
   defp announce_graph_change(scope, {:ok, _attempt} = result) do
     GraphInputs.event(
       scope,
@@ -169,11 +161,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   defp announce_graph_change(_scope, _other), do: :ok
 
-  # A `fail` or `partial` outcome MUST be backed by issue ids. Agents
-  # were filing findings into a result.md text blob that the harness
-  # never read — every non-pass came back with `issue_ids: []` and the
-  # finding disappeared. Refuse the submission so the agent has to call
-  # `create_issue` first.
+  # A `fail` or `partial` outcome must be backed by issue ids, so the agent
+  # calls `create_issue` first; a finding with no issue is lost.
   defp validate_findings_path(params) do
     status = MapAccess.get(params, :status)
     issue_ids = MapAccess.get(params, :issue_ids, [])
@@ -213,14 +202,9 @@ defmodule CodeMySpec.Qa.QaAttempts do
   @doc """
   Record evidence uploaded for an already-inserted attempt.
 
-  Not a change to the claim the attempt already made — status, scenarios
-  and issue_ids are untouched — but filling in evidence does take a second
-  write, because the S3 key each file lands at is keyed by the attempt's
-  own id (`CodeMySpec.Qa.EvidenceUpload`), which does not exist until the
-  first write returns it. On any failure (vanishingly unlikely — the
-  shape is built from known-good data, not user input) this returns the
-  original attempt rather than lose a recorded pass over an evidence
-  write.
+  Status, scenarios and issue_ids are untouched. A second write because each
+  file's S3 key is keyed by the attempt's own id (`CodeMySpec.Qa.EvidenceUpload`).
+  On failure returns the original attempt rather than lose a recorded pass.
   """
   @spec attach_evidence(QaAttempt.t(), [map()]) :: QaAttempt.t()
   def attach_evidence(attempt, [] = _evidence), do: attempt
@@ -320,12 +304,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
   @doc """
   One attempt by id, only if it belongs to the scope's project.
 
-  `nil` for an attempt that exists in another project, which is the same answer
-  as one that does not exist — the caller has no business telling those apart.
-
-  Lives here rather than in `Invalidations` because `by_project/2` does, and a
-  second copy of the join is a second place for the fail-closed `active_project:
-  nil` clause to be forgotten.
+  `nil` for an attempt in another project, the same answer as one that does
+  not exist.
   """
   @spec get_in_project(Scope.t(), Ecto.UUID.t()) :: QaAttempt.t() | nil
   def get_in_project(%Scope{} = scope, attempt_id) do
@@ -345,21 +325,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
     where(query, [a], a.story_id == ^story_id)
   end
 
-  # Fail-closed when no active project: returning a query that matches
-  # nothing prevents cross-project leakage if a caller forgets to set
-  # `active_project` on the scope.
-  # Keyed on the id, not the loaded struct.
-  #
-  # It guarded on `active_project` and answered "no attempts exist" for any
-  # scope that carried the id without the association loaded — which is every
-  # scope `PortableHost` builds for the local endpoint. `qa_complete` then
-  # reported "No valid QA pass attempt in DB" for a story whose passing attempt
-  # was sitting in the table, and criterion 6491 is what caught it.
-  #
-  # Same shape as the `Stories.broadcast/2` guard fixed alongside it: a
-  # presence check written against the struct while the body only ever needs the
-  # id, so an unloaded association reads as an absence rather than as "not
-  # asked for".
+  # Fail-closed with no active project. Keyed on `active_project_id`, not the
+  # loaded association, which many scopes do not carry.
   defp by_project(query, %Scope{active_project_id: nil}), do: where(query, [_], false)
 
   defp by_project(query, %Scope{active_project_id: project_id}) do
@@ -381,11 +348,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
   defp resolve_task_info(%Scope{} = scope, task_id) when is_binary(task_id) do
     project_id = scope.active_project_id
 
-    # `tasks` is `{:array, :map}` (PG `jsonb[]`), not a single `jsonb`,
-    # so the `@>` operator doesn't apply. Select only the `tasks`
-    # column so we skip Ecto's enum cast on `type` — stale sessions
-    # in the DB with deprecated `type` values would otherwise crash
-    # `Repo.all/1` here, even though we only care about `tasks`.
+    # `tasks` is PG `jsonb[]`, so `@>` does not apply. Only `tasks` is selected,
+    # skipping Ecto's enum cast on `type`, which crashes on deprecated values.
     sessions = session_tasks(project_id)
     agents = agent_tasks(project_id)
 
@@ -416,24 +380,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> Repo.all()
   end
 
-  # An agent we run holds its own tasks, and this looked only at sessions.
-  #
-  # So a QA agent under Alloy submitted its result against a real task id and
-  # got `task_not_found` — the honest answer to the wrong question. Watched on
-  # the war-epic copy, 2026-09-06: "QA is blocked: the required result
-  # submission returns `task_not_found` because this conversation has no
-  # registered session." The agent's own diagnosis was right, and the remedy it
-  # inferred — register a session — is not one it can perform, so it stopped,
-  # was nudged about the still-open `qa_complete`, and repeated for an hour.
-  #
-  # Both are searched rather than one chosen from the caller, because the task
-  # id is the only thing this is given and it is unique across both. Choosing
-  # would mean guessing which kind of caller sent it, and guessing wrong is the
-  # failure being fixed.
-  #
-  # Same `{:array, :map}` note as sessions: `tasks` is PG `jsonb[]`, not a
-  # single `jsonb`, so `@>` does not apply and the column is selected on its own
-  # to skip Ecto's cast of columns this does not care about.
+  # An in-app agent holds its own tasks. Sessions and agents are both searched:
+  # the task id is unique across both and is all this is given.
   defp agent_tasks(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id)
@@ -441,17 +389,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> Repo.all()
   end
 
-  # Who did this QA.
-  #
-  # `task.agent_id` is set by `TaskOwner.activate_task/4`'s *session* clause and
-  # not by its agent one — an agent-owned task does not name an agent, because
-  # the row it lives on already is one. So an attempt from an agent recorded
-  # `agent_id: nil`, and two real QA passes on story 1000 landed this morning
-  # attributed to nobody.
-  #
-  # Read off the row the task was found on, which is the only place that knows.
-  # A session-owned task keeps whatever the field says, which is where it is
-  # written.
+  # Who did this QA: the agent row the task was found on (an agent-owned task
+  # does not name its agent), else the session task's `agent_id` field.
   defp owner_of(task, task_id, agents) do
     case Enum.find(agents, fn {_id, tasks} -> find_task(List.wrap(tasks), task_id) end) do
       {agent_id, _tasks} -> agent_id
@@ -459,18 +398,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
     end
   end
 
-  # The QA tasks that are actually open, so a refusal can name them.
-  #
-  # The war-epic QA agent submitted `task_id: "1000"` — story 1000's id, not its
-  # task's — got `task_not_found`, and concluded its session was unregistered.
-  # It was not: the id was simply the wrong one, and nothing in the refusal said
-  # which id it wanted. It had been told, in the nudge two lines above
-  # (`evaluate_task task_id: "e060369a-…"`), and used the number it had been
-  # thinking about all turn instead.
-  #
-  # A story id is the obvious wrong guess here — every other QA surface is keyed
-  # by story — so the refusal names the open QA task and its story together, and
-  # the agent can see which number goes where.
+  # The open QA tasks with their stories, so a `task_not_found` refusal shows
+  # which id goes where (a story id is the obvious wrong guess).
   defp open_qa_tasks(task_arrays) do
     task_arrays
     |> List.flatten()

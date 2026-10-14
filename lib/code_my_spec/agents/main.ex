@@ -10,23 +10,12 @@ defmodule CodeMySpec.Agents.Main do
 
   ## A question has a holder
 
-  Story 1053's finding, and the shape everything here rests on. `status` says
-  whether a question is finished; it cannot say who it is finished *by*, and
-  the two readers of an open question want opposite things from that word. The
-  main agent wants what still needs it. The person wants what reached them.
+  `status` says whether a question is finished, not who it is with. An agent's
+  question starts held by the main agent (or product, for criteria questions),
+  and escalating moves the holder rather than closing the question, so main
+  sees only what still needs it and the person sees what reached them.
 
-  So an agent's question starts held by the main agent, and escalating moves
-  the holder rather than closing the question. The two alternatives are the two
-  failures criterion 3264 names: deleted, the main agent sees its own
-  escalations forever and cannot tell the handled from the unhandled; answered,
-  the person's question vanishes from under them while they are reading it.
-
-  ## What it does not do
-
-  Answering is story 1060 and is deliberately not here yet. The main agent can
-  see what is waiting and pass up what is the user's call; deciding what it can
-  settle from the project's own records is the next story, and building half of
-  it here would put the judgement in two places.
+  See knowledge/agents, "Questions".
   """
 
   require Logger
@@ -59,9 +48,8 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Everything this project's agents are waiting on, wherever they are running.
 
-  Oldest first, answered ones gone. Criterion 3262: a list that only grows is a
-  list nobody reads, and every answered question left in it makes the next real
-  one harder to see.
+  Oldest first, answered ones gone. Questions and permissions both, since both
+  stop an agent identically.
   """
   @spec list_open_questions(Scope.t()) :: [OpenQuestion.t()]
   defdelegate list_open_questions(scope), to: QuestionsRepository
@@ -69,10 +57,10 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   What every running agent on this project is doing, across all its checkouts.
 
-  Parts rather than a verdict, which is criterion 3275 and the constraint the
-  whole view is built around: the caller decides what a silence means, because
-  the rules that would decide it here are wrong in exactly the cases that
-  matter.
+  Parts rather than a verdict: the caller decides what a silence means.
+
+  Reading it also settles restart records and raises a fault for each restart
+  that changed nothing (`review_restarts/2`).
   """
   @spec list_agent_work(Scope.t()) :: [AgentWork.t()]
   def list_agent_work(%Scope{} = scope) do
@@ -81,22 +69,13 @@ defmodule CodeMySpec.Agents.Main do
     work
   end
 
-  # Looking is when a failed remedy is noticed, because nothing else looks.
-  #
-  # Criterion 3308's words are "when the main agent *sees* that the restart
-  # changed nothing" — not when it tries again. Waiting for the next attempt is
-  # what turns a fault into a state to be managed: the agent stays broken and
-  # the only thing that would report it is the thing the report is supposed to
-  # prevent.
-  #
-  # A write during a read, deliberately and with precedent — `actionable_count`
-  # settles the graph the same way. Settling is idempotent and the issue is
-  # raised once per agent and reason, so a main agent that checks every twenty
-  # minutes does not file the same fault seventy times a day.
-  @doc "Agents somebody turned off. Shown so the main agent leaves them off (39af5611)."
+  @doc "Agents somebody turned off. Shown so the main agent leaves them off."
   @spec list_off_agents(Scope.t()) :: [Agent.t()]
   defdelegate list_off_agents(scope), to: Agents, as: :off_agents
 
+  # Looking is when a failed remedy is noticed, because nothing else looks. A
+  # write during a read, on purpose: settling is idempotent and a fault is
+  # filed once while open (`raise_fault/4`).
   defp review_restarts(scope, work) do
     Enum.each(work, fn entry ->
       :ok = RestartRepository.settle(entry)
@@ -127,10 +106,8 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   The state of everything this project's agents depend on.
 
-  The answer to "is it the agent or is it the machine", which is the question
-  the main agent actually has when something is wrong — and the one it could
-  not ask before, so it answered it by restarting things until something
-  changed.
+  The answer to "is it the agent or is it the machine". A machine-wide tool
+  fault is raised as an issue when found.
   """
   @spec check_machinery(Scope.t()) :: Machinery.t()
   def check_machinery(%Scope{} = scope) do
@@ -139,17 +116,9 @@ defmodule CodeMySpec.Agents.Main do
     machinery
   end
 
-  # Looking is when a machinery fault is raised, because nothing else looks.
-  #
-  # Criterion 3312's words are "when the main agent *finds* it, then it raises
-  # the fault" — finding is the act. The alternative is raising it when somebody
-  # next tries to restart something, which means a fault nobody happens to trip
-  # over goes unrecorded, and this is precisely the class of fault that went
-  # unseen for four hours.
-  #
-  # Only the machine-wide case. A fault belonging to one agent is that agent's
-  # and is within reach — criterion 3321 — so filing it would be the "raise
-  # everything and fix nothing" failure that criterion exists to prevent.
+  # Raised when found, not when somebody next restarts something. Only the
+  # machine-wide case: one agent's fault is within main's reach, and filing it
+  # would be raising everything and fixing nothing.
   defp report_machinery_fault(scope, %Machinery{tool_fault: :machine} = machinery) do
     raise_fault(
       scope,
@@ -181,33 +150,32 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Restart one of this project's agents, saying why.
 
-  The reason is required and is the whole mechanism. A main agent restarts on
-  its own judgement, far more often than a person would, and the thing a person
-  supplied by eventually getting bored has to come from the record: what has
-  already been tried for this, and whether it worked.
+  The reason is required and is the whole mechanism: restarts are recorded per
+  agent and reason, so the record says what has already been tried and whether
+  it worked.
 
-  ## The three answers
+  ## The answers
 
   `{:ok, agent}` — restarted, recorded with its reason on the agent's own
-  thread so a reader sees it in sequence with the work it interrupted.
+  thread, and the reason sent to the agent.
 
-  `{:error, :not_mine}` — the id does not name an agent of this project. That
-  covers the case criterion 3307 is about: a main agent reaching for the harness
-  because restarting it would clear the fault. It would, and it would also kill
-  in-flight work on every checkout on the machine including other projects', so
-  the fault is raised for somebody who can weigh that instead.
+  `{:error, :not_mine}` — the id does not name an agent of this project (a
+  working copy, a harness, another project's agent). Raised as an issue: a
+  harness restart would kill in-flight work on every checkout on the machine,
+  so somebody who can weigh that decides.
 
-  `{:error, {:already_tried, n}}` — this reason has been tried `n` times and the
-  agent has not been seen working since any of them. Refused and raised, because
-  a refusal that tells nobody leaves an agent broken with not even a loop to
-  notice it.
+  `{:error, :machinery_faulty}` — every agent's machine is serving no tools; a
+  restart cannot reach that. Refused and raised.
 
-  A restart whose predecessor did not work is allowed and raised: one failed
-  remedy is already evidence that restarting is the wrong one, and waiting for
-  the third to say so costs two more turns.
+  `{:error, {:already_tried, n}}` — this reason has been tried `n` times
+  (`@restart_limit`) and the agent has not been seen working since. Refused and
+  raised. A restart whose predecessor did not work is allowed, and that failed
+  remedy is raised as it is noticed.
 
   `{:error, {:off, agent}}` — somebody turned it off. Refused before anything
-  else is weighed; `turn_on_agent` is the only way back (39af5611).
+  else is weighed; `turn_on_agent` is the only way back.
+
+  `{:error, :needs_a_reason}` — no reason given.
   """
   @spec restart_agent(Scope.t(), String.t(), String.t()) ::
           {:ok, map()}
@@ -231,25 +199,11 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # Grouped with the clause above rather than sitting after the private
-  # functions it used to follow: separated clauses of one function are a
-  # compiler warning, and the warning is right — a reader who finds this one
-  # first sees a `restart_agent/3` that refuses everything.
   def restart_agent(%Scope{}, _agent_id, _reason), do: {:error, :needs_a_reason}
 
-  # A fault underneath the agent is not one a restart reaches.
-  #
-  # Criterion 3312, and it fires on the first attempt rather than the fourth.
-  # 3292 and 3308 are about noticing after several that restarting is not
-  # working — a count of failed remedies. This is about not starting: the
-  # machinery being faulty is known *before* the first restart, from the same
-  # report the main agent just read, and acting anyway is a mistake that report
-  # already carried the information to prevent.
-  #
-  # The agent comes back into the same dead client, so the attempt costs a turn
-  # and changes nothing — and the main agent cannot learn that from the outcome,
-  # because an agent that came back broken looks exactly like one that is slow
-  # to recover.
+  # A fault underneath the agent is not one a restart reaches, and it is known
+  # before the first attempt: the agent would come back into the same dead
+  # client, indistinguishable from one slow to recover.
   defp consider(scope, agent, reason) do
     scope
     |> check_machinery()
@@ -281,12 +235,9 @@ defmodule CodeMySpec.Agents.Main do
     attempt(scope, agent, reason, RestartRepository.unresolved(agent, reason))
   end
 
-  # How much of an agent's conversation one read hands back.
-  #
-  # Two bounds rather than one: turns are not a uniform size, so a count alone
-  # does not bound the answer - a single tool result can outweigh fifty ordinary
-  # turns. The byte budget is what protects the caller's context; the turn count
-  # is what makes the common "what has it been doing" read small.
+  # How much of an agent's conversation one read hands back: a turn count for
+  # the common read, and a byte budget, because one tool result can outweigh
+  # fifty ordinary turns.
   @conversation_turn_limit 50
   @conversation_byte_budget 20_000
 
@@ -318,8 +269,7 @@ defmodule CodeMySpec.Agents.Main do
   defp attempt(scope, agent, reason, _tried) do
     with {:ok, restarted} <- Agents.restart_agent(scope, agent.id),
          {:ok, _restart} <- RestartRepository.record(agent, reason) do
-      # The restart happened even if its notice cannot reach the agent. Keep
-      # that action in sequence on the thread, separately from notice delivery.
+      # Recorded on the thread whether or not the notice reaches the agent.
       Conversations.record_restart(restarted, reason)
 
       # The agent must also receive the reason through the measured queue.
@@ -331,13 +281,8 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # Refusing and telling nobody is the failure criterion 3307 actually names.
-  #
-  # The point of not taking an action you must not take is to convert it into a
-  # decision for somebody who can. A refusal that ends there is worse than the
-  # action, because at least the action would have been noticed — and what the
-  # main agent was reaching for here is a harness restart, which would have
-  # killed in-flight work on every checkout on that machine.
+  # A refusal is converted into a decision for somebody who can make it; one
+  # that tells nobody is worse than the action.
   defp out_of_reach(scope, target, reason) do
     Issues.create_issue(scope, %{
       title: titled("An agent fault needs something outside the project", reason),
@@ -359,11 +304,8 @@ defmodule CodeMySpec.Agents.Main do
     {:error, :not_mine}
   end
 
-  # An agent of this project, and nothing else.
-  #
-  # `Agents.fetch_agent/2` is already project-scoped, so a working copy id, a
-  # harness id or another project's agent all land here the same way — which is
-  # the answer criterion 3307 wants for every one of them.
+  # An agent of this project, and nothing else: `Agents.fetch_agent/2` is
+  # project-scoped, so any other id lands as `:not_mine`.
   defp mine(scope, agent_id) do
     case Agents.fetch_agent(scope, agent_id) do
       {:ok, agent} -> {:ok, agent}
@@ -371,35 +313,13 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # Raised where a person looks at a particular project, rather than in a log.
-  #
-  # This is precisely the class of fault that was invisible for four hours: an
-  # agent that could not work, a remedy that did not reach it, and nothing
-  # anywhere saying so.
-  # The reason belongs in the title, not only the body.
-  #
-  # `list_issues` shows titles. An issue list where every entry reads "A restart
-  # changed nothing" is unreadable at exactly the moment somebody is scanning it
-  # for which agent is stuck — and the fault is the only part that differs.
+  # The reason belongs in the title: `list_issues` shows titles, and the fault
+  # is the only part that differs between entries.
   defp titled(what, reason), do: "#{what}: #{String.slice(reason, 0, 120)}"
 
-  # Once per fault, not once per call that notices it.
-  #
-  # A fault these raise — the machinery serving no tools, a restart that changed
-  # nothing — lasts until a person deals with it, and the cadence keeps calling
-  # `check_machinery` and `restart_agent` in the meantime. Every one of those
-  # calls used to file another copy: two from a single `check_machinery`
-  # followed by one `restart_agent`, and six identical issues from one QA
-  # measurement. That buries the first, real issue under repeats of itself at
-  # exactly the moment somebody is scanning the list for what is wrong — which
-  # defeats criterion 3312, the thing this path exists to satisfy (`57ba014e`).
-  #
-  # Keyed on the title, which is what `titled/2` already builds from the fault
-  # itself, so two different faults still file separately and the same fault
-  # does not.
-  #
-  # Open only. A dismissed or resolved issue is finished with, so the same fault
-  # recurring after that is news rather than a repeat.
+  # Raised as a framework issue, once per fault: keyed on the title while an
+  # issue with it is open. The cadence keeps re-noticing a fault until a person
+  # deals with it; after a dismiss or resolve, a recurrence is news.
   defp raise_fault(scope, working_copy, title, description) do
     file_fault(Issues.open_issue_titled?(scope, title), scope, working_copy, title, description)
   end
@@ -422,16 +342,11 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Wake the main agent and hand it what is going on.
 
-  The check-in, and the thing that makes this story's cadence worth having: it
-  carries the digest rather than an instruction to go and assemble one, so the
-  wake-up is an answer instead of a turn spent getting to one.
-
-  Quiet check-ins reach the main agent and nobody else — criterion 3320. A
-  person hearing from this seventy-two times a day turns it off, and turning it
-  off removes the one mechanism that catches an agent too broken to report.
-
-  Silent when the main agent has stood down (3334) and when there is no main
-  agent to wake, which is ordinary rather than an error.
+  Builds the digest (or takes one built) and renders it as the check-in
+  report — the answer, not an instruction to go and assemble one — and offers
+  this project's agents a recovery-check turn. A digest that could not be
+  built is raised as a fault and returned as `{:error, reason}`, never rendered
+  as an all-quiet report.
   """
   @spec check_in(Scope.t()) :: {:ok, String.t()} | {:error, String.t()}
   def check_in(%Scope{} = scope), do: check_in(scope, Cadence.digest(scope))
@@ -468,19 +383,17 @@ defmodule CodeMySpec.Agents.Main do
   defdelegate ensure_cadence(scope), to: Cadence, as: :ensure_running
 
   @doc """
-  Re-establish cadences for every project with agents running in it.
+  Re-establish cadences for every project with an on-duty `main` agent.
 
-  The application's boot seeding calls this. Exposed on the context rather than
-  reached into, because `Cadence` is inside this boundary and the web app is
-  outside it — the compiler said so, which is the boundary doing its job.
+  The application's boot seeding calls this. On the context because `Cadence`
+  is inside this boundary and the web app is outside it.
   """
   @spec wake_active_projects() :: :ok
   defdelegate wake_active_projects, to: Cadence
 
   defp deliver_check_in(scope, %Digest{failed: reason} = digest) when is_binary(reason) do
-    # Not delivered as an empty all-quiet, and raised. Criterion 3333: those are
-    # opposite answers, and the empty one is the reassuring half — it says what
-    # a healthy fleet says, for as long as whatever broke stays broken.
+    # Raised, not delivered as an empty all-quiet: the empty one says what a
+    # healthy fleet says, for as long as whatever broke stays broken.
     raise_fault(
       scope,
       nil,
@@ -505,15 +418,15 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   @doc """
-  The cadence's tick: an admitted turn for a continuous main with work or attention, carrying the check-in and
-  its own work offer together, and the recovery check for everyone else.
+  The cadence's tick: a turn for a continuous main with work or attention,
+  carrying the check-in and its own work offer together, and the recovery
+  check for every other agent.
 
-  John: "we never want a non continuous main agent to get the nudge. Only a
-  continuous main agent." So the turn goes through `Wake` as `:cadence`, which
-  holds a non-continuous main, one waiting on its own run, and one mid-turn
-  (skipped, not queued). Main is left out of the recovery check, so a tick
-  that would also have offered it work gives one turn, never two — and a
-  stood-down main (3334) gets nothing from the timer.
+  Never a nudge for a non-continuous main: the turn goes through `Wake` as
+  `:cadence`, which holds a non-continuous main, one waiting on its own run,
+  and one mid-turn (skipped, not queued). Every main is left out of the
+  recovery check, so one tick is at most one turn. A stood-down main gets
+  nothing from the timer.
 
   `newly_stalled` are teammates that stalled since the last tick. They ride in
   the turn; when no turn goes, they are announced on their own
@@ -563,28 +476,24 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Answer one of this project's open questions from what the project records.
 
-  Story 1058's point: the main agent's wider reach is for *using*. A main agent
-  that can see everything and answer nothing has replaced a person's inbox with
-  its own — the agent waits exactly as long as before, with one more hop in the
-  way.
+  `opts`: `:basis` (`"record"`, `"precedent"` with `:precedent_id`, or
+  `"inspected"` with `:inspector_id` and `:citation`), `:by` (`:product` for
+  the product agent answering its own), `:on_behalf_of` and `:tool`, and
+  `:worked_around`. An answer that does not stand up is escalated to the user
+  and the error returned.
+
+  See knowledge/agents, "Answering questions".
 
   ## Refused when it would be a way round a role's own limits
 
-  `on_behalf_of` and `tool` name a request to act as somebody else. Every
-  scoping decision in `ToolSets` is advisory the moment that works: an agent
-  that wants a tool it does not carry asks the main agent to use it, and the
-  rule is gone with nothing recording that it was circumvented.
-
-  The request is indistinguishable from a legitimate one by its shape — the
-  difference is whether the role's not having the tool was a decision or an
-  oversight — so the answer is the tool list itself. A role that does not carry
-  it does not get it used on its behalf.
+  `on_behalf_of` and `tool` name a request to act as somebody else. A role
+  that does not carry the tool does not get it used on its behalf, or every
+  scoping decision in `ToolSets` would be advisory.
 
   ## `worked_around` is how a gap gets counted
 
-  Whether an answer was a workaround or ordinary knowledge is a judgement only
-  the thing that made it holds; inferring it from the question's prose would be
-  guessing at intent. So the main agent says, and the counting is ours.
+  Only the answerer knows whether an answer was a workaround, so it says, and
+  the counting is ours: a capability gap per role, filed once as an issue.
   """
   @spec answer_question(Scope.t(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
@@ -595,20 +504,16 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # The product agent answers the criteria questions routed to it (8c91d5bc) as
-  # their owner: its answer is the decision, as the user's is, so it is not
-  # weighed against the records. Only its own: any other question is main's or
-  # the user's.
+  # The product agent answers the criteria questions routed to it as their
+  # owner: its answer is the decision, as the user's is, so it is not weighed
+  # against the records. Only its own.
   defp answer_as(:product, scope, %{holder: "product_agent"} = question, answer, opts),
     do: settle(scope, question, answer, Keyword.put(opts, :answered_by, "product_agent"))
 
   defp answer_as(:product, _scope, _question, _answer, _opts), do: {:error, :not_yours}
 
-  # Routed straight to the user from the start (criterion 1988), not escalated
-  # there by main: nothing short of the user answering it settles it, however
-  # well main's own answer would stand up. One main escalated itself carries
-  # an `escalation_reason` and stays answerable (8c91d5bc, "main may answer a
-  # question already with the user").
+  # Routed straight to the user from the start: only the user settles it. One
+  # main escalated carries an `escalation_reason` and stays answerable.
   defp answer_as(_role, _scope, %{holder: "user", escalation_reason: nil}, _answer, _opts),
     do: {:error, :with_user}
 
@@ -619,43 +524,21 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # A permission is not answerable with prose, and the queue holds both kinds.
-  #
-  # `list_open_questions/1` unions questions and permissions deliberately —
-  # both stop an agent identically — so `fetch_open_question/2` finds a
-  # `tap_out` and hands it over as if it were a question. Everything after that
-  # treats it as one, and the first thing to actually need a question row is
-  # `escalate_question/3` inside `weigh/4`: it looks the id up among
-  # `QuestionRequest`s, finds nothing, and raises `expected a map, got: nil` —
-  # a `BadMapError` three layers below a caller who asked a perfectly ordinary
-  # thing.
-  #
-  # Measured 2026-09-17 while granting two QA agents' tap-outs: an *unknown* id
-  # refused cleanly and a permission id crashed, which is the wrong way round —
-  # the one the caller can act on is the one that told them nothing.
+  # A permission is not answerable with prose; `decide_permission/4` settles it.
+  # The queue unions both, so `fetch_open_question/2` can hand one over.
   defp answerable(%{kind: :permission}), do: {:error, :is_permission}
   defp answerable(_question), do: :ok
 
   @doc """
   Settle one entry from the queue, whichever kind it is.
 
-  The queue unions two things that stop an agent identically —
-  `Notifications.awaiting_answer?/1` is `pending_question? or
-  pending_permission?` — but they are settled by different verbs. A question
-  takes an answer and a basis; a permission takes `allow` or `deny`. Dispatching
-  here rather than in the tool keeps one definition of "settle this", so the
-  agent-facing surface and anything else that grows one cannot drift.
+  The queue unions two things that stop an agent identically
+  (`Notifications.awaiting_answer?/1`), settled by different verbs: a question
+  takes an answer and a basis; a permission takes `allow` or `deny`. One
+  definition of "settle this" here keeps every surface in step.
 
-  A permission is scoped the same way a question is: it must belong to an agent
-  of this project, so one project cannot decide another's. `:not_found`
-  otherwise, which is the same answer an unknown id gets and deliberately does
-  not distinguish the two.
-
-  This existed only in the UI before. `Notifications.resolve_permission_request/2`
-  is what the notifications dropdown calls, and nothing reached it from the
-  agent surface — so a `tap_out` could be raised by an agent and answered by
-  nobody but a person at a browser. Agent `880c7713` sat unreachable for seven
-  hours on exactly that (`8cb3f626`).
+  A permission must belong to an agent of this project. `:not_found`
+  otherwise — the same answer an unknown id gets, deliberately.
   """
   @spec decide_permission(Scope.t(), String.t(), String.t(), String.t() | nil) ::
           {:ok, map()} | {:error, term()}
@@ -672,16 +555,9 @@ defmodule CodeMySpec.Agents.Main do
   def decide_permission(%Scope{}, _permission_id, decision, _answer),
     do: {:error, {:unknown_decision, decision}}
 
-  # An answer that does not stand up sends the question on rather than stopping
-  # here.
-  #
-  # Criteria 3252, 3254 and 3258 each end "and the question reaches the user",
-  # and a refusal that left it with the main agent would satisfy the first half
-  # of all three while producing 3259's failure: an absorbed question, with no
-  # symptom on any surface.
-  #
-  # The error still comes back. The main agent asked to answer and did not, and
-  # telling it "done" would leave it believing the agent is unblocked.
+  # An answer that does not stand up sends the question on to the user — one
+  # left with main would be absorbed with no symptom anywhere — and the error
+  # still comes back, so main does not believe the asker is unblocked.
   defp weigh(scope, question, answer, opts) do
     case stands_up?(scope, question, answer, opts) do
       {:ok, basis} ->
@@ -693,8 +569,8 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # Main may answer a question already with the user (8c91d5bc). One it cannot
-  # stand up stays as it was, with the reason it was sent up.
+  # Main may answer a question already with the user. One it cannot stand up
+  # stays as it was, with the reason it was sent up.
   defp escalate_unless_with_user(_scope, %{holder: "user"}, _reason), do: :ok
 
   defp escalate_unless_with_user(scope, question, reason) do
@@ -724,14 +600,9 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   The main agent gives up on a question it could not answer.
 
-  Criterion 3259, and the act that makes "go and find out" safe to ask for.
-  Without it a question the main agent took and could not settle stays with it,
-  and an absorbed question has no symptom on any surface: the inbox is quiet,
-  the agent is quiet, and the project looks like one where nobody needs
-  anything.
-
-  Escalation with the trying written into the reason, so the person reading it
-  knows the easy answers have been tried.
+  Escalation with the trying written into the reason. Without it a question
+  main took and could not settle would stay with it, absorbed, with no symptom
+  on any surface.
   """
   @spec give_up_on_question(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def give_up_on_question(%Scope{} = scope, question_id) do
@@ -745,13 +616,9 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Questions the user has already answered, matching some words.
 
-  Criterion 3256, and three criteria rest on it: without this reading the main
-  agent cannot avoid asking twice, cannot recognise a precedent, and cannot tell
-  a fitting one from a stretched one.
-
-  Answered only. A precedent is by definition settled, and an open question
-  matching the same words is the opposite — evidence that this has been asked
-  and *not* decided, which would answer a new question from a question.
+  How main avoids asking twice and finds a precedent to cite. Answered only:
+  an open question matching the same words is evidence the thing was asked
+  and *not* decided.
   """
   @spec search_answers(Scope.t(), String.t()) :: [map()]
   defdelegate search_answers(scope, query), to: QuestionsRepository
@@ -759,30 +626,22 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   What this project's agents have said, oldest turn first.
 
-  Story 1013. The main agent supervises agents it cannot see inside, and the
-  only way to learn what one had done was to send it a message and wait — which
-  spends the agent's turn answering instead of working, and fails exactly when
-  it is needed, because an agent that is stuck or looping is the one least able
-  to give an account of itself.
+  How main sees inside an agent without spending its turn — an agent stuck or
+  looping is the one least able to give an account of itself.
 
   Takes one agent id or several. Several are merged into one chronological
-  sequence rather than concatenated, because the question that needs two agents
-  is "what was the other one doing when this happened", and two transcripts end
-  to end do not answer it.
+  sequence, because the question that needs two agents is "what was the other
+  one doing when this happened".
+
+  Options: `:limit`, `:since`, `:until`, `:last_call_of` (that tool's last
+  call and its own results, found in `run_script` bodies too).
 
   ## Bounded twice, and for different reasons
 
-  `:limit` bounds the number of turns, because a caller asking "what has it been
-  doing" wants the recent end and not a transcript to page through.
-
-  The byte budget bounds the answer regardless, because turns are not a uniform
-  size — one tool result can outweigh fifty ordinary turns, so a count alone
-  bounds nothing. Both cuts drop the oldest and keep the newest, which is the
-  end that says what the agent is doing now.
-
-  `truncated?` says whether anything was dropped. A read that silently returned
-  part of a conversation is worse than one that refused: the caller cannot tell
-  a quiet agent from a cut answer, and would read turns it never saw as silence.
+  `:limit` bounds the number of turns; a byte budget bounds the answer
+  regardless. Both cuts drop the oldest. `truncated?` says whether anything was
+  dropped, and `no_match` why an empty answer is empty when the agent did
+  speak, so a cut answer never reads as silence.
   """
   @spec read_agent_conversation(Scope.t(), Ecto.UUID.t() | [Ecto.UUID.t()], keyword()) ::
           {:ok, %{turns: [map()], truncated?: boolean()}} | {:error, term()}
@@ -807,10 +666,8 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # A narrowing read has to look further back than a plain one, because the
-  # turns it wants may be nowhere near the recent end — a window covering an
-  # incident two days ago is not answered by the last fifty turns. Bounded
-  # rather than unbounded: this is still a read into a caller's context.
+  # A narrowing read looks further back (bounded), since what it wants may be
+  # nowhere near the recent end.
   defp fetch_depth(opts, limit) do
     if Keyword.get(opts, :since) || Keyword.get(opts, :until) ||
          Keyword.get(opts, :last_call_of),
@@ -826,18 +683,8 @@ defmodule CodeMySpec.Agents.Main do
     {:ok, no_match(%{turns: shown, truncated?: over_count? or over_budget?}, turns, :window)}
   end
 
-  # Why the answer is empty, when it is empty for a reason other than the agent
-  # having said nothing.
-  #
-  # A narrowing read that matches nothing returns the same `turns: []` as an
-  # agent that has never taken a turn, and the caller cannot tell them apart —
-  # so it was told "this agent has said nothing yet" about agents with long
-  # histories that simply had not called the tool asked about (issue
-  # `2a809b93`). The distinction is only available here, where both the filter
-  # and the unfiltered turns are in hand.
-  #
-  # Added as a key rather than a different shape, so every existing caller that
-  # matches `%{turns: _, truncated?: _}` is unaffected.
+  # Why the answer is empty when the agent did speak: a filter that matched
+  # nothing must not read as "said nothing yet". A key, not a new shape.
   defp no_match(result, [], _reason), do: result
 
   defp no_match(%{turns: []} = result, _unfiltered, reason),
@@ -855,13 +702,8 @@ defmodule CodeMySpec.Agents.Main do
   defp before?(_turn, nil), do: true
   defp before?(turn, until), do: DateTime.compare(turn.at, until) != :gt
 
-  # "When did it last call this" answered as the call and what it returned,
-  # rather than by handing back the transcript to search. Criterion 3282: a
-  # targeted question deserves a targeted answer, and a conversation long enough
-  # to be worth asking about is one the caller cannot afford to read.
-  #
-  # Never truncated. Two turns are two turns, and reporting a cut here would be
-  # describing a limit that did not bite.
+  # "When did it last call this" answered as the call and what it returned.
+  # Never truncated: no limit bites on so few turns.
   defp last_call_of(turns, tool) do
     case Enum.filter(turns, &calls?(&1, tool)) do
       [] ->
@@ -879,12 +721,9 @@ defmodule CodeMySpec.Agents.Main do
 
   defp calls?(_turn, _tool), do: false
 
-  # Most of this project's tools are reachable only from inside a run_script
-  # body (issue e832dff8): a Lua script calling `submit_issue_qa_result({...})`
-  # never appears as its own `tool_calls` entry, only as a string argument on
-  # `run_script`'s. Matched as that tool's name immediately followed by `(` --
-  # how every tool is documented as callable, Lua function syntax, rather than
-  # a bare mention in a comment or a string literal.
+  # Most tools are reachable only inside a `run_script` body, where a call is
+  # a string argument, not a `tool_calls` entry. Matched as the name followed
+  # by `(` (Lua call syntax), not a bare mention.
   defp call_matches?(call, tool) do
     MapAccess.get(call, :name) == tool or
       (MapAccess.get(call, :name) == "run_script" and script_calls?(call, tool))
@@ -900,21 +739,9 @@ defmodule CodeMySpec.Agents.Main do
   defp script_text(args) when is_map(args), do: MapAccess.get(args, :script, "") || ""
   defp script_text(_args), do: ""
 
-  # The results of *this* tool's calls, not of everything the turn happened to do.
-  #
-  # This mapped over every id in `call.tool_calls`, so a turn that batched
-  # several different calls returned all of their results. Asking agent
-  # `880c7713` for `list_problems` came back with `list_tasks`, `list_issues`, a
-  # Lua error and a timeout mixed in — found by QA on criterion 3282, which is
-  # precisely "a targeted question deserves a targeted answer".
-  #
-  # It looked right because the common case hides it: a turn with one tool call
-  # has one id, and filtering by name is a no-op there. Every test and every
-  # manual check had been on single-call turns.
-  #
-  # The assistant turn itself is still returned whole. It is a record of what the
-  # agent did and narrowing its `tool_calls` would be editing history; the leak
-  # was in the results attached to it.
+  # The results of *this* tool's calls, not of everything a batched turn did.
+  # The assistant turn itself is returned whole: narrowing it would be editing
+  # history.
   defp results_for(turns, call, tool) do
     ids =
       call.tool_calls
@@ -941,8 +768,7 @@ defmodule CodeMySpec.Agents.Main do
              agent.project_id || scope.active_project_id,
              agent.id
            ) do
-      # One more than asked for, so "there was more" is a fact about the
-      # conversation rather than an inference from having filled the page.
+      # One more than asked for, so "there was more" is a fact.
       turns =
         conversation
         |> Conversations.list_messages(limit: limit + 1)
@@ -969,9 +795,7 @@ defmodule CodeMySpec.Agents.Main do
 
   defp drop_oldest_beyond(turns, _limit), do: {turns, false}
 
-  # Newest first while spending the budget, then put back in order. Measured
-  # from the end rather than the front, because the turn that has to survive a
-  # cut is the last one.
+  # Spent from the newest end, then put back in order: the last turn survives.
   defp within_budget(turns) do
     {kept, _spent} =
       turns
@@ -1001,15 +825,10 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   One turn, as the main agent reads it.
 
-  Public so the mapper renders without reaching into a `Message`, and so the
-  budget above measures the same string the caller will actually receive rather
-  than an approximation of it.
-
-  A tool call carries its name and arguments; a result carries the call id it
-  answers and its text unaltered. Criterion 3281 is why the text is never
-  summarised — a paraphrase of a stack trace is not a stack trace — and 3284 is
-  why the call id is always shown: two identical results are two events, and a
-  reader has to be able to see that rather than infer it.
+  Public so the mapper renders it, and so the budget measures the string the
+  caller receives. A tool call carries its name and arguments; a result
+  carries the call id it answers and its text unaltered (never summarised —
+  a paraphrase of a stack trace is not a stack trace).
   """
   @spec turn_line(map()) :: String.t()
   def turn_line(turn), do: rendered_turn(turn)
@@ -1027,11 +846,8 @@ defmodule CodeMySpec.Agents.Main do
 
   defp rendered_turn(turn), do: "  [#{turn.agent_id}] #{turn.role}: #{text(turn)}"
 
-  # Stored content is not guaranteed valid UTF-8 — a crash faithfully
-  # recorded verbatim can carry raw bytes a strict decode never produced
-  # (issue 5df56711). Scrubbed here, the one place every turn's text reaches
-  # the response, rather than on write: this must not change what is stored,
-  # only what an invalid byte looks like once it is read back.
+  # Stored content is not guaranteed valid UTF-8. Scrubbed on read, the one
+  # place every turn's text reaches the response, never on write.
   defp text(%{text: text}) when is_binary(text), do: Utf8.scrub(text)
   defp text(_turn), do: ""
 
@@ -1046,20 +862,13 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # What an answer rests on, checked rather than taken on trust.
-  #
-  # The pressure runs one way. A main agent told to spare the user is rewarded
-  # for answering, and a rule that depends on the thing under pressure choosing
-  # to follow it is not a rule — so `record` is verified against the record and
-  # `precedent` against the earlier question.
+  # What an answer rests on, checked rather than taken on trust: main is
+  # rewarded for answering, so every basis is verified.
   defp stands_up?(scope, question, answer, opts) do
     verify(Keyword.get(opts, :basis), scope, question, answer, opts)
   end
 
-  # No basis is a guess, and a guess is the most expensive thing this can
-  # produce: the asking agent cannot tell one from a looked-up fact, so it
-  # proceeds on it and the error compounds while the user's question is never
-  # asked.
+  # No basis is a guess, and the asker cannot tell a guess from a fact.
   defp verify(nil, _scope, _question, _answer, _opts), do: {:error, :no_basis}
 
   defp verify("record", scope, question, answer, _opts) do
@@ -1070,39 +879,18 @@ defmodule CodeMySpec.Agents.Main do
     fits?(scope, Keyword.get(opts, :precedent_id))
   end
 
-  # Issue da5a5ebf: `record` and `precedent` are the only two bases, and
-  # neither covers an answer grounded in the answerer's own reading -- a code
-  # review, a config file, project state read through its own tools. Six
-  # occurrences of the same refusal: a correct, substance-backed answer with
-  # nowhere to go, because what it rests on is not a project row and is not an
-  # earlier answered question either. `inspected` (criteria 2180, 2181) is
-  # that third basis: the citation is checked against the answerer's own
-  # session, the same way `record` is checked against the project's rows, so
-  # this cannot become a free pass for "I looked at something" either.
+  # An answer grounded in the answerer's own reading (code, config, tool
+  # output): the citation must appear in its own session.
   defp verify("inspected", scope, _question, _answer, opts) do
     inspected?(scope, Keyword.get(opts, :inspector_id), Keyword.get(opts, :citation))
   end
 
   defp verify(basis, _scope, _question, _answer, _opts), do: {:error, {:unknown_basis, basis}}
 
-  # The project has to actually contain the answer.
-  #
-  # A basis of `record` is a claim about the project, and a claim about the
-  # project is checkable. Each reading is one thing the main agent can read;
-  # an answer that names something in any of them is supported, and one that
-  # names nothing in any of them is a guess, which is the right default.
-  #
-  # `24823f81` is why this is a list rather than a single call. It checked epic
-  # membership alone — the one reading the criteria exercised — so a correct,
-  # evidence-backed answer was refused as a guess whenever its evidence was
-  # anything else. The fleet and the issues are the two the main agent actually
-  # answers this class of question from, and both were unsupported.
-  #
-  # What this proves is that the answer names a real thing, not that it draws
-  # the right conclusion from it. That is the honest limit, and it is the same
-  # limit the single reading had: the check keeps out answers with nothing
-  # behind them, and 3220 and 3222 exist because a cited record can still be
-  # the wrong one.
+  # The answer must name something the project records: a ready story without
+  # an epic, a checkout (root or id), an issue (title or short id), or a
+  # resolved question on the asker's story. This proves the answer names a real
+  # thing, not that its conclusion is right.
   defp recorded?(scope, question, answer) do
     readings = [&epic_membership/2, &fleet/2, &filed_issues/2]
 
@@ -1118,15 +906,8 @@ defmodule CodeMySpec.Agents.Main do
     |> names?(answer)
   end
 
-  # `list_working_copies`, `list_agents` and `list_agent_work` are already how
-  # the main agent answers "which checkout is this on" — the reading existed
-  # everywhere except in the check that decides whether it counts.
-  #
-  # Root *or* id, because both are how a checkout gets named and the main agent
-  # does not choose which it is handed. `list_open_questions` renders
-  # `checkout: <id> <root>` and drops the root when there is none — a copy that
-  # has never reported one is still a real copy, and an answer naming it by id
-  # is grounded in exactly the same reading.
+  # Root or id: both are how a checkout gets named, and a copy with no root yet
+  # is still real.
   defp fleet(scope, answer) do
     scope
     |> WorkingCopies.list_harnesses()
@@ -1134,10 +915,7 @@ defmodule CodeMySpec.Agents.Main do
     |> names?(answer)
   end
 
-  # An accepted issue is about as recorded as an answer gets: it has a body, a
-  # status, and somebody already agreed it is real. 24823f81 left this open and
-  # the live case that reopened it was an answer whose whole content was "this
-  # is issue f9cdb0b0, and here is its mechanism".
+  # An issue is a record: somebody already agreed it is real.
   defp filed_issues(scope, answer) do
     scope
     |> Issues.list_issues()
@@ -1148,11 +926,8 @@ defmodule CodeMySpec.Agents.Main do
   defp short_id(id) when is_binary(id), do: String.slice(id, 0, 8)
   defp short_id(_id), do: nil
 
-  # Issue 5a78b7c4: a resolved Question (BDD red card) is a record main
-  # itself just wrote, on a story, the same way an accepted issue is one
-  # someone else already filed - and the original three readings missed it
-  # entirely. `question` carries no story of its own until it is one of
-  # these, so there is nothing to check without it.
+  # A resolved Question (BDD red card) on the asker's story is a record too.
+  # Without a story there is nothing to check.
   defp resolved_questions(_scope, %{story_id: nil}, _answer), do: false
 
   defp resolved_questions(scope, %{story_id: story_id}, answer) do
@@ -1163,9 +938,8 @@ defmodule CodeMySpec.Agents.Main do
     |> names?(answer)
   end
 
-  # A needle short enough to appear by accident makes every answer recorded,
-  # which is the failure the basis exists to prevent. A copy rooted at `/`, or
-  # an issue titled `bug`, would support anything at all.
+  # A needle short enough to appear by accident (a root of `/`, an issue titled
+  # `bug`) would support any answer.
   @shortest_needle 8
 
   defp names?(needles, answer) do
@@ -1182,17 +956,9 @@ defmodule CodeMySpec.Agents.Main do
   defp supported(true, _question), do: {:ok, :record}
   defp supported(false, _question), do: {:error, :not_recorded}
 
-  # Criterion 1228 ("a precedent is the same question, not a similar one")
-  # required the precedent's question text to match exactly, to stop a
-  # search-found, merely-similar answer being stretched over a different
-  # case. Retired by product (John, 2026-10-13, question 839bf593): never
-  # asked for, and it meant a precedent stating a general rule could never
-  # fit a differently-worded question either -- the rule had to be
-  # re-derived, or answered off the record, every time it came up worded
-  # differently (issue f43e1c5b). Criteria 2182/2183 are what replaces it:
-  # citing a precedent by id is the answerer's own judgement that it
-  # applies, and the only thing checked is that the id really is an
-  # answered question -- the citation is on the record either way.
+  # Citing a precedent by id is the answerer's judgement that it applies; the
+  # only check is that the id is an answered question. Question text need not
+  # match, so a general rule fits differently-worded questions.
   defp fits?(_scope, nil), do: {:error, :no_precedent}
 
   defp fits?(scope, precedent_id) do
@@ -1202,12 +968,10 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # A citation is a claim about the answerer's own session, and a claim about
-  # a session is checkable the same way a claim about the project is: it has
-  # to name something actually there. `read_agent_conversation/3` is already
-  # how everything else reads a session back; this is the first caller that
-  # checks what it reads rather than just displaying it.
+  # A citation must appear in the answerer's own session, read back through
+  # `read_agent_conversation/3`.
   defp inspected?(_scope, nil, _citation), do: {:error, :no_citation}
+
   defp inspected?(_scope, _inspector_id, citation) when citation in [nil, ""] do
     {:error, :no_citation}
   end
@@ -1228,11 +992,8 @@ defmodule CodeMySpec.Agents.Main do
   defp inspected(true, _citation), do: {:ok, :inspected}
   defp inspected(false, citation), do: {:error, {:not_inspected, citation}}
 
-  # An answer the user already gave says so.
-  #
-  # Criterion 3257's middle clause, and not decoration: an answer presented as
-  # the main agent's own is one the agent weighs as a judgement, and the same
-  # words attributed to a decision the user made are a fact.
+  # An answer the user already gave says so: the asker weighs main's judgement
+  # differently from the user's decision.
   defp attribute(answer, {:precedent, _earlier}),
     do: answer <> " (you already answered this — carrying that decision forward)"
 
@@ -1251,9 +1012,7 @@ defmodule CodeMySpec.Agents.Main do
     |> carries?(tool, role)
   end
 
-  # `:all` is main's own list and means no restriction; it never reaches here,
-  # because a main agent asking itself for a favour is not a role escaping
-  # anything.
+  # `:all` is main's own list and means no restriction.
   defp carries?(:all, _tool, _role), do: :ok
 
   defp carries?(tools, tool, role), do: verdict(tool in tools, role, tool)
@@ -1274,27 +1033,10 @@ defmodule CodeMySpec.Agents.Main do
 
   defp note_gap(_scope, _question, nil), do: :ok
 
-  # Bookkeeping about the answer, never part of it.
-  #
-  # The answer is already committed by the time this runs and is not in its
-  # transaction, so anything raised here used to surface as the whole call
-  # failing while the question was, in fact, answered. Measured 2026-09-23 on
-  # question 8526d23e: `answer_notification` replied
-  # `crashed: ERROR 22001 (string_data_right_truncation)` after
-  # `question_requests` said `answered` and the `capability_gaps` row was
-  # already written — only the issue insert had blown up. Two of three writes
-  # had landed and the caller was told none had.
-  #
-  # A main agent that believes that error answers again: it re-answers an
-  # answered question, bumps `occurrences` a second time, and re-runs the same
-  # doomed insert. The gap row never acquires an `issue_id`, so
-  # `file_gap_once/2`'s `%{issue_id: nil}` clause goes on matching and goes on
-  # failing, forever.
-  #
-  # So a failure is logged, never returned. The raises are fixed at their
-  # causes rather than rescued: the title is truncated to its column
-  # (`gap_title/1`) and an over-long capability is a changeset error rather
-  # than a btree overflow (`CapabilityGap.changeset/2`).
+  # Bookkeeping about the answer, never part of it: the answer is already
+  # committed, so a failure here is logged, never returned — an error would make
+  # main re-answer an answered question. Causes are fixed, not rescued
+  # (`gap_title/1`, `CapabilityGap.changeset/2`).
   defp note_gap(scope, question, capability) do
     with {:ok, gap} <-
            GapRepository.record(scope.active_project_id, question.agent_role, capability),
@@ -1311,13 +1053,9 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # Filed once, and the count carried on the issue that exists.
-  #
-  # Criterion 3330's two halves are one decision here: the row owns whether an
-  # issue exists, so "do not file a second" is a property of the data rather
-  # than of whoever remembers to check — and the repeats are on the issue
-  # instead of being dropped, which is what leaves triage able to tell a
-  # one-off from the tip of something.
+  # Filed once — the gap row owns whether an issue exists — and the count
+  # carried on that issue's description, so triage can tell a one-off from a
+  # pattern.
   defp file_gap_once(scope, %{issue_id: nil} = gap) do
     with {:ok, issue} <-
            Issues.create_issue(scope, %{
@@ -1345,34 +1083,19 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # The title says what is missing and nothing that changes.
-  #
-  # The count would read better here — `list_issues` shows titles — and it
-  # cannot live here: `update_attributes/2` whitelists the fields an update may
-  # touch and `title` is not among them, deliberately, so a count written at
-  # filing time would say "1" forever. A number that is wrong from the second
-  # recurrence onwards is worse than one that needs `get_issue` to read.
-  #
-  # `capability` is `text` on `capability_gaps` and unbounded, `issues.title` is
-  # `varchar(255)`, and `answer_notification`'s own documentation asks the
-  # caller for prose ("say what you had to supply"). So the natural input
-  # overflows the column: a ~300-character `worked_around` raised 22001 and took
-  # the whole call down on 2026-09-23. Truncate here rather than widening the
-  # column — a title is a label, the full capability is on the gap row and
-  # repeated verbatim in `gap_description/1` below, so nothing is lost.
-  # Public only so the length guarantee can be asserted directly — the overflow
-  # it exists to stop reached production, and a test that has to build a whole
-  # question request to reach it is a test nobody writes.
+  # The title says what is missing and nothing that changes: an update cannot
+  # touch `title` (`IssuesRepository.update_attributes/2`), so a count there
+  # would be wrong from the second recurrence. Fitted to `issues.title`'s 255
+  # bytes; the full capability is on the gap row and in the description.
+  # Public so the length guarantee can be asserted directly.
   @doc false
   def gap_title(gap) do
     prefix = "The #{gap.role} role cannot: "
     prefix <> fit(gap.capability, 255 - byte_size(prefix))
   end
 
-  # Bytes, not graphemes — the column's limit is bytes and `String.slice/3`
-  # counts graphemes, so slicing a capability with any non-ASCII in it can still
-  # overflow. Cut on grapheme boundaries so the result stays valid UTF-8, and
-  # measure what that costs in bytes.
+  # Bytes, not graphemes (the column limit is bytes), cut on grapheme
+  # boundaries so the result stays valid UTF-8.
   defp fit(text, budget) when byte_size(text) <= budget, do: text
 
   defp fit(text, budget) do
@@ -1406,10 +1129,8 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   The main agent has finished and asks not to be woken again.
 
-  The timer only. Criterion 3335: an agent's question still reaches a
-  stood-down main agent, because the alternative has no symptom on either side
-  — it is not woken, which is what it asked for, and the question never
-  arrives.
+  The timer's turns only: an agent's question still reaches a stood-down main
+  agent, because a question that never arrives has no symptom on either side.
   """
   @spec stand_down(Scope.t()) :: :ok
   defdelegate stand_down(scope), to: Cadence
@@ -1417,17 +1138,9 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   The project is back at work, so it may be woken again.
 
-  The other half of `stand_down/1`, and until `5f9fad45` it had no caller at
-  all — so a tap-out stood a project down permanently. Starting continuous work
-  again began a fresh timer, and every tick of it no-oped, because the delivery
-  gate still found the project in the stood-down list and nothing ever removed
-  it. A cadence that ticks and never delivers is indistinguishable from a
-  project nobody works on, which is the exact state story 1059 exists to make
-  impossible.
-
-  Called where somebody says the project is working again — a `main` agent
-  starting. Not from the boot sweep, which would make a deploy silently undo a
-  decision somebody made.
+  The other half of `stand_down/1`. Called when a `main` agent starts — the
+  statement that the project is working again — and from the cadence tool. Not from the boot sweep, which
+  would make a deploy undo somebody's decision.
   """
   @spec resume(Scope.t()) :: :ok
   defdelegate resume(scope), to: Cadence
@@ -1435,30 +1148,14 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Refuse to take a task off an agent that can do it.
 
-  **Every call is refused today, and that is the specified behaviour.** The name
-  reads like a capability and it is a boundary: criterion 3328 asserts that full
-  scope does not mean the main agent does everybody's work, and nothing anywhere
-  specifies when a takeover should instead succeed.
+  **Every call is refused, and that is the specified behaviour.** Full scope
+  does not mean the main agent does everybody's work: each takeover is
+  defensible while the end state is one agent doing everything, and work main
+  did itself has no reviewer. Where main legitimately acts past a role's reach
+  it acts directly (e.g. `ready_stories_without_epic`).
 
-  Why refusing is the whole of it. The main agent may do anything, so watching an
-  agent work slowly on something it could finish itself is a standing temptation
-  — and each individual takeover is defensible while the end state is one agent
-  doing everything with three idle, decided by nobody. It also removes what the
-  roles are for: a coding agent's work is reviewed by QA because it is a coding
-  agent's, and work the main agent did itself has no counterpart to check it.
-
-  Where the main agent legitimately acts past a role's reach, it acts directly —
-  criterion 3327, and `ready_stories_without_epic` is the worked example. That
-  is a different act from confiscating an agent's task, and it already works.
-
-  `task_id` is accepted and unused. It is kept because a caller naturally has one
-  and dropping it from the signature would be a breaking change for nothing —
-  but it is not consulted, so the refusal is unconditional rather than a
-  judgement about the task's state. QA found that worth recording (3b7023ae):
-  the refusal message reads like an assessment and is not one.
-
-  If a real takeover is ever wanted, it needs a criterion saying when — and then
-  `task_id` becomes load-bearing.
+  `task_id` is accepted and not consulted, so the refusal is unconditional, not
+  a judgement about the task.
   """
   @spec take_over_work(Scope.t(), String.t(), String.t()) ::
           {:error, {:their_work, String.t()} | :not_mine}
@@ -1472,14 +1169,12 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Hand a question up to the user, saying why it could not be answered here.
 
-  The reason is required rather than optional. A question that arrives at a
-  person with no account of why it reached them is one they have to reconstruct
-  before they can decide, and reconstructing it is the work the main agent was
-  supposed to have already done.
+  The reason is required: a person handed a question with no account of why
+  has to reconstruct it before deciding.
 
-  Refused when the question does not belong to this project's agents: the main
-  agent owns one project, and a reach that quietly extends past it is one
-  nobody would notice had extended.
+  Refused when the question does not belong to this project's agents.
+  `opts`: `:as` rewords the first question for the user, keeping the
+  original as `asked_as`.
   """
   @spec escalate_question(Scope.t(), String.t(), String.t(), keyword()) ::
           {:ok, OpenQuestion.t()} | {:error, :not_found | :needs_a_reason | term()}
@@ -1497,7 +1192,7 @@ defmodule CodeMySpec.Agents.Main do
   def escalate_question(%Scope{}, _question_id, _reason, _opts), do: {:error, :needs_a_reason}
 
   @doc """
-  Hand a question sideways between the main and product agents (criterion 2123).
+  Hand a question sideways between the main and product agents.
 
   The user does not see it until one of them escalates it. Tap-outs are main's
   alone, so only questions move.
@@ -1525,12 +1220,11 @@ defmodule CodeMySpec.Agents.Main do
   @doc """
   Who a newly raised question starts with.
 
-  An agent's question starts with the main agent — that is story 1052's routing
-  and the reason this project has a main agent at all. Two askers are the
-  exception and both for the same reason: there is nobody above them to route
-  to. The main agent's own question is already a decision it could not make, and
-  a question with no agent came from Claude Code, which talks to the person
-  directly.
+  An agent's question goes to the answerer it names — `to:` `"main"` or
+  `"product"`, or `about: "criteria"` for product — main when it names
+  neither, the other answerer when that one is not on duty, and the user when
+  neither is. Main's and product's own questions, and a question with no agent
+  (from Claude Code), go to the user: there is nobody above them.
   """
   @spec holder_for(Scope.t(), String.t() | nil, String.t() | nil, String.t() | nil) ::
           String.t()
@@ -1545,16 +1239,11 @@ defmodule CodeMySpec.Agents.Main do
     end
   end
 
-  # Story 1052 (three amigos 2026-10-11): coding and QA ask product or main,
-  # main when they name neither (2122); `about: "criteria"` names product.
   defp target(_about, "product"), do: :product
   defp target(_about, "main"), do: :main
   defp target("criteria", _to), do: :product
   defp target(_about, _to), do: :main
 
-  # Main's and product's own questions have nobody above them but the user
-  # (criterion 1987). Anyone else's goes to the answerer it names, to the other
-  # when that one is not running, and to the user only when neither is (2124).
   defp routed(_scope, %Agent{role: role}, _target) when role in [:main, :product], do: "user"
 
   defp routed(scope, %Agent{} = agent, target) do
@@ -1566,8 +1255,8 @@ defmodule CodeMySpec.Agents.Main do
   defp other(:main), do: :product
   defp other(:product), do: :main
 
-  # On duty (not off, not retired) rather than connected: a main that is briefly
-  # unreachable still holds its questions, and the user sees them meanwhile (1201).
+  # On duty (not off, not retired) rather than connected: a main that is
+  # briefly unreachable still holds its questions.
   defp running?(scope, agent, role),
     do: Enum.any?(Agents.list_on_duty(scope), &(&1.role == role and &1.id != agent.id))
 
@@ -1588,11 +1277,12 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   @doc """
-  Reconsider the existing main agent when a durable question arrives.
+  Offer the question's holder a turn when a question arrives: product for one
+  it holds (the product agent on the asker's copy, else any), otherwise a main
+  agent other than the asker. Nothing for a question routed to the user.
 
-  Admission honors continuous intent, active tasks and in-flight turns. The
-  question remains in the inbox even when no turn is admitted; recovery and
-  turn completion reconsider it without queueing stale eligibility signals.
+  Admission honours continuous intent, active tasks and in-flight turns. The
+  question stays in the inbox when no turn is admitted.
   """
   @spec question_raised(Scope.t(), map()) :: :ok
   def question_raised(%Scope{} = scope, %{agent_id: agent_id, holder: "product_agent"})
@@ -1605,8 +1295,7 @@ defmodule CodeMySpec.Agents.Main do
     :ok
   end
 
-  # Routed straight to the user (criterion 1987): nothing about it is main's
-  # to act on, so nothing about it should wake main either.
+  # Routed straight to the user: nothing about it is main's to act on.
   def question_raised(%Scope{}, %{holder: "user"}), do: :ok
 
   def question_raised(%Scope{} = scope, %{agent_id: agent_id})
@@ -1637,28 +1326,15 @@ defmodule CodeMySpec.Agents.Main do
 
   def escalator(_scope, _asker, _holder), do: nil
 
-  # The main agent by role rather than by checkout. `Agents.main_agent/1`
-  # answers "the agent on the designated copy", which is the right answer to a
-  # different question and the wrong one here: several agents share a checkout,
-  # and the first one found on it is whichever row came back first.
+  # The main agent by role rather than by checkout (`Agents.main_agent/1` is
+  # the one on the main copy).
   defp main_agent_other_than(scope, asking_agent_id) do
     scope
     |> Agents.running_main_agents()
     |> Enum.find(&(&1.id != asking_agent_id))
   end
 
-  # Escalating tells the asker nothing, on purpose.
-  #
-  # It used to push — "your question went up to the user" — so that a chain the
-  # asker cannot see would not look like silence. The push was the problem it
-  # was meant to solve, one layer down: a message to an idle agent starts a
-  # turn, so a main agent tidying its inbox woke every agent whose question it
-  # handed up, and 3268 and 3269 both state it outright ("no answer or
-  # escalation has started a turn").
-  #
-  # The asker still learns, by asking. `check_answer` reads the holder and says
-  # which of the two waits it is in — "still waiting on the main agent" against
-  # "still waiting on the user" — which is the same fact, arriving when the
-  # agent is in a position to act on it rather than in the middle of something
-  # else.
+  # Escalating tells the asker nothing, on purpose: a message to an idle agent
+  # starts a turn, so main tidying its inbox would wake every asker. The asker
+  # learns by asking — `check_answer` says which holder it is waiting on.
 end

@@ -2,31 +2,17 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   @moduledoc """
   What the server sends a machine to bring one agent up.
 
-  One definition, because there were three and they had already drifted.
-  `Transport.Harness` built it for a fresh start, `HarnessProjectChannel` built
-  it again for a restore, and the in-process transport the whole spex suite runs
-  on built a third — so a field added to the first reached neither of the
-  others, and a criterion driving the third proved nothing about the first.
+  The one definition, used for a fresh start and a restore alike, so a field
+  added for one reaches the other.
 
-  The drift was not hypothetical. The restore map carried no credential at all,
-  so an agent on an API-key provider came back after a harness restart with
-  nothing to authenticate with, and failed on its first turn — minutes later, in
-  a log nobody reads.
+  What travels: what to run and where, the credential, the conversation so far
+  (an agent dies with its harness; the transcript is its state), and the
+  prompt sections. Not a command: the machine knows what is installed on it.
 
-  ## What travels
+  Credential and history ride on the agent as virtual fields, resolved by
+  `hydrate/2`; neither is stored on the row.
 
-  What to run and where, the credential, and the conversation so far. Not a
-  command: the machine knows what is installed on it and the server does not.
-
-  History is on the wire for the same reason the credential is. An agent dies
-  with its harness — that is stated in `CmsHarness.Agents.Engine` and accepted,
-  because the transcript is the state. It is only true if the transcript
-  actually travels, and until it did, coming back meant coming back empty.
-
-  Both ride on the agent as virtual fields, resolved by `hydrate/2` where there
-  is a scope to resolve them from. The row must not become a second place a
-  subscription lives, and it must not become a second copy of the transcript
-  either.
+  See knowledge/agents/coordination, "Launch requests".
   """
 
   alias CodeMySpec.Agents.{
@@ -48,9 +34,8 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   Fill in the two things a launch needs and the row does not hold.
 
   Called wherever an agent is about to be sent to a machine — a start, and a
-  restore after that machine came back. A restore that skips this sends an agent
-  with no credential and no memory, which is the shape this module exists to
-  stop shipping.
+  restore after that machine came back. Skipping it sends an agent with no
+  credential and no memory.
   """
   @spec hydrate(Scope.t(), Agent.t()) :: Agent.t()
   def hydrate(%Scope{} = scope, %Agent{} = agent) do
@@ -70,7 +55,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   like.
 
   `tools` is `McpServers.ToolRegistry.registry/0`, handed in because `Agents`
-  sits below the servers it would otherwise read. See `ToolIndex.registry/0`.
+  sits below the servers it would otherwise read. See the `ToolIndex.registry` type.
   """
   @spec for(Agent.t(), ToolIndex.registry()) :: map()
   def for(%Agent{} = agent, tools) do
@@ -78,100 +63,50 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "agent_id" => agent.id,
       "engine" => to_string(agent.engine),
       "provider" => agent.provider,
-      # The harness reads it and nothing sent it, so every agent ran on its
-      # provider's own default — a Codex agent on whatever model the machine's
-      # ~/.codex config named. The agent's model, else its role's for this
-      # provider; nil leaves the choice to the provider.
+      # The agent's model, else its role's for this provider; nil leaves the
+      # choice to the provider.
       "model" => model(agent),
       "working_copy" => agent.working_copy,
       "role" => agent.role,
-      # What this agent is for, in words, so the model gets it and not only the
-      # tool list. Resolved here rather than on the harness because role
-      # semantics are the framework's — `RoleBrief` keeps them beside the tool
-      # set that enforces them, and the harness has no opinion about what a QA
-      # agent may do.
+      # What this agent is for, in words. Resolved here: role semantics are the
+      # framework's, not the harness's.
       "role_brief" => RoleBrief.for(agent.role),
-      # Section one: the loop every agent runs, and how the machinery behaves.
-      # The same words for every role on every project, which is why it is
-      # resolved here once rather than assembled per agent on the machine.
-      #
-      # It carries the loop because the loop is framework machinery — a project
-      # cannot opt out of claiming work, `start_task` enforces it — and because
-      # the only other place it was written down was a file on disk that a
-      # checkout might not have. See `OperatingRules`.
+      # Section one: the loop every agent runs and how the machinery behaves;
+      # the same for every role and project. See `OperatingRules`.
       "universal" => OperatingRules.text(),
-      # Section two, first part: what this project actually is, so an agent that
-      # has never seen it has the broad idea before it reads a requirement.
-      #
-      # Nil when the project has not written one. Nil rather than a placeholder,
-      # for the reason `app_url/1` gives below: an agent told something vague is
-      # worse off than one told nothing, because it will act on it.
+      # Section two, first part: what this project is. Nil when unwritten,
+      # never a placeholder.
       "project_brief" => project_brief(agent),
-      # Every tool it can reach, by name and nothing else.
-      #
-      # It already has schemas for what it carries and `tool_docs` answers for
-      # the rest, so what was missing was never the arguments — it was knowing
-      # the rest exist. A QA agent was primed to call `list_user_questions`, got
-      # "Unknown tool", reported it and stopped; an earlier one spent a session
-      # concluding story 895's epic tools were unreachable on this box when they
-      # were available through `run_script` the whole time. Both could see what
-      # they held and not what they could reach. See `Agents.ToolIndex`.
+      # Every tool it can reach, by name only. See `Agents.ToolIndex`.
       "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.
       "tool_reach" => ToolIndex.reach(agent, tools),
       # The tools the engine carries directly, by MCP name. The harness builds
       # its tool modules from these rather than reading the server's registry.
       "direct_tools" => ToolIndex.carried(tools),
-      # How a tool call physically happens on the engine running this agent.
-      #
-      # `claude-code` emulates tool calling — the CLI runs with `--tools ""` and
-      # the provider serialises the definitions into the request — so an agent
-      # that does not know where its tools are reports them missing and stops,
-      # having called nothing. See `ProviderBrief`.
+      # How a tool call physically happens on this provider. See `ProviderBrief`.
       "provider_brief" => ProviderBrief.for(agent.provider),
-      # Where the application it is working on is actually running.
-      #
-      # An agent that cannot answer this cannot open it. The QA agent on the
-      # war-epic copy had the browser bound, the tools working, and no idea
-      # there was anything to point them at — it reported "no app URL has been
-      # identified" and correctly refused to guess, while the app was up the
-      # whole time.
-      #
-      # The main checkout's preview, always, whichever copy the agent is in.
-      # `record_preview_url/2` matches `main: true` and refuses everything else,
-      # so a worktree cannot have one of its own — the app runs on the main copy
-      # under the harness, and that is the address there is.
+      # Where the application is running: the main checkout's preview, whichever
+      # copy the agent is in (only the main copy records one).
       "app_url" => app_url(agent),
-      # Whether this agent is willing to be given new work.
-      #
-      # Story 1056's criterion 3305: pausing is a decision somebody made, and a
-      # restore that brings every running agent back *working* quietly undoes it
-      # — no error, no warning, and the only symptom is spend on an agent they
-      # had deliberately stopped watching. Paused is not stopped: the row is
-      # alive, so it belongs in the answer, carrying the state it was in.
+      # Whether this agent is willing to be given new work, so a restore does
+      # not bring a paused agent back working.
       "continuous" => agent.continuous == true,
       "messages" => demo_turns() ++ (agent.history || [])
     }
     |> Map.merge(credential_fields(agent.credential))
   end
 
-  # Nil when the project has no main checkout, or it has one and nothing is
-  # serving it. Nil rather than a placeholder: an agent told the app is at a URL
-  # that answers nothing spends a turn finding out, and "no address" is a fact
-  # it can act on.
+  # Nil when nothing is serving the main checkout: "no address" is a fact an
+  # agent can act on; a dead URL costs it a turn.
   defp app_url(%Agent{project_id: project_id}) when is_binary(project_id) do
     WorkingCopies.preview_url(%Scope{active_project_id: project_id})
   end
 
   defp app_url(_agent), do: nil
 
-  # What the project is, in its own words.
-  #
-  # Measured 2026-09-20: 7 of 76 projects have written one, and the longest had
-  # drifted far enough to contradict the tool index shipping beside it in the
-  # same prompt — it named a port, an MCP library and a tool count that had all
-  # moved. So this is sent when it exists and omitted when it does not, and
-  # keeping it true is the project's job rather than something inferred here.
+  # What the project is, in its own words; sent when written, omitted when not.
+  # Keeping it true is the project's job.
   defp project_brief(%Agent{project_id: project_id}) when is_binary(project_id) do
     case Projects.get_project_by_id(project_id) do
       %{description: description} -> presence(description)
@@ -190,13 +125,8 @@ defmodule CodeMySpec.Agents.LaunchRequest do
 
   defp presence(_), do: nil
 
-  # The browser this machine offers, read from the copy the agent runs on.
-  #
-  # `[]` for a machine with no browser, which `ToolIndex` renders as no section
-  # at all rather than an empty one — a machine without a browser and one whose
-  # browser will not answer are different states, and only the second is a
-  # fault. `CmsHarness.Browser` keeps that distinction and `browser_status`
-  # carries it.
+  # The browser tools this machine offers, from the agent's copy. `[]` renders
+  # as no section; a browser that will not answer is `browser_status`'s fault.
   defp machine_tools(%Agent{working_copy_id: id}) when is_binary(id) do
     case WorkingCopies.fetch(id) do
       {:ok, %{machine_tools: tools}} when is_list(tools) -> tools
@@ -206,13 +136,8 @@ defmodule CodeMySpec.Agents.LaunchRequest do
 
   defp machine_tools(_agent), do: []
 
-  # Where the agent picks up. `resume_messages/1` answers with the whole
-  # conversation while it is short enough to hand a model, and from the last
-  # compaction checkpoint onward once it is not.
-  #
-  # A conversation that does not exist yet means an agent that has never spoken,
-  # and an empty history is the honest answer rather than a reason to fail: the
-  # machine starts it fresh, which is what a first start is.
+  # Where the agent picks up (`Conversations.resume_messages/1`). No
+  # conversation is an empty history: a first start.
   defp history(%Scope{} = scope, %Agent{} = agent) do
     case Conversations.find_or_create_agent_conversation(
            scope.active_account_id,
@@ -224,20 +149,9 @@ defmodule CodeMySpec.Agents.LaunchRequest do
     end
   end
 
-  # Two calls the agent has already made, before anything it is asked to do.
-  #
-  # The wire format is described to an agent in prose by `ProviderBrief`, and
-  # prose is read in the same mode that gets it wrong: measured on 2026-09-21,
-  # roughly one turn in ten came back with no call made and a fabricated
-  # account of one failing, and four rewrites of that prose moved the rate
-  # around inside noise. Nothing in the transcript ever showed the shape.
-  #
-  # Now it does, in the agent's own voice, before it is asked for anything:
-  # `health` for a direct call and `run_script` for the nested form a Lua
-  # function needs. Demonstration rather than instruction.
-  #
-  # `health` and `script_health` answer `ok` and do nothing else, so a seeded
-  # turn tells the agent nothing about the project it is about to work on.
+  # Two calls the agent has already made: `health` direct and `script_health`
+  # through `run_script`. Demonstration of the call shape rather than prose.
+  # See knowledge/agents/coordination, "Launch requests".
   defp demo_turns do
     [
       %{
@@ -281,29 +195,13 @@ defmodule CodeMySpec.Agents.LaunchRequest do
 
   defp credential(_scope, _agent), do: %{}
 
-  # Only the field the named provider actually uses. An api-key provider has no
-  # use for a token pair, and sending both would put a subscription on the wire
-  # for a request that did not need it.
+  # Only the fields the named provider uses: no token pair on the wire for an
+  # api-key provider.
   defp credential_fields(%{"type" => "api_key", "key" => key}), do: %{"api_key" => key}
 
-  # A ChatGPT subscription, from the integration the user connected.
-  #
-  # This clause did not exist, so an oauth credential fell to the catch-all
-  # below and went out as `%{}`. `Credential.fetch/2` had already fetched the
-  # token, refreshed it if needed and derived the account id from the JWT — and
-  # all of it was dropped at the door. The harness then found no credential and
-  # `Provider.auth_path/1` fell back to `~/.codex/auth.json`, the operator's own
-  # CLI login on whatever machine the harness happened to be running on.
-  #
-  # So every `openai-codex` agent has been running on a local file nobody
-  # manages, which worked until that file aged past refresh and every agent
-  # started failing with `401 Unauthorized: Failed to refresh token`. The
-  # subscription the user actually connected was never used.
-  #
-  # `expires` is milliseconds since epoch, as `expires_ms/1` produces it, and
-  # `accountId` is present only when the token carried the claim — the same
-  # rule `put_account_id/2` applies, since an invented empty account id is worse
-  # than an absent one.
+  # A ChatGPT subscription, from the integration the user connected. Without it
+  # the harness falls back to the machine's own CLI login. Optional fields are
+  # sent only when present.
   defp credential_fields(%{"type" => "oauth"} = credential) do
     %{
       "access" => credential["access"],

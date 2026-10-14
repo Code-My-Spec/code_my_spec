@@ -54,19 +54,15 @@ defmodule CodeMySpec.Integrations do
     openai: CodeMySpec.Integrations.Providers.OpenAI
   }
 
-  # Minimal scopes for social login — just enough for identity. Deliberately
-  # excludes :cloudflare and :resend: those exist to provision infrastructure
-  # on the user's behalf, and nobody should be able to sign in with them.
-  # `authorize_login_url/1` on either yields a nil scope, which the provider
-  # would send as an empty grant.
+  # Identity-only scopes for social login. Deliberately no infrastructure
+  # providers: nobody should sign in with a provisioning grant.
   @login_scopes %{
     github: "user:email",
     google: "email profile"
   }
 
-  # Refreshed this long before the stated expiry. Long enough to cover a slow
-  # request that starts just before the boundary, short enough not to throw
-  # away most of a fifteen-minute token.
+  # Refreshed this long before the stated expiry, covering a slow request that
+  # starts just before the boundary.
   @refresh_skew_seconds 120
 
   @type provider :: :github | :gitlab | :bitbucket | :google | :cloudflare | :resend
@@ -104,7 +100,7 @@ defmodule CodeMySpec.Integrations do
 
   ## Parameters
   - `scope` - User scope for multi-tenant isolation
-  - `provider` - Provider identifier (:github, :gitlab, :bitbucket)
+  - `provider` - Provider identifier (`:github`, `:google`, `:cloudflare`, `:resend`, `:openai`)
   - `callback_params` - Query params from OAuth callback including code and state
   - `session_params` - Session params from authorize_url that were stored
 
@@ -147,7 +143,7 @@ defmodule CodeMySpec.Integrations do
   ## Examples
 
       iex> list_integrations(scope)
-      [%Integration{provider: :github}, %Integration{provider: :gitlab}]
+      [%Integration{provider: :github}, %Integration{provider: :google}]
   """
   @spec list_integrations(Scope.t()) :: [Integration.t()]
   defdelegate list_integrations(scope), to: IntegrationRepository
@@ -180,15 +176,12 @@ defmodule CodeMySpec.Integrations do
   @doc """
   Connect a provider by the key someone pasted, once the provider says it works.
 
-  The key is asked about before it is stored, and a refusal stores nothing —
-  otherwise the settings page reports a connection whose first evidence is an
-  agent failing a model call minutes later. `ApiKey.verify/2` distinguishes a
-  key the provider refused from a provider that did not answer, and both are
-  passed through: they read alike and want opposite responses.
+  The key is verified before it is stored, and a refusal stores nothing.
+  `ApiKey.verify/2` distinguishes a key the provider refused from a provider
+  that did not answer; both are passed through.
 
-  Stored the way GitHub's token is — no refresh token, an expiry a year out —
-  because that is what a credential nobody can renew on the user's behalf looks
-  like, and `fetch_access_token/2` already takes the fresh path for it.
+  Stored with no refresh token and an expiry a year out, so
+  `fetch_access_token/2` takes the fresh path for it.
   """
   @spec connect_api_key(Scope.t(), atom(), String.t()) ::
           {:ok, Integration.t()} | {:error, ApiKey.failure() | term()}
@@ -275,29 +268,14 @@ defmodule CodeMySpec.Integrations do
   @doc """
   A token that is valid *now*, refreshing first if it is about to expire.
 
-  This is what provider code should call. `get_integration/2` hands back
-  whatever is stored, which for a short-lived grant is frequently a dead
-  token — Resend's access tokens live fifteen minutes, so every call would
-  401 a quarter of an hour after the user connected.
-
-  ## Refreshed early, on purpose
+  This is what provider code should call; `get_integration/2` hands back
+  whatever is stored, which for a short-lived grant (Resend: fifteen minutes)
+  is frequently dead.
 
   A token is treated as stale `#{@refresh_skew_seconds}` seconds before it
-  actually expires. Checking against the exact instant passes a token with two
-  seconds left and then fails inside the request that used it — a failure that
-  depends on timing, appears under load, and cannot be reproduced.
-
-  ## One refresh at a time, per grant
-
-  The refresh happens under a row lock on the integration, and re-checks after
-  taking it. Providers that rotate refresh tokens — Resend rotates on every
-  use — invalidate the old value, so two concurrent refreshes mean the loser
-  presents a spent token. That does not merely fail: it can revoke the grant,
-  and the user has to reconnect.
-
-  The provider HTTP call therefore happens while the lock is held. That is the
-  point rather than an oversight; the alternative is a race that costs the
-  user their connection.
+  expires. The refresh runs under a row lock on the integration and re-checks
+  after taking it, with the provider HTTP call made while the lock is held —
+  on purpose. See knowledge/infrastructure, "Integrations and token refresh".
 
   ## Errors
 
@@ -336,11 +314,8 @@ defmodule CodeMySpec.Integrations do
       :lt
   end
 
-  # No refresh token, so there is nothing to renew with. GitHub is the
-  # ordinary case: its user tokens carry no refresh token and are stored with
-  # an expiry a year out, so they take the fresh path and never reach here.
-  # One that has genuinely run out is the user's to reconnect, and saying so
-  # is more useful than a 401 surfacing from somewhere deeper.
+  # Nothing to renew with: an expired token is the user's to reconnect, which
+  # is more useful than a 401 surfacing deeper.
   defp stale_without_refresh(%Integration{} = integration) do
     if DateTime.compare(DateTime.utc_now(), integration.expires_at) == :lt do
       {:ok, integration.access_token}
@@ -360,9 +335,8 @@ defmodule CodeMySpec.Integrations do
     end
   end
 
-  # Re-check under the lock: whoever held it before us may have just
-  # refreshed, and burning a second rotation would spend a token that is
-  # now the only valid one.
+  # Re-check under the lock: the previous holder may have just refreshed, and a
+  # second rotation would spend the only valid token.
   defp access_token_for(scope, provider, integration) do
     if fresh?(integration) do
       integration.access_token
@@ -414,17 +388,10 @@ defmodule CodeMySpec.Integrations do
   defp fetch_refresh_token(_), do: {:error, :no_refresh_token}
 
   defp assent_refresh(provider_module, refresh_token) do
-    # Mirror Assent.Strategy.OAuth2.Base/OIDC.Base's set_config: strategy
-    # defaults underneath, our provider config on top. Otherwise required
-    # keys like :base_url (set by the strategy, not us) are missing because
-    # we are calling refresh_access_token/3 directly.
-    #
-    # Only named strategies define default_config/1. Providers that use
-    # `Assent.Strategy.OAuth2` directly — Cloudflare and Resend — have no
-    # defaults to merge, and calling it on them raises UndefinedFunctionError.
-    # This was written against Google, the only strategy that has one, so
-    # refreshing either of the others crashed rather than failing: found the
-    # first time a Resend token actually needed renewing.
+    # Strategy defaults underneath, provider config on top, as Assent's own
+    # set_config does; calling refresh_access_token/3 directly skips that.
+    # Only named strategies define default_config/1 — plain
+    # `Assent.Strategy.OAuth2` providers (Cloudflare, Resend) do not.
     user_config = client_config(provider_module)
     strategy = provider_module.strategy()
 
@@ -450,24 +417,9 @@ defmodule CodeMySpec.Integrations do
     IntegrationRepository.upsert_integration(scope, provider, attrs)
   end
 
-  # The OIDC id token, kept because one consumer cannot work without it.
-  #
-  # `codex exec` reads its credentials from an `auth.json` and refuses one that
-  # has no `id_token` — literally, "missing field `id_token`", before any
-  # network call. So a ChatGPT subscription that reaches an agent without it
-  # cannot run a turn, however valid the access and refresh tokens are.
-  # Established by running the binary against a hand-built file rather than
-  # inferred: without the field it is rejected outright, with it the file is
-  # accepted and proceeds to a real auth attempt.
-  #
-  # Kept in `provider_metadata` rather than given a column. It belongs to one
-  # provider, it is not a credential we present anywhere ourselves, and a column
-  # would invite every other provider to leave it null.
-  #
-  # Only when the response carries one. A refresh that returns no `id_token`
-  # leaves the stored one alone rather than blanking it: the previous one is
-  # still the identity of the same grant, and replacing it with nothing would
-  # break the agent on the next launch for no reason.
+  # The OIDC id token, kept in `provider_metadata` because `codex exec` refuses
+  # an `auth.json` without one. A response with no `id_token` leaves the stored
+  # one alone. See knowledge/infrastructure, "Integrations and token refresh".
   defp keep_id_token(metadata, token_response) do
     metadata = metadata || %{}
 
@@ -486,10 +438,9 @@ defmodule CodeMySpec.Integrations do
 
   # Private Helpers
 
-  # A build can swap a provider's client without the provider knowing: the
-  # desktop app has no server secret, so it uses public or desktop-type clients
-  # and a loopback redirect (bb8bc042). Keyed by provider module, merged over
-  # its own config.
+  # A build can swap a provider's client (the desktop app has no server secret,
+  # so it uses public clients and a loopback redirect). Keyed by provider
+  # module, merged over its own config.
   defp client_config(provider_module) do
     overrides =
       :code_my_spec
@@ -522,17 +473,9 @@ defmodule CodeMySpec.Integrations do
     end
   end
 
-  # A response with no refresh_token must never erase the stored one.
-  #
-  # Google omits `refresh_token` from every grant that is not a fresh consent,
-  # and the social-login flow deliberately drops `prompt=consent` — so signing
-  # in with Google returned a token response with no refresh_token, and this
-  # wrote that nil straight over a working one. The integration then had no way
-  # to renew and simply died at its next expiry.
-  #
-  # Keeping the old value is safe in a way that overwriting is not: a refresh
-  # token stays valid until it is used or revoked, so the worst case is a stale
-  # value that fails a refresh, versus certainly having none at all.
+  # A response with no refresh_token never erases the stored one: Google omits
+  # it from every grant that is not a fresh consent, and social login drops
+  # `prompt=consent`.
   defp persist_integration(scope, provider, token_response, normalized_user) do
     existing =
       case get_integration(scope, provider) do
@@ -551,11 +494,8 @@ defmodule CodeMySpec.Integrations do
     IntegrationRepository.upsert_integration(scope, provider, integration_attrs)
   end
 
-  # Scopes accumulate rather than replace. Signing in with Google asks for
-  # `email profile` and nothing else, and recording only those would report
-  # that a grant which still carries the provisioning scopes no longer does —
-  # `connected?/2`-style checks would then refuse work the grant can actually
-  # do. Authorising a subset does not revoke what was granted before.
+  # Scopes accumulate rather than replace: a social login asking for a subset
+  # does not revoke what was granted before.
   defp merge_scopes(granted, nil), do: granted
 
   defp merge_scopes(granted, %Integration{granted_scopes: previous}) do

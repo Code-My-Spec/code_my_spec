@@ -41,10 +41,8 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
   """
   @spec get_integration(Scope.t(), provider()) ::
           {:ok, Integration.t()} | {:error, :not_found}
-  # A scope with no user has no integrations, which is the documented
-  # {:error, :not_found} rather than a BadMapError on `user.id`. Reached by
-  # any "is this provider connected?" check on an unauthenticated scope —
-  # the exact question a provisioning step asks before it does anything.
+  # A scope with no user has no integrations: `:not_found`, not a BadMapError
+  # (provisioning steps ask this on unauthenticated scopes).
   def get_integration(%Scope{user: nil}, _provider), do: {:error, :not_found}
 
   def get_integration(%Scope{user: user}, provider) do
@@ -60,11 +58,9 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
   @doc """
   Read an integration and hold a row lock on it until the transaction ends.
 
-  Must be called inside a transaction. Exists so a token refresh can be
-  serialised per grant: providers that rotate the refresh token invalidate the
-  old one, so two concurrent refreshes race to use a value the other has
-  already spent — and losing that race can revoke the whole grant rather than
-  merely failing.
+  Must be called inside a transaction. Serialises token refresh per grant:
+  with rotating refresh tokens, losing a concurrent refresh race can revoke the
+  whole grant.
   """
   @spec lock_integration(Scope.t(), atom()) :: {:ok, Integration.t()} | {:error, :not_found}
   def lock_integration(%Scope{user: nil}, _provider), do: {:error, :not_found}
@@ -213,7 +209,8 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
   Creates or updates an integration based on unique constraint (user_id, provider).
 
   Used during OAuth callback to handle both first-time connections and reconnections.
-  Uses `on_conflict: :replace_all` with conflict_target `[:user_id, :provider]`.
+  Replaces every field except `id` and `inserted_at` on conflict with
+  `[:user_id, :provider]`.
 
   ## Examples
 

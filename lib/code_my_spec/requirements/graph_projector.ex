@@ -14,11 +14,10 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   1. Early project chain — vertical column at x=0, project nodes
      upstream of any cross-entity edge stacking downward.
-  2. Story bridge nodes upstream of any component
-     (cross-entity sources/sinks not downstream of components).
+  2. Story nodes not downstream of any component.
   3. Component zone — one tree per top-level component, sized
      dynamically by child count and phase break depth.
-  4. Story bridge nodes downstream of components.
+  4. Story nodes downstream of components.
   5. Late project chain — vertical column at x=0, project nodes
      downstream of stories stacking downward.
 
@@ -62,11 +61,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
-  # Brand-aligned palette — matches the legend's bg-primary / bg-success /
-  # bg-warning DaisyUI tokens defined in assets/css/app.css. Sigma renders
-  # to canvas so the projector emits resolved hex instead of CSS variables.
-  # Update these in lockstep with the brand tokens to keep legend and
-  # graph nodes visually aligned.
+  # Resolved hex for the legend's bg-primary / bg-success / bg-warning tokens
+  # (assets/css/app.css): Sigma renders to canvas, not CSS. Keep in lockstep.
   @colors %{
     # bg-primary — signal red, "satisfied" reads as the primary brand intent
     satisfied: "#ff3838",
@@ -76,17 +72,12 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     blocked: "#fde047"
   }
 
-  # Vertical gaps inflated 4x (and horizontal narrowed) so the rendered
-  # graph's aspect ratio is closer to a typical viewport's. Sigma.js
-  # preserves aspect ratio when fitting nodes to the canvas, so a
-  # 60k-wide x 8k-tall layout (the pre-inflation shape on real projects)
-  # gets crushed vertically — bands visually collapse into a thin
-  # horizontal line at default zoom. Issue de2403b0.
+  # Tall vertical gaps and narrow horizontal ones keep the aspect ratio near a
+  # viewport's: Sigma preserves aspect ratio when fitting, so a wide, short
+  # layout collapses into a thin line at default zoom.
   @row_gap 2000
   @story_col_gap 500
   @story_row_gap 1400
-  # Component zone gap constants — defined here so normalize_comp_zone_y/3 can use them.
-  # @comp_gap and @comp_zone_height removed — component zone is now dynamic
   @ctx_req_gap 1000
   @child_col_gap 350
   @child_req_gap 800
@@ -144,13 +135,9 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     sorted_project = sort_by_depth(project_nodes, topo)
 
     # Project chain splits where cross-entity edges first land on a
-    # project node — that's the structural fan-in seam, no need to
-    # name the requirement. When NO project node receives a cross-
-    # entity edge (e.g. after a downstream-consumer gate like
-    # qa_preflight is removed) the whole project chain is upstream
-    # gates with no story/component output to consume — split at
-    # the END so every project node lands in `early_project` at the
-    # top of the canvas, rather than degenerating to all-late.
+    # project node — the structural fan-in seam. When no project node
+    # receives one, split at the end so every project node lands in
+    # `early_project` at the top.
     fan_in_idx =
       Enum.find_index(sorted_project, fn n -> MapSet.member?(cross_sinks, node_key(n)) end) ||
         length(sorted_project)
@@ -191,13 +178,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       if early_count > 0, do: -(early_count - 1) * @story_row_gap - @row_gap, else: 0
 
     # Pre-component story nodes: every story node that is NOT
-    # downstream of any component. This includes purely-internal
-    # story nodes (e.g., three_amigos_complete) as well as the
-    # bridge sources/sinks that connect to project / component.
-    # Hiding non-bridge nodes used to be the rule; with the
-    # restructured story chain (component_linked → three_amigos_complete
-    # → bdd_specs_exist) those internal hops are load-bearing and
-    # belong on the canvas.
+    # downstream of any component, internal hops included.
     pre_sigma =
       Enum.flat_map(sorted_stories, fn {{_id, reqs}, col_idx} ->
         sorted_reqs = sort_by_depth(reqs, topo)
@@ -271,12 +252,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     # Layout each tier as a horizontal band, stacking downward.
     # Pass 1: tier-based placement establishes correct x positions for each tree.
-    # Single-component tiers all centre at x=0 by default (place_component_trees
-    # symmetric layout), which produces a tall stack of components on the x=0
-    # axis when many tiers each have one component. To avoid that visual,
-    # stagger single-tree tiers by tier_idx — alternating left/right so the
-    # stack fans out around the centre. Multi-tree tiers keep their default
-    # centred placement.
+    # Single-tree tiers are staggered left/right by tier_idx so many of them
+    # do not stack on the x=0 axis; multi-tree tiers stay centred.
     {comp_sigma_raw, _tier_bottom} =
       tiers
       |> Enum.with_index()
@@ -422,10 +399,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       end)
 
     # Compute reachability from project nodes via directed BFS over rendered edges.
-    # Component nodes not reachable from any project node are flagged orphan_reference: true
-    # (criterion 5612). This replaces the prior broken-edge-source approach which only
-    # caught nodes with dangling edge targets, missing the larger class of fully-isolated
-    # orphan components that have no story linkage.
+    # Component nodes not reachable from any project node are flagged orphan_reference: true.
     project_keys =
       all_sigma
       |> Enum.filter(fn n -> n.attributes[:entity_type] == "project" end)
@@ -447,10 +421,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # cross-tree edges.
   #
   # Within a single component, two requirements can land at the same global
-  # depth (e.g. `test_file` and `implementation_file` both depending on
-  # `spec_valid`, both at depth 2). Those would otherwise render on top of
-  # each other AND would violate the "every requirement renders" invariant.
-  # The `spread_y_for_same_entity_collisions/1` pass nudges same-entity
+  # depth and would render on top of each other, breaking "every requirement
+  # renders". The `spread_y_for_same_entity_collisions/1` pass nudges same-entity
   # same-y nodes a quarter `@ctx_req_gap` further down per sibling — small
   # enough that cross-component downward flow is preserved (the next
   # deeper depth-band is a full `@ctx_req_gap` below), while keeping the
@@ -496,9 +468,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # Second pass: enforce minimum y separation between nodes that share
   # the same x column. Per x, sort nodes by y desc, walk down, and push
   # each next node to at least `spread_step` below the previous one.
-  # Pairwise iteration over a one-pass spread didn't converge because
-  # spreading one group can create new collisions with adjacent groups
-  # at the same x. Per-column packing fixes the column in one shot.
+  # Per-column packing, because pairwise spreading does not converge.
   defp spread_y_for_cross_entity_xy_collisions(nodes) do
     spread_step = div(@ctx_req_gap, 4)
     {by_x, no_x} = Enum.split_with(nodes, fn n -> is_number(n.attributes.x) end)
@@ -535,7 +505,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # BFS from project nodes via rendered (directed) sigma edges.
   # Returns the set of all node keys reachable from any project-typed node.
   # Used to detect component nodes that have no path back to the project root
-  # (criterion 5611/5612) — these are orphan components with no story linkage.
+  # — orphan components with no story linkage.
   defp bfs_reachable(start_keys, sigma_edges) do
     adj =
       Enum.reduce(sigma_edges, %{}, fn e, acc ->
@@ -577,9 +547,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   """
   @spec component_graph(Scope.t(), String.t()) :: map()
   def component_graph(%Scope{} = scope, component_id) do
-    # The read model. This is display — it does not need a recompute, and
-    # `cached_graph_with_actionable/1` recomputes on a fingerprint miss anyway,
-    # so it is never stale.
+    # The read model: display, served from the rows.
     %{nodes: nodes, edges: edges, actionable: actionable} =
       Requirements.cached_graph_with_actionable(scope)
 
@@ -731,12 +699,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     updated = Enum.reduce(depths, depths, &resolve_depth_step(&1, &2, dep_graph))
 
     if updated == depths do
-      # No progress — remaining nils are cyclic. Break the cycle by
-      # assigning sequential depths (sorted by id for determinism)
-      # starting from the current max + 1. Cycle members no longer
-      # collide on y; one edge of each cycle becomes a back-edge
-      # (source.y < target.y), which is the unavoidable cost of
-      # rendering a cycle in a downward-flowing band.
+      # No progress — remaining nils are cyclic: sequential depths by id
+      # from max + 1, at the cost of one back-edge per cycle.
       max_known = depths |> Map.values() |> Enum.reject(&is_nil/1) |> Enum.max(fn -> -1 end)
 
       unresolved =

@@ -2,23 +2,15 @@ defmodule CmsHarness.Config do
   @moduledoc """
   Where the harness is pointed and what it calls itself.
 
-  Environment first, application config second, and no default for the
-  credential — a harness that quietly runs unauthenticated would connect to
-  nothing and look exactly like a harness with nothing to do.
+  No default for the credential: a harness that quietly runs unauthenticated
+  would look exactly like a harness with nothing to do.
   """
 
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
 
-  # The server this harness points at when nothing else says.
-  #
-  # A runtime read, not `compile_env`: one build serves both the installed
-  # release and `just harness`, so the default has to come from where the
-  # process is started. `config/runtime.exs` fills it from `CMS_SERVER_URL`,
-  # defaulting to codemyspec.com, under the harness env.
-  #
-  # Localhost when unset, because that is what an unconfigured env is: a
-  # checkout on somebody's machine, or the test suite.
+  # A runtime read, not `compile_env`: one build serves the release and
+  # `just harness`. Localhost when unset (a dev checkout or the test suite).
   @doc "The server this harness points at when nothing overrides it."
   @spec default_server_url() :: String.t()
   def default_server_url,
@@ -30,14 +22,8 @@ defmodule CmsHarness.Config do
   Resolved in order of how specific the instruction is:
 
     0. `:harness_server_url_override` — this call, this target. Set by
-       `mix cms.harness.onboard --server-url` and by nothing else.
-
-       Above `CMS_SERVER_URL` because it is more specific, not less: the
-       variable is about the shell, and this is about the root being onboarded.
-       Onboarding a checkout that is not this build's is the one case where the
-       caller knows something no layer below can — a sibling repo served by a
-       packaged release on another port belongs to that release's server, and
-       every tier below this one answers with the calling build's.
+       `mix cms.harness.onboard --server-url` and by nothing else; above the
+       shell's variable because it is about the root being onboarded.
 
     1. `CMS_SERVER_URL` — this run, this shell. What `just harness` uses to aim
        a laptop harness at its own dev server.
@@ -47,9 +33,8 @@ defmodule CmsHarness.Config do
        (`OAuthClient.get_server_url/0`, the issues client), wired per-env.
     4. `default_server_url/0` — `:harness_default_server_url`, set at runtime.
 
-  So a harness built from this repo is pointed correctly without being told, and
-  each layer above only exists to say something more specific than the one below
-  it.
+  Takes no root, so it never reads a checkout's file (the cwd's would be
+  ambient); `server_url_for/1` answers per working copy.
   """
   @spec server_url() :: String.t()
   def server_url do
@@ -65,23 +50,9 @@ defmodule CmsHarness.Config do
   checkout — `device.json` today, and anything that needs the same shape
   later.
 
-  `~/.codemyspec` on a laptop, where one `$HOME` really is one machine — the
-  reasoning `CmsHarness.Device`'s own moduledoc gives for keeping this file
-  out of every checkout in the first place. Wrong for a `Runner.Local`-booted
-  workspace, which shares that same real `$HOME` with whatever persistent
-  harness the box already runs, so a workspace silently presented as *that*
-  harness's own device and inherited every working copy the server believed
-  it served — contending with the harness actually running each one.
-  Measured live, 2026-09-21.
-
-  No env var of its own for the distinction: `CMS_PROJECT_DIR` already names
-  where this instance's one project lives, and a boot that named one is a
-  workspace by definition (`CmsHarness.Projects`' own moduledoc — this is
-  the sprite path). One directory up from it is that workspace's own root,
-  already unique per instance because `Workspaces.instance_env/1` minted it
-  that way, and `Runner.Docker` never needed the distinction at all — a
-  container's filesystem starts empty, so `~/.codemyspec` there is already a
-  device of one.
+  `~/.codemyspec` on a laptop. When `CMS_PROJECT_DIR` is set (a workspace or
+  sprite), the directory above it: a workspace shares the box's `$HOME` and
+  must not present as the box's own device.
   """
   @spec local_state_dir() :: String.t()
   defdelegate local_state_dir, to: CodeMySpec.Paths
@@ -89,12 +60,8 @@ defmodule CmsHarness.Config do
   @doc """
   Where this harness generates a project nobody chose a directory for.
 
-  `CmsHarness.Projects.Generator`'s only caller: a heartbeat, not a human at a
-  prompt, so there is nobody to ask "where should this go" the way
-  `IntakeLive.Workspace.local_commands/1`'s three lines assume for a person
-  typing `mix cms.new` themselves. `local_state_dir/0`'s own directory —
-  harness-owned space outside any checkout, on the same reasoning that keeps
-  `device.json` there rather than inside one.
+  For `CmsHarness.Projects.Generator`, which has nobody to ask. Harness-owned
+  space under `local_state_dir/0`, outside any checkout.
   """
   @spec projects_root() :: String.t()
   def projects_root, do: Path.join(local_state_dir(), "projects")
@@ -116,15 +83,8 @@ defmodule CmsHarness.Config do
   @spec credential(String.t() | nil) :: {:ok, String.t()} | {:error, :no_credential}
   def credential(root \\ nil)
 
-  # A rootless caller asks the copies this daemon serves, not a rooted lookup
-  # with nothing to look in.
-  #
-  # `for_working_copy(nil)` answers `:no_credential` for the root and falls
-  # through to configuration — which used to hold `CMS_DEPLOY_KEY` and no longer
-  # holds anything. `Device.announce/1` is the caller that found this: it has no
-  # working copy by nature, since a machine is not a checkout, so it announced
-  # nothing and every device on the box stayed out of the device list while each
-  # of them held a good credential on disk.
+  # A rootless caller (`Device.announce/1`: a machine is not a checkout) takes
+  # any credential the served copies hold.
   def credential(nil) do
     case Credentials.any() do
       {:ok, token, _source} -> {:ok, token}
@@ -147,23 +107,6 @@ defmodule CmsHarness.Config do
   exchanged first.
   """
 
-  # NOT read from the checkout's own file, and the attempt is worth recording.
-  #
-  # Which server a checkout talks to *should* be a property of the checkout —
-  # the same argument that took `CMS_HARNESS_ID` and `CMS_PROJECT_ID` out of
-  # this module. But `server_url/0` takes no root, so the only file it could
-  # consult is the one at `File.cwd!()` — which is ambient in exactly the way
-  # this module is trying to stop being. Under the suite it resolved to this
-  # repo's own `.cms_harness.json` and overrode what each test had configured,
-  # breaking eight of them.
-  #
-  # Two things have to happen before the variable below can go, and neither is
-  # a rename: `server_url/0` needs a root to be asked about, and every checkout
-  # needs `server_url` in its file (`mix harness.onboard --server-url` records
-  # it; none on this machine has one yet). Until then the harness env's
-  # `base_url` falls back to `https://codemyspec.com`, so cutting the variable
-  # would not fail — it would quietly point every dev harness at production.
-
   @spec user_token() :: {:ok, String.t()} | {:error, :no_credential}
   def user_token do
     present(Application.get_env(:code_my_spec, :harness_token))
@@ -172,9 +115,9 @@ defmodule CmsHarness.Config do
   @doc """
   The project deploy key this harness was given, if any.
 
-  The durable credential on a sprite or a container: it comes from the
-  environment, buys a short-lived token from `POST /api/sprite/token`, and is
-  never presented to anything else. See `CmsHarness.Token`.
+  Read from application config (`:harness_deploy_key`). It buys a short-lived
+  token from `POST /api/sprite/token` and is never presented to anything else.
+  See `CmsHarness.Token`.
   """
   @spec deploy_key() :: {:ok, String.t()} | {:error, :no_credential}
   def deploy_key do
@@ -210,11 +153,8 @@ defmodule CmsHarness.Config do
   The server one working copy talks to: the one its `.cms_harness.json` says
   minted it, or `server_url/0` when it records none.
 
-  The copy's record is what actually happened — `ProjectIdentity.server_url/1`
-  says so of the committed default, and `ServedRoots` already serves only the
-  copies whose record matches. A copy onboarded against another server joined
-  this build's instead and was refused there (a6d07cf3). Nil, or a copy whose
-  file names no server, answers exactly as before.
+  The copy's record is what actually happened; a copy onboarded against
+  another server must join that one.
   """
   @spec server_url_for(String.t() | nil) :: String.t()
   def server_url_for(nil), do: server_url()
@@ -246,13 +186,8 @@ defmodule CmsHarness.Config do
   @doc """
   Whether the server is answering at all.
 
-  Asked only when a hook is already being refused, to replace a guess with a
-  fact. The refusal used to say "the server itself may well be healthy" — a
-  hedge, and on the day it mattered it was wrong: the server was returning 500
-  and the message sent the reader to look at the harness's socket.
-
-  Two seconds, because this is on the path of a refusal the agent is waiting
-  for, and a slow answer about why nothing works is its own failure.
+  Asked only when a hook is already being refused, so the refusal states a
+  fact instead of guessing. Two seconds: an agent is waiting on the refusal.
   """
   @spec probe_server() :: {:http, pos_integer()} | {:error, term()}
   def probe_server do

@@ -2,33 +2,14 @@ defmodule CodeMySpec.Provisioning.Credentials do
   @moduledoc """
   Every credential the run will need, and whether each one actually works.
 
-  ## Proven by a call, not by looking right
-
-  A token that is the right length and starts with the right prefix tells you
-  nothing. The failure this prevents is the one where setup accepts a
-  credential, runs four steps, and pauses on the fifth because the token was
-  read-only — by which point Sam has a server he did not want yet and no idea
-  which of the five things he entered was wrong.
-
-  So `check/2` makes a real request per credential. `:verified` means a
-  provider answered; anything else names what is wrong (criterion 7983).
-
-  ## Under-scoped is a different answer from wrong
-
-  A token the provider recognises but refuses is not a bad token, and telling
-  Sam "invalid credential" sends him to mint a new one with the same
-  permissions. `{:rejected, missing}` carries the permission the call needed,
-  so the fix is "add Registrar write" rather than "try again" (criterion
-  7984).
-
-  ## Two kinds of credential, one list
-
-  Hetzner has no OAuth — its API token and object-storage key pair are pasted,
-  and the key pair can only be minted in the console. Cloudflare, Resend and
-  GitHub are connected on the account. Sam does not care about that
-  distinction; he cares that the run has what it needs before it starts, which
-  is why both kinds appear in one list (criterion 7981) rather than being
-  split across two pages by an implementation detail.
+  - **Proven by a call.** `check/3` makes a real, cheap read per credential:
+    `:verified` means the provider answered. A token that looks right but is
+    read-only would otherwise fail several steps into a run.
+  - **Under-scoped is not wrong.** `{:rejected, permission}` names the
+    permission the call needed, so the fix is "add Registrar write", not
+    "mint another token".
+  - **One list** for pasted secrets (Hetzner API token, S3 key pair) and
+    account connections (GitHub, Cloudflare, Resend).
   """
 
   require Logger
@@ -53,14 +34,9 @@ defmodule CodeMySpec.Provisioning.Credentials do
           why: String.t()
         }
 
-  # `options: :always` is a credential every run needs whatever Sam turned off
-  # — there is no setup without a repository and a server.
-  #
-  # `directions` is separate from `hint` because they answer different
-  # questions: the hint goes in the field, the directions say where in the
-  # provider's console to go and what happens when you get there. The S3 secret
-  # is shown once and never again, and a placeholder cannot carry that — it
-  # disappears the moment the field has a value.
+  # `options: :always` is a credential every run needs. `directions` is separate
+  # from `hint`: the hint is a placeholder that disappears once the field has a
+  # value, and the directions carry where to go and that a secret is shown once.
   @catalogue [
     %{
       key: "github",
@@ -150,9 +126,7 @@ defmodule CodeMySpec.Provisioning.Credentials do
   @doc """
   The credentials a given set of options actually requires.
 
-  A credential for a step Sam turned off is not asked for (criterion 7982).
-  Asking anyway trains people to enter things they do not need, which is how a
-  token with more permissions than the job requires ends up in the store.
+  A credential for a step the user turned off is not asked for.
   """
   @spec required(Scope.t() | [atom()]) :: [credential()]
   def required(%Scope{} = scope), do: required(CodeMySpec.Provisioning.setup_options(scope))
@@ -170,20 +144,10 @@ defmodule CodeMySpec.Provisioning.Credentials do
   Whether a credential's value is on file — without reading the value.
 
   A connection is stored per account by the OAuth flow. A secret is stored at
-  the grain its catalogue entry names, because the answer differs per
-  credential and getting it from the wrong place is worse than not asking:
-
-  `48a6e127` moved the Hetzner token and the S3 key pair to the account,
-  "the same grain as the servers they name" — a token names a Hetzner account
-  and the boxes it reaches outlive any project, so keying it per project made
-  the servers page depend on which project happened to be open. Age keys stayed
-  on the project, where they mean something.
-
-  `Hetzner.token/1` was taught to read the account first in that same commit.
-  This was not, and the form kept writing per project — so a token typed into
-  the page went to a grain the runtime ignores, and the check reported the
-  account credential's result against the project field the operator had just
-  filled in (`bcd2b2b4`).
+  the grain its catalogue entry names: `grain: :account` (the Hetzner API
+  token, which names a Hetzner account whose boxes outlive any project) reads
+  `AccountSecrets`; everything else reads `ProjectSecrets`. `put_value/3` uses
+  the same rule, so the form writes where the runtime reads.
   """
   @spec stored?(Scope.t(), credential() | String.t()) :: boolean()
   def stored?(scope, key) when is_binary(key) do
@@ -206,10 +170,8 @@ defmodule CodeMySpec.Provisioning.Credentials do
   @doc """
   Store a secret at the grain its catalogue entry names.
 
-  The counterpart to `stored?/2`, and the half that was missing: the form wrote
-  every secret to the project while `Hetzner.token/1` read the account first,
-  so a token typed into the page went somewhere the runtime never looks. One
-  function decides the grain now, and both the write and the read ask it.
+  The counterpart to `stored?/2`: one function decides the grain for both the
+  write and the read.
   """
   @spec put_value(Scope.t(), credential() | String.t(), String.t()) ::
           {:ok, term()} | {:error, term()}
@@ -230,9 +192,8 @@ defmodule CodeMySpec.Provisioning.Credentials do
   Prove a credential by using it.
 
   Returns `:verified`, `:missing`, or `{:rejected, missing_permission}`. The
-  call made is deliberately the cheapest read each provider offers — this runs
-  on a page Sam is looking at, and a check that provisions something to prove
-  it works is not a check.
+  call made is the cheapest read each provider offers; a check never
+  provisions anything.
   """
   @spec check(Scope.t(), credential() | String.t(), keyword()) :: state()
   def check(scope, key, opts \\ [])
@@ -251,10 +212,8 @@ defmodule CodeMySpec.Provisioning.Credentials do
       :missing
     end
   rescue
-    # A provider client that raises must not take the page with it. Sam is
-    # looking at this while entering credentials, and a Hetzner outage
-    # crashing the setup page turns "we could not check that one" into "the
-    # page is broken" — which is a much worse answer and a less true one.
+    # A provider client that raises must not take the page with it: "could not
+    # check" is truer than "the page is broken".
     error ->
       Logger.warning("[Credentials] check raised for #{credential.key}: #{inspect(error)}")
       :unchecked
@@ -277,9 +236,8 @@ defmodule CodeMySpec.Provisioning.Credentials do
   end
 
   defp do_check(scope, %{provider: :cloudflare}, _opts) do
-    # Zones first, then the registrar. A grant can read zones and still refuse
-    # to buy a domain, and that gap is exactly criterion 7984 — reporting the
-    # zone read as success would call an under-scoped grant verified.
+    # Zones, then the registrar: a grant can read zones and still refuse to buy
+    # a domain.
     with :verified <- classify(Cloudflare.list_zones(scope), "Zone read on the Cloudflare grant") do
       classify(Cloudflare.list_domains(scope), "Registrar domain admin on the Cloudflare grant")
     end
@@ -298,15 +256,12 @@ defmodule CodeMySpec.Provisioning.Credentials do
 
   defp do_check(_scope, _credential, _opts), do: :unchecked
 
-  # A refusal and a network hiccup are different answers. Reporting a timeout
-  # as `rejected` sends Sam to re-mint a token that was fine.
+  # A refusal and a network hiccup are different answers: a timeout is
+  # `:unchecked`, never `rejected`.
   defp classify({:ok, _}, _permission), do: :verified
   defp classify(:ok, _permission), do: :verified
 
-  # Each provider tags its own errors — `{:cloudflare_error, status, body}`,
-  # `{:hetzner_error, ...}`, `{:resend_error, ...}`. Matching the status out of
-  # the tagged tuple rather than listing the three tags means a fourth
-  # provider works here without being added.
+  # Any provider's `{tag, status, body}` error with 401/403 is a rejection.
   defp classify({:error, {_tag, status, _body}}, permission) when status in [401, 403],
     do: {:rejected, permission}
 
@@ -326,10 +281,9 @@ defmodule CodeMySpec.Provisioning.Credentials do
   @doc """
   Every required credential that has nothing on file.
 
-  What `start_setup` refuses on: a run that starts without its credentials
-  fails partway, having already made things (criterion 7985). Stopping before
-  the first step is the difference between "enter your Resend key" and "delete
-  this server and try again".
+  What `start_setup` refuses on: stopping before the first step is the
+  difference between "enter your Resend key" and "delete this server and try
+  again".
   """
   @spec missing(Scope.t()) :: [credential()]
   def missing(%Scope{} = scope) do
@@ -339,15 +293,13 @@ defmodule CodeMySpec.Provisioning.Credentials do
   @doc """
   The catalogue, each entry carrying whether it is stored and what a check said.
 
-  `check?: false` skips the provider calls — the page renders on mount long
-  before Sam has entered anything, and six HTTP requests to say "missing" six
-  times is a slow page and a pointless load on providers.
+  `check?: false` skips the provider calls; the page renders on mount before
+  anything is entered.
   """
   @spec list(Scope.t(), keyword()) :: [map()]
   def list(%Scope{} = scope, opts \\ []) do
-    # `check?: true` checks everything; `check: [key, ...]` checks only those.
-    # The narrow form exists because saving one credential should not call
-    # every provider — see `ProvisioningLive.save_credentials`.
+    # `check?: true` checks everything; `check: [key, ...]` checks only those,
+    # so saving one credential does not call every provider.
     only = Keyword.get(opts, :check)
     check_all? = Keyword.get(opts, :check?, false)
 

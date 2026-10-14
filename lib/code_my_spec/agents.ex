@@ -2,38 +2,21 @@ defmodule CodeMySpec.Agents do
   @moduledoc """
   The agents CodeMySpec has started, and the credential each one runs on.
 
-  Server-side half of starting a coding agent. Owns which agents exist, on which
-  working copy and on which provider; mints the per-copy Pi configuration from
-  the account's integration; and holds the record a conversation attaches to.
-  `CmsHarness.Agents` is the other half — the OS process on the device — reached
-  over the harness channel. Same split as Provisioning: state and ordering live
-  here, execution happens on the box, because the server holds no disk and
-  cannot start a process on somebody's machine.
+  Server-side half of running an agent: which agents exist, on which working
+  copy, role and provider, and the record a conversation attaches to.
+  `CmsHarness.Agents` is the other half — the OS process on the device —
+  reached over the harness channel. State and ordering live here; execution
+  happens on the box.
 
-  ## Starting is refused before it is attempted
+  `start_agent/2` resolves the credential before anything else and refuses
+  without a usable one: `:not_connected` (connect a provider) and
+  `:reconnect_required` (reconnect one already connected) are kept distinct.
 
-  `start_agent/2` resolves the credential first and refuses if there is not a
-  usable one. That ordering is the point rather than an optimisation. An agent
-  started without a working credential fails on its first model call — minutes
-  later, in a log nobody is reading — which is why `agent.sh` ended up grepping
-  its own output for expired-session text and bailing: retrying an
-  unauthenticated agent burns twelve minutes to reach the same answer with the
-  cause buried under supervisor noise.
+  An agent is recorded `:starting` and only reads as running when its process
+  is present; its turns arrive in `Conversations` through
+  `AgentHarness.relay_up/2`.
 
-  The two refusals are kept apart for the same reason. `:not_connected` sends
-  someone to connect a provider; `:reconnect_required` sends them to reconnect
-  one they know they connected. Reporting the second as the first sends them to
-  set up something that already exists.
-
-  ## Started means watchable
-
-  A pid proves a fork. It does not prove the credential resolved, that a model
-  answered, or that the harness was ever joined, and every one of those failures
-  is quiet from the caller's side. So an agent is recorded `:starting` and only
-  becomes `:running` when the device says it is — and its turns arrive in
-  `Conversations` the same way a Claude Code agent's do, through
-  `AgentHarness.relay_up/2`. An agent the server cannot observe is
-  indistinguishable from one that never started.
+  See knowledge/agents, "Starting and restarting".
   """
 
   use Boundary,
@@ -108,40 +91,20 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Utils.MapAccess
   alias CodeMySpec.WorkingCopies
 
-  # How long we wait for a turn before reporting "still working" instead of
-  # blocking further. The agent is not interrupted — this is how long we wait
-  # for it, not how long it has.
-  #
-  # Bounded well below 30s, not just below it. The MCP transport's 30s bare
-  # default long ago stopped being the tight constraint here for direct HTTP
-  # calls -- `/mcp/harness` carries a 5-minute `request_timeout` (see
-  # router.ex) precisely because a real provisioning step runs longer than
-  # 30s. What still caps this one is `CodeMySpec.CodeMode.Sandbox`'s own 30s
-  # wall clock: `message_agent` is reachable only through `run_script`
-  # (`ScriptableTools`, not `LocalServer`'s spine), so every call to it runs
-  # inside that sandbox's `Task.shutdown(:brutal_kill)`. A 25s wait left only
-  # 5s of margin for Lua overhead, the tool call itself and the response
-  # trip back out, and it was too tight in practice -- several real calls in
-  # one QA session came back as a raw sandbox kill ("the script ran longer
-  # than it is allowed to") instead of this module's own graceful
-  # `:still_working`, indistinguishable from a broken tool. Issue ddcff0c8.
+  # How long we wait for a turn before answering `:still_working`; the agent is
+  # not interrupted. Well under the code-mode sandbox's 30s wall clock, which
+  # every `message_agent` call runs inside.
+  # See knowledge/agents, "Timeouts".
   @message_timeout_ms 15_000
 
   @stop_timeout_ms 10_000
 
-  # Ten, because that is roughly a conversation rather than a session: enough
-  # for a visitor to be shown their project works and be answered about it,
-  # short of an afternoon on our bill. Configurable, since the right number is
-  # a commercial question rather than a technical one.
+  # Roughly a conversation, not a session. Configurable: a commercial number.
   @default_turn_cap 10
 
   # Long enough for a cold start on a loaded box, short enough that a machine
   # that is never going to answer does not hold the caller.
   @start_timeout_ms 15_000
-
-  # Shorter than an operator's stop. This runs inside a reconcile that fires on
-  # every lane diff, so a machine that is slow to answer must not hold it —
-  # the next report tries again, and the row stays reachable meanwhile.
 
   @type start_error ::
           :missing_active_project
@@ -201,8 +164,8 @@ defmodule CodeMySpec.Agents do
   @doc """
   Mark the agent's open promotion task as awaiting the queue.
 
-  Called by the MCP `promote` tool once `PromotionQueue` has answered `:queued`
-  (issue e515bff3, story 1091). Resolves the agent here so the tool needs no
+  Called by the MCP `promote` tool once `PromotionQueue` has answered `:queued`.
+  Resolves the agent here so the tool needs no
   getter of its own.
   """
   @spec await_promotion(Ecto.UUID.t(), String.t(), String.t()) ::
@@ -237,11 +200,9 @@ defmodule CodeMySpec.Agents do
     end)
   end
 
-  # Restricted to tasks with no story_id of their own: a component shared by
-  # several stories otherwise pulls each sibling story's own story-scoped
-  # tasks into every other sibling's cycle time too (issue 9c2107a6). See
-  # `Sessions.list_tasks_for_story/3` for why the component_id fallback
-  # exists at all.
+  # The component fallback takes only tasks with no story_id of their own: a
+  # component shared by several stories would otherwise pull each sibling's
+  # tasks into every other's cycle time.
   defp own_or_unattributed?(task, story_id, component_id) do
     task.story_id == story_id or
       (is_nil(task.story_id) and not is_nil(component_id) and task.component_id == component_id)
@@ -270,8 +231,8 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  Every app restart on a working copy no agent currently holds a story on --
-  the project-level case criterion 1998 describes.
+  Every app restart on a working copy no agent currently holds a story on —
+  the project-level case.
   """
   @spec list_app_restarts_without_story(Scope.t()) :: [AppRestart.t()]
   def list_app_restarts_without_story(%Scope{} = scope) do
@@ -316,10 +277,8 @@ defmodule CodeMySpec.Agents do
   What an agent may call: its role's grants as the code states them now, plus
   what its machine reported.
 
-  Derived on each call rather than read off the row. The row's list was written
-  at start, so a grant added to a role never reached an agent already running —
-  `install_credo_checks` for coding and `read_project_file` for qa sat in
-  `ToolSets` while existing agents were refused them (`c5df88e7`).
+  Derived on each call rather than read off the row, so a grant added to a role
+  reaches agents already running.
   """
   @spec tools_of(Scope.t(), Agent.t()) :: [String.t()] | nil
   def tools_of(%Scope{} = scope, %Agent{} = agent),
@@ -328,10 +287,11 @@ defmodule CodeMySpec.Agents do
   @doc """
   Starts an agent on a working copy, on the provider the caller named.
 
-  The provider is an argument rather than ambient state. A machine-wide default
-  answers correctly right up until two callers want different things, and then
-  spends the wrong subscription for one of them — which nobody notices until a
-  quota or a bill does.
+  The provider is an argument rather than ambient state, so two callers wanting
+  different subscriptions never spend the wrong one.
+
+  A stopped agent on the same copy and role that still holds unfinished tasks
+  is restarted in place instead of a new row being created.
   """
   @spec start_agent(Scope.t(), map()) :: {:ok, Agent.t()} | {:error, start_error()}
   def start_agent(%Scope{} = scope, attrs) do
@@ -347,14 +307,9 @@ defmodule CodeMySpec.Agents do
          :start <- resume_holder(scope, attrs),
          {:ok, agent} <- AgentsRepository.create_agent(scope, base_attrs(scope, attrs)),
          {:ok, _conversation} <- open_conversation(scope, agent) do
-      # Carried on the struct rather than stored: the machine needs both, and
-      # the row must not become a second place a subscription lives or a second
-      # copy of a transcript that already has a table.
-      #
-      # Hydrated after the conversation is opened, because that is what the
-      # history is read from — an agent that has spoken before is being resumed
-      # here even on a call named `start`, which is the whole of "it picks up
-      # the same conversation every time".
+      # Credential and history ride on the struct, never stored on the row.
+      # Hydrated after the conversation is opened: that is what the history is
+      # read from.
       with {:ok, agent} <-
              launch(scope, LaunchRequest.hydrate(scope, %{agent | credential: credential})) do
         watch_over(scope, agent)
@@ -364,34 +319,11 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A stopped agent still holding work is resumed, not replaced.
-  #
-  # `start_agent/2` always created a new row, and a task's ownership *is* which
-  # agent's list it sits in (`Agent`'s own note). So an agent killed mid-task —
-  # which every promote does, because promoting restarts the shared dev server
-  # every working copy on the box is using — left its claims behind on a row
-  # nothing would run again. Starting a replacement produced a second agent for
-  # the same role and copy that could not claim what the first still held.
-  #
-  # Measured 2026-09-23 on Broken Oaths: a promote stopped coding `b01a95bb` at
-  # 01:50:04 while it held `story_promoted` active on story 950 and a
-  # blocked `bdd_specs_passing`. The replacement reported "get_next_requirement's
-  # only offering — story 950's story_promoted — is already claimed by
-  # another agent" and had nothing else to do. Four other stopped agents on that
-  # copy held active tasks the same way. The role was stalled with a live agent
-  # sitting next to its own orphaned work.
-  #
-  # Resuming rather than moving the tasks across is deliberate. Task ids are
-  # referenced from outside the row — `question_requests.task_id` is what a
-  # blocker is keyed on — and `embeds_many ... on_replace: :delete` means
-  # lifting a task out of one list and putting it in another mints a new id and
-  # orphans every blocker pointing at the old one. The row already knows how to
-  # come back: `restart_agent/2` keeps the tasks, the conversation and the
-  # blockers exactly where they are.
-  #
-  # Only for a holder. A stopped agent with nothing unfinished is genuinely
-  # finished, and reviving it instead of starting a clean one would make
-  # `start_agent` unable to ever give a role a fresh start.
+  # A stopped agent still holding work is resumed, not replaced: task ownership
+  # is which row's list a task sits in, and moving tasks would mint new ids and
+  # orphan their blockers. Only for a holder, so a role can still get a fresh
+  # start.
+  # See knowledge/agents, "Starting and restarting".
   defp resume_holder(%Scope{} = scope, attrs) do
     with copy_id when is_binary(copy_id) <- Map.get(attrs, :working_copy_id),
          role when not is_nil(role) <- Map.get(attrs, :role),
@@ -434,13 +366,11 @@ defmodule CodeMySpec.Agents do
 
   @doc """
   The scope a call from `agent` acts in: which working copy is part of who is
-  calling (John, ed28189c).
+  calling.
 
     * No working copy named, and the agent has one in the scope's project — the
       agent's copy, with its environment (`WorkingCopies.put_scope/2`), exactly
-      as an `X-Harness-Id` would have set it. An agent-only call over the
-      hosted `/mcp/harness` used to carry no environment and every
-      file-touching tool refused it with `:no_environment`.
+      as an `X-Harness-Id` would have set it.
     * A copy named that is not the agent's — the named copy stands: it is the
       connection's own disk. Logged, because the two come from one launch
       request and disagreeing means something upstream is wrong.
@@ -475,8 +405,7 @@ defmodule CodeMySpec.Agents do
 
   @doc """
   The Presence topic for a project's agents: one key per agent whose process
-  is alive on a harness, tracked by the channel of the copy it runs in
-  (`.code_my_spec/plans/agent-liveness-from-presence.md`).
+  is alive on a harness, tracked by the channel of the copy it runs in.
   """
   @spec presence_topic(Ecto.UUID.t()) :: String.t()
   defdelegate presence_topic(project_id), to: Presence, as: :topic
@@ -567,7 +496,7 @@ defmodule CodeMySpec.Agents do
   end
 
   # A seat (copy and role) whose agent is off is not empty: starting beside it
-  # would staff a role somebody turned off (39af5611).
+  # would staff a role somebody turned off.
   defp seat_is_on(scope, %{working_copy_id: copy_id, role: role}) do
     case off_in_seat(scope, copy_id, role) do
       nil -> :ok
@@ -586,7 +515,7 @@ defmodule CodeMySpec.Agents do
   @doc """
   Turn an agent on: clear its off record and start it again.
 
-  The only way back from off (39af5611). Start, restart and message never do
+  The only way back from off. Start, restart and message never do
   it implicitly; they refuse. A retired agent cannot be turned on.
   """
   @spec turn_on_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
@@ -613,7 +542,7 @@ defmodule CodeMySpec.Agents do
   @doc """
   Retire an agent: record who, when and why, end its process, and free its seat.
 
-  Not off (39af5611). Off keeps the seat and can be turned back on; retired is
+  Not off. Off keeps the seat and can be turned back on; retired is
   gone for good. Nothing is ever delivered to it again, it is never turned on,
   and a new agent may be started in its seat. The row and its transcript stay.
 
@@ -642,9 +571,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A retired agent's open tasks kept their requirement claimed, so the seat's
-  # next agent was refused with `:task_owned_by_another_agent` (59c93382).
-  # Closed as cancelled on the retired row, which keeps their history.
+  # Open tasks would keep their requirements claimed against the seat's next
+  # agent. Closed as cancelled on the retired row, which keeps their history.
   defp release_tasks(%Agent{id: id}) do
     import Ecto.Query, only: [from: 2]
 
@@ -714,20 +642,9 @@ defmodule CodeMySpec.Agents do
     })
   end
 
-  # A machine that answered, and answered with nothing.
-  #
-  # Distinct from a machine that has not answered yet, which is `nil` and is
-  # legitimate: `create_working_copy` staffs a copy before it has joined the
-  # harness (`34e03128`), and refusing there would break provisioning for a
-  # copy that is merely early. An empty *list* is a report, and what it reports
-  # is a machine serving nothing.
-  #
-  # Worth refusing rather than folding in, because `machine_tools/3` adds
-  # whatever the copy offers to the role's granted set — so nothing offered
-  # produces a shorter list rather than an error, and the agent starts. It then
-  # comes up, reports a tool list, and fails every call it makes. That is this
-  # story's note measured at four hours, and nothing anywhere treated "no tools
-  # offered" as a fault.
+  # `machine_tools: []` is a machine that answered with nothing, and an agent
+  # started there fails every call; refused. `nil` is a copy that has not joined
+  # yet (provisioning staffs copies early) and is allowed.
   defp machine_serves_tools(attrs) do
     case Map.get(attrs, :working_copy_id) do
       nil -> :ok
@@ -754,20 +671,17 @@ defmodule CodeMySpec.Agents do
   holding every call it made and every result it got, and carries on
   (`Mailbox.carry_on/2`) before anything queued for it is delivered.
 
-  `turn_started_at` is cleared for the mid-turn case, for the reason
-  `restart_agent/2` already clears it: left set, `list_agent_work` and every
-  check-in go on reporting a turn that opened before a process that no longer
-  exists (`4078e7bf`). A turn handed to the old process and never started is
-  undelivered, for every agent, for the same reason.
+  `turn_started_at` is cleared for the mid-turn case, as `restart_agent/2`
+  clears it, so no reader reports a turn from a process that no longer exists.
+  A turn handed to the old process and never started is abandoned.
   """
   @spec account_for_interrupted_turns(Scope.t(), [Agent.t()]) :: :ok
   def account_for_interrupted_turns(%Scope{} = scope, agents) when is_list(agents) do
     Enum.each(agents, &account_for_interrupted_turn(scope, &1))
   end
 
-  # A turn handed to the harness that just died can never start. Left open it
-  # fences the agent out of the join's one sweep for up to five minutes, and
-  # nothing sweeps again (0d3b800d).
+  # A turn handed to the harness that just died can never start; left open it
+  # would fence the agent out of the join's one sweep.
   defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent),
     do: Offers.abandon_turns(agent.id)
 
@@ -777,19 +691,10 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # Starting a `main` agent is what the cadence exists to look after, so it is
-  # also what should start one. Without this the only triggers were the boot
-  # sweep and a continuous-mode flip, so a main agent started on a running node
-  # — the ordinary case — had nothing scheduled to wake it until the next
-  # restart (`11aea8f5`).
-  #
-  # Starting one is also the clearest statement that this project is back at
-  # work, which is what `resume/1` is for. It had no caller anywhere: a project
-  # whose main agent tapped out stayed stood down permanently, and a later
-  # cadence would tick and no-op forever because `running?/1` still found the
-  # project in the stood-down list — indistinguishable from a project nobody
-  # works on (`5f9fad45`). Ordered before `ensure_cadence/1` so the timer that
-  # comes up is one that will actually deliver.
+  # Starting a role that wakes on the cadence (main) starts the cadence and
+  # clears a stand-down: it says the project is back at work. `resume/1` comes
+  # first so the timer that comes up will deliver.
+  # See knowledge/agents, "The cadence".
   defp watch_over(scope, %Agent{role: role}) do
     if RoleProfile.wakes_on?(role, :cadence) do
       MainAgent.resume(scope)
@@ -802,53 +707,20 @@ defmodule CodeMySpec.Agents do
   @doc """
   Restart one agent's process in place — same id, same conversation.
 
-  For a row a shared harness restart (or a crashed machine) pulled the rug
-  out from under: `status` still says `:running`, nothing is actually there,
-  and `wake/2`'s dispatch has nowhere to land. John: "we're persisting the
-  state of a process — just display the state of the process, and when you
-  click play it should start the process again."
+  Not `start_agent/2` again: a new row is a new, empty thread. This re-runs
+  only the launch half — fetch a credential, hydrate the existing history, ask
+  the machine to run it — and recomputes the tool list, so a tool added since
+  the agent started reaches it.
 
-  The tool list is recomputed rather than carried over, and that is the half
-  that makes a restart worth anything after a deploy. `tools` is written once at
-  creation, so an agent started before a tool existed could never reach it — no
-  matter how many times it was restarted — and the only symptom available from
-  inside the agent is "it is not in my list", which reads as a client caching
-  problem and is not one. A coding agent sat through exactly that with `promote`.
+  The live process is stopped first (`halt_for_restart/1`), so a restart reaches
+  an agent hung mid-turn rather than handing back the running process. A turn
+  that was open carries on from the conversation as recorded
+  (`Mailbox.carry_on/2`), before anything queued.
 
-  Deliberately not `start_agent/2` again. That inserts a new row, and
-  `find_or_create_agent_conversation/3` keys on `agent_id` — a fresh id is a
-  fresh, empty thread, which is exactly the outcome a restart exists to
-  avoid. This re-runs only the launch half: fetch a credential, hydrate the
-  existing history (same lookup, same id, same transcript), ask the
-  machine to run it. The row that comes back is the same row, running again.
+  A machine that could not be asked refuses the restart rather than reporting
+  one it did not perform; "already not running" is a satisfied stop.
 
-  ## It stops the process first, and that is the whole of it working
-
-  Without the stop this was a restart only of an agent that was already dead.
-  `Engine.start/1` answers `{:error, {:already_started, pid}}` with `{:ok,
-  %{pid: pid}}` — correct idempotence for a re-delivered *start*, and wrong for
-  a restart: the live process was handed straight back, so whatever turn it was
-  in carried on and the only thing that reached it was the `Restarted: <reason>`
-  message sent afterwards.
-
-  Which made the remedy a no-op against the one agent worth applying it to. An
-  agent hung mid-turn has a live process, and story 1059's whole premise is the
-  main agent acting on an agent that cannot report its own trouble. Every
-  restart reported success while changing nothing (`e9f9a5ab`).
-
-  So a restart now ends the process the turn was running in. The turn itself
-  carries on (`Mailbox.carry_on/2`), from the conversation as recorded, before
-  anything queued — rule `0a06befe`. A call the hang was stuck in comes back
-  answered as unknown, which is the way out of it.
-
-  The stop goes through `halt_for_restart/1`, not `end_process/2` — see the
-  comment on it. `end_process/2` skips the ask for an agent whose row reads
-  `:starting`, which is right for a stop and wrong here, and trusting that guard
-  is how a survivable collision became a permanently stuck agent.
-
-  Either way a machine that could not be asked refuses the restart rather than
-  reporting one it did not perform, and "already not running" stays a satisfied
-  stop.
+  See knowledge/agents, "Starting and restarting".
   """
   @spec restart_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, term()}
   def restart_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
@@ -862,17 +734,9 @@ defmodule CodeMySpec.Agents do
              status: :starting,
              os_pid: nil,
              os_boot_id: nil,
-             # The turn the restart cut. Left set, `list_agent_work`
-             # and every check-in go on reporting "a turn opened at <then> and
-             # has not finished" for an agent that has been restarted and whose
-             # process is gone — measured at two minutes past the restart and
-             # still climbing, against a row nothing would ever clear
-             # (`4078e7bf`).
+             # The turn the restart cut; nothing else would ever clear it.
              turn_started_at: nil,
-             # Stale otherwise: an agent about to run again does not need to
-             # keep saying why it last stopped, and a `:reaped` row that starts
-             # cleanly and is stopped deliberately later must not be read as
-             # still reaped from before.
+             # A row that starts cleanly must not read as stopped for an old reason.
              stopped_reason: nil,
              tools: tools_of(scope, agent)
            }),
@@ -898,32 +762,10 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # Ask the machine to end it, whatever the row says.
-  #
-  # Deliberately not `end_process/2`, which skips the ask for an agent whose row
-  # reads `:starting`, on the reasoning that such an agent "never came up, so
-  # there is no process to end". True for a *stop* and false here, and
-  # `working_copy_connected?/1`'s own moduledoc says why: "status is written on
-  # a clean stop or a clean start; nothing writes it when a shared harness
-  # restart or a crashed machine takes the process with it."
-  #
-  # Measured rather than supposed. An agent that had started, worked a turn end
-  # to end and replied still read `:starting`, because the machine's
-  # confirmation never landed. The stop was skipped on that guard, `launch/2`
-  # then collided — `{:shutdown, {:failed_to_start_child, Anubis.Client,
-  # {:already_started, …}}}` — the new process lost, and the row stuck at
-  # `:starting` with `os_pid: nil` indefinitely while `restart_agent/2` answered
-  # `{:ok, agent}`. Nine minutes later nothing had retried (`4078e7bf`).
-  #
-  # Worth being plain that this is a defect `e9f9a5ab` introduced: before it,
-  # the collision was survivable because the machine handed the live process
-  # back. Adding the stop without noticing that its guard trusts `status` as
-  # evidence of a process turned a no-op into a way to lose the agent.
-  #
-  # So a restart asks unconditionally. The transport answers `{:error,
-  # :not_running}` for an agent the machine is not running, and `stopped?/1`
-  # already reads that as a satisfied stop — which is what makes asking safe for
-  # the case the guard was there to protect.
+  # Ask the machine to end it, whatever the row or Presence says, and fail on any
+  # answer but stopped or `:not_running`. Not `end_process/2`, which ignores a
+  # failed ask for an agent that is not present: a restart that launches beside
+  # a surviving process collides and leaves the row stuck at `:starting`.
   defp halt_for_restart(%Agent{} = agent) do
     agent.working_copy_id
     |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
@@ -932,40 +774,23 @@ defmodule CodeMySpec.Agents do
 
   @doc """
   Whether anything is actually connected for this agent's working copy right
-  now — read from the live channel registry, never from `agent.status`.
+  now — read from the live channel registry, never from `agent.status`, which
+  nothing rewrites when a harness restart or a crashed machine takes the
+  process.
 
-  `status` is written on a clean stop or a clean start; nothing writes it
-  when a shared harness restart or a crashed machine takes the process with
-  it, so a row can say `:running` indefinitely with nothing behind it. This
-  is the same check `Rows.build/4`'s `served` field already trusts for "is
-  this working copy connected" — reused here rather than a second, agent-
-  shaped copy of the same registry lookup.
-
-  Not a per-role liveness check — a connected working copy could still have
-  lost one specific agent's own process while others on it survive. That
-  needs the harness to report which agents it is actually running, which it
-  does not yet do. This is the strictly weaker, always-available half: if
-  *nothing* is connected, no agent on that copy can possibly be alive.
+  Not a per-agent liveness check: a connected copy can still have lost one
+  agent's process. That is `present?/2`. If nothing is connected, no agent on
+  the copy can be alive.
   """
   @spec working_copy_connected?(Agent.t()) :: boolean()
   def working_copy_connected?(%Agent{working_copy_id: id}) do
     match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(id))
   end
 
-  # The main working copy holds the roles whose `RoleProfile.home_copy` is
-  # `:main` — main and product, one each (John, step 4c) — and nothing else.
-  # Coding and QA never start there: metric_flow carried a coding agent there
-  # from 09-24 until John retired it.
-  #
-  # One of each, because a second main is a second conversation on the copy the
-  # user is told has one thing to talk to, and a second product is a second
-  # chain of thought through the same design.
-  #
-  # Every other checkout holds one agent per role too. Two coding agents on one copy
-  # claim and edit the same work: on metric_flow 2026-09-27 the main agent could
-  # not reach `restart_agent`, started a fresh coder beside the running one, and
-  # the copy had two once the original came back. `restart_agent/2` does not
-  # pass through here, so an agent is never refused for counting as itself.
+  # One agent per role per checkout. The main copy holds only the roles that
+  # live there (`RoleProfile.lives_on_main_copy?/1`: main and product), one
+  # each. `restart_agent/2` does not pass through here, so an agent is never
+  # refused for counting as itself.
   defp copy_is_free(scope, attrs) do
     main = WorkingCopies.main(scope)
 
@@ -985,15 +810,8 @@ defmodule CodeMySpec.Agents do
   end
 
   # Where the agent will actually run, decided before anything is checked
-  # against it.
-  #
-  # `base_attrs/2` used to fill this in *after* the guard, so a caller who named
-  # no checkout was checked against a copy they had not mentioned and then
-  # started on the one they had not named. That is not a corner: the MCP tool
-  # drops nil keys, so every ordinary `start_agent` arrives naming nothing, and
-  # a second agent got into the main checkout by leaving a field out. QA found
-  # it by making the same call twice, once with the copy named and once
-  # without — refused, then allowed.
+  # against it: callers routinely name no checkout (the MCP tool drops nil
+  # keys), and the guard must judge the copy the agent will run on.
   defp put_destination(%Scope{} = scope, attrs) do
     case resolve_destination(scope, attrs) do
       {:ok, root, working_copy_id} ->
@@ -1007,23 +825,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # An id names a specific checkout unambiguously, so root has to be derived
-  # from it, not defaulted independently from the caller's own scope. The
-  # previous version always computed `root` as `attrs[:working_copy] ||
-  # scope.cwd` before ever looking at an id — so a caller who passed only an
-  # id (the identifier `list_working_copies` puts first) got that id kept
-  # correctly, but `root` silently became the CALLER'S OWN checkout. When the
-  # caller's own checkout is the main copy, `names?/2`'s root branch then
-  # matched main by accident, and `start_agent` refused a start on some other
-  # copy entirely while blaming the main checkout for it.
-  #
-  # An id this scope does not own is refused rather than defaulted, unlike an
-  # unresolved root. The two look similar but are not: a root that resolves to
-  # nothing is a checkout that has never joined and legitimately has no row
-  # yet, which is what that fallback exists for. An id that resolves to
-  # nothing — a typo, or another project's copy — has no such reading, and
-  # defaulting it ran an agent in the caller's own tree while recording it
-  # against a checkout from a different project entirely. Issue c0facd8e.
+  # An id names a checkout unambiguously, so the root is derived from it. An id
+  # this project does not own is refused rather than defaulted — unlike an
+  # unknown root, which may be a checkout that has not joined yet.
   defp resolve_destination(scope, %{working_copy_id: id})
        when is_binary(id) and id != "" do
     case owned_copy(scope, id) do
@@ -1044,22 +848,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The id has to come from the root when a root was named, not from the caller.
-  #
-  # Defaulting both fields from scope was one field too many. Every ordinary
-  # `start_agent` names a root and no id, so the id became the *caller's*
-  # checkout — and `names?/2` tests the id first, so the main-copy guard fired on
-  # starts that named somewhere else entirely. With an agent on the main copy,
-  # nothing could be started anywhere, and the refusal named a checkout the
-  # caller had not mentioned.
-  #
-  # It also placed the agent wrongly when the guard let it through: the row's
-  # `working_copy_id` is what the working copies page groups by, so an agent
-  # asked for on one copy was recorded on another.
-  #
-  # Falls back to the caller's own copy only when the root is the caller's own
-  # or names nothing we recognise — an unknown root is not a reason to refuse,
-  # because a checkout that has never joined has no row to find.
+  # The id comes from the named root, not the caller. Falls back to the
+  # caller's own copy only when the root names nothing recognised (a checkout
+  # that has never joined has no row), and says so (`warn_substitution/2`).
   defp id_for(%Scope{} = scope, root) do
     case WorkingCopies.by_root(scope, root) do
       %{id: id} ->
@@ -1071,21 +862,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The fallback is deliberate — see above — but it used to be silent, and that
-  # is what made it dangerous rather than merely lossy.
-  #
-  # QA of story 988 named `.../qa_sandbox`, was answered "Working copy:
-  # .../qa_sandbox", and got a row pointing at the main checkout. The agent
-  # really did run in qa_sandbox; only its record disagreed. `by_root/2` matches
-  # project *and device* and root, and that root's row for this project sits on
-  # a stale device, so the lookup missed and the caller's own copy stood in.
-  # Issue `af85efc7`.
-  #
-  # It matters beyond a wrong column: the stop decision and the analyzer alert
-  # are both computed from this id, so an agent editing one tree is told about
-  # another. Nothing is moved here — rewriting the root would relocate the agent
-  # itself, and relocating it *into the framework's own checkout* is worse than
-  # the bug — so the substitution stands and is announced instead.
+  # The stop decision and analyzer alerts are computed from this id, so an
+  # agent recorded against the wrong copy is told about the wrong tree. The
+  # substitution stands (relocating the agent would be worse) and is announced.
   defp warn_substitution(%Scope{} = scope, root) do
     if is_binary(root) and root != scope.cwd do
       Logger.warning(
@@ -1099,11 +878,7 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # By id or by root, because callers name a checkout both ways and a guard
-  # that only understands one of them does not fire on the other. `StartAgent`
-  # passes a root and no id at all — the id is filled in from scope afterwards
-  # — so reading only the id would leave the one surface that starts agents
-  # unguarded.
+  # By id or by root: callers name a checkout both ways.
   defp names?(attrs, copy) do
     id = MapAccess.get(attrs, :working_copy_id)
     root = MapAccess.get(attrs, :working_copy)
@@ -1113,7 +888,7 @@ defmodule CodeMySpec.Agents do
 
   # One agent per role on the main copy, by id alone: root does not matter
   # there, the copy is the project's. A retired agent's seat is free even while
-  # its stranded process runs (39af5611).
+  # its stranded process runs.
   defp refuse_if_occupied(scope, %{role: role}, copy) do
     if scope
        |> seat_holders()
@@ -1146,15 +921,9 @@ defmodule CodeMySpec.Agents do
       to_string(agent.role) == to_string(role)
   end
 
-  # Ask the machine to bring it up, and record what it reports.
-  #
-  # Best-effort on purpose, and the row already has a word for the outcome.
-  # `:starting` means "we asked and no machine has confirmed", which is exactly
-  # true when the copy's harness is not connected — and the working copies page
-  # already renders it as "Starting · we asked for this one; no harness has
-  # confirmed it". Failing the whole call instead would make an agent
-  # unstartable whenever its machine happened to be offline, and would discard
-  # the config directory that was just minted for it.
+  # Ask the machine to bring it up, and record what it reports. Best-effort: an
+  # offline machine leaves the row `:starting` (asked for, unconfirmed) rather
+  # than making the agent unstartable.
   defp launch(scope, %Agent{} = agent) do
     case Transport.start_agent(agent.working_copy_id, agent, @start_timeout_ms) do
       {:ok, report} -> {:ok, record_or_keep(scope, agent, report)}
@@ -1169,23 +938,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Answers `{:ok, agent}` at `:starting`, and that is deliberate rather than
-  # lax — see criterion 3211, which asks for the opposite and cannot have it.
-  #
-  # A row here is *intent*, not observation. `create_working_copy` staffs a
-  # copy with its three roles before that copy has joined the harness, and the
-  # machine reconciles to the rows afterwards through `agents_to_restore`. So
-  # "the machine did not start it" is the ordinary, recoverable case on the
-  # path that matters most, and refusing it breaks staffing outright:
-  # `ensure_copy_agents` and `offboard_ends_the_agents` both fail at their
-  # premise, measured, with `{:machine_did_not_start_it, :working_copy_missing}`.
-  #
-  # What 3211 is actually right about is the *reply*, not the return: a caller
-  # told "Agent started." for a row nothing has confirmed cannot tell that from
-  # a working agent. That is a wording problem in `AgentsMapper.started/1`, and
-  # fixing it there costs nothing here. Left alone pending a decision, because
-  # changing the return is what `34e03128` ("a :starting row is never retried")
-  # would have to be solved alongside.
+  # Answers `{:ok, agent}` at `:starting` on purpose: a row is intent, and the
+  # machine reconciles to rows afterwards (`agents_to_restore`). Copies are
+  # staffed before they join the harness, so refusing here would break staffing.
   defp keep_starting(agent, reason) do
     Logger.info(
       "[Agents] agent #{agent.id} was not started on its machine (#{inspect(reason)}); " <>
@@ -1195,29 +950,9 @@ defmodule CodeMySpec.Agents do
     {:ok, agent}
   end
 
-  # An agent that cannot be watched is indistinguishable from one that never
-  # started, so the conversation is opened as part of starting rather than when
-  # the agent first says something. A Pi lane relays its turns up through
-  # `AgentHarness.relay_up/2` into this same conversation, which is why a Pi
-  # agent and a Claude Code agent land on one surface instead of two.
-  #
-  # Keyed on the agent, which is the thing the thread is about.
-  #
-  # It was keyed on the working copy — `pi:<cwd>`, matching how a Pi lane keys
-  # itself on the socket — so every agent started on one checkout found the same
-  # row. A copy runs several lanes (story 1023's rule exists because of it), and
-  # their turns interleaved into a single transcript with nothing saying who
-  # spoke. Observed live: an agent started on a worktree silently adopted a
-  # conversation from ten days earlier that already had two turns on it.
-  #
-  # The two objections that put the key on the path in the first place are both
-  # answered elsewhere now. A row reading `agent:<uuid>` was unreadable across
-  # three copies — the rows carry generated names and the agent's own identity
-  # instead of a raw key. And the split transcript, where the lane reporting over
-  # the channel wrote to `pi:<cwd>` while the tool that started it wrote
-  # somewhere else, was a two-callers-one-function problem:
-  # `find_or_create_session_conversation/3` now answers for a Claude Code lane
-  # that has an external id and no agent row, and this answers for an agent.
+  # Opened as part of starting, so an agent is watchable before it speaks.
+  # Keyed on the agent, not the working copy: a copy runs several agents, and a
+  # per-copy key interleaved their turns into one transcript.
   @doc """
   The conversation an agent's transcript goes to, for someone who has its id
   and a scope it must belong to.
@@ -1243,10 +978,6 @@ defmodule CodeMySpec.Agents do
   @doc """
   Give a running agent something to do.
 
-  The capability the engine change was chosen for, and the one that was missing
-  after it: an agent could be started, listed and stopped, and never asked to do
-  anything, so it idled until somebody stopped it.
-
   Answers `:started` or `:queued` once the engine admits the message. The
   agent's response arrives in its conversation. A queued instruction is
   recorded as an Offer, but is not judged until delivery at a turn boundary.
@@ -1265,11 +996,8 @@ defmodule CodeMySpec.Agents do
   @doc """
   Every agent on this machine, for the development route that lists them.
 
-  Scopeless, and it is the only listing that is. `list_agents/1` answers what
-  one project's operator may see; this answers what is running here, which is
-  the question a person debugging a stuck agent has — they do not yet know which
-  project it belongs to, and needing to know first is what made the agent
-  unreachable.
+  Scopeless, and it is the only listing that is: someone debugging a stuck
+  agent does not yet know which project it belongs to.
 
   Reached only from `/dev/agents`, which is compiled out of a release.
   """
@@ -1300,18 +1028,11 @@ defmodule CodeMySpec.Agents do
   @doc """
   Turn one agent off by id, resolving its project from its own row.
 
-  The counterpart to `message_any_agent/3`, and it exists for the same reason:
-  somebody looking at the fleet is not inside any one project's scope, and the
-  two useful things to do to an agent you can see are talk to it and stop it.
-  Only one of those was reachable, so a working copy that had accumulated three
-  coding agents could be observed and not thinned.
+  The counterpart to `message_any_agent/3`. Off, like every deliberate stop.
+  Behind the dev-only router scope that is compiled out of production.
 
-  Off, like every deliberate stop (39af5611). Behind the dev-only router scope
-  that is compiled out of production.
-
-  The project comes off the agent's row rather than from the caller, so this
-  cannot stop an agent while a wrong project id claims the write — the
-  repository's `:cross_project` guard is doing its job, not being worked around.
+  The project comes off the agent's row rather than from the caller, so the
+  repository's `:cross_project` guard still applies.
   """
 
   @spec turn_off_any_agent(Ecto.UUID.t()) ::
@@ -1344,20 +1065,9 @@ defmodule CodeMySpec.Agents do
   @doc """
   Restart any agent by id, for the dev tools.
 
-  The counterpart to `turn_off_any_agent/1`, and the gap that made these tools
-  one-way: `/dev/agents` could observe an agent and stop it, and nothing there
-  could start one again. A stopped agent had exactly one route back — the play
-  control on its own conversation page — and when that control was itself broken
-  there was no way in at all.
-
-  Not `start_any_agent`. `start_agent/2` inserts a new row and
-  `find_or_create_agent_conversation/3` keys on `agent_id`, so starting is a
-  fresh empty thread; this is `restart_agent/2`, which re-runs the launch half
-  against the same row and the same transcript.
-
-  Account and project both come off the agent's row. The account is what the
-  credential lookup needs, and taking it from the caller would be the same hole
-  the `:cross_project` guard exists to close.
+  `restart_agent/2`, not a start: same row, same transcript. Account and
+  project both come off the agent's row — the account is what the credential
+  lookup needs.
   """
   @spec restart_any_agent(Ecto.UUID.t()) ::
           {:ok, Agent.t()} | {:error, :no_such_agent | term()}
@@ -1389,10 +1099,8 @@ defmodule CodeMySpec.Agents do
   `permission_requests.agent_id`, which this application wrote from the asking
   connection, so there is no tenant decision left to make.
 
-  The message alone was not enough and said so falsely. An approved tap-out
-  told the agent "the loop is done" and left `continuous` set, so the next stop
-  woke it again — the agent had been given permission to leave and was then
-  asked to carry on, which is worse than never having offered.
+  Clears `continuous`, so the next stop does not wake an agent that was given
+  permission to leave.
   """
   @spec leave_loop(Ecto.UUID.t()) :: :ok
   def leave_loop(agent_id) when is_binary(agent_id) do
@@ -1412,40 +1120,23 @@ defmodule CodeMySpec.Agents do
   @doc """
   Hand an agent the answer to something it asked, and let it carry on.
 
-  The other half of `ask_user` for an agent we run. `check_answer` polls, which
-  is right for a Claude Code session that keeps running regardless, and wrong
-  here: an agent waiting on a person should be stopped, and a stopped agent has
-  nothing to poll with.
+  The other half of `ask_user` for an agent we run: an agent waiting on a
+  person is stopped and has nothing to poll `check_answer` with.
 
-  No scope, unlike `message_agent/4`, and the reason is what the id is. It comes
-  off `question_requests.agent_id`, which this application wrote from the asking
-  connection — not from a parameter, and not from anything a caller chose. There
-  is no tenant decision left to make by the time we are here, and threading a
-  scope in would mean *reconstructing* one from the row to re-derive an answer
-  the row already holds.
+  No scope: the id comes off a row this application wrote from the asking
+  connection (`question_requests.agent_id`, `permission_requests.agent_id`), so
+  there is no tenant decision left to make.
 
-  Like operator messages and stop notices, answers enter the durable mailbox.
-  Admission returns without waiting for the model's reply. A busy engine leaves
-  the payload in the database until the shared pump can deliver it.
-
-  Recorded before it is dispatched, and for the same reason the stop decision is:
-  delivery can fail — a halted agent has nobody to tell — and what the person
-  answered is true whether or not anything was there to hear it. It is also the
-  only trace of the answer in the transcript, now that an answered question
-  stops rendering its card.
-
-  Failure is returned, never raised. This runs inside the person's answer
-  submission, and an agent whose machine has since gone away must not take the
-  form with it — the answer is recorded either way, and an agent that missed it
-  can still find it with `check_answer`.
+  The message enters the durable mailbox and is recorded on the transcript
+  before dispatch, whether or not delivery succeeds or `Wake` holds it.
+  Admission returns without waiting for the model's reply. Failure is returned,
+  never raised: this runs inside the person's answer submission.
 
   `event` is what `Wake` is asked about — `:own_reply` for the answer to
-  something it asked of us, `:question_answered` for its question's answer. A
-  held message is still recorded, as a delivery that failed always was: what
-  was said is true whether or not anything was there to hear it.
+  something it asked of us, `:question_answered` for its question's answer.
 
-  Options: `:timeout`, and `:offer` — `{kind, subject}` to record the message
-  as an offer (`Offers`).
+  Options: `:timeout`, `:async`, and `:offer` — `{kind, subject}` to record the
+  message as an offer (`Offers`).
   """
   @spec send_to_agent(Ecto.UUID.t(), String.t(), Wake.event(), keyword()) ::
           {:ok, :started | :queued} | {:error, term()}
@@ -1507,25 +1198,9 @@ defmodule CodeMySpec.Agents do
   @doc """
   The project's own agent — the one in its main working copy.
 
-  A position, not a label. `agents.role` defaults to "main", so every agent
-  ever started carries that word and a project running three of them has three
-  claiming to be the one you talk to. What makes this one unique is where it
-  is: the checkout the project designated, which no other agent may run in.
-
-  `nil` when the project has no main working copy, or has one and nothing is
-  running there yet. Both are ordinary states with different remedies, which is
-  why `ensure_main_agent/1` reports them apart.
-
-  ## What is running, not what has ever run
-
-  `list_running/1` and not `list_agents/1`, and the difference was a bug with
-  no way out of it. Reading every agent ever started meant a *stopped* one
-  still counted as the agent on the copy: `ensure_main_agent/1` short-circuited
-  and never started a replacement, and `refuse_if_occupied/2` refused every
-  future start there. Stopping the main agent — which is the entire point of
-  story 961 — permanently removed the project's ability to have one, and the
-  page went on saying it was getting ready. Any stopped agent did it, not only
-  a main one, because `on_copy?/2` does not read the role.
+  The on-duty `main` agent whose working copy is the project's main copy.
+  `nil` when the project has no main working copy, or nothing on duty there;
+  `ensure_main_agent/1` reports the two apart.
   """
   @spec main_agent(Scope.t()) :: Agent.t() | nil
   def main_agent(%Scope{} = scope) do
@@ -1535,20 +1210,10 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Work an agent ignored to the end of its ladder is held back from it, and
-  # main is told once (criteria 1741, 2056), so a person or main can reassign,
-  # cancel or answer it. The count is the kind's own ladder length, not
-  # requirement work's three (2057): a released task is held back after two, a
-  # declined tap-out notice after one.
-  #
-  # Announced as `:offer_held_back`, not `:teammate_stalled`: `Wake` holds the
-  # latter for a non-continuous main, so the notice was recorded undelivered and
-  # main never heard it (criterion 2063). This one wakes main whatever its role.
-  #
-  # Read as "reached the terminal rung and not yet reported" rather than by a
-  # time window, so a *refused* offer -- settled earlier in this same turn, by
-  # `Agents.reject_offer/4` -- is escalated too, and each is stamped so a later
-  # turn does not repeat it.
+  # Work an agent ignored to the end of its kind's ladder, or refused, is held
+  # back from it and main is told once (`:offer_held_back`, which `Wake` lets
+  # through to any main), so it can reassign, cancel or answer. Read as
+  # "terminal rung, not yet reported" and stamped reported.
   defp tell_main_held_back(scope, agent) do
     agent.id
     |> Offers.unreported_held_back()
@@ -1597,23 +1262,11 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc """
-  An agent declining an offer, with its reason (criterion 1738): `offer_id`,
-  or its newest open offer when nil. The offer settles as declined and the work
-  is held back from this agent (criterion 2055); main hears about it once,
-  naming the reason (criterion 2056).
-
-  Told here as well as from `tell_main_held_back/2` at the turn end that follows
-  it, and the two are not the same notice. This one is immediate: rejection is
-  a thing the agent decided, and main should not have to wait for a turn to end
-  to hear it -- the same turn may be a long one. The escalation is the one that
-  stamps the offer reported, so the pair still reaches main exactly once
-  (1738 asks for the refusal to be told; 2056 asks for it once).
-
-  Announced as `:offer_held_back`, not the `:teammate_stalled` this used to
-  send: `Wake` holds that event for a non-continuous main, so the refusal of a
-  main that is not continuous was recorded undelivered and never read
-  (criterion 2063). It is main's own administrative notice, told whatever the
-  role and told now.
+  An agent declining an offer, with its reason: `offer_id`, or its newest open
+  offer when nil. The offer settles as declined, the work is held back from
+  this agent, and main is told now (`:offer_held_back`), naming the reason.
+  The offer is stamped reported, so the turn-end escalation
+  (`tell_main_held_back/2`) does not repeat it.
   """
   @spec reject_offer(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, CodeMySpec.Agents.Offer.t()} | {:error, :not_found}
@@ -1627,9 +1280,7 @@ defmodule CodeMySpec.Agents do
         offer: {:stalled, {"agent", agent_id}}
       )
 
-      # Stamped here, so the turn-end escalation does not say the refusal again:
-      # `tell_main_held_back/2` reads the terminal rung and reports what has not
-      # been reported, and this is that report (criterion 2056 -- once).
+      # This is the one report; the turn-end escalation skips reported offers.
       :ok = Offers.mark_reported(offer)
 
       {:ok, offer}
@@ -1688,15 +1339,9 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # Role as well as copy. This matched on the working copy alone, so "the main
-  # agent" was whichever agent happened to be running on the main checkout —
-  # and the main copy holds one agent only by convention, not by constraint.
-  # Story 1059's criterion 3331 puts a continuous main and a continuous coding
-  # agent on one checkout, and anything addressed to "the main agent" there
-  # reached whichever the query returned first.
   @doc """
-  The project's running `main` agents, newest first, wherever they run. The one
-  source every "find the main agent" reads.
+  The project's on-duty `main` agents (not off, not retired), newest first,
+  wherever they run. The one source every "find the main agent" reads.
   """
   @spec running_main_agents(Scope.t()) :: [Agent.t()]
   defdelegate running_main_agents(scope), to: AgentsRepository, as: :list_running_main
@@ -1704,20 +1349,15 @@ defmodule CodeMySpec.Agents do
   @doc """
   The project's own agent, started if it does not exist yet.
 
-  What "there without anybody starting it" means from the server's side:
-  opening a project asks for its agent, and asking is enough. A non-technical
-  user has no way to supply a provider, a checkout and a role, and should not
-  have to know those are the things standing between them and a conversation.
+  Opening a project asks for its agent, and asking is enough: a non-technical
+  user should never have to supply a provider, checkout or role.
 
-  The two failures are kept apart because their remedies are nothing alike.
+  The two failures are kept apart because their remedies differ.
   `:no_main_working_copy` means run `mix cms.new`, or designate one of the
-  checkouts you have. `:not_connected` means connect a provider — the agent has
-  somewhere to run and nothing to run on.
+  checkouts you have. `:not_connected` means connect a provider.
 
-  Starting is still best-effort underneath: `start_agent/2` records `:starting`
-  and the machine confirms. A project whose laptop is closed has a main agent
-  that is asked-for and unconfirmed, which is the honest state rather than an
-  error.
+  Starting is best-effort underneath: a machine that is offline leaves the
+  agent `:starting` (asked for, unconfirmed) rather than an error.
   """
   @spec ensure_main_agent(Scope.t()) ::
           {:ok, Agent.t()} | {:error, :no_main_working_copy | start_error()}
@@ -1730,13 +1370,12 @@ defmodule CodeMySpec.Agents do
   end
 
   # A main agent somebody turned off is still the project's agent; opening the
-  # project shows it off rather than starting another (39af5611).
+  # project shows it off rather than starting another.
   defp main_or_start(_scope, _copy, %Agent{} = off), do: {:ok, off}
 
-  # Main comes up with the rest of the main copy's roster beside it: product,
-  # one per project (John, step 4c). Only when main itself is started, so
-  # opening a project whose main is running starts nothing. Best-effort, as
-  # staffing a copy is; an off product is left alone (39af5611).
+  # Main comes up with the rest of the main copy's roster beside it (product).
+  # Only when main itself is started, so opening a project whose main is
+  # running starts nothing. Best-effort; an off product is left alone.
   defp main_or_start(scope, copy, nil) do
     with {:ok, main} <- start_main_agent(scope, copy) do
       ensure_copy_agents(scope, copy, RoleProfile.roles_where_home(:main) -- [:main])
@@ -1748,26 +1387,15 @@ defmodule CodeMySpec.Agents do
   The agents a working copy does its work with, started if they are not there
   yet.
 
-  The roster belongs to the **copy**, not to the epic it was given. John,
-  2026-09-04: *"when we come up with a working copy the three agents are there,
-  and if that working copy is assigned more work it's gonna be the same three
-  agents ... those are gonna be the guys who are gonna be taking work off of the
-  graph."*
-
-  So this is idempotent by role: a copy that already has a coding agent gets no
-  second one, which is what makes a second epic cheaper than the first rather
-  than more processes on the machine. It is also what keeps
-  `WorkingCopies.offboard/2` meaningful — if agents accumulated per epic,
-  discarding the copy would stop meaning that the work on it is over.
+  The roster belongs to the **copy**, not to the epic it was given, so this is
+  idempotent by role: a copy that already has a coding agent gets no second
+  one when it is given more work.
 
   The default roster is the copy's home roles (`home_roles/1`): coding and QA
-  on a feature copy, main and product on the main copy (John, step 4c).
+  on a feature copy, main and product on the main copy.
 
-  Best-effort per role, and deliberately not all-or-nothing. Each `start_agent/2`
-  records `:starting` and the machine confirms; a copy whose provider is
-  connected for one role and not another gets the agents it can have and reports
-  the ones it cannot, rather than refusing the whole roster over one. The caller
-  gets both lists so it can say which.
+  Best-effort per role, not all-or-nothing: the caller gets the agents
+  started, the roles that failed with why, and the roles left off.
   """
   @spec ensure_copy_agents(Scope.t(), map()) ::
           %{started: [Agent.t()], failed: [{atom(), term()}], off: [Agent.t()]}
@@ -1785,7 +1413,7 @@ defmodule CodeMySpec.Agents do
       |> Enum.filter(&(&1.working_copy_id == copy_id and not Agent.retired?(&1)))
 
     # A role somebody turned off is left alone and reported, not a failure; a
-    # retired seat is empty and gets filled (39af5611).
+    # retired seat is empty and gets filled.
     off = Enum.filter(agents, &(Agent.off?(&1) and &1.role in roles))
     off_roles = MapSet.new(off, & &1.role)
 
@@ -1804,19 +1432,16 @@ defmodule CodeMySpec.Agents do
     |> then(&%{started: Enum.reverse(&1.started), failed: Enum.reverse(&1.failed), off: off})
   end
 
-  # A row with no root is not a checkout — the same rule `EpicDispatch`'s
-  # `destination/1` applies. Starting agents against a directory that does not
-  # exist produces three lanes that cannot run and a copy that looks staffed.
+  # A row with no root is not a checkout; staffing it would produce agents that
+  # cannot run and a copy that looks staffed.
   def ensure_copy_agents(%Scope{}, _copy, _roles),
     do: %{started: [], failed: [{:copy, :no_checkout}], off: []}
 
   @doc """
   The roles a feature copy is staffed with when nobody says otherwise.
 
-  Coding and QA — the two that build something (John, step 4c). Main and
-  product are not among them: they are the project's, live on the main copy,
-  and staffing them per copy would give a project as many orchestrators and
-  designers as it has worktrees.
+  Coding and QA — the two that build something. Main and product are the
+  project's and live on the main copy.
   """
   @spec copy_roles() :: [atom()]
   def copy_roles, do: RoleProfile.feature_roles()
@@ -1832,7 +1457,7 @@ defmodule CodeMySpec.Agents do
   @doc """
   The roles no agent in `agents` holds a seat for: what staffing would fill.
 
-  An off agent holds its seat; a retired one does not (39af5611). Pass every
+  An off agent holds its seat; a retired one does not. Pass every
   agent on the copy that matters, off ones included.
   """
   @spec empty_seats([Agent.t()], [atom()]) :: [atom()]
@@ -1845,23 +1470,15 @@ defmodule CodeMySpec.Agents do
   Staff one working copy and put it into continuous mode, resolving the project
   and the owner from the copy itself.
 
-  The counterpart to `turn_off_any_agent/1`, and it exists because the alternative
-  does not work. Staffing from a `mix run` script creates the rows and reaches
-  no harness: the channel registry lives in the server's own VM, so a second
-  BEAM writes three agents that will never start and an orchestrator message
-  nobody receives. Watched 2026-09-08 — three `claude-code` agents in
-  `starting`, a menu in each transcript, and not one line in `harness.log`.
+  For operator routes with no session. It has to run in the server's VM: the
+  channel registry lives there, so staffing from a separate BEAM (a `mix run`
+  script) writes rows that never reach a harness.
 
-  Whoever's model settings decide the provider has to be the owner rather than
-  the caller, since the caller here is an operator route with no session. Read
-  from the account, so a copy is staffed the way its owner configured it.
+  The provider comes from the account owner's model settings, since the caller
+  has no session.
 
-  Takes an explicit role list for the case the default set cannot express: one
-  role on each of several copies. A QA fixture for the wake criteria needs two
-  *coding* agents to show that only the assigned one is woken, and a checkout
-  holds one agent, so the shape is one role per copy rather than three on one.
-  Staffing every copy with `copy_roles/0` would put twelve agents on four
-  checkouts to get the four that were wanted.
+  `roles` overrides the copy's home roles — e.g. one role on each of several
+  copies.
   """
   @spec staff_any_copy(Ecto.UUID.t(), [atom()] | nil) ::
           {:ok, map()} | {:error, :no_such_copy | :no_owner}
@@ -1881,10 +1498,7 @@ defmodule CodeMySpec.Agents do
   The same call `staff_any_copy/1` makes at the end, on its own, so a copy can
   be switched off without being re-staffed and back on without being restarted.
 
-  Switching on takes the first turn — `set_copy_continuous/3` rings the bell
-  itself, for the reason R13 records: an agent is a supervised process that is
-  alive and idle and acts when it is messaged, so setting the flag alone marks
-  it willing to work and leaves it exactly as it was.
+  Switching on takes the first turn, as `set_copy_continuous/3` does.
   """
   @spec set_any_copy_continuous(Ecto.UUID.t(), boolean()) ::
           {:ok, non_neg_integer()} | {:error, :no_such_copy | :no_owner | term()}
@@ -1920,10 +1534,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The earliest member, which is the account's creator. An account with
-  # several people has several sets of model settings and no rule here can pick
-  # between them — the owner is the least surprising answer and the only one
-  # that is stable.
+  # The earliest member — the account's creator: the only stable answer when
+  # several members have different model settings.
   defp account_owner(account_id) do
     account_id
     |> MembersRepository.list_account_members()
@@ -1938,70 +1550,29 @@ defmodule CodeMySpec.Agents do
   @doc """
   Put a working copy's agents into continuous mode, or take them out of it.
 
-  Story 538's R13: continuous mode is turned on and off deliberately. Until this
-  the only way in was working the `start_implementation` task and the only way
-  out was `tap_out` — so a mode governing whether agents keep running had no
-  front door and no switch, and every agent in the database sat at `false`
-  because nothing had ever put one anywhere else.
+  Per copy, the unit somebody decides about; each agent keeps its own column so
+  one role can later be stopped without the others. Stopped agents are left
+  alone.
 
-  Per copy rather than per agent, because that is the unit somebody actually
-  decides about: a checkout is working, or it is not. The three roles on it keep
-  their own mode column so a later change can stop one of them without stopping
-  the others — R6 lets a coding agent go home when coding work runs out while
-  product carries on.
-
-  Stopped agents are left alone. Putting a mode on a process that is gone
-  records an intention nothing will act on, and it would come back to life
-  looking like a running loop the next time the row was read.
-
-  ## Switching it on takes the first turn
-
-  An agent is a supervised process that is alive and idle, and it acts when it
-  is messaged — nothing polls. So setting the flag and stopping there marked
-  three agents *willing* to work and left them exactly as they were: John,
-  within the hour, "I don't see those agents running."
-
-  R12's wake cannot rescue it either, because that fires when a task completes,
-  and no task can complete if nobody ever takes a turn. The switch has to ring
-  the bell itself.
-
-  Only on the way on. Switching off is the absence of a message, which is what
-  letting an agent stop means.
+  Switching on also ensures the graph watcher and the main agent's cadence,
+  asks the copy's harness to rescan, and offers the copy's agents a turn —
+  nothing polls, so setting the flag alone would leave idle agents idle.
+  Switching off sends nothing.
   """
   @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
           {:ok, non_neg_integer()} | {:error, term()}
   def set_copy_continuous(%Scope{} = scope, copy_id, continuous?) do
     with {:ok, count} <- AgentsRepository.set_copy_continuous(scope, copy_id, continuous?) do
       if continuous? do
-        # Somebody is working this project now, so something has to notice when
-        # its graph moves. Started here rather than at boot: a project nobody is
-        # working on needs no watcher.
+        # Started on demand rather than at boot: a project nobody works on needs
+        # neither a watcher nor a cadence.
         GraphWatcher.ensure_watching(scope)
-
-        # And something has to look in on the agents themselves. Same trigger,
-        # same reason, and it belongs beside the watcher rather than only in the
-        # boot seed — QA of story 1017 found a project with eleven running
-        # agents reporting `woken=yes, running=no`, because it gained its
-        # continuous agent after boot and nothing started its cadence.
         MainAgent.ensure_cadence(scope)
 
-        # And the graph has to hold something worth a turn.
-        #
-        # Admission asks what the graph holds for the role at that instant, and
-        # on a copy nothing has scanned there is nothing in it:
-        # `personas_complete` reads a verdict `Files.Scanner` decides at
-        # sync time, and it gates `stories_exist`, which gates everything after
-        # it. The project chain is one line, so an unscanned copy has an empty
-        # actionable set for every role no matter what is on disk — and the
-        # first switch-on is exactly when somebody expects their agents to
-        # start. Issue `a0780389`, story 1004.
-        #
-        # Asked of the harness rather than done here, because this side does
-        # not have the files — on the light harness the server holds no working
-        # copy at all. The manifest that comes back announces graph inputs, the
-        # watcher recomputes, and `Work.consider_project/2` asks against a real
-        # graph. So the admission below is for what is already computed, and
-        # the rescan is what covers the copy that has none.
+        # An unscanned copy has an empty actionable set for every role (the
+        # project chain gates on scan-time verdicts), and only the harness has
+        # the files.
+        # See knowledge/agents, "Continuous mode".
         request_rescan(scope, copy_id)
 
         Work.consider_copy(scope, copy_id, :continuous_enabled)
@@ -2049,16 +1620,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Whether the bell reached anything, rather than only that it was rung.
-  #
-  # Switching on is not one outcome: an agent with eligible work takes a turn
-  # now, and an agent with none sits exactly as it did. Both used to answer
-  # "the existing agent may take another turn when idle and eligible for work",
-  # byte for byte, so the operator asking "why are my agents not running" — the
-  # confusion this tool exists to resolve — had to make a second call to find
-  # out. Measured live by QA on story 796 (`fe059aa3`): two enables, one that
-  # admitted a turn and one that admitted nothing, indistinguishable from the
-  # reply.
+  # Whether the switch admitted a turn or found no work, so the operator can
+  # tell the two apart from the reply.
   defp enabled_disposition(scope, agent) do
     case Work.request_turn_if_runnable(scope, agent, :continuous_enabled) do
       {:ok, ref} when is_binary(ref) -> :enabled_and_turn_requested
@@ -2066,11 +1629,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A copy whose machine is not connected cannot be asked, and that is not a
-  # reason to refuse the switch — the flag is still set, the agents are still
-  # considered against whatever is computed, and the copy scans when its
-  # harness comes back. Logged rather than swallowed so a copy that never scans
-  # is findable.
+  # A copy whose machine is not connected cannot be asked; the switch still
+  # stands and the copy scans when its harness returns. Logged so a copy that
+  # never scans is findable.
   defp request_rescan(%Scope{} = scope, copy_id) do
     case Analysis.request_rescan(%Scope{scope | active_working_copy_id: copy_id}) do
       :ok ->
@@ -2129,17 +1690,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # An explicit choice wins, and is recorded.
-  #
-  # This path used to skip `resolve_model/2` entirely — it passed a provider it
-  # had picked itself and no model at all — so `main` was the one agent type
-  # where stories 983 and 984's setting had no effect, and the `model` column
-  # 983 added so that "a running agent keeps the model it started on" was
-  # always NULL for the one agent a non-technical user talks to. Someone who
-  # pointed `main` at a provider got a different one with nothing saying so.
-  #
-  # Only the *unset* case still goes through `@provider_preference`, and that
-  # is deliberate rather than tidy. See the note there.
+  # An explicit setting wins, and its model is recorded on the row. Only the
+  # unset case goes through `@provider_preference`.
   defp main_choice(scope) do
     case resolve_model(scope, :main) do
       {:ok, {provider, model}, :set} -> {:ok, provider, model}
@@ -2153,44 +1705,17 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The model `Defaults` names for whichever provider we landed on, so the row
-  # says what it is running rather than nothing. `nil` for a provider with no
-  # entry, which is the same as before and no worse.
+  # The model `Defaults` names for the chosen provider, so the row says what it
+  # runs; `nil` for a provider with no entry.
   defp default_main_model(provider) do
     Defaults.for_role(:main)
     |> Enum.find_value(fn {candidate, model} -> candidate == provider && model end)
   end
 
-  # The first connected provider, in an order somebody chose.
-  #
-  # Flat-rate before metered, and that is the whole point of writing the list
-  # out. `Providers.names/0` is alphabetical, so taking its head would put
-  # every main agent on `anthropic` — the one that bills per token — for a user
-  # who has a subscription connected and never asked to spend credits on an
-  # agent that is always on.
-  #
-  # `:not_connected` when none of them is, which is a different problem from
-  # having nowhere to run and gets a different remedy in front of the user.
-  #
-  # ## Why this disagrees with `Defaults` on purpose, for now
-  #
-  # `Defaults.for_role(:main)` leads with `anthropic`, on the argument that the
-  # main agent is the one explaining a project to somebody who cannot read the
-  # code. This list leads with the subscription, on the argument above. Two
-  # lists that disagree is normally the bug — it was reported as one — and
-  # collapsing them was deferred deliberately, because neither is right.
-  #
-  # The missing dimension is **where the agent runs**. A subscription
-  # credential is a subscription: the providers do not license it for a server
-  # running agents on somebody's behalf, so a cloud-run agent has to use an API
-  # key — the user's if they have one, ours if they do not. Locally, their
-  # subscription is exactly what they should be spending. So the right ordering
-  # is not one list at all; it is a different answer per location, and neither
-  # `Defaults` nor this list has anywhere to say that.
-  #
-  # Until that exists, an explicit setting wins (see `main_choice/1`) and the
-  # unset case keeps behaving as it always has, so nobody's bill moves because
-  # of a refactor.
+  # The first connected provider: flat-rate before metered, so an always-on
+  # main agent does not bill per token by default. Disagrees with
+  # `Defaults.for_role(:main)` on purpose for now.
+  # See knowledge/agents, "Providers and models".
   @provider_preference ["openai-codex", "zai", "anthropic", "deepinfra"]
 
   defp connected_provider(scope) do
@@ -2209,9 +1734,8 @@ defmodule CodeMySpec.Agents do
   so it keeps its conversation — the whole reason this is a move rather than a
   replacement.
 
-  The machine is asked to run it in the new place, and best-effort for the same
-  reason starting is: a copy whose harness is not connected leaves the row
-  `:starting`, which is the honest state rather than a failure to re-designate.
+  Best-effort, as starting is: a copy whose harness is not connected leaves the
+  row `:starting`. Product moves with it.
   """
   @spec move_main_agent(Scope.t(), map()) :: {:ok, Agent.t()} | {:error, term()} | :none
   def move_main_agent(%Scope{} = scope, copy) do
@@ -2241,7 +1765,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Product lives where main lives (step 4c), so it moves with it.
+  # Product lives where main lives, so it moves with it.
   defp move_main_copy_roster(scope, from_id, copy) do
     others = RoleProfile.roles_where_home(:main) -- [:main]
 
@@ -2429,17 +1953,13 @@ defmodule CodeMySpec.Agents do
   How many turns an agent on our credential gets, and how many are left.
 
   `{used, cap}` for an agent we are paying for, `:uncapped` for one the visitor
-  is paying for themselves. The view needs both numbers rather than a boolean:
-  a limit somebody discovers by hitting it is a worse experience than one they
-  could see coming.
+  is paying for themselves — both numbers, so a limit can be seen coming.
   """
   @spec turn_allowance(Scope.t(), Agent.t()) ::
           {non_neg_integer(), pos_integer()} | :uncapped
   def turn_allowance(%Scope{} = scope, %Agent{} = agent) do
-    # `provider`, not `engine`. The engine is `:alloy` -- what runs -- and the
-    # provider is whose subscription it spends. Asking Credential about the
-    # engine returns `:none` for every agent, which means the cap compiles,
-    # every credential test passes, and it never once binds.
+    # `provider` (whose subscription it spends), not the engine: asking about
+    # the engine answers `:none` for every agent and the cap never binds.
     case Credential.source(scope, agent.provider) do
       :platform -> {turns_used(scope, agent), turn_cap()}
       _ -> :uncapped
@@ -2454,13 +1974,8 @@ defmodule CodeMySpec.Agents do
     |> Keyword.get(:platform_turn_cap, @default_turn_cap)
   end
 
-  # The cap exists because we are paying, so it is asked here rather than at
-  # start: the visitor may connect their own provider mid-conversation, and
-  # from that moment they are paying and the cap has no business applying.
-  #
-  # Refused at dispatch and nowhere else, because dispatch is the one door a
-  # turn comes through. Capping at start would only stop the eleventh
-  # conversation, not the eleventh turn of the first one.
+  # Asked at dispatch, the one door a turn comes through, and per turn: the
+  # visitor may connect their own provider mid-conversation and stop being capped.
   defp within_turn_cap(scope, agent) do
     case turn_allowance(scope, agent) do
       :uncapped -> :ok
@@ -2469,9 +1984,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # What the visitor has said, not what the agent has answered. A turn is
-  # something they spend; counting the agent's replies would charge them for a
-  # model that answered twice.
+  # What the visitor has said, not what the agent has answered.
   defp turns_used(scope, agent) do
     case open_conversation(scope, agent) do
       {:ok, conversation} -> Conversations.count_messages(conversation, :operator)
@@ -2479,8 +1992,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Started or queued, on the row. The difference is the only thing the sender
-  # can still act on, so it is not something the view infers from a timestamp.
+  # Started or queued, on the row, so the view need not infer it.
   defp record_sent(conversation, text, ref, disposition, sender_id) do
     Conversations.add_message(conversation, :operator, text, sender_id, [],
       delivery: delivery_of(disposition),
@@ -2505,15 +2017,10 @@ defmodule CodeMySpec.Agents do
     do: Mailbox.withdraw(scope, id, ref)
 
   @doc """
-  Send a message that is waiting for the turn to end now (story 1051): it goes
-  to the front of the queue, and a busy agent's turn is stopped so it is the
-  next one. The agent keeps what it did up to its last completed tool call. A
-  message the agent has already taken is refused as delivered.
-
-  This used to let the message in at the turn's next tool boundary, and the
-  server only handed it over inside a turn the mailbox had started: a turn the
-  graph started never took it, and a correction to team 2's coder waited out
-  sixteen minutes of the work it was correcting (John, 2026-10-13).
+  Send a message that is waiting for the turn to end now: it goes to the front
+  of the queue, and a busy agent's turn is stopped so it is the next one. The
+  agent keeps what it did up to its last completed tool call. A message the
+  agent has already taken is refused as delivered.
   """
   @spec send_now(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def send_now(%Scope{} = scope, id, ref) when is_binary(ref) do
@@ -2538,14 +2045,9 @@ defmodule CodeMySpec.Agents do
   @doc """
   Write one step an agent took to the conversation it belongs to.
 
-  Written on arrival rather than accumulated until the turn completes. A turn
-  that fails has already left everything it did behind it, which is the whole
-  point of watching one — an agent going wrong is exactly the turn that does
-  not finish cleanly.
-
-  Here rather than in the channel because the channel is the wire, not the
-  decision. A spex driving "the machine reported a step" has to drive this, and
-  a private function inside a channel handler cannot be driven at all.
+  Written on arrival rather than at turn end, so a turn that fails has
+  already left everything it did behind it. Here rather than in the channel so
+  a spex can drive it.
   """
   @spec record_turn_event(Scope.t(), Ecto.UUID.t(), map(), keyword()) :: :ok
   def record_turn_event(scope, agent_id, event, opts \\ [])
@@ -2572,33 +2074,21 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # A turn ending is not a step, so nothing is written to the transcript for it.
-  # It is the moment the orchestrator gets to speak — the internal equivalent of
-  # an external agent's Stop hook firing, which is the one thing this runtime
-  # never had. Story 1043.
-  #
-  # A turn ending starts no analysis (John, 2026-10-04): the decision below
-  # reads the problems runs already persisted. `opts` reaches
-  # `StopDecision.deliver/3` for callers that drive this path directly.
+  # A turn ending is not a step; nothing is written to the transcript. It is
+  # the internal equivalent of a Stop hook: the orchestrator's moment to speak.
+  # It starts no analysis — the decision reads problems runs already persisted.
+  # `opts` reaches `StopDecision.deliver/3`.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_ended"} = event, opts) do
     if current_terminal_event?(scope, agent_id, event),
       do: record_terminal_event(scope, agent_id, opts),
       else: :ok
   end
 
-  # A turn beginning, which nothing used to record.
-  #
-  # Written to the row rather than only the transcript, because the question it
-  # answers is about *now* — is this agent mid-response — and a transcript
-  # answers it only by the absence of something later, which is not a thing you
-  # can query. Story 1054, criterion 3297.
-  #
-  # Still written to the transcript as well: the step is part of what the agent
-  # did, and the row is the current state of it. Two different questions.
+  # A turn beginning: on the row (`turn_started_at`, queryable "mid-response
+  # now") and on the transcript (what the agent did).
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_started"} = event, _opts) do
-    # Keep the first start timestamp for duplicate start notifications;
-    # `Work.record_decline/3` missed a task an earlier turn closed — the coder was
-    # damped for ten minutes as having refused work (35e80d6d).
+    # A duplicate start keeps the first timestamp: `Work.record_decline/3`
+    # compares task completions against it.
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
            AgentsRepository.update_agent(scope, agent, %{
@@ -2613,18 +2103,11 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A turn cut off at the step limit, recorded as something done *to* the agent.
-  #
-  # Not as the agent's own words — it did not say this — and not as a step,
-  # because a step is work and this is the absence of it. It goes to the agent
-  # as a message, which is the one channel an agent actually reads.
+  # A turn cut off at the step limit: sent to the agent as a message (something
+  # done *to* it, and the one channel it reads), never written as a step.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "turn_cut_off"} = event, _opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} ->
-        # Sent, because the agent is the one that has to do something
-        # differently next turn. Recorded as an orchestrator action it reached
-        # the person watching and never the agent, which for "you ran out of
-        # steps" means the same over-long turn again.
         send_off_channel(agent, event["text"] || "")
 
       _ ->
@@ -2632,17 +2115,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A process that died, as the harness saw it go (2999a0cb).
-  #
-  # Before this a crash left the row `:running` until the next report reaped it,
-  # `list_agent_work` then dropped it, and the reaped-agent restart runs only
-  # when a harness joins — so a continuous agent stayed dead until a person
-  # noticed.
-  #
-  # Said *to* the agent, as an operator line, not as a step: a step is written
-  # as the agent speaking, and `RestartRepository` reads the agent speaking as
-  # a restart that worked — so an agent dying on every turn would never reach
-  # the three-strike refusal and would be restarted forever.
+  # A process that died, as the harness saw it go. Said *to* the agent as an
+  # operator line, never as a step: `RestartRepository` reads the agent
+  # speaking as a restart that worked, which would defeat the restart limit.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "agent_died"} = event, _opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} -> account_for_death(scope, agent, event["text"])
@@ -2650,17 +2125,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A failed turn that was neither a provider refusal nor a timeout (8e9a1d83).
-  #
-  # Its text used to be written as a step, which reads as the agent speaking,
-  # and nothing offered the work again: a metric_flow agent's whole reply to a
-  # request for a help page was "Claude Code returned tool_use without any tool
-  # calls", the next turn moved on, and the request was gone. Six times from
-  # 09-23 to 10-01.
-  #
-  # Now it is said to the agent, with the request it failed on, once. A turn
-  # that fails on the re-offer is recorded and left: a failure that repeats on
-  # every turn would otherwise buy a turn per failure, forever.
+  # A failed turn that was neither a provider refusal nor a timeout: said to
+  # the agent with the request it failed on, once. A failure on the re-offer is
+  # recorded and left, so a repeating failure cannot buy a turn per failure.
   def record_turn_event(
         %Scope{} = scope,
         agent_id,
@@ -2690,10 +2157,8 @@ defmodule CodeMySpec.Agents do
       record_refusal(scope, agent, event)
       write_turn_event(conversation, agent, event)
     else
-      # An agent that is not ours, or a step for one nobody can find. Dropped
-      # rather than written somewhere plausible: a transcript under the wrong
-      # agent is worse than a missing one, because it reads as that agent's
-      # work.
+      # Not ours, or not found: dropped. A transcript under the wrong agent
+      # reads as that agent's work.
       _ -> :ok
     end
   end
@@ -2715,23 +2180,14 @@ defmodule CodeMySpec.Agents do
   An agent's process came up (`agent_up`, from its copy's harness): a start, a
   restore, or its Keeper restarting it after a crash.
 
-  A process that has just come up is admissible again, and nothing else is going
-  to say so. `Work.consider_project/2` is edge-triggered — a turn ending, a
-  graph change, a harness joining — and an agent coming up is none of those. So
-  an agent came back holding work and sat there: measured 2026-09-23, coding
-  b01a95bb was resumed at 02:34:29 holding `story_promoted` on story 950 and
-  took zero turns in eleven minutes.
+  `Work.consider_project/2` is edge-triggered and an agent coming up is not
+  one of its edges, so this is what makes it admissible again. Here rather
+  than after the start, because a turn goes only to an agent that is present.
 
-  Here rather than straight after the start, because a turn goes only to an
-  agent that is present, and at the start it is not yet.
-
-  Two bells, because an agent that came up is in one of two states and they
-  need opposite things. One holding the task the restart interrupted is told to
-  carry on with it (`Work.resume_held_task/2`, scoped to the agent that came up).
-  A harness reconnect separately sweeps the whole copy. One holding nothing is offered
-  work if it is admissible (`Work.request_turn_if_runnable/4`). Each decides
-  admissibility itself, so neither starts a turn for an agent that should not
-  have one.
+  An agent holding the task a restart interrupted is told to carry on
+  (`Work.resume_held_task/2`, this agent only; a harness reconnect sweeps the
+  copy separately). One holding nothing is offered work
+  (`Work.request_turn_if_runnable/4`). Each decides admissibility itself.
   """
   @spec came_up(Scope.t(), Ecto.UUID.t()) :: :ok
   def came_up(%Scope{} = scope, agent_id) do
@@ -2776,9 +2232,8 @@ defmodule CodeMySpec.Agents do
 
   def process_ended(%Scope{}, _agent_id, _reason), do: :ok
 
-  # Step 4b (a31f1cd6): main is told when a teammate dies or is reaped, and is
-  # woken for it past its own open question (John). Main's own death has nobody
-  # to tell.
+  # Main is told when a teammate dies or is reaped, and `Wake` lets that
+  # through past main's own open question. Main's own death has nobody to tell.
   defp tell_main_teammate_died(_scope, %Agent{role: :main}, _reason), do: :ok
 
   defp tell_main_teammate_died(scope, %Agent{} = agent, reason) do
@@ -2819,8 +2274,7 @@ defmodule CodeMySpec.Agents do
   defp reoffer_failed_turn(conversation, agent, failure) do
     request = Conversations.last_request_text(conversation)
 
-    # Trimmed: a notice re-sent with a leading space passed as a new request and
-    # nested inside itself (2026-10-12).
+    # Trimmed: a re-sent notice with a leading space must not read as a new request.
     if is_binary(request) and String.starts_with?(String.trim_leading(request), @failed_turn) do
       Conversations.add_message(
         conversation,
@@ -2856,8 +2310,7 @@ defmodule CodeMySpec.Agents do
   end
 
   # This runs in the harness channel, and sending to an agent is a call into
-  # that same channel, which the transport refuses rather than deadlock — the
-  # message was recorded and never delivered (once, 2026-10-01 12:14Z).
+  # that same channel, which the transport refuses rather than deadlock.
   defp send_off_channel(agent, text, offer \\ nil) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
@@ -2876,8 +2329,8 @@ defmodule CodeMySpec.Agents do
     """
   end
 
-  # A failed turn the provider refused, kept on the row as state (044599cc).
-  # The transcript still gets the text; this is what `check_in` and `Work` read.
+  # A failed turn the provider refused, kept on the row as state. The
+  # transcript still gets the text; the row is what `check_in` and `Work` read.
   defp record_refusal(scope, agent, %{"kind" => "turn_failed", "text" => text}) do
     now = DateTime.utc_now()
 
@@ -2929,13 +2382,8 @@ defmodule CodeMySpec.Agents do
   defp record_terminal_event(scope, agent_id, opts) do
     case AgentsRepository.fetch_agent(scope, agent_id) do
       {:ok, agent} ->
-        # The turn is over, so nothing is in flight. Cleared before the decision
-        # rather than after: `deliver/3` runs the whole stop menu — graph and
-        # problems — and an agent read during it would show a turn that ended
-        # as still running.
-        # Read before the clear: `Work.record_decline/3` needs it to tell a turn
-        # that closed a task from one that did nothing, and the next line is
-        # what destroys it.
+        # Cleared before the stop menu, so nothing read during it shows the
+        # turn as running. Read first: `Work.record_decline/3` needs it.
         turn_started_at = agent.turn_started_at
 
         {:ok, agent} =
@@ -2947,10 +2395,9 @@ defmodule CodeMySpec.Agents do
 
         broadcast(scope, {:agent_turn, agent})
 
-        # Before the stop menu, because `deliver/3` is what produces the
-        # observation that fires `Work.consider_project/2` — recording the
-        # decline afterwards would lose the race with the wake it is meant to
-        # damp.
+        # Before the stop menu, whose observation fires
+        # `Work.consider_project/2`: afterwards would lose the race with the
+        # wake it damps.
         {:ok, agent} = Work.record_decline(scope, agent, turn_started_at)
 
         # Settled before the stop menu, which may make new offers of its own.
@@ -2968,11 +2415,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # A compaction is not a step either. It is what the agent will resume from,
-  # and it goes in its own table: a row in the transcript would have to be
-  # skipped by every renderer, every preview and every `role` clause, and the
-  # one that forgot would show a user a summary of their own conversation as
-  # though the agent had said it.
+  # A compaction is not a step: it is what the agent resumes from, kept in its
+  # own table so no renderer can show it as something the agent said.
   defp write_turn_event(conversation, _agent, %{"kind" => "compacted"} = event) do
     case Conversations.record_checkpoint(conversation, event["messages"] || [],
            turn: event["turn"]
@@ -2981,22 +2425,14 @@ defmodule CodeMySpec.Agents do
         :ok
 
       {:error, _changeset} ->
-        # A checkpoint that will not save costs a longer resume, and nothing
-        # else: the transcript is untouched and the agent is still running on
-        # the summary it just made.
+        # Costs only a longer resume; the transcript is untouched.
         Logger.info("[Agents] a compaction checkpoint for #{conversation.id} was not saved")
         :ok
     end
   end
 
-  # A tool call is a tool call, not prose.
-  #
-  # `Conversations.add_tool_call/5` is what `Chat.Runner` and the sprite
-  # recorder already write, and `chat_components` renders that `tool_calls`
-  # array as call blocks. Internal agents went through `add_agent_message/4`
-  # instead, so their calls arrived as ordinary chat messages carrying the tool
-  # name as prose and nothing else — no arguments, no pairing, and the
-  # `tool_calls` column unused. Issue `2d5b2d4d`.
+  # A tool call is recorded as a call (`tool_calls`), not prose, so it renders
+  # as a call block with its arguments and pairs with its result.
   defp write_turn_event(conversation, agent, %{"kind" => "tool_start", "tool" => tool})
        when is_map(tool) do
     Conversations.add_tool_call(
@@ -3029,24 +2465,8 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # A step that said nothing is not a step.
-  #
-  # `parts_for("")` answers `[]`, so a textless event became a message whose
-  # whole content was an empty list. They arrive constantly — a turn produces
-  # dozens — and each one is a row, a broadcast, and a line in the transcript
-  # that renders as the agent having spoken and said nothing.
-  #
-  # The cost was not storage. Measured 2026-09-08: a coding agent showed 99
-  # empty messages against 0 substantive ones, and I read that as "the model is
-  # returning nothing" and spent most of a day inside the provider — through
-  # Codex, through a credential rotation, through Alloy's response parsing —
-  # looking for a fault that was never there. The transcript was reporting
-  # bookkeeping as speech.
-  #
-  # `announce_outcome/2` in `CmsHarness.Agents.Engine` is where a turn's *text*
-  # is reported, and it has its own clause for a turn that finished with nothing
-  # to say. This is the step channel, and a step with no text has nothing to
-  # tell anybody.
+  # A step that said nothing is not a step: textless events arrive by the dozen
+  # per turn, and empty rows read as an agent speaking and saying nothing.
   defp write_turn_event(_conversation, _agent, event)
        when not is_map_key(event, "text") do
     :ok
@@ -3061,22 +2481,13 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # `%{"text" => nil}` is the shape that got through the first pass at this.
-  # `is_binary/1` on the clause above sends it here, `parts_for(nil)` answers
-  # `[]`, and the empty row is back — 45 of them on one agent in ten minutes,
-  # after the fix that was supposed to have ended them.
-  #
-  # There is no fourth kind of step. Either an event carries text worth showing
-  # or it does not, and everything reaching here does not.
+  # Includes `%{"text" => nil}`: nothing reaching here carries text worth showing.
   defp write_turn_event(_conversation, _agent, _event), do: :ok
 
   defp write_step(conversation, agent, event) do
     Conversations.add_agent_message(
       conversation,
-      # `to_string`, because `role` became an `Ecto.Enum` in story 983 and
-      # `agent_role` on a message is a string column. Without it the insert
-      # fails and the step never reaches the page — which reads as an agent
-      # that went quiet rather than as a type error.
+      # `role` is an `Ecto.Enum`; `agent_role` on a message is a string column.
       to_string(agent.role || :main),
       turn_event_kind(event),
       turn_event_text(event)
@@ -3085,24 +2496,11 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # What this agent wrote, as it writes it.
-  #
-  # `block_changed` narrows a source to the files the stopping agent touched,
-  # and it learned that only from PostToolUse — which an agent under Alloy never
-  # fires. Its edit set was therefore empty forever, so either every finding on
-  # the tree was its own (unusable: a product agent inherited 160 credo findings
-  # it had never seen) or none were (unusable: it was never told about the file
-  # it had just broken). Neither is a policy question; both came from not
-  # knowing what it had edited.
-  #
-  # Recorded here rather than in the harness because the harness has no
-  # database, and on the tool *call* rather than on its result: a write that
-  # failed still changed the file often enough that treating it as untouched is
-  # the more expensive mistake.
-  #
-  # Only `write` and `edit`. `read`, `bash` and the script tools name paths too
-  # — `bash` names a command — and recording those would make an agent
-  # answerable for every file it has ever looked at.
+  # What this agent wrote, as it writes it: `block_changed` narrows findings to
+  # the files the stopping agent touched, and an agent under Alloy fires no
+  # PostToolUse. Recorded on the call, not the result (a failed write often
+  # still changed the file). Only `write` and `edit`: recording reads would make
+  # an agent answerable for every file it looked at.
   @writing_tools ~w(write edit)
 
   defp record_edit(%Agent{id: agent_id}, %{"tool" => %{"name" => name, "path" => path}})
@@ -3112,9 +2510,7 @@ defmodule CodeMySpec.Agents do
 
   defp record_edit(_agent, _event), do: :ok
 
-  # The kinds a conversation already renders. An event this server does not
-  # know is still worth keeping — it is something the agent did — so it lands
-  # as a message rather than being discarded for not matching a list.
+  # An unknown kind is still something the agent did, so it lands as a message.
   defp turn_event_kind(%{"kind" => kind}) when is_binary(kind), do: kind
   defp turn_event_kind(_event), do: "step"
 
@@ -3124,22 +2520,10 @@ defmodule CodeMySpec.Agents do
   @doc """
   Record what a harness reports it is actually running.
 
-  `list_running/1` answers from the database — the agents we asked for. This is
-  the other half: the set the device says it has, which is the only half that
-  can spend a subscription. Anything the report omits is marked stopped.
-
-  ## Why the device is the authority and we are not
-
-  The harness already knows this without being asked. A lane is joined to
-  `harness:session:<external_id>` for exactly as long as it is alive, and
-  Presence is that fact — story 704 replaced a polled subagent-TTL registry with
-  it precisely because a liveness record maintained by hand drifts from the
-  processes it claims to describe. So the report is a projection of Presence,
-  and an agent whose process died is absent from it without anybody having to
-  notice or send anything.
-
-  That is also what makes the orphan case real rather than arranged: nothing
-  simulates the death, the lane simply stops being joined.
+  The device's set is the authority: it is a projection of Presence on the
+  lane topics, so an agent whose process died is absent without anybody having
+  to notice. Reported agents with no row are adopted; listed agents the report
+  omits are reaped (`stopped_reason: :reaped`) and main is told.
   """
   @spec record_reported(Scope.t(), [map()]) :: {:ok, [Agent.t()]}
   def record_reported(%Scope{} = scope, reported) when is_list(reported) do
@@ -3147,11 +2531,8 @@ defmodule CodeMySpec.Agents do
     Enum.each(adopted, &ensure_conversation(scope, &1))
     alive = MapSet.new(adopted, & &1.id)
 
-    # The server half of `[LaneReporter]`. Both sides log because the two
-    # failures look identical from either one alone: a report that was never
-    # sent and a report that arrived and reconciled to nothing both leave the
-    # page showing every checkout idle. Interleaving the pair is what tells them
-    # apart, which is what the log table in CLAUDE.md exists for.
+    # Logged on both sides: a report never sent and one that reconciled to
+    # nothing look identical from either side alone.
     Logger.info("[Agents] harness reported #{length(reported)} agent(s)")
 
     listed = AgentsRepository.list_reported_running(scope)
@@ -3163,10 +2544,8 @@ defmodule CodeMySpec.Agents do
 
     :ok = tell_main_reaped(scope, Enum.reject(listed, &MapSet.member?(alive, &1.id)))
 
-    # A report is the only moment the server learns an agent went away, so it is
-    # the only moment a page watching one can find out. Without this the row
-    # keeps claiming an agent is working until somebody reloads, which is the
-    # stale-row failure the reconcile exists to prevent, moved to the browser.
+    # A report is the only moment the server learns an agent went away, so
+    # watching pages hear it now rather than on reload.
     broadcast(scope, {:agents_reported, running})
 
     {:ok, running}
@@ -3178,40 +2557,18 @@ defmodule CodeMySpec.Agents do
     stopped_reason: nil
   }
 
-  # A reported agent the server has no row for is adopted rather than refused.
+  # A reported agent the server has no row for is adopted: the harness is the
+  # authority on what runs, including lanes we did not start.
   #
-  # The harness is the authority on what is running, and it can be running
-  # something we did not start — a lane an engineer launched by hand, or one
-  # that survived a server restart. Refusing those would make the server's list
-  # a record of its own requests rather than of what exists, which is the
-  # distinction this whole reconcile is about.
-  #
-  # Keyed on the working copy's **id** and the lane's role.
-  #
-  # The role half: a checkout runs one or more agents, the harness tells them
-  # apart by role, and finding "the copy's agent" made a second lane overwrite
-  # the first — one row flickering between two engines instead of two rows.
-  #
-  # `to_string/1` on the stored side, because `agents.role` is an `Ecto.Enum`
-  # and `role/1` reads a string off the wire. `:main == "main"` is false, so
-  # this `find` never matched and every report took the `upsert(nil, ...)`
-  # branch and inserted a fresh row. Measured 2026-09-20 before the fix: 31
-  # main-role rows on one working copy, 17 qa, 12 coding — an agent per report
-  # rather than an agent per lane. It is also where the "unexplained extra
-  # main-role agent" (`47a63331`) came from, and it fed `held?/3`, which scans
-  # every agent on a copy and so let long-dead duplicates withhold work.
-  #
-  # The id half: the copy used to be matched by comparing the reported path to
-  # `harnesses.root`, which is also a reported path. Two strings that are meant
-  # to be equal and are produced independently do not stay equal, and two
-  # harness rows can share a root outright. The device knows which harness id it
-  # holds — it wrote the file — so it says so, and nothing here guesses.
+  # Keyed on the working copy's id (the device says which it holds; reported
+  # paths drift) and the role, compared as strings — `agents.role` is an
+  # `Ecto.Enum` and the wire carries a string. A mismatch here inserts a new row
+  # per report, and duplicates on a copy withhold work (`Work.withheld?/3`).
   defp adopt(%Scope{} = scope, report) when is_map(report) do
     adopt(scope, reported_copy_id(report), report)
   end
 
-  # Both names, new one first — the compatibility window every other reader on
-  # this wire already honours, and this one had been left out of it.
+  # Both names, new one first: the wire's compatibility window.
   defp reported_copy_id(%{"working_copy_id" => id}) when is_binary(id) and id != "", do: id
   defp reported_copy_id(%{"harness_id" => id}) when is_binary(id) and id != "", do: id
   defp reported_copy_id(_report), do: nil
@@ -3226,9 +2583,7 @@ defmodule CodeMySpec.Agents do
     |> upsert(scope, report)
   end
 
-  # A report that names no working copy is refused rather than guessed at. It
-  # would otherwise create an agent attached to nothing, which renders nowhere
-  # and reaps nothing — a row that exists only to be wrong.
+  # A report naming no working copy is refused rather than guessed at.
   defp adopt(_scope, nil, report) do
     Logger.warning(
       "[Agents] ignoring a reported agent with no working copy id: #{inspect(report)}"
@@ -3268,14 +2623,8 @@ defmodule CodeMySpec.Agents do
     updated
   end
 
-  # What we recorded at launch wins over what a lane reports about itself.
-  #
-  # They are different things. The launcher records a process *group* id, so one
-  # signal takes the agent and every tool it spawned; a lane reports its own pid,
-  # which is one member of that group. Letting the report overwrite it would
-  # quietly downgrade every stop to killing a single process and leaving the
-  # tree — the exact failure the group exists to prevent — and it would strand
-  # `os_boot_id`, which was written to go with the group id and nothing else.
+  # A recorded process group id (with its boot id) wins over the single pid a
+  # lane reports about itself; otherwise the report's pid is kept.
   defp recorded_group_or_reported(%Agent{os_pid: pid, os_boot_id: boot}, _report)
        when is_integer(pid) and is_binary(boot),
        do: pid
@@ -3283,32 +2632,17 @@ defmodule CodeMySpec.Agents do
   defp recorded_group_or_reported(%Agent{} = agent, report),
     do: report["os_pid"] || agent.os_pid
 
-  # The harness says which engine it is running, and it matters downstream: the
-  # engine decides whether an agent has presence or only a timestamp, and whether
-  # it can be talked to at all. Defaulting every report to `:alloy` made a Claude
-  # Code agent claim presence it does not have — caught by story 1019's criterion
-  # 2830, which exists to keep those two facts apart.
+  # The engine decides whether an agent has presence and can be talked to, so a
+  # Claude Code report must not default to `:alloy`.
   defp engine(%{"engine" => "claude_code"}), do: :claude_code
   defp engine(_report), do: :alloy
 
-  # A harness that names no lane is running one, and "main" is what that one is
-  # called. Falling back keeps every report written before roles existed landing
-  # on the row it always did, rather than forking a duplicate the first time
-  # this ships.
+  # A report naming no role is the copy's one lane, called "main".
   defp role(%{"role" => role}) when is_binary(role) and role != "", do: role
   defp role(_report), do: "main"
 
-  # An adopted Alloy lane gets the same transcript one we started gets.
-  #
-  # `start_agent/2` opens the conversation as part of starting, on the reasoning
-  # that an agent that cannot be watched is indistinguishable from one that
-  # never started. Adoption is the *ordinary* way an agent arrives — the harness
-  # starts its own lanes and reports them — so leaving those without one made
-  # the common case the unwatchable one: the working copy had a live agent and
-  # nothing to link at until the lane happened to say something.
-  #
-  # Keyed `pi:<working_copy>`, the same key the lane pushes under, so the
-  # transcript opened here and the one written to are one thread.
+  # An adopted Alloy lane gets a transcript at once, as one we started does,
+  # keyed on the agent.
   defp ensure_conversation(%Scope{} = scope, %Agent{engine: :alloy} = agent) do
     Conversations.find_or_create_agent_conversation(
       scope.active_account_id,
@@ -3317,23 +2651,13 @@ defmodule CodeMySpec.Agents do
     )
   end
 
-  # A Claude Code agent gets none. There is no lane to route a reply to, and a
-  # conversation that exists is a conversation the page offers to open.
+  # A Claude Code agent gets none: there is no lane to route a reply to.
   defp ensure_conversation(_scope, _agent), do: :ok
 
   defp reap_if_absent(_scope, %Agent{} = agent, true), do: agent
 
-  # Absent from a report the machine actually sent.
-  #
-  # This used to fork: an agent with no group id was recorded stopped, and one
-  # with a group id had its machine asked to end it first, because an OS process
-  # could outlive the lane that reported it. A supervised agent cannot — the
-  # harness reports what its own registry holds, so the lane and the process are
-  # the same fact and a report that arrives is the check.
-  #
-  # The distinction that still matters is upstream of here: no report is not a
-  # report of absence. A harness that went quiet says nothing about its agents,
-  # and nothing calls this without a report to reconcile against.
+  # Absent from a report the machine actually sent: the harness reports its own
+  # registry, so the report is the check. No report is not a report of absence.
   defp reap_if_absent(scope, %Agent{} = agent, false) do
     {:ok, stopped} = record_stopped(scope, agent, :reaped)
     stopped
@@ -3343,14 +2667,10 @@ defmodule CodeMySpec.Agents do
   Turn one agent off, and only that one: record who and why, then end its
   process.
 
-  Off is the only deliberate stop (39af5611). It is intent, recorded before the
-  process is asked to end, so an agent whose machine cannot be reached is still
-  off: `Transport` delivers nothing to it and nothing restarts it until
+  Off is the only deliberate stop. It is intent, recorded before the process
+  is asked to end, so an agent whose machine cannot be reached is still off:
+  `Transport` delivers nothing to it and nothing restarts it until
   `turn_on_agent/2`. `by:` names who turned it off; `reason:` is optional.
-
-  Stopping is only useful if it stops the right one: a stop that reaps the tree,
-  or kills by name and catches a sibling, looks identical from the caller's side
-  and is worse than having no stop at all.
   """
   @spec turn_off_agent(Scope.t(), Ecto.UUID.t(), keyword()) ::
           {:ok, Agent.t()} | {:error, term()}
@@ -3376,45 +2696,22 @@ defmodule CodeMySpec.Agents do
     })
   end
 
-  # Ask the machine holding the process to end it, and let its answer decide
-  # whether this is a stop at all.
-  #
-  # This used to write `status: :stopped, os_pid: nil` and broadcast, which
-  # ended nothing. Worse, clearing `os_pid` threw away the only handle anything
-  # could have acted on — so an agent that survived the "stop" became
-  # permanently unreachable, by the stop. That is criterion 2828 caused by its
-  # own remedy.
-  #
-  # The machine is always asked. An agent not present afterwards has no process
-  # to end — one we asked for and no machine confirmed, or one already gone — so
-  # a machine that could not be reached about it is not a failure: cancelling it
-  # has to work. Present means a process is still running, and that answer
-  # stands (`Agents.Presence`).
-  #
-  # This used to key on `os_pid` being nil. An agent is a supervised process now
-  # and never has a group id, so that clause matched every stop: the row went to
-  # `:stopped` and nothing was ever asked to end anything. The defect this story
-  # exists for, reintroduced by deleting the field its guard happened to read.
+  # The machine is always asked. An agent not present has no process to end, so
+  # an unreachable machine does not fail the stop; a present agent's answer
+  # stands.
+  # See knowledge/agents, "Stopping".
   defp end_process(_scope, %Agent{} = agent) do
     result = Transport.impl().stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
     if present?(agent.project_id, agent), do: stopped?(result, agent), else: :ok
   end
 
-  # An agent the machine is not running is stopped — asking again is how a
-  # stop becomes idempotent. A machine that could not be *reached* is not, and
-  # collapsing the two is what makes a row say stopped over something still
-  # running.
+  # Not running is stopped (idempotent); unreachable is not.
   defp stopped?(:ok, _agent), do: :ok
   defp stopped?({:error, :not_running}, _agent), do: :ok
 
-  # Unreachable is not always temporary. `Transport.Harness.unreachable/3`
-  # assumes the process "may well still be running" on a machine we cannot
-  # currently talk to — right when the working copy is still a real row, wrong
-  # when it is not. A copy that no longer resolves at all (offboarded, or never
-  # persisted past a scratch path) has nowhere left to hold a process, so there
-  # is nothing left for this refusal to protect. Issue `8b591eba`: four agents
-  # on a deleted `/tmp` checkout, unstoppable and still claiming their role
-  # forever because every stop read the same as "machine is briefly down".
+  # Unreachable on a copy that no longer resolves (offboarded, scratch path) is
+  # stopped: there is nowhere left to hold a process, and refusing would leave
+  # the agent unstoppable and holding its seat.
   defp stopped?({:error, :harness_not_connected} = error, agent) do
     case WorkingCopies.fetch(agent.working_copy_id) do
       {:error, :not_found} -> :ok
@@ -3425,32 +2722,11 @@ defmodule CodeMySpec.Agents do
 
   defp stopped?({:error, _reason} = error, _agent), do: error
 
-  # Only after something confirmed the process is gone. `os_pid` and
-  # `os_boot_id` are cleared here rather than before, because until the process
-  # is actually gone they are the only way to reach it again.
-  # Stopping clears what only a live process could have meant.
-  #
-  # `turn_started_at` and a turn request (`Offers.in_flight?/1`) both say
-  # "something is happening right now" — a turn in flight, a turn handed over and
-  # about to start — and neither can be true of an agent with no process behind
-  # it. Left standing they are worse than stale: `Work.runnable_state?/1`
-  # requires neither, so a reaped agent that comes back is un-admittable, and
-  # nothing would ever close them because closing them is what this function is
-  # for.
-  #
-  # The agent's *tasks* are deliberately not touched. A claim is a statement
-  # about work, not about a process, and cancelling somebody's attempt because
-  # their machine went away is a decision rather than a cleanup — `held?/3`
-  # going on withholding a node claimed by a stopped agent is a real problem
-  # (`68436370`) and a different one.
-  #
-  # 73d0d505: `reason` is the one thing this function's two callers actually
-  # disagree about. `reap_if_absent/3` passes `:reaped` — nothing confirms
-  # this was on purpose, a report simply stopped mentioning the agent.
-  # `turn_off_agent/3` passes `:stopped` — something explicitly asked for this.
-  # Both used to write an identical row, which is why nothing could ever
-  # tell a role that went unstaffed by a restart from one a person meant to
-  # leave stopped.
+  # Only after something confirmed the process is gone: until then `os_pid` and
+  # `os_boot_id` are the way to reach it. Clears `turn_started_at` and abandons
+  # turn requests, or a returning agent would be unadmittable. Tasks are not
+  # touched — a claim is about work, not a process. `reason` tells a reap
+  # (`:reaped`, a report stopped mentioning it) from a deliberate stop.
   defp record_stopped(scope, agent, reason) when reason in [:reaped, :stopped] do
     AgentsRepository.update_agent(scope, agent, %{
       status: :stopped,
@@ -3479,16 +2755,9 @@ defmodule CodeMySpec.Agents do
   @doc """
   Records what the device reported back about an agent it was asked to start.
 
-  The machine confirms the id it was asked to run, and that is the whole report.
-
-  It used to be a process **group** id and the boot it belonged to, written
-  together because a group id without its boot cannot be told from a recycled
-  number naming a stranger's process. A supervised agent needs neither: the id
-  was already on the row, and it resolves through the harness's registry for
-  exactly as long as the agent is alive.
-
-  So `:running` here means a machine said so, which is the only thing that ever
-  made this status trustworthy.
+  The machine confirms the id it was asked to run, and that is the whole
+  report: the id resolves through the harness's registry for exactly as long as
+  the agent is alive. `:running` here means a machine said so.
   """
   @spec record_started(Scope.t(), Agent.t(), map()) ::
           {:ok, Agent.t()} | {:error, :cross_project | Ecto.Changeset.t()}
@@ -3504,18 +2773,9 @@ defmodule CodeMySpec.Agents do
   `Defaults.resolve/2` against what they do hold otherwise. Public because the
   settings screen shows what a type *would* do before anybody chooses.
 
-  ## A setting can outlive its credential
-
-  Disconnecting a provider does not delete the rows naming it — deriving this
-  instead of cleaning up means there is one place the answer comes from, and no
-  window in which a row and the integrations table disagree. Read against what
-  is connected right now, a stale row falls back on its own; cleaned up on
-  disconnect, it would only be right if every path that removes a credential
-  remembered to.
-
-  Falling back rather than refusing, because the person already said what they
-  want when there is a choice, and being asked again is being asked about
-  something that has not changed.
+  A setting naming a provider no longer connected falls back to the defaults
+  rather than refusing; disconnecting does not delete settings, so the answer
+  is always derived from what is connected now.
   """
   @spec resolve_model(Scope.t(), atom()) ::
           {:ok, {String.t(), String.t() | nil}, :set | :default} | {:error, :no_provider}
@@ -3553,8 +2813,7 @@ defmodule CodeMySpec.Agents do
   Every provider this account can actually launch on.
 
   Asked of `Credential.fetch/2` rather than of the integrations table, so it
-  answers the same question the launcher will ask a moment later. A provider
-  listed here and refused at launch is the mismatch this exists to prevent.
+  answers the same question the launcher will ask.
   """
   @spec connected_providers(Scope.t()) :: [String.t()]
   def connected_providers(%Scope{} = scope) do
@@ -3581,11 +2840,8 @@ defmodule CodeMySpec.Agents do
   @spec put_model_setting(Scope.t(), atom(), String.t(), String.t() | nil) ::
           {:ok, ModelSetting.t()} | {:error, Ecto.Changeset.t() | :unknown_provider}
   def put_model_setting(%Scope{} = scope, role, provider, model) do
-    # Refused here rather than at launch. A screen that stores a provider the
-    # account cannot authenticate produces an agent that fails on its first
-    # model call, minutes later, in a log nobody is reading — which is the
-    # failure the credential ordering above exists to prevent, arriving through
-    # the front door instead.
+    # Refused here: a stored provider the account cannot authenticate yields an
+    # agent that fails on its first model call.
     if provider in connected_providers(scope),
       do: AgentsRepository.put_model_setting(scope, role, provider, model),
       else: {:error, :unknown_provider}
@@ -3594,22 +2850,13 @@ defmodule CodeMySpec.Agents do
   @doc """
   Let a type resolve from the defaults again.
 
-  The counterpart to `put_model_setting/4`, and the thing whose absence made
-  issue c6f5acce expensive: the settings form posts all four types at once, an
-  untouched select posts the default's own value, so one Save converted every
-  type from "whatever is sensible" to "this exact model, chosen deliberately" —
-  and there was no way back.
-
-  `ModelSetting`'s moduledoc argues against writing a default row at account
-  creation, because it would freeze whatever the defaults were that day. Writing
-  one on the first Save has the same effect; this is how it is undone.
+  The counterpart to `put_model_setting/4`. The settings form posts every type
+  at once, so one Save pins every type; this is how a pin is undone.
   """
   @spec clear_model_setting(Scope.t(), atom()) :: :ok
   defdelegate clear_model_setting(scope, role), to: AgentsRepository
 
-  # The type an agent is being started as. Refused rather than defaulted when it
-  # names one that does not exist: `Agent.role` is an enum, and a caller asking
-  # for a type nobody defined is a caller with the wrong idea about what exists.
+  # The type an agent is being started as; an unknown one is refused, not defaulted.
   defp role_of(attrs) do
     case Map.get(attrs, :role, :main) do
       role when is_atom(role) ->
@@ -3620,18 +2867,15 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # `asked` is carried separately from the atom, because the atom may be the
-  # sentinel `Utils.safe_to_existing_atom/2` returns for a name that does not
-  # exist — and a refusal naming `:__unknown__` tells the caller a word it
-  # never sent.
+  # `asked` is carried so a refusal names what the caller sent, not the
+  # `:__unknown__` sentinel.
   defp known_role(role, asked) do
     if role in Agent.roles(),
       do: {:ok, role},
       else: {:error, {:unknown_role, asked, Agent.roles()}}
   end
 
-  # An explicit provider still wins — a caller that names one is asking for it,
-  # and story 983 is about what happens when nobody does.
+  # An explicit provider wins; otherwise `resolve_model/2` decides.
   defp provider_for(scope, role, attrs) do
     case Map.get(attrs, :provider) do
       nil ->
@@ -3644,17 +2888,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Computed at start, from the role and from what this agent's machine said it
-  # could do.
-  #
-  # The machine half cannot come from a list here: a browser is an MCP server on
-  # somebody's box, its tools are whatever that box's vibium reports, and a copy
-  # written down here would drift the first time vibium ships one. So the
-  # harness reports names on join and this reads them back.
-  #
-  # Only for the types that browse. A product agent shaping stories has no use
-  # for a click, and handing it twenty-nine ways to make one is the catalogue
-  # this story is about, one layer over.
+  # The role's grants, plus — for roles that browse — the tool names the copy's
+  # machine reported on join (its browser's tools are whatever that box serves).
   defp tools_for(%Scope{} = scope, attrs) do
     role = Map.fetch!(attrs, :role)
 

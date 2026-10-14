@@ -2,43 +2,19 @@ defmodule CmsHarness.Agents.Provider do
   @moduledoc """
   A provider name and a credential, as Alloy options.
 
-  `:provider` is `{module, config}`, and the config half is the only place a
-  provider's own settings survive. `Alloy.Agent.Config` keeps that half and
-  drops everything else it does not recognise, so a flat `api_key:` beside the
-  module is silently discarded and the first request raises about a missing key
-  from inside the provider.
+  `:provider` is `{module, config}`; provider settings must live in the config
+  half, because `Alloy.Agent.Config` silently drops unrecognised flat options.
 
-  The engine holds the loop; this decides who answers it. Kept apart because
-  the two change for unrelated reasons — a new provider is a clause here and
-  nothing in the engine, and the loop's supervision has nothing to say about
-  which subscription is paying.
-
-  ## The two cost models, which are not the two auth kinds
-
-  It is tempting to read "API key" as metered and "OAuth" as flat-rate. That is
-  wrong and the mistake is expensive when choosing what to run agents on:
-
-    * `openai-codex` — the ChatGPT plan. Flat. `codex exec` handles the
-      credential itself, so there is no key here at all. Reports **no token
-      counts**, so anything metering agent spend is blind on this path.
-    * `zai` — a coding plan, flat, reached with an API key over an
-      OpenAI-compatible endpoint. Flat *and* counted.
-    * `anthropic` — metered, per token, API key.
-
-  Anthropic is deliberately here as an API key rather than a subscription:
-  Anthropic does not permit subscription credentials in third-party harnesses,
-  so there is no OAuth path to build even if we wanted one.
+  The engine holds the loop; this decides who answers it.
+  See knowledge/harness, "Providers".
   """
 
-  # The coding path, not the pay-as-you-go one. The same key works on both, and
-  # only this one spends subscription quota rather than credits — so the URL is
-  # what decides whether a month costs a flat fee or a bill.
+  # The coding-plan path: the same key works on pay-as-you-go, but only this URL
+  # spends subscription quota.
   @zai_base "https://api.z.ai/api/coding/paas/v4"
 
-  # What the GLM Coding Plan sells today. Older names still resolve — z.ai
-  # routes them to 5.3 — so a stale default works while quietly never using what
-  # was paid for, which is the failure worth naming rather than the one that
-  # errors.
+  # What the GLM Coding Plan sells; older names silently resolve to an older
+  # model, so keep this current.
   @zai_model "glm-5.3"
 
   # DeepInfra's OpenAI-compatible endpoint. The model is a default only; an
@@ -49,14 +25,9 @@ defmodule CmsHarness.Agents.Provider do
   # One budget for both CLI providers: a turn runs whole test files and spex.
   @cli_exec_timeout_ms :timer.minutes(10)
 
-  # `codex exec` refuses a prompt over 1,048,576 characters, and a turn on a
-  # fresh thread sends the whole transcript plus the system prompt, every tool
-  # definition and the response schema. Alloy compacts against a token budget
-  # it estimates at four characters a token, and with no model named that
-  # budget is its 200,000 default — so a transcript could pass the cap before
-  # it compacted. Team 3's coder did, and every turn failed on the cap from
-  # 07:35 (2026-10-14). 160,000 compacts the messages near 575,000 characters,
-  # leaving the rest of the prompt room under the cap.
+  # `codex exec` refuses prompts over 1,048,576 characters; Alloy's default
+  # 200k-token budget (at ~4 chars/token) lets a transcript pass that before
+  # compacting. 160k compacts near 575k characters, leaving room for the rest.
   @codex_max_tokens 160_000
 
   @type credential :: map()
@@ -64,68 +35,19 @@ defmodule CmsHarness.Agents.Provider do
   @doc """
   Alloy options for `provider`, or `{:error, :unknown_provider}`.
 
-  `model` is passed rather than defaulted per provider: a default answers
-  correctly right up until two callers want different models, and then quietly
-  spends the wrong one's budget.
+  `opts[:model]` overrides each provider's default; `openai-codex` has none.
   """
   @spec options(String.t(), credential(), keyword()) :: {:ok, keyword()} | {:error, atom()}
   def options(provider, credential, opts \\ [])
 
-  # `req_options` reaches Req itself, in `complete/3` and `stream/4` alike. It
-  # exists so a recorder can sit in front of the provider's HTTP client and
-  # capture a turn this engine actually ran — a recording made by calling Alloy
-  # directly would be a recording of Alloy.
-  #
-  # Only on the two providers that speak HTTP. `codex exec` is a subprocess, so
-  # there is no Req client to put anything in front of, and accepting the option
-  # there would look like it worked.
+  # `req_options` reaches Req on the HTTP providers only (for recordings);
+  # the CLI providers are subprocesses and do not accept it.
 
-  # `codex exec` runs against **this machine's own Codex login**, in this
-  # machine's own `CODEX_HOME`. Nothing is minted, copied, or managed.
-  #
-  # It used to be handed an `auth.json` to copy into an isolated home, and that
-  # is unworkable rather than merely awkward. A ChatGPT refresh token is
-  # single-use: the CLI rotates it on startup and every other copy dies. With
-  # four agents each holding a private copy of one token, the first to start
-  # invalidated the rest — `codex_auth/1` in `CmsHarness.Agents` predicted this
-  # in as many words ("rotates the refresh token and invalidates every other
-  # copy of it, including the one in our database") and it happened anyway,
-  # because the prediction was about a race no amount of care in one writer can
-  # win.
-  #
-  # Measured 2026-09-08: every agent on Broken Oaths failing with "your access
-  # token could not be refreshed because your refresh token was already used",
-  # intermittently since 09-03 — and John's own `codex` CLI logged out along
-  # with them, because the token the agents burned was his.
-  #
-  # John's call, and it is the only posture that is also right on terms of
-  # service: an agent here is the user's own machine running the user's own
-  # Codex login, exactly as if they had typed `codex` themselves. We do not hold
-  # their subscription, so we cannot leak it, rotate it, or get them banned for
-  # how we used it.
-  #
-  # The cost is real and accepted: an agent inherits this machine's Codex
-  # configuration — its MCP servers and plugins — where an isolated home gave it
-  # none. That is wrong on a shared box, and a shared box is what this decision
-  # rules out.
-  #
-  # No model unless one was asked for, and that is the opposite of the other two
-  # clauses on purpose. A ChatGPT plan decides which models it serves, and
-  # naming one here is a guess about somebody else's subscription: this shipped
-  # defaulting to `gpt-5.4`, and every codex agent on a ChatGPT account failed
-  # its first turn with *"The 'gpt-5.4' model is not supported when using Codex
-  # with a ChatGPT account"*. Omitting the flag makes `codex exec` use whatever
-  # that account actually has, which is always a valid answer and never goes
-  # stale.
-  #
-  # `workdir: working_copy`, as for claude-code: left unset, `codex exec` runs
-  # in Alloy's temp dir holding only `prompt.txt` (5001c099).
-  #
-  # `ignore_user_config`: the home lends its login, not its owner's setup. Its
-  # `config.toml` carried plugins and MCP servers (~2.5k input tokens on every
-  # call), an auto-review approver (203 reviewer threads on two agents in a
-  # day) and a default model. The model is ours to set, from the agent's own
-  # settings above; without one, Codex's default.
+  # `codex exec` runs on this machine's own Codex login and `CODEX_HOME`;
+  # nothing is minted or copied. No default model: the ChatGPT plan decides
+  # which models it serves. `workdir` is the working copy (unset, it runs in
+  # Alloy's temp dir). `ignore_user_config`: borrow the login, not the owner's
+  # plugins, MCP servers and approvers. See knowledge/harness, "Providers".
   def options("openai-codex", credential, opts) do
     {:ok,
      [
@@ -143,10 +65,8 @@ defmodule CmsHarness.Agents.Provider do
      ]}
   end
 
-  # `api_url` and `chat_path`, not `base_url`. `OpenAICompat` reads `:api_url`
-  # and appends `/v1/chat/completions` by default; z.ai's coding path already
-  # ends at `/v4/chat/completions`, so the default would ask for
-  # `.../paas/v4/v1/chat/completions`.
+  # `chat_path` overrides `OpenAICompat`'s default `/v1/chat/completions`;
+  # z.ai's base already ends at `/v4`.
   def options("zai", credential, opts) do
     with {:ok, api_key} <- fetch(credential, :api_key) do
       {:ok,
@@ -154,10 +74,7 @@ defmodule CmsHarness.Agents.Provider do
          provider:
            {Alloy.Provider.OpenAICompat,
             %{
-              # `||`, not a `Keyword.get/3` default: the caller passes every
-              # option it knows about and most of them are nil, and a stored
-              # nil satisfies `Keyword.get/3` — so the default would be skipped
-              # and the request would go to `nil/chat/completions`.
+              # `||`, not a `Keyword.get/3` default: callers pass explicit nils.
               api_url: Keyword.get(opts, :base_url) || @zai_base,
               chat_path: "/chat/completions",
               api_key: api_key,
@@ -200,27 +117,10 @@ defmodule CmsHarness.Agents.Provider do
     end
   end
 
-  # The subscription running on this machine, not a credential from the
-  # server: `claude` handles its own OAuth login state, exactly like `codex
-  # exec`, so there is nothing here to fetch from `credential`.
-  #
-  # `workdir: working_copy`, not the provider's own default of a fresh temp
-  # directory per call. `Alloy.Provider.ClaudeCode` resumes the underlying
-  # `claude` session turn to turn (`--resume`) once one exists in
-  # `provider_state`, and that only buys back its prompt-cache cost — not
-  # just correct recall — when every call in one agent's lifetime runs from
-  # the same directory (verified against the real CLI: resuming from a
-  # different directory still recalls the conversation but never hits the
-  # cache). An agent already has exactly one working copy for its whole
-  # life, so passing it here costs nothing and is the difference between
-  # `--resume` actually paying for itself and being a no-op.
-  #
-  # The timeout is a wall clock on the whole `claude -p` call (Alloy's
-  # `collect_port/5`), not an idle one. A resumed session that reaches the
-  # CLI's context limit is auto-compacted inside the next call, silently, and
-  # at ~950k tokens that took ~180s — the old limit — so the kill threw the
-  # compaction away and every retry redid it (eb09b076). Ten minutes lets it
-  # finish once; the turn itself is capped at thirty.
+  # This machine's own `claude` login; no credential is fetched. `workdir` is
+  # the working copy so `--resume` hits the prompt cache (it only does from the
+  # same directory). The timeout is wall clock on the whole call, and must
+  # outlast a silent auto-compaction. See knowledge/harness, "Providers".
   def options("claude-code", _credential, opts) do
     {:ok,
      [
@@ -237,10 +137,8 @@ defmodule CmsHarness.Agents.Provider do
 
   def options(_provider, _credential, _opts), do: {:error, :unknown_provider}
 
-  # What runs `codex` and `claude` in place of the real CLI, from config. Unset
-  # everywhere but test, where it is pinned to a recording the way HTTP clients
-  # are pinned to `Req.Test`: a spex whose project connected OpenAI launched a
-  # real `codex exec` on every run, about four million uncached tokens a day.
+  # Replaces the real `codex`/`claude` CLI, from config. Set only in test,
+  # where it is pinned to a recording so no test runs a live CLI.
   defp with_command_runner(config) do
     case Application.get_env(:code_my_spec, __MODULE__, [])[:command_runner] do
       {module, function} ->
@@ -255,16 +153,8 @@ defmodule CmsHarness.Agents.Provider do
   @spec names() :: [String.t()]
   def names, do: ["anthropic", "openai-codex", "zai", "deepinfra", "claude-code"]
 
-  # This machine's Codex home, which the CLI already owns.
-  #
-  # `Alloy.Provider.Codex` uses a `:codex_home` as given and only falls back to
-  # building an isolated one — and copying an `auth.json` into it — when none is
-  # named. Naming it is what keeps one login in one place with one writer
-  # rotating it.
-  #
-  # A credential may still name its own, for a deployment that has somewhere
-  # better to point. What it may no longer do is hand over a token for us to
-  # write down.
+  # Always named, so `Alloy.Provider.Codex` never builds an isolated home and
+  # copies a token into it. A credential may name a different home.
   defp codex_home(credential) do
     case fetch(credential, :codex_home) do
       {:ok, path} -> Path.expand(path)
@@ -272,9 +162,7 @@ defmodule CmsHarness.Agents.Provider do
     end
   end
 
-  # Named rather than pattern-matched into the clause head so the failure says
-  # which piece was missing. A credential that arrived without its key and one
-  # for a provider we do not know are different problems for whoever reads it.
+  # Not matched in the clause head, so the error names the missing key.
   defp fetch(credential, key) do
     case Map.get(credential, key) || Map.get(credential, to_string(key)) do
       nil -> {:error, :"credential_missing_#{key}"}

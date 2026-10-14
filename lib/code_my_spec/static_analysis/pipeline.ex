@@ -2,11 +2,12 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   @moduledoc """
   Compilation and static analysis for the validation pipeline.
 
-  Three public functions called by the StaticAnalysis context:
+  Called through the StaticAnalysis context:
 
-  - `compile/1` — run compiler, persist diagnostics, block on errors
+  - `compile/2` — run compiler, persist diagnostics, block on errors
   - `resolve_analyzers/3` — merge role-derived + task-declared, then filter by config
-  - `run_analyzers/3` — run resolved analyzers against changed files, persist problems
+  - `run_analyzers/5` — run resolved in-process analyzers, persist problems
+  - `task_analyzers/1`, `task_excluded_analyzers/1` — the active task's additions and opt-outs
 
   `@role_analyzers` is the tuning surface: file role → analyzers to run.
   Task modules can augment via an `analyzers/0` callback.
@@ -35,25 +36,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     implementation: [:credo, :exunit_stale, :spex_stale],
     test: [:credo, :exunit_stale],
     test_support: [:credo, :exunit_stale],
-    # `:credo` for the same reason `:test` and `:test_support` carry it, and
-    # against the same failure the comment above this map describes.
-    #
-    # A `_spex.exs` file is Elixir under `test/`, so credo analyses it and files
-    # findings against it — 282 of them on one project, every one a real credo
-    # finding about a real spex file. Those findings block. But `bdd_spec` did
-    # not schedule credo, so the only work that could clear them was an edit to
-    # some *other* kind of file: an agent writing specs was blocked by credo
-    # findings on the specs it was writing, and nothing it did while writing
-    # them could ever refresh the result.
-    #
-    # Measured 2026-08-21: byte-identical credo feedback across consecutive
-    # stops, the findings recorded at 11:10 and the fix that cleared them landed
-    # at 08:02. Every stop in that window enqueued `compiler, spex`; credo was
-    # in neither the enqueued nor the skipped list, because it was never in the
-    # request set at all.
-    #
-    # A source whose findings can block has to be re-runnable by the edits that
-    # would fix them. That is the rule the `:test` row already encodes.
+    # Credo files findings against spex files, so editing one must schedule it.
     bdd_spec: [:credo, :spex_stale],
     qa_brief: [:validate_qa],
     qa_result: [:validate_qa],
@@ -126,18 +109,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   # -- Analyzer resolution --
 
   # Analyzer atom → ProjectConfiguration field that gates it.
-  # Atoms not in this map are always eligible.
-  #
-  # `spex_stale` used to be deliberately absent here: `spex: :off` suppressing
-  # the analyzer would make `bdd_specs_passing` permanently unsatisfiable for
-  # any story that had not already latched, since nothing would ever run a
-  # fresh spex to flip it — the failure mode that got the node deleted in
-  # bab2f792. That reasoning held only while a *server-dispatched* sweep was
-  # the sole way a spex run ever happened. It is not the only way: an agent's
-  # own `mix spex`, or `start_analysis`, routes through the same run ledger
-  # (story 839) regardless of this config, so `spex: :off` now means "the
-  # automatic stop-hook sweep stays quiet", not "spex can never run again" —
-  # the escape hatch bab2f792 needed is a command away, not gone.
+  # Atoms not in this map are always eligible. Gating `spex_stale` is safe:
+  # `start_analysis` and an agent's own `mix spex` still record spex runs.
   @config_gated_analyzers %{
     credo: :credo,
     exunit_stale: :exunit,
@@ -160,15 +133,9 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     `:exunit_stale` while the agent is writing tests, since exunit
     failures are expected until the implementation lands.
 
-  Config gates role-derived inclusion only, not task-declared. A task
-  that names an analyzer in its own `analyzers/0` is not asking for a
-  general sweep — it is asking the one question its own gate depends on
-  (`FixBddSpecs` names `spex_stale` because `bdd_specs_passing` cannot be
-  evaluated without a fresh spex run to read). Filtering that out because
-  the project turned automatic spex sweeps off would make the task that
-  exists to earn the latch unable to ever run the check that earns it —
-  the same shape of permanently-unsatisfiable gate that got a requirement
-  node deleted once already (`bab2f792`), just moved one layer down.
+  Config gates role-derived inclusion only. A task-declared analyzer is
+  the question the task's own gate depends on (`FixBddSpecs` names
+  `spex_stale`); filtering it by config would make that gate unsatisfiable.
   """
   @spec resolve_analyzers(map() | nil, [map()], map()) :: [atom()]
   def resolve_analyzers(task, changed_files, config) do
@@ -221,15 +188,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   end
 
   @doc """
-  Analyzers the active task declares via `analyzers/0`.
-
-  Public for the same reason `task_excluded_analyzers/1` is: `Validation`'s
-  no-changed-files self-heal path re-enqueues every config-enabled source
-  whose latest run failed, and a task-declared analyzer bypasses the config
-  gate there too — `FixBddSpecs` naming `spex_stale` has to survive
-  `spex: :off` in both places, not just the one with changed files, or a
-  quiet stop while that task is active can go back to never re-enqueuing
-  the run its own gate is waiting on.
+  Analyzers the active task declares via `analyzers/0`. Not subject to the
+  config filter (see `resolve_analyzers/3`).
   """
   @spec task_analyzers(map() | nil) :: [atom()]
   def task_analyzers(nil), do: []
@@ -245,12 +205,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   end
 
   @doc """
-  Analyzers the task opts out of via `excluded_analyzers/0`.
-
-  Public because `Validation`'s no-changed-files self-heal path checks every
-  config-enabled source against the run ledger and must still respect task
-  exclusions (e.g. ComponentTest excluding `:exunit_stale` while tests are
-  being written).
+  Analyzers the task opts out of via `excluded_analyzers/0` (e.g.
+  ComponentTest excluding `:exunit_stale` while tests are being written).
   """
   @spec task_excluded_analyzers(map() | nil) :: [atom()]
   def task_excluded_analyzers(nil), do: []
@@ -285,10 +241,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   Returns `{:error, :no_environment}` without changing saved findings when
   there is no execution environment.
 
-  Per-analyzer file scope is config-driven: credo in `:block_all` runs
-  project-wide (no file path args, all credo problems cleared before
-  re-insert); other modes and other analyzers stay scoped to the
-  changed files of this turn.
+  Every analyzer scans the whole project and every source's problems are
+  cleared project-wide before re-insert, whatever the config mode.
   """
   @spec run_analyzers(Scope.t(), [atom()], [map()], map(), keyword()) :: :ok | {:error, term()}
   def run_analyzers(scope, analyzers, changed_files, config \\ %{}, opts \\ [])
@@ -378,12 +332,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     end)
   end
 
-  # Spex-only escape hatch: cassette-backed tests inject a pre-recorded
-  # JSON file at `:credo_output_file` so the analyzer reads it instead of
-  # spawning `mix credo`. Mirrors `compile_output_file` /
-  # `exunit_output_file` / `spex_output_file` already on the runner
-  # analyzers. Lets criterion 5100 etc. exercise the credo block path
-  # deterministically.
+  # Cassette escape hatch: `:credo_output_file` is read instead of spawning
+  # `mix credo`, like the runner analyzers' `*_output_file` options.
   defp with_test_output(runner_opts, :credo, validation_opts) do
     case Keyword.get(validation_opts, :credo_output_file) do
       nil -> runner_opts
@@ -402,32 +352,10 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     )
   end
 
-  # Project-wide credo, whatever its mode. `nil` tells the credo analyzer to
-  # omit file-path args so `mix credo` scans every file under the configured
-  # paths. All other static analyzers stay scoped to changed files.
-  #
-  # This used to key on `%{credo: :block_all}`, which was the older policy:
-  # the mode decided what credo *looked at*. It decides what credo *blocks on*
-  # now — `Validation.request_for/3` says so, and `apply_mode/4` does the
-  # scoping at decision time instead. Under `:block_changed` a violation
-  # outside the turn's files is meant to be found and recorded as advisory,
-  # which cannot happen if the scan never reaches it.
-  #
-  # The stop hook does not arrive here for credo — `run_pipeline/5` routes it
-  # to the subprocess set first — so this is a contradiction nobody was
-  # executing. Left in place rather than deleted because a caller that does
-  # reach it should get the current policy, not the one from two changes ago.
-  # `nil` means every file, for every analyzer.
-  #
-  # Credo was already whole-project; the rest scanned only the turn's changed
-  # files. That asymmetry is half of the clearing bug — an analyzer that examines
-  # a subset can only honestly clear that subset, and a subset-clear cannot express
-  # "nothing is wrong any more". Scanning everything is what makes clearing
-  # everything correct, so the two are set together and neither is a knob.
-  #
-  # The cost is a full scan where a narrow one might have done. The benefit is that
-  # a finding outside the turn's files is found rather than merely retained, which
-  # is what `:block_changed` always claimed and never delivered.
+  # `nil` means every file, for every analyzer. Mode decides what blocks
+  # (`Validation`'s `apply_mode/4`), not what is scanned; scanning all is what
+  # makes `source_scopes_for/4`'s clear-all correct.
+  # See knowledge/analysis, "Scan all, clear all".
   defp files_for_analyzer(_atom, _file_paths, _config), do: nil
 
   defp run_validators(_scope, [], _files, _environment), do: []
@@ -506,21 +434,8 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   defp qa_document_type(%{role: :qa_brief}, _content), do: "qa_story_brief"
 
-  # Two different documents share the `:qa_result` role — a story's
-  # `result_complete.md` and the cross-story `journey_result.md` — because both
-  # have to satisfy the same role-based requirement gates. Dispatching on role
-  # alone therefore validated the journey result against the story schema and
-  # demanded sections it does not have:
-  #
-  #     Missing required sections: status, scenarios
-  #
-  # which is the failure `Scanner.validate_qa_plan/2` already documents for the
-  # `qa_plan` / `qa_journey_plan` pair one line at a time: "the other schema
-  # marked a perfectly good file invalid, which is worse than not validating it:
-  # an agent is told to fix something that is already right."
-  #
-  # Same pair, same fix — branch on the path, since the path is what actually
-  # distinguishes them.
+  # A story result and the journey result share the `:qa_result` role; only
+  # the path tells which schema applies (same as `qa_plan` / `qa_journey_plan`).
   defp qa_document_type(%{role: :qa_result} = file, _content) do
     case Map.get(file, :path) do
       path when path == @qa_journey_result_path -> "qa_journey_result"
@@ -540,24 +455,9 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     validate_qa: "qa_validation"
   }
 
-  # Each entry pairs a problem `source` (the string written into the DB)
-  # with the file scope to clear before re-inserting. credo in
-  # Everything scans everything, and every result clears project-wide.
-  #
-  # Partial scanning and partial clearing are each defensible on their own and
-  # lethal together, which is what this project kept discovering. Clearing is keyed
-  # on the files a result names; a run that finds nothing names nothing; so a
-  # narrower scan that came back clean cleared nothing and every earlier finding
-  # survived it. `[]` is exactly the shape of "the last finding was fixed", so the
-  # moment clearing mattered most was the one moment it could not act. Three
-  # separate stop-hook loops on 2026-08-13 traced to that, across two sources,
-  # because the first fix was made per-source rather than to the interpretation.
-  #
-  # One rule instead: scan all, clear all. It costs a full run where a narrow one
-  # might have done, and it buys a stop gate whose answer is about the tree as it
-  # is rather than about whichever subset was examined. Whole-project runs are also
-  # what make `:all` correct — the two decisions are one decision, and separating
-  # them is what produced the bug. See 6b3351cb.
+  # Each entry pairs a problem `source` (the DB string) with the scope to clear
+  # before re-inserting: always `:all`, because every analyzer scans everything.
+  # See knowledge/analysis, "Scan all, clear all".
   defp source_scopes_for(static_analyzers, validators, _file_paths, _config) do
     (static_analyzers ++ validators)
     |> Enum.map(fn atom ->

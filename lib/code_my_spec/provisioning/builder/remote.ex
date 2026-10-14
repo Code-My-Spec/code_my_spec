@@ -2,16 +2,11 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   @moduledoc """
   Run the build on the builder box.
 
-  Separate from `Builder` because they answer different questions. `Builder`
-  owns the box's existence — created for one build, destroyed either way.
-  This owns what happens while it exists: reach it, fetch the commit, build,
-  push, and read back what was actually built.
+  `Builder` owns the box; this owns what happens on it: reach it, deliver the
+  commit, build, push, and read back what was actually built.
 
-  That last step is the one worth defending. `Builder` refuses to publish an
-  image whose architecture is not the one the servers run, and that check is
-  worth nothing if this simply echoes back the architecture it was asked for.
-  So the architecture is read off the built image, and a build that quietly
-  produced the wrong one is caught by the check rather than waved through it.
+  The architecture is read off the built image, never echoed from the
+  request, so `Builder`'s architecture check can catch a wrong build.
   """
 
   require Logger
@@ -20,36 +15,18 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Provisioning.Wait
 
-  # A freshly created box answers the API long before it answers SSH. Polled
-  # rather than slept-through, so a box that comes up quickly is not waited on
-  # for the worst case.
-  #
-  # Three minutes, not one. Sixty seconds is inside the range a cold Hetzner
-  # box takes to reach sshd, so it was a coin toss: one drill delivered its
-  # source and started building, the next reported `builder unreachable` doing
-  # nothing differently. Waiting costs nothing when the box is quick, because
-  # this polls — and the failure it produces is expensive, since it reads as a
-  # broken builder rather than an impatient caller.
+  # A fresh box answers the API long before SSH; polled, up to three minutes
+  # (a cold Hetzner box can take over a minute to reach sshd).
   @ssh_attempts 90
   @ssh_interval_ms 2_000
 
-  # The label `build/4` stamps on its own throwaway in-flight marker
-  # container — see `CodeMySpec.Provisioning.BurstBox.build_in_progress?/3`,
-  # the other side of this same marker (story 877, item 1).
-  #
-  # A plain `docker build` is not reliably `docker ps`-observable for its
-  # whole duration: under BuildKit (the default on any Docker new enough to
-  # matter — see `docker_build/5`'s own comment), a build's steps never
-  # materialize as inspectable containers at all, confirmed live against this
-  # box's own Docker — `docker ps -a` during a deliberately slow `RUN` step
-  # showed nothing for the build in progress. So "is a CodeMySpec build
-  # happening on this box right now" has no answer without something that
-  # *is* `docker ps`-visible for exactly as long as the build runs — a
-  # trivial long-running container, started right before and removed right
-  # after (success or failure alike), is that something.
+  # Label on a trivial long-running container `build/4` starts before and
+  # removes after each build — the only `docker ps`-visible sign of a build in
+  # progress, since BuildKit steps never appear as containers. Read by
+  # `BurstBox.build_in_progress?/3`.
   @build_marker_label "cms-build-in-progress"
 
-  @doc "Label `build/4`'s own in-flight marker carries, shared so `BurstBox.build_in_progress?/3` can filter on the same string without either file hardcoding the other's constant."
+  @doc "Label `build/4`'s in-flight marker carries, shared with `BurstBox.build_in_progress?/3`."
   @spec build_marker_label() :: String.t()
   def build_marker_label, do: @build_marker_label
 
@@ -68,10 +45,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
     dir = Keyword.get(opts, :build_dir, "/build")
 
-    # One line per phase — the only signal, short of SSHing in by hand, that
-    # a build is still moving rather than stuck. Confirmed live: nothing here
-    # logged anything between "started" and "done or failed", so a long real
-    # build and a hung one were indistinguishable from the outside.
+    # One log line per phase, so a long build and a hung one are
+    # distinguishable from outside.
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
          _ = Logger.info("[Builder] ssh reachable, delivering #{ref}"),
          :ok <- deliver_source(deliver, ref, dir, opts) do
@@ -80,12 +55,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # The box this runs on is now shared (story 877) — a customer's build is
-  # never the only thing that might be running there, so the marker has to
-  # bracket every phase the box is doing *this build's* work, not just the
-  # `docker build` invocation itself. Removed either way, the same "every
-  # path destroys" discipline `Builder.build/3` already follows for the box
-  # as a whole.
+  # The box is shared, so the marker brackets every phase of this build's
+  # work, and is removed either way.
   defp build_marked(run, ref, reference, dir, opts) do
     marker = start_build_marker(run, ref)
 
@@ -102,16 +73,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     result
   end
 
-  # `alpine` rather than anything bespoke: already the smallest image anyone
-  # would reach for, pulled once per box and cached by Docker after that.
-  # `sleep infinity` so the only thing that ends this container is the `rm
-  # -f` below — nothing about it is meant to do real work, only to exist and
-  # be findable by label for as long as the build it marks is running.
-  #
-  # `nil` on failure to start it, not an error — the marker is an
-  # observability aid for `busy?`, never load-bearing for the build itself;
-  # a box that for some reason can't run a trivial container is about to
-  # find that out for real from `docker_build/5` a moment later anyway.
+  # `alpine:3 sleep infinity`, ended only by the `rm -f` below. `nil` when it
+  # cannot start: the marker is an observability aid, never load-bearing.
   defp start_build_marker(run, ref) do
     name = "cms-build-marker-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
 
@@ -149,14 +112,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # Answering once is not staying up. A fresh box accepts SSH, then cloud-init
-  # finishes and restarts sshd, and the next connection — this one, seconds
-  # later — times out. The drill saw exactly that: `await_ssh/5` returned and
-  # the archive died on "connect to host ...: Operation timed out".
-  #
-  # Exit 255 is ssh's own failure and nothing else's; any other status is the
-  # remote `tar` or `rm` reporting, which must stay an immediate error rather
-  # than being retried into a long silence.
+  # Answering once is not staying up: cloud-init restarts sshd after the first
+  # connection. Exit 255 is ssh's own failure and is retried; any other status
+  # is the remote `tar`/`rm` and stays an immediate error.
   defp deliver_source(deliver, ref, dir, opts, attempts \\ 10) do
     case deliver.(ref, dir) do
       :ok ->
@@ -177,18 +135,11 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   Reachability, not readiness of anything in particular: if `true` runs, the
   box is up and the key works, which is the whole precondition.
 
-  The give-up carries how long it waited and what SSH last said. A bare
-  `:builder_unreachable` describes a broken box equally well as a caller who
-  did not wait long enough, and those want opposite responses — the first
-  needs looking at, the second needs patience.
+  The give-up carries how long it waited and what SSH last said: a broken box
+  and an impatient caller need opposite responses.
 
-  Public because the builder is not the only caller that needs it. A server
-  Hetzner has just created answers `status: initializing` for a minute or so,
-  and the registry step went straight from `POST /v1/servers` to running docker
-  over SSH on the box — reaching it about thirty seconds in, timing out, and
-  halting the whole run at `server` with every step behind it reporting
-  nothing. That read as an address that had stopped being ours; it was our own
-  box, still booting.
+  Public because any step reaching a just-created server needs it — a new
+  Hetzner server is `initializing` for a minute or so.
   """
   @spec await_ssh((list() -> {String.t(), non_neg_integer()}), non_neg_integer(), keyword()) ::
           :ok | {:error, {:builder_unreachable, non_neg_integer(), String.t()}}
@@ -214,69 +165,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   Install kamal on the builder before it orchestrates a deploy over it,
   unless it is already there.
 
-  Checked first rather than assumed: every burst box now comes from the one
-  shared snapshot (`Builder.ensure_burst_box_image/3`, story 877) with kamal
-  already baked in from whenever that snapshot was last built — but a
-  snapshot's own kamal can be stale or broken (see below), so this is
-  checked rather than trusted blind. One `command -v` check makes this
-  correct regardless of how long ago the box's snapshot was taken.
+  Checked rather than trusted: the burst box snapshot bakes kamal in, but its
+  native gems can be stale or broken. The check is `command -v kamal` plus an
+  actual `require 'ed25519'; require 'bcrypt_pbkdf'`; install uses `--force`
+  and retries up to 3 times.
 
-  Ruby is not part of the `docker-ce` base image, and nothing installed it
-  before one particular night: nothing had gotten a real harness-only
-  project's deploy far enough to actually invoke `bin/deploy migrate` and
-  find `kamal: command not found` (exit 127) — confirmed live against
-  MarketMySpec, the first deploy through this path to get this far.
-
-  `NEEDRESTART_MODE=a` is load-bearing, not decoration: installing
-  `ruby-full` on a stock Debian image triggers `needrestart`'s own apt hook,
-  and its default interactive mode prints a page of "Restarting
-  services.../No containers need to be restarted" chatter ahead of whatever
-  actually failed — confirmed live, that chatter alone pushed the real error
-  (a follow-up `apt-get`/`gem` failure) past every truncation budget tried
-  so far (see `Truncate`), reading as noise instead of a cause. `-y` alone
-  does not suppress it; needrestart reads its own env var.
-
-  `build-essential` is there for `ed25519` — a native-extension gem `kamal`
-  pulls in transitively through `net-ssh`, whose `extconf`/`mkmf` step needs
-  a C toolchain to compile against. `ruby-full`'s own dependency chain does
-  not pull that in on Debian: confirmed live, the very next failure once
-  `ruby-full` alone installed cleanly was `mkmf.log`/`extconf failed`.
-
-  `command -v kamal` alone is not enough of a check: the burst box's own
-  snapshot has kamal baked in from whenever it was last captured, and
-  RubyGems does not revisit an already-installed gem's
-  dependencies — if that snapshot's `ed25519`/`bcrypt_pbkdf` never actually
-  landed (an older kamal version that did not yet depend on them, or a
-  build that satisfied `kamal` itself before failing on their native
-  extensions), the binary being on `PATH` proves nothing about whether it
-  can load an OpenSSH-format private key. `Net::SSH::KeyFactory` requires
-  `ed25519` to even *parse* that key format regardless of the key's own
-  algorithm (`ed25519_loader.rb`), and the load failure is caught and
-  logged at `error`, below kamal's own default `log_level: :fatal` — so it
-  never prints. What surfaces instead is authentication silently falling
-  through to keyboard-interactive, which has no TTY on this path and dies
-  `Errno::ENOTTY`. Confirmed live against broken_oaths: the delivered key
-  was present, correctly owned, and the right size — the box just could
-  not use it, on a builder that had never needed to since the day its
-  image was captured.
-
-  `gem list -i` is not enough of a check either, once it *was* the check —
-  it only asks RubyGems' own installed-spec registry whether a gem by that
-  name exists, never whether `require` actually succeeds. Both are
-  native-extension gems (`ed25519`, `bcrypt_pbkdf`), compiled fresh on every
-  ephemeral builder — a transient resource hiccup during that compile can
-  leave a gem RubyGems considers "installed" with no working `.so` behind
-  it. Confirmed live against broken_oaths: the very same fingerprint
-  problem this fix already resolved once still recurred on a later
-  attempt, on a builder where `gem list -i ed25519` would have reported
-  true — so the check now shells out to the same `require` kamal itself
-  needs to succeed, not a proxy for it. `--force` on the install: without
-  it, a retry after a broken compile just finds RubyGems' spec already
-  satisfied and skips reinstalling, never actually attempting the compile
-  again. Retried up to 3 times for the same reason `trust_host/1` retries
-  its scan — a fresh compile on infrastructure that did not exist a moment
-  ago is exactly the kind of thing that fails on one attempt and succeeds
-  on the next with nothing else different.
+  See knowledge/provisioning, "Kamal on the builder".
   """
   @ed25519_usable_check "ruby -e \"require 'ed25519'; require 'bcrypt_pbkdf'\" >/dev/null 2>&1"
 
@@ -304,20 +198,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       {_output, _status} when attempts_left > 1 ->
         install_kamal(run, attempts_left - 1)
 
-      # Both ends, not just the tail: apt/needrestart bury their real
-      # failure at the end, after everything that went fine, but a `gem`
-      # crash is a Ruby exception — its own "ERROR: ..." line comes *before*
-      # the backtrace it raises, not after. A tail-only slice confirmed live
-      # against MarketMySpec: it surfaced apt's real cause correctly and,
-      # for a later gem-runner crash, surfaced nothing but backtrace frames
-      # with the one line that said what went wrong left outside the window.
-      #
-      # `--backtrace` on the gem invocation itself: found needed after that
-      # fix — a captured, complete, untruncated failure still had nothing
-      # but backtrace frames in it, no exception message or class anywhere.
-      # RubyGems only attaches the message consistently with this flag set;
-      # without it, some failure paths print bare frames and let the
-      # message go missing before anything downstream ever sees it.
+      # Head and tail: apt buries its cause at the end, a gem crash prints its
+      # error before the backtrace. `--backtrace` makes RubyGems attach the
+      # message consistently.
       {output, status} ->
         {:error, {status, output |> trim() |> Truncate.head_and_tail()}}
     end
@@ -326,22 +209,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   @doc """
   Send one commit's tree to the builder, over the SSH we already have.
 
-  The builder used to clone from GitHub. Repositories are created private
-  (`Repository`, `private: true` by default) and setup installs no deploy key,
-  so it could not have worked — and it never ran, because the step died
-  earlier on a missing `:env` before it got this far.
-
-  Three ways out of that were on the table: a deploy key on the repository, a
-  token in the clone URL, or this. This one is chosen because it leaves no
-  GitHub credential anywhere near the builder — a box that exists for one
-  build, that we do not exclusively control while it lives, and whose shell
-  history and git config would otherwise hold a token. We already hold SSH to
-  it, so there is nothing to add.
-
-  `git archive` rather than a clone, so what lands is exactly the commit's
-  tree: no history, no remotes, no `.git`, and nothing to leak. Shallow
-  cloning was the old optimisation for the same reason — the builder does not
-  need the history — and this is that argument taken to its end.
+  Leaves no GitHub credential on the builder: we already hold SSH to it.
+  An archive of the commit lands exactly its tree — no history, remotes or
+  `.git`.
   """
   @spec ssh_deliver(map(), keyword()) :: (String.t(), String.t() -> :ok | {:error, term()})
   def ssh_deliver(server, opts) do
@@ -355,9 +225,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
           Enum.join(["ssh" | ssh_args(server, opts)], " ") <>
           " " <> shell_quote(remote)
 
-      # Through the project's own environment, so the archive is taken from
-      # the checkout the deploy is for rather than from wherever the server
-      # happens to be running.
+      # Through the project's own environment, so the archive comes from the
+      # deploy's checkout, not the server's cwd.
       case Environments.cmd(env, "sh", ["-c", command], stderr_to_stdout: true) do
         {_, 0} -> :ok
         {output, status} -> {:error, {:source_delivery_failed, status, trim(output)}}
@@ -369,22 +238,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   Deliver `ref`'s tree straight from GitHub, for a project whose real
   checkout `ssh_deliver/2` cannot reach.
 
-  `ssh_deliver/2`'s own reasoning for archiving from the project's own
-  environment — no GitHub credential anywhere near the builder — assumes
-  there is a reachable environment to archive from. Without an explicit
-  environment rooted at the source tree, there is nothing to run
-  `git archive` against; the source has to come from somewhere the
-  builder itself can already reach. GitHub is that somewhere, since setup
-  already pushed the project there.
-
-  Runs entirely over the same SSH `ssh_deliver/2` uses — the credential
-  travels with this one request, not as a file or a git remote the builder
-  keeps. `--location-trusted` is needed and safe here specifically because
-  the API's tarball endpoint always redirects to `codeload.github.com`: `-u`
-  credentials are stripped on a cross-host redirect otherwise, and a private
-  repository's tarball 404s on the redirected request without them.
-  `--strip-components=1` matches `git archive`'s output — the API wraps the
-  tree in a single `owner-repo-sha/` directory `git archive` never adds.
+  Used when there is no local environment to archive from; setup already
+  pushed the project to GitHub. The token travels with this one request, not
+  as a file or remote on the builder. `--location-trusted` because the
+  tarball endpoint redirects to `codeload.github.com` and `-u` is otherwise
+  stripped (a private repo then 404s). `--strip-components=1` drops the API's
+  `owner-repo-sha/` wrapper to match the archive layout.
   """
   @spec github_deliver(map(), keyword()) :: (String.t(), String.t() -> :ok | {:error, term()})
   def github_deliver(server, opts) do
@@ -429,30 +288,11 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
 
-  # `service` is kamal's, and it refuses an image without it:
+  # `service` is the label kamal requires on an image it deploys; kamal stamps
+  # it itself, but setup builds elsewhere and deploys with `--skip-push`.
   #
-  #   Image <ref> is missing the 'service' label
-  #
-  # kamal builds its own images and stamps the label itself. Setup builds on
-  # its own builder and deploys with `--skip-push`, so nothing else was ever
-  # going to add it — the pull succeeded and the very next command rejected
-  # what it had just pulled.
-  #
-  # `--force-rm` closes a gap story 877's revised criteria (789/790) actually
-  # care about: "a failed build still takes its container with it." Checked
-  # live rather than assumed, on both builders this box could end up running:
-  # with `DOCKER_BUILDKIT=0` (the legacy builder), a failing `RUN` step's
-  # intermediate container survives by design — `--rm`'s default only removes
-  # them on a *successful* build, kept on failure so a human can `docker
-  # commit` and debug it — confirmed by running a deliberately-failing build
-  # and finding the exited container still in `docker ps -a` afterward.
-  # `--force-rm` is the documented flag for exactly this: it removed that same
-  # container even on the failing step. Under BuildKit (the default on any
-  # Docker new enough that this box's `docker-ce` almost certainly runs it),
-  # a failed build already leaves nothing in `docker ps -a` at all — BuildKit
-  # never materializes build steps as inspectable containers the way the
-  # legacy builder does — so `--force-rm` is accepted and does nothing there.
-  # Correct either way, with no need to detect which builder is active.
+  # `--force-rm`: the legacy builder keeps a failed step's intermediate
+  # container; BuildKit leaves none and ignores the flag. Correct either way.
   defp docker_build(run, reference, ref, dir, opts) do
     labels = "--label commit=#{ref}" <> service_label(Keyword.get(opts, :service))
     flags = "--force-rm " <> labels <> platform_flag(Keyword.get(opts, :platform))
@@ -463,21 +303,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # NEVER set this in production, and the reason is the opposite of the usual
-  # one: it would work.
-  #
-  # `Builder` refuses to publish an image whose architecture is not the one the
-  # servers run, and that refusal is load-bearing — a mismatched image starts
-  # and dies at the swap, long after the deploy looks like it is going well. In
-  # production the architecture is an *input*: the builder box is created as the
-  # same type as the app's box, so what comes out is what that box is, and a
-  # mismatch means something upstream picked wrong. Forcing the platform would
-  # make Docker emulate its way to the right answer and the check would never
-  # fire again — the guard would still be there, still be green, and never
-  # catch anything.
-  #
-  # It exists for the local fleet, where a single box has to stand in for boxes
-  # of both architectures. That is a property of the fixture, not of the build.
+  # NEVER set this in production: forcing the platform makes Docker emulate
+  # the right architecture and `Builder`'s mismatch check could never fire.
+  # It exists for the local fleet, where one box stands in for both.
   defp platform_flag(nil), do: ""
   defp platform_flag(platform), do: " --platform #{platform}"
 
@@ -486,19 +314,16 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   defp service_label(_service), do: ""
 
-  # Skippable, because a registry is the one thing a local build cannot stand
-  # in for — pushing to a real one would turn a build test into a network test.
-  # Never skipped in production: the deploy pulls what was pushed.
+  # Skippable for local builds (a push would make a build test a network
+  # test). Never skipped in production: the deploy pulls what was pushed.
   defp maybe_push(run, reference, opts) do
     case Keyword.get(opts, :push, true) do
       false ->
         :ok
 
       _ ->
-        # Docker assumes HTTPS for anything but `localhost`, and the registry
-        # on the project's private network speaks plain HTTP. Without this the
-        # push fails with `context deadline exceeded` — a timeout, which reads
-        # as an unreachable host rather than a protocol disagreement.
+        # The private-network registry speaks plain HTTP and Docker assumes
+        # HTTPS for anything but localhost; without trust the push times out.
         host = reference |> String.split("/") |> hd()
 
         with :ok <- trust(run, host),
@@ -508,15 +333,9 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # The result used to be discarded, and the cost of that was paid in the wrong
-  # place: when the trust step fails the push fails too, with `server gave HTTP
-  # response to HTTPS client`, which describes the registry rather than the
-  # thing that actually went wrong on this box. Naming it here means the next
-  # reader is told the daemon was never reconfigured instead of being pointed
-  # at a registry that is behaving correctly.
-  #
-  # `trust_command/1` is a no-op when the host is already trusted, so this is
-  # only ever reached on a box that had to be changed.
+  # A failed trust is named here, rather than surfacing later as a push error
+  # that blames the registry. `trust_command/1` is a no-op when already
+  # trusted.
   defp trust(run, host) do
     if loopback?(host), do: :ok, else: attempt_trust(run, host)
   end
@@ -528,30 +347,17 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # Docker already treats a loopback registry as insecure — that is its own
-  # rule, not ours — so there is nothing to configure and no daemon to restart.
-  # Which makes the write worse than pointless there: the local build path runs
-  # as whoever is running the tests, and `mkdir /etc/docker` on a developer's
-  # machine is a permission error at best and an edit to their real daemon at
-  # worst.
+  # Docker already treats loopback registries as insecure; writing
+  # `/etc/docker` on a developer's machine would be wrong.
   defp loopback?(host) do
     address = host |> String.split(":") |> hd()
     address == "localhost" or String.starts_with?(address, "127.")
   end
 
-  # A registry on a public hostname must not accept anonymous writes, and this
-  # pushed with no credential at all — so the push could only ever have
-  # succeeded against a registry that let anyone write to it. Nothing had
-  # noticed because nothing had reached a real push yet.
-  #
-  # The credential is the registry's, not the project's: one shared registry
-  # (see `Provisioning.Registry`), so it comes from our config rather than from
-  # `ProjectSecrets`. Absent credentials stay a no-op, which keeps every
-  # existing test and any local unauthenticated registry working.
-  #
-  # `--password-stdin` rather than `-p`: the password would otherwise be in the
-  # builder's shell history and in the process list of a box we do not own for
-  # long, but do not own alone either.
+  # A public registry must not accept anonymous writes. The credential is the
+  # shared registry's, from config (not `ProjectSecrets`); absent credentials
+  # are a no-op for local registries. `--password-stdin` keeps the password
+  # out of shell history and the process list.
   defp login(run, reference, opts) do
     case Keyword.get(opts, :registry_credentials) || configured_credentials() do
       %{username: username, password: password}
@@ -585,9 +391,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # Single quotes, with any embedded quote closed and reopened. The password is
-  # generated rather than typed, but a shell-quoting bug here fails as a login
-  # error that names nothing, which is the hardest kind to read.
+  # Single quotes, with any embedded quote closed and reopened.
   defp shell_escape(value) do
     "'" <> String.replace(value, "'", "'\\''") <> "'"
   end
@@ -602,19 +406,17 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # A push that times out says nothing about why. The registry answers on the
-  # project's private network, so the first question is whether this box is on
-  # it — and the box is destroyed with the build, so asking afterwards is not
-  # an option. Cheap enough to always attach, and only ever read on failure.
+  # A push failure gets network diagnostics attached: the registry answers on
+  # the project's private network, so the first question is whether this box
+  # is on it.
   defp where_am_i(run, reference) do
     host = reference |> String.split("/") |> hd()
     address = host |> String.split(":") |> hd()
 
     {addresses, _} = run.(["ip -4 -o addr show | awk '{print $2, $4}'"])
 
-    # Three questions, narrowest first: does the host answer at all, is the
-    # port open, and what does an HTTP request actually do. A timeout on the
-    # push says none of them, and the box is destroyed with the build.
+    # Narrowest first: does the host answer, is the port open, what does HTTP
+    # do.
     {ping, _} = run.(["ping -c2 -W2 #{address} 2>&1 | tail -3"])
 
     {port, _} =
@@ -631,9 +433,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       "\n\nhttp #{host}/v2/:\n" <> trim(http)
   end
 
-  # Read, not assumed. `Builder` refuses to ship an image built for the wrong
-  # architecture, and that refusal only means something if this reports what
-  # the image actually is.
+  # Read, not assumed — `Builder`'s architecture check depends on it.
   defp built_architecture(run, reference) do
     case run.(["docker image inspect --format '{{.Architecture}}' #{reference}"]) do
       {output, 0} -> output |> last_line() |> architecture()
@@ -641,12 +441,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # The answer is the last line, not the whole output. Commands run over SSH
-  # with stderr folded into stdout, and ssh writes its own
-  # `Warning: Permanently added ... to the list of known hosts.` there — so a
-  # command whose output we parse gets that warning glued to the front. It read
-  # as `{:unknown_architecture, "Warning: ...\namd64"}`: a real amd64 image,
-  # refused because the architecture check was shown a greeting.
+  # The last line: ssh output has stderr folded in, and any ssh warning would
+  # otherwise be glued to the front of the answer.
   defp last_line(output) do
     output
     |> to_string()
@@ -661,38 +457,23 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   defp architecture("x86_64"), do: {:ok, :x86}
   defp architecture(other), do: {:error, {:unknown_architecture, other}}
 
-  # 10 minutes. The first real end-to-end run against MarketMySpec — build,
-  # push, migrate, health check, swap — finished in under 7; this bounds the
-  # single slowest step among those (the docker build) at roughly 1.5x that
-  # whole pipeline, not the ~20-minute guess made before any real run had
-  # happened. A wider margin just makes a genuine hang cost more attention to
-  # notice, which is the exact failure this exists to bound.
+  # Bounds the slowest single step (docker build); a full real pipeline takes
+  # under 7 minutes.
   @default_remote_timeout_s 600
 
-  # One SSH invocation per command, which is slower than holding a session open
-  # and much easier to reason about: every command is independently visible in
-  # a log and independently replaceable in a test.
+  # One SSH invocation per command: each is independently visible in a log and
+  # replaceable in a test.
   @doc """
   Run commands on a box over SSH.
 
-  Public because the builder is not the only thing that has to reach a server
-  it just provisioned — the registry has to be started on the app's own box,
-  and that is the same question with a different address. Duplicating the flag
-  set was the alternative, and `IdentitiesOnly` is exactly the kind of thing
-  one copy learns and the other does not.
+  Public because other steps reach servers they just provisioned with the
+  same flag set (`IdentitiesOnly` is the kind of thing one copy learns and
+  another does not).
 
-  Every command is wrapped in `timeout`, on the *remote* side. `ssh_args/2`'s
-  own `ConnectTimeout` only bounds the initial TCP handshake — once connected,
-  ssh has no `ServerAliveInterval` and `System.cmd/3` has no timeout of its
-  own, so nothing anywhere would ever notice a connection that goes quiet or a
-  remote command that blocks (a Dockerfile `RUN` step prompting for input with
-  no TTY to answer it is a real way to do this silently). Confirmed live
-  against MarketMySpec, twice: a stuck build ran for 30+ minutes with zero
-  output and no error, recoverable only by a human killing the box by hand.
-  `timeout` on the remote shell turns that into a clean, bounded failure — a
-  real exit code (124) and whatever output the command had produced — instead
-  of a wait with no end. `:remote_command_timeout_s` overrides the default for
-  a caller that genuinely expects to run longer.
+  Every command is wrapped in a remote `timeout` (`wrap_with_timeout/2`):
+  nothing else bounds a remote command that blocks silently. Exit 124 on
+  expiry. `:remote_command_timeout_s` overrides the default. See
+  knowledge/provisioning, "SSH to provisioned boxes".
   """
   @spec ssh_runner(map(), keyword()) :: (list() -> {String.t(), non_neg_integer()})
   def ssh_runner(server, opts) do
@@ -707,36 +488,17 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # `sh -c`, not a bare prefix: `command` is a full shell one-liner already,
-  # often chained with `&&`/`|` (delivering the source, then building, then
-  # pushing, all in one string). `timeout N docker build ...` would only ever
-  # bound `docker` in a chain like `cd dir && docker build ... && docker push
-  # ...` — `cd` is what runs, everything after it is unbounded again. Wrapping
-  # the whole string as `sh -c`'s single argument is what makes the timeout
-  # apply to the chain as a whole, not just its first word.
-  #
-  # `-k 10`: `timeout` alone only sends SIGTERM, and SIGTERM is a request, not
-  # a guarantee — `docker build` (or something under it: a buildx subprocess,
-  # BuildKit's own daemon) can outlive the shell `timeout` actually killed,
-  # holding the ssh channel open behind it. Confirmed live against
-  # MarketMySpec: a build ran *past* its own 30-minute bound with no error,
-  # which only makes sense if `timeout` fired and something underneath it
-  # kept running anyway. `-k 10` escalates to SIGKILL — uncatchable — 10
-  # seconds after SIGTERM if the process group is still alive by then.
-  #
-  # `@doc false`: exists so the exact wrapping is assertable without a real ssh
-  # connection, the same reason `image_tag/2` and
-  # `commit_generated_configuration/1` are public.
+  # `sh -c` so the timeout bounds the whole `&&`/`|` chain, not its first word.
+  # `-k 10` escalates to SIGKILL if `docker build`'s children ignore SIGTERM.
+  # Public so the exact wrapping is assertable without ssh.
   @doc false
   @spec wrap_with_timeout(String.t(), pos_integer()) :: String.t()
   def wrap_with_timeout(command, timeout_s) do
     "timeout -k 10 #{timeout_s} sh -c #{shell_quote(command)}"
   end
 
-  # Shared by the runner and by `ssh_deliver/2`, which reaches the same box on
-  # the same terms. Two copies of these flags would be two things to keep in
-  # step, and the failure of drift is an authentication error on one of the
-  # two paths that says nothing about why the other one works.
+  # Shared by the runner and `ssh_deliver/2`, which reach the same box on the
+  # same terms; drift would be an auth failure on one path only.
   defp ssh_args(server, opts) do
     key = Keyword.fetch!(opts, :ssh_key_path)
 
@@ -746,61 +508,23 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
         "StrictHostKeyChecking=no",
         "-o",
         "UserKnownHostsFile=/dev/null",
-        # `UserKnownHostsFile=/dev/null` throws every host away as soon as it is
-        # written, so ssh can never find one already saved and prints "Warning:
-        # Permanently added ... to the list of known hosts" on *every* call, not
-        # just the first. `ssh_runner/2` merges that onto stdout
-        # (`stderr_to_stdout: true`), so a caller checking "is the output empty"
-        # was never looking at the command's own output — `container_running?`
-        # in both `Database` and `Registry` read this banner as "yes, something
-        # is there" unconditionally, on a box with nothing running at all.
-        # Confirmed live against fuellytics-prod: `cms-registry` never got
-        # created — not even attempted, `docker images`/`docker ps -a` and
-        # dockerd's own journal show no trace of it — because this is why
-        # `ensure_container/5` believed a fresh box already had one. Silencing
-        # the banner at the source fixes every current and future caller that
-        # parses this output, not just the two callers found tonight.
+        # Silences ssh's "Permanently added" banner, which (with
+        # `UserKnownHostsFile=/dev/null`) prints on every call and would be read
+        # as command output.
         "-o",
         "LogLevel=ERROR",
-        # Without these, `-i` is a suggestion: ssh offers every key the agent
-        # holds first, and a box with the default `MaxAuthTries 6` disconnects
-        # before reaching ours. `Servers.Containers` already learned this and
-        # says so; the builder did not, and paid for it — three minutes of
-        # retrying, then "Too many authentication failures", which the caller
-        # reported as an unreachable box. I raised the SSH timeout over it before
-        # reading the message, and the box had been answering all along.
+        # Without these, ssh offers every agent key first and `MaxAuthTries`
+        # disconnects before reaching ours ("Too many authentication failures").
         "-o",
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
-        # Without this, an address that answers nothing costs the OS default —
-        # around 75 seconds per attempt on macOS — and the caller has no way to
-        # shorten it. A box we just created either answers quickly or is not
-        # ready, and the callers that care already poll (`await_ssh/5` makes 90
-        # attempts), so a long single attempt buys nothing and delays the retry
-        # that would have succeeded.
-        #
-        # Measured: two such attempts were 150 of the 304 seconds a single spex
-        # story spent, against server addresses that stopped being ours weeks
-        # ago.
+        # A just-created box either answers quickly or is not ready; callers
+        # poll, so a 75s OS-default attempt only delays the retry.
         "-o",
         "ConnectTimeout=10",
-        # `ConnectTimeout` only bounds the initial handshake — once connected,
-        # ssh has no way on its own to notice the connection has gone silent.
-        # `wrap_with_timeout/2` bounds how long the *remote* command runs, but
-        # that does nothing if the TCP connection itself dies quietly after
-        # the command starts (a dropped NAT mapping, a path that stops
-        # delivering packets with no RST or FIN) — the remote `timeout` can
-        # fire, kill the command, and try to report an exit status, and none
-        # of that ever reaches a client with nothing left to receive it on.
-        # Confirmed live against MarketMySpec: a build outlived its own
-        # 10-minute bound (with the SIGKILL escalation already in place) by
-        # over ten minutes with zero signal either way — consistent with the
-        # remote side having finished and nothing carrying the news back.
-        # These make the *client* notice: a probe every 15s of silence, and
-        # ssh gives up after 4 straight go unanswered — 60s to detect a truly
-        # dead connection, not the tens of minutes `System.cmd/3`'s own total
-        # absence of a timeout would otherwise wait.
+        # Detects a silently dead connection in ~60s; neither `ConnectTimeout`
+        # nor the remote `timeout` can.
         "-o",
         "ServerAliveInterval=15",
         "-o",
@@ -811,11 +535,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       ]
   end
 
-  # A cloud box is always on 22, so this is absent in production and the flags
-  # are byte-identical to what they were. It exists for the local fleet, where
-  # boxes are containers reached on published loopback ports — and the point of
-  # that fleet is to run *this* function rather than a local imitation of it,
-  # so the one thing it cannot do is fork the command it builds.
+  # Absent in production (port 22). The local fleet reaches container boxes
+  # on published loopback ports through this same function.
   defp ssh_port(nil), do: []
   defp ssh_port(port), do: ["-p", to_string(port)]
 
@@ -824,15 +545,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   The same command sequence, the same real `docker build`, no cloud and no
   SSH — which makes the interesting half of this module exercisable without
-  provisioning anything. What it does not exercise is the box: reachability,
-  the pre-warmed image, and destruction still need the real thing.
+  provisioning anything. Reachability and the burst box itself still need the
+  real thing.
   """
   @spec local_runner(keyword()) :: (list() -> {String.t(), non_neg_integer()})
   def local_runner(opts) do
-    # Required rather than defaulted to the current directory. The sequence this
-    # runs starts with `rm -rf`, and a caller who forgot to say where should get
-    # an error rather than have it aimed at whatever repository happens to be
-    # open.
+    # Required: the sequence starts with `rm -rf`.
     cd = Keyword.fetch!(opts, :cd)
 
     fn [command] -> System.cmd("sh", ["-c", command], cd: cd, stderr_to_stdout: true) end

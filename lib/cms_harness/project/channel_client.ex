@@ -36,18 +36,12 @@ defmodule CmsHarness.Project.ChannelClient do
 
   ## A refused join keeps trying
 
-  Two harnesses on one *project* is ordinary now — files and problems are keyed
-  on the working copy, so each writes its own rows. What the server still
-  refuses is a second harness on the same *working copy*, because `mix test` and
-  `mix spex` share one `_build` and two at once corrupt it.
+  The server refuses a second harness on the same *working copy* (two on one
+  `_build` corrupt it); two harnesses on one *project* are ordinary. The
+  refusal clears when the holder exits, so this retries at the capped backoff
+  and never gives up.
 
-  That refusal is temporary by nature: it clears the moment the holder exits. So
-  this retries at the capped backoff rather than giving up. It used to give up
-  permanently, from when the refusal meant file corruption — and because nothing
-  cleared the flag, a harness that was refused once stayed dead for the life of
-  the process. On 2026-08-08 that survived a server restart: the harness could
-  see the server answering 200 and would not reconnect, which reads exactly like
-  a broken server.
+  See knowledge/harness/channel, "Joining".
   """
 
   use Slipstream
@@ -72,27 +66,17 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Utils.MapAccess
 
-  # Long enough for a transatlantic round trip against a busy server, short
-  # enough that a hung hook is a hook that eventually answers. It is paid on
-  # every agent turn, so it is not generous.
-
   @backoff [1_000, 2_000, 5_000, 10_000, 30_000]
 
   # How long one dial has to end in a join. Slipstream times neither the
-  # websocket upgrade nor the join reply, so an attempt the server never
-  # answers sits forever with no disconnect to retry from (57aa576c). A healthy
-  # join is milliseconds; this is well past a loaded one and short of
-  # Slipstream's own heartbeat timeout (~60s), which only starts after upgrade.
+  # websocket upgrade nor the join reply, so an unanswered attempt would sit
+  # forever with no disconnect to retry from. Short of Slipstream's ~60s
+  # heartbeat timeout, which only starts after upgrade.
   @default_join_timeout 20_000
 
-  # The channel contract this harness speaks. Kept in step with
-  # `CodeMySpecWeb.HarnessProjectChannel`'s copy of the same number — the two
-  # are the contract, so they are the two places that have to agree.
-  #
-  # Bump on a change to the join payload, the `handle_in` set, or the shapes
-  # those carry. Not for ordinary changes on either side: a version that moves
-  # for everything means a refusal on every deploy, which trains people to
-  # ignore it.
+  # Kept in step with `CodeMySpecWeb.HarnessProjectChannel`'s copy. Bump only
+  # on a change to the join payload, the `handle_in` set, or their shapes.
+  # See knowledge/harness/channel, "Contract version".
   @contract_version 2
 
   @doc """
@@ -105,38 +89,14 @@ defmodule CmsHarness.Project.ChannelClient do
   @spec contract_version() :: pos_integer()
   def contract_version, do: @contract_version
 
-  # How many refusals are reported quietly before one loud explanation. Not a
-  # give-up count — nothing gives up any more.
-  #
-  # The executor slot is held by the *server-side channel process*, so it frees
-  # the instant that socket closes, including on a restart. But a restart is a
-  # handover rather than an instant: for the seconds the old process takes to
-  # go, the new one cannot take a slot the old one still holds. Spanning the
-  # backoff, this is roughly 48 seconds — long enough that an ordinary handover
+  # How many refusals are reported quietly before one loud explanation; not a
+  # give-up count. Spanning the backoff this is ~48s, long enough that an
+  # ordinary restart handover (old channel process still holding the slot)
   # never produces the loud message.
   @refusal_retries 4
 
   defp join_timeout,
     do: Application.get_env(:code_my_spec, :harness_join_timeout, @default_join_timeout)
-
-  # A whole suite, not a decision. Longer than the server's own wait, so a run
-  # the server gives up on comes back as its answer rather than as this timing
-  # out first — one of those is a failed analyzer and the other is a broken
-  # channel, and the agent cannot act on them the same way.
-
-  # A promotion, which is minutes and not a decision.
-  #
-  # The server's own worst case is the sum of what `Promotion.promote/1` does:
-  # a precheck and a merge at `Runner`'s `@git_timeout` (60s each), two gate
-  # sweeps at `:promotion_sweep_timeout` (2 minutes each), and a restart at
-  # `@restart_timeout` (600s, because `just restart` compiles, migrates and
-  # polls for the app on a cold tree). Roughly sixteen minutes, and each leg
-  # crossing the wire adds its own five seconds.
-  #
-  # Twenty, so the server's answer arrives as an answer rather than as this
-  # timing out first. Same reasoning as `analysis_timeout/0` above, and the same
-  # reason it matters: a refused gate and a dead channel need opposite
-  # responses, and a timeout here reports the second for the first.
 
   # --- Client API ---
 
@@ -145,10 +105,6 @@ defmodule CmsHarness.Project.ChannelClient do
     Slipstream.start_link(__MODULE__, project, name: Channel.via(project.root))
   end
 
-  # Keyed on the working copy. The project id still names the *topic* — that is
-  # the server's identity for this project and is shared by every checkout of
-  # it — but two checkouts are two channels, and keying the registry on the id
-  # gave the second one the first's. Issue 8b83ba20.
   # --- Slipstream callbacks ---
 
   @impl Slipstream
@@ -174,22 +130,15 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_continue(:connect, socket) do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
-        # The one line that says which server this attempt is actually aimed
-        # at, before the outcome is known. `handle_disconnect/2` already logs
-        # the failure reason, but never the address that produced it — a
-        # harness dialing the wrong server (a stale `:harness_server_url`, an
-        # env var this process should not have inherited) reads identically
-        # to one dialing the right one and getting refused, and the two need
-        # opposite fixes. Token redacted: it is a credential, not a diagnostic.
+        # Names the address each attempt dials, so a harness aimed at the
+        # wrong server is distinguishable from one being refused. Token redacted.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
 
         {:noreply,
          socket |> connect!(uri: uri, headers: connect_headers(socket)) |> arm_join_deadline()}
 
       {:error, :no_credential} ->
-        # Not a retry loop. Nothing about waiting produces a credential, and a
-        # harness quietly retrying forever looks identical to one that is
-        # working.
+        # Not a retry loop: waiting produces no credential.
         Logger.error("""
         [CmsHarness] no credential, so this harness is connected to nothing.
 
@@ -197,11 +146,8 @@ defmodule CmsHarness.Project.ChannelClient do
         every hook will refuse and no file change will be recorded.
         """)
 
-        # Recorded, not just logged. Without this the hook path only knows
-        # `joined: false` and reports the channel as down — sending whoever
-        # reads it to check the network and the server, when the fix is to set
-        # an environment variable. A wrong diagnosis costs more than no
-        # diagnosis; this project has already lost an hour to one.
+        # Recorded so the hook path reports a missing credential rather than
+        # "channel down", which sends readers to the network instead.
         {:noreply, assign(socket, :no_credential?, true)}
     end
   end
@@ -214,116 +160,51 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok,
      transport().join(socket, socket.assigns.topic, %{
        "label" => Config.label(project.root),
-       # Which working copy this is. `nil` on the first join of a checkout —
-       # the server mints one and hands it back, and `handle_join/3` writes it
-       # down so every later join presents the same one. A server that does not
-       # yet know the field ignores it, which is why this can land ahead of the
-       # half that reads it.
+       # Which working copy this is. `nil` on a checkout's first join: the
+       # server mints one and `handle_join/3` writes it down.
        "harness_id" => project.working_copy_id,
-       # Where this copy is, as reported data rather than identity. The server
-       # records it so an operator looking at two harnesses of one project can
-       # tell which checkout each is; nothing resolves a harness by it.
+       # Reported data, not identity: nothing resolves a harness by it.
        "root" => project.root,
-       # Where this project's preview answers, for the copy that is its main
-       # checkout. Reported for the same reason `root` is: the address is
-       # written in the checkout's own config at onboarding, and the server
-       # holds a copy so the web app — which has no disk — can render a frame
-       # at it. `nil` from every other copy, and from a main checkout that has
-       # no preview yet, which is the ordinary state.
+       # Where the main checkout's preview answers, from the copy's own
+       # config, so the web app can frame it. `nil` from every other copy.
        "preview_url" => project[:preview_url],
-       # Which machine this copy is on, by the id this install was issued when
-       # it came up. Reported, never created: the server looks it up and
-       # attaches, and an id it does not recognise attaches nothing rather than
-       # minting a machine. A checkout must not be able to assert a device into
-       # existence — one install serves many copies, so that would make a
-       # machine per checkout.
-       #
-       # `nil` on a machine that has not onboarded, and absent entirely from an
-       # older harness. Both mean "no device announced", which is a real state
-       # and not a failure.
+       # Which machine this copy is on. Reported, never created: an id the
+       # server does not recognise attaches nothing. `nil` means no device
+       # announced, an ordinary state.
        "device" => %{"id" => CmsHarness.Device.recorded_id()},
-       # What else this machine can do, by name. A browser is an MCP server on
-       # this box — `vibium mcp` over stdio — and its tools go into the catalog
-       # a script can call rather than onto the agent, which is what keeps
-       # twenty-nine schemas out of every turn.
-       #
-       # Reported on join because it is a property of the machine and not of an
-       # agent: an agent's list is computed at start from what its machine
-       # said, so the server has to know before there is an agent to ask about.
-       # `[]` from a machine with no browser, which is a state rather than a
-       # failure — see `CmsHarness.Browser`.
+       # The machine's browser MCP tools, for the script catalog rather than
+       # the agent's own tool list. On join because it is a machine property
+       # the server needs before any agent starts. `[]` with no browser.
        "machine_tools" => browser.names,
-       # And what each of them takes. Thirty kilobytes for all eighty-five,
-       # measured against this machine's vibium — sent once per join, so that
-       # `tool_docs` can answer for a browser tool without a round trip on the
-       # path an agent uses to decide what to call. That path is the one that
-       # queues behind sibling agents (35e5eb59), and documentation missing when
-       # the machine is busy is worse than documentation one join old.
+       # Their schemas, once per join, so `tool_docs` answers without a round
+       # trip to a possibly busy machine.
        "machine_tool_docs" => browser.docs,
-       # Why that list is what it is. `[]` meant both "no browser here" and
-       # "the browser is here and would not answer", and the second is the one
-       # somebody can act on — see issue 02b03d04.
+       # Why the list is what it is: tells "no browser" from "browser would
+       # not answer".
        "browser_status" => browser_status(browser.status),
-       # Which OS process holds this socket. The server needs it to tell a
-       # rejoin apart from a rival: both present the same working_copy_id, because
-       # that id is the working copy and is read from a file in it. Same
-       # instance means this process reconnecting, and the registration it is
-       # colliding with is its own — so it may take it. A different instance is
-       # a second harness on one `_build`, which still gets refused.
+       # Which OS process holds this socket, so the server can tell a rejoin
+       # (same instance, may take its own registration) from a rival harness
+       # on the same working copy (refused).
        "instance" => instance(),
-       # Runs this harness is still working on. The server closes a working
-       # copy's open runs on join, because a harness that restarted took its
-       # queue with it — but a harness whose *socket* dropped did not. The
-       # analyzers are OS processes here and a closed socket does not touch
-       # them; they finish, report, and are refused for a run that is no longer
-       # `:running`.
-       #
-       # Declaring them lets the sweep close only what goes unclaimed. An older
-       # server ignores the field and sweeps everything, which is what it does
-       # today.
+       # Runs still in flight here. The server's join sweep closes only what
+       # goes unclaimed: a dropped socket does not kill the analyzers.
        "active_runs" => AnalysisServer.in_flight(project.root),
        # The app this copy is actually running, from the harness's own
-       # `state.json` (00bd7d4a). A restart's result reaches the server as a
-       # reply or a push, and a harness that restarted mid-reply, or whose
-       # socket dropped and reconnected, leaves the server holding a commit the
-       # app is not running â metric_flow's main copy reported `app_commit`
-       # c3eb20b against HEAD 59dc451. This is the one moment a harness is
-       # guaranteed to be talking to the server, so it is where the server's
-       # answer converges on the harness's.
-       #
-       # `nil` when this copy never ran an app; an older server ignores the
-       # field, so the rollout order does not matter â the same reasoning
-       # `active_runs` above is built on.
+       # `state.json`. A reply or push lost to a restart or reconnect leaves the
+       # server holding a stale commit; the join is where it converges. `nil`
+       # when this copy never ran an app.
        "app" => CmsHarness.AppInstance.reported(project.root),
        # App verbs newer than the contract version. The server pushes one only
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
-       # What this harness believes the channel contract is.
-       #
-       # Skew between the two ends surfaces today as `{:error, %{"reason" =>
-       # "unmatched topic"}}` on every stop — a message about topics, for a
-       # problem about versions. It was diagnosable only because the refusal
-       # wrapper appends the harness's boot commit and its checkout's current
-       # one, so a reader can `git diff --stat <range> -- lib/cms_harness
-       # lib/code_my_spec_web/channels` and see the contract move. That works and
-       # it should not be the mechanism (c8a7f11d).
-       #
-       # Stated outright, the server can name the mismatch instead of leaving it
-       # to be inferred from a commit range. Bump this when the join payload, the
-       # `handle_in` set, or the shapes they carry change — not for ordinary
-       # changes to either side.
-       #
-       # An older server ignores the field, and the server treats its absence as
-       # "a harness that predates this", so the rollout order does not matter —
-       # the same reasoning `active_runs` above is built on.
+       # Lets the server name a contract mismatch outright. Absent means a
+       # harness that predates the field.
        "contract_version" => @contract_version
      })}
   end
 
-  # Flattened for the wire, with the reason attached where there is one. A map
-  # rather than a bare string so the server can record why without a second key
-  # that could disagree with the first.
+  # Flattened for the wire, with the reason attached where there is one.
   defp browser_status({:unreachable, reason}),
     do: %{"status" => "unreachable", "error" => reason}
 
@@ -340,31 +221,9 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_join(topic, reply, socket) do
     Logger.info("[CmsHarness] holding #{socket.assigns.project.root} — joined #{topic}")
 
-    # `attempts` is deliberately NOT reset here, and that is the whole of this
-    # comment. Joining is not evidence the connection works — it is evidence the
-    # server accepted a join, which is a weaker claim and, for a channel whose
-    # very next push is refused, a false one.
-    #
-    # Measured 2026-09-23: four harness instances ran this loop — join, push
-    # `read_model`, get `{:error, %{"reason" => "unmatched topic"}}`, disconnect,
-    # `backoff(0)` = 1000ms, join again — roughly once a second, indefinitely.
-    # One instance logged 2,777 read-model refusals against 1,130 disconnects.
-    # Together they wrote ~370 lines a minute into `harness.log`, rotating a
-    # 10MB file every ~35 minutes, so the entire retained harness history was
-    # under two hours old and the previous day's was gone. That history is the
-    # only place harness symptoms live — a refused hook, a manifest sent and
-    # never accepted, a dropped analyzer result — so the loop was destroying the
-    # evidence for the next harness bug faster than anyone could look at it.
-    #
-    # The backoff table only ever reached its first entry, because every cycle
-    # passed through here and zeroed it.
-    #
-    # So the reset moves to the read-model reply, which is what the join exists
-    # to obtain — the comment below says so: "a scan without one resolves no
-    # owners and validates no specs". A connection that has handed over a read
-    # model has proved it works. One that has not is still a candidate for
-    # backing off, which is the correct behaviour for a harness that cannot
-    # resolve owners and is therefore not scanning anyway.
+    # `attempts` is deliberately NOT reset here: a join is not proof the
+    # connection works. It resets on the read-model reply.
+    # See knowledge/harness/channel, "Joining".
     install_age_keys(reply)
     ensure_join_tunnel(reply, socket.assigns.project.root)
 
@@ -418,14 +277,9 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp install_age_keys(_reply), do: :ok
 
-  # The join reply carries the same "told fresh" `tunnel` an
-  # `ensure_app_running`/`restart_app` push does — added because a join is
-  # neither of those, and a harness restart (this project's own
-  # after-promote recipe causes one 13-30s after every promote) used to take
-  # a main copy's connector down with nothing to bring it back except a
-  # further `ensure_app_running`, which nothing calls on its own. Reuses
-  # `tunnel_opt/1`'s own parsing so the two paths can never disagree about
-  # the shape.
+  # The join reply carries the same `tunnel` an `ensure_app_running` /
+  # `restart_app` push does, so a harness restart brings a main copy's
+  # connector back. Reuses `tunnel_opt/1` so the two paths cannot disagree.
   defp ensure_join_tunnel(reply, root) do
     case Keyword.get(tunnel_opt(reply), :tunnel) do
       nil -> :ok
@@ -436,11 +290,8 @@ defmodule CmsHarness.Project.ChannelClient do
   # The id the server issued for this working copy, written down so a restart
   # presents the same one rather than being issued a second.
   #
-  # Only ever *adds* an identity. A server that answers with a different id than
-  # the one presented is not obeyed: the rows this copy has already written are
-  # filed under the id on disk, and quietly adopting a new one would orphan them
-  # while everything kept looking healthy. Named instead, because the two ids
-  # disagreeing is a fact somebody has to reconcile.
+  # Only ever *adds* an identity. A different id from the server is logged, not
+  # adopted: this copy's rows are filed under the id on disk.
   defp persist_issued_identity(socket, reply) do
     root = socket.assigns.project.root
 
@@ -480,21 +331,9 @@ defmodule CmsHarness.Project.ChannelClient do
   defp issued_id(%{"harness_id" => id}) when is_binary(id) and id != "", do: id
   defp issued_id(_reply), do: nil
 
-  # How often the cached read model is refetched.
-  #
-  # It used to be fetched once, on join, and never again. A sprite joins before
-  # the project has any stories or components, so it held an empty domain for the
-  # entire session — and `Scanner.resolve_owners/2` refuses to link a file to a
-  # story its read model has never heard of, which is the right rule and exactly
-  # wrong against a cache that can no longer change.
-  #
-  # Drill 12 wrote 32 BDD spec files across 9 stories and not one was linked;
-  # `bdd_specs_exist` failed for every story, gating all 69
-  # `implementation_file` requirements behind it. Ownership is re-resolved
-  # server-side now, so that particular consequence is gone — but the same stale
-  # copy still feeds `validate_entry/4`, where an empty `component_by_id` means
-  # test-alignment is silently never checked. Fixing the symptom is not fixing
-  # the cache.
+  # How often the cached read model is refetched. A copy that joins before the
+  # project has stories or components would otherwise hold an empty domain all
+  # session, and `validate_entry/4` would silently check nothing.
   @read_model_refresh_ms 60_000
 
   @doc "Public so a test can assert against the real interval rather than a copy."
@@ -503,13 +342,8 @@ defmodule CmsHarness.Project.ChannelClient do
   defp schedule_read_model_refresh,
     do: Process.send_after(self(), :refresh_read_model, @read_model_refresh_ms)
 
-  # Preview health gets its own clock, because a scan is the wrong one.
-  #
-  # Everything else the sync reports changes only when the disk changes. An
-  # application does not: it crashes while nobody is editing and recovers while
-  # nobody is editing, and `story_promoted` refuses on the result. Tied to
-  # the scan, a recovered app stayed `down` until someone touched a file, and a
-  # crashed one read `serving` for exactly as long.
+  # Preview health has its own clock: an app crashes and recovers while nobody
+  # edits a file, so tying it to the scan left it stale.
   @preview_check_ms 60_000
 
   @doc "Public so a test can assert against the real interval rather than a copy."
@@ -518,10 +352,7 @@ defmodule CmsHarness.Project.ChannelClient do
   defp schedule_preview_check,
     do: Process.send_after(self(), :measure_preview, @preview_check_ms)
 
-  # What the box is carrying gets its own clock too, and for the same reason
-  # preview health does: it is a fact about the machine, not the checkout, and
-  # the machine keeps getting more or less saturated while nobody touches a
-  # file. Story 1057, criterion 3324.
+  # Machine load has its own clock too: it changes while nobody touches a file.
   @machine_load_check_ms 60_000
 
   @doc "Public so a test can assert against the real interval rather than a copy."
@@ -530,15 +361,9 @@ defmodule CmsHarness.Project.ChannelClient do
   defp schedule_machine_load_check,
     do: Process.send_after(self(), :measure_machine_load, @machine_load_check_ms)
 
-  # Presence (`.code_my_spec/plans/agent-liveness-from-presence.md`): the
-  # server tracks an agent while this channel says it is up — `agent_up` and
-  # `agent_down` as `Liveness` sees them, the moment they happen. A fresh join
-  # tracks nothing, so it is told the whole set at once, with no delay: an
-  # empty set here is true, and nothing on the server acts on absence.
-  #
-  # This replaces the 60-second `agents_running` report and the 15-second
-  # post-join delay that kept that report from reaping agents still being
-  # restored (`34e03128`); an agent's death is its own message now.
+  # Presence: the server tracks an agent while this channel says it is up
+  # (`agent_up` / `agent_down` as `Liveness` sees them). A fresh join is told
+  # the whole set at once; an empty set is true, and nothing acts on absence.
   defp report_agents_present(socket) do
     transport().push(
       socket,
@@ -566,21 +391,14 @@ defmodule CmsHarness.Project.ChannelClient do
     # closed after joining as `:error`; the refusal we know how to explain can
     # arrive either way.
     case reason do
-      # `project_in_use` is what a server older than the grain change sends. Both
-      # are accepted so a harness can serve either.
+      # `project_in_use` is the older server's name for the same refusal.
       {kind, %{"reason" => reason, "held_by" => holder}}
       when kind in [:error, :failed_to_join] and
              reason in ["working_copy_in_use", "project_in_use"] ->
         {:ok, refused(socket, holder)}
 
-      # A credential that reaches a different project. The socket connects — the
-      # key is valid — and the join is refused, so every hook in the working
-      # copy answers "channel down, server answering 200" while the harness's
-      # own /health says connected, because that is about the socket.
-      #
-      # Measured 2026-08-21: a `broken_oaths` checkout served by the CodeMySpec
-      # daemon, refused every thirty seconds for hours, with nothing on either
-      # side naming the credential. This is the whole of what that cost.
+      # A valid credential for a different project: the socket connects and the
+      # join is refused. Logged naming the credential, which is the fix.
       {kind, %{"reason" => "unauthorized"}} when kind in [:error, :failed_to_join] ->
         {:ok, schedule_rejoin(unauthorized(socket, topic))}
 
@@ -636,20 +454,9 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # A scan on the join reply is the point: the read model is what resolves
-  # owners and validates specs, so the first manifest has to wait for it.
-  #
-  # The 60s refresh reuses this same reply path, and scanning there re-hashed
-  # and re-uploaded every file in the working copy once a minute whether or not
-  # anything had changed — on top of the watcher's own 90s floor. Interleaved,
-  # the two produced a full sync every 30 seconds per copy, ~120 an hour each,
-  # and with three copies attached the server upserted well over a million file
-  # rows an hour to learn nothing.
-  #
-  # A refresh that *does* change the read model still earns its scan: new
-  # criteria or spec paths mean the last manifest resolved owners against a
-  # model that no longer holds. An identical one says nothing about the disk,
-  # and the watcher already covers the disk.
+  # The join's read model always earns a scan: it resolves owners and validates
+  # specs, so the first manifest waits for it. A 60s refresh scans only when
+  # the read model changed; the watcher covers the disk.
   defp maybe_sync(socket, previous, read_model) do
     if socket.assigns[:read_model_reason] != :refresh or previous != read_model do
       Sync.start(socket.assigns.project, read_model)
@@ -665,9 +472,8 @@ defmodule CmsHarness.Project.ChannelClient do
         previous = Map.get(socket.assigns, :read_model)
         read_model = deserialize_read_model(payload)
 
-        # The connection has now done the thing the join exists for, so this is
-        # where the reconnect backoff is allowed to forget its history. See the
-        # note in `handle_join/3` for what resetting it there cost.
+        # The join has done what it exists for; the backoff may reset.
+        # See knowledge/harness/channel, "Joining".
         socket =
           socket
           |> assign(:read_model, read_model)
@@ -678,7 +484,7 @@ defmodule CmsHarness.Project.ChannelClient do
         {:ok, assign(socket, :read_model_refusals, 0)}
 
       # Structural, so retrying on the refresh tick cannot succeed: stop asking
-      # until the next join, and say it loudly only the first time (b5f7fdb4).
+      # until the next join, and say it loudly only the first time.
       {:error, %{"reason" => "unmatched topic"}} = refusal ->
         refusals = Map.get(socket.assigns, :read_model_refusals, 0)
         log_read_model_refused(socket, refusal, refusals)
@@ -705,9 +511,7 @@ defmodule CmsHarness.Project.ChannelClient do
         {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
       other ->
-        # Not fatal: nothing is running yet, so the worst case is a harness that
-        # holds no agents until somebody asks for one. Said out loud because the
-        # alternative is agents that silently never come back.
+        # Not fatal, but said out loud so agents do not silently never return.
         Logger.warning(
           "[CmsHarness] could not learn which agents to restore for " <>
             "#{socket.assigns.project.root}: #{inspect(other)}. None were started; " <>
@@ -722,10 +526,8 @@ defmodule CmsHarness.Project.ChannelClient do
     socket = socket |> stamp_server_reply() |> assign(:observations_ref, nil)
 
     case reply do
-      # The server takes the manifest and reconciles it after replying, so the
-      # counts are no longer in the reply — a big manifest used to hold the
-      # channel long enough that a stop decision behind it timed out. They are
-      # logged server-side instead.
+      # The server reconciles after replying, so a big manifest cannot hold the
+      # channel; counts are logged server-side.
       {:ok, %{"status" => "accepted", "observations" => count}} ->
         Logger.info(
           "[CmsHarness] server accepted the manifest for #{socket.assigns.project.root}: " <>
@@ -734,9 +536,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
         {:ok, socket}
 
-      # A server that predates that change. Anything that still replies with
-      # counts accepted the manifest, and calling it a rejection would be a lie
-      # in the direction that costs the most.
+      # An older server's reply shape; still an acceptance.
       {:ok, %{"upserted" => upserted, "removed" => removed}} ->
         Logger.info(
           "[CmsHarness] server accepted the manifest for #{socket.assigns.project.root}: " <>
@@ -745,27 +545,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
         {:ok, socket}
 
-      # A reply this harness cannot read, that says it succeeded anyway.
-      #
-      # Not a refusal, and it must not be reported as one. Measured on drill 16:
-      # a sprite built 2026-08-02 met a server carrying `6e389c29` from
-      # 2026-08-09, which changed the reply from counts to `%{"status" =>
-      # "accepted", "observations" => n}`. The old harness had no clause for the
-      # new shape, fell to the catch-all, and logged
-      #
-      #     the server REJECTED the manifest: {:ok, %{"observations" => 51,
-      #     "status" => "accepted"}}
-      #
-      # — the word REJECTED directly above the server saying "accepted". The
-      # closing line of that message guessed version skew correctly while its
-      # headline asserted the opposite, and `drill.sh` waits for the string
-      # "accepted the manifest", so a drill whose manifest landed fine timed out
-      # at the preflight.
-      #
-      # Matched before the catch-all rather than by parsing: any reply that says
-      # it was accepted was accepted, whatever else it carries. This is the same
-      # kindness the clause above extends to an *older* server, in the other
-      # direction — a newer one.
+      # Any reply that says "accepted" was accepted, whatever else it carries:
+      # a newer server's shape must never be logged as a rejection.
       {:ok, %{"status" => "accepted"} = reply} ->
         Logger.warning(
           "[CmsHarness] server accepted the manifest for #{socket.assigns.project.root}, " <>
@@ -776,17 +557,9 @@ defmodule CmsHarness.Project.ChannelClient do
 
         {:ok, socket}
 
-      # A push that lands after the channel has left its topic. Ordinary
-      # shutdown, not a refusal: `stop`, `just refresh` and `refresh-harness`
-      # all leave a scan in flight, and its manifest arrives at a topic the
-      # process is no longer joined to.
-      #
-      # Given its own clause because the catch-all's diagnosis is actively
-      # wrong here, and expensively so. A QA agent spent a session on it: the
-      # "usually version skew" line sent it comparing shas across two
-      # checkouts, it checked whether a bare restart cleared the symptom, and
-      # reasoned its way to "genuine code drift" — careful work from a false
-      # premise the log handed it. See `2d26df7c`.
+      # A manifest that lands after the channel left its topic: ordinary
+      # shutdown or reconnect, not a rejection. Its own clause so the
+      # catch-all's diagnosis does not mislead.
       {:error, %{"reason" => "unmatched topic"}} ->
         Logger.info(
           "[CmsHarness] manifest for #{socket.assigns.project.root} arrived after the " <>
@@ -797,19 +570,8 @@ defmodule CmsHarness.Project.ChannelClient do
         {:ok, socket}
 
       other ->
-        # Loud, and says what it means: the working copy and the server's
-        # picture of it are now different, and nothing downstream can tell.
-        #
-        # "Could not read the reply" now has its own clause above, so this is
-        # reserved for a reply that does not claim success — which is the only
-        # kind that deserves the word REJECTED.
-        #
-        # It no longer guesses at *why*. The server supplies a reason and the
-        # old text overwrote it with "usually version skew" on every rejection
-        # — a deploy-shaped diagnosis, asserted unconditionally, and false in
-        # the one case that actually occurs regularly. Naming the reply and
-        # leaving the cause unstated is worth more than a confident wrong
-        # answer.
+        # Loud: the server's picture of the copy now differs from the disk.
+        # Names the reply and does not guess at the cause.
         Logger.error("""
         [CmsHarness] the server REJECTED the manifest for #{socket.assigns.project.root}: #{inspect(other)}
 
@@ -870,31 +632,11 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # The server says there is no channel on that topic. We thought there was —
-  # `joined` is still true, `connected?/1` still answers yes, and the health
-  # endpoint still reports the project served. Every hook then refuses forever
-  # and nothing ever corrects it, because the correction is supposed to arrive
-  # as `handle_topic_close/3` and in this case never did.
-  #
-  # So this trusts the server over our own flag. A reply naming the topic as
-  # unmatched *is* the notification the close should have been, and the only
-  # ground truth available: the harness cannot tell the difference between a
-  # channel that died and one that was never there, and does not need to.
-  #
-  # Cost of being wrong is one dropped connection. Cost of not doing it is a
-  # harness that looks healthy and answers nothing until somebody restarts it.
-  #
-  # It drops the *socket*, which is heavier than rejoining the topic and is the
-  # point. `Slipstream.join/3` only acts when its local `join_status` is `nil`
-  # or `:closed`, and in exactly this situation it is neither: the server lost
-  # the channel without ever sending a close, so Slipstream still believes the
-  # topic is joined. Asking it to join again is a silent no-op — which is how
-  # this failed the first time it was needed. One `maybe_rejoin`, then nothing,
-  # for three minutes, until the harness was restarted by hand.
-  #
-  # A dropped socket cannot be disbelieved. `handle_disconnect/2` follows, and
-  # from there the ordinary reconnect path runs — the one that demonstrably
-  # works, since it is what survives every server restart.
+  # The server says there is no channel on that topic while we believe we are
+  # joined. Trust the server: drop the *socket*, not just the topic, because
+  # Slipstream still thinks the topic is joined and a rejoin would be a silent
+  # no-op. `handle_disconnect/2` then runs the ordinary reconnect path.
+  # See knowledge/harness/channel, "Unmatched topic and silence".
   defp maybe_rejoin(socket, {:error, %{"reason" => "unmatched topic"}}) do
     Logger.warning("""
     [CmsHarness] the server has no channel for #{socket.assigns.project.root} \
@@ -909,10 +651,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp maybe_rejoin(socket, _reply), do: socket
 
-  # A result the server refused is not a result it recorded. Read rather than
-  # dropped, for the same reason the observations reply is read: an unread
-  # rejection makes a run that never landed look exactly like one that did, and
-  # the whole value of running the analyzer is that those two stay apart.
+  # A result the server refused is not a result it recorded, so the reply is
+  # read: a run that never landed must not look like one that did.
   defp log_analysis_reply(_source, {:ok, _}, socket), do: socket
   defp log_analysis_reply(_source, :ok, socket), do: socket
 
@@ -923,22 +663,9 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp log_analysis_reply(source, other, socket), do: log_rejection(source, other, socket)
 
-  # A supersede is a scheduling fact, not a rejection. The server enqueued a run
-  # for this source, a second arrived while the first was still open, and the
-  # first answers for both.
-  #
-  # `Reconciler.supersede/2` already made exactly this call on the server side —
-  # "at `:info`, not `:warning` — nothing is wrong … logging it as a failure
-  # taught readers to ignore a level that should mean something" — and the
-  # reasoning never crossed to the harness. 80 of the 385 rejections in this
-  # machine's `harness.log` are supersedes, every one at `level=error` under a
-  # message saying the analyzer's work was lost and the next stop will report
-  # pending. Both halves are wrong for this case, and a log where `error` is
-  # routinely a non-event is a log nobody reads.
-  #
-  # Still worth a line: the analyzer *did* run, and a full spex sweep is minutes.
-  # Repeated supersedes mean that work is being done twice and discarded, which
-  # is a thing to notice — just not a failure.
+  # A supersede is a scheduling fact, not a rejection: logged at info, as the
+  # server's `Reconciler.supersede/2` does. Still worth a line, since repeated
+  # supersedes mean work done twice and discarded.
   defp superseded?(reason), do: String.starts_with?(reason, "{:superseded")
 
   defp log_by_kind(false, source, reply, socket), do: log_rejection(source, reply, socket)
@@ -965,10 +692,8 @@ defmodule CmsHarness.Project.ChannelClient do
     socket
   end
 
-  # The one thing the server initiates. It owns the ledger, so it decides which
-  # analyzers are stale; this machine owns the disk and the toolchain, so it
-  # does the running. Handed straight to the queue — nothing runs in the socket
-  # process, which holds the lease.
+  # The server owns the ledger and decides what is stale; this machine runs it.
+  # Handed straight to the queue: nothing runs in the socket process.
   @impl Slipstream
   def handle_message(_topic, "run_analysis", %{"runs" => runs}, socket) when is_list(runs) do
     Logger.info(
@@ -980,42 +705,21 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
-  # The server asking for a fresh manifest. It cannot walk this checkout — the
-  # disk is here — so the sync happens on this side and arrives the way every
-  # other manifest does, through `observations`.
-  #
-  # Through `request_sync/1` rather than casting `:sync` directly: the file
-  # watcher already goes that way, and one entry point means a scan triggered by
-  # the server and a scan triggered by a write are the same scan. It resolves to
-  # this process, so the cast is to self, which is fine and keeps the scan out of
-  # the socket process either way.
   @impl Slipstream
   # This copy was offboarded on the server, so stop serving it.
   #
-  # No `ref` and no reply: an offboard must not be able to fail because the
-  # machine is unreachable or slow, so the server pushes and does not wait.
-  # Missing this message costs a stale subtree until the next restart, which is
-  # exactly the state this fixes and no worse than it.
-  #
-  # Terminated from another process on purpose. The subtree being stopped
-  # contains *this* one — asking a supervisor to kill the caller's own ancestor
-  # from inside a callback would take the callback with it, before it returns.
-  # `Task.start/1` lets this return `{:ok, socket}` and die a moment later,
-  # which is the ordering Slipstream expects.
+  # No `ref` and no reply: an offboard must not fail because the machine is
+  # slow or unreachable. Stopped from another process because the subtree being
+  # stopped contains this one; `Task.start/1` lets the callback return first.
   def handle_message(_topic, "offboard", _payload, socket) do
     root = socket.assigns.project.root
 
     Logger.info("[CmsHarness] server offboarded #{root} — releasing its channel and watchers")
 
-    # Story 1108: an offboarded copy's own app and its cloned database are
-    # this feature's own disposable artifacts, not the user's checkout —
-    # `WorkingCopies.offboard/2` never touches disk for exactly that
-    # distinction, and this is the one thing under this root that isn't the
-    # user's. Best-effort and fire-and-forget, same as everything else this
-    # event does: nothing here can hold up the offboard.
-    #
-    # In that order, in one task: stopping the copy takes its app with it (phase
-    # 2b), and a discard that lost that race never dropped the database.
+    # The copy's own app and cloned database are disposable artifacts, unlike
+    # the user's checkout. Discard first, in one task: stopping the copy takes
+    # its app with it, and a discard that lost that race never dropped the
+    # database. Best-effort; nothing here holds up the offboard.
     Task.start(fn ->
       CmsHarness.AppInstance.discard(root)
       CmsHarness.Projects.stop_serving(root)
@@ -1024,8 +728,8 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
-  # A message sent now to a busy agent (story 1051): stop its turn so the
-  # message is the next one. Off this process, because stopping waits on the
+  # A message sent now to a busy agent: stop its turn so the message is the
+  # next one. Off this process, because stopping waits on the
   # agent's turn to shut down and this one carries every hook and report.
   def handle_message(_topic, "interrupt_turn", %{"agent_id" => agent_id}, socket) do
     Task.Supervisor.start_child(Sync.task_supervisor(socket.assigns.project.root), fn ->
@@ -1042,6 +746,9 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # The server asking for a fresh manifest. Through `request_sync/1`, the same
+  # entry point the watcher uses, so a server-triggered scan and a
+  # write-triggered scan are the same scan.
   def handle_message(_topic, "rescan", _payload, socket) do
     Logger.info("[CmsHarness] server asked for a rescan of #{socket.assigns.project.root}")
 
@@ -1049,31 +756,11 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
-  # An event this harness does not implement is version skew, and it is named.
-  # The server's own catch-all was made to reply for exactly this reason: a
-  # message silently ignored on one side reads as latency on the other.
-  # A filesystem operation the server cannot perform, because the working copy
-  # is here and not there.
-  #
-  # The whole of the remote environment on this side: decode the op, apply it
-  # with the same `Environments` API everything else uses, send the outcome
-  # back. Nothing about it is harness-specific — the server is simply borrowing
-  # this machine's disk.
-  # Promotion's disk work. The same borrowed disk as `fs_request`, and it cannot
-  # share that handler for two reasons.
-  #
-  # It is slow. `just restart` compiles, migrates and waits for the app to
-  # answer — minutes on a cold tree — and `fs_request` applies its op inline, in
-  # this process. This process also carries hook decisions and analyzer replies,
-  # so a promotion answered inline would stall every hook on the machine for the
-  # length of a build. Answered from a task instead; `ref` pairs the reply up.
-  #
-  # And it names a root that is deliberately not this channel's own.
-  # `fs_request` is scoped to `socket.assigns.project.root` because a server
-  # asking to read an arbitrary path would be a hole. A promotion is the one
-  # operation whose whole point is a *second* checkout — the one the application
-  # runs from — so the root arrives in the payload and is checked against the
-  # roots this harness actually serves rather than assumed.
+  # Promotion's disk work, on the borrowed disk like `fs_request`, but answered
+  # from a task (a build takes minutes and this process carries every hook
+  # decision) and against a root named in the payload, checked against the
+  # roots this harness serves.
+  # See knowledge/harness/channel, "Server-initiated work".
   def handle_message(
         _topic,
         "fs_request",
@@ -1091,6 +778,8 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # A filesystem operation the server cannot perform, scoped to this channel's
+  # own root, applied with the same `Environments` API and answered inline.
   def handle_message(_topic, "fs_request", %{"ref" => ref, "op" => op} = msg, socket) do
     payload = msg["payload"] || %{}
     env = Environment.new(:local, socket.assigns.project.root)
@@ -1102,27 +791,9 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
-  # End an agent's process group, because this is the machine it is on.
-  #
-  # The server owns the record and cannot signal anything; it knows a group id
-  # and a boot id and has to ask. The answer is what lets it record the stop, so
-  # this always replies — silence would leave the caller waiting out its timeout
-  # and then reporting a stop that never happened.
-  # Launch an agent here, because this is the machine that holds its working
-  # copy — and an agent session is hundreds of tool calls against that copy.
-  # Make a checkout on this machine, because this is the machine with the disk.
-  #
-  # The server cannot run `git worktree add` — it is not on this filesystem and
-  # `fs_request` is scoped to `socket.assigns.project.root`, so it could not
-  # make a *sibling* even if it were. So the file half happens here and the
-  # record half happens there, and the caller made one call (story 891, rule
-  # "The harness does the work on disk and the server does the work on the
-  # record").
-  #
-  # Answered from a task: `git worktree add` fetches nothing but does walk the
-  # index, and onboarding after it writes several files. Holding the channel for
-  # that would stall this copy's reports and manifests behind somebody else's
-  # new checkout.
+  # Make a checkout on this machine: the file half happens here, the record
+  # half on the server. Answered from a task so a new checkout does not stall
+  # this copy's reports and manifests.
   def handle_message(_topic, "create_working_copy", %{"ref" => ref} = msg, socket) do
     topic = socket.assigns.topic
     parent = self()
@@ -1201,12 +872,8 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_message(_topic, "stop_agent", %{"ref" => ref} = msg, socket),
     do: {:ok, stop_or_hold(socket, msg["agent_id"], ref)}
 
-  # Story 1108: bring this copy's own app up, restart it, or stop it.
-  #
-  # Answered from a task, on the same reasoning as `create_working_copy`
-  # above: a first start can mean cloning a database, which takes real time,
-  # and holding this channel for it would stall every report and manifest
-  # this copy needs to send behind one app booting.
+  # Bring this copy's own app up, restart it, or stop it. Answered from a task:
+  # a first start can clone a database, which would stall this channel.
   def handle_message(_topic, "ensure_app_running", %{"ref" => ref} = msg, socket) do
     dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
       CmsHarness.AppInstance.ensure_running(
@@ -1251,15 +918,9 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
-  # A script on the server asked for something that lives here. The browser is
-  # the only such thing today, and it is on this machine because Chrome is.
-  # Answered from a task, on the same reasoning as mailbox delivery above and
-  # for a reason the browser split made unavoidable. This used to run inline,
-  # which held the channel for the length of the call — survivable while every
-  # such call was capped at thirty seconds, and not survivable now the caller
-  # sets the deadline: a `browser_wait_for_text` waiting a minute would stall
-  # this copy's reports, manifests and stops behind one page load, and a
-  # heartbeat missed that long reads to the server as a harness that died.
+  # A script on the server asked for a tool on this machine (the browser).
+  # Answered from a task: the caller sets the deadline, and a long browser wait
+  # inline would stall this copy's traffic and miss heartbeats.
   def handle_message(_topic, "tool_call", %{"ref" => ref} = msg, socket) do
     topic = socket.assigns.topic
     root = socket.assigns.project.root
@@ -1274,6 +935,7 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # An event this harness does not implement is version skew, and it is named.
   def handle_message(_topic, event, _payload, socket) do
     Logger.warning(
       "[CmsHarness] the server sent #{inspect(event)}, which this harness does not " <>
@@ -1292,12 +954,10 @@ defmodule CmsHarness.Project.ChannelClient do
     end)
   end
 
-  # `msg["tunnel"]` carries main's own credentials, string-keyed off the
-  # wire, exactly when `HarnessProjectChannel.put_tunnel/2` decided this
-  # copy holds one — absent otherwise, including for every non-main copy and
-  # a sharing sibling alike (criterion 1586). Converted to the atom-keyed
-  # shape `CmsHarness.AppInstance.Runner.start_tunnel/2` already declares, so
-  # nothing downstream of this module ever touches a string key.
+  # `msg["tunnel"]` carries main's own credentials exactly when
+  # `HarnessProjectChannel.put_tunnel/2` decided this copy holds one. Converted
+  # to the atom-keyed shape `AppInstance.Runner` expects, so nothing downstream
+  # touches a string key.
   defp tunnel_opt(%{
          "tunnel" => %{"hostname" => h, "tunnel_id" => id, "tunnel_secret" => secret} = t
        })
@@ -1314,22 +974,15 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp tunnel_opt(_msg), do: []
 
-  # An error stays an error across the wire. A browser that refused and one that
-  # answered "no such element" are different things to an agent deciding what to
-  # do next, and flattening both into text makes them the same thing.
+  # An error stays an error across the wire, distinct from a text answer.
   defp encode_tool_result({:ok, text}), do: %{"text" => text}
   defp encode_tool_result({:error, reason}), do: %{"error" => to_string_reason(reason)}
 
   defp to_string_reason(reason) when is_binary(reason), do: reason
   defp to_string_reason(reason), do: inspect(reason)
 
-  # One clause per named operation, and no general `cmd`. That route was refused
-  # deliberately — `analysis/run` already owns command execution here along with
-  # the run ledger, single-flight and `_build` — so promotion gets named things
-  # it may do rather than the ability to run anything. Restart used to be a
-  # third one; story 1108's criterion 4663 moved it onto the same
-  # `ensure_app_running`/`restart_app` channel verbs every working copy's app
-  # already answers to, so it no longer reaches here at all.
+  # One clause per named operation, and deliberately no general `cmd`: analysis
+  # owns command execution here. App restarts go through the app verbs.
   defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
     do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1, payload["main"]))
 
@@ -1362,15 +1015,11 @@ defmodule CmsHarness.Project.ChannelClient do
          )
 
   # Healed like an analyzer run: a candidate that moves `mix.lock` leaves the
-  # gate's `deps/` behind it, and mix refuses every command, the reset's first
-  # among them, until something fetches (2026-10-12, the queue wedged).
+  # gate's `deps/` stale, and mix refuses every command until something fetches.
   defp apply_promotion("promotion_reset_test_databases", %{"root" => root}),
     do: with_served_root(root, &reset_test_databases/1)
 
-  # The gate's asset build (`Steps.build_assets/2`), healed for stale deps the
-  # same way: it runs mix in the gate checkout too. The server's half landed
-  # without this one, so every batch was ejected "this harness does not
-  # implement promotion_build_assets" (2026-10-13).
+  # The gate's asset build, healed for stale deps the same way.
   defp apply_promotion("promotion_build_assets", %{"root" => root}),
     do: with_served_root(root, &build_assets/1)
 
@@ -1395,10 +1044,6 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion(op, _payload),
     do: {:error, %{reason: "this harness does not implement #{op}"}}
 
-  # A root this harness does not serve is refused rather than operated on. The
-  # server names the running copy's path and is trusted to know it, but "trusted
-  # to know it" and "may name any path on this machine" are different powers and
-  # only the first one is wanted.
   defp reset_test_databases(root) do
     env = Environment.new(:local, root)
 
@@ -1425,6 +1070,8 @@ defmodule CmsHarness.Project.ChannelClient do
   defp reset_as_map({:error, reason}) when is_binary(reason), do: {:error, %{reason: reason}}
   defp reset_as_map(result), do: result
 
+  # A root this harness does not serve is refused: the server may name the
+  # running copy's path, not any path on this machine.
   defp with_served_root(root, fun) do
     if root in CmsHarness.Projects.list() do
       fun.(root)
@@ -1453,28 +1100,12 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_fs(env, "stat", %{"path" => p}), do: CodeMySpec.Environments.stat(env, p)
   defp apply_fs(env, "glob", %{"pattern" => p}), do: {:ok, CodeMySpec.Environments.glob(env, p)}
 
-  # An op this harness does not know is an error, not a silent nothing — the
-  # server is waiting on a reply and would otherwise sit out its full timeout.
-  # Same reason the unknown-event clause above logs rather than dropping.
+  # An unknown op is an error, not silence: the server is waiting on a reply.
   defp apply_fs(_env, op, _payload), do: {:error, :"unsupported_fs_op_#{op}"}
 
-  # `Runner.start/3` hands back its own handle — `pgid` and `boot_id` — and the
-  # wire carries `os_pid` and `os_boot_id`. Translating here is the whole job,
-  # and this clause used to match the wire names against the handle, so it
-  # matched nothing: every start raised `FunctionClauseError`, took the channel
-  # client down with it, and the server saw the socket close mid-call and
-  # reported `{:shutdown, :peer_closed}` — a transport failure, for a name
-  # mismatch two lines from the successful spawn.
-  #
-  # `handle_message("stop_agent", ...)` does the same translation in the other
-  # direction and got it right, which is why stopping worked and starting never
-  # did.
   @doc """
-  Public only so a test can feed it a handle `Runner.start/3` actually
-  produced. Everything else here is private; this one is wire-format
-  translation between two modules that were written against different names
-  for the same two values, and the round-trip test hand-wrote the correct
-  payload — so nothing ever fed the real encoder a real handle.
+  Public only so a test can feed it a result `CmsHarness.Agents.launch/1`
+  actually produced.
   """
   def encode_start_result({:ok, %{agent_id: agent_id}}),
     do: %{"status" => "ok", "agent_id" => agent_id}
@@ -1483,7 +1114,7 @@ defmodule CmsHarness.Project.ChannelClient do
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
   # Once per harness process: a reconnect loses no agent, and every ask writes a
-  # "harness restarted" notice into each agent's thread (`00121aa6`).
+  # "harness restarted" notice into each agent's thread.
   defp ask_what_to_restore(%{assigns: %{restored: true}} = socket, _topic), do: socket
 
   defp ask_what_to_restore(socket, topic) do
@@ -1493,15 +1124,10 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # One at a time. Ten agents resuming together is ten model conversations
-  # starting at once against one plan and one box — how to pace it properly is
-  # an open question, and sequential is the answer that cannot stampede while it
-  # is being decided.
-  #
-  # Off this process (8c04a700): a launch waits on the agent's MCP session,
-  # ~20s each under load, and inline it held every `stop_agent` push behind the
-  # whole restore. This process owns the queue; the task asks it for the next
-  # agent, so a stop can take one out before it is launched.
+  # One at a time, so a restore cannot stampede the box. Off this process: a
+  # launch waits on the agent's MCP session, and inline it held every
+  # `stop_agent` behind the restore. This process owns the queue and the task
+  # asks for the next agent, so a stop can remove one before it launches.
   defp start_restore(socket, []), do: socket
 
   defp start_restore(socket, agents) do
@@ -1610,9 +1236,8 @@ defmodule CmsHarness.Project.ChannelClient do
     )
   end
 
-  # Whatever the far side called the failure, rendered without assuming it is a
-  # word. Atoms and strings keep their shape; a provider's struct is inspected
-  # rather than crashing the channel that was trying to report it.
+  # Atoms and strings keep their shape; anything else is inspected rather than
+  # crashing the channel reporting it.
   defp reason_text(reason) when is_binary(reason), do: reason
   defp reason_text(reason) when is_atom(reason), do: to_string(reason)
   defp reason_text(%{error: error}) when is_binary(error), do: error
@@ -1621,20 +1246,16 @@ defmodule CmsHarness.Project.ChannelClient do
   @doc """
   One Alloy turn event, as it goes on the wire.
 
-  Only what a watcher needs, and only things that survive JSON. An envelope
-  carries atoms, pids and the whole turn state; sending it whole would put an
-  agent's entire context on the wire once per step.
+  Only what a watcher needs, and only things that survive JSON; the envelope
+  itself carries atoms, pids and the whole turn state.
 
-  Public because it is the wire shape, and anything else that has to produce
-  one — a criterion driving the whole path with no socket in between — must
-  produce this one rather than a second version of it that drifts.
+  Public because it is the wire shape: anything else producing one must use
+  this rather than a copy that drifts.
   """
   @spec encode_turn_event(map()) :: map()
   def encode_turn_event(%{event: :compacted} = envelope) do
-    # Not a step, and not text. What survived a compaction is the thing the
-    # server has to keep, and flattening it into a `"text"` field the way every
-    # other event is flattened would leave a checkpoint that reads back as
-    # `inspect/1` output.
+    # Not a step and not text: what survived a compaction is kept as messages,
+    # not flattened into `"text"`.
     %{
       "kind" => "compacted",
       "turn" => Map.get(envelope, :turn),
@@ -1651,21 +1272,14 @@ defmodule CmsHarness.Project.ChannelClient do
       "ref" => Map.get(envelope, :ref),
       "generation" => Map.get(envelope, :generation),
       "text" => turn_event_text(envelope),
-      # The call as data, beside the sentence describing it.
-      #
-      # `text` is prose for a person watching, and it is all that used to
-      # travel: a tool call reached the transcript as its own name, arguments
-      # gone. Two things needed the structure. An agent's edits cannot be
-      # attributed from a rendered line, and `block_changed` therefore could
-      # never narrow for an agent with no session. And the page had nothing to
-      # render as a tool call, so it drew one as a chat message.
+      # The call as data beside the prose in `text`: edits are attributed
+      # from it, and the page renders it as a tool call.
       "tool" => tool_meta(envelope)
     }
   end
 
-  # The whole call: what was asked and, at its end, what came back. This is the
-  # conversation a restart resumes from, so an argument cut short or a result
-  # left out is a call the agent comes back holding that it never made.
+  # The whole call, untruncated: this is the conversation a restart resumes
+  # from.
   defp tool_meta(%{payload: %{name: name} = payload}) when is_binary(name) do
     %{
       "id" => Map.get(payload, :id),
@@ -1679,11 +1293,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp tool_meta(_envelope), do: nil
 
-  # The path a call names, when it names one.
-  #
-  # Narrower than `primary_argument/1`, which also answers for `command`,
-  # `pattern`, `query` and `url` — right for a human-readable line and wrong
-  # here, where a non-path would be recorded as a file this agent edited.
+  # The path a call names, when it names one. Narrower than
+  # `primary_argument/1`: a non-path here would be recorded as an edited file.
   # String and atom keys both, for the reason given on `@naming_arguments`.
   defp touched_path(input) when is_map(input) do
     Enum.find_value([{"file_path", :file_path}, {"path", :path}], fn {string_key, atom_key} ->
@@ -1741,10 +1352,8 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # `turn_started` has nothing left once the bookkeeping is dropped, and
-  # `inspect(%{})` is the three characters `%{}` — which the server stored as
-  # something the agent said, 5,667 times, one per turn (1926fbc4). No text is
-  # `nil`, which the server already skips.
+  # Nothing left once bookkeeping is dropped (e.g. `turn_started`) is `nil`,
+  # which the server skips, not the text `%{}`.
   defp inspect_rest(rest) when map_size(rest) == 0, do: nil
   defp inspect_rest(rest), do: inspect(rest)
 
@@ -1758,12 +1367,6 @@ defmodule CmsHarness.Project.ChannelClient do
   defp drafts(socket), do: Map.get(socket.assigns, :drafts, DraftBuffer.new())
 
   # A tool call, as a person would say it: `read mix.exs`.
-  #
-  # The envelope keeps the tool's name and arguments one level down under
-  # `:payload`, so the clauses above miss it and the fallback inspects the whole
-  # map — which is what a watching operator saw: `%{payload: %{error: nil, id:
-  # "call_1", input: %{"file_path" => "mix.exs"}, …}, ts_ms: 1787598792387}`.
-  # Watching an agent work is the feature; debug output is not it.
   defp tool_text(name, payload) do
     case primary_argument(Map.get(payload, :input)) do
       nil -> name
@@ -1771,16 +1374,10 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # The one argument worth putting beside the tool's name. A tool call has
-  # several and only one of them says what the call is about — the path being
-  # read, the command being run. Anything else is left off rather than
-  # flattened into the line, because a whole argument map is the thing this
-  # exists to stop printing.
-  # String and atom keys both, because a tool's arguments arrive decoded from
-  # JSON on one path and built in memory on another. The pairs are written out
-  # rather than derived with `String.to_existing_atom/1`: that raises on a name
-  # nothing has interned yet, and raising inside a reporter would turn a
-  # cosmetic problem into a lost step.
+  # The one argument worth putting beside the tool's name; the rest is left off.
+  # String and atom keys both (arguments arrive decoded from JSON on one path,
+  # built in memory on another), written out rather than derived with
+  # `String.to_existing_atom/1`, which can raise inside a reporter.
   @naming_arguments [
     {"file_path", :file_path},
     {"path", :path},
@@ -1818,10 +1415,8 @@ defmodule CmsHarness.Project.ChannelClient do
   defp encode_stop_result({:error, reason}),
     do: %{"status" => "error", "reason" => reason_text(reason)}
 
-  # Story 1108. `url`/`commit` are omitted rather than sent as `nil` when a
-  # report has neither reason to name (a health-probe-only confirmation) —
-  # the server's `decode_app_result/1` reads their absence as "unchanged,"
-  # same as omitting them from `WorkingCopies.record_app_status/2`'s attrs.
+  # Absent fields are omitted rather than sent as `nil`: the server's
+  # `decode_app_result/1` reads absence as "unchanged".
   defp encode_app_result({:ok, %{status: status} = info}) do
     %{"status" => "ok", "app_status" => status}
     |> maybe_put("app_url", Map.get(info, :url))
@@ -1842,10 +1437,8 @@ defmodule CmsHarness.Project.ChannelClient do
   # from a fixed list; the round trip is pinned in `FsResultReasonTest`.
   @doc false
   def encode_fs_result(:ok), do: %{"ok" => true}
-  # Bytes that are not text travel as base64: a screenshot read for QA's
-  # evidence went into the JSON reply as raw PNG, the encoder raised, and the
-  # crash took this copy's channel and both its agents' turns down
-  # (2026-10-13). `decode_fs_result/1` on the server reverses it.
+  # Bytes that are not text travel as base64; raw binary in the JSON reply
+  # crashes the channel. `decode_fs_result/1` on the server reverses it.
   def encode_fs_result({:ok, result}) when is_binary(result) do
     if String.valid?(result),
       do: %{"ok" => true, "result" => result},
@@ -1853,19 +1446,8 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
-  # A refusal with structure keeps it.
-  #
-  # Filesystem ops fail with an atom — `:enoent`, `:eacces` — and `to_string/1`
-  # is right for those. A promotion fails with a sentence and the evidence for
-  # it: which files are uncommitted, which paths conflicted. Flattening that map
-  # through `to_string/1` does not merely lose the evidence, it raises
-  # `Protocol.UndefinedError` and takes this channel process down — which the
-  # server sees as `{:shutdown, :peer_closed}`, a transport failure, for a
-  # correctly-computed refusal.
-  #
-  # Measured on the first live promotion: `git status` on the real disk found
-  # ".code_my_spec/qa/994/brief.md" modified, `Steps.precheck/2` refused exactly
-  # as designed, and encoding that refusal killed the channel.
+  # A refusal with structure keeps it. A promotion fails with a map of
+  # evidence; `to_string/1` on it raises and takes the channel down.
   def encode_fs_result({:error, %{} = reason}), do: %{"error" => stringify_keys(reason)}
   def encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
 
@@ -1896,18 +1478,8 @@ defmodule CmsHarness.Project.ChannelClient do
       |> pause_watcher()
       |> fail_pending(:not_connected)
 
-    # Always reschedule, `refused` or not. This used to return here when the
-    # flag was set, which made a refusal followed by a disconnect permanent: the
-    # refusal path reschedules, but a socket that then drops landed here and
-    # scheduled nothing, so the subtree sat refusing every hook with "the server
-    # is answering but this harness cannot hold a socket to it" until somebody
-    # restarted the process. Two subtrees in one harness went through the same
-    # server restart and only the one that had never been refused came back.
-    #
-    # Nothing about a refusal makes reconnecting wrong — it means another
-    # process holds `_build`, which it releases when it exits, so waiting and
-    # retrying is the whole correct response. `:refused` is for the health
-    # endpoint to say *why* nothing is being served.
+    # Always reschedule, `refused` or not: a refusal clears when the holder
+    # exits. `:refused` only tells the health endpoint why nothing is served.
     Process.send_after(self(), :reconnect, delay)
     {:ok, update(socket, :attempts, &(&1 + 1))}
   end
@@ -2003,9 +1575,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   # In a task, never inline: the measurement is a `curl` with a five-second
-  # timeout against an address that may be a dead tunnel, and the channel
-  # process is what carries hook decisions and analyzer replies. Blocking it for
-  # five seconds a minute would make a dead preview look like a slow harness.
+  # timeout, and this process carries hook decisions and analyzer replies.
   def handle_info(:measure_preview, %{assigns: %{joined: true}} = socket) do
     schedule_preview_check()
     root = socket.assigns.project.root
@@ -2022,9 +1592,7 @@ defmodule CmsHarness.Project.ChannelClient do
     {:noreply, socket}
   end
 
-  # In a task for the same reason :measure_preview is: gathering load average
-  # and free memory shells out, and the channel process is what carries hook
-  # decisions and analyzer replies while it waits.
+  # In a task for the same reason as `:measure_preview`: it shells out.
   def handle_info(:measure_machine_load, %{assigns: %{joined: true}} = socket) do
     schedule_machine_load_check()
     root = socket.assigns.project.root
@@ -2106,19 +1674,10 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # Consecutive hook decisions the server never answered.
-  #
-  # One is a slow server. Two, with nothing answered in between, is a channel
-  # that is not carrying traffic — and nothing else will ever say so. No close
-  # arrives, no error reply arrives, so `joined` stays true, `connected?/1` keeps
-  # answering yes, and every hook refuses `:no_reply` until somebody restarts the
-  # harness by hand. On 2026-08-07 that ran six minutes: four manifests pushed
-  # with no reply and roughly fifteen hooks refused, while a second harness on
-  # the same working copy was being served normally by the same live server.
-  #
-  # This is the silence twin of `maybe_rejoin/2`, which handles the case where
-  # the server *says* the topic is unmatched. Silence needs its own detector
-  # precisely because nothing is said.
+  # Consecutive hook decisions the server never answered. One is a slow server;
+  # two with nothing answered between is a channel carrying no traffic, which
+  # nothing else will report. The silence twin of `maybe_rejoin/2`.
+  # See knowledge/harness/channel, "Unmatched topic and silence".
   @silence_limit 2
 
   # Drops the socket rather than rejoining the topic, for the reason
@@ -2159,18 +1718,8 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   # Seconds since the server last answered anything, or nil if it never has.
-  #
-  # `connected?/1` reports `socket.assigns.joined`, which is this process's own
-  # belief about its socket and is set at join. It cannot be wrong from where it
-  # stands, and it is exactly what was reported as `connected: true` while the
-  # server's registry held no entry for this harness and every request it sent
-  # answered `:harness_unreachable`. Both ends said healthy; nothing did a round
-  # trip.
-  #
-  # This is evidence rather than belief: a reply is proof the server addressed
-  # us, because it is the server that sent it. Recorded passively on replies
-  # that already happen, so asking costs nothing and cannot hang — a health
-  # check that blocks on the network is its own outage.
+  # Evidence rather than `joined`, which is only this process's belief.
+  # Recorded passively on existing replies, so asking cannot hang.
   def handle_call(:server_replied_ago, _from, socket) do
     ago =
       case socket.assigns[:last_server_reply_at] do
@@ -2298,11 +1847,8 @@ defmodule CmsHarness.Project.ChannelClient do
     {:reply, {:error, reason}, socket}
   end
 
-  # The same `pending` machinery again, and it has to be out of band here for a
-  # reason the two above do not have: the server's promotion sends its disk work
-  # straight back down this channel as `fs_request`. Blocking this process on
-  # the reply would leave nothing to answer the merge and the restart, and the
-  # promotion would wait on a process that is waiting on it.
+  # Out of band like the two above, and it must be: the promotion sends its disk
+  # work back down this channel as `fs_request`, so blocking here deadlocks.
   def handle_call({:await_promotion, story_number}, from, socket) do
     payload = %{"story_number" => story_number}
 
@@ -2316,13 +1862,8 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # One step of a turn, on its way to whoever is watching.
-  #
-  # Not `record_turn` above, though they share a wire. That carries a finished
-  # request/response pair for a Claude Code lane, keyed by session id, recorded
-  # after the fact. This carries a single step, keyed by the agent, while the
-  # turn is still running — which is what makes watching possible and what a
-  # completed-turn recording cannot do for a turn that never completes.
+  # One step of a turn, keyed by agent, while the turn is still running. Not
+  # `record_turn`, which carries a finished request/response pair after the fact.
   @impl Slipstream
   def handle_cast({:turn_event, agent_id, envelope}, %{assigns: %{joined: true}} = socket) do
     push(socket, socket.assigns.topic, "agent_turn_event", %{
@@ -2337,9 +1878,8 @@ defmodule CmsHarness.Project.ChannelClient do
     {:noreply, assign(socket, :drafts, drafts)}
   end
 
-  # Not joined, so there is nowhere to send it. Dropped rather than queued, for
-  # the same reason as `record_turn`: a backlog of steps replayed after a
-  # reconnect reads as the agent doing them now.
+  # Dropped rather than queued when not joined: a replayed backlog reads as the
+  # agent doing those steps now.
   def handle_cast({:turn_event, _agent_id, _envelope}, socket), do: {:noreply, socket}
 
   # A fragment of what an agent is writing, flushed on a timer: a push per
@@ -2354,8 +1894,7 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_cast({:draft, _agent_id, _turn, _text}, socket), do: {:noreply, socket}
 
   @impl Slipstream
-  # Dropped rather than queued when the channel is not joined. A recording that
-  # arrives minutes late, out of order, after the run it describes has finished,
+  # Dropped rather than queued when not joined: a late, out-of-order recording
   # is worse than an admitted gap.
   def handle_cast({:record_turn, _payload}, %{assigns: %{joined: false}} = socket) do
     {:noreply, socket}
@@ -2375,11 +1914,9 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_cast(:sync, socket), do: {:noreply, socket}
 
-  # An empty manifest is refused by the server, and rightly — reconciling one
-  # would delete every file row the project has, and over a wire "the scan
-  # found nothing" and "the scan did not run" arrive as the same empty list.
-  # Catching it here as well means the harness names its own bug rather than
-  # reading the server's refusal as a server problem.
+  # Never sent: reconciling an empty manifest would delete every file row, and
+  # "found nothing" and "did not run" look the same. The server refuses it too;
+  # catching it here names the harness's own fault.
   def handle_cast({:observations, []}, socket) do
     Logger.error("""
     [CmsHarness] the scan of #{socket.assigns.project.root} found no files at all, so nothing was sent.
@@ -2406,14 +1943,7 @@ defmodule CmsHarness.Project.ChannelClient do
           "[CmsHarness] sent #{length(observations)} observations for #{socket.assigns.project.root}"
         )
 
-        # The ref is kept so the *reply* can be read. Sending used to be the end
-        # of it: the server's answer landed in the generic handle_reply with
-        # nothing waiting for it, was logged at debug as "unmatched reply", and
-        # dropped. So a manifest the server rejected — an empty one, or one
-        # naming a role it does not know — looked exactly like a manifest it
-        # accepted, and the harness went on believing the project was synced.
-        # That is the failure this whole design is against, sitting on the one
-        # path it most matters on.
+        # Kept so the reply is read: a rejected manifest must not look accepted.
         {:noreply, assign(socket, :observations_ref, ref)}
 
       {:error, reason} ->
@@ -2447,9 +1977,8 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # Not queued. The run this belongs to was opened on a connection that is gone,
-  # and the server closes those when the socket does — so there is no row left
-  # to finish. The rejoin re-runs whatever is still stale.
+  # Not queued: the server closes a departed connection's unclaimed runs, and
+  # the rejoin re-runs whatever is still stale.
   def handle_cast({:analysis_result, payload}, socket) do
     Logger.error(
       "[CmsHarness] dropped the #{payload["source"]} result for " <>
@@ -2459,9 +1988,7 @@ defmodule CmsHarness.Project.ChannelClient do
     {:noreply, socket}
   end
 
-  # Dropped, deliberately. A manifest is a statement about *now*; queueing one
-  # to send after a reconnect would describe a working copy that has since
-  # moved on. The rescan on rejoin is the recovery.
+  # Dropped: a manifest describes *now*. The rescan on rejoin is the recovery.
   def handle_cast({:observations, _observations}, socket) do
     Logger.warning(
       "[CmsHarness] dropped a manifest for #{socket.assigns.project.root} — not connected. It will be rescanned on rejoin."
@@ -2616,8 +2143,8 @@ defmodule CmsHarness.Project.ChannelClient do
     {:noreply, socket}
   end
 
-  # Disconnected before the work finished. Nothing to push to, and the server's
-  # own call times out and says so — better than a reply into a closed socket.
+  # Disconnected before the work finished; the server's call times out and
+  # says so.
   def handle_cast({:promotion_result, _topic, _ref, _result}, socket), do: {:noreply, socket}
 
   # --- Private ---
@@ -2641,14 +2168,9 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp transport, do: Transport.impl()
 
-  # This working copy is already being served. Usually by the process this one is
-  # replacing, still on its way out — so the first few attempts say so quietly
-  # and the backoff handles it.
-  #
-  # It never stops trying. The refusal is about `_build`, which one process holds
-  # and releases when it exits, so waiting is exactly the right response and the
-  # capped backoff makes it cheap. `:refused` is kept for the health endpoint to
-  # report *why* nothing is being served; it no longer gates the reconnect.
+  # This working copy is already being served, usually by the process this one
+  # is replacing. Quiet for the first few attempts, and it never stops trying.
+  # `:refused` is for the health endpoint; it does not gate the reconnect.
   defp refused(socket, holder) do
     socket = socket |> update(:refusals, &(&1 + 1)) |> assign(:refused, :working_copy_in_use)
     attempt = socket.assigns.refusals
@@ -2714,8 +2236,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   # Every caller waiting on a reply is told the connection went, rather than
-  # being left to time out. "I could not ask" should arrive as fast as the fact
-  # is known.
+  # being left to time out.
   defp fail_pending(socket, reason) do
     Enum.each(socket.assigns.pending, fn {_ref, {from, timer}} ->
       Process.cancel_timer(timer)
@@ -2739,15 +2260,9 @@ defmodule CmsHarness.Project.ChannelClient do
   defp normalize_reply({:ok, payload}) when is_map(payload), do: {:ok, payload}
   defp normalize_reply({:error, _} = error), do: error
 
-  # A bare `:ok` is an *empty* reply, and for a hook that is the most common
-  # answer there is: an empty decision map means nothing blocks this stop.
-  #
-  # Phoenix replies `%{"status" => "ok", "response" => %{}}` and Slipstream
-  # collapses an empty response to the atom. Treating that as unreadable — which
-  # is what happened — turned "you may stop" into a block on every clean turn,
-  # so an agent with nothing left to do could never say so. The second-pass
-  # allowance meant runs still ended, but always labelled unverified, which is
-  # the wrong answer arrived at by the right safety net.
+  # A bare `:ok` is an *empty* reply: Slipstream collapses Phoenix's empty
+  # response to the atom. For a hook it is the commonest answer (nothing blocks
+  # this stop), so it must read as `%{}`, not as unreadable.
   defp normalize_reply(:ok), do: {:ok, %{}}
   defp normalize_reply({:ok, :ok}), do: {:ok, %{}}
   defp normalize_reply(other), do: {:ok, other}
@@ -2779,9 +2294,8 @@ defmodule CmsHarness.Project.ChannelClient do
     end)
   end
 
-  # Conclusions, not raw material: path, role, fingerprint, validity, owner.
-  # Roughly 150 bytes a file. No file content crosses this wire — validation
-  # already happened here and only its verdict travels.
+  # Conclusions, not raw material: no file content crosses this wire, only the
+  # validation verdict.
   defp serialize_observation(entry) do
     %{
       "path" => entry.path,

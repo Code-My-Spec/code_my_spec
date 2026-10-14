@@ -25,9 +25,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   # A container's dependencies gate its children through one `dependencies_met`
   # node: every dependency's exit points at it and it points at each child, so a
   # context with D dependencies and N children draws D + N edges rather than
-  # D × N (Agents' 29 × 53). The parent's own file waits on it too, for a
-  # context with no children yet; with children that edge is redundant and the
-  # reduction drops it.
+  # D × N. The parent's own file waits on it too, for a context with no children
+  # yet; with children that edge is redundant and the reduction drops it.
   def context_graph do
     [
       dependencies_met(8),
@@ -37,8 +36,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   end
 
   # A live context is a container: only its children have implementations.
-  # No junction: the namespace has no row of its own (`barren_components/2`),
-  # and a UI surface's dependencies fan out to few children.
+  # No junction: the namespace has no implementation of its own, and a UI
+  # surface's dependencies fan out to few children.
   def live_context_graph do
     [implementation(9, :child, [], :develop_live_context)]
   end
@@ -94,12 +93,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "component_linked",
         role: :product,
         node_scope: :self,
-        # Not `:field_present` on `component_id`. The migration computes a
-        # component's id rather than looking it up — it is a pure function of the
-        # project and the module name — so a story can carry a correct id for a
-        # component the working copy has not synced yet. Presence would call that
-        # linked; this asks whether the component is actually there, and becomes
-        # satisfied on its own when the sync creates it.
+        # Not `:field_present`: a story can carry a correct (derived) id for a
+        # component not yet synced. Satisfied on its own when the sync creates it.
         check_type: :component_exists,
         config: %{},
         satisfied_by: AgentTasks.ArchitectureDesign,
@@ -120,31 +115,14 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
           "Three Amigos session sealed — persona, rules, scenarios, and every " <>
             "red card answered",
         prerequisites: [1],
-        # Reads the seal rather than recomputing the conversation. A question
-        # raised against a story that shipped months ago is the next
-        # conversation, not evidence that the last one never happened — and
-        # recomputing meant exactly that, silently.
-        #
-        # Automatic, because sealing already requires every rule to hold.
-        # It was manual so the stop hook could not short-circuit the multi-turn
-        # intake conversation, and the cost of that was severe: a session
-        # holding a manual task is allowed out of `Hooks.Stop.do_decide/6`
-        # before validation runs at all, so an open Three Amigos task switched
-        # off spex, credo and exunit for that whole session. The short-circuit
-        # cannot happen now for the reason it never could for a real
-        # conversation: `ThreeAmigos.evaluate/2` completes only when persona,
-        # rules, scenarios and zero open questions all hold, and no stop hook
-        # can conjure those.
+        # Reads the seal, not the bar: a later question is the next
+        # conversation. Automatic, because sealing already requires the bar; a
+        # manual task lets its session's stops skip validation entirely.
+        # See knowledge/requirements_graph/checkers, "Definitions".
         validation_type: :automatic
       }),
-      # 56cf5697: sealing is a one-way latch on the conversation and correctly
-      # ignores a question raised afterward (see the comment above), which
-      # left a sealed story's post-seal open questions nothing's problem —
-      # not blocking sealing (already past that), not offered to anyone
-      # either, permanently. Gated on the seal itself (id 5) rather than
-      # duplicating its pre-seal question gate: a story that has not sealed
-      # yet already blocks sealing on the same open questions, so there is
-      # nothing here for this node to do before that gate has cleared.
+      # Makes post-seal open questions somebody's work. Gated on the seal: before
+      # it, the same questions already block sealing.
       new!(%{
         id: 8,
         name: "questions_answered",
@@ -163,9 +141,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "bdd_specs_exist",
         role: :coding,
         node_scope: :self,
-        # Per-criterion (issue 644279a9): a story with one spex file used to
-        # read satisfied regardless of criterion count, so a criterion added
-        # or reworded after the first pass got no spec and no work item.
+        # Per criterion, so a criterion added after the first pass gets work.
         check_type: :bdd_specs_covered,
         config: %{role: :bdd_spec},
         satisfied_by: AgentTasks.WriteBddSpecs,
@@ -179,13 +155,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "ready_for_qa",
         role: :coding,
         node_scope: :self,
-        # Was `bdd_specs_passing`, which read the latest spex run live. John,
-        # 2026-10-02: "we shouldn't rely on problems anywhere in the graph
-        # except on promotion" — so the gate before QA works like promotion:
-        # completing its task certifies the copy (`Promotion.certify/3`: clean
-        # tree, all four analyzers clean at HEAD, the story's own spex green)
-        # and stamps the commit. This reads the stamp, the way `story_promoted`
-        # reads `promoted_version`, and nothing about analysis.
+        # Reads a stamp, never analysis: the graph does not read problems.
+        # Completing the task certifies the copy (`Promotion.certify/3`) and
+        # stamps the commit, as `story_promoted` reads `promoted_version`.
         check_type: :field_present,
         config: %{field: :qa_ready_commit},
         satisfied_by: AgentTasks.ReadyForQa,
@@ -202,32 +174,20 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "story_promoted",
         role: :coding,
         node_scope: :self,
-        # A question about state, not about an act. That is what lets an agent
-        # working directly on the running copy satisfy it by arriving — there is
-        # no branch to merge and nothing it could do to a gate phrased as "have
-        # you promoted". John: "it is eminently possible that someone would be
-        # just doing the work on Maine."
+        # A question about state, not an act. Named for what it reads — one
+        # column, `stories.promoted_version` — not as a git fact, which agents
+        # verified against ancestry instead.
         check_type: :delegate,
         config: %{module: CodeMySpec.Promotion.RunningCopy, function: :running_copy_check},
         satisfied_by: AgentTasks.PromoteWork,
         artifact_type: :code,
-        # f4786ba1: was `code_on_running_copy`, a name that read as a git fact.
-        # An agent that verified ancestry, found the code on main, and concluded
-        # the gate lied had answered a different question. Named for what it
-        # reads: one column, `stories.promoted_version`, written only by a
-        # `promote` that names this story.
         description:
           "This story carries a promotion stamp (`promoted_version`), written only " <>
             "by a promotion naming this story. Not a git check: code already on " <>
             "main does not satisfy it. Satisfy it by completing this task, which " <>
             "promotes the story.",
-        # Story 1003, revised 2026-09-28: was [3], straight off
-        # `bdd_specs_passing` — promotion used to be what QA tested. Now [4]:
-        # story 1108 gave every working copy its own app, so QA tests the
-        # story's own copy directly and no longer needs its code on the
-        # checkout main runs from first. Promotion moves after QA instead —
-        # it records that verified work landed, rather than being the thing
-        # that makes the work testable.
+        # After QA: every working copy runs its own app, so QA tests the
+        # story's copy directly, and promotion records that verified work landed.
         prerequisites: [4],
         execution_type: :main_agent
       }),
@@ -245,31 +205,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         # after the working copy is certified ready.
         prerequisites: [3],
         execution_type: :sub_agent,
-        # Automatic, because "the latest DB-backed attempt is a valid pass"
-        # is a query. `QaStory.evaluate/2` asks `Qa.qa_complete?/2` first and
-        # completes on a real attempt, so nothing here needs a human to say it
-        # is done.
-        #
-        # This was `:manual` for a real reason and it is worth recording why the
-        # reason is gone. `execution_type: :sub_agent` says a sub-agent does the
-        # work, `Session.active_task/1` selects by status with no reference to
-        # `agent_id`, and the evaluator's only two answers were `:valid`, which
-        # completes, and `:invalid`, which files feedback against the parent. So
-        # the parent's own stop completed the QA sub-agent's live task before
-        # any attempt existed, discarding the run (7f79b855). Marking it manual
-        # stopped that.
-        #
-        # It also stopped everything else. A session holding a manual task is
-        # allowed out of `Hooks.Stop.do_decide/6` *before* validation runs, so
-        # for as long as a QA task was open no spex, credo or exunit finding
-        # could block anybody. Measured 2026-08-28: 44 of 55 main stops on this
-        # machine skipped the gate entirely, across two sessions, and the agents
-        # were never told they held the task that was doing it.
-        #
-        # The honest fix was the answer the guard always needed — `:skip`, which
-        # leaves a sub-agent's task active instead of completing or failing it.
-        # With that in `TaskEvaluator`, automatic is safe: a premature
-        # completion is impossible because completing requires the attempt.
+        # Automatic: completing requires a real attempt, and the evaluator's
+        # `:skip` leaves a sub-agent's live task active rather than completing
+        # it early. See knowledge/requirements_graph/checkers, "Definitions".
         validation_type: :automatic
       }),
       # Product triages every finding before coding submits blocking fixes.
@@ -288,38 +226,20 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [1],
         execution_type: :main_agent
       }),
-      # Criterion 1963: the loop's next work after QA clears is the UAT deploy.
+      # The UAT deploy, read from `Deploys` (a row whose `health_verified_at`
+      # only a passing check sets), so a story cannot satisfy it by asserting
+      # it. Prod belongs to the release process. Filtered out when `devops` is
+      # `:off`, the default (`maybe_filter_devops/2`).
       #
-      # This node was removed in d207ad38 along with `devops_setup` and
-      # `release`, because it gated on a markdown file the agent wrote for
-      # itself and checked for the substring "verified". It reads
-      # `CodeMySpec.Deploys` now — a row written when a deploy happens, whose
-      # `health_verified_at` only a passing check sets. A story cannot satisfy
-      # this by asserting it.
-      #
-      # UAT only. Prod promotion belongs to the release process, which is the
-      # other half of the same criterion.
-      #
-      # Filtered out entirely when the project's `devops` setting is `:off`,
-      # which is the default — see `maybe_filter_devops/2`. A project that does
-      # not do infrastructure through this tool never sees the node.
-      #
-      # id 7, not 5. It shipped as 5, which `three_amigos_complete` already
-      # held, and template ids are the only thing prerequisites resolve
-      # through: `Map.new(template, &{&1.id, ...})` keeps the last writer, so
-      # with devops on, `bdd_specs_exist`'s prerequisite [5] resolved to
-      # `deploy` and closed a cycle through the whole story chain. Invisible
-      # on the default `devops: :off`, where the filter drops `deploy` before
-      # the map is built and 5 means what it reads as.
+      # Template ids must be unique: prerequisites resolve by id, and a reused
+      # id silently rewires them. See knowledge/requirements_graph/checkers,
+      # "Definitions".
       new!(%{
         id: 7,
         name: "deploy",
         role: :main,
         node_scope: :self,
-        # The environment is config, not a function name. `uat_check/2` could
-        # only ever answer for one environment, and environments are rows — a
-        # project has whatever set it has. Naming it here means the same check
-        # serves any of them.
+        # The environment is config: environments are rows.
         check_type: :deployed,
         config: %{environment: "uat"},
         satisfied_by: AgentTasks.Deploy,
@@ -327,14 +247,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         description: "Story is deployed to UAT and its health check passed",
         # Deploy follows promotion, which follows shared story QA. Individual
         # issue submissions join readiness upstream of that QA pass.
-        #
-        # Story 1003, revised 2026-09-28: was [4] (`qa_complete`) — no longer
-        # enough on its own. `story_promoted` moved to depend on
-        # `qa_complete` rather than the reverse, so staying on [4] would have
-        # silently decoupled deploy from promotion: a story could clear QA
-        # and be offered for UAT deploy before its code ever reached the
-        # checkout main runs from. Repointed to [18] instead — deploy still
-        # comes last, transitively through promotion and QA both.
         prerequisites: [18],
         execution_type: :main_agent
       })
@@ -358,12 +270,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description:
           "Every persona researched — DB record + summary.md + sources.md (story linkage happens later via Three Amigos)",
-        # The root of this graph since `project_setup` left it. Setup is no
-        # longer a requirement: `cms new` covers it, and the mainline exits the
-        # generator with it complete, so a generated project has nothing to do.
-        # Brownfield onboarding (`CodeMySpecWeb.ProjectSetupLive`,
-        # /app/projects/:id/setup) was retired (942e9566) rather than kept as a
-        # door into the workflow.
+        # The root: project setup is `cms new`'s job, not a requirement.
         prerequisites: [],
         # Manual so the stop hook doesn't short-circuit the multi-turn
         # intake conversation. The PM and agent need room to exchange
@@ -374,21 +281,9 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       new!(%{
         id: 15,
         name: "stories_exist",
-        # The main agent's, and the line it draws is between the two
-        # conversations this project has about a story. John: "the main agent
-        # does the initial story interview that gets the initial stories up,
-        # and then the product agent in the assigned working copy does the
-        # three amigos".
-        #
-        # So `stories_exist` is main's and `three_amigos_complete` stays
-        # product's. They read alike — both are multi-turn intake, both are
-        # `validation_type: :manual` — and they are not the same work: the
-        # first is project-scoped and happens before there is a checkout to
-        # assign, and the second is per story on the copy that will build it.
-        #
-        # Tagged `:product` before, which left a project with no stories and no
-        # product agent holding work that reached nobody. The main agent has
-        # the conversation the person is actually in.
+        # The main agent's: the initial story interview is project-scoped and
+        # happens before there is a checkout to assign, while Three Amigos is
+        # product's, per story, on the copy that builds it.
         role: :main,
         node_scope: :self,
         check_type: :delegate,
@@ -398,8 +293,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         description:
           "At least one story exists for the project (acceptance criteria come later via Three Amigos)",
         prerequisites: [13],
-        # Multi-turn PM intake conversation — same rationale as
-        # personas_complete and three_amigos_complete.
+        # Multi-turn PM intake conversation, as personas_complete.
         validation_type: :manual
       }),
       new!(%{
@@ -469,9 +363,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       # before issue triage because it is what puts story work in flight, and
       # there are no issues to triage until something has been built.
       #
-      # Unsatisfied only when nothing is in progress and unassigned work exists
-      # — the one state that wants the main agent to act. It never assigns
-      # anything itself: John kept sending and approving as two acts.
+      # Unsatisfied only when nothing is in progress and unassigned work exists.
+      # It never assigns anything itself: sending and approving are two acts.
       new!(%{
         id: 17,
         name: "work_dispatched",
@@ -515,25 +408,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       # QA chain — gated on qa_setup so all QA work has a plan, and run after
       # issues are *triaged*, not resolved.
       #
-      # `qa_setup` is the seam the graph doc calls "the whole-project gate that
-      # opens story-level work", so anything it waits on gates every story and
-      # every component in the project. It used to wait on `issues_resolved`,
-      # and the effect was that one open medium issue anywhere — in another
-      # agent's territory, in a package awaiting a release, in something
-      # instrumented and waiting to fire — held up designing and building
-      # everything.
-      #
-      # Worse, it was unsatisfiable in the ordinary case: on a project several
-      # agents share, no single agent can resolve every accepted issue, so the
-      # gate had no passing state. Measured on this project: 19 accepted at
-      # medium+, of which 7 belonged to other owners, 4 wanted an operator
-      # publish and 3 were waiting for a failure to recur.
-      #
-      # Triage is the right gate here because triage is always satisfiable —
-      # every issue can be accepted, dismissed or routed by whoever is looking
-      # at it. A gate an agent cannot pass is not a gate, it is a wall.
-      #
-      # Resolution still gates, but at the end: see `qa_journey_plan`.
+      # `qa_setup` opens all story-level work, so it waits on triage (always
+      # satisfiable), never on resolution, which no one agent can always reach.
+      # Resolution gates at the end: see `qa_journey_plan`.
+      # See knowledge/requirements_graph/checkers, "Definitions".
       new!(%{
         id: 14,
         name: "qa_setup",
@@ -546,16 +424,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         description: "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
         prerequisites: [6]
       }),
-      # Where `issues_resolved` gates instead.
-      #
-      # The journey is the last thing before a release: it exercises the whole
-      # app end to end, and running it against known-open defects tests a build
-      # nobody intends to ship. So resolution belongs here, at the end, rather
-      # than in front of the work that produces the thing being tested.
-      #
-      # This is also a fan-in — every story's `qa_complete` feeds it — so it is
-      # already the node that means "the project is done except for the final
-      # pass". Adding the issue queue to that is the same statement.
+      # Where `issues_resolved` gates: the journey tests the build to ship, and
+      # it is already the fan-in of every story's `qa_complete`.
       new!(%{
         id: 10,
         name: "qa_journey_plan",
@@ -584,8 +454,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   end
 
   # ═══════════════════════════════════════════════════════════════════════
-  # Legacy accessors (used by existing code — will be removed as graph
-  # instantiation takes over)
+  # Story issue requirements, and accessors
   # ═══════════════════════════════════════════════════════════════════════
 
   def story_issue_graph do
@@ -612,19 +481,10 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   @doc """
   Every requirement name belonging to one role.
 
-  Story 538's R10 asks "is there work of my kind" on every stop, and the answer
-  is a set of names: the role lives on the definition and the requirements read
-  model has no column for it, so `NodeRepository` narrows its count by name
-  rather than by a join.
-
-  Read across every graph, because a role's work does not respect entity
-  boundaries — coding owns `implementation_file` on a component and `ready_for_qa` on
-  a story, and an agent that only counted one of those would go home with the
-  other outstanding.
-
-  Deduplicated: the same name appears in several component graphs with the same
-  role, and a duplicate in an `IN` clause is noise the database has to think
-  about.
+  The role lives on the definition, not the row, so `NodeRepository` narrows
+  "is there work of my kind" by name. Read across every graph (coding owns
+  `implementation_file` on components and `ready_for_qa` on stories) and
+  deduplicated.
 
   Which definitions count is the role's `RoleProfile.requirements`: `:tagged`
   is every definition that names the role, `:untagged` every one naming none.

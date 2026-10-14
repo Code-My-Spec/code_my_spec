@@ -8,10 +8,7 @@ defmodule CodeMySpecWeb.Layouts do
   import CodeMySpecWeb.AccountLive.Components.AccountsBreadcrumb
   import CodeMySpecWeb.ProjectLive.Components.ProjectBreadcrumb
 
-  # Embed all files in layouts/* within this module.
-  # The default root.html.heex file contains the HTML
-  # skeleton of your application, namely HTML headers
-  # and other static content.
+  # Embeds layouts/* (root.html.heex is the HTML skeleton).
   embed_templates "layouts/*"
 
   @doc """
@@ -59,13 +56,9 @@ defmodule CodeMySpecWeb.Layouts do
 
   attr :current_path, :string, default: "/"
 
-  # The sidebar's two halves. `project` is the one named in the path, put there
-  # by PortableHost — nil on any page that names none, which is what makes the
-  # nav switch to the picker. `projects` is what the picker offers.
-  #
-  # Declared, not read off `assigns`: a function component only receives what
-  # it declares, so reaching for an undeclared assign here silently renders the
-  # empty branch on every page. Which is exactly what it did.
+  # `project` is the one named in the path (set by PortableHost; nil switches the
+  # nav to the picker). `projects` is what the picker offers. Declared, because
+  # an undeclared assign silently renders the empty branch.
   attr :project, :map, default: nil, doc: "project named in the current path, if any"
   attr :projects, :list, default: [], doc: "projects this user can open (CurrentPathHook)"
 
@@ -297,35 +290,14 @@ defmodule CodeMySpecWeb.Layouts do
     """
   end
 
-  # Marks the nav item for the section you are actually in.
-  #
-  # Prefix match, not equality: a blog post lives at /blog/:slug and is still
-  # the Blog section. Guarded on the boundary so /blogroll does not light up
-  # /blog, which is the bug a bare String.starts_with?/2 would have.
-  # Where the logo goes. Same rule as "Open workspace" below, off the project in
-  # the current path rather than off the scope, because the logo sits on a page
-  # that already knows which project you are looking at.
-  # Guarded on the id being a real one: the project form renders this layout
-  # around a project that does not exist yet, and `~p` raises rather than
-  # rendering a broken link when handed `nil`.
+  # Where the logo goes: the path's project's agent conversation. Guarded on a
+  # real id: the new-project form renders this layout, and `~p` raises on nil.
   defp home_path(%{id: id}) when is_binary(id), do: ~p"/app/projects/#{id}/agent-conversation"
   defp home_path(_no_project), do: ~p"/app"
 
-  # Where "Open workspace" goes.
-  #
-  # `/app` for a visitor with nothing selected, and straight to the project for
-  # someone who has one — the point of the button is resuming work, and landing
-  # on the Overview to click through to the project you already chose is the
-  # ceremony story 813 exists to remove, one step later than it used to be.
-  #
-  # Reads `active_project_id` rather than `active_project`, so it does not
-  # depend on the preference having preloaded the struct. `Scope.for_user/1`
-  # populates both from user preferences, so a dead marketing view has it.
-  #
-  # The cockpit rather than the project's detail page: John, on what people
-  # should be working from, "this is what people should be working from
-  # entirely". Resuming work means the screen with the agent and the panels on
-  # it, not the page describing the project.
+  # Where "Open workspace" goes: the active project's agent conversation (the
+  # screen people work from), else `/app`. Reads `active_project_id` so it does
+  # not need the struct preloaded.
   defp workspace_path(%{active_project_id: id}) when is_binary(id),
     do: ~p"/app/projects/#{id}/agent-conversation"
 
@@ -335,6 +307,7 @@ defmodule CodeMySpecWeb.Layouts do
   # `X.Y.Z+N.gSHA` between tags.
   defp app_version, do: Application.spec(:code_my_spec, :vsn)
 
+  # Prefix match on a path boundary: /blog/:slug is Blog, /blogroll is not.
   defp nav_active(nil, _section), do: nil
 
   defp nav_active(current_path, section) do
@@ -768,24 +741,10 @@ defmodule CodeMySpecWeb.Layouts do
   @doc """
   End-of-post install signature.
 
-  Ships on every published blog post, so it reads as the author's signature
-  rather than a per-post pitch.
-
-  ## Why it is this quiet
-
-  The audience is senior Phoenix engineers and technical founders, who read an
-  aggressive end-of-post CTA as marketing smell — and once they do, the post
-  loses credibility retroactively. So: author voice, one CTA, commands as
-  copy-pasteable terminal text rather than buttons, and honesty about the
-  signup gate instead of promising a frictionless install.
-
-  The absence of urgency framing is enforced, not merely intended — the
-  contract test refutes "GET STARTED", "Limited time", "Join thousands",
-  "10x", and any exclamation mark anywhere in the rendered output.
-
-  Both links carry the same UTM triple so blog→register conversion is
-  attributable separately from the nav, homepage and Reddit-comment paths,
-  which is the whole reason this block exists.
+  Ships on every published blog post, in the author's voice: one CTA, commands
+  as copy-pasteable text, no urgency framing (a contract test refutes phrases
+  like "GET STARTED" and any exclamation mark). Both links carry the same UTM
+  triple so blog-to-register conversion is attributable on its own.
   """
   def install_signature(assigns) do
     ~H"""

@@ -2,65 +2,15 @@ defmodule CodeMySpec.Requirements.Freshness do
   @moduledoc """
   What one entity's requirements were computed from, as a fingerprint.
 
-  ## Why per entity rather than per project
+  Every node carries its entity's fingerprint as `inputs_fingerprint`, so a
+  reader can tell whether a row is current. `topology/2` fingerprints the shape
+  the edges were drawn from, which gates edge redraws.
 
-  The graph carries a single fingerprint hashed over every input the project
-  has, so any observation busts all of it and the next read rebuilds every node
-  and edge. Measured on this project with a handful of agents, 2026-09-12: 348
-  full computes in one log, median 2.6s, p90 5.9s, max 14.8s, 116 of them
-  triggered by stop hooks, and edges alone 6489ms of a 10203ms compute.
+  In: every row a checker for that entity reads, keyed `{id, updated_at}`. Out:
+  anything no checker reads. Files are keyed by content hash; a QA attempt or a
+  git state by its id or revision.
 
-  The cost is the grain, not the hash. A scenario added to one story says
-  nothing about a story assigned to another checkout, and a project-wide
-  fingerprint has no way to say so — so it discards both.
-
-  ## Why per entity rather than per requirement
-
-  Per requirement would be finer and is not obviously better. The requirements
-  of one entity share almost all of their inputs: every story requirement reads
-  that story's files, and most read its rules, criteria or attempts. Splitting
-  them would hash the same values once per requirement to separate answers that
-  move together anyway.
-
-  Entity grain is also what the observable claim needs. "An observation
-  recomputes what it touched and leaves the rest" — criterion 3424 — is about
-  one story's requirements against another's.
-
-  ## What goes in, and what deliberately does not
-
-  In: everything a checker for that entity reads. For a story that is its own
-  released and assigned state, its files, rules, criteria, questions, personas,
-  latest QA attempt and UAT deploy — plus the running copy's state, because
-  `story_promoted` reads it and a story's answer genuinely changes when
-  the running copy moves.
-
-  Out: anything a checker does not read. `updated_at` on a row nothing consults
-  would make every save look like a change, which is the failure this replaces
-  rather than a cheaper version of it.
-
-  ## Rows that are read are hashed by `updated_at`, not by named fields
-
-  For a row a checker *does* read, the opposite holds, and criterion 5887 is
-  what settled it. Naming fields means the fingerprint covers the fields this
-  module happens to know about, and it was wrong twice in the same afternoon:
-  `add_scenario` sets an existing criterion's `kind` and `rule_id`, which
-  `BddRulesChecker` reads and this hashed by id alone; and the Three Amigos seal
-  is `story.three_amigos_sealed`, which was not in the story's named fields at
-  all. Both moved an answer without moving its fingerprint, so the stale row was
-  kept and the graph went on offering work that had already been done.
-
-  A missed input is silent and expensive — an agent holds a session that is
-  already sealed — while an extra one costs a recompute. So every row a checker
-  reads is keyed `{id, updated_at}`, the convention
-  `Preloader.delegated_inputs/2` already uses, which covers every field read
-  today and every field read later without this module tracking which.
-
-  ## On hashing things we do not own
-
-  For files the source key is a content hash, which is honest: we have the
-  bytes. For a QA attempt or a git state it is an **id or a revision** — the
-  attempt's id, the commit sha. Same idea, and it should not be called a hash
-  of data we never read.
+  See knowledge/requirements_graph/checkers, "Fingerprints".
   """
 
   alias CodeMySpec.Configurations.ProjectConfiguration
@@ -70,9 +20,8 @@ defmodule CodeMySpec.Requirements.Freshness do
   @doc """
   One story's inputs, as a fingerprint.
 
-  `nil` is never returned: a story with no files and no rules still has a
-  fingerprint, and it is the fingerprint of having none. Returning `nil` there
-  would read as "unknown" and force a recompute for the emptiest case.
+  Never `nil`: a story with no files and no rules has the fingerprint of having
+  none; `nil` would read as "unknown".
   """
   @spec story(Preloader.context(), map()) :: String.t()
   def story(ctx, story) do
@@ -99,13 +48,11 @@ defmodule CodeMySpec.Requirements.Freshness do
   @doc """
   One component's inputs, as a fingerprint.
 
-  Children are included by id rather than by their own fingerprint: a context's
-  requirements depend on *which* children it has — a child appearing adds nodes
-  — and not on whether a child's own spec changed, which moves that child's
-  requirements and not its parent's.
+  Children are included by id, not by their own fingerprint: a context's
+  requirements depend on which children it has, not on their specs.
 
-  Analyzer runs and their findings are not inputs: no component requirement
-  reads them.
+  Analyzer runs and problems are not inputs: no component requirement reads
+  them.
   """
   @spec component(Preloader.context(), map()) :: String.t()
   def component(ctx, component) do
@@ -114,9 +61,6 @@ defmodule CodeMySpec.Requirements.Freshness do
       {:files, file_keys(Map.get(ctx.files_by_component, component.id, []))},
       {:children, ids(Map.get(ctx.children_by_parent, component.id, []))},
       config_part(ctx)
-      # Neither analysis state nor problems are inputs: no component
-      # requirement reads them (28d72f8a), so an analyzer landing moves no
-      # component.
     ])
   end
 
@@ -124,80 +68,30 @@ defmodule CodeMySpec.Requirements.Freshness do
   Stamp the configuration onto a context, so every fingerprint taken from it
   covers the definitions the configuration leaves standing.
 
-  Config is the one node-shape input no per-entity fingerprint can reach on its
-  own. `filter_definitions_by_config/2` decides which requirement *definitions*
-  exist — `devops: :off` removes `devops_setup` from every story and project,
-  the specs/reviews/tests switches remove whole artifact types from every
-  component — and none of that is an input to a story or a component, so
-  neither `story/2` nor `component/2` had any way to notice it moving.
-
-  The topology gate used to cover for that: a config change moved
-  `topology_parts/2` and the pass fell through to a whole-project recompute. It
-  no longer does, because that gate is about edges (see `topology/2`) and
-  configuration was the only thing riding it that was about nodes. So it is
-  hashed where it belongs — into each entity's own fingerprint, which makes
-  every entity stale the moment a switch moves, which is exactly true.
-
-  Set once per pass, by the caller that holds the configuration, and carried on
-  the context so the comparison and the write hash it the same way.
-  `reduce_to/2` narrows the two entity lists and leaves everything else alone,
-  so a partial pass stamps what a whole one would.
+  Config decides which requirement definitions exist (`devops: :off` removes
+  `devops_setup`; the specs/reviews/tests switches remove artifact types), and
+  is no input to a story or component, so it is stamped here once per pass and
+  every entity's fingerprint moves when a switch moves. `reduce_to/2` keeps the
+  stamp, so a partial pass hashes what a whole one would.
   """
   @spec with_config(Preloader.context(), map()) :: Preloader.context()
   def with_config(ctx, config), do: Map.put(ctx, :config_shape, hash(config_shape(config)))
 
-  # `nil` when nobody stamped it, which is the event path: `load_story/3` builds
-  # a context narrow enough that `story_fingerprint/2` already answers `nil` for
-  # the whole row rather than a plausible value computed from less.
+  # `nil` when nobody stamped it.
   defp config_part(ctx), do: {:config, Map.get(ctx, :config_shape)}
 
   @doc """
   The shape the graph's edges describe, as a fingerprint.
 
-  Nodes and edges are computed from different things, and conflating them is
-  how a partial recompute goes quietly wrong. An edge comes from four places
-  and none of them is a file's contents:
+  An edge comes from the template (by `component.type`, filtered by config and
+  the definition set), the component tree (`parent_component_id`), cross-context
+  `dependencies`, story attachment (`story.component_id`), and which discovered
+  components have files on this checkout. Nothing else: validity, QA results
+  and deploys move nodes, never edges.
 
-    * the template, chosen by `component.type` and filtered by the config
-    * the component tree, via `parent_component_id`
-    * cross-context dependencies, via `component.dependencies`
-    * story attachment, via `story.component_id`
-
-  So a spec file that declares a new dependency moves the component's inputs —
-  which is caught — and moves the graph's shape, which is not, because the
-  entity set is unchanged and the edges were kept. Membership is not shape.
-
-  Deliberately blind to everything else. Whether a file is valid, whether QA
-  passed, when a deploy ran: all of it moves nodes and none of it moves an
-  edge, and including it would recompute 6489ms of edges to describe a shape
-  that had not changed — which is the behaviour this exists to end.
-
-  ## This gate is about edges, and only about edges
-
-  Moving it used to mean a whole-project recompute — every node re-derived
-  along with every edge. That was never what it says. Nothing in here is an
-  input to a *verdict*: a component's dependencies, a story's attachment and
-  the configured definition set decide which edges exist, and a story arriving
-  or leaving decides which nodes exist through machinery that already costs
-  what it touches (`stale_entities/3` calls a story with no stored rows
-  `appeared`, `departed/2` reaps one the context has lost, and `story/2` and
-  `component/2` hash attachment, type and children).
-
-  So it moves the **edges** now and leaves the nodes to the per-entity
-  fingerprints. `recompute_stale/4` rebuilds the edge set from the whole node
-  set when this moves, recomputes only the entities whose own inputs moved, and
-  widens `ids_by_key` so edges onto reused nodes survive `replace_edges/3`.
-
-  Dropping stories from the hash *without* that was tried first and reverted:
-  the incremental branch reused `stored_edges` wholesale, so a story arriving
-  through it got its seven requirements and none of the edges between them —
-  measured, 7 rows and 0 edges — and its prerequisites silently stopped gating.
-  Criterion 3616 asserts both halves in one scenario for that reason.
-
-  Configuration stays in the hash because it genuinely changes the edge set,
-  and is now hashed into each entity's fingerprint as well — see
-  `with_config/2`, which is what makes it safe for this gate to stop recomputing
-  nodes.
+  This gates edges only; verdicts are moved by marks. `IncrementalGraph` redraws
+  a vantage's edges when this moves and reuses an edge plan while it holds.
+  See knowledge/requirements_graph/checkers, "Fingerprints".
   """
   @spec topology(Preloader.context(), map()) :: String.t()
   def topology(ctx, config) do
@@ -208,23 +102,8 @@ defmodule CodeMySpec.Requirements.Freshness do
   Each shared input's stamps, digested separately, so a recompute can name
   which one moved.
 
-  `story/2` and `component/2` both hash `delegated_inputs` wholesale, and those
-  inputs are *project-wide* by construction: one issue resolved anywhere moves
-  the `issues` stamp, which moves every story's fingerprint, which recomputes
-  every story's requirements. The module says so — "an issue accepted against
-  one story reconsiders every story" — and accepts the trade on the grounds
-  that issues are "filed and resolved by hand, a handful a day".
-
-  That premise is now measurably false. Issues were touched at 14:12, 14:21,
-  14:24 and 14:34 in one half hour, each by an agent rather than a person, and
-  three of those are within ten seconds of a 973-requirement recompute.
-
-  This does not change the trade. It makes it legible: two consecutive log
-  lines name the mover by the digest that differs between them, the same way
-  `topology_parts/2` does for the edge set. Without it a recompute reports how
-  much it did and nothing about what asked for it, so an observation that
-  should have caused one — or a recompute that no observation asked for — is
-  invisible either way.
+  `delegated_inputs` are project-wide, so one moving changes every fingerprint
+  that hashes them; the per-table digests say which table it was.
   """
   @spec delegated_parts(Preloader.context()) :: %{String.t() => String.t()}
   def delegated_parts(ctx) do
@@ -234,16 +113,9 @@ defmodule CodeMySpec.Requirements.Freshness do
   end
 
   @doc """
-  The same three inputs, hashed separately.
+  The topology's inputs, hashed separately, so a reader can say which moved.
 
-  For the reader that has to say *which* of them moved. A single topology hash
-  can only report that the shape changed, and `topology_moved` turned out to be
-  the dominant cause of full recomputes on a live project — which is
-  unanswerable from one digest, in exactly the way `same_entity_set?` was
-  unanswerable before its guard named itself.
-
-  Sorted into the combined hash so the two can never disagree about what they
-  cover: `topology/2` is these parts and nothing else.
+  `topology/2` is these parts, sorted, and nothing else.
   """
   @spec topology_parts(Preloader.context(), map()) :: %{atom() => String.t()}
   def topology_parts(ctx, config) do
@@ -288,50 +160,10 @@ defmodule CodeMySpec.Requirements.Freshness do
     |> Enum.sort()
   end
 
-  # The edges come from the requirement templates, so a template change is an
-  # edge change and has to move this hash.
-  #
-  # It did not, and the comment on `CachedGraph.topology_fingerprint` said why
-  # without noticing: "it moves when a dependency, a parent or the config moves,
-  # and those are the only things that change an edge". The templates were the
-  # unlisted fourth thing. `config_shape/1` hashes what *filters* the definition
-  # set; nothing hashed the set itself.
-  #
-  # So changing a prerequisite produced an identical topology fingerprint,
-  # `topology_moved?` stayed false, and every partial recompute kept the stale
-  # stored edges. Measured 2026-09-23: `story_issues_resolved` was moved ahead of
-  # `qa_complete` and shipped in v2.0.152. The new module loaded — the rendered
-  # description changed in the same breath — and the served graph went on
-  # offering `qa_complete` whose prerequisite was now unsatisfied, across 17
-  # vantages on two projects. Only the vantage that happened to get an entity
-  # write picked the new shape up. A definition change was inert until unrelated
-  # activity invalidated the cache, which on a quiet project is never.
-  #
-  # Names and prerequisites only. Descriptions, roles and checker config change
-  # what a node *says* or *asks*, never which nodes connect to which, and hashing
-  # them here would recompute every edge on every copy edit.
-  # Two constraints on this function, from the Sync session that owns the
-  # projector, recorded because breaking either is expensive and neither is
-  # visible from here.
-  #
-  # Sorted, both levels. "The distinct types present in ctx" in encounter order
-  # flaps when the component list order changes, and a flapping part is the
-  # ongoing churn this whole change is trying not to cause. Every other part of
-  # `topology_parts/2` sorts for the same reason.
-  #
-  # `topology_parts/2` ONLY. If this ever reaches the entity fingerprints —
-  # `story/2`, `component/2`, `delegated_inputs` — every entity reads stale at
-  # once, `verdict/5` answers `{:all, …}`, and that is a whole-project recompute
-  # on every vantage fired by every template edit. The edge set is the only thing
-  # a definition change moves, so this is the only place it belongs.
-  #
-  # Cost, measured by Sync on the 138-story project: the read path redraws rather
-  # than recomputes — `Edges.plan` once per shape (~300ms) then `Edges.over` per
-  # vantage (~25-55ms), so ~1s across eleven vantages, once. The batched oracle
-  # pass does a full `compute_edges` per vantage on a topology move, ~7s across
-  # that project's vantages, once per template change, and reuses stored nodes
-  # rather than re-deriving verdicts. A release stamp would have fired that on
-  # every promote instead — there were thirty yesterday.
+  # The definition set itself (names and prerequisites only), so a release that
+  # moves a prerequisite moves the edges. Sorted at both levels so list order
+  # cannot flap it; belongs in `topology_parts/2` only.
+  # See knowledge/requirements_graph/checkers, "Fingerprints".
   defp definition_shape(ctx) do
     types = ctx.components |> Enum.map(& &1.type) |> Enum.uniq() |> Enum.sort()
 
@@ -348,9 +180,8 @@ defmodule CodeMySpec.Requirements.Freshness do
     |> Enum.sort()
   end
 
-  # An unloaded association is not an empty one. Answering `[]` for it would
-  # hash two different shapes the same way and reuse edges that describe
-  # neither, so it is named for what it is and always looks changed.
+  # An unloaded association is not an empty one: `[]` would hash two shapes
+  # alike, so it is named and always looks changed.
   defp dependency_ids(component) do
     case component.dependencies do
       deps when is_list(deps) -> deps |> Enum.map(& &1.id) |> Enum.sort()
@@ -358,12 +189,8 @@ defmodule CodeMySpec.Requirements.Freshness do
     end
   end
 
-  # The config decides which requirement definitions exist, and an edge can
-  # only connect definitions that do. Taken by the keys the filters
-  # actually read rather than by hashing the whole struct, which carries
-  # timestamps and would make every config save look like a new shape.
-  # The level the filters apply, not the raw column: a legacy nil and :off
-  # are the same shape.
+  # Only the keys the definition filters read (the struct carries timestamps),
+  # and the devops level, not the column: a legacy nil and :off are one shape.
   defp config_shape(config),
     do: [
       devops: ProjectConfiguration.devops_level(config),
@@ -373,10 +200,9 @@ defmodule CodeMySpec.Requirements.Freshness do
   @doc """
   The project's own inputs, as a fingerprint.
 
-  Project requirements read counts rather than contents — whether any story
-  exists, whether personas are complete — so this is deliberately coarse. It
-  moves when a story or component appears, which is exactly when a project
-  requirement can change.
+  Deliberately coarse: project requirements read counts rather than contents,
+  so this hashes story and component ids, project files and the delegated
+  inputs.
   """
   @spec project(Preloader.context()) :: String.t()
   def project(ctx) do
@@ -399,47 +225,16 @@ defmodule CodeMySpec.Requirements.Freshness do
 
   defp ids(rows), do: rows |> Enum.map(& &1.id) |> Enum.sort()
 
-  # `{id, updated_at}`, because these rows are edited in place and the checkers
-  # read their contents rather than their existence.
-  #
-  # Identity alone was wrong and criterion 5887 is what said so. `add_scenario`
-  # sets an existing criterion's `kind` and `rule_id`; `BddRulesChecker` reads
-  # exactly those two — `Enum.filter(criteria, &(not is_nil(&1.kind)))`, then
-  # `Enum.group_by(scenarios, & &1.rule_id)` — so a story went from "a rule with
-  # no scenario" to "covered" with its set of criterion ids unchanged. The
-  # fingerprint matched, the row was kept, and the graph went on offering a
-  # Three Amigos session that had already been held. A question being answered
-  # is the same shape: `status` moves from `:open`, the id does not.
-  #
-  # `updated_at` rather than the fields themselves, which is the convention
-  # `Preloader.delegated_inputs/2` already uses for the same reason: it covers
-  # every field a checker reads today and every one it starts reading later,
-  # without this module having to track what that is. The objection in the
-  # moduledoc — that a timestamp makes every save look like a change — is about
-  # rows nothing consults. These are consulted.
+  # `{id, updated_at}`, not named fields: these rows are edited in place and
+  # checkers read their contents. See knowledge/requirements_graph/checkers,
+  # "Fingerprints".
   defp row_keys(rows), do: rows |> Enum.map(&row_key/1) |> Enum.sort()
 
-  # The same question asked of one row, including the entity's own.
-  #
-  # Criterion 5887 found the second half of this: `three_amigos_complete`
-  # delegates to `BddRulesChecker.sealed?/2`, which reads
-  # `story.three_amigos_sealed` — a field on the story itself, flipped by
-  # `ThreeAmigos.evaluate/2` through a normal changeset update. The fields named
-  # beside this one are the fields *this module* happened to know about, and the
-  # seal was not among them, so a story went from unsealed to sealed with its
-  # fingerprint unchanged and the graph kept offering a conversation that had
-  # already been held.
-  #
-  # Enumerating fields means being wrong again the next time a checker reads one
-  # nobody added here — silently, and in the direction that costs an agent a
-  # session rather than costing a recompute. The row's own `updated_at` is the
-  # question actually being asked: did this row change.
+  # The same key for one row, including the entity's own.
   defp row_key(row), do: {row.id, Map.get(row, :updated_at)}
 
-  # The attempt's identity, not its contents. A QA attempt is immutable once
-  # inserted, so its id is a complete answer to "is this the same attempt" —
-  # and its invalidations are what make a pass stop counting, so they are here
-  # too.
+  # An attempt is immutable once inserted, so its id identifies it; its
+  # invalidations are what make a pass stop counting.
   defp attempt_key(nil), do: nil
 
   defp attempt_key(attempt) do

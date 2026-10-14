@@ -46,15 +46,12 @@ defmodule CodeMySpec.ProvisioningPlan do
   @doc """
   The options a project has chosen.
 
-  A project that has never chosen gets everything. Setup's job is a working
-  project, and a user who wants less turns it off rather than having to
-  discover what to turn on.
+  A project that has never chosen gets everything; a user who wants less
+  turns it off.
 
-  `nil` and `[]` are deliberately different: `nil` is "never chosen" and
-  yields the full set, `[]` is "chose none of the optional parts" and yields
-  none. Collapsing them would make turning everything off indistinguishable
-  from never having opened the page — and the page would helpfully turn it all
-  back on.
+  `nil` ("never chosen", the full set) and `[]` ("chose none", nothing) are
+  deliberately different, or turning everything off would read as never
+  having chosen and the page would turn it all back on.
   """
   @spec setup_options(Project.t() | Scope.t()) :: [atom()]
   def setup_options(%Scope{active_project: project}), do: setup_options(project)
@@ -64,9 +61,8 @@ defmodule CodeMySpec.ProvisioningPlan do
     available = available_options()
     by_name = Map.new(available, &{to_string(&1), &1})
 
-    # Looked up rather than `String.to_existing_atom/1`: a stored option whose
-    # step was later removed should be ignored, not raise. The row outlives the
-    # code that wrote it.
+    # Looked up rather than `String.to_existing_atom/1`: an option whose step
+    # was later removed is ignored, not raised on.
     stored |> Enum.flat_map(&List.wrap(Map.get(by_name, &1))) |> Enum.uniq()
   end
 
@@ -74,9 +70,8 @@ defmodule CodeMySpec.ProvisioningPlan do
 
   ## Environments
 
-  # Filtered here rather than in the seed, because a row is not infrastructure.
-  # Seeding both keeps promotion a matter of changing one setting, which is
-  # what "the user promotes to prod themselves" means.
+  # Filtered here rather than in the seed: both rows exist, so promoting to
+  # prod is one setting change.
   @doc """
   The environment rows this project's devops level actually permits — every
   row it has, unless `devops: :uat` has filtered production out. Seeds rows on
@@ -135,11 +130,9 @@ defmodule CodeMySpec.ProvisioningPlan do
   Production when there is one, because that is the site everything else
   (a reader, a webhook, a health check) actually reaches. Otherwise the
   first environment the project has, so a UAT-only project still gets one
-  rather than none. `:content` is the one step that cannot yet act on more
-  than one environment at a time (it proves itself against the project's
-  single stored `client_api_url`/`content_bucket`) — this is what its one
-  row is attributed to until that becomes genuinely independent per
-  environment.
+  rather than none. `:content` cannot yet act on more than one environment
+  (it proves itself against the project's single `client_api_url`/
+  `content_bucket`), so its one row is attributed here.
   """
   @spec primary_environment(Scope.t()) :: String.t() | nil
   def primary_environment(scope), do: scope |> permitted_environments() |> primary_of()
@@ -152,15 +145,12 @@ defmodule CodeMySpec.ProvisioningPlan do
   @doc """
   The whole plan for a project, in order, before anything runs.
 
-  Every step carries its current state, so Sam sees the shape of the run and
-  where it stands at once (criterion 7959). Steps his options exclude are
-  absent, not present-and-skipped (criterion 7968).
+  Every step carries its current state. Steps the options exclude are
+  absent, not present-and-skipped.
 
-  A project-wide step is one entry. A step that runs independently per
-  environment (`Sequence.scope/1` == `:environment`) is one entry per
-  environment the project has — `:content` is the one exception, pinned to
-  `primary_environment/1` rather than fanned out, since its own execution
-  cannot yet prove more than one environment's site.
+  A project-wide step is one entry. A per-environment step
+  (`Sequence.scope/1 == :environment`) is one entry per environment, except
+  `:content`, pinned to `primary_environment/1`.
 
   `seed: false` reads only the environment rows already there. A reader that
   must not write — the requirement graph — passes it; a project with no rows
@@ -190,9 +180,7 @@ defmodule CodeMySpec.ProvisioningPlan do
   def step_environments(names, %{key: :content}), do: [primary_of(names)]
   def step_environments(names, %{scope: :environment}), do: names
 
-  # Two heads rather than a `row && row.field` for each of ten fields. Those
-  # guards were the same question asked ten times, and asking it once — has
-  # this step ever run — is both shorter and the actual distinction.
+  # Two heads: "has this step ever run" asked once rather than per field.
   defp entry(step, environment, nil) do
     %{
       key: step.key,
@@ -224,9 +212,7 @@ defmodule CodeMySpec.ProvisioningPlan do
       attempted: row.attempted,
       provider_error: row.provider_error,
       paused_instructions: row.paused_instructions,
-      # When the step last changed state. A `done` row's timestamp is when it
-      # finished, which is what makes "setup waited for verification rather
-      # than declaring victory first" checkable rather than asserted.
+      # When the step last changed state; for a `done` row, when it finished.
       completed_at: row.updated_at,
       started_at: row.started_at,
       verified_at: row.verified_at,
@@ -236,13 +222,9 @@ defmodule CodeMySpec.ProvisioningPlan do
 
   ## Checklist
 
-  # 3f9bb7b7: `step.state` records the *last run's* verdict, not what exists.
-  # `:running`, `:errored` and `:paused` can all follow a step that already
-  # created something real (a server, a domain, a database) before the run
-  # stopped making progress, so a step with resources counts as present too.
-  # Added to `:done`, not substituted for it: a step can read `:done` with
-  # `resources: []` (a pure verification step, a fixture that stamped
-  # completion directly), and `:done` is still sufficient on its own.
+  # A step counts as present when it is `:done` or holds any resources: a
+  # run can stop (`:running`/`:errored`/`:paused`) after creating something
+  # real, and a `:done` step can have no resources.
   @doc """
   What `project` should have, from the same sequence the run uses, each entry
   `:present` or `:missing`. `plan/3` fills the gaps a run never reached.
@@ -257,8 +239,8 @@ defmodule CodeMySpec.ProvisioningPlan do
         environment: step.environment,
         state: if(step.state == :done or step.resources != [], do: :present, else: :missing),
         detail: step.provider_error,
-        # The last run's verdict and when it was recorded, beside the
-        # presence verdict above rather than instead of it (82f09c49).
+        # The last run's verdict and when it was recorded, beside the presence
+        # verdict.
         step_state: step.state,
         recorded_at: if(step.state == :running, do: step.started_at, else: step.completed_at),
         paused_instructions: step.paused_instructions

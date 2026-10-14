@@ -142,14 +142,9 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   Latest run of one source that actually produced an answer, for this working
   copy.
 
-  `latest_full_run/2` includes failures, which is right for reporting *state* —
-  an analyzer that keeps dying should say so. It is wrong for deciding what a
-  source's findings are, because a run that never ran would displace a good
-  result, and a duplicate enqueue refused as "already queued" is exactly that:
-  14 such rows in half an hour on this machine.
-
-  A refusal is a scheduling fact. It should not be able to invalidate an
-  answer.
+  `latest_full_run/2` includes failures, which is right for reporting state.
+  This is for deciding a source's findings: a failed run (e.g. a duplicate
+  enqueue refused as already queued) cannot displace a good result.
   """
   @spec latest_completed_run(Scope.t(), String.t()) :: Run.t() | nil
   def latest_completed_run(%Scope{active_project_id: project_id} = scope, source) do
@@ -166,9 +161,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   How many full runs of `source` on this working copy failed to run at
   `commit` during the attempt beginning at `since`: started there, or failed
   before they could say where they started (an analyzer that would not boot).
-  Earlier failed attempts do not prevent a fresh promotion from retrying. Runs its harness
-  going away orphaned (`stats.orphaned`) are not counted — they say nothing about
-  whether the analyzer can run there.
+  Earlier attempts do not count, so a fresh promotion can retry. Orphaned runs
+  (`stats.orphaned`) are not counted: they say nothing about the analyzer.
   """
   @spec failed_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: non_neg_integer()
   def failed_at_commit(%Scope{active_project_id: project_id} = scope, source, commit, since) do
@@ -203,23 +197,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Repo.exists?()
   end
 
-  # Freshness is a question about one working copy's tree. Unscoped, the latest
-  # run of *any* checkout answered it, and its fingerprint is computed over
-  # different files — so a source could never be fresh while another agent
-  # worked. `acde83fd` scoped the lookup on submit and the sweep on join and
-  # missed these two.
-  # A nil id is not "every harness", and it is not a comparison either: Ecto
-  # forbids `== nil` and raises `ArgumentError` rather than matching nothing.
-  # `fail_running/3` hit that on channel join during a restart storm — six
-  # `%ArgumentError{}` crashes out of `Analysis.fail_in_flight/3`, from a query
-  # written as `r.working_copy_id == ^scope.active_working_copy_id` while this helper sat
-  # two hundred lines above already handling it.
-  #
-  # Reading it as "no filter" is right for the queries that *report* — the UI
-  # asks about a project, not a checkout. It is wrong for one that *writes*:
-  # closing every harness's runs because this scope names none would fail runs
-  # belonging to working copies that are still going. So the two part here, and
-  # `fail_running/3` says so at its own call site.
+  # Runs answer about one working copy's tree. A nil id means "no filter",
+  # which suits reporting queries only; writers handle nil themselves
+  # (`fail_running/3`). Ecto raises on `== ^nil`, hence the clause.
+  # See knowledge/analysis, "Run ledger".
   defp scope_to_harness(query, %Scope{active_working_copy_id: nil}), do: query
 
   defp scope_to_harness(query, %Scope{active_working_copy_id: working_copy_id}),
@@ -232,24 +213,15 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   @doc """
   When each still-`:running` source started, for this working copy.
 
-  The start time rather than only the source name, because "a rerun is in
-  flight" is the same sentence on every stop inside one run's window, and two
-  identical blocks in a row is the signature of a livelock. How long it has been
-  running is what tells those apart (`020f573e`).
-
-  Earliest start per source: duplicates should not happen, and if they do, the
-  one that has been running longest is the one about to land.
+  The start time, not only the source, so repeated "a rerun is in flight"
+  stops can be told apart from a livelock. Earliest start per source wins.
   """
   @spec running_since(Scope.t()) :: %{String.t() => DateTime.t()}
   def running_since(%Scope{active_project_id: project_id} = scope) do
     Run
     |> where([r], r.project_id == ^project_id and r.status == :running)
-    # This working copy's runs. The only query here that was not scoped, and
-    # the stop hook turns its answer straight into advice: "a rerun is in
-    # flight now — stop again and let it replace these". Another checkout's
-    # sweep produces nothing for this one, so that told an agent to wait for a
-    # result that could never arrive, three stops running, while its own last
-    # run sat 96 minutes back and its requested rerun had been dropped.
+    # Scoped: another checkout's sweep never answers for this one, and the stop
+    # hook tells the agent to wait on what this returns.
     |> scope_to_harness(scope)
     |> select([r], {r.source, r.started_at})
     |> Repo.all()
@@ -381,8 +353,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   Add `agent_id` to the waiters (`requested_by["waiters"]`) of this copy's
   full runs of `source` still running that will answer for `commit`: started
   there on a clean tree, or queued and not started yet. Answers whether any
-  such run exists, so a run somebody else started counts as the agent's own
-  (28d72f8a): it is told when it lands, and `awaiting_runs?/3` holds its
+  such run exists, so a run somebody else started counts as the agent's own:
+  it is told when it lands, and `awaiting_runs?/3` holds its
   nudges meanwhile. A run already requested by the agent is left as it is.
   """
   @spec wait_on_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: boolean()
@@ -429,11 +401,9 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   @doc """
   Fetch one still-`:running` run of this project by id.
 
-  Scoped and status-checked together on purpose: a result arriving for a run
-  that is already closed, or that belongs to another project, is not a late
-  answer to apply — it is a harness talking about something this server is not
-  tracking, and reconciling it would rewrite a source's Problems off a run
-  nobody is waiting for.
+  Scoped to this working copy and status-checked: a result for a closed run,
+  or another copy's, is not applied (it would rewrite Problems off a run
+  nobody is waiting for).
   """
   @spec get_running_run(Scope.t(), integer()) :: Run.t() | nil
   def get_running_run(%Scope{active_project_id: project_id} = scope, run_id) do
@@ -462,13 +432,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   For the moment its remote executor provably cannot answer them: its channel
   closed, or a new one joined and the old queue is gone.
 
-  Scoped to the harness, because "provably cannot answer" is a claim about one
-  working copy. Scoped to the project it also failed every other checkout's
-  in-flight runs — and with a worktree per branch, a join from any harness
-  killed everyone else's work. Their analyzers then answered rows that were no
-  longer `:running` and were told `unknown_run`. 285 results sent, 0 accepted,
-  and `bdd_specs_passing` unsatisfiable for every story, because the only
-  evidence that can satisfy it is a result that could never be recorded.
+  Scoped to the working copy: failing other checkouts' runs makes their
+  results arrive as `unknown_run` and never be recorded.
   """
   @spec fail_running(Scope.t(), term()) :: {:ok, [Run.t()]}
   def fail_running(%Scope{} = scope, reason), do: fail_running(scope, reason, [])
@@ -477,23 +442,14 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   Close this working copy's `:running` runs, except the ones the harness says it
   is still working on.
 
-  A harness that restarted took its queue with it and those runs will never
-  finish, so closing them is what stops every later stop reporting "analysis
-  pending" on a next time that never arrives. A harness whose *socket* dropped
-  took nothing with it: the analyzers are OS processes on its machine, and they
-  finish, report, and are refused because the row is no longer `:running`.
-
-  The two are indistinguishable from here, which is why the harness declares
-  what it still holds on join. Anything it does not claim is closed, so a
-  genuinely dead harness is handled exactly as before — an empty declaration is
-  the old behaviour.
+  A restarted harness lost its queue, so those runs never finish; one whose
+  socket merely dropped is still running them. The two look alike from here,
+  so the harness declares on join what it still holds, and anything unclaimed
+  is closed. An empty claim closes everything.
   """
   @spec fail_running(Scope.t(), term(), [integer()]) :: {:ok, [Run.t()]}
-  # No harness on the scope means there is no working copy whose runs these are,
-  # so there is nothing to close. Falling through to `scope_to_harness/2`'s
-  # unfiltered clause would close every other checkout's in-flight runs — the
-  # opposite of what the caller asked for, and invisible until an unrelated
-  # agent's sweep came back as `:harness_disconnected`.
+  # No working copy, nothing to close: `scope_to_harness/2`'s nil clause would
+  # close every other checkout's runs.
   def fail_running(%Scope{active_working_copy_id: nil}, _reason, _claimed), do: {:ok, []}
 
   def fail_running(%Scope{active_project_id: project_id} = scope, reason, claimed) do
@@ -526,31 +482,18 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     %{"error" => String.slice(inspect(reason), 0, 500), "orphaned" => true}
   end
 
-  # An empty claim sweeps everything, which is what this did before harnesses
-  # declared anything — so an older harness, or one with nothing running, is
-  # unchanged.
+  # An empty claim sweeps everything (an older harness, or nothing running).
   defp exclude_claimed(query, []), do: query
   defp exclude_claimed(query, claimed), do: where(query, [r], r.id not in ^claimed)
 
   @doc """
   Mark stranded `:running` rows as `:failed`.
 
-  Called at boot: a run left `:running` by a previous server process died with
-  that process — its RunServer no longer exists, so nothing will ever finish it.
-
-  That premise holds for runs this server executed. It does not hold for runs
-  dispatched to a light harness: those are OS processes on another machine and a
-  server restart does not touch them. One caught mid-flight finishes, reports,
-  and is refused — the row is no longer `:running`. Restarting the server during
-  a 200-second `mix test` is enough to do it.
-
-  Left as it is deliberately, and logged instead. The join sweep is where a
-  harness can say what it still holds (`fail_running/3`); nothing can claim at
-  boot, because nothing has joined yet. Making this one smarter means either
-  keeping rows open for a harness that may never return, or a timer — and a
-  timer compensating for a deadline is what the channel exists to avoid.
-
-  So it stays blunt and says what it did.
+  Called at boot, marking each `orphaned`. Runs this server executed died with
+  it; runs dispatched to a harness may still be executing and will be refused
+  as `unknown_run` when they report (the rejoin's `resume_orphaned` can reopen
+  or rerun them). Deliberately blunt and logged: nothing can claim a run at
+  boot because no harness has joined yet, and the alternative is a timer.
   """
   @spec fail_stranded_runs() :: {:ok, [Run.t()]}
   def fail_stranded_runs do

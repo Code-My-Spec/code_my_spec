@@ -3,32 +3,16 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   The device half of the Credo analyzer: run `mix credo` and hand back the
   issues it printed.
 
-  Derived from `CodeMySpec.StaticAnalysis.Analyzers.Credo` on the server, which
-  cannot be copied verbatim — its `run/2` finishes by building `%Problems.Problem{}`
-  structs against a `%Users.Scope{}`, and both of those are database. What is
-  left once those go is this: build the args, shell out through `Environments`,
-  find the JSON in the output, and return `issues` exactly as Credo emitted them.
-
-  Conversion to Problems stays on the server, where the schema is. The raw issue
-  maps travel over the wire with string keys, which is the shape
-  `ProblemConverter.from_credo/1` already accepts.
+  Builds no `%Problem{}` (that needs the database): returns `issues` exactly as
+  Credo emitted them, string-keyed, which `ProblemConverter.from_credo/1` accepts
+  on the server.
 
   ## Unreadable output is an error, not a clean sweep
 
-  Output this cannot parse returns an error rather than `{:ok, []}`, because
-  over a wire that answer is indistinguishable from a clean sweep and gets
-  recorded as one. A real run proved it: a project without `:credo` in its deps
-  printed `** (Mix) The task "credo" could not be found`, which is not JSON, and
-  the harness reported the project credo-clean. The server never hit that
-  because `available?/1` skipped the analyzer first — so that check is here too,
-  ahead of everything else.
-
-  This was written as a deliberate divergence from the server's analyzer, which
-  did answer `{:ok, []}`. It is not one any more: `Analyzers.Credo` was brought
-  in line, and `Analyzers.Sobelow` after it — a `:full` reconcile against an
-  empty list deletes every Problem the source has, so all three now refuse the
-  same way. The note is kept rather than deleted because the divergence is the
-  kind of thing someone re-introduces while "simplifying" one of them.
+  Output this cannot parse returns an error rather than `{:ok, []}`, which over
+  a wire is recorded as a clean sweep (and a `:full` reconcile of `[]` deletes
+  every credo Problem). `Analyzers.Credo` and `Analyzers.Sobelow` refuse the
+  same way; keep the three in line.
   """
 
   require Logger
@@ -65,10 +49,8 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   @doc """
   Whether Credo can run against this working copy at all.
 
-  Through `Environments`, not `File`, because the question is whether the tool is
-  installed for the `mix` that would actually run — which on a remote environment
-  is not this machine's disk. A raw `File.exists?` would inspect the wrong host
-  and answer false, skipping the analyzer silently instead of failing.
+  Through `Environments`, not `File`: on a remote environment the `mix` that
+  would run is not on this machine's disk.
   """
   @spec available?(Environments.Environment.t()) :: boolean()
   def available?(environment) do
@@ -118,17 +100,12 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   @doc """
   The command a human can run to see what this analyzer saw.
 
-  `mix credo` prints "Showing priority issues: ↑ ↗ →" and suppresses the ↓ ↘
-  band. This runs `--all --all-priorities`, so a low-priority finding here is
-  invisible to the obvious local check. Those are advisory (`:info`) and block
-  only when the project's `advisory_findings` setting says so
-  (`Validation.can_block?/2`); five of them once blocked a stop against files
-  whose `mix credo` said "found no issues".
+  `mix credo` suppresses the ↓ ↘ band; this runs `--all --all-priorities`.
+  Those low-priority findings are advisory (`:info`) and block only when the
+  project's `advisory_findings` setting says so (`Validation.can_block?/2`).
 
-  Read off `@selection_args` rather than retyped, because a hint that has
-  drifted from the run is worse than none: it would be confidently wrong.
-  Output flags are left out — they change the shape, not the findings, and
-  handing someone `--format json` is not a reproduction.
+  Read off `@selection_args` so the hint cannot drift from the run. Output
+  flags are left out: they change the shape, not the findings.
   """
   @spec reproduce_command() :: String.t()
   def reproduce_command, do: Enum.join(["mix" | @selection_args], " ")
@@ -136,11 +113,8 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   @doc """
   Why the obvious command disagrees, to print beside the one above.
 
-  Without it the longer command reads as pedantry. The agent has usually just
-  run `mix credo`, seen "found no issues", and has no reason to think its own
-  check was the thing that was wrong — so it suspects a stale result and stops
-  again rather than looking. That is the loop `14f141c1` describes: edit, verify
-  green, stop, get blocked, with no way to confirm a fix except stopping again.
+  Without it an agent whose plain `mix credo` said "found no issues" suspects a
+  stale result and stops again instead of looking.
   """
   @spec reproduce_note() :: String.t()
   def reproduce_note do
@@ -196,8 +170,8 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
     end
   end
 
-  # A stale `deps/` is not credo failing to print JSON, and saying so sent a gate
-  # chasing a parse bug (fc08e5e2). It is the one refusal with a known remedy.
+  # A stale `deps/` is not a JSON problem; it is the one refusal with a known
+  # remedy, so say that instead.
   defp unreadable(output) do
     if CodeMySpec.Compile.unsatisfied_deps?(output) do
       {:error,
@@ -208,13 +182,8 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
     end
   end
 
-  # Over a wire, `{:ok, []}` is recorded as a clean sweep, so this says it could
-  # not read the output instead — the excerpt is carried because the reason is
-  # usually in it (`** (Mix) The task "credo" could not be found`, a compile
-  # error).
-  #
-  # The server analyzer answered `{:ok, []}` here when this was written. It no
-  # longer does, nor does sobelow; see the moduledoc.
+  # The excerpt is carried because the reason is usually in it (a missing
+  # credo task, a compile error).
   defp unreadable_json(output) do
     Logger.warning(
       "[CredoRun] no JSON document in credo's output: " <>
@@ -229,20 +198,10 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   @doc """
   The JSON document credo printed, out of everything else it printed.
 
-  Compilation chatter precedes it, and the obvious reading of that — slice from
-  the first `{` — is wrong, because compiler warnings quote Elixir source and
-  Elixir source is full of braces. On this repo the first `{` lands 330 bytes
-  early, inside `{{:., _, [erl_mod, fun]}, meta, _args} = ast`, and the whole
-  sweep is reported as "output that is not JSON". 598 real issues went
-  unreported that way, and the failure looks like credo being broken.
-
-  Taking the *last* `{` is wrong too: the document is pretty-printed across
-  ~7000 lines, so almost every `{` in the file is one of its own nested objects.
-
-  So: try each `{` in order and keep the first that yields a whole document
-  with an `issues` key. Failures are cheap — a slice that is not JSON fails at
-  its first byte — and the key requirement is what stops a stray `{}` inside a
-  warning from passing for a clean run.
+  Compilation chatter precedes it and quotes Elixir source full of braces, so
+  neither the first nor the last `{` is reliable. Tries each `{` in order and
+  keeps the first that decodes to a whole document with an `issues` key (the
+  key stops a stray `{}` in a warning passing for a clean run).
   """
   @spec extract_json(String.t()) :: {:ok, map()} | :error
   def extract_json(output) do
@@ -258,9 +217,7 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
     end)
   end
 
-  # Bounded so that output which is *all* braces and no JSON cannot turn a
-  # failed analyzer run into a long one. Credo's document has never been more
-  # than a few dozen braces into the output.
+  # Bounded so all-braces, no-JSON output cannot make a failed run a long one.
   @max_candidates 200
 
   defp brace_offsets(output) do

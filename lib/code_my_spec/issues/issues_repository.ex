@@ -21,31 +21,14 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   @doc """
   Whether this project already has an unfinished issue with exactly this title.
 
-  For the fault paths in `MainAgent`, which file by a title built from the fault
-  itself. A machine-wide tool fault or a restart that changed nothing persists
-  while somebody works out what to do about it, and the cadence keeps calling
-  the thing that reports it — so without this the first, real issue is buried
-  under copies of itself. Measured: six identical issues from one QA measurement,
-  and two from a single `check_machinery` followed by one `restart_agent`
-  (`57ba014e`).
+  For the fault paths in `MainAgent`, which file by a title built from the
+  fault and would otherwise bury the first report under copies of itself.
 
-  Answered means anything but `:resolved`, and the asymmetry is the point.
-
-  `:incoming` and `:accepted` are obvious — the fault is already on somebody's
-  list. `:dismissed` counts too, because dismissal is a judgement that *this
-  report* was not worth acting on, and the identical fault recurring is still
-  not worth acting on. Filing it again overrules the person who dismissed it,
-  once per call, forever.
-
-  `:resolved` does not count. That says the fault was fixed, so a recurrence is
-  a regression and is exactly the thing worth hearing about again.
-
-  I had these the same way round at first — only `:incoming` and `:accepted` —
-  having reasoned about the resolved case and not the dismissed one. A synthetic
-  fault whose five copies had all been dismissed promptly filed a sixth.
-
-  The title carries the fault's own reason, so a genuinely different fault still
-  gets a different title and still files. Only the identical one is suppressed.
+  Unfinished means anything but `:resolved`. `:dismissed` counts: the same
+  fault recurring is still not worth acting on, and refiling would overrule
+  the dismissal on every call. `:resolved` does not: a recurrence is a
+  regression worth hearing about. A different fault has a different title and
+  still files.
   """
   @spec open_issue_titled?(Scope.t(), String.t()) :: boolean()
   def open_issue_titled?(%Scope{active_project_id: project_id}, title)
@@ -71,39 +54,11 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   `issues_resolved` gate on, and what `AgentTasks.FixIssues` puts in front of an
   agent.
 
-  Only `:app` issues gate, because only `:app` issues are about the application
-  under development. `attribute_to_story/3` already says this one level down —
-  a `:framework`, `:qa` or `:docs` finding is "about the tooling around the
-  work, not the work" — and the same sentence decides the project gate.
-
-  Framework issues additionally belong to somebody else. `vendor_lookup/2`
-  states it: "the vendor reaches a framework issue in any project, because that
-  is where framework issues live", and `only_framework/1` refuses a tenant the
-  same rows. Counting them asked a tenant to clear a queue it is not allowed to
-  touch, and a gate whose passing state depends on another repository is a
-  wall.
-
-  Measured on Broken Oaths 2026-09-08: 22 of the 33 issues holding
-  `issues_resolved` were `:framework` — `tool_docs ignores requested tool
-  names`, `Task tools unavailable without session owner`, `list_tasks cannot
-  identify the active agent`. A coding agent held that task for two hours and
-  resolved none of them, because none of them are in its repository. One of the
-  22 is a report of this defect, filed 09-06.
-
-  Excluding `:framework` alone left two, and they made the case for the rest:
-  `run_browser_script returns stale tool_docs catalog` and `QA session loop
-  repeats identical nudge every turn` — both CodeMySpec's own defects, filed
-  under `:qa` because that is the pass they were found on. The agent read all
-  34, checked the two that might have touched its code, and reported back that
-  neither did. It was right, and it was still held.
-
-  The vendor's own project keeps them: there, framework issues *are* app issues,
-  and `issues_resolved` should hold until they are fixed.
-
-  `attribute_to_story/3` already declines to attach a framework finding to a
-  story, on the argument that it is "about the tooling around the work, not the
-  work". This is that argument one level up: not the work, and not the project's
-  gate either.
+  Only `:app` issues gate: `:framework`, `:qa` and `:docs` findings are about
+  the tooling around the work, and framework issues belong to the vendor. The
+  vendor's own project also counts `:framework`, since there they are app
+  issues. Issues on stories assigned to another copy are excluded.
+  See knowledge/requirements_graph/checkers, "Issues".
   """
   def list_by_status_and_min_severity(%Scope{} = scope, status, min_severity) do
     Issue
@@ -121,14 +76,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   incoming issue on a story at any severity.
 
   An incoming issue holds its story's QA whatever its severity
-  (`story_issues_triaged`), so triage has to reach a low on a story or that
-  story waits forever — 9e8b52f4 on metric_flow story 47 (255f1dcd).
+  (`story_issues_triaged`), so triage must reach a low one on a story.
 
-  Every tenant scope counts, not only `:app`. Triage is always satisfiable —
-  dismissing is an answer — so the argument that keeps `:qa` and `:docs` out
-  of `issues_resolved` does not apply here. 129e82f0 was a `:qa` medium that
-  sat incoming while nobody was offered triage (518f2b52). Framework issues
-  stay the vendor's.
+  Every tenant scope counts, not only `:app`: triage is always satisfiable,
+  since dismissing is an answer. Framework issues stay the vendor's.
   """
   def list_triageable(%Scope{} = scope, min_severity) do
     severities = Issue.severities_at_or_above(min_severity)
@@ -165,22 +116,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     end
   end
 
-  # An issue about a story assigned to another working copy is that copy's work.
-  #
-  # The same rule `Validation.split_by_story_enforcement/3` applies to spex
-  # findings, and it belongs here for the same reason: a gate whose passing
-  # state depends on work outside the gated unit is a wall.
-  #
-  # Measured on Broken Oaths 2026-09-09: the coding agent on the war-epic copy
-  # could not close `issues_resolved` because of one issue on story 947, which
-  # belongs to "Diplomacy and Alliances" and lives on the main checkout. John
-  # had already told it to leave that story alone — "park it, shouldn't be in
-  # this copy" — and the agent said so plainly: the gap "stays open by
-  # deliberate user decision, not by anything left for me to do." It was right,
-  # and it was still held.
-  #
-  # An issue with no story, or one whose story is unassigned, gates everywhere.
-  # Nobody else owns it, and dropping it would let a finding belong to no one.
+  # An issue about a story assigned to another working copy is that copy's work
+  # (as `Validation.split_by_story_enforcement/3` treats spex findings). An
+  # issue with no story, or an unassigned one, gates everywhere, so no finding
+  # belongs to no one.
   defp exclude_other_copies_stories(query, %Scope{active_working_copy_id: here})
        when is_binary(here) do
     from(i in query,
@@ -264,45 +203,17 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   end
 
   @doc """
-  An issue by full id or by unique prefix, saying which of the three answers it is.
+  An issue by full id or by unique prefix (at least four hex characters), as
+  `{:ok, issue}`, `:not_found` or `{:ambiguous, ids}`. Prefixes are what prose
+  cites, and an ambiguous prefix must not read as a missing issue.
 
-  `98fa6656`. This took only a full UUID and answered anything else with `nil`,
-  which every caller renders as "Issue not found." That message is a claim about
-  the issue when the truth is a claim about the argument, and the two are not
-  interchangeable: an agent told an id does not exist has no reason to doubt it.
-
-  The prefix is the input this will keep being given. Nothing in the codebase
-  cites a full UUID — commit messages, code comments, spec files and issue
-  bodies all use the 8-character prefix, because that is what fits in prose. So
-  the common path to this function is copying a prefix out of a comment, and
-  that path always failed.
-
-  Measured cost: a correct citation was deleted from `justfile` on the strength
-  of a "not found" for `f58acb37`, which exists and was exactly the right
-  reference. The repair — removing the reference — looks like diligence, which
-  is what makes it worse than an error.
-
-  ## Three answers, not two
-
-  `{:ambiguous, ids}` exists because collapsing it into `:not_found` rebuilds
-  the original defect one case along: the caller would again be told something
-  false about the issue rather than something true about the argument.
-
-  ## Filtering in Elixir rather than in SQL
-
-  `CodeMySpec.Repo` runs on Postgres normally and on SQLite in `harness`, and
-  the two disagree about what a `binary_id` is on the wire — Postgres stores a
-  `uuid` needing `::text` to pattern-match, SQLite a string that matches
-  directly. A fragment for either crashes the other, which is `61351c19`
-  exactly. Selecting ids and filtering here is portable and costs one small
-  query on a table with hundreds of rows, not millions.
+  Prefixes are matched in Elixir, not SQL: Postgres and the harness's SQLite
+  disagree on what a `binary_id` is on the wire, and a fragment for one crashes
+  the other.
   """
   @spec fetch_issue(Scope.t(), String.t()) ::
           {:ok, Issue.t()} | :not_found | {:ambiguous, [String.t()]}
-  # Four hex characters is roughly 65k values, so a collision across a few
-  # hundred issues is possible rather than fanciful — which is what
-  # `{:ambiguous, …}` is for. Shorter than that is not a prefix anyone typed on
-  # purpose, and matching it would turn a typo into a wrong issue.
+  # Shorter than this is not a prefix anyone typed on purpose.
   @min_prefix 4
 
   def fetch_issue(%Scope{} = scope, id) when is_binary(id) do
@@ -333,20 +244,10 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   defp association_id(_), do: nil
 
   # The vendor reaches a framework issue in any project, because that is where
-  # framework issues live.
-  #
-  # Gated on who is asking rather than on an option the call site passes, which
-  # is what makes it right for every surface at once. `get_issue`,
-  # `update_issue`, `accept_issue`, `dismiss_issue` and `resolve_issue` all
-  # resolve an issue this way, and the vendor needs all five: seeing a backlog
-  # it cannot work is half a feature. The first cut of this widened only reading
-  # — the vendor could list the framework queue and then not dismiss anything in
-  # it, which is how this was found.
-  #
-  # A tenant gains nothing. `ensure_vendor/1` answers only for the configured
-  # CodeMySpec project, and `only_framework/1` refuses anything else in the
-  # project it lands in, so this cannot become a way to read a stranger's app
-  # issues.
+  # framework issues live. Gated on who is asking, so every surface that
+  # resolves an issue (get, update, accept, dismiss, resolve) follows. A tenant
+  # gains nothing: `ensure_vendor/1` answers only for the configured project and
+  # `only_framework/1` refuses other scopes.
   defp vendor_lookup(scope, id) do
     case ensure_vendor(scope) do
       :ok -> id |> lookup_anywhere() |> only_framework()
@@ -425,23 +326,12 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   @doc """
   Every framework-scoped issue, across every project, for the vendor.
 
-  Framework issues are friction with CodeMySpec itself, and they are filed by
-  agents working in other people's projects. They live where they were filed —
-  one invariant, no exception on any write — and this is the single place that
-  crosses a project boundary to collect them.
+  Framework issues live in the project that filed them (no write crosses a
+  project), and this is the single read that crosses to collect them: one
+  guarded query rather than a write exception every read surface must match.
 
-  The exception is here rather than on the write for two reasons. It is one
-  guarded query instead of a relaxation that every read surface has to match:
-  when the write crossed, `get_issue` and `update_issue` did not follow, so an
-  agent could file a framework issue and never read it back or correct it, and
-  three agents' Vibium evidence arrived as four separate reports. And it is the
-  milder direction — a vendor reading reports filed *to* the vendor, by someone
-  who filed them precisely so the vendor would read them, rather than a tenant
-  writing into a project it cannot see.
-
-  Refuses unless the caller is the configured CodeMySpec project. An install
-  that has not been told which project that is has no vendor, so nobody may
-  read across.
+  Refuses unless the caller is the configured CodeMySpec project; an install
+  with none configured has no vendor.
   """
   @spec list_framework_issues(Scope.t()) :: {:ok, [Issue.t()]} | {:error, :not_the_vendor}
   def list_framework_issues(%Scope{} = scope) do
@@ -471,16 +361,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.insert()
   end
 
-  # Both writers build the same changeset, and they diverged: `upsert_issue/2`
-  # set the project and the account and never the harness, so anything arriving
-  # through it was stored with no working copy no matter what the scope knew.
-  #
-  # Invisible in the way that costs most — the filing agent usually writes the
-  # working copy into the description, so the issue *reads* as attributed while
-  # the column is null, and two checkouts of one project file findings that look
-  # identical and are about different trees.
-  #
-  # One builder, so the next column added cannot land on one path only.
+  # One builder for both writers, so a column cannot land on one path only.
   defp scoped_changeset(%Scope{} = scope, attrs) do
     project_id = resolve_project_id(scope)
 
@@ -495,33 +376,11 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> refuse_foreign_story(project_id)
   end
 
-  # A story from another project is refused rather than linked.
-  #
-  # `project_id` comes from the scope and `story_id` comes from the caller, and
-  # nothing checked they agreed. So an agent filing against a story it could see
-  # but did not own got an issue stamped with *its own* project and the other
-  # project's story — a row whose two halves describe different projects, and
-  # which the owning project never sees.
-  #
-  # Silent, and worse than a refusal in three ways. The filer believes the
-  # report landed. The project it was about never receives it. And
-  # `Issues.broadcast/2` calls `GraphInputs.changed/1` with the caller's scope,
-  # so the graph signal goes to the wrong project's watcher too — a write that
-  # announces itself to somebody else.
-  #
-  # Measured 2026-09-11 by a QA agent that filed five issues against another
-  # project's stories and found all five stamped with its own `project_id`
-  # (a7d8e008). It had earlier reported that `create_issue` "works
-  # cross-project, unlike start_agent"; it does not refuse, which is not the
-  # same thing.
-  #
-  # Refusing rather than honouring the story's project on purpose. "Every scope
-  # files where the caller is" is this tool's documented design and the read
-  # surfaces are built on it — `7c44ed8d` tried writing across the tenancy
-  # boundary and had to be reverted because `get_issue` and `update_issue` had
-  # no matching exception, so the filer could never read its own report back.
-  # The bug is not that it files locally; it is that it accepted a story saying
-  # otherwise.
+  # A story from another project is refused rather than linked: `project_id`
+  # comes from the scope and `story_id` from the caller, and a row whose halves
+  # name different projects is never seen by the owner and announces itself to
+  # the wrong project's graph. Refused, not rehomed: an issue is filed where the
+  # caller is.
   defp refuse_foreign_story(changeset, project_id) do
     case Changeset.get_change(changeset, :story_id) do
       nil ->
@@ -542,17 +401,8 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     end
   end
 
-  # Only a story that exists *somewhere else*.
-  #
-  # Not "a story not in this project" — that also catches an id matching no
-  # story at all, and those are routine here: issues are filed against story
-  # numbers before a sync has created the row, and the repository's own tests
-  # use ids like 1 and 99 precisely because the link is loose by design.
-  #
-  # The harm being prevented is narrower and specific: an issue stamped with one
-  # project and linked to a story that demonstrably belongs to another. A
-  # dangling id is a different problem and refusing it here would be this guard
-  # inventing a constraint nobody asked for.
+  # Only a story that exists in another project. A dangling id is allowed: the
+  # link is loose by design, and issues can name a story before its row exists.
   defp story_elsewhere?(story_id, project_id) when is_binary(project_id) do
     Repo.exists?(
       from(s in "stories",
@@ -605,8 +455,8 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   Inserts by primary key (the server's UUID is authoritative) and
   replaces all writable fields on conflict so a subsequent pull
   rewrites local rows with the server's current view. Sets
-  `synced_from_server: true` so dispositions on this issue route
-  back to the server.
+  `synced_from_server: true`. No caller in `lib` uses this, and nothing
+  reads the flag.
   """
   def upsert_from_server(%Scope{} = _scope, %Issue{} = remote_issue) do
     attrs = %{

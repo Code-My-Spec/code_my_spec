@@ -21,8 +21,8 @@ defmodule CodeMySpec.Release.PackageExtension do
   Pure file I/O — no binary, no GitHub. `mix cms.package_plugin` runs it, in
   CI and locally to inspect what will ship.
 
-  `version` is stamped into each packaged `plugin.json`: the version is git's,
-  so the source manifests carry none worth shipping (John, 2026-10-04).
+  `version` is stamped into each packaged `plugin.json`: the version comes
+  from git, so the source manifests carry none worth shipping.
 
   Returns `%{extension_dir: ..., plugin_dest: ...}`.
   """
@@ -48,9 +48,8 @@ defmodule CodeMySpec.Release.PackageExtension do
     create_install_script(extension_dir)
     log("Created install script")
 
-    # No Windows install.ps1 here anymore: Windows installs are a standalone,
-    # plugin-decoupled Shawl service (installers/windows/install.ps1). The
-    # plugin only talks to the running server on its port.
+    # No Windows install.ps1: Windows installs are a standalone Shawl service
+    # (installers/windows/install.ps1).
 
     create_readme(extension_dir)
     log("Created README")
@@ -98,8 +97,7 @@ defmodule CodeMySpec.Release.PackageExtension do
       rewrite_dev_port(antigravity_dest)
       log("Rewrote Antigravity dev values (4004 -> 4003, dev.codemyspec.com -> codemyspec.com)")
 
-      # cp_r preserves modes, but the hook script MUST be executable —
-      # a silent chmod loss would make every hook a no-op.
+      # The hook script MUST be executable; a lost mode makes every hook a no-op.
       hook_script = Path.join([antigravity_dest, "bin", "ag-hook.sh"])
       if File.exists?(hook_script), do: File.chmod!(hook_script, 0o755)
 
@@ -110,13 +108,9 @@ defmodule CodeMySpec.Release.PackageExtension do
     end
   end
 
-  # Antigravity has no marketplace-by-git mechanism — users either clone this
-  # repo and `agy plugin install` a path, or run this one-liner:
-  #
-  #   curl -fsSL https://raw.githubusercontent.com/Code-My-Spec/plugins/main/install-antigravity.sh | bash
-  #
-  # The script downloads the repo tarball, extracts the Antigravity plugin,
-  # and copies it into Antigravity's global plugin locations.
+  # Antigravity has no marketplace-by-git mechanism, so users `agy plugin
+  # install` a checkout path or run this script, which downloads the repo
+  # tarball and copies the plugin into Antigravity's global plugin locations.
   # sobelow_skip ["Traversal"]
   defp create_antigravity_install_script(extension_dir) do
     script = ~S"""
@@ -268,9 +262,7 @@ defmodule CodeMySpec.Release.PackageExtension do
 
   # sobelow_skip ["Traversal"]
   defp copy_extension_files(source, dest) do
-    # Intentionally NOT copying "bin" — the cms binary now lives in
-    # ~/.codemyspec/bin/ (shared across plugin versions). Shipping a
-    # 200MB stale copy inside every plugin release is a non-starter.
+    # Intentionally NOT copying "bin": the cms binary is installed separately.
     for dir <- [".claude-plugin", "hooks", "agents", "skills", "knowledge"] do
       source_dir = Path.join(source, dir)
       dest_dir = Path.join(dest, dir)
@@ -280,9 +272,7 @@ defmodule CodeMySpec.Release.PackageExtension do
       end
     end
 
-    # marketplace.json belongs at the repo root in the new layout, not
-    # inside the plugin dir. If it tagged along with .claude-plugin/,
-    # drop it from the plugin's copy.
+    # marketplace.json belongs at the repo root, not inside the plugin dir.
     stray_marketplace = Path.join([dest, ".claude-plugin", "marketplace.json"])
     if File.exists?(stray_marketplace), do: File.rm!(stray_marketplace)
 
@@ -297,29 +287,10 @@ defmodule CodeMySpec.Release.PackageExtension do
     end
   end
 
-  # Source tree is configured for dev (port 4004, dev.codemyspec.com) so it can
-  # coexist with the published binary (port 4003, codemyspec.com). Walk the
-  # whole plugin tree and swap every dev token to its prod counterpart.
-  # Originally limited to `.claude-plugin/`, but skill markdown files (under
-  # `skills/`) now contain server calls that also need rewriting.
-  # NOTE: `match_dot: true` is REQUIRED. `.claude-plugin/` is a dotdir, and
-  # `Path.wildcard/1` skips dot entries by default — without it, plugin.json and
-  # the bin/hook script (carrying `${CODEMYSPEC_PORT:-4004}`) silently keep the
-  # dev port, shipping a prod plugin whose MCP server points at 4004.
-  #
-  # ## The fallback list is reordered, not rewritten
-  #
-  # Every skill carries `PORTS="4004 4003"` and tries each in turn, because
-  # neither port is right for everyone: a packaged-CLI user has 4003 and no
-  # 4004, a dev checkout has the reverse, and the two serve disjoint routes.
-  # A blanket token swap turns that list into `"4003 4003"` — a fallback that
-  # falls back to itself — which is exactly what shipped in v2.0.2 and is the
-  # bug this whole class kept producing (`5fdc0cbf`, `6c93a317`).
-  #
-  # So the pair is handled first and put back last, with the prod port leading:
-  # a shipped plugin tries 4003 and then 4004, and a dev tree tries 4004 and
-  # then 4003. The sentinel is what keeps the blanket pass from touching it in
-  # between.
+  # Swaps every dev token (4004, dev.codemyspec.com) for prod across the whole
+  # tree; the port fallback pair is handled by `PluginPorts.rewrite/1`.
+  # `match_dot: true` is REQUIRED: `.claude-plugin/` is a dotdir, and without
+  # it plugin.json silently keeps the dev port.
   # sobelow_skip ["Traversal"]
   defp rewrite_dev_port(plugin_dest) do
     plugin_dest
@@ -340,9 +311,8 @@ defmodule CodeMySpec.Release.PackageExtension do
 
   # sobelow_skip ["Traversal"]
   defp create_install_script(extension_dir) do
-    # Auto-install of a single binary is gone — cms ships as a plain OTP
-    # release packaged per platform. install.sh points at the platform
-    # installer (brew on macOS, the MSI on Windows).
+    # cms ships as an OTP release packaged per platform; install.sh points at
+    # the platform installer (brew on macOS, the MSI on Windows).
     script = ~S"""
     #!/bin/bash
     echo ""
@@ -568,9 +538,7 @@ defmodule CodeMySpec.Release.PackageExtension do
 
   # sobelow_skip ["Traversal"]
   defp create_gitignore(extension_dir) do
-    # The cms binary now lives at ~/.codemyspec/bin/cms (shared across
-    # plugin versions), not inside the plugin tree. Nothing to ignore
-    # in the repo itself — keep a placeholder .gitignore for consumers.
+    # Nothing to ignore in the repo itself; a placeholder for consumers.
     gitignore = """
     # Reserved — binary installs to ~/.codemyspec/bin/cms outside this tree.
     """

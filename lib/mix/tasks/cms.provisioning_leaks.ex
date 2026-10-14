@@ -7,16 +7,13 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
       MIX_ENV=test mix cms.provisioning_leaks
 
-  Spex in the devops epic create **real** resources — Hetzner servers and
-  buckets, Cloudflare records — and tear them down on the way out. Teardown is
-  the only thing standing between a recording session and a bill, and it runs
-  in `on_exit`, which is exactly where a crashed test is least likely to reach.
-  A leak is also silent in the worst way: the next recording finds the resource
-  already there and passes on residue, so the criterion whose premise is
-  "this exists" stops putting it there and nobody notices until a fresh
-  account fails everything at once.
+  Spex in the devops epic create **real** resources — Hetzner servers, keys,
+  firewalls and buckets, Cloudflare records, Resend domains — and tear them
+  down in `on_exit`, which is exactly where a crashed test is least likely to
+  reach. A leak is silent: the next recording finds the resource already there
+  and passes on residue.
 
-  Anything prefixed `spex-` is a recording artifact and should not exist
+  Anything carrying a spex marker is a recording artifact and should not exist
   between runs. Everything else is real and is listed separately so the two
   are never confused — deleting the wrong one here is the expensive mistake.
 
@@ -24,8 +21,10 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   but builds against test artifacts, so it never contends for the dev compile
   lock the running `:4000` server holds. It reads dev *data*, not dev *code*.
 
-  Read-only. It deletes nothing — what to do about a leak is a judgement call
-  that depends on whether a recording is in flight.
+  Read-only by default. `--delete` removes the leaks through the app's own
+  teardown, skipping servers created within the last
+  `@live_run_window_minutes` (a recording may be in flight); `--force` drops
+  that window.
   """
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
@@ -37,56 +36,24 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   @spex_prefix "spex-"
 
-  # The drill is not the suite. `test/drill/provisioning_walk.exs` builds a
-  # long-lived environment by hand and keeps it between runs — that is its
-  # whole purpose — but it names its resources `spex-drill-uat` /
-  # `spex-drill-prod`, so the prefix above claimed them. A sweep then reported
-  # the environment somebody was mid-way through proving as leaked, and
-  # `--delete` would have released the servers and left the DNS pointing at
-  # addresses the provider was free to hand to a stranger.
-  #
-  # Excluded by marker rather than by name because the drill takes its names
-  # from `CMS_DRILL_APP` and `CMS_DRILL_DOMAIN`, so the set is not fixed. Both
-  # separators are needed: Hetzner resources are `spex-drill-uat` and DNS
-  # records sit under `spex-drill.earwitness.app`, so a rule written for one
-  # form sweeps the other.
+  # The drill (`test/drill/provisioning_walk.exs`) keeps a long-lived
+  # environment named `spex-drill-*` between runs on purpose, so it is
+  # excluded. By marker, not name: the names come from `CMS_DRILL_APP` and
+  # `CMS_DRILL_DOMAIN`. Both separators, because Hetzner names use `-` and DNS
+  # records sit under `spex-drill.<domain>`.
   @drill_marker ~r/(^|\.)spex-drill([-.]|$)/
 
   # How recently a server has to have been created for `--delete` to leave it
-  # alone. An hour is well past any recording that is still going and well
-  # short of leaving residue around to be passed on to the next run.
+  # alone: well past any live recording, well short of passing residue on.
   @live_run_window_minutes 60
 
-  # A DNS record is not named like a server. Hetzner resources are *prefixed*
-  # `spex-`; a record made for one is `send.spex-story969-criterion8027.
-  # astralbi.com` or `c8025.astralbi.com`, where the marker is a label in the
-  # middle. Matching on the prefix alone reported those as real, which is the
-  # answer that let a leak sit in a live zone looking like somebody's mail
-  # setup.
-  #
+  # DNS records carry the marker as a label, not a prefix
+  # (`send.spex-story969-criterion8027.example.com`, `c8025b.example.com`).
   # Anchored to a label boundary on the left so a real domain that merely
-  # contains the letters is never swept in.
-  #
-  # The two markers terminate differently, and conflating them hid a leak.
-  # `c8025` is a whole label, so it needs a boundary on both sides. `spex-` is a
-  # label *prefix* — the real name is `spex-story969-criterion8027` — so
-  # requiring a dot after it matched nothing, and
-  # `send.spex-story969-criterion8027.astralbi.com` was reported as a real
-  # record while sitting in a live zone.
-  #
-  # The criterion half was wrong twice over, and both ways left live resources
-  # reported as real:
-  #
-  #   * `c80\d{2}` only ever matched criteria 8000-8099. Every other criterion
-  #     — 8156, 8182, 8233 — was invisible to the sweep entirely.
-  #   * It demanded the label end right after the digits, so a criterion that
-  #     suffixes its host (`c8025b.astralbi.com`, one environment per letter)
-  #     did not match. Two live Resend sending domains and four DNS records
-  #     were sitting behind that one.
-  #
-  # A `c` followed by four digits at the start of a label is specific enough
-  # that no real domain of ours looks like it, and the trailing `[a-z0-9]*`
-  # covers whatever a criterion appends to distinguish its environments.
+  # contains the letters is never swept in. `spex-` is a label *prefix*, so no
+  # boundary after it; `c` + four digits starts a whole label, with
+  # `[a-z0-9]*` for whatever suffix distinguishes a criterion's environments.
+  # See knowledge/platform, "Provisioning leak sweep".
   @spex_marker ~r/(^|\.)(spex-|c\d{4}[a-z0-9]*(\.|$))/
 
   @impl Mix.Task
@@ -111,13 +78,9 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
     Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, api_token: token)
 
-    # Servers and SSH keys took `false` here and no deleter, so `--delete`
-    # silently skipped them while the report still said "re-run with --delete
-    # to remove them" — an instruction for a remedy that did not exist. Two
-    # leaked servers survived a `--delete` run and kept billing; the bucket in
-    # the same run was removed, which is what made the gap look like success.
-    #
-    # Servers first: a key cannot be removed while a server still references it.
+    # Every kind has a deleter: a report that says "re-run with --delete" must
+    # mean it. Servers first: a key cannot be removed while a server still
+    # references it.
     recent = if force?, do: MapSet.new(), else: recent_server_names(%Scope{})
 
     report("Hetzner servers", server_names(%Scope{}), delete?, &delete_server(&1, recent))
@@ -125,16 +88,9 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     report("Hetzner firewalls", firewall_names(%Scope{}), delete?, &delete_firewall/1)
     report("Hetzner buckets", bucket_names(credentials), delete?, &delete_bucket(&1, credentials))
 
-    # Cloudflare and Resend were missing here, and they are the two that
-    # matter most: a leaked bucket costs money, a leaked DNS record changes
-    # where somebody's mail goes. A failed recording once left DKIM and SPF
-    # records on the production zone and this task reported a clean account,
-    # because it only ever looked at Hetzner.
-    #
-    # They need OAuth rather than an env var, which is why they were skipped.
-    # The task already runs against the dev database, so the grant is right
-    # there — the same row the app refreshes under a lock, with no second copy
-    # to go stale.
+    # Cloudflare and Resend matter most — a leaked DNS record changes where
+    # somebody's mail goes. They need OAuth, taken from the dev database this
+    # task already reads (the same row the app refreshes).
     case oauth_scope() do
       {:ok, scope} ->
         report("Cloudflare DNS records", dns_record_names(scope), delete?, &delete_dns(scope, &1))
@@ -150,12 +106,10 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # reads. Nothing is created; if there is no connected owner the caller is
   # told rather than shown an empty list, because "nothing leaked" and "nothing
   # was checked" must never look the same.
-  # A second, named repo pointed at dev, exactly as the spex do it when they
-  # borrow a live grant. The whole application starts first — the tokens are
-  # encrypted at rest, and Cloak's vault is a supervised process, so without it
-  # every row comes back as an undecryptable binary rather than as "no
-  # integrations found". Under `MIX_ENV=test` the endpoint is configured not to
-  # serve, so nothing binds a port and the running dev server is untouched.
+  # A second, named repo pointed at dev, as the spex do when they borrow a live
+  # grant. The application starts first: tokens are encrypted at rest and
+  # Cloak's vault is a supervised process. Under `MIX_ENV=test` the endpoint
+  # does not serve, so the running dev server is untouched.
   defp start_dev_repo do
     {:ok, _} = Application.ensure_all_started(:code_my_spec)
 
@@ -170,9 +124,8 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
         log: false
       )
 
-    # Sequenced rather than `&&`. `put_dynamic_repo/1` answers with the repo it
-    # replaced, which is always truthy, so the conditional never decided
-    # anything — it just read as though the `:ok` were contingent on it.
+    # Sequenced rather than `&&`: `put_dynamic_repo/1` returns the repo it
+    # replaced, which is always truthy.
     case Repo.start_link(config) do
       {:ok, _} ->
         Repo.put_dynamic_repo(:leak_audit_dev_repo)
@@ -211,10 +164,9 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
-  # Every record in every zone whose name carries a spex marker. Listing by
-  # name rather than by zone on purpose: the failure being audited for is a
-  # record landing in a zone nobody expected, so a per-zone view would file it
-  # under the zone it should not have been in and read as normal.
+  # Every record in every zone whose name carries a spex marker, listed by name
+  # rather than by zone: the failure audited for is a record in a zone nobody
+  # expected.
   defp dns_record_names(scope) do
     case Cloudflare.list_zones(scope) do
       {:ok, zones} ->
@@ -264,10 +216,8 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   defp registrable(name), do: name |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
 
-  # Through the app's own teardown for the same reason `delete_bucket/2` is:
-  # `Teardown.resource/3` confirms the thing is actually gone rather than
-  # trusting the API's acceptance. Hetzner deletes servers asynchronously, so
-  # "accepted" and "gone" are genuinely different answers here.
+  # Through the app's own teardown: `Teardown.resource/3` confirms the thing is
+  # gone, and Hetzner deletes servers asynchronously.
   defp delete_server(name, recent) do
     if MapSet.member?(recent, name) do
       {:skipped,
@@ -322,21 +272,10 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
-  # Names of servers young enough that a run is probably still using them.
-  #
-  # "Leaked" is inferred from the name, and a name cannot tell abandoned from
-  # in-flight. That distinction is the whole safety property of this task and it
-  # was missing: a `--delete` run removed two servers that another agent's spex
-  # had provisioned minutes earlier and was still using.
-  #
-  # The file's own guard already said so — "a recording may be in flight, and
-  # deleting somebody else's live resource is worse than refusing to start" —
-  # but nothing enforced it. Age does: a recording that provisioned a server an
-  # hour ago has either finished or died, and either way its teardown is not
-  # coming.
-  #
-  # Deliberately not a lock or a harness check. Both can be stale in the
-  # direction that permits deletion, and this needs to fail the other way.
+  # Names of servers young enough that a run is probably still using them. A
+  # name cannot tell abandoned from in-flight, so age does: an hour-old
+  # recording has finished or died. Deliberately not a lock or a harness check,
+  # which can be stale in the direction that permits deletion.
   defp recent_server_names(scope) do
     case Hetzner.list_servers(scope) do
       {:ok, servers} ->
@@ -361,9 +300,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
-  # Keys leak the same way servers do and are easier to miss: they cost nothing,
-  # so nobody notices seven of them. They are still a credential per recording
-  # sitting in the account.
+  # Keys cost nothing, so leaks go unnoticed; each is still a credential.
   defp ssh_key_names(scope) do
     case Hetzner.list_ssh_keys(scope) do
       {:ok, keys} -> Enum.map(keys, &name_of/1)
@@ -371,22 +308,10 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
-  # Firewalls were not swept at all, and eleven had accumulated — `spex-story841
-  # -criterion1962`, `-1967`, `-1968`, `-1969`, `spex-story96{5,6,8}-…`,
-  # `spex-story972-…` — every one applied to nothing, while this task reported
-  # the account clean. Free, so nothing complains, and invisible for exactly
-  # that reason: the same shape as the SSH keys above and as `builder-<ref>`.
-  #
-  # Only the ones applied to nothing. A firewall still attached to a server
-  # belongs to a run that has not finished, and the server sweep's own recency
-  # window is what protects that case — this must not race it by removing the
-  # rule set off a box mid-drill.
-  # Both collectors say so when the call fails, for the reason `run/1` already
-  # gives about Cloudflare and Resend: "nothing leaked" and "nothing was
-  # checked" must never look the same. They returned a bare `[]` on any
-  # failure, so a wrong-project or expired token printed "none" — the same
-  # thing a clean account prints, from the one tool whose job is finding
-  # infrastructure nobody is watching.
+  # Only firewalls applied to nothing: one attached to a server belongs to an
+  # unfinished run, protected by the server sweep's recency window. A failed
+  # list call says so rather than returning `[]` — "nothing leaked" and
+  # "nothing was checked" must never look the same.
   defp firewall_names(scope) do
     case Hetzner.list_firewalls(scope) do
       {:ok, firewalls} -> firewalls |> Enum.filter(&unattached?/1) |> Enum.map(&name_of/1)
@@ -418,35 +343,14 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
-  # Nothing is kept any more, and `spex-inbound.astralbi.com` is why the list
-  # exists at all — so this is the record of why it stopped needing to.
-  #
-  # It was a permanently verified receiving domain the inbound criteria sent
-  # to, so they paid a send and a poll instead of creating a domain and waiting
-  # for a third party to see its MX. Sweeping it would have taken its DNS
-  # records with it, which reads afterwards as mail that mysteriously stopped
-  # arriving.
-  #
-  # Provisioning moved to fakes. 974's criteria 8030 and 8048 both `setup
-  # :fake_providers` now, so the probe is answered by an agent in the test and
-  # never reaches Resend — the real domain has not been load-bearing since.
-  # Confirmed the hard way: its records were destroyed on 2026-08-18 and the
-  # full spex suite stayed green.
-  #
-  # Kept as an empty list rather than deleted, because the mechanism is right
-  # and the next resource that belongs to the suite rather than to a run will
-  # want it.
+  # Resources that belong to the suite rather than to a run, never swept.
+  # Empty today (inbound mail moved to fake providers); kept for the next one.
   @kept []
 
-  # A build server is named after the commit it builds (`builder-24b93652c4ab`),
-  # never after the project, so nothing above can see one — and a sweep that
-  # reports "no leaks" while a builder is running is worse than no sweep, which
-  # is how `builder-24b93652c4ab` survived a deploy that died mid-build.
-  #
-  # Every path in `Builder` destroys the server it made, so a builder that is
-  # still here outlived the run that owned it and is leaked by definition. The
-  # in-flight case is not this function's problem: `--delete` already refuses
-  # anything created inside `@live_run_window_minutes`.
+  # A build server is named after the commit it builds (`builder-<sha>`), never
+  # after the project, so the marker cannot see one. Every path in `Builder`
+  # destroys the server it made, so one still here is leaked; `--delete`
+  # still refuses anything inside `@live_run_window_minutes`.
   @builder_prefix "builder-"
 
   @doc false

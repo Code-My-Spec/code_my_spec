@@ -3,35 +3,11 @@ defmodule CodeMySpec.Agents.ToolIndex do
   Every tool this agent can reach, by name, and nothing else.
 
   Names only — no descriptions, no schemas. An agent already gets full schemas
-  for the tools it carries, and `tool_docs` answers for the rest on demand. What
-  it had no way to learn was that the rest exist.
+  for the tools it carries, and `tool_docs` answers for the rest on demand;
+  what it cannot otherwise learn is that the rest exist. A couple of kilobytes
+  per turn, cheaper than one wasted turn.
 
-  ## What that cost, measured today
-
-  A QA agent was told in its own priming to check open questions with
-  `list_user_questions`, called it, and got "Unknown tool". It reported the gap
-  rather than working around it, which was right, and stopped. The tool is real
-  — it is simply not one a QA agent carries — and nothing it could read said so.
-
-  An earlier QA agent spent a session concluding that story 895's epic tools
-  were "not reachable from this box's local MCP surface". It had probed
-  `tools/list` on the harness endpoint, which answers with carried tools only.
-  `create_epic`, `assign_story_to_epic` and `assign_epic_to_working_copy` were
-  all reachable the whole time through `run_script`, which that same session
-  listed among its own tools. It filed an issue saying the story could not be
-  QA'd on this box. A later agent did it in one turn.
-
-  Both are the same absence: the agent could see what it holds and could not see
-  what it can reach. A name is enough to close that — an agent that knows
-  `assign_epic_to_working_copy` exists will find its arguments.
-
-  ## Why names are cheap enough to send every turn
-
-  Roughly two hundred names is a couple of kilobytes. The schemas for the same
-  tools are around thirty kilobytes for the browser's alone, which is the reason
-  they are behind `tool_docs` in the first place — see `CmsHarness.Browser`. A
-  wasted turn costs more than the index does, and the failures above cost turns
-  and sessions.
+  See knowledge/agents/coordination, "The tool index".
 
   ## Three groups, because reaching them differs
 
@@ -57,12 +33,8 @@ defmodule CodeMySpec.Agents.ToolIndex do
   @doc """
   The index for this agent, or `nil` when there is nothing to say.
 
-  `nil` rather than an empty heading, for the reason `RoleBrief.for/1` gives:
-  an agent told something vague is worse off than one told nothing.
-
-  `machine_tools` comes from the working copy the agent runs on, so a machine
-  with no browser contributes no section rather than an empty one — those are
-  different states and only one of them is a fault. See `CmsHarness.Browser`.
+  `nil` rather than an empty heading. `machine_tools` comes from the working
+  copy the agent runs on; a machine with no browser contributes no section.
   """
   @spec for(Agent.t(), registry(), [String.t()]) :: String.t() | nil
   def for(%Agent{} = agent, registry, machine_tools \\ []) do
@@ -97,38 +69,17 @@ defmodule CodeMySpec.Agents.ToolIndex do
 
   defp section(heading, names), do: "**#{heading}:** " <> Enum.join(names, ", ")
 
-  # Headings name the route, not the wire format.
-  #
-  # They say which of three ways a name is reached and stop there. *How* a call
-  # is physically made is the provider's business — on `claude-code` it is a
-  # `tool_calls` entry in a JSON object, on an engine with native tool calling
-  # it is nothing of the sort — so the shape, and the worked example of the
-  # nested form, live in `ProviderBrief` where they can differ per engine.
+  # Headings name the route, not the wire format: how a call is physically made
+  # differs per provider and lives in `ProviderBrief`.
   defp direct_heading, do: "Called directly"
 
   defp scriptable_heading, do: "Called from inside `run_script`"
 
   defp browser_heading, do: "Called from inside `run_browser_script`"
 
-  # What the direct server exposes, less what the engine does not carry; the
-  # same for every agent.
-  #
-  # Not the `tools` column. That column governs what a *script* may call and its
-  # names are `ScriptableTools` components — `create_issue`, `list_stories` and
-  # the rest of the domain; none of them has ever been reachable directly.
-  # Listing them under "Called directly" told the agent to call something the
-  # direct server does not expose, and agents did exactly that: 3543 lost two
-  # runs in ten to one calling `create_issue`, getting `Unknown tool`, and then
-  # correctly refusing to route around a tool it had been told was broken.
-  #
-  # The `nil` branch failed the other way round. An agent whose column was unset
-  # was told it carried nothing at all, so the index contradicted the
-  # `available_tools` it was sent — the likeliest source of agents reporting
-  # `get_next_requirement` as "No such tool available" while it sat in the list.
-  #
-  # The direct surface is the loop: `get_next_requirement`, `start_task`,
-  # `evaluate_task`, `tap_out`, `run_script`, `tool_docs` and their neighbours.
-  # It is not scoped by role, so neither is this.
+  # The direct section is what the direct server exposes, less what the engine
+  # does not carry; the same for every agent, never the `tools` column (that
+  # governs what a script may call).
   #
   # Direct tools an in-BEAM agent does not carry. `promote_sync` holds a call
   # open for a build where `promote` messages the result back; `health` was
@@ -138,7 +89,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
   @doc """
   The direct tools an in-BEAM agent carries: `LocalServer`'s, less
   `@not_carried`. `CmsHarness.Agents.Engine.tools/1` builds from this, so the
-  index cannot name a tool the engine answers `Unknown tool` for (1a7b1e4c).
+  index cannot name a tool the engine answers `Unknown tool` for.
   """
   @spec carried(registry()) :: [String.t()]
   def carried(%{direct: direct}) do
