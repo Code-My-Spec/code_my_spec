@@ -62,6 +62,22 @@ defmodule CmsHarness.Agents.ProviderTest do
     end
   end
 
+  # Team 3's coder grew past codex's 1,048,576-character prompt cap before
+  # Alloy compacted, and every turn failed on it (2026-10-14).
+  describe "how much a codex agent may carry before it compacts" do
+    test "compaction comes well before codex's prompt cap" do
+      {:ok, opts} = Provider.options("openai-codex", %{})
+      config = Alloy.Agent.Config.from_opts(opts)
+
+      compacts_at_chars = (config.max_tokens - config.compaction.reserve_tokens) * 4
+
+      assert compacts_at_chars < 1_048_576 * 0.6,
+             "the transcript can reach #{compacts_at_chars} characters before compacting, " <>
+               "leaving too little of codex's 1,048,576-character cap for the system " <>
+               "prompt, tool definitions and schema a fresh thread also sends"
+    end
+  end
+
   describe "how long one claude-code call may run" do
     test "long enough for the CLI to compact a full session" do
       {:ok, opts} = Provider.options("claude-code", %{}, timeout_ms: nil)

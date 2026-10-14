@@ -200,6 +200,22 @@ defmodule CodeMySpec.Issues.Issue do
   def blocking?(%__MODULE__{status: status, severity: severity}, threshold),
     do: status in [:incoming, :accepted] and severity in severities_at_or_above(threshold)
 
+  # Issue be7b2666: a declined or deferred devops step (UAT held pending
+  # infra review, say) got recorded as an accepted story issue, so coding
+  # was offered it through `StoryIssueGraph` and rightly refused — it cannot
+  # provision real infrastructure. There is no structured field for this, so
+  # the guard reads the one thing every such issue names: the tool whose run
+  # would be the fix.
+  @doc """
+  Whether this issue's only available fix is to run devops provisioning —
+  not something coding can do, so it is not blocking's to offer as a fix.
+  """
+  @spec devops_only?(t()) :: boolean()
+  def devops_only?(%__MODULE__{description: description}) when is_binary(description),
+    do: String.contains?(description, "run_devops_setup")
+
+  def devops_only?(_issue), do: false
+
   defp validate_transition(changeset, from, to) do
     allowed = Map.get(@valid_transitions, from, [])
 

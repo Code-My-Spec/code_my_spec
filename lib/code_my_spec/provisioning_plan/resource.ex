@@ -27,6 +27,7 @@ defmodule CodeMySpec.ProvisioningPlan.Resource do
     field :kind, :string
     field :location, :string
     field :identifier, :string
+    field :observed_in_latest_run, :boolean, default: true
 
     # "created" or "adopted". Teardown removes only what setup created —
     # deleting a resource setup merely found destroys something the user
@@ -38,7 +39,7 @@ defmodule CodeMySpec.ProvisioningPlan.Resource do
   @doc false
   def changeset(resource, attrs) do
     resource
-    |> cast(attrs, [:kind, :location, :identifier, :origin])
+    |> cast(attrs, [:kind, :location, :identifier, :origin, :observed_in_latest_run])
     |> validate_required([:kind, :location])
   end
 end

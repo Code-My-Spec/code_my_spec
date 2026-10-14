@@ -54,7 +54,8 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
     field :requirement_name, :string,
       doc:
-        "Exact match on the requirement name (e.g., `tests_passing`, `test_file`, `spec_valid`)."
+        "Exact match on the requirement name (e.g., `bdd_specs_exist`, `ready_for_qa`, " <>
+          "`implementation_file`)."
 
     field :module_filter, :string,
       doc:

@@ -91,6 +91,62 @@ enforces this: `basis: "record"` is refused with `:not_recorded` when the
 project holds no answer, and that refusal is the system correctly saying the
 decision is not yours to make.
 
+## Completion handoffs: artifacts a role cannot commit itself
+
+A role with no write access to its own checkout — QA's sometimes is — can
+still produce something worth keeping: a reviewed document, a decision, a
+brief. It cannot commit it, and it should not be told to pretend it did.
+`completion_handoff` (main-only) is the durable route between that review
+and a writable owner, and it is what resolves "QA reviewed this but has no
+way to promote or commit it" without granting QA either.
+
+**Assign.** Name the owner (a coding-role agent on the working copy that can
+actually write), the artifacts, the reviewed base and diff, the purpose, and
+what happens next. This is a record of what was reviewed, not a promise
+about what the owner will do with it.
+
+**Complete.** The owner reports completion through `evaluate_task`'s own
+`handoff_id` argument — not a separate tool — alongside `artifact_sha`,
+`parent_commit`, `parent_gitlink` and `verification`. `artifact_sha` and
+`parent_gitlink` must match: the commit that carries the artifact has to be
+the one the parent checkout actually points at, or the handoff is refused as
+`:gitlink_does_not_match_artifact`. A repeat completion with the same
+evidence is idempotent; one with different evidence is refused as
+`:conflicting_completion` rather than silently overwriting the first.
+
+**Acknowledge.** Main is messaged when the owner completes it, and must call
+`completion_handoff` with `action: "acknowledge"` and a note before whatever
+the handoff's `next_action` names — commonly a promotion — proceeds.
+Completing a handoff is not acknowledging it, and neither is a QA
+certification: the tool's own reply says so every time, because receipt alone
+was observed to read as "handled" when nobody had actually looked.
+
+If delivery to main failed or was missed — the agent restarted, a message
+timed out — `action: "redeliver"` re-sends a completed handoff without
+re-running the work. Reconnecting does the same thing automatically for
+anything still completed and undelivered.
+
+## An operator's handoff note is not the graph
+
+A `tmp/*.md` brief, a chat message, or any instruction written outside the
+graph can go stale the moment it is written — the work it names may already
+be done, reassigned, or blocked on something it does not mention. Treat one
+as a lead, not a source of truth: resolve what it says against
+`get_next_requirement` and `list_tasks` before acting on it, and when they
+disagree, the graph is the one that is current.
+
+A working copy's team works exactly one story at a time — set with
+`set_active_story` (`Agents.assign_team/3`), read with
+`WorkingCopies.team_story_id/1`. There is no separate "active story" record
+on the copy itself; it was removed on purpose (John: "we don't have to
+record the active story on the copy, it just blows through"). So a handoff
+naming a different story than the one `get_next_requirement` offers is not
+evidence that dispatch is broken — it means the team has not been
+reassigned to it yet. Reassign with `set_active_story`, which any team
+member can call for their own copy and only the main agent can call for
+another; do not look for a bypass around dispatch to force the named work
+to appear.
+
 ## Do not trust a status tool over the rows
 
 `devops_status` reports "N steps have nothing behind them" for any step whose

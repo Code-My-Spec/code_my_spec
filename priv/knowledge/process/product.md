@@ -8,6 +8,12 @@ assumes you have read this. If you are about to run one task, read its
 playbook. If you are wondering why the task is not being offered to you,
 read this.
 
+## Reaching main
+
+Messaging a teammate directly only works between a coding agent and its own
+QA agent, sharing a working copy. Product carries no such tool for reaching
+main — use `ask_user_question` instead.
+
 ## The shape
 
 A story is a row, not a file. Everything below happens to that row, and

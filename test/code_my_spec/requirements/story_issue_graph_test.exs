@@ -38,10 +38,28 @@ defmodule CodeMySpec.Requirements.StoryIssueGraphTest do
              []
   end
 
+  test "an accepted issue whose only fix is run_devops_setup is not offered to coding" do
+    story = %{id: 601, title: "Email registration"}
+    real_bug = issue("real_bug", :high)
+
+    deferred_deploy = %{
+      real_bug
+      | id: "deferred_deploy",
+        description: "UAT deploy held pending infra review. Run run_devops_setup once cleared."
+    }
+
+    ctx = %{story_issues: [real_bug, deferred_deploy]}
+    config = %ProjectConfiguration{fix_issues_min_severity: nil}
+
+    assert StoryIssueGraph.issues(story, ctx, config) == [real_bug]
+    assert [%{entity_id: "real_bug"}] = StoryIssueGraph.nodes(story, ctx, config)
+  end
+
   defp issue(id, severity),
     do: %Issue{
       id: id,
       title: id,
+      description: "something is broken",
       story_id: 601,
       status: :accepted,
       severity: severity,

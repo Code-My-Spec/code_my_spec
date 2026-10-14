@@ -234,7 +234,26 @@ defmodule CodeMySpec.Notifications do
   # column; its own visibility to the user is a separate concern this filter
   # leaves untouched.
   defp held_by_user(query, QuestionRequest), do: where(query, [r], r.holder == "user")
-  defp held_by_user(query, PermissionRequest), do: query
+
+  # Criteria 2073/2074 are specifically about a tap-out: everyone else's is
+  # main's from the moment it is raised, unless escalated or there is no
+  # agent to route through (a Claude Code session tap-out, which is nobody's
+  # teammate's and goes straight to the user the way main's own does). Every
+  # other permission kind (an ordinary tool-call approval) keeps the behavior
+  # this had before 2073/2074 existed: visible to the user immediately,
+  # unconditionally.
+  defp held_by_user(query, PermissionRequest) do
+    where(
+      query,
+      [r],
+      r.tool_name != "tap_out" or not is_nil(r.escalation_reason) or is_nil(r.agent_id) or
+        r.agent_id in subquery(main_role_agent_ids())
+    )
+  end
+
+  defp main_role_agent_ids do
+    from(a in Agent, where: a.role == :main, select: a.id)
+  end
 
   # Off or retired: nobody means it to run. An agent on duty whose process is
   # down — restoring, or crashed — is still meant to answer.

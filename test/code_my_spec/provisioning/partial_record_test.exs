@@ -245,6 +245,32 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
     end
   end
 
+  test "verification makes an earlier unconfirmed resource current again", ctx do
+    StepRepository.upsert(ctx.scope, :server, nil, %{
+      state: :done,
+      position: 2,
+      resources: [
+        %{
+          kind: "server",
+          location: "hetzner/uat-box",
+          origin: "created",
+          observed_in_latest_run: false
+        }
+      ]
+    })
+
+    [earlier] = StepRepository.get(ctx.scope, :server).resources
+
+    assert {:ok, checked} =
+             Provisioning.run_step(ctx.scope, :server,
+               verify: fn _, _ -> {:ok, :satisfied, [earlier]} end,
+               execute: fn _, _, _ -> flunk("a confirmed resource must not be rebuilt") end
+             )
+
+    assert [%{observed_in_latest_run: true, origin: "created"}] = checked.resources
+    assert StepRepository.get(ctx.scope, :server).resources == checked.resources
+  end
+
   describe "a second run that adds an environment" do
     # The shape criterion 8156 provisions: UAT stands alone, then production
     # arrives on its own box. The second run succeeds and returns production's

@@ -23,6 +23,67 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
   defp activity_path(project), do: "/app/projects/#{project.id}/console/activity"
   defp settings_path(project), do: "/app/projects/#{project.id}/console/settings"
 
+  test "a satisfied provider check refreshes the open page and survives reopening", %{
+    conn: conn,
+    project: project,
+    scope: scope
+  } do
+    alias CodeMySpec.Provisioning
+    alias CodeMySpec.Provisioning.QaFixture
+    alias CodeMySpec.ProvisioningPlan.StepRepository
+
+    assert :ok = QaFixture.register(project.id, scope.active_account_id)
+    assert {:ok, _} = Provisioning.run_step(scope, :server, nil, [])
+    {:ok, view, _} = live(conn, resource_path(project, :servers))
+    assert has_element?(view, "[data-test='checked-note'][data-step='server']", "unchecked")
+
+    assert {:ok, checked} = Provisioning.run_step(scope, :server, nil, [])
+    timestamp = DateTime.to_iso8601(checked.verified_at)
+    assert has_element?(view, "[data-step='server'][data-verified-at='#{timestamp}']")
+    assert has_element?(view, "[data-test='checked-note'][data-step='server']", "checked")
+
+    assert {:ok, before_open} = QaFixture.snapshot(project.id)
+    {:ok, reopened, _} = live(conn, resource_path(project, :servers))
+    assert has_element?(reopened, "[data-step='server'][data-verified-at='#{timestamp}']")
+    assert StepRepository.get(scope, :server).verified_at == checked.verified_at
+    assert {:ok, after_open} = QaFixture.snapshot(project.id)
+    assert after_open.events == before_open.events
+  end
+
+  test "a rebuilt server distinguishes its earlier record from current inventory", %{
+    conn: conn,
+    project: project,
+    scope: scope
+  } do
+    alias CodeMySpec.Provisioning
+    alias CodeMySpec.Provisioning.QaFixture
+
+    assert :ok = QaFixture.register(project.id, scope.active_account_id)
+    assert {:ok, first} = Provisioning.run_step(scope, :server, nil, [])
+    old_location = hd(first.resources).location
+    {:ok, view, _} = live(conn, resource_path(project, :servers))
+
+    assert :ok = QaFixture.control(project.id, "server", "delete")
+    assert {:ok, rebuilt} = Provisioning.run_step(scope, :server, nil, [])
+    current = Enum.find(rebuilt.resources, & &1.observed_in_latest_run)
+
+    old_selector =
+      "[data-test='provisioned-resource'][data-location='#{old_location}'][data-historical='true'][data-verified='false']"
+
+    current_selector =
+      "[data-test='provisioned-resource'][data-location='#{current.location}'][data-historical='false'][data-verified='true']"
+
+    assert has_element?(view, old_selector, "earlier record; not confirmed by the latest run")
+    assert has_element?(view, current_selector)
+
+    assert {:ok, before_open} = QaFixture.snapshot(project.id)
+    {:ok, reopened, _} = live(conn, resource_path(project, :servers))
+    assert has_element?(reopened, old_selector)
+    assert has_element?(reopened, current_selector)
+    assert {:ok, after_open} = QaFixture.snapshot(project.id)
+    assert after_open.events == before_open.events
+  end
+
   describe "every section mounts" do
     test "overview", %{conn: conn, project: project} do
       {:ok, _view, html} = live(conn, path(project))

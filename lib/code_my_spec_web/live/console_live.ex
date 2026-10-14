@@ -183,6 +183,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
     socket
     |> assign(:options, options)
     |> assign(:plan, plan)
+    |> assign(:runs_in_flight?, Provisioning.runs_in_flight?(scope))
     |> assign(:environments, environments)
     |> assign(:environment_rows, Provisioning.environments(scope))
     |> assign(:sops_recipients, Steps.recipients(scope, environments))
@@ -352,7 +353,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
       steps={resource_group_steps(@plan, @resource_key, @environment)}
       environments={@environments}
       age_key_environments={age_key_environments(@current_scope, @environments)}
-      runs_in_flight?={Provisioning.runs_in_flight?(@current_scope)}
+      runs_in_flight?={@runs_in_flight?}
       tab={@tab}
       project_id={@current_scope.active_project_id}
       environment={@environment}
@@ -951,7 +952,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
           <DeployConfig.deploy_config
             step={step}
             age_key_environments={age_key_environments(@current_scope, @environments)}
-            runs_in_flight?={Provisioning.runs_in_flight?(@current_scope)}
+            runs_in_flight?={@runs_in_flight?}
           />
         </div>
       </div>

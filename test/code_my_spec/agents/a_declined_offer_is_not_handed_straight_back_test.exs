@@ -227,9 +227,15 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
       )
   end
 
-  defp on_entity("story", id), do: %{story_id: String.to_integer(id)}
-  defp on_entity("component", id), do: %{component_id: id}
-  defp on_entity("project", id), do: %{project_id: id}
+  # Issue 56a2d806: `id` here is the story's public number, named in
+  # `subject_key` the same way `get_next_requirement` names it, not the
+  # database id a real cancelled task's own `story_id` carries -- resolved
+  # back the same way `Offers.tasks_on/2` now resolves it to match.
+  defp on_entity(scope, "story", id),
+    do: %{story_id: CodeMySpec.Stories.get_story_by_number!(scope, id).id}
+
+  defp on_entity(_scope, "component", id), do: %{component_id: id}
+  defp on_entity(_scope, "project", id), do: %{project_id: id}
 
   defp latest_offer(agent), do: agent.id |> Offers.list_for_agent() |> List.last()
 
@@ -266,7 +272,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
     [type, id, name] = String.split(key, ":", parts: 3)
 
     cancelled =
-      Map.merge(on_entity(type, id), %{
+      Map.merge(on_entity(ctx.scope, type, id), %{
         status: :cancelled,
         requirement_name: name,
         started_at: DateTime.utc_now(),

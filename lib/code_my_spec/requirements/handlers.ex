@@ -402,20 +402,24 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The eight file requirements, settled from one profile.
+  # The one file requirement left (`implementation_file`), settled from one
+  # profile. `spec_file`, `test_file` and `review_file` and their `_valid`
+  # pairs were removed from the definitions (8897edfb); this used to settle
+  # eight names the same way.
   #
   # Default satisfied, exceptions unsatisfied, and that direction is forced
   # rather than chosen: the satisfied details carry no per-entity data
-  # ("spec file exists"), while every failure does — `expected_path` for a
-  # missing file, which `RequirementsFormatter` renders and is the only thing
-  # telling an agent where to write it, and `validation_errors` for an invalid
-  # one. Per-entity data cannot ride on a sweep's default.
+  # ("implementation file exists"), while every failure does —
+  # `expected_path` for a missing file, which `RequirementsFormatter` renders
+  # and is the only thing telling an agent where to write it, and
+  # `validation_errors` for an invalid one. Per-entity data cannot ride on a
+  # sweep's default.
   #
   # The population selects itself. `GraphStore.sweep/2` matches `name` and entity
   # type, and only entities whose template produces that requirement have a row
-  # — so a `:schema` component with no review requirement is never touched by
-  # `review_file`, without this needing to know the templates or the config
-  # filter at all.
+  # — so an `:infrastructure` component, which has none, is never touched by
+  # `implementation_file`, without this needing to know the templates or the
+  # config filter at all.
   defp settle(name, %{files: profile}, _scope) when is_map_key(@file_requirements, name) do
     {kind, role, entity_type} = Map.fetch!(@file_requirements, name)
 

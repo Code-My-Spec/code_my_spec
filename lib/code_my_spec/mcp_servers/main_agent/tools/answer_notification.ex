@@ -7,8 +7,10 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
 
   `basis` says what an answer rests on and is checked: `record` means the
   project records it, `precedent` means the user already decided it and takes
-  `precedent_id`. An answer with neither is a guess and is refused — say what
-  you found it in, or escalate.
+  `precedent_id`, `inspected` means you read it yourself and takes `citation`
+  — a file path, commit, or tool call you actually made in this session, close
+  enough to your own wording that it is checkable there. An answer with none
+  of these is a guess and is refused — say what you found it in, or escalate.
 
   Say `worked_around` when you had to supply something the asking role should
   have been able to find itself; that gets counted as a gap in that role's
@@ -46,9 +48,15 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
           "whatever it last concluded."
 
     field :basis, :string,
-      doc: "For a question: `record` (the project records it) or `precedent`."
+      doc: "For a question: `record` (the project records it), `precedent`, or `inspected`."
 
     field :precedent_id, :string, doc: "With basis `precedent`: the question they answered."
+
+    field :citation, :string,
+      doc:
+        "With basis `inspected`: the file path, commit, or tool call you actually made in " <>
+          "this session — checked against your own turns, so it has to be close to how you " <>
+          "actually wrote or called it, not a paraphrase."
 
     field :worked_around, :string,
       doc: "The capability the asking role lacked, if you covered for one."
@@ -89,10 +97,12 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
            MapAccess.get(params, :answer),
            basis: MapAccess.get(params, :basis),
            precedent_id: MapAccess.get(params, :precedent_id),
+           citation: MapAccess.get(params, :citation),
            worked_around: MapAccess.get(params, :worked_around),
            on_behalf_of: MapAccess.get(params, :on_behalf_of),
            tool: MapAccess.get(params, :tool),
-           by: caller_role(scope, frame)
+           by: caller_role(scope, frame),
+           inspector_id: inspector_id(frame)
          ) do
       {:ok, answered} -> {:reply, AnswerMapper.answered(answered), frame}
       {:error, reason} -> {:reply, AnswerMapper.error(reason), frame}
@@ -109,6 +119,11 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   end
 
   defp caller_role(_scope, _frame), do: nil
+
+  # `basis: "inspected"` is checked against *this* agent's own session, not
+  # the asking agent's — the frame is who is calling `answer_notification`.
+  defp inspector_id(%{assigns: %{agent_id: id}}) when is_binary(id), do: id
+  defp inspector_id(_frame), do: nil
 
   # Permissions (tap-outs) stay main's: product carries this tool to answer the
   # questions routed to it, not to staff the fleet.

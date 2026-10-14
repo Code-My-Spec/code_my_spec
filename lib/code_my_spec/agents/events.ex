@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.Events do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
 
+  @provisioning_failed [:code_my_spec, :provisioning, :failed]
   @task_completed [:code_my_spec, :tasks, :completed]
   @task_released [:code_my_spec, :tasks, :released]
   @issue_qa_passed [:code_my_spec, :qa, :issue_passed]
@@ -39,6 +40,7 @@ defmodule CodeMySpec.Agents.Events do
     :telemetry.attach_many(
       {__MODULE__, :handlers},
       [
+        @provisioning_failed,
         @task_completed,
         @task_released,
         @issue_qa_passed,
@@ -57,6 +59,12 @@ defmodule CodeMySpec.Agents.Events do
   end
 
   @doc false
+  def handle_event(@provisioning_failed, _measurements, %{scope: scope, step: step}, _config) do
+    CodeMySpec.Agents.ProvisioningFailure.deliver(scope, step)
+  catch
+    kind, reason -> log(:provisioning_failed, kind, reason)
+  end
+
   # A completed task can unblock work for the copy's other agents. Off the
   # caller's process: a missed nudge is the acceptable failure, and the next
   # completion sends it again.
@@ -122,11 +130,17 @@ defmodule CodeMySpec.Agents.Events do
 
   # A story finished by promotion offers main the same team-free kind an issue
   # finishing through QA does (criterion 1892).
+  #
+  # Retried across the dev server's code reload. The notice fires as the batch
+  # merges into the checkout that server runs, and a module the reloader is
+  # swapping at that instant is undefined: team 2 sat idle for 40 minutes after
+  # 1066 landed, its notice lost to one (2026-10-14). Both calls are
+  # idempotent, so running them again is safe.
   def handle_event(@promotion_team_free, _measurements, meta, _config) do
-    Assignment.close_promotion_tasks(meta.scope, meta.working_copy_id, meta.story)
-    Assignment.notify_team_free(meta.scope, meta.working_copy_id, meta.story)
-  catch
-    kind, reason -> log(:promotion_team_free, kind, reason)
+    across_reload(:promotion_team_free, fn ->
+      Assignment.close_promotion_tasks(meta.scope, meta.working_copy_id, meta.story)
+      Assignment.notify_team_free(meta.scope, meta.working_copy_id, meta.story)
+    end)
   end
 
   # Logged rather than retried: the agent may already be acting on the first
@@ -252,6 +266,44 @@ defmodule CodeMySpec.Agents.Events do
     end
   catch
     kind, reason -> log(:promotion_report, kind, reason)
+  end
+
+  @reload_attempts 4
+  @reload_settle_ms 3_000
+
+  @doc """
+  Run `fun`, trying again off the caller when a module is undefined because
+  the dev server's code reloader is swapping it. Any other failure is logged
+  with its stacktrace. For idempotent handlers only.
+  """
+  @spec across_reload(atom(), (-> term()), pos_integer(), non_neg_integer()) :: :ok
+  def across_reload(event, fun, attempt \\ 1, settle_ms \\ @reload_settle_ms) do
+    fun.()
+    :ok
+  catch
+    kind, reason ->
+      if mid_reload?(kind, reason) and attempt < @reload_attempts do
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+          Process.sleep(settle_ms)
+          across_reload(event, fun, attempt + 1, settle_ms)
+        end)
+
+        :ok
+      else
+        log(event, kind, reason, __STACKTRACE__)
+      end
+  end
+
+  defp mid_reload?(:error, :undef), do: true
+  defp mid_reload?(:error, %UndefinedFunctionError{}), do: true
+  defp mid_reload?(_kind, _reason), do: false
+
+  defp log(event, kind, reason, stacktrace) do
+    Logger.warning(
+      "[Agents.Events] #{event} failed: #{Exception.format(kind, reason, stacktrace)}"
+    )
+
+    :ok
   end
 
   defp log(event, kind, reason) do

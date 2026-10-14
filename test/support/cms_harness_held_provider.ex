@@ -250,10 +250,14 @@ defmodule CmsHarnessTest.HeldProvider do
     )
   end
 
+  # A client that hung up stops the stream. Sending now interrupts the turn
+  # whose request this is, so the harness closing it mid-stream is expected.
   defp send_chunks(conn, chunks) do
-    Enum.reduce(chunks, conn, fn data, conn ->
-      {:ok, conn} = Plug.Conn.chunk(conn, data)
-      conn
+    Enum.reduce_while(chunks, conn, fn data, conn ->
+      case Plug.Conn.chunk(conn, data) do
+        {:ok, conn} -> {:cont, conn}
+        {:error, :closed} -> {:halt, conn}
+      end
     end)
   end
 

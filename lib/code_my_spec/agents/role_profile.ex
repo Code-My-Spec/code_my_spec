@@ -154,6 +154,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_tasks list_session_subagents list_notifications
     check_answer list_user_questions
     list_problems
+    start_analysis
     web_search web_fetch
     browser
     query_logs get_trace slow_spans error_summary
@@ -342,7 +343,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
         :findings,
         :cadence,
         :teammate_stalled,
-        :teammate_died
+        :teammate_died,
+        :provisioning_failed
       ],
       # Its own question holds the turn-end nudge: it has nothing else to do.
       # Another role's question blocks only the task it was asked about
