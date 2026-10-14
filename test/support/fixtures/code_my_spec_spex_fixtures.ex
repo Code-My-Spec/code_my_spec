@@ -4662,18 +4662,26 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec spec_file_path(map(), map()) :: String.t()
   #
-  # `criterion_id` is either a real criterion's own database id (a struct
-  # from `story.criteria`) or the number `GetStory` shows the agent under
-  # the same key — matching on both is what lets either caller through.
-  def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
+  # The criterion is either a real one (it carries `:number`, and `:id` is its
+  # database id) or the map `GetStory` parses, whose `:id` is the number the
+  # agent sees. Each is matched on its own key: matching either key against
+  # both took a criterion whose *id* equalled another's *number* — which only
+  # happens on a fresh database, where ids are small (892 in a gate shard).
+  def spec_file_path(%{id: story_id}, %{id: _} = wanted) do
     story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
 
     criterion =
-      Enum.find(story.criteria, &(&1.id == criterion_id or &1.number == criterion_id))
+      case wanted do
+        %{number: number} when is_integer(number) ->
+          Enum.find(story.criteria, &(&1.id == wanted.id))
+
+        %{id: number} ->
+          Enum.find(story.criteria, &(&1.number == number))
+      end
 
     unless criterion do
       raise ArgumentError,
-            "criterion #{inspect(criterion_id)} does not belong to story #{inspect(story_id)}"
+            "criterion #{inspect(wanted.id)} does not belong to story #{inspect(story_id)}"
     end
 
     BddSpecs.spec_file_path(story, criterion)
