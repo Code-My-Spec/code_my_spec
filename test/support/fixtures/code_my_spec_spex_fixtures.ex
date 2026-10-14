@@ -1830,7 +1830,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stop_watching(Scope.t()) :: :ok
   def stop_watching(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
         :ok

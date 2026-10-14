@@ -11,16 +11,6 @@ defmodule CodeMySpecSpex.Fixtures.GraphVerification do
   alias CodeMySpec.Requirements.ShadowProjector
 
   def seed(scope) do
-    previous =
-      for key <- [:graph_event_is_source, :graph_shadow_projection],
-          do: {key, Application.get_env(:code_my_spec, key, false)}
-
-    Enum.each(previous, fn {key, _} -> Application.put_env(:code_my_spec, key, true) end)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Enum.each(previous, fn {key, value} -> Application.put_env(:code_my_spec, key, value) end)
-    end)
-
     {:ok, _} = GraphWatcher.ensure_watching(scope)
     :ok = GraphWatcher.settle(scope)
     :ok = ShadowProjector.settle(scope.active_project_id, [nil, scope.active_working_copy_id])

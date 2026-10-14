@@ -26,6 +26,7 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.StoriesFixtures
   alias CodeMySpec.Users.Scope
@@ -149,7 +150,11 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
 
   defp disagreements(%Scope{} = scope) do
     stored = scope |> at_vantage("requirements") |> Repo.all() |> Map.new(&key/1)
-    computed = scope |> at_vantage("shadow_requirements") |> Repo.all() |> Map.new(&key/1)
+    # What the domain says now, computed in memory.
+    {nodes, _edges} = RequirementGraph.compute_graph(scope)
+
+    computed =
+      nodes |> Enum.filter(&(&1.entity_type == "story")) |> Map.new(&{&1.name, &1.satisfied})
 
     for {k, v} <- stored, Map.has_key?(computed, k), computed[k] != v, do: {k, v, computed[k]}
   end

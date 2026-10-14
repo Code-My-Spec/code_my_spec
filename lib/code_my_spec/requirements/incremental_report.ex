@@ -35,7 +35,7 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{GraphWatcher, Node, Projection, RequirementGraph}
+  alias CodeMySpec.Requirements.{GraphWatcher, Node, Projection}
   alias CodeMySpec.Users.Scope
 
   @type pass :: %{at: NaiveDateTime.t(), rows: non_neg_integer(), share: float()}
@@ -65,8 +65,7 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
       watcher: GraphWatcher.status(project_id),
       total_rows: total,
       vantages: vantages(rows, scope),
-      passes: passes(rows, total, limit),
-      stale_read_log: RequirementGraph.stale_read_logging?()
+      passes: passes(rows, total, limit)
     }
   end
 

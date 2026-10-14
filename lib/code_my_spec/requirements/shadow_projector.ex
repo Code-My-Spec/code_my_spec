@@ -94,17 +94,13 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   def ensure_projecting(%Scope{active_project_id: nil}), do: {:error, :no_project}
 
   def ensure_projecting(%Scope{active_project_id: project_id} = scope) do
-    if Shadow.enabled?() do
-      case DynamicSupervisor.start_child(
-             CodeMySpec.Requirements.WatcherSupervisor,
-             {__MODULE__, {project_id, scope, self()}}
-           ) do
-        {:ok, pid} -> {:ok, pid}
-        {:error, {:already_started, pid}} -> {:ok, pid}
-        other -> other
-      end
-    else
-      {:error, :disabled}
+    case DynamicSupervisor.start_child(
+           CodeMySpec.Requirements.WatcherSupervisor,
+           {__MODULE__, {project_id, scope, self()}}
+         ) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      other -> other
     end
   end
 
@@ -447,27 +443,21 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # having consumed something — a pass that ran for nothing announces nothing.
   # The projector did neither, so a flip of `graph_event_is_source` would have
   # left every reader current and every agent asleep.
-  #
-  # Only while inverted. With both writers on and the pass the source, the pass
-  # already does this for every observation; doing it here too would wake each
-  # agent twice per event.
   defp announce(_state, []), do: :ok
 
   defp announce(state, _marks) do
-    if Shadow.inverted?() do
-      Phoenix.PubSub.broadcast(
-        CodeMySpec.PubSub,
-        GraphInputs.topic(state.project_id),
-        {:graph_updated, state.project_id}
-      )
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      GraphInputs.topic(state.project_id),
+      {:graph_updated, state.project_id}
+    )
 
-      # Answered by `Agents.GraphWake`, which starts the wake off this process.
-      :telemetry.execute(
-        [:code_my_spec, :requirements, :graph_changed],
-        %{},
-        %{scope: state.scope}
-      )
-    end
+    # Answered by `Agents.GraphWake`, which starts the wake off this process.
+    :telemetry.execute(
+      [:code_my_spec, :requirements, :graph_changed],
+      %{},
+      %{scope: state.scope}
+    )
 
     :ok
   end
