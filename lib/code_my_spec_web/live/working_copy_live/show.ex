@@ -29,11 +29,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   it — worse than offering nothing, because the person believes they redirected
   an agent and finds out when the work comes back wrong.
 
-  ## Still nothing that ends anything
+  ## Firing retires; nothing here stops a harness
 
-  No stop, for an agent or for a harness. `os_pid` is shown because it is how
-  somebody goes and looks on the box that owns the process — which is where the
-  lifecycle lives.
+  Firing an agent (criterion 2207) retires it for good — its seat is freed and
+  its conversation stays readable — which is a different act from a stop: a
+  stop only ever ends the one process. There is still no control here for the
+  harness itself. `os_pid` is shown because it is how somebody goes and looks
+  on the box that owns the process — which is where the lifecycle lives.
   """
 
   use CodeMySpecWeb, :live_view
@@ -214,6 +216,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     |> assign(:queue_epics, Epics.list_epics(socket.assigns.current_scope))
     |> assign(:now, now)
     |> assign(:page_title, row.heading)
+    # `assign_new`: this function reruns on every tick and every agent event,
+    # and a plain `assign` here would disarm the confirmation under someone's
+    # hand the moment anything else on the copy so much as reported in.
+    |> assign_new(:armed_agent_id, fn -> nil end)
   end
 
   # Designating this checkout as the one the project's own agent runs in.
@@ -233,6 +239,46 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   def handle_event("remove_epic_from_queue", %{"epic_id" => id}, socket),
     do: edit_queue(socket, :epic, id, :remove)
+
+  # Arms the in-page confirmation rather than acting immediately -- firing
+  # retires the agent for good, freeing its seat, unlike the stop criteria
+  # 970-978 cover, which only ever ends the one process.
+  def handle_event("fire_agent", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :armed_agent_id, id)}
+  end
+
+  def handle_event("cancel_fire_agent", _params, socket) do
+    {:noreply, assign(socket, :armed_agent_id, nil)}
+  end
+
+  def handle_event("confirm_fire_agent", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Agents.retire_agent(scope, id, by: Agents.actor(scope)) do
+      {:ok, _agent} ->
+        {:noreply,
+         socket
+         |> assign(:armed_agent_id, nil)
+         |> load(socket.assigns.project)
+         |> put_flash(:info, "Agent fired.")}
+
+      {:ok, _agent, {:unreachable, _machine}} ->
+        {:noreply,
+         socket
+         |> assign(:armed_agent_id, nil)
+         |> load(socket.assigns.project)
+         |> put_flash(
+           :info,
+           "Agent fired; its machine could not be reached to end the process."
+         )}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> assign(:armed_agent_id, nil)
+         |> put_flash(:error, "That agent could not be fired. Try again.")}
+    end
+  end
 
   def handle_event("designate_main", _params, socket) do
     case Staffing.designate_main(
@@ -669,6 +715,47 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
                       chat_for(@row, agent).last_message_at
                     }>, last {Liveness.since(chat_for(@row, agent).last_message_at, @now)}</span>
                   </span>
+                </div>
+
+                <div
+                  :if={@armed_agent_id != agent.id}
+                  class="flex items-center gap-2 border-t border-base-300 pt-2"
+                >
+                  <.button
+                    type="button"
+                    phx-click="fire_agent"
+                    phx-value-id={agent.id}
+                    data-test="fire-agent"
+                    class="btn btn-xs btn-error btn-outline"
+                  >
+                    Fire
+                  </.button>
+                </div>
+
+                <div
+                  :if={@armed_agent_id == agent.id}
+                  class="flex flex-wrap items-center gap-2 border-t border-base-300 pt-2 text-sm"
+                >
+                  <span data-test="fire-agent-confirm-text">
+                    Fire the {agent.role} agent? This cannot be undone.
+                  </span>
+                  <.button
+                    type="button"
+                    phx-click="confirm_fire_agent"
+                    phx-value-id={agent.id}
+                    data-test="confirm-fire-agent"
+                    class="btn btn-xs btn-error"
+                  >
+                    Fire
+                  </.button>
+                  <.button
+                    type="button"
+                    phx-click="cancel_fire_agent"
+                    data-test="cancel-fire-agent"
+                    class="btn btn-xs btn-ghost"
+                  >
+                    Cancel
+                  </.button>
                 </div>
               </div>
             </li>

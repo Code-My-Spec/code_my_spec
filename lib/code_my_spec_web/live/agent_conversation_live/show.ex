@@ -266,6 +266,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     # side-by-side layout on a phone puts a 384px panel column next to the
     # conversation on a 390px screen, which overlaps and runs off the edge.
     # Caught by screenshotting the frame before the round trip landed.
+    |> assign_new(:firing?, fn -> false end)
     |> assign_new(:screen, fn -> :narrow end)
     # Seeded from the stored screen and kept in the socket after that. The
     # `assign_new` matters twice over here: this function re-runs on every
@@ -927,6 +928,52 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       {:noreply, put_flash(socket, kind, text)}
     else
       {:noreply, socket}
+    end
+  end
+
+  # Arms the in-page confirmation rather than acting immediately -- firing
+  # retires the agent for good, unlike the power button beside it, which
+  # only ever stops and starts the same one.
+  def handle_event("fire_agent", _params, socket) do
+    {:noreply, assign(socket, :firing?, true)}
+  end
+
+  def handle_event("cancel_fire_agent", _params, socket) do
+    {:noreply, assign(socket, :firing?, false)}
+  end
+
+  def handle_event("confirm_fire_agent", _params, socket) do
+    scope = socket.assigns.current_scope
+    agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
+
+    if is_binary(agent_id) do
+      result = Agents.retire_agent(scope, agent_id, by: Agents.actor(scope))
+
+      socket = assign(socket, :firing?, false)
+
+      case result do
+        {:ok, agent} ->
+          {:noreply,
+           socket
+           |> sync_header_state(agent)
+           |> refresh_team_status()
+           |> put_flash(:info, "Agent fired.")}
+
+        {:ok, agent, {:unreachable, _machine}} ->
+          {:noreply,
+           socket
+           |> sync_header_state(agent)
+           |> refresh_team_status()
+           |> put_flash(
+             :info,
+             "Agent fired; its machine could not be reached to end the process."
+           )}
+
+        {:error, _reason} ->
+          {:noreply, put_flash(socket, :error, "That agent could not be fired. Try again.")}
+      end
+    else
+      {:noreply, assign(socket, :firing?, false)}
     end
   end
 
@@ -1889,6 +1936,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           working?={@working?}
           on?={@on?}
           retired?={@retired?}
+          firing?={@firing?}
           assigned={@assigned}
           draft={@draft}
           agent_writing={@agent_writing}
@@ -1935,6 +1983,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               working?={@working?}
               on?={@on?}
               retired?={@retired?}
+              firing?={@firing?}
               assigned={@assigned}
               draft={@draft}
               agent_writing={@agent_writing}
@@ -2007,6 +2056,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # Required for the same reason: the power button must never guess its state.
   attr :on?, :boolean, required: true
   attr :retired?, :boolean, required: true
+  attr :firing?, :boolean, required: true
   attr :assigned, :list, required: true
   attr :draft, :string, required: true
 
@@ -2131,6 +2181,42 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-power" class="size-4" />
         </button>
+
+        <button
+          :if={@conversation && @conversation.agent_id && not @retired? && not @firing?}
+          type="button"
+          phx-click="fire_agent"
+          data-test="fire-agent"
+          class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
+          title="Fire this agent: retires it for good"
+        >
+          <.icon name="hero-fire" class="size-4" />
+        </button>
+
+        <div
+          :if={@conversation && @conversation.agent_id && @firing?}
+          class="flex shrink-0 items-center gap-2 text-xs"
+        >
+          <span class="opacity-70" data-test="fire-agent-confirm-text">
+            Fire {@conversation && Conversations.display_name(@conversation)}? This cannot be undone.
+          </span>
+          <button
+            type="button"
+            phx-click="confirm_fire_agent"
+            data-test="confirm-fire-agent"
+            class="btn btn-error btn-xs"
+          >
+            Fire
+          </button>
+          <button
+            type="button"
+            phx-click="cancel_fire_agent"
+            data-test="cancel-fire-agent"
+            class="btn btn-ghost btn-xs"
+          >
+            Cancel
+          </button>
+        </div>
       </header>
 
       <%!-- `overflow-anchor` is what keeps your place when older turns are

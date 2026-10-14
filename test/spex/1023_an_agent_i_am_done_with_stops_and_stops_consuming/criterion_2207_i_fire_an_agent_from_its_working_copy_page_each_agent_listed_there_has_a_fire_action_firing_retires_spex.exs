@@ -73,15 +73,16 @@ defmodule CodeMySpecSpex.Story1023.Criterion2207Spex do
       then_ "and its conversation stays readable", context do
         conversation = Fixtures.agent_conversation(context.scope, context.agent)
 
-        {:ok, _view, html} =
+        {:ok, view, _html} =
           live(
             context.conn,
             ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: conversation.id]}"
           )
 
-        assert html =~ context.agent.id or html =~ to_string(context.agent.role),
-               "a fired agent's conversation no longer renders — it should stay readable " <>
-                 "even though the agent that held it never runs again"
+        assert has_element?(view, "[data-test='agent-retired']"),
+               "a fired agent's conversation page did not render as readable — the page " <>
+                 "should still serve its transcript, with the agent's own retired state " <>
+                 "shown, rather than refusing to show it at all"
 
         {:ok, context}
       end
