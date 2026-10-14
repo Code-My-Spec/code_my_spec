@@ -46,7 +46,9 @@ defmodule CodeMySpec.Tests do
       end)
 
     test_args = ["test", "--formatter", "ClientUtils.TestFormatter" | args]
-    command = "mix " <> Enum.join(test_args, " ")
+    # The project's `test` recipe when it declares one; the arguments are the same.
+    program = if Environments.recipe?(env, "test"), do: "just", else: "mix"
+    command = program <> " " <> Enum.join(test_args, " ")
     file_path = extract_file_path(args)
 
     # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_* so
@@ -74,7 +76,7 @@ defmodule CodeMySpec.Tests do
     # Track whether we're using a caller-provided file (cache) vs a generated temp file
     caller_provided_file = Keyword.has_key?(opts, :output_file)
 
-    case run_with_database(env, test_args, cmd_env) do
+    case run_with_database(env, program, test_args, cmd_env) do
       {raw_output, exit_code} ->
         json_content = read_test_results(env, temp_file, caller_provided_file)
 
@@ -164,8 +166,8 @@ defmodule CodeMySpec.Tests do
   # exception. A missing database now surfaces as the child's own "database
   # does not exist", which names itself and is answered by a human with
   # `MIX_ENV=test mix ecto.create`.
-  defp run_with_database(env, test_args, cmd_env) do
-    Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env)
+  defp run_with_database(env, program, test_args, cmd_env) do
+    Environments.cmd(env, program, test_args, stderr_to_stdout: true, env: cmd_env)
   end
 
   # A generated temp path is handed to the child as `EXUNIT_JSON_OUTPUT_FILE`,

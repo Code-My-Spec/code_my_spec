@@ -30,6 +30,13 @@ defmodule CodeMySpec.Analysis.RunnersTest do
     # those two things — a fresh completed run and zero problems — so a suite
     # that never executed reported the component's tests as passing.
     test "exunit fails the run instead of reporting a clean sweep", %{scope: scope} do
+      # An empty directory: the recording is `mix test` finding no project, and
+      # this repo's own justfile would send the run to `just test` instead.
+      empty = CodeMySpec.TempFile.dir("no_project")
+      File.mkdir_p!(empty)
+      on_exit(fn -> File.rm_rf(empty) end)
+      scope = %{scope | cwd: empty}
+
       use_cmd_cassette "exunit_suite_did_not_run", record: :none do
         assert {:error, {:test_suite_did_not_run, 1, excerpt}} =
                  Runners.run("exunit", scope, [], [])

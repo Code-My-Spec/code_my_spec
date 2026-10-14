@@ -21,15 +21,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   @pg ~w(-h localhost -U postgres)
 
   @impl true
-  def recipe?(root, name) do
-    env = local(root)
-
-    Environments.exec_file_exists?(env, "justfile") and
-      case Environments.cmd(env, "just", ["--list"], []) do
-        {out, 0} -> Regex.match?(~r/^\s*#{name}(\s|$)/m, out)
-        _ -> false
-      end
-  end
+  def recipe?(root, name), do: Environments.recipe?(local(root), name)
 
   @impl true
   def free_port do
