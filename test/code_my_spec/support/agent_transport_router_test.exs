@@ -18,11 +18,19 @@ defmodule CodeMySpecTest.AgentTransportRouterTest do
 
   defp agent(project_id), do: %{id: Ecto.UUID.generate(), project_id: project_id}
 
+  # Stands in for a different test's own process routing its own project:
+  # a real one would call `route/2` directly and legitimately register its
+  # own `on_exit` drain, but this one isn't a test ExUnit tracks, so it
+  # registers the same way `route/2` does short of that -- the isolation
+  # these tests check does not depend on the drain.
+  #
   # Reports exactly one of two outcomes to `notify`: a delivery meant for
   # some other project landing here anyway, or a clean `:stop` with none
   # ever having arrived.
   defp route_then_report(project_id, notify) do
-    AgentTransportRouter.route(project_id, RecordingAgentTransport)
+    AgentTransportRouter.start()
+    Registry.unregister(AgentTransportRouter, project_id)
+    {:ok, _} = Registry.register(AgentTransportRouter, project_id, RecordingAgentTransport)
     send(notify, {:routed, self()})
 
     receive do
@@ -62,5 +70,26 @@ defmodule CodeMySpecTest.AgentTransportRouterTest do
 
     send(owner_b, :stop)
     assert_receive {:no_leak, ^owner_b}
+  end
+
+  test "route/2 waits for a Task this project's route started before returning control to on_exit" do
+    project_a = Ecto.UUID.generate()
+    before = CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new()
+
+    AgentTransportRouter.route(project_a, RecordingAgentTransport)
+
+    test_pid = self()
+
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Process.sleep(50)
+        send(test_pid, :straggler_finished)
+      end)
+
+    refute_received :straggler_finished
+
+    AgentTransportRouter.await_background_work(before)
+
+    assert_received :straggler_finished
   end
 end
