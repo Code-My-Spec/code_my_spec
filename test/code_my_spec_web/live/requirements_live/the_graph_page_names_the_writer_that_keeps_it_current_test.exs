@@ -20,13 +20,6 @@ defmodule CodeMySpecWeb.RequirementsLive.TheGraphPageNamesTheWriterThatKeepsItCu
   setup :setup_active_project
 
   setup ctx do
-    # Dev's configuration: the event path is the source, so the projector runs.
-    for key <- [:graph_event_is_source, :graph_shadow_projection] do
-      previous = Application.get_env(:code_my_spec, key, false)
-      Application.put_env(:code_my_spec, key, true)
-      on_exit(fn -> Application.put_env(:code_my_spec, key, previous) end)
-    end
-
     {:ok, _pid} = ShadowProjector.ensure_projecting(ctx.scope)
 
     :ok =

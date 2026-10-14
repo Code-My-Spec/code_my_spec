@@ -602,7 +602,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
 
       sync!(scope, tmp_dir)
 
-      RequirementGraph.recompute(scope)
+      CodeMySpec.Requirements.recompute(scope)
       actionable = RequirementGraph.next_actionable(scope)
 
       qa_complete =

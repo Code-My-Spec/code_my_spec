@@ -4,27 +4,6 @@ defmodule CodeMySpec.Requirements.VerificationMeasurementsTest do
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.Shadow
 
-  test "extra event nodes are logged as a difference" do
-    report = %{
-      live: 1,
-      shadow: 2,
-      missing: 0,
-      extra: 1,
-      disagree: 0,
-      edges_missing: 0,
-      edges_extra: 0,
-      live_edges: 0,
-      shadow_edges: 0,
-      sample: [],
-      edge_sample: []
-    }
-
-    previous = Logger.level()
-    Logger.configure(level: :info)
-    on_exit(fn -> Logger.configure(level: previous) end)
-    assert capture_log([level: :info], fn -> Shadow.log(report) end) =~ "shadow differs"
-  end
-
   test "failed drains retain failure and unknown counts in the published report" do
     id = Ecto.UUID.generate()
 

@@ -708,7 +708,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
   # announcement — here it is said out loud, because a test that reads a graph
   # nobody built is asserting against an empty one.
   defp actionable(scope) do
-    RequirementGraph.recompute(scope)
+    CodeMySpec.Requirements.recompute(scope)
     RequirementGraph.next_actionable(scope)
   end
 end

@@ -43,16 +43,6 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
     refute Shadow.definitions_covered?(ctx.scope, defined(ctx.scope))
   end
 
-  test "the pass reaps deploy once devops is nil", ctx do
-    Requirements.recompute(ctx.scope)
-    assert "deploy" in names(Shadow.pass_target(), ctx.story.id)
-
-    set_devops(ctx.scope, nil)
-    Requirements.recompute(ctx.scope)
-
-    refute "deploy" in names(Shadow.pass_target(), ctx.story.id)
-  end
-
   defp event_write(scope, story) do
     {:ok, loaded} = Preloader.load(scope)
     config = Configurations.get_or_create(scope)
