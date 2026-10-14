@@ -106,7 +106,12 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
               phx-submit="create_setup_project"
             >
               <.input field={@create_form[:name]} label="Application name" required />
-              <.input field={@create_form[:path]} label="New project directory" required />
+              <.input
+                field={@create_form[:path]}
+                id="desktop-create-project-path"
+                label="New project directory"
+                required
+              />
               <.button type="submit" data-test="create-project" disabled={@setup_busy}>
                 Create project
               </.button>
@@ -117,7 +122,12 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
               data-test="link-project-form"
               phx-submit="link_setup_project"
             >
-              <.input field={@link_form[:path]} label="Existing Elixir project directory" required />
+              <.input
+                field={@link_form[:path]}
+                id="desktop-link-project-path"
+                label="Existing Elixir project directory"
+                required
+              />
               <.button type="submit" disabled={@setup_busy}>Link project</.button>
             </.form>
           </div>
