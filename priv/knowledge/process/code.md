@@ -80,6 +80,31 @@ Calling `evaluate_task` on an automatic task is harmless. *Not* calling it
 on a manual one leaves the task open with the work sitting there finished,
 which looks from outside exactly like an agent that stalled.
 
+## When an analysis run is stuck
+
+Normal analysis finishes asynchronously — you get a "Your X run finished"
+message when it lands, and you do not poll for it. `start_analysis` also
+takes `paths` to scope a run to specific files, for a targeted recheck
+rather than the full sweep.
+
+You do not carry a tool to inspect or cancel an admitted run —
+`check_machinery` and the harness's own run inventory belong to main under
+`process/main_agent.md`. That is deliberate: a fault in the analysis
+machinery is a single shared thing underneath every agent, and letting
+every role poll for it separately multiplies the confusion rather than
+fixing it.
+
+So when a run is genuinely stuck — not merely slow — report it to main with
+`ask_user_question`, naming the working copy, the commit, and what you were
+trying to validate, and wait. Main inspects and recovers the machinery; you
+resume by calling `start_task`/`evaluate_task` again once it tells you to,
+not by guessing at a tool name that does not exist.
+
+`await_analysis` is retired. If your tool list still shows it — fetched at
+session start, before it was removed — calling it explains this and names
+the two HTTP endpoints (`/analysis/run`, `/analysis/wait`, documented in
+AGENTS.md) that replaced it; reconnecting through `/mcp` refreshes the list.
+
 ## When specs are red
 
 `bdd_specs_passing` has its own task, and its instruction is worth
