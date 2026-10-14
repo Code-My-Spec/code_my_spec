@@ -213,7 +213,7 @@ defmodule CodeMySpec.MixProject do
       # `TestDatabase.partition_for/2` uses them; a release boundary between the
       # two means a window where the harness runs a suite against a database
       # nothing told anyone to create.
-      {:client_utils, git: "https://github.com/Code-My-Spec/client_utils.git", branch: "master"},
+      {:client_utils, git: "https://github.com/Code-My-Spec/client_utils.git", branch: "main"},
       {:credo, "~> 1.7.13"},
       {:ex_slop, "~> 0.4.4", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
