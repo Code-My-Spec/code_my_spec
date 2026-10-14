@@ -45,4 +45,28 @@ defmodule CodeMySpecSpex.RealDisk do
 
   @spec dir?(String.t()) :: boolean()
   def dir?(path), do: File.dir?(path)
+
+  @doc "A real git checkout at `path`, ready to commit into."
+  @spec git_init!(String.t()) :: :ok
+  def git_init!(path) do
+    {_, 0} = System.cmd("git", ["init", "-q"], cd: path)
+    {_, 0} = System.cmd("git", ["config", "user.email", "spex@example.com"], cd: path)
+    {_, 0} = System.cmd("git", ["config", "user.name", "Spex"], cd: path)
+    :ok
+  end
+
+  @doc "Stage everything at `path` and commit it with `message`."
+  @spec git_commit_all!(String.t(), String.t()) :: :ok
+  def git_commit_all!(path, message) do
+    {_, 0} = System.cmd("git", ["add", "-A"], cd: path)
+    {_, 0} = System.cmd("git", ["commit", "-q", "-m", message], cd: path)
+    :ok
+  end
+
+  @doc "`git log --oneline` at `path`, for a then_ to read what landed."
+  @spec git_log_oneline!(String.t()) :: String.t()
+  def git_log_oneline!(path) do
+    {log, 0} = System.cmd("git", ["log", "--oneline"], cd: path)
+    log
+  end
 end

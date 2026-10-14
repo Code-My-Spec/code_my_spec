@@ -32,9 +32,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion977Spex do
       given_ "an agent part-way through writing files and committing them", context do
         copy = CodeMySpec.TempFile.dir("spex_2884_commit")
         RealDisk.mkdir_p!(copy)
-        {_out, 0} = System.cmd("git", ["init", "-q"], cd: copy)
-        {_out, 0} = System.cmd("git", ["config", "user.email", "spex@example.com"], cd: copy)
-        {_out, 0} = System.cmd("git", ["config", "user.name", "Spex"], cd: copy)
+        RealDisk.git_init!(copy)
         RealDisk.write!(Path.join(copy, "work.txt"), "in progress")
 
         agent = Fixtures.running_agent(context.scope)
@@ -83,7 +81,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion977Spex do
         refute running?(context.agent.id),
                "the agent is still running after being asked to stop"
 
-        {log, 0} = System.cmd("git", ["log", "--oneline"], cd: context.copy)
+        log = RealDisk.git_log_oneline!(context.copy)
 
         assert log =~ "in progress work",
                "the agent's process ended with the commit it was making never " <>
