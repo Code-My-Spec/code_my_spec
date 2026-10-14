@@ -1801,19 +1801,26 @@ defmodule CodeMySpec.Agents do
 
   def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
-    agents =
-      scope
-      |> AgentsRepository.list_agents()
-      |> Enum.filter(&(&1.working_copy_id == copy_id and not Agent.retired?(&1)))
+    on_copy = scope |> AgentsRepository.list_agents() |> Enum.filter(&(&1.working_copy_id == copy_id))
+
+    agents = Enum.reject(on_copy, &Agent.retired?/1)
 
     # A role somebody turned off is left alone and reported, not a failure; a
-    # retired seat is empty and gets filled (39af5611).
+    # retired seat is empty and gets filled (39af5611) -- except main's: firing
+    # it hires no replacement, so its seat stays empty until a person starts
+    # one directly, rather than this filling it the next time anything calls
+    # ensure_copy_agents on its copy (criterion 2213).
     off = Enum.filter(agents, &(Agent.off?(&1) and &1.role in roles))
     off_roles = MapSet.new(off, & &1.role)
 
     # A role with an agent on duty is filled, whether or not its process is up
     # this moment: one being restored is not a vacancy to start a second into.
     filled = agents |> Enum.filter(&on_duty?/1) |> MapSet.new(& &1.role)
+
+    filled =
+      if Enum.any?(on_copy, &(&1.role == :main and Agent.retired?(&1))),
+        do: MapSet.put(filled, :main),
+        else: filled
 
     roles
     |> Enum.reject(&(MapSet.member?(filled, &1) or MapSet.member?(off_roles, &1)))
