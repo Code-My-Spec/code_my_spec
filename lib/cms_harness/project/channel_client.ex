@@ -1283,11 +1283,19 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # Supervised, not a bare `Task.start`: an unsupervised, unlinked task has
+  # nothing tracking it once spawned, which is exactly the shape of defect
+  # 9839ae69 names elsewhere in this project's own test suite -- here it is
+  # production code instead. `ensure_app_running`/`restart_app`/`reload_app`/
+  # `stop_app` all answer through this, and the project's own `Task.Supervisor`
+  # (started beside this channel under `Project.Supervisor`) already exists
+  # for exactly this, the same one `Sync.start/2` and the analysis server use.
   defp dispatch_app_call(socket, ref, event, fun) do
     topic = socket.assigns.topic
+    root = socket.assigns.project.root
     parent = self()
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sync.task_supervisor(root), fn ->
       send(parent, {:app_call_result, topic, ref, event, fun.()})
     end)
   end
