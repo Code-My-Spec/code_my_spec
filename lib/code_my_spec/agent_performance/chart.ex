@@ -50,12 +50,19 @@ defmodule CodeMySpec.AgentPerformance.Chart do
         %{
           "name" => "token_spend",
           "type" => "line",
-          "data" => bucket_sums(buckets, turns_for(scope, filter, since, until), & &1.inserted_at, &token_total/1)
+          "data" =>
+            bucket_sums(
+              buckets,
+              turns_for(scope, filter, since, until),
+              & &1.inserted_at,
+              &token_total/1
+            )
         },
         %{
           "name" => "nudges",
           "type" => "line",
-          "data" => bucket_sums(buckets, nudges_for(scope, filter, since, until), & &1.at, fn _ -> 1 end)
+          "data" =>
+            bucket_sums(buckets, nudges_for(scope, filter, since, until), & &1.at, fn _ -> 1 end)
         },
         %{
           "name" => "qa_first_pass_rate",
@@ -65,7 +72,8 @@ defmodule CodeMySpec.AgentPerformance.Chart do
         %{
           "name" => "failed_turns",
           "type" => "line",
-          "data" => bucket_sums(buckets, failures_for(scope, filter, since, until), & &1.at, fn _ -> 1 end)
+          "data" =>
+            bucket_sums(buckets, failures_for(scope, filter, since, until), & &1.at, fn _ -> 1 end)
         }
       ],
       "events" => events_for(scope, filter, since, until)
@@ -89,8 +97,11 @@ defmodule CodeMySpec.AgentPerformance.Chart do
       |> Repo.all()
 
     case Enum.filter(turns, &(&1.input_tokens || &1.output_tokens)) do
-      [] -> :unknown
-      with_usage -> Enum.reduce(with_usage, 0, &(&2 + (&1.input_tokens || 0) + (&1.output_tokens || 0)))
+      [] ->
+        :unknown
+
+      with_usage ->
+        Enum.reduce(with_usage, 0, &(&2 + (&1.input_tokens || 0) + (&1.output_tokens || 0)))
     end
   end
 
@@ -163,7 +174,9 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     scope
     |> Qa.list_project_attempts(include_older: true, include_invalidated: true)
     |> Enum.group_by(& &1.story_id)
-    |> Enum.map(fn {_story_id, attempts} -> Enum.min_by(attempts, & &1.submitted_at, DateTime) end)
+    |> Enum.map(fn {_story_id, attempts} ->
+      Enum.min_by(attempts, & &1.submitted_at, DateTime)
+    end)
     |> Enum.filter(
       &(matches_attempt?(&1, filter, agent_copies) and in_window?(&1.submitted_at, since, until))
     )
@@ -199,7 +212,8 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     |> list_stories()
     |> filter_stories(filter)
     |> Enum.flat_map(fn story ->
-      cycle = CycleTime.story(scope, story, CycleTime.tasks_for(tasks, story.id, story.component_id))
+      cycle =
+        CycleTime.story(scope, story, CycleTime.tasks_for(tasks, story.id, story.component_id))
 
       []
       |> maybe_event("story_start", cycle.released_at, story, since, until)
@@ -233,11 +247,20 @@ defmodule CodeMySpec.AgentPerformance.Chart do
   defp story_held_by(agent_id) do
     Agent |> where([a], a.id == ^agent_id) |> select([a], a.story_id) |> Repo.one()
   end
+
   defp maybe_event(acc, _type, nil, _story, _since, _until), do: acc
 
   defp maybe_event(acc, type, at, story, since, until) do
     if in_window?(at, since, until) do
-      [%{"type" => type, "at" => DateTime.to_iso8601(at), "story_id" => story.id, "title" => story.title} | acc]
+      [
+        %{
+          "type" => type,
+          "at" => DateTime.to_iso8601(at),
+          "story_id" => story.id,
+          "title" => story.title
+        }
+        | acc
+      ]
     else
       acc
     end
@@ -249,8 +272,9 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     do: DateTime.compare(at, since) != :lt and DateTime.compare(at, until) != :gt
 
   defp bucket_starts(since) do
-    start = %{since | minute: 0, second: 0, microsecond: {0, 0}}
-    for i <- 0..(@bucket_count - 1), do: DateTime.add(start, i * @bucket_seconds, :second)
+    # Match the queried rolling window; rounding backward drops recent events
+    # after the last bucket ends at the beginning of the current clock hour.
+    for i <- 0..(@bucket_count - 1), do: DateTime.add(since, i * @bucket_seconds, :second)
   end
 
   defp bucket_index([first | _] = buckets, at) do

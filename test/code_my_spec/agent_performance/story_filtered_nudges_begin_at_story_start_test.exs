@@ -54,6 +54,28 @@ defmodule CodeMySpec.AgentPerformance.StoryFilteredNudgesBeginAtStoryStartTest d
     assert Enum.sum(nudges["data"]) == 2
   end
 
+  test "the chart includes a newly recorded nudge in its seven-day window", context do
+    agent = Fixtures.running_agent(context.scope, role: "coding")
+
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        context.scope.active_account_id,
+        context.scope.active_project_id,
+        agent.id
+      )
+
+    {:ok, _message} =
+      Conversations.add_message(conversation, :operator, "current nudge", "operator")
+
+    option = Chart.option(context.scope, %{agent_id: agent.id})
+    nudges = Enum.find(option["series"], &(&1["name"] == "nudges"))
+
+    assert option["bucket_count"] == 168
+    assert length(option["categories"]) == 168
+    assert Chart.detail(context.scope, %{agent_id: agent.id}).nudges == 1
+    assert Enum.sum(nudges["data"]) == 1
+  end
+
   defp add_nudge(conversation, text, at) do
     {:ok, message} = Conversations.add_message(conversation, :operator, text, "operator")
     {:ok, _message} = message |> Ecto.Changeset.change(inserted_at: at) |> Repo.update()
