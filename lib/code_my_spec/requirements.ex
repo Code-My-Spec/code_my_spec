@@ -49,7 +49,6 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
   alias CodeMySpec.Requirements.GraphInputs
-  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
@@ -329,7 +328,7 @@ defmodule CodeMySpec.Requirements do
   defp reproject(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     vantage = Projection.vantage(scope)
     :ok = Shadow.clear(scope)
-    _ = GraphWatcher.ensure_watching(scope)
+    _ = ShadowProjector.ensure_projecting(scope)
     ShadowProjector.reproject(project_id, vantage)
   end
 

@@ -25,7 +25,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Difference
   alias CodeMySpec.Requirements.DrainCost
-  alias CodeMySpec.Requirements.Edge
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
@@ -198,7 +197,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     ctx = Freshness.with_config(ctx, config)
 
     {projection_ms, {stored_nodes, stored_edges}} =
-      timed(fn -> Projection.load(scope, ctx, source: pass_tables()) end)
+      timed(fn -> Projection.load(scope, ctx, source: Shadow.pass_source()) end)
 
     {topology_ms, topology} = timed(fn -> Freshness.topology(ctx, config) end)
 
@@ -464,8 +463,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # against and the query refuses — "expected a binary of 16 bytes". Inside the
   # pass that is not an error anyone sees. `GraphWatcher` catches it, logs, and
   # tries again, which is a recompute loop at full tilt.
-  defp pass_tables, do: {Shadow.pass_target(), {Shadow.pass_edges(), Edge}}
-
   # Said out loud, because a rebuild is the largest thing a pass does and the
   # only one a reading taken at the database cannot see. `DrainCost.measure/2`
   # counts this alongside the queries, so `last_drain` reports it and criterion
@@ -1149,7 +1146,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # What the graph costs, split the way the work splits.
   #
-  # `Predicates` exists on the premise that node computation dominates —
+  # Converting checks to queries was premised on node computation dominating —
   # "4.4 seconds of `Enum` on a 3200-component project, against 34ms of
   # preload". That number came from one project at one time and there is no
   # instrumentation behind it, so whether converting the remaining checks to
@@ -1360,7 +1357,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # nothing verifies today and which matters more after the swap than this ever
   # did.
   defp verify_round_trip(scope, ctx, nodes, edges) do
-    {read_nodes, read_edges} = Projection.load(scope, ctx, source: pass_tables())
+    {read_nodes, read_edges} = Projection.load(scope, ctx, source: Shadow.pass_source())
 
     case Difference.describe(read_nodes, read_edges, nodes, edges) do
       :none ->

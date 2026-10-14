@@ -35,9 +35,6 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -47,7 +44,7 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
   end
 
   defp rows_at(copy_id, component_id) do
-    from(n in "shadow_requirements",
+    from(n in "requirements",
       where:
         n.component_id == type(^component_id, :binary_id) and
           n.working_copy_id == type(^copy_id, :binary_id),

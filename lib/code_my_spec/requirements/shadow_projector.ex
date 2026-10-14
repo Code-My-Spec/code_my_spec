@@ -168,6 +168,8 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       [] ->
         :ok
     end
+  catch
+    :exit, _ -> :ok
   end
 
   @doc """
@@ -309,6 +311,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       {_seeded, marks, _asked} -> apply_marks(state, marks)
     end
   rescue
+    error in DBConnection.OwnershipError ->
+      owner_gone(state, Exception.message(error))
+
     error ->
       Logger.warning(
         "[ShadowProjector] #{state.project_id} left #{inspect(error.__struct__)} pending: " <>
@@ -316,7 +321,28 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       )
 
       %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}
+  catch
+    :exit, reason ->
+      if owner_exited?(reason), do: owner_gone(state, "owner exited"), else: exit(reason)
   end
+
+  # Only under the sandbox: the process that owned this projector's connection
+  # is gone, so a scenario ended and this projector outlived it. Stopped as
+  # `GraphWatcher` stops, normally: crashing had its supervisor restart it into
+  # the same dead sandbox, and enough of those took the application down.
+  defp owner_gone(state, why) do
+    Logger.warning(
+      "[ShadowProjector] stopping: the sandbox owner for #{state.project_id} is gone (#{why})"
+    )
+
+    exit(:normal)
+  end
+
+  defp owner_exited?({{:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}, _call}),
+    do: true
+
+  defp owner_exited?({:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}), do: true
+  defp owner_exited?(_reason), do: false
 
   # The vantages these marks are about — asked of the marks, not enumerated.
   #

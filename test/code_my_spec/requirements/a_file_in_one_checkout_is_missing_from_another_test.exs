@@ -52,9 +52,6 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -68,9 +65,9 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
   # What the event path says about this component's implementation file at this
   # checkout. Read from the shadow rows because the endpoint serves the pass's
   # answer, and the pass is not what is under test.
-  defp shadow_verdict(scope, component_id) do
+  defp served_verdict(scope, component_id) do
     base =
-      from(n in "shadow_requirements",
+      from(n in "requirements",
         where:
           n.component_id == type(^component_id, :binary_id) and
             n.name == "implementation_file",
@@ -126,14 +123,14 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
       settle(first)
 
       IO.puts(
-        "ACTUAL first=#{inspect(shadow_verdict(first, component.id))} " <>
-          "second=#{inspect(shadow_verdict(second, component.id))}"
+        "ACTUAL first=#{inspect(served_verdict(first, component.id))} " <>
+          "second=#{inspect(served_verdict(second, component.id))}"
       )
 
-      assert shadow_verdict(first, component.id) == true,
+      assert served_verdict(first, component.id) == true,
              "the checkout holding the file does not report it present"
 
-      assert shadow_verdict(second, component.id) == false,
+      assert served_verdict(second, component.id) == false,
              """
              A checkout that has never held this file reports it present.
 

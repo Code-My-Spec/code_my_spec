@@ -59,6 +59,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.Edge
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
@@ -169,6 +170,10 @@ defmodule CodeMySpec.Requirements.Shadow do
 
   @spec pass_edges() :: String.t()
   def pass_edges, do: if(inverted?(), do: @shadow_edges, else: @real_edges)
+
+  @doc "The pass's own tables, as `Projection.load/3`'s `:source`."
+  @spec pass_source() :: {{String.t(), module()}, {String.t(), module()}}
+  def pass_source, do: {pass_target(), {pass_edges(), Edge}}
 
   @type entity :: {String.t(), term()}
 

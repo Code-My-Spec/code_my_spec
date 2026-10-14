@@ -116,7 +116,10 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProjectRemoteTest do
   describe "the requirement graph" do
     test "a story with no requirement rows has them after a sync", ctx do
       _pid = registered_channel(ctx.working_copy_id)
+      # A projected story whose rows are gone, as a story coming back was.
       story = story_fixture(ctx.scope)
+      _ = requirements_of(ctx.scope, story)
+      Repo.delete_all(from r in "requirements", where: r.story_id == ^story.id)
       assert requirements_of(ctx.scope, story) =~ "0/0 satisfied"
 
       {_response, text} = run(%{ctx.scope | cwd: nil})

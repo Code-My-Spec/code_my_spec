@@ -41,7 +41,7 @@ defmodule CodeMySpec.Requirements.SatisfactionIsPerWorkingCopyTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
 
-  alias CodeMySpec.Requirements.{NodeRepository, Preloader, Projection, Requirement}
+  alias CodeMySpec.Requirements.{NodeRepository, Preloader, Projection, Requirement, Shadow}
   alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -65,7 +65,7 @@ defmodule CodeMySpec.Requirements.SatisfactionIsPerWorkingCopyTest do
 
   defp read_back(scope, story) do
     {:ok, ctx} = Preloader.load(scope)
-    {nodes, _edges} = Projection.load(scope, ctx)
+    {nodes, _edges} = Projection.load(scope, ctx, source: Shadow.pass_source())
 
     nodes
     |> Enum.find(&(&1.name == "bdd_specs_exist" and &1.entity_id == story.id))

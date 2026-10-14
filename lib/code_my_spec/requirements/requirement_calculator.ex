@@ -168,9 +168,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # The environment comes from config rather than being baked into a function
   # name, because environments are rows: a project has whatever set it has, and
   # `uat_check/2` could only ever answer for one of them.
-  #
-  # `Predicates.satisfied(:deployed, …)` is the query form of this and must
-  # agree with it — same table, same `health_verified_at` rule.
   defp check(%{check_type: :deployed, config: config}, scope, entity, _files, ctx) do
     deployed_verdict(scope, entity, environment_from(config), ctx)
   end

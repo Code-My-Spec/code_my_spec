@@ -20,7 +20,7 @@ defmodule CodeMySpec.Requirements.ProjectionWriteOutcomeTest do
 
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Requirements.Shadow
 
   test "a successful computation writes rows and says so" do
     scope = full_scope_fixture()
@@ -29,7 +29,7 @@ defmodule CodeMySpec.Requirements.ProjectionWriteOutcomeTest do
     assert is_list(nodes)
 
     written =
-      Node
+      Shadow.pass_target()
       |> where([n], n.working_copy_id == ^scope.active_working_copy_id)
       |> Repo.aggregate(:count)
 
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Requirements.ProjectionWriteOutcomeTest do
     assert _nodes = Requirements.compute_all(scope)
 
     node_count =
-      Node
+      Shadow.pass_target()
       |> where([n], n.working_copy_id == ^scope.active_working_copy_id)
       |> Repo.aggregate(:count)
 
@@ -59,7 +59,7 @@ defmodule CodeMySpec.Requirements.ProjectionWriteOutcomeTest do
     # Recomputing on unchanged inputs must not disturb what is there.
     assert _again = Requirements.compute_all(scope)
 
-    assert Node
+    assert Shadow.pass_target()
            |> where([n], n.working_copy_id == ^scope.active_working_copy_id)
            |> Repo.aggregate(:count) == node_count,
            "a second computation on unchanged inputs rewrote the projection"

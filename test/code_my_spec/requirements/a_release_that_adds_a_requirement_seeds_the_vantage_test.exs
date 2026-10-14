@@ -27,9 +27,6 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -83,7 +80,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
 
       row =
         Repo.one!(
-          from(n in "shadow_requirements",
+          from(n in "requirements",
             where: n.id == ^template_row_id,
             select:
               map(n, [
@@ -101,7 +98,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
           )
         )
 
-      Repo.insert_all("shadow_requirements", [
+      Repo.insert_all("requirements", [
         Map.merge(row, %{name: "retired_requirement", story_id: story.id, satisfied_by: nil})
       ])
 
@@ -134,7 +131,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
         |> Ecto.Query.limit(1)
         |> Repo.all()
 
-      {1, _} = from(e in "shadow_requirement_edges", where: e.id == ^edge_id) |> Repo.delete_all()
+      {1, _} = from(e in "requirement_edges", where: e.id == ^edge_id) |> Repo.delete_all()
       assert story_edge_count(scope) == drawn - 1
 
       restart_projector(scope)
@@ -155,8 +152,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   defp story_edge_count(%Scope{} = scope), do: scope |> story_edges() |> Repo.aggregate(:count)
 
   defp story_edges(%Scope{active_project_id: project_id, active_working_copy_id: copy}) do
-    from(e in "shadow_requirement_edges",
-      join: n in "shadow_requirements",
+    from(e in "requirement_edges",
+      join: n in "requirements",
       on: n.id == e.from_requirement_id,
       join: s in "stories",
       on: s.id == n.story_id,
@@ -187,7 +184,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   defp rows_named(%Scope{} = scope, name), do: scope |> story_rows(name) |> Repo.aggregate(:count)
 
   defp story_rows(%Scope{active_project_id: project_id, active_working_copy_id: copy}, name) do
-    from(n in "shadow_requirements",
+    from(n in "requirements",
       join: s in "stories",
       on: s.id == n.story_id,
       where: s.project_id == type(^project_id, :binary_id) and n.name == ^name,

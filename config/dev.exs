@@ -267,11 +267,3 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewTunnel, embedder: "https://de
 # and components but not project-level requirements, and a writer that skips
 # changesets leaves `updated_at` untouched and so moves no fingerprint.
 config :code_my_spec, graph_stale_read_log: true
-
-# The event projection is the sole continuous writer in dev. The legacy pass
-# remains available through explicit recomputation and verification commands.
-# All 13 live views and 39 incremental checks agreed before this cutover.
-config :code_my_spec, graph_event_is_source: true
-config :code_my_spec, graph_shadow_projection: true
-config :code_my_spec, graph_pass_enabled: false
-config :code_my_spec, graph_shadow_diff: false

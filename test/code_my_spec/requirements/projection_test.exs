@@ -19,6 +19,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.{Preloader, Projection, RequirementGraph}
   alias CodeMySpec.Stories
 
@@ -26,8 +27,14 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     %{scope: full_scope_fixture()}
   end
 
+  # The graph as computed, with the served rows rebuilt from the same domain.
+  defp publish(scope) do
+    {{nodes, edges}, _actionable, _at} = Requirements.recompute(scope)
+    {nodes, edges}
+  end
+
   defp round_trip(scope) do
-    {nodes, edges} = RequirementGraph.compute_graph(scope)
+    {nodes, edges} = publish(scope)
     {read_nodes, read_edges} = Projection.load(scope, ctx!(scope))
 
     {{nodes, edges}, {read_nodes, read_edges}}
@@ -148,7 +155,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   describe "for_file/2" do
     setup %{scope: scope} do
       component = component_fixture(scope, %{type: "context"})
-      RequirementGraph.compute_graph(scope)
+      publish(scope)
       %{component: component}
     end
 
@@ -204,16 +211,25 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   # saying the opposite.
   describe "cached_graph/1 reads the rows" do
     test "a verdict changed in a row is what the reader gets", %{scope: scope} do
-      RequirementGraph.compute_graph(scope)
+      publish(scope)
 
-      row = Repo.one!(from n in CodeMySpec.Requirements.Node, limit: 1)
+      vantage = Projection.vantage(scope)
+
+      row =
+        Repo.one!(
+          from n in CodeMySpec.Requirements.Node,
+            where: n.project_id == ^scope.active_project_id and n.working_copy_id == ^vantage,
+            limit: 1
+        )
+
       flipped = not row.satisfied
 
       row
       |> Ecto.Changeset.change(satisfied: flipped)
       |> Repo.update!()
 
-      {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
+      # Unsettled: a writer draining here would correct the row this test edited.
+      {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope, settle: false)
 
       served = Enum.find(nodes, &(&1.name == row.name))
 
@@ -229,7 +245,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     # more. Rehydrating it would put a retired requirement back in front of an
     # agent.
     test "a row with no matching definition is not rehydrated", %{scope: scope} do
-      RequirementGraph.compute_graph(scope)
+      publish(scope)
 
       Repo.insert!(%CodeMySpec.Requirements.Node{
         project_id: scope.active_project_id,
