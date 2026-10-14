@@ -126,6 +126,27 @@ timed out — `action: "redeliver"` re-sends a completed handoff without
 re-running the work. Reconnecting does the same thing automatically for
 anything still completed and undelivered.
 
+## An operator's handoff note is not the graph
+
+A `tmp/*.md` brief, a chat message, or any instruction written outside the
+graph can go stale the moment it is written — the work it names may already
+be done, reassigned, or blocked on something it does not mention. Treat one
+as a lead, not a source of truth: resolve what it says against
+`get_next_requirement` and `list_tasks` before acting on it, and when they
+disagree, the graph is the one that is current.
+
+A working copy's team works exactly one story at a time — set with
+`set_active_story` (`Agents.assign_team/3`), read with
+`WorkingCopies.team_story_id/1`. There is no separate "active story" record
+on the copy itself; it was removed on purpose (John: "we don't have to
+record the active story on the copy, it just blows through"). So a handoff
+naming a different story than the one `get_next_requirement` offers is not
+evidence that dispatch is broken — it means the team has not been
+reassigned to it yet. Reassign with `set_active_story`, which any team
+member can call for their own copy and only the main agent can call for
+another; do not look for a bypass around dispatch to force the named work
+to appear.
+
 ## Do not trust a status tool over the rows
 
 `devops_status` reports "N steps have nothing behind them" for any step whose
