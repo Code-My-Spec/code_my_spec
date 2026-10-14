@@ -508,8 +508,8 @@ defmodule CodeMySpec.Agents.Main do
   `opts`: `:basis` (`"record"`, `"precedent"` with `:precedent_id`, or
   `"inspected"` with `:inspector_id` and `:citation`), `:by` (`:product` for
   the product agent answering its own), `:on_behalf_of` and `:tool`, and
-  `:worked_around`. An answer that does not stand up is escalated to the user
-  and the error returned.
+  `:worked_around` with `:capability`. An answer that does not stand up is
+  escalated to the user and the error returned.
 
   See knowledge/agents, "Answering questions".
 
@@ -519,10 +519,19 @@ defmodule CodeMySpec.Agents.Main do
   that does not carry the tool does not get it used on its behalf, or every
   scoping decision in `ToolSets` would be advisory.
 
-  ## `worked_around` is how a gap gets counted
+  ## `worked_around` is how a gap gets counted — `capability` is what makes it
+  ## count against the right thing
 
   Only the answerer knows whether an answer was a workaround, so it says, and
   the counting is ours: a capability gap per role, filed once as an issue.
+
+  `worked_around` is the explanation, and it is prose — written fresh each
+  time, so two tellings of the same gap rarely match word for word. `capability`
+  is what the dedupe actually keys on: a short, stable name for what was
+  missing (the tool name, usually), supplied separately so the same gap keeps
+  counting as one however differently it gets described. Without it, the key
+  falls back to the explanation itself, which is exactly the one field
+  guaranteed to vary between occurrences of the same gap.
   """
   @spec answer_question(Scope.t(), String.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
@@ -1055,20 +1064,27 @@ defmodule CodeMySpec.Agents.Main do
 
     with {:ok, answered} <-
            Notifications.answer_question_request(question.id, answers, answered_by: answered_by) do
-      note_gap(scope, question, Keyword.get(opts, :worked_around))
+      note_gap(scope, question, Keyword.get(opts, :worked_around), Keyword.get(opts, :capability))
       {:ok, answered}
     end
   end
 
-  defp note_gap(_scope, _question, nil), do: :ok
+  defp note_gap(_scope, _question, nil, _capability), do: :ok
 
   # Bookkeeping about the answer, never part of it: the answer is already
   # committed, so a failure here is logged, never returned — an error would make
   # main re-answer an answered question. Causes are fixed, not rescued
   # (`gap_title/1`, `CapabilityGap.changeset/2`).
-  defp note_gap(scope, question, capability) do
+  #
+  # Dedupes on `capability_key/2`, not on `worked_around` itself: the free-text
+  # explanation of what happened is evidence (`detail`), and keying on it is
+  # how one gap became three issues (bb784152) -- different wordings of the
+  # same missing tool, each read as a first occurrence.
+  defp note_gap(scope, question, worked_around, capability) do
+    key = capability_key(capability, worked_around)
+
     with {:ok, gap} <-
-           GapRepository.record(scope.active_project_id, question.agent_role, capability),
+           GapRepository.record(scope.active_project_id, question.agent_role, key, worked_around),
          :ok <- file_gap_once(scope, gap) do
       :ok
     else
@@ -1081,6 +1097,15 @@ defmodule CodeMySpec.Agents.Main do
         :ok
     end
   end
+
+  # Prefer the caller's own stable name for what was missing; fall back to the
+  # explanation itself, normalized, when none was given -- still prose, and
+  # still liable to vary between occurrences, but no worse than before this
+  # field existed, and `detail` carries the full wording either way.
+  defp capability_key(nil, worked_around), do: normalize_capability(worked_around)
+  defp capability_key(capability, _worked_around), do: normalize_capability(capability)
+
+  defp normalize_capability(text), do: text |> String.trim() |> String.downcase()
 
   # Filed once — the gap row owns whether an issue exists — and the count
   # carried on that issue's description, so triage can tell a one-off from a
@@ -1150,10 +1175,14 @@ defmodule CodeMySpec.Agents.Main do
 
     Every one of those went fine, which is the problem — a gap that blocks gets \
     fixed, and one that is smoothly worked around is invisible to everybody \
-    except the thing doing the smoothing. Add the capability to the #{gap.role} \
-    tool set, or say why it belongs with the main agent.
+    except the thing doing the smoothing.#{detail_line(Map.get(gap, :detail))} Add the capability to the \
+    #{gap.role} tool set, or say why it belongs with the main agent.
     """
   end
+
+  defp detail_line(nil), do: ""
+  defp detail_line(""), do: ""
+  defp detail_line(detail), do: " Most recently: #{detail}."
 
   @doc """
   The main agent has finished and asks not to be woken again.

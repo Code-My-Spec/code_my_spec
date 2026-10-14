@@ -107,4 +107,76 @@ defmodule CodeMySpec.Agents.Main.GapRepositoryTest do
     refute product.id == coding.id
     assert coding.occurrences == 1
   end
+
+  describe "the same gap described differently each time (bb784152, 1a41b25f, 2f67ccdf)" do
+    # Three real wordings of the one gap this issue was filed over, worded
+    # differently every time and each read by the old dedupe as a first
+    # occurrence -- because `capability` was the full sentence, and no two of
+    # these three sentences are byte-identical.
+    @wordings [
+      "submit_issue_qa_result",
+      "the qa role could not submit a QA result for an issue, so I did it on its behalf",
+      "qa lacks a tool to submit an issue QA result"
+    ]
+
+    test "a stable capability keeps three different wordings as one gap" do
+      scope = user_scope_fixture()
+      project = CodeMySpec.ProjectsFixtures.project_fixture(scope)
+
+      gaps =
+        Enum.map(@wordings, fn wording ->
+          {:ok, gap} = GapRepository.record(project.id, "qa", "submit_issue_qa_result", wording)
+          gap
+        end)
+
+      ids = gaps |> Enum.map(& &1.id) |> Enum.uniq()
+
+      assert ids == [hd(ids)],
+             "three wordings of the same gap produced different rows -- the exact defect " <>
+               "bb784152/1a41b25f/2f67ccdf reported"
+
+      last = List.last(gaps)
+      assert last.occurrences == 3
+      assert last.detail == List.last(@wordings)
+    end
+
+    test "the issue filed for it stays one issue, with the latest wording as evidence" do
+      scope = full_scope_fixture()
+
+      [first_wording | rest] = @wordings
+
+      {:ok, gap} =
+        GapRepository.record(scope.active_project_id, "qa", "submit_issue_qa_result", first_wording)
+
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(scope, %{
+          title: MainAgent.gap_title(gap),
+          severity: :medium,
+          scope: :framework,
+          description: "placeholder"
+        })
+
+      :ok = GapRepository.attach_issue(gap, issue.id)
+
+      final =
+        Enum.reduce(rest, gap, fn wording, _acc ->
+          {:ok, updated} =
+            GapRepository.record(
+              scope.active_project_id,
+              "qa",
+              "submit_issue_qa_result",
+              wording
+            )
+
+          updated
+        end)
+
+      assert final.issue_id == issue.id,
+             "a differently-worded recurrence of the same capability filed a second issue " <>
+               "instead of being counted against the first"
+
+      assert final.occurrences == 3
+      assert final.detail == List.last(rest)
+    end
+  end
 end
