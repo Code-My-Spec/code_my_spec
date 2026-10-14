@@ -4340,8 +4340,22 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc "Recompute this checkout's graph now, as `sync_project` does."
+  def recompute_graph(%Scope{} = scope) do
+    _ = CodeMySpec.Requirements.recompute(scope)
+    :ok
+  end
+
+  @doc "Why the writer serving this project's reads last failed, or nil."
+  def graph_last_error(%Scope{active_project_id: project_id}) do
+    case CodeMySpec.Requirements.GraphReport.writer_status(project_id) do
+      %{last_error: %{message: message}} -> message
+      _ -> nil
+    end
+  end
+
   @doc """
-  Make this project's graph watcher raise instead of recomputing.
+  Make this project's graph writer raise instead of recomputing.
 
   A different fault from `break_digest_source/1`: that one leaves the graph
   itself fine and breaks only what the main agent's digest reads. This is the

@@ -81,17 +81,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3557Spex do
         :ok = Fixtures.break_graph_recompute(context.scope)
         :ok = Fixtures.mark_story_ready(context.scope, context.story)
         :ok = Fixtures.settle_graph(context.scope)
-        # End this test's retrying watchers before inspecting and clearing only
-        # the expected injected failures, so none leak into another scenario.
+        assert Fixtures.graph_last_error(context.scope) =~ "fault injected for this project"
         Fixtures.stop_graph_watchers()
-        errors = SexySpex.ErrorCapture.get_errors()
-        assert errors != []
-
-        for error <- errors do
-          assert error.message =~ "[GraphWatcher] recompute failed"
-          assert error.message =~ "fault injected for this project"
-        end
-
         SexySpex.ErrorCapture.clear()
         {:ok, context}
       end

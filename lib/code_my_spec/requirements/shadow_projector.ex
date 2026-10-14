@@ -260,7 +260,8 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
         requested_vantages: MapSet.put(state.requested_vantages, vantage)
     }
 
-    {:reply, :ok, drain(state)}
+    state = state |> Map.put(:drain_kind, :reseed) |> drain() |> Map.delete(:drain_kind)
+    {:reply, :ok, state}
   end
 
   @impl true
@@ -379,7 +380,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # against one that applied its events would be comparing two systems.
     state =
       DrainCost.measure(
-        %{kind: :event, project_id: state.project_id, observations: length(marks)},
+        %{
+          kind: Map.get(state, :drain_kind, :event),
+          project_id: state.project_id,
+          observations: length(marks)
+        },
         fn ->
           vantages = vantages(state, marks)
 

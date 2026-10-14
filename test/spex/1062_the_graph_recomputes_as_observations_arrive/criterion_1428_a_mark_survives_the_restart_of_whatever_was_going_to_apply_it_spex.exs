@@ -64,8 +64,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3520Spex do
   # That is a real gap, filed as `e0729ea9`, and is not this criterion's
   # subject.
   defp project_the_marks(_context) do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -113,7 +111,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3520Spex do
 
       when_ "the process that applies them is restarted", context do
         Fixtures.stop_graph_watchers()
-        Application.put_env(:code_my_spec, :graph_shadow_projection, true)
         Fixtures.watch_graph(context.scope)
 
         {:ok, Map.put(context, :pending_after, pending(context))}
