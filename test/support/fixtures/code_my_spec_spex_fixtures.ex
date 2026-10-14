@@ -1759,18 +1759,15 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Stop every graph watcher, so nothing new starts during teardown.
+  Stop every project's graph projector, so nothing new starts during teardown.
 
-  Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
-  project-scoped GenServer under a dynamic supervisor and outlives the scenario
-  that started it, so its debounce timer can fire *after* the drain and spawn
-  another wake into a sandbox that is about to go away. Stopping the watchers
-  first closes that window.
+  A projector outlives the scenario that started it and drains the moment a
+  mark lands, so it can start work into a sandbox that is about to go away.
 
   Every one rather than this scope's, because teardown runs before the scope is
-  in hand and because a spex run gives each scenario its own project — so the
-  watchers alive at the end of one are that one's, and a watcher belonging to
-  nothing is what a straggler is.
+  in hand — which is only right when nothing runs beside the caller. From an
+  async test this stops every concurrent test's projector; use
+  `stop_watching/1` there.
   """
   @spec stop_graph_watchers() :: :ok
   def stop_graph_watchers do

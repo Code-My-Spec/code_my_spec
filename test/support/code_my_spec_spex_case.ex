@@ -379,12 +379,16 @@ defmodule CodeMySpecSpex.Case do
       on_exit(&Fixtures.drain_background_work/0)
     end
 
-    # After the drain, so it runs before it. Draining alone leaves a window: a
-    # `GraphWatcher` outlives the scenario that started it, and its debounce
-    # timer can fire after the supervisor is empty and start another wake into
-    # a sandbox that is on its way out. Stopping the watcher first means
-    # nothing new is started while the drain is clearing what is left.
-    on_exit(&Fixtures.stop_graph_watchers/0)
+    # After the drain, so it runs before it: a projector stopped first starts
+    # nothing new while the drain clears what is left.
+    #
+    # Sync only. It stops every projector, which are this test's only when
+    # nothing runs beside it; from an async test it stopped the projectors of
+    # every test running alongside, whose next settle then answered `:ok` over
+    # an empty graph — 13 failures a run across the requirements tests
+    # (2026-10-14). An async test's projectors stop themselves when its
+    # sandbox owner exits (`IncrementalGraph`'s `owner_gone/2`).
+    unless tags[:async], do: on_exit(&Fixtures.stop_graph_watchers/0)
 
     # DNS resolution cannot live in a cassette — the authoritative lookup is a
     # syscall, and it has to stay authoritative because a recursive resolver

@@ -10,8 +10,7 @@ defmodule CodeMySpec.PromotionQueue.APromoteIsCheckedAtItsCommitTest do
   skipping the QA check and leaving the story unstamped.
   """
 
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.StoriesFixtures

@@ -7,8 +7,8 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   scope are decided in one place.
   """
 
+  alias CodeMySpec.Repo.SandboxAllowance
   alias CodeMySpec.Requirements.IncrementalGraph
-  alias CodeMySpec.Requirements.SandboxAllowance
   alias CodeMySpec.Users.Scope
 
   @doc """

@@ -14,8 +14,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   requirement the templates no longer define, or lack one they do, is seeded
   like a vantage with none.
   """
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo

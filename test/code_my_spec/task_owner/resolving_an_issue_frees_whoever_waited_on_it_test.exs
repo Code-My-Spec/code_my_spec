@@ -20,8 +20,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   `story_issues_resolved` (id 6) as a prerequisite, because 6 already depends on
   4 and the graph would cycle.
   """
-  # Sync: failed under concurrency in the gate, 2026-10-14 (the graph-offer class).
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

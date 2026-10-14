@@ -8,8 +8,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
   exactly what was wrong and when it would stop — "try again at Sep 30th, 2026
   11:20 PM" — and none of it reached any state an operator or `check_in` read.
   """
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents

@@ -19,8 +19,7 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   So writers announce, one watcher per project debounces and asks the
   fingerprint, and the recompute happens in one place.
   """
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures

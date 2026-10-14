@@ -22,8 +22,7 @@ defmodule CodeMySpec.Requirements.ARecomputeThatActuallyFailsTest do
   takes and pass.
   """
 
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

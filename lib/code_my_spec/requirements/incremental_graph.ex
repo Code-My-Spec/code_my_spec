@@ -50,6 +50,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.Repo
+  alias CodeMySpec.Repo.SandboxAllowance
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.Edges
   alias CodeMySpec.Requirements.Freshness
@@ -61,7 +62,6 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.SandboxAllowance
   alias CodeMySpec.Users.Scope
 
   # -- Client --
@@ -304,7 +304,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}
   catch
     :exit, reason ->
-      if owner_exited?(reason), do: owner_gone(state, "owner exited"), else: exit(reason)
+      if SandboxAllowance.sandboxed?() and sandbox_gone?(reason),
+        do: owner_gone(state, "owner exited"),
+        else: exit(reason)
   end
 
   # Only under the sandbox: the process that owned this projector's connection
@@ -319,11 +321,22 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     exit(:normal)
   end
 
-  defp owner_exited?({{:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}, _call}),
+  # Every shape a checkout exits with once the test that owned the connection
+  # has finished: the owner exited (as a string or a ConnectionError), the
+  # holder is already gone, or another client of the same connection exited
+  # mid-query. Matching only the first left the rest as crashes, and enough
+  # crashes across concurrent tests tripped `WatcherSupervisor`'s restart
+  # intensity, taking every project's projector with it (2026-10-14). Only ever
+  # asked under the sandbox; outside it a checkout that exits is a real fault.
+  defp sandbox_gone?({reason, {DBConnection.Holder, :checkout, _}}), do: sandbox_gone?(reason)
+  defp sandbox_gone?({:shutdown, "owner " <> _}), do: true
+  defp sandbox_gone?({:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}), do: true
+
+  defp sandbox_gone?({:shutdown, %DBConnection.ConnectionError{message: "client " <> _}}),
     do: true
 
-  defp owner_exited?({:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}), do: true
-  defp owner_exited?(_reason), do: false
+  defp sandbox_gone?(:noproc), do: true
+  defp sandbox_gone?(_reason), do: false
 
   # The vantages these marks are about — asked of the marks, not enumerated.
   #

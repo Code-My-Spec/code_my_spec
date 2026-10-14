@@ -46,6 +46,7 @@ defmodule CodeMySpec.PromotionQueue do
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpec.Qa
+  alias CodeMySpec.Repo.SandboxAllowance
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -256,11 +257,12 @@ defmodule CodeMySpec.PromotionQueue do
   """
   @spec ensure_worker(Scope.t()) :: :ok
   def ensure_worker(%Scope{active_project_id: project_id} = scope) do
-    case DynamicSupervisor.start_child(@supervisor, {Worker, {project_id, scope}}) do
+    case DynamicSupervisor.start_child(@supervisor, {Worker, {project_id, scope, self()}}) do
       {:ok, _pid} ->
         :ok
 
       {:error, {:already_started, pid}} ->
+        SandboxAllowance.grant(pid)
         GenServer.cast(pid, {:scope, scope})
         GenServer.cast(pid, :kick)
         :ok
