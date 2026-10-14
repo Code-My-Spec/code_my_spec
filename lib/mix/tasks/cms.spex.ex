@@ -1,0 +1,181 @@
+defmodule Mix.Tasks.Cms.Spex do
+  @shortdoc "Run spex; the whole suite runs as parallel shards"
+
+  @moduledoc """
+  The last step of this repo's `spex` alias.
+
+  Named files run as they always have, in this VM. The whole suite — no files
+  named — runs as four child `mix spex` processes, each on its own copy of this
+  partition's freshly migrated database, and their JSONL and exit codes are
+  merged. Nearly every spex is sync, so a single run uses one core; separate VMs
+  on separate databases keep each shard's global state its own.
+
+  Measured 2026-10-14: 199s for four shards against 390–480s for one run, 1763
+  tests, 0 failures. Eight shards were no faster on a 10-core box.
+
+  A shard's database is `<this database>_<n>`, recreated from this one as a
+  template every run, so a migration an earlier candidate applied cannot linger
+  in it. When the template is busy (another run is connected to it) the shard is
+  created empty and its own alias migrates it.
+  """
+
+  use Mix.Task
+  use Boundary, classify_to: CodeMySpec
+
+  alias Mix.Tasks.Spex
+
+  @shards 4
+  @prefix "code_my_spec_test"
+
+  @impl Mix.Task
+  def run(args) do
+    {files, jsonl, rest} = split_args(args)
+
+    if files == [] and rest == [] do
+      run_shards(jsonl)
+    else
+      run_here(args)
+    end
+  end
+
+  defp run_here(args) do
+    refuse_unless_own_shard!()
+    Mix.Task.run("cms.check_test_migrations")
+    Spex.run(args)
+  end
+
+  defp split_args(args) do
+    {jsonl, others} = Enum.split_with(args, &String.starts_with?(&1, "--jsonl="))
+    {files, rest} = Enum.split_with(others, &String.ends_with?(&1, ".exs"))
+    {files, Enum.map(jsonl, &String.replace_prefix(&1, "--jsonl=", "")) |> List.first(), rest}
+  end
+
+  defp run_shards(jsonl) do
+    base = database()
+    partition = String.replace_prefix(base, @prefix, "")
+    groups = groups()
+
+    Mix.shell().info("[cms.spex] #{length(spex_files())} files in #{@shards} shards")
+    with_admin(fn conn -> Enum.each(1..@shards, &recreate(conn, base, shard_db(base, &1))) end)
+
+    results =
+      groups
+      |> Enum.with_index(1)
+      |> Task.async_stream(&run_shard(&1, partition), timeout: :infinity, ordered: true)
+      |> Enum.map(fn {:ok, result} -> result end)
+
+    Enum.each(results, fn {i, _status, output, _jsonl} ->
+      Mix.shell().info("\n===== shard #{i} =====\n" <> output)
+    end)
+
+    if jsonl, do: File.write!(jsonl, Enum.map_join(results, &read_jsonl/1))
+    Enum.each(results, fn {_, _, _, path} -> File.rm(path) end)
+
+    statuses = Enum.map(results, fn {i, status, _, _} -> "shard #{i}: exit #{status}" end)
+    Mix.shell().info("[cms.spex] " <> Enum.join(statuses, ", "))
+
+    if Enum.any?(results, fn {_, status, _, _} -> status != 0 end), do: exit({:shutdown, 1})
+  end
+
+  defp run_shard({files, i}, partition) do
+    path =
+      Path.join(System.tmp_dir!(), "cms_spex_shard_#{System.unique_integer([:positive])}.jsonl")
+
+    started = System.monotonic_time(:second)
+
+    {output, status} =
+      System.cmd("mix", ["spex" | files] ++ ["--jsonl=#{path}"],
+        env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", "#{partition}_#{i}"}],
+        stderr_to_stdout: true
+      )
+
+    Mix.shell().info(
+      "[cms.spex] shard #{i} exited #{status} in #{System.monotonic_time(:second) - started}s"
+    )
+
+    {i, status, output, path}
+  end
+
+  defp read_jsonl({_, _, _, path}) do
+    case File.read(path) do
+      {:ok, ""} -> ""
+      {:ok, content} -> String.trim_trailing(content, "\n") <> "\n"
+      {:error, _} -> ""
+    end
+  end
+
+  # Round-robin over the sorted list, so one story's criteria spread across shards.
+  defp groups do
+    spex_files()
+    |> Enum.with_index()
+    |> Enum.group_by(fn {_, i} -> rem(i, @shards) end, fn {file, _} -> file end)
+    |> Enum.sort()
+    |> Enum.map(fn {_, files} -> files end)
+  end
+
+  defp spex_files do
+    Mix.Project.config()
+    |> get_in([:spex, :pattern])
+    |> Path.wildcard()
+    |> Enum.sort()
+  end
+
+  defp shard_db(base, i), do: "#{base}_#{i}"
+
+  defp recreate(conn, base, shard) do
+    guard!(shard)
+    Postgrex.query!(conn, ~s[DROP DATABASE IF EXISTS "#{shard}" WITH (FORCE)], [])
+
+    case Postgrex.query(conn, ~s[CREATE DATABASE "#{shard}" TEMPLATE "#{base}"], []) do
+      {:ok, _} ->
+        :ok
+
+      {:error, %Postgrex.Error{postgres: %{code: :object_in_use}}} ->
+        Postgrex.query!(conn, ~s[CREATE DATABASE "#{shard}"], [])
+    end
+  end
+
+  # Only ever this repo's test databases.
+  defp guard!(name) do
+    unless String.starts_with?(name, @prefix) and name =~ ~r/_\d+$/ do
+      Mix.raise("[cms.spex] refusing to recreate #{inspect(name)}: not a spex shard database")
+    end
+  end
+
+  defp with_admin(fun) do
+    {:ok, _} = Application.ensure_all_started(:postgrex)
+    config = CodeMySpec.Repo.config()
+
+    {:ok, conn} =
+      Postgrex.start_link(
+        hostname: config[:hostname],
+        port: config[:port] || 5432,
+        username: config[:username],
+        password: config[:password],
+        database: "postgres"
+      )
+
+    try do
+      fun.(conn)
+    after
+      GenServer.stop(conn)
+    end
+  end
+
+  # A shard that resolved to some other database would share it with its
+  # siblings and fail as if the suite were broken.
+  defp refuse_unless_own_shard! do
+    with "" <> requested <- System.get_env("MIX_TEST_PARTITION"),
+         true <- requested =~ ~r/_\d+$/,
+         false <- String.ends_with?(database(), requested) do
+      Mix.raise(
+        "[cms.spex] MIX_TEST_PARTITION=#{requested} resolved to #{database()}; " <>
+          "config/test.exs did not accept it as this copy's shard"
+      )
+    else
+      _ -> :ok
+    end
+  end
+
+  defp database, do: CodeMySpec.Repo.config()[:database]
+end
