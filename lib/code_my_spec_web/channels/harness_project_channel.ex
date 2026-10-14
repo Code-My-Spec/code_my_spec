@@ -475,16 +475,32 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     project = socket.assigns.scope.active_project
 
     if project && project.health_route_status != status do
-      case Projects.update_project(socket.assigns.scope, project, %{
-             health_route_status: status
-           }) do
-        {:ok, updated} ->
-          {:reply, :ok, put_in(socket.assigns.scope.active_project, updated)}
+      # `Repo.update/1` raises Ecto.StaleEntryError rather than returning
+      # {:error, _} when the project's own lock_version moved under it --
+      # a fresh join's report_root/2 and this correction can race within
+      # milliseconds over a loopback connection. Self-healing like the rest
+      # of this clause: the row already reflects a write at least as
+      # current as this one, and the next status report corrects it anyway.
+      try do
+        case Projects.update_project(socket.assigns.scope, project, %{
+               health_route_status: status
+             }) do
+          {:ok, updated} ->
+            {:reply, :ok, put_in(socket.assigns.scope.active_project, updated)}
 
-        {:error, reason} ->
+          {:error, reason} ->
+            Logger.warning(
+              "[HarnessProject] could not correct health_route_status to #{inspect(status)} " <>
+                "for #{project.id}: #{inspect(reason)}"
+            )
+
+            {:reply, :ok, socket}
+        end
+      rescue
+        error in Ecto.StaleEntryError ->
           Logger.warning(
             "[HarnessProject] could not correct health_route_status to #{inspect(status)} " <>
-              "for #{project.id}: #{inspect(reason)}"
+              "for #{project.id}: #{Exception.message(error)}"
           )
 
           {:reply, :ok, socket}
@@ -2202,7 +2218,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The harness leaving on purpose — a restart, a shutdown. Worth a line,
   # because it still strands whatever was running, but not an alarm.
   defp log_disconnect(reason, socket)
-       when reason in [:normal, :shutdown, {:shutdown, :left}, {:shutdown, :closed}] do
+       when reason in [
+              :normal,
+              :shutdown,
+              {:shutdown, :left},
+              {:shutdown, :closed},
+              {:shutdown, :peer_closed}
+            ] do
     Logger.info("[HarnessProject] channel closed (#{inspect(reason)}) topic=#{socket.topic}")
   end
 

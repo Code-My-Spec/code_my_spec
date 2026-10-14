@@ -181,8 +181,15 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
     Application.put_env(:code_my_spec, :harness_server_url_override, "http://127.0.0.1:#{port}")
 
     ExUnit.Callbacks.on_exit(fn ->
-      if Process.alive?(listener), do: ThousandIsland.stop(listener, 1_000)
+      # The harness subtree first: Copy.stop/1 blocks until the channel
+      # GenServer (and any health-check write it is mid-sending) is fully
+      # terminated, so nothing it does can still be in flight once this
+      # returns. Stopping the listener first let a write already queued in
+      # the server-side channel process land after its own subtree here
+      # had moved on, surfacing as a stale-struct error in whichever test
+      # happened to be running at that moment (add46395).
       Fixtures.stop_desktop_fixture_copies(root)
+      if Process.alive?(listener), do: ThousandIsland.stop(listener, 1_000)
 
       case previous do
         {:ok, value} -> Application.put_env(:code_my_spec, :harness_server_url_override, value)

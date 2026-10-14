@@ -105,15 +105,8 @@ defmodule CodeMySpecSpex.Story1112.Criterion2040Spex do
     end
   end
 
-  # fail_on_error_logs: false -- fresh_machine's on_exit stops the previous
-  # scenario's local listener before its harness subtree, so that scenario's
-  # own channel can still be mid-health-check when it gets cut off; the
-  # resulting Ecto.StaleEntryError lands in whichever test is capturing
-  # errors at that moment by pure timing, not because of anything this one
-  # does. The assertions below are unaffected and still strict.
   spex "Reopening after the local channel drops reconnects without an explicit action",
-    criterion: 2040,
-    fail_on_error_logs: false do
+    criterion: 2040 do
     scenario "The project reconnects on its own once its channel comes back up" do
       given_ "machine setup has completed and the project is connected", context do
         project_dir = Path.join(context.machine_root, "reconnect_app")
