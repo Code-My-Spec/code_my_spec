@@ -14,7 +14,11 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
 
   Say `worked_around` when you had to supply something the asking role should
   have been able to find itself; that gets counted as a gap in that role's
-  tools.
+  tools. Say `capability` alongside it: a short, stable name for what was
+  missing (usually the tool name), not a sentence. `worked_around` is written
+  fresh each time and rarely matches word for word between occurrences of the
+  same gap, so without `capability` the same gap can get filed as several
+  issues instead of one counted repeatedly.
   """
 
   # Why one tool rather than two
@@ -61,6 +65,12 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
     field :worked_around, :string,
       doc: "The capability the asking role lacked, if you covered for one."
 
+    field :capability, :string,
+      doc:
+        "With `worked_around`: a short, stable name for what was missing — the tool name, " <>
+          "normalized, not a sentence. Lets the same gap, described differently each time, " <>
+          "still count as one."
+
     field :on_behalf_of, :string, doc: "A role you are acting as. Usually leave this out."
     field :tool, :string, doc: "A tool you are using on that role's behalf."
 
@@ -99,6 +109,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
            precedent_id: MapAccess.get(params, :precedent_id),
            citation: MapAccess.get(params, :citation),
            worked_around: MapAccess.get(params, :worked_around),
+           capability: MapAccess.get(params, :capability),
            on_behalf_of: MapAccess.get(params, :on_behalf_of),
            tool: MapAccess.get(params, :tool),
            by: caller_role(scope, frame),

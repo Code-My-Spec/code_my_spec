@@ -23,6 +23,7 @@ defmodule CodeMySpec.Agents.Main.CapabilityGap do
           project_id: Ecto.UUID.t() | nil,
           role: String.t() | nil,
           capability: String.t() | nil,
+          detail: String.t() | nil,
           occurrences: integer() | nil,
           issue_id: Ecto.UUID.t() | nil
         }
@@ -33,6 +34,7 @@ defmodule CodeMySpec.Agents.Main.CapabilityGap do
     field :project_id, Ecto.UUID
     field :role, :string
     field :capability, :string
+    field :detail, :string
     field :occurrences, :integer, default: 1
     field :issue_id, Ecto.UUID
 
@@ -42,7 +44,7 @@ defmodule CodeMySpec.Agents.Main.CapabilityGap do
   @doc false
   def changeset(gap, attrs) do
     gap
-    |> cast(attrs, [:project_id, :role, :capability, :occurrences, :issue_id])
+    |> cast(attrs, [:project_id, :role, :capability, :detail, :occurrences, :issue_id])
     |> validate_required([:project_id, :role, :capability, :occurrences])
     # The unique btree index caps an entry at 2704 bytes; past it the insert
     # raises 54000 instead of returning an error.
