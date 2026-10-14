@@ -85,7 +85,7 @@ defmodule CmsHarness.Agents.ShellTest do
         Task.async(fn ->
           {:ok, socket} = :gen_tcp.accept(listener, 5_000)
           {:ok, _request} = :gen_tcp.recv(socket, 0, 5_000)
-          header = if analyzer_status, do: "x-exit-status: #{analyzer_status}\r\n", else: ""
+          header = analyzer_status_header(analyzer_status)
 
           :ok =
             :gen_tcp.send(socket, [
@@ -114,6 +114,9 @@ defmodule CmsHarness.Agents.ShellTest do
       assert output =~ "exit code: #{curl_status}"
     end
   end
+
+  defp analyzer_status_header(nil), do: ""
+  defp analyzer_status_header(status), do: "x-exit-status: #{status}\r\n"
 
   defp restore_endpoint(endpoint, nil), do: Application.delete_env(:code_my_spec, endpoint)
 
