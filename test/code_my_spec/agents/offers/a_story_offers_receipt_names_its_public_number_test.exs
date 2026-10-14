@@ -27,11 +27,11 @@ defmodule CodeMySpec.Agents.Offers.AStoryOffersReceiptNamesItsPublicNumberTest d
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup ctx do
     previous = Application.get_env(:code_my_spec, :agent_transport)
     Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
     on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx.scope)
     :ok
   end
 
