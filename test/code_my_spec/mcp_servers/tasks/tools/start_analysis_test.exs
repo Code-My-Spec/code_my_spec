@@ -103,4 +103,37 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysisTest do
   defp text(response) do
     response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")
   end
+
+  describe "the real MCP schema validation" do
+    # 80ab27be: every call above builds `params` already atom-keyed and
+    # pre-shaped, so execute/2 never actually exercised the schema Peri
+    # derives from `schema do ... end` -- which is what a real MCP request
+    # goes through first. `paths, {:array, :string}` passed every test above
+    # and still failed every real caller with a bare "Invalid params": Peri's
+    # list type is `{:list, type}`, not `{:array, type}`, and `{:array, ...}`
+    # read as an unsupported shape, reported back as "expected a nested
+    # schema". `mcp_schema/1` is what Peri's own `defschema` generates and
+    # what actually runs before `execute/2` in production; calling it
+    # directly, string-keyed the way a decoded MCP request arrives, is the
+    # schema-validation layer itself, without standing up a full transport.
+    test "paths as a list of strings validates" do
+      assert {:ok, validated} =
+               StartAnalysis.mcp_schema(%{
+                 "source" => "exunit",
+                 "paths" => ["test/code_my_spec/some_test.exs"]
+               })
+
+      assert validated.paths == ["test/code_my_spec/some_test.exs"]
+    end
+
+    test "omitting paths validates and defaults to empty" do
+      assert {:ok, validated} = StartAnalysis.mcp_schema(%{"source" => "exunit"})
+      assert validated.paths == []
+    end
+
+    test "an empty paths list validates" do
+      assert {:ok, validated} = StartAnalysis.mcp_schema(%{"source" => "exunit", "paths" => []})
+      assert validated.paths == []
+    end
+  end
 end
