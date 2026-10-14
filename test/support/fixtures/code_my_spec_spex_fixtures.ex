@@ -168,6 +168,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphReport
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
@@ -4342,13 +4343,13 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Recompute this checkout's graph now, as `sync_project` does."
   def recompute_graph(%Scope{} = scope) do
-    _ = CodeMySpec.Requirements.recompute(scope)
+    _ = Requirements.recompute(scope)
     :ok
   end
 
   @doc "Why the writer serving this project's reads last failed, or nil."
   def graph_last_error(%Scope{active_project_id: project_id}) do
-    case CodeMySpec.Requirements.GraphReport.writer_status(project_id) do
+    case GraphReport.writer_status(project_id) do
       %{last_error: %{message: message}} -> message
       _ -> nil
     end
