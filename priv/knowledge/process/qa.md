@@ -8,6 +8,15 @@ The playbooks describe testing: `qa_setup/`, `qa_story/`, `qa_journey/`,
 bookkeeping around them, which is unwritten everywhere else and is where
 the surprises are.
 
+## Reaching main or product
+
+`message_agent` only works between teammates sharing a working copy — you
+and the coding agent on your own checkout, say. It is not how you reach
+main, product, or anyone on another copy: that role does not carry the
+tool at all, and a different spelling will not change that. Use
+`ask_user_question` instead — whichever of main or product is running
+receives it, not the user, unless neither is.
+
 ## QA is a browser, not a spex run
 
 Spex prove the surface behaves. QA is a person-shaped agent using the

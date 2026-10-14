@@ -8,6 +8,13 @@ assumes you have read this. If you are about to run one task, read its
 playbook. If you are wondering why the task is not being offered to you,
 read this.
 
+## Reaching main
+
+`message_agent` only works between teammates sharing a working copy — a
+coding agent and its QA agent, say. It is not how you reach main: that role
+does not carry the tool at all, and a different spelling will not change
+that. Use `ask_user_question` instead.
+
 ## The shape
 
 A story is a row, not a file. Everything below happens to that row, and

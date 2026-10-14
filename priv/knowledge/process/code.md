@@ -80,6 +80,15 @@ Calling `evaluate_task` on an automatic task is harmless. *Not* calling it
 on a manual one leaves the task open with the work sitting there finished,
 which looks from outside exactly like an agent that stalled.
 
+## Reaching main or product
+
+`message_agent` only works between teammates sharing a working copy — you
+and the QA agent on your own checkout, say. It is not how you reach main,
+product, or anyone on another copy: that role does not carry the tool at
+all, and a different spelling will not change that. Use
+`ask_user_question` instead — whichever of main or product is running
+receives it, not the user, unless neither is.
+
 ## When an analysis run is stuck
 
 Normal analysis finishes asynchronously — you get a "Your X run finished"
