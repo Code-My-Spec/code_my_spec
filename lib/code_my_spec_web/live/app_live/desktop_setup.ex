@@ -445,7 +445,7 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
     # join it triggers rather than reporting "connecting" for a link that
     # is already coming back up (4237e512).
     CmsHarness.Projects.ensure_started(project.root)
-    CmsHarness.Setup.Connection.observe(project.root, 2_000).connected
+    CmsHarness.Setup.Connection.observe(project.root).connected
   end
 
   defp project_error({:invalid_elixir_project, _, _}),
