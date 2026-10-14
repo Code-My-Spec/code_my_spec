@@ -21,6 +21,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CmsHarness,
       CmsHarness.Agents,
       CmsHarness.Project,
+      # The connected desktop assistance fixture uses the real harness websocket rig.
+      CmsHarnessTest,
       CodeMySpec,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Embeddings,
