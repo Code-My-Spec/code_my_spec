@@ -137,6 +137,28 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     assert File.read!(checked.snapshot["results_path"]) == recorded
   end
 
+  test "setup forms preserve and accept the listener origin", ctx do
+    page = Req.get!(ctx.url)
+    assert Req.Response.get_header(page, "referrer-policy") == ["same-origin"]
+    uri = URI.parse(ctx.url)
+    origin = URI.to_string(%{uri | path: nil, query: nil, fragment: nil})
+
+    response = Req.post!(ctx.url <> "/check", headers: [{"origin", origin}], redirect: false)
+    assert response.status == 303
+    status = await_settled(100)
+    assert File.regular?(status.snapshot["results_path"])
+
+    assert Req.post!(ctx.url <> "/continue", headers: [{"origin", origin}], redirect: false).status ==
+             409
+  end
+
+  test "opaque origins cannot run setup checks", ctx do
+    response = Req.post!(ctx.url <> "/check", headers: [{"origin", "null"}], redirect: false)
+    assert response.status == 403
+    assert Bootstrap.status(Bootstrap).snapshot == nil
+    refute File.exists?(Path.join(ctx.root, "setup"))
+  end
+
   test "unknown launch tokens and cross-origin actions cannot run checks", ctx do
     uri = URI.parse(ctx.url)
     unknown = URI.to_string(%{uri | path: "/setup/unknown"})
