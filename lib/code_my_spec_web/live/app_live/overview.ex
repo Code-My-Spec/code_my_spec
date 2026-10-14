@@ -7,7 +7,18 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
 
-  def mount(_params, _session, socket) do
+  def mount(params, session, socket) do
+    desktop? = Application.get_env(:code_my_spec, :env) == :desktop
+    socket = assign(socket, :desktop_setup?, desktop?)
+
+    if desktop? do
+      CodeMySpecWeb.AppLive.DesktopSetup.mount(params, session, socket)
+    else
+      mount_web(socket)
+    end
+  end
+
+  defp mount_web(socket) do
     scope = socket.assigns.current_scope
 
     socket =
@@ -125,6 +136,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     end
   end
 
+  def handle_event(event, params, %{assigns: %{desktop_setup?: true}} = socket) do
+    CodeMySpecWeb.AppLive.DesktopSetup.handle_event(event, params, socket)
+  end
+
   def handle_event("create_account", %{"account" => params}, socket) do
     scope = socket.assigns.current_scope
 
@@ -161,6 +176,23 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       {:error, changeset} ->
         {:noreply, assign(socket, project_form: to_form(changeset, as: "project"))}
     end
+  end
+
+  def handle_async(name, result, %{assigns: %{desktop_setup?: true}} = socket)
+      when name in [:machine_checks, :setup_project, :setup_help] do
+    CodeMySpecWeb.AppLive.DesktopSetup.handle_async(name, result, socket)
+  end
+
+  def handle_info(
+        {:machine_setup, _snapshot} = message,
+        %{assigns: %{desktop_setup?: true}} = socket
+      ) do
+    CodeMySpecWeb.AppLive.DesktopSetup.handle_info(message, socket)
+  end
+
+  def handle_info({event, _message} = message, %{assigns: %{desktop_setup?: true}} = socket)
+      when event in [:new_message, :message_updated] do
+    CodeMySpecWeb.AppLive.DesktopSetup.handle_info(message, socket)
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -212,6 +244,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp short_id do
     :crypto.strong_rand_bytes(4) |> Base.encode16(case: :upper) |> String.slice(0, 6)
+  end
+
+  def render(%{desktop_setup?: true} = assigns) do
+    CodeMySpecWeb.AppLive.DesktopSetup.render(assigns)
   end
 
   def render(assigns) do

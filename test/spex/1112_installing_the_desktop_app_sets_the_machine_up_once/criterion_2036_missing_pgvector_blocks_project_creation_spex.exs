@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2036Spex do
   defp fresh_machine(context), do: DesktopSetupHelpers.fresh_machine(context)
 
   spex "Missing pgvector is actionable and blocks project creation", criterion: 2036 do
-    scenario "The developer sees installation guidance and an offer of main-agent help" do
+    scenario "The developer gets manual installation guidance when no agent is available" do
       given_ "pgvector is not installed on the desktop machine", context do
         context = DesktopSetupHelpers.without_pgvector(context)
         {:ok, view, _html} = live(context.conn, "/app")
@@ -51,16 +51,18 @@ defmodule CodeMySpecSpex.Story1112.Criterion2036Spex do
         {:ok, context}
       end
 
-      then_ "the main agent offers to help install pgvector", context do
-        assert has_element?(
-                 context.view,
-                 "[data-test='setup-agent-help'][data-role='main']",
-                 "pgvector"
-               )
+      then_ "unavailable agent help does not prevent manual installation", context do
+        assert has_element?(context.view, "[data-test='setup-agent-unavailable']")
 
         assert has_element?(
                  context.view,
-                 "[data-test='setup-agent-help'] [data-test='accept-install-help']"
+                 "[data-name='pgvector'] [data-test='install-instructions']",
+                 "pgvector"
+               )
+
+        refute has_element?(
+                 context.view,
+                 "[data-test='accept-install-help']:not([disabled])"
                )
 
         {:ok, context}

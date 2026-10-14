@@ -232,6 +232,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket
     |> assign(:current_scope, scope)
     |> assign(:project, project)
+    |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
     |> assign(:conversation, conversation)
     # True exactly when the block above has run, and false on the disconnected
     # first render that precedes it — which is what makes the guard there fire
@@ -1821,6 +1822,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
+      <CodeMySpecWeb.AppLive.DesktopSetupResults.results snapshot={@desktop_setup_results} />
       <%!-- Only here, and only for the project's own agent.
       John, seeing it on every page: "it should only show up on the chat for
       the main agent on the main checkout." The timeline describes the whole

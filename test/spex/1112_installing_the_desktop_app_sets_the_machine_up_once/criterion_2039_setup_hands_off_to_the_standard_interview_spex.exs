@@ -1,5 +1,5 @@
 defmodule CodeMySpecSpex.Story1112.Criterion2039Spex do
-  @moduledoc "Desktop setup hands its connected project to the standard product-agent interview."
+  @moduledoc "Desktop setup hands its connected project and recorded results to the cockpit."
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Environments
@@ -8,8 +8,8 @@ defmodule CodeMySpecSpex.Story1112.Criterion2039Spex do
   setup :fresh_machine
   defp fresh_machine(context), do: DesktopSetupHelpers.fresh_machine(context)
 
-  spex "Completed desktop setup leads into the standard onboarding interview", criterion: 2039 do
-    scenario "A linked project accompanies the developer into the interview without sign-in" do
+  spex "Completed desktop setup opens the connected project's cockpit", criterion: 2039 do
+    scenario "A linked project and setup results reach the cockpit without sign-in" do
       given_ "the desktop has checked prerequisites and linked an Elixir project", context do
         project_dir = Path.join(context.machine_root, "interview_app")
 
@@ -60,30 +60,25 @@ defmodule CodeMySpecSpex.Story1112.Criterion2039Spex do
       end
 
       when_ "the developer finishes machine setup", context do
+        refute has_element?(context.view, "[data-test='intake-transcript']")
+        refute has_element?(context.view, "form[phx-submit='answer']")
         result = context.view |> element("[data-test='finish-setup']") |> render_click()
+        assert {:error, {:live_redirect, %{to: destination}}} = result
+        assert destination == "/app/projects/#{context.project_id}/agent-conversation"
         {:ok, interview, _html} = follow_redirect(result, context.conn)
         render_async(interview, 10_000)
         {:ok, Map.put(context, :interview, interview)}
       end
 
-      then_ "the standard interview is open for the project setup connected", context do
-        assert has_element?(
-                 context.interview,
-                 "[data-test='intake-transcript'][data-project-id='#{context.project_id}']"
-               )
-
-        assert has_element?(
-                 context.interview,
-                 "[data-test='intake-said'][data-from='agent'][data-role='product']"
-               )
-
-        assert has_element?(context.interview, "form[phx-submit='answer']")
+      then_ "the cockpit is open for the project setup connected", context do
+        assert has_element?(context.interview, "[data-test='conversation-layout']")
+        assert has_element?(context.interview, "[data-test='desktop-setup-results']")
         refute has_element?(context.interview, "form[action='/users/log_in']")
         refute has_element?(context.interview, "form[action='/users/register']")
         {:ok, context}
       end
 
-      then_ "the interview retains access to the recorded setup outcome", context do
+      then_ "the cockpit retains access to the recorded setup outcome", context do
         assert has_element?(
                  context.interview,
                  "[data-test='setup-results-file'][data-path='#{context.results_path}']"
@@ -91,6 +86,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2039Spex do
 
         assert read_machine_file!(context, context.results_path) == context.recorded_results
         assert context.recorded_results =~ ~r/pgvector/i
+        assert has_element?(context.interview, "[data-test='desktop-setup-results']", "pgvector")
         {:ok, context}
       end
     end

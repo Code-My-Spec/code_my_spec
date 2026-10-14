@@ -1168,6 +1168,35 @@ defmodule CodeMySpecSpex.Fixtures do
     ProjectSecrets.put_value(scope, "hetzner_api_token", token)
   end
 
+  def stop_desktop_fixture_copies(directory) do
+    prefix = Path.expand(directory) <> "/"
+
+    CmsHarness.Projects.list()
+    |> Enum.filter(&String.starts_with?(Path.expand(&1), prefix))
+    |> Enum.each(&CmsHarness.Projects.stop_serving/1)
+  end
+
+  def desktop_setup_main_agent(user) do
+    context =
+      %{user: user}
+      |> CodeMySpecTest.ConnCase.setup_active_account()
+      |> CodeMySpecTest.ConnCase.setup_active_project()
+
+    :ok = install_recording_agent_transport(context)
+    :ok = designate_main(context.scope, context.scope.active_working_copy_id)
+    agent = running_agent(context.scope, role: "main")
+    Map.put(context, :setup_main_agent, agent)
+  end
+
+  def desktop_harness_credential(user) do
+    {:ok, token} =
+      ExOauth2Provider.AccessTokens.create_token(user, %{expires_in: 3600},
+        otp_app: :code_my_spec
+      )
+
+    token.token
+  end
+
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
 
   def select_active_account(scope, account_id),

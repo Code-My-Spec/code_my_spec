@@ -130,7 +130,7 @@ defmodule CmsHarness.Setup do
     persist(directory, Map.put(snapshot, "operations", operations), opts)
   end
 
-  @doc "Returns the recorded project and results for the interview without rerunning setup."
+  @doc "Returns the recorded project and results for the cockpit without rerunning setup."
   @spec handoff(keyword()) :: {:ok, map()} | {:error, term()}
   def handoff(opts) do
     with {:ok, snapshot} <- status(opts),

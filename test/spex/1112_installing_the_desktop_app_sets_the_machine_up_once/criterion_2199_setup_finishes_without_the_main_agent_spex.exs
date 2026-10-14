@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2199Spex do
 
         refute has_element?(
                  context.view,
-                 "[data-test='setup-agent-help'][data-state='connected']"
+                 "[data-test='setup-agent-help']"
                )
 
         {:ok, context}
@@ -73,16 +73,16 @@ defmodule CodeMySpecSpex.Story1112.Criterion2199Spex do
           |> Floki.attribute("data-project-id")
 
         result = context.view |> element("[data-test='finish-setup']") |> render_click()
+        assert {:error, {:live_redirect, %{to: path}}} = result
+        assert path == "/app/projects/#{project_id}/agent-conversation"
         {:ok, destination, _} = follow_redirect(result, context.conn)
         render_async(destination, 10_000)
         {:ok, Map.merge(context, %{destination: destination, project_id: project_id})}
       end
 
-      then_ "machine setup is complete and the connected project reaches onboarding", context do
-        assert has_element?(
-                 context.destination,
-                 "[data-test='intake-transcript'][data-project-id='#{context.project_id}']"
-               )
+      then_ "machine setup is complete and the connected project reaches the cockpit", context do
+        assert has_element?(context.destination, "[data-test='conversation-layout']")
+        assert has_element?(context.destination, "[data-test='desktop-setup-results']")
 
         refute has_element?(
                  context.destination,

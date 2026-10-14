@@ -40,6 +40,18 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
       end
     )
 
+    device_path = Path.join(root, "device.json")
+    File.write!(device_path, Jason.encode!(%{device_id: Ecto.UUID.generate()}))
+    previous_device_path = Application.fetch_env(:code_my_spec, :device_config_path)
+    Application.put_env(:code_my_spec, :device_config_path, device_path)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous_device_path do
+        {:ok, value} -> Application.put_env(:code_my_spec, :device_config_path, value)
+        :error -> Application.delete_env(:code_my_spec, :device_config_path)
+      end
+    end)
+
     previous_env = Application.fetch_env(:code_my_spec, :env)
     previous_path = System.get_env("PATH")
     previous_project = System.get_env("CMS_PROJECT_DIR")
@@ -56,12 +68,23 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
 
     os_user = System.get_env("USER") || System.get_env("USERNAME") || "user"
     local = os_user |> String.replace(~r/[^A-Za-z0-9._-]/, "") |> String.downcase()
-    Fixtures.user_fixture(%{email: desktop_email(local)})
+    user = Fixtures.user_fixture(%{email: desktop_email(local)})
+    previous_token = Application.fetch_env(:code_my_spec, :harness_token)
+    Application.put_env(:code_my_spec, :harness_token, Fixtures.desktop_harness_credential(user))
 
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous_token do
+        {:ok, value} -> Application.put_env(:code_my_spec, :harness_token, value)
+        :error -> Application.delete_env(:code_my_spec, :harness_token)
+      end
+    end)
+
+    start_local_server(root)
     environment = Fixtures.local_environment_fixture(working_dir: root)
 
     {:ok,
      Map.merge(context, %{
+       desktop_user: user,
        machine_root: root,
        command_log: log,
        machine_environment: environment
@@ -69,6 +92,21 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
   end
 
   def with_project_generator(context) do
+    previous_runner = Application.fetch_env(:code_my_spec, :generator_runner)
+
+    Application.put_env(
+      :code_my_spec,
+      :generator_runner,
+      CmsHarness.Projects.Generator.Runner.Real
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous_runner do
+        {:ok, value} -> Application.put_env(:code_my_spec, :generator_runner, value)
+        :error -> Application.delete_env(:code_my_spec, :generator_runner)
+      end
+    end)
+
     Enum.each(["cms", "mix"], fn executable ->
       path = Path.join([context.machine_root, "bin", executable])
 
@@ -115,6 +153,32 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
     """)
 
     context
+  end
+
+  defp start_local_server(root) do
+    {:ok, listener} =
+      Bandit.start_link(
+        plug: CodeMySpecWeb.Endpoint,
+        scheme: :http,
+        ip: {127, 0, 0, 1},
+        port: 0,
+        startup_log: false
+      )
+
+    Process.unlink(listener)
+    {:ok, {_ip, port}} = ThousandIsland.listener_info(listener)
+    previous = Application.fetch_env(:code_my_spec, :harness_server_url_override)
+    Application.put_env(:code_my_spec, :harness_server_url_override, "http://127.0.0.1:#{port}")
+
+    ExUnit.Callbacks.on_exit(fn ->
+      if Process.alive?(listener), do: ThousandIsland.stop(listener, 1_000)
+      Fixtures.stop_desktop_fixture_copies(root)
+
+      case previous do
+        {:ok, value} -> Application.put_env(:code_my_spec, :harness_server_url_override, value)
+        :error -> Application.delete_env(:code_my_spec, :harness_server_url_override)
+      end
+    end)
   end
 
   defp desktop_email(""), do: "user@localhost"

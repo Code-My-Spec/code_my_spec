@@ -12,6 +12,13 @@ defmodule CodeMySpecSpex.Story1112.Criterion2041Spex do
     scenario "A failed prerequisite is readable beside the main agent's help" do
       given_ "the developer opens desktop setup on a machine missing pgvector", context do
         DesktopSetupHelpers.without_pgvector(context)
+
+        context =
+          Map.merge(
+            context,
+            CodeMySpecSpex.Fixtures.desktop_setup_main_agent(context.desktop_user)
+          )
+
         {:ok, view, _} = live(context.conn, "/app")
         {:ok, Map.put(context, :view, view)}
       end
@@ -19,6 +26,21 @@ defmodule CodeMySpecSpex.Story1112.Criterion2041Spex do
       when_ "the developer runs the prerequisite checks from the desktop", context do
         context.view |> element("[data-test='check-prerequisites']") |> render_click()
         render_async(context.view, 10_000)
+        context.view |> element("[data-test='accept-install-help']") |> render_click()
+        render_async(context.view, 10_000)
+
+        agent_id = context.setup_main_agent.id
+        assert_receive {:agent_dispatch, ^agent_id, _ref, request}, 5_000
+        assert request =~ "pgvector is not installed"
+        assert request =~ "results_path"
+
+        :ok =
+          CodeMySpecSpex.Fixtures.agent_said(
+            context.scope,
+            context.setup_main_agent,
+            "pgvector is missing. I can help install the extension for your PostgreSQL version."
+          )
+
         {:ok, context}
       end
 
