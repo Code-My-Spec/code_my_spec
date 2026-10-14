@@ -570,7 +570,8 @@ defmodule CodeMySpec.Provisioning do
             ((started_at && " (started #{started_at})") || "")
         )
 
-      _result ->
+      result ->
+        announce(scope, {:provisioning, :finished, result})
         :ok
     end
   end
