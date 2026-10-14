@@ -68,12 +68,13 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   def start_link({project_id, scope}), do: start_link({project_id, scope, nil})
 
-  # `owner` is the process whose sandbox connection this one uses under test.
+  # `owners` are the processes whose sandbox connection this one uses under
+  # test (`SandboxAllowance.owners/0`).
   # The allowance is taken in `init/1`, before the first compute this process
   # sends itself; granted by the caller after `start_child` returned, it raced
   # that compute and an async test's watcher stopped on its first query.
-  def start_link({project_id, scope, owner}) do
-    GenServer.start_link(__MODULE__, {project_id, scope, owner}, name: via(project_id))
+  def start_link({project_id, scope, owners}) do
+    GenServer.start_link(__MODULE__, {project_id, scope, owners}, name: via(project_id))
   end
 
   def via(project_id),
@@ -88,7 +89,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   def ensure_projecting(%Scope{active_project_id: project_id} = scope) do
     case DynamicSupervisor.start_child(
            CodeMySpec.Requirements.WatcherSupervisor,
-           {__MODULE__, {project_id, scope, self()}}
+           {__MODULE__, {project_id, scope, SandboxAllowance.owners()}}
          ) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
@@ -111,7 +112,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   Handle everything pending now, before the caller compares.
 
   A reader settles before it reads, so a mark still in flight is never served
-  as the graph.
+  as the graph. `:ok` when nothing projects the project. A projector that dies
+  under the call is not `:ok`: see `unsettled/3`.
   """
   @spec settle(Ecto.UUID.t() | nil, Enumerable.t()) :: :ok
   def settle(project_id, requested \\ [])
@@ -128,7 +130,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
         :ok
     end
   catch
-    :exit, _ -> :ok
+    :exit, reason -> unsettled(project_id, :settle, reason)
   end
 
   def settle(_no_project, _requested), do: :ok
@@ -149,8 +151,31 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
         :ok
     end
   catch
-    :exit, _ -> :ok
+    :exit, reason -> unsettled(project_id, :reproject, reason)
   end
+
+  # The projector was there and the call did not come back. Answering `:ok`
+  # served whatever the rows said as the settled graph, so a projector killed
+  # mid-test read as an empty graph — which is how one test stopping every
+  # project's projector hid behind "the graph is flaky" (2026-10-14).
+  #
+  # Under the sandbox a kill, crash or timeout raises with the cause. A normal
+  # stop or a projector already gone does not: that is a projector whose test
+  # ended, read by a task the test left running, and raising there logs a crash
+  # that fails whichever spex is running when it lands. Outside the sandbox a
+  # reader must not fail for wanting to be current: logged, rows served as is.
+  defp unsettled(project_id, call, reason) do
+    message =
+      "[IncrementalGraph] #{call} for #{project_id} did not complete: the projector " <>
+        "exited with #{inspect(reason, limit: 8, printable_limit: 200)}"
+
+    if SandboxAllowance.sandboxed?() and not ended?(reason), do: raise(message)
+    Logger.warning(message)
+    :ok
+  end
+
+  defp ended?({reason, {GenServer, :call, _}}), do: reason in [:normal, :noproc]
+  defp ended?(_reason), do: false
 
   @doc """
   What this projector last did, in the shape `GraphWatcher.status/1` answers,
@@ -171,8 +196,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # -- Server --
 
   @impl true
-  def init({project_id, scope, owner}) do
-    SandboxAllowance.take(owner)
+  def init({project_id, scope, owners}) do
+    SandboxAllowance.take(owners)
     # So a supervisor's `:shutdown` waits for the drain in flight, as
     # `GraphWatcher` does. This process drains the moment a mark lands, off a
     # PubSub message, so it is the writer most often mid-transaction when a

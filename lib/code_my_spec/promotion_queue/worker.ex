@@ -52,9 +52,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @doc false
   def start_link({project_id, %Scope{} = scope}), do: start_link({project_id, scope, nil})
 
-  # `owner` is the process whose sandbox connection this one uses under test.
-  def start_link({project_id, %Scope{} = scope, owner}) do
-    GenServer.start_link(__MODULE__, {project_id, scope, owner}, name: via(project_id))
+  # `owners` are the processes whose sandbox connection this one uses under
+  # test (`SandboxAllowance.owners/0`).
+  def start_link({project_id, %Scope{} = scope, owners}) do
+    GenServer.start_link(__MODULE__, {project_id, scope, owners}, name: via(project_id))
   end
 
   @doc false
@@ -64,8 +65,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   def gate_label, do: @gate_label
 
   @impl true
-  def init({project_id, scope, owner}) do
-    SandboxAllowance.take(owner)
+  def init({project_id, scope, owners}) do
+    SandboxAllowance.take(owners)
     PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "completion_handoffs:#{project_id}")
