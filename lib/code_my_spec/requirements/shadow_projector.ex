@@ -154,6 +154,23 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   def settle(_no_project, _requested), do: :ok
 
   @doc """
+  Rebuild one vantage from the domain: forget that this process established it,
+  then drain, which seeds it whole. For "recompute now" — a story with no rows
+  is not something any observation will create.
+  """
+  @spec reproject(Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
+  def reproject(project_id, vantage) when is_binary(project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+      [{pid, _}] ->
+        SandboxAllowance.grant(pid)
+        GenServer.call(pid, {:reproject, vantage}, 30_000)
+
+      [] ->
+        :ok
+    end
+  end
+
+  @doc """
   What this projector last did, in the shape `GraphWatcher.status/1` answers,
   so a reader served from its rows is told about the writer it is served from.
   """
@@ -232,6 +249,16 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   @impl true
   def handle_call({:drain, requested}, _from, state) do
     {:reply, :ok, state |> remember(requested) |> drain()}
+  end
+
+  def handle_call({:reproject, vantage}, _from, state) do
+    state = %{
+      state
+      | established_vantages: MapSet.delete(state.established_vantages, vantage),
+        requested_vantages: MapSet.put(state.requested_vantages, vantage)
+    }
+
+    {:reply, :ok, drain(state)}
   end
 
   @impl true

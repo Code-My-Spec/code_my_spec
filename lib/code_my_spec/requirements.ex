@@ -49,6 +49,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
@@ -59,6 +60,8 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Requirements.StoryExecution
   alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Stories
@@ -314,7 +317,23 @@ defmodule CodeMySpec.Requirements do
   @spec recompute(Scope.t()) ::
           {{[Requirement.t()], [map()]}, [Requirement.t()], NaiveDateTime.t() | nil}
           | {:error, term()}
-  def recompute(%Scope{} = scope), do: RequirementGraph.recompute(scope)
+  def recompute(%Scope{} = scope) do
+    result = RequirementGraph.recompute(scope)
+    if Shadow.inverted?(), do: reproject(scope)
+    result
+  end
+
+  # Where the event projection serves, the pass above writes only the oracle's
+  # tables, so "recompute now" also has the projector rebuild this vantage from
+  # the domain: its rows are cleared and the next drain seeds them whole.
+  defp reproject(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+    vantage = Projection.vantage(scope)
+    :ok = Shadow.clear(scope)
+    _ = GraphWatcher.ensure_watching(scope)
+    ShadowProjector.reproject(project_id, vantage)
+  end
+
+  defp reproject(_scope), do: :ok
 
   @doc """
   Returns the next actionable requirements across the entire project,

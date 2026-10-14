@@ -355,9 +355,16 @@ defmodule CodeMySpec.Agents.Menu do
   # thing it cannot. It spends a turn on `get_next_requirement` finding out.
   # `directive/3`'s `:task` clause has named its subject since it was written,
   # for the same reason.
-  defp directive(_scope, {:requirements, _count} = class_count, _role, _owner) do
+  # `list_requirements` only to a role that carries it: product does not, and
+  # its menu named it once the event path served product a requirement.
+  defp directive(_scope, {:requirements, _count} = class_count, role, _owner) do
+    listing =
+      if role == nil or RoleProfile.carries?(role, "list_requirements"),
+        do: "`list_requirements` or ",
+        else: ""
+
     plain(class_count) <>
-      " Use `list_requirements` or `get_next_requirement` to inspect available work, " <>
+      " Use #{listing}`get_next_requirement` to inspect available work, " <>
       "then choose a task with `start_task`. No requirement has been selected for you."
   end
 
