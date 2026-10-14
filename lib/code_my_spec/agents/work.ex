@@ -806,12 +806,14 @@ defmodule CodeMySpec.Agents.Work do
   defp offer_subject(agent, nodes) do
     case released_tasks(agent, nodes) do
       [task | _] -> released_subject(task)
-      [] -> graph_subject(nodes)
+      [] -> graph_subject(agent, nodes)
     end
   end
 
-  defp graph_subject([{type, id, name} | _nodes]), do: {"requirement", "#{type}:#{id}:#{name}"}
-  defp graph_subject([]), do: {"questions", nil}
+  defp graph_subject(agent, [{type, id, name} | _nodes]),
+    do: {"requirement", node_key(agent, %{entity_type: type, entity_id: id, name: name})}
+
+  defp graph_subject(_agent, []), do: {"questions", nil}
 
   # Released and still claimable: one the graph no longer offers would be
   # refused by `start_task`, and offering it first would hide the rest.
@@ -899,7 +901,7 @@ defmodule CodeMySpec.Agents.Work do
 
   # The second offer of the same work says more about it (criterion 1739).
   defp detail(scope, agent, key) do
-    case Enum.find(offerable(scope, agent), &(node_key(&1) == key)) do
+    case Enum.find(offerable(scope, agent), &(node_key(agent, &1) == key)) do
       nil ->
         ""
 
@@ -920,7 +922,7 @@ defmodule CodeMySpec.Agents.Work do
     others =
       scope
       |> offerable(agent)
-      |> Enum.reject(&(node_key(&1) == key))
+      |> Enum.reject(&(node_key(agent, &1) == key))
       |> Enum.take(5)
 
     base = detail(scope, agent, key)
@@ -1107,10 +1109,25 @@ defmodule CodeMySpec.Agents.Work do
 
     scope
     |> claimable_work(agent)
-    |> Enum.reject(&match?(%{held?: true}, standing[node_key(&1)]))
+    |> Enum.reject(&match?(%{held?: true}, standing[node_key(agent, &1)]))
   end
 
-  defp node_key(node), do: "#{node.entity_type}:#{node.entity_id}:#{node.name}"
+  # Issue 56a2d806: a story node's `entity_id` is the story's own database id,
+  # not the public number `get_next_requirement`/`start_task` show for it (the
+  # same distinction `subject/2` below already draws for a resumed task's
+  # `story_id`) -- so the offer's `subject_key`, and every receipt or lookup
+  # built from it (`reject_offer`'s included), named a different story than
+  # the one the agent was actually offered. The one place this string is
+  # built, used everywhere a node is matched against a recorded offer.
+  defp node_key(agent, %{entity_type: "story", entity_id: id, name: name}) do
+    case CodeMySpec.Stories.get_story(%Scope{active_project_id: agent.project_id}, id) do
+      %{number: number} -> "story:#{number}:#{name}"
+      nil -> "story:#{id}:#{name}"
+    end
+  end
+
+  defp node_key(_agent, %{entity_type: type, entity_id: id, name: name}),
+    do: "#{type}:#{id}:#{name}"
 
   @doc """
   The work for one caller: `Requirements.story_execution/4`'s status, its

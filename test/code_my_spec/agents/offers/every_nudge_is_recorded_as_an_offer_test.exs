@@ -100,7 +100,9 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       assert offer.attempt == 1
       assert offer.template_version == "work/1"
       assert offer.subject_type == "requirement"
-      assert offer.subject_key == "#{head.entity_type}:#{head.entity_id}:#{head.name}"
+      # A story node's `subject_key` names its public number, not the
+      # database id `head.entity_id` carries internally (issue 56a2d806).
+      assert offer.subject_key == "#{head.entity_type}:#{ctx.story.number}:#{head.name}"
       assert offer.working_copy_id == ctx.scope.active_working_copy_id
       assert linked_texts(offer) == [@work_prompt]
     end
