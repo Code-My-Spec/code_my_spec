@@ -1,13 +1,25 @@
-defmodule CodeMySpec.Agents.AnOffAgentsQuestionsGoToItsSuccessorTest do
+defmodule CodeMySpec.Agents.AnOffAgentsQuestionIsNeverMovedByAStartTest do
   @moduledoc """
-  Retiring an agent hands its pending questions to its successor
-  (`retiring_an_agent_hands_off_its_questions_test.exs`), but an agent that is
-  merely off -- stopped, not retired, free to be restarted on its own seat --
-  was never revisited: nothing else ever looks at an off agent's row again to
-  notice it is never answering. A same-role successor starting anywhere on the
-  project is the first thing that could read the question, so starting one
-  hands off every off same-role agent's pending questions the same way
-  retiring does.
+  Issue d1f06141 (and its spread): an earlier fix for story 1023 handed an off
+  (stopped, not retired) agent's pending question to the first new same-role
+  agent to start anywhere in the project. A brand-new scratch copy's agent
+  that had never spoken inherited a months-old question from an unrelated
+  agent on an unrelated copy; when that scratch agent was in turn stopped, the
+  same question moved again, onto a different team's working agent on a
+  different story. Both broke criterion 1236 (a question's asker and checkout
+  never change) and criterion 1233 (a question from a stopped agent stays
+  attributed to that agent, not lost, and not moved to a new one either).
+
+  Retiring an agent still hands its question to a successor anywhere in the
+  project (`retiring_an_agent_hands_off_its_questions_test.exs`) -- retiring is
+  permanent, so that seat's role is gone for good and *something* has to read
+  the question. An agent that is merely off can come back: `turn_on_agent` is
+  the only way back from off (`lib/code_my_spec/agents.ex`, `seat_is_on/2`),
+  and resuming is the same row, so its question never needed to move at all.
+  `start_agent` itself refuses outright to create a second row on the exact
+  seat an off agent still holds -- so there is no reachable case where a
+  genuinely new row replaces an off agent's own seat, and no case at all where
+  it should inherit a question from an *unrelated* seat.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -32,13 +44,12 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionsGoToItsSuccessorTest do
 
     feature = with_root(feature, "feature")
 
-    {:ok, main_copy} =
-      WorkingCopies.issue(scope, nil, label: "the main copy", device: device_fixture(scope))
+    {:ok, other} =
+      WorkingCopies.issue(scope, nil, label: "an unrelated copy", device: device_fixture(scope))
 
-    main_copy = with_root(main_copy, "main")
-    {:ok, _} = WorkingCopies.designate_main(scope, main_copy.id)
+    other = with_root(other, "other")
 
-    %{scope: scope, feature: feature, main_copy: main_copy}
+    %{scope: scope, feature: feature, other: other}
   end
 
   # `put_destination/2` derives `working_copy` from the copy's own root and
@@ -84,45 +95,69 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionsGoToItsSuccessorTest do
   defp owner(request), do: Notifications.get_question_request(request.id)
 
   defp start(scope, role, copy_id) do
-    {:ok, agent} =
-      Agents.start_agent(scope, %{
-        role: to_string(role),
-        provider: "anthropic",
-        working_copy_id: copy_id
-      })
-
-    agent
+    Agents.start_agent(scope, %{
+      role: to_string(role),
+      provider: "anthropic",
+      working_copy_id: copy_id
+    })
   end
 
-  test "a same-role successor starting picks up an off agent's pending question", ctx do
+  test "a same-role agent starting on an unrelated copy does not inherit an off agent's question",
+       ctx do
     old = off_agent(ctx.scope, :product, ctx.feature.id)
     request = ask(ctx.scope, old)
 
-    successor = start(ctx.scope, :product, ctx.main_copy.id)
+    {:ok, elsewhere} = start(ctx.scope, :product, ctx.other.id)
 
-    moved = owner(request)
-    assert moved.agent_id == successor.id
-    assert moved.status == "pending"
-    assert moved.holder == request.holder
-    assert moved.questions == request.questions
+    assert owner(request).agent_id == old.id,
+           "a brand-new agent on an unrelated copy inherited another seat's old question"
+
+    refute owner(request).agent_id == elsewhere.id
   end
 
-  test "an answered question stays with the agent that asked it", ctx do
-    old = off_agent(ctx.scope, :product, ctx.feature.id)
-    request = ask(ctx.scope, old)
-    {:ok, _} = Notifications.answer_question_request(request.id, %{"14 or 30 days?" => "30"})
-
-    successor = start(ctx.scope, :product, ctx.main_copy.id)
-
-    refute owner(request).agent_id == successor.id
-  end
-
-  test "a different role starting does not pick up the question", ctx do
+  test "a brand-new scratch copy's own first agent starts with no inherited questions", ctx do
     old = off_agent(ctx.scope, :product, ctx.feature.id)
     request = ask(ctx.scope, old)
 
-    _coder = start(ctx.scope, :coding, ctx.feature.id)
+    {:ok, scratch} =
+      WorkingCopies.issue(ctx.scope, nil, label: "scratch", device: device_fixture(ctx.scope))
+
+    scratch = with_root(scratch, "scratch")
+
+    {:ok, fresh} = start(ctx.scope, :product, scratch.id)
 
     assert owner(request).agent_id == old.id
+    refute owner(request).agent_id == fresh.id
+  end
+
+  test "a different role starting elsewhere does not pick up the question either", ctx do
+    old = off_agent(ctx.scope, :product, ctx.feature.id)
+    request = ask(ctx.scope, old)
+
+    {:ok, _coder} = start(ctx.scope, :coding, ctx.other.id)
+
+    assert owner(request).agent_id == old.id
+  end
+
+  test "starting on the off agent's own exact seat is refused, not replaced", ctx do
+    old = off_agent(ctx.scope, :product, ctx.feature.id)
+    request = ask(ctx.scope, old)
+
+    assert {:error, {:off, %{id: id}}} = start(ctx.scope, :product, ctx.feature.id)
+    assert id == old.id
+
+    assert owner(request).agent_id == old.id,
+           "the question moved even though no new row was created for this seat"
+  end
+
+  test "the question stays visible and answerable while the agent is merely off", ctx do
+    old = off_agent(ctx.scope, :product, ctx.feature.id)
+    request = ask(ctx.scope, old)
+
+    {:ok, answered} =
+      Notifications.answer_question_request(request.id, %{"14 or 30 days?" => "30"})
+
+    assert answered.agent_id == old.id
+    assert answered.status == "answered"
   end
 end
