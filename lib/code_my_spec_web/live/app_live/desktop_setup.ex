@@ -436,7 +436,17 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
   end
 
   defp connected_project?(nil), do: false
-  defp connected_project?(project), do: CmsHarness.Projects.connected?(project.root)
+
+  defp connected_project?(project) do
+    # A relaunch starts no project subtree on its own -- only a hook does,
+    # and there is no hook on this page -- so an already-linked project
+    # would otherwise show "Waiting for the local harness connection"
+    # forever. `ensure_started/1` is idempotent; `observe/2` waits out the
+    # join it triggers rather than reporting "connecting" for a link that
+    # is already coming back up (4237e512).
+    CmsHarness.Projects.ensure_started(project.root)
+    CmsHarness.Setup.Connection.observe(project.root, 2_000).connected
+  end
 
   defp project_error({:invalid_elixir_project, _, _}),
     do: "Select an Elixir project directory containing a valid mix.exs."

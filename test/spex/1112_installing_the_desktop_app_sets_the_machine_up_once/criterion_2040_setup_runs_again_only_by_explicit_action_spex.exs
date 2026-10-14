@@ -105,6 +105,67 @@ defmodule CodeMySpecSpex.Story1112.Criterion2040Spex do
     end
   end
 
+  spex "Reopening after the local channel drops reconnects without an explicit action",
+    criterion: 2040 do
+    scenario "The project reconnects on its own once its channel comes back up" do
+      given_ "machine setup has completed and the project is connected", context do
+        project_dir = Path.join(context.machine_root, "reconnect_app")
+
+        :ok =
+          Environments.write_file(
+            context.machine_environment,
+            Path.join(project_dir, "mix.exs"),
+            """
+            defmodule ReconnectApp.MixProject do
+              use Mix.Project
+              def project, do: [app: :reconnect_app, version: "0.1.0", deps: []]
+              def application, do: []
+            end
+            """
+          )
+
+        {:ok, view, _} = live(context.conn, "/app")
+        view |> element("[data-test='check-prerequisites']") |> render_click()
+        render_async(view, 10_000)
+
+        view
+        |> form("[data-test='link-project-form']", project: %{path: project_dir})
+        |> render_submit()
+
+        render_async(view, 10_000)
+
+        [project_root] =
+          view
+          |> element("[data-test='project-connected']")
+          |> render()
+          |> Floki.parse_fragment!()
+          |> Floki.attribute("data-path")
+
+        {:ok, Map.put(context, :project_root, project_root)}
+      end
+
+      when_ "the local harness relaunches, leaving the project's channel unstarted", context do
+        # The channel-only teardown a relaunch leaves behind: the project's
+        # supervisor and registry entry are gone, but nothing on disk (its
+        # .cms_harness.json, its served-roots hint) was touched.
+        CmsHarnessTest.Projects.stop_project(context.project_root)
+
+        {:ok, reopened, _} = live(context.conn, "/app")
+        {:ok, Map.put(context, :reopened, reopened)}
+      end
+
+      then_ "the project shows connected again without clicking Check connection", context do
+        assert has_element?(
+                 context.reopened,
+                 "[data-test='project-connected'][data-path='#{context.project_root}']"
+               )
+
+        refute has_element?(context.reopened, "[data-test='project-connecting']")
+        {:ok, context}
+      end
+    end
+  end
+
   defp read_machine_file!(context, path) do
     {:ok, contents} = Environments.read_file(context.machine_environment, path)
     contents
