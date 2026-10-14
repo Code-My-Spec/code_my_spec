@@ -866,6 +866,10 @@ defmodule CodeMySpec.Analysis do
   @spec failed_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: non_neg_integer()
   defdelegate failed_at_commit(scope, source, commit, since), to: RunsRepository
 
+  @doc "Find a retained run for output retrieval, restricted to the selected working copy."
+  @spec output_run(Scope.t(), {:id, integer()} | {:source, String.t()}) :: Run.t() | nil
+  defdelegate output_run(scope, selector), to: RunsRepository
+
   @doc "The latest finished full run of `source` on this copy, a failure included, or nil."
   @spec latest_run(Scope.t(), String.t()) :: Run.t() | nil
   def latest_run(%Scope{} = scope, source), do: RunsRepository.latest_full_run(scope, source)

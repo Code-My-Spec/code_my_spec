@@ -34,8 +34,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
 
   schema do
     field :source, :string,
-      doc:
-        "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex` or `qa_validation`."
+      doc: "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex` or `qa_validation`."
 
     field :severity, :string,
       doc: "Filter by severity — `error`, `warning` or `info`. Omit for all."
@@ -131,7 +130,13 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
         do: "\n\nPage #{page + 1} of #{pages}: call again with `page: #{page + 1}`.",
         else: ""
 
-    header <> "\n\n" <> body <> database_note(scope, problems) <> footer
+    header <>
+      "\n\n" <>
+      body <>
+      database_note(scope, problems) <>
+      footer <>
+      "\n\nRead retained stdout/stderr with `get_analysis_output({source = \"exunit\"})` " <>
+      "(use the relevant analyzer source). Continue pages using its run_id and next_offset."
   end
 
   # Which database produced these, for the sources that opened one.

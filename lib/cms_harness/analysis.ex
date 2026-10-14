@@ -393,28 +393,11 @@ defmodule CmsHarness.Analysis do
   defp serialize(value), do: value
 
   @doc """
-  Analyzer output made safe for the channel: invalid UTF-8 scrubbed, then cut
-  to #{@output_cap} bytes on a character boundary (a cut mid-character fails
-  the channel's JSON encode).
+  Analyzer output made safe for the channel: invalid UTF-8 scrubbed, then the
+  start and end kept within #{@output_cap} bytes (markers included), both cuts
+  on character boundaries. The server's cap is idempotent, so receiving this
+  payload cannot discard its failure tail.
   """
   @spec cap(binary()) :: String.t()
-  def cap(output) do
-    output = String.replace_invalid(output)
-
-    if byte_size(output) > @output_cap do
-      output
-      |> binary_part(0, @output_cap)
-      |> drop_partial_char()
-      |> Kernel.<>("\n… (truncated)")
-    else
-      output
-    end
-  end
-
-  # The input is already valid, so only a trailing partial sequence can fail.
-  defp drop_partial_char(binary) do
-    if String.valid?(binary),
-      do: binary,
-      else: binary |> binary_part(0, byte_size(binary) - 1) |> drop_partial_char()
-  end
+  defdelegate cap(output), to: Runners
 end

@@ -379,6 +379,9 @@ defmodule CodeMySpecSpex.Case do
       on_exit(&Fixtures.drain_background_work/0)
     end
 
+    # watch_graph/1 registers project-specific cleanup after the drain callback,
+    # so watchers stop before draining and releasing the sandbox.
+    #
     # After the drain, so it runs before it: a projector stopped first starts
     # nothing new while the drain clears what is left.
     #
@@ -6444,11 +6447,6 @@ defmodule CodeMySpecSpex.Case do
     # the watcher computes once on arrival; started before it would compute
     # against the wrong shape and then have to redo it.
     Fixtures.watch_graph(updated_scope)
-
-    # And stopped when the test ends. A watcher outliving its sandbox
-    # transaction takes its next pass against a connection that has gone and
-    # logs at `:error`, which fails whichever spex is running when it lands.
-    Callbacks.on_exit(fn -> Fixtures.stop_watching(updated_scope) end)
 
     Map.merge(context, %{project: project, scope: updated_scope, environment: env})
   end

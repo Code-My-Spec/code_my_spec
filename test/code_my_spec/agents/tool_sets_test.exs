@@ -58,6 +58,14 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
     end
   end
 
+  test "coding and QA can retrieve original analyzer output through scripts" do
+    names = ScriptableTools.__components__() |> Enum.map(& &1.name())
+
+    assert "get_analysis_output" in names
+    assert "get_analysis_output" in ToolSets.for_role(:coding)
+    assert "get_analysis_output" in ToolSets.for_role(:qa)
+  end
+
   test "main is unscoped rather than a list of everything" do
     refute ToolSets.for_role(:main),
            "main was given a list. Enumerating every tool into a row is a copy of the " <>

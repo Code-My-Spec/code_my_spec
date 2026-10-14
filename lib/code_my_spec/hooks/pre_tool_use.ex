@@ -387,12 +387,17 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # One plain `curl`, no `sh -c` (Claude Code's guard cannot read inside a `-c`
   # script, so auto mode refuses it). A failing run answers 422 with the tool's
   # output; `--fail-with-body` prints it and exits nonzero, like `mix test`.
+  # Curl's exit 22 covers failing suites and transport failures alike, so the
+  # footer reports HTTP status apart from the analyzer's own exit status; a
+  # missing analyzer header stays unavailable, never zero.
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
     url = "http://localhost:#{port}#{path(endpoint)}"
 
     "curl -sS --fail-with-body -X POST '#{url}' -H 'Content-Type: application/json' " <>
-      header(endpoint) <> "--data #{shell_quote(payload)}"
+      header(endpoint) <>
+      "--data #{shell_quote(payload)} " <>
+      "--write-out '\nAnalysis HTTP status: %{http_code}\nAnalyzer exit status (blank if unavailable): %header{x-exit-status}\n'"
   end
 
   defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"

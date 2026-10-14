@@ -417,14 +417,34 @@ defmodule CodeMySpec.Analysis.Runners do
   # truncates at 500.
   defp error_excerpt(nil), do: ""
 
-  # The last line-opening `** (` marker wins; the tail (where mix says why it
-  # would not run) only otherwise. The last three lines of a mix crash are
-  # boilerplate, and the first marker is often a mid-suite Postgrex log line.
+  # Without an ExUnit summary: the last line-opening `** (` marker, else the
+  # output tail. The last three lines of a mix crash are boilerplate, and the
+  # first marker is often a mid-suite Postgrex log line.
   # See knowledge/analysis, "Runner results".
   defp error_excerpt(output) do
-    case output
-         |> String.split("\n")
-         |> Enum.filter(&String.starts_with?(String.trim_leading(&1), "** (")) do
+    lines = output |> String.replace(~r/\e\[[0-9;]*m/, "") |> String.split("\n")
+
+    case Enum.find(Enum.reverse(lines), &Regex.match?(~r/^\s*\d+ tests?, \d+ failures?\b/, &1)) do
+      nil -> exception_excerpt(output, lines)
+      summary -> suite_excerpt(summary, lines)
+    end
+  end
+
+  # Process crashes logged deliberately by tests are not the suite's verdict.
+  # Prefer ExUnit's summary, followed by its first numbered failure and location.
+  defp suite_excerpt(summary, lines) do
+    failure =
+      lines
+      |> Enum.drop_while(&(not Regex.match?(~r/^\s*1\) /, &1)))
+      |> Enum.take(2)
+
+    [summary | failure]
+    |> Enum.map_join(" | ", &String.trim/1)
+    |> String.slice(0, 300)
+  end
+
+  defp exception_excerpt(output, lines) do
+    case Enum.filter(lines, &String.starts_with?(String.trim_leading(&1), "** (")) do
       [] -> tail_excerpt(output)
       markers -> markers |> List.last() |> String.trim() |> String.slice(0, 300)
     end
@@ -438,17 +458,34 @@ defmodule CodeMySpec.Analysis.Runners do
     |> String.slice(0, 300)
   end
 
-  # Cut on a character boundary: a split multibyte char makes Postgres refuse
-  # the row, and a green run is recorded as one that could not run.
-  defp cap(output) do
+  # On a character boundary: a split multibyte char makes Postgres refuse the
+  # row, and a green run is recorded as one that could not run.
+  @doc "Retain the start and failure tail of analyzer output within 100KB, including markers."
+  @spec cap(binary()) :: String.t()
+  def cap(output) do
     output = String.replace_invalid(output)
 
     if byte_size(output) > @output_cap do
-      output |> binary_part(0, @output_cap) |> drop_partial_char() |> Kernel.<>("\n… (truncated)")
+      gap = "\n… (middle omitted) …\n"
+      marker = "\n… (truncated)"
+      head = output |> binary_part(0, 20_000) |> drop_partial_char()
+      tail_size = @output_cap - byte_size(head) - byte_size(gap) - byte_size(marker)
+
+      tail =
+        output
+        |> binary_part(byte_size(output) - tail_size, tail_size)
+        |> drop_leading_partial_char()
+
+      head <> gap <> tail <> marker
     else
       output
     end
   end
+
+  defp drop_leading_partial_char(<<byte, rest::binary>>) when byte in 0x80..0xBF,
+    do: drop_leading_partial_char(rest)
+
+  defp drop_leading_partial_char(binary), do: binary
 
   # The input is already valid, so only a trailing partial sequence can fail.
   defp drop_partial_char(binary) do
