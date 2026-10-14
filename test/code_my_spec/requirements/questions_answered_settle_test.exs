@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.QuestionsAnsweredSettleTest do
   that sweep's verdict agree with the delegate checker it is a faster answer
   for.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 

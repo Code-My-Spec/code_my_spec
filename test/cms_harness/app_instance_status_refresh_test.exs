@@ -5,6 +5,7 @@ defmodule CmsHarness.AppInstanceStatusRefreshTest do
   tick now re-reads a running app and reports a change.
   """
 
+  # Sync: `app_instance_rig` sets application env.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.AppInstanceHelpers

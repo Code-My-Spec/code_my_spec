@@ -33,6 +33,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   window in the third test is what keeps the fingerprint from becoming a wedge
   when the work never changes but its claimability does.
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   alias CmsHarness.Project.ChannelClient

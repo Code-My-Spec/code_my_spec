@@ -9,7 +9,7 @@ defmodule CodeMySpec.Notifications.ADuplicateQuestionIsReusedInsteadOfAskedAgain
   request with the same `questions` on the same story before inserting a new
   row, and returns that one instead.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.StoriesFixtures

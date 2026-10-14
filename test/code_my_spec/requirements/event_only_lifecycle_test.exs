@@ -1,5 +1,6 @@
 defmodule CodeMySpec.Requirements.EventOnlyLifecycleTest do
   @moduledoc "The projector keeps the graph: started, seeded, maintained and rebuilt."
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.StoriesFixtures

@@ -39,7 +39,7 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
   thing to vary is the *two-checkout* case — the dev symptom was on a worktree
   whose branch lacked files that main had, and this test has only one.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 

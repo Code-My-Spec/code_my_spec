@@ -30,7 +30,7 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
   Over-satisfaction is the expensive direction: an agent is told the work is
   done and skips it.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 

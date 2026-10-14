@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.AcceptanceCriteriaFixtures
   import CodeMySpec.DevicesFixtures

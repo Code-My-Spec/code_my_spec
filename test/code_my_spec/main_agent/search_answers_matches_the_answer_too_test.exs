@@ -6,7 +6,7 @@ defmodule CodeMySpec.Agents.Main.SearchAnswersMatchesTheAnswerTooTest do
   the question's own text.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.QuestionRoutingHelpers
 

@@ -81,9 +81,6 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   @doc """
   Project this project's marks, if nothing is projecting them yet.
-
-  Started beside `GraphWatcher` and refused outright when the experiment is
-  off, so turning the flag off stops the work rather than merely ignoring it.
   """
   @spec ensure_projecting(Scope.t()) :: {:ok, pid()} | {:error, term()}
   def ensure_projecting(%Scope{active_project_id: nil}), do: {:error, :no_project}
@@ -101,13 +98,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   @doc """
   Whether a projector is running for this project, and therefore whether
-  anything is going to consume the marks besides the pass.
-
-  `Invalidations.consume/1` is a delete, so the pass and a projector draining
-  the same queue is a destructive read: whichever wins takes the marks and the
-  other never sees them. The pass defers to a projector that exists — and only
-  to one that exists, because deferring to an absent projector is how
-  `e0729ea9` comes back: every writer inserting a mark and nothing deleting one.
+  anything is going to consume its marks.
   """
   @spec running?(Ecto.UUID.t() | nil) :: boolean()
   def running?(project_id) when is_binary(project_id) do
@@ -119,10 +110,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   @doc """
   Handle everything pending now, before the caller compares.
 
-  The diff reads both projections, so it has to be asked at a moment when the
-  event path has been given its chance — otherwise every mark still in flight
-  reports as a difference and the number says more about timing than about
-  coverage.
+  A reader settles before it reads, so a mark still in flight is never served
+  as the graph.
   """
   @spec settle(Ecto.UUID.t() | nil, Enumerable.t()) :: :ok
   def settle(project_id, requested \\ [])

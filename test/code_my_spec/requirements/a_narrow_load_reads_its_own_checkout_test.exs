@@ -34,7 +34,7 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
   different shape. Production always has a default checkout; a fixture does not
   unless it is told to.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.FileSync

@@ -8,8 +8,8 @@ defmodule CodeMySpec.Requirements.GraphStoreTest do
   happily on rows that are confidently wrong.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case
-
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias CodeMySpec.ComponentsFixtures

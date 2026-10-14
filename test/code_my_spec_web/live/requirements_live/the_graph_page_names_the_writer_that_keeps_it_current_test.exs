@@ -11,6 +11,7 @@ defmodule CodeMySpecWeb.RequirementsLive.TheGraphPageNamesTheWriterThatKeepsItCu
   dependency change rewires edges without re-checking any node.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Requirements.GraphReport

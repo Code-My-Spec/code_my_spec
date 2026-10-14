@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.AnAnalyzerLandingMovesNoComponentTest do
   recompute the components it touched, for verdicts that no longer exist.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem

@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.AReadOfAProjectNothingHasProjectedProjectsItTe
   project whose `get_next_requirement` says "All requirements satisfied" —
   which is what zero rows said. Two fixes, one for each half.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Components
   alias CodeMySpec.Requirements

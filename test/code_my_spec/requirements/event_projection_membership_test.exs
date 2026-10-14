@@ -1,4 +1,5 @@
 defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.DevicesFixtures

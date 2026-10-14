@@ -11,7 +11,7 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
   side (a row genuinely gone IS reaped).
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import Ecto.Query
   import CodeMySpec.StoriesFixtures

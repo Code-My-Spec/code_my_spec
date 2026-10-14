@@ -16,7 +16,7 @@ defmodule CmsHarness.SyncMachineLoadTest do
   ran. `record: :none` so a cassette miss errors loudly instead of quietly
   recording this box's live (and non-deterministic) numbers over it.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   use ExCliVcr
 
   alias CmsHarness.Channel

@@ -7,6 +7,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   work goes to agents without a story.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   import CodeMySpec.IssuesFixtures

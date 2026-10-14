@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   for UAT, and the node says which (a86c85dd).
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures

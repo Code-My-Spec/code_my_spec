@@ -15,7 +15,7 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
   change: any verdict. So the kind is handled as moving nothing and listed as
   a shape kind, and the drain redraws.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Components
   alias CodeMySpec.Requirements.Edge

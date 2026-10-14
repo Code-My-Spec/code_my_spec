@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.DevFaultControllerTest do
   exist to end.
   """
 
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   alias CodeMySpec.Faults
 

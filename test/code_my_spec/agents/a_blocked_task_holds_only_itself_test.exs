@@ -7,6 +7,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   could claim is stalled.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]

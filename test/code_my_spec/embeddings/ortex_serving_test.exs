@@ -5,7 +5,7 @@ defmodule CodeMySpec.Embeddings.OrtexServingTest do
   is a GenServer with a dispatch policy, and that policy is what's under
   test.
 
-  `async: false`: `start_link/1` always registers as `OrtexServing` itself
+  `async: true`: `start_link/1` always registers as `OrtexServing` itself
   (the production name every caller dispatches to), so only one instance
   can exist in the test suite at a time.
   """

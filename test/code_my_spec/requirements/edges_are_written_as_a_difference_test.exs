@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
   matters beyond the rows, because after the swap that writer owns the real
   edges.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.IncrementalGraph

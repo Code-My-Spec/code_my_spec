@@ -26,8 +26,8 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   duration is a flake that fires hardest exactly when the machine is busiest,
   which is when a real regression is least likely to be what changed.
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case
-
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias CodeMySpec.Requirements.IncrementalGraph

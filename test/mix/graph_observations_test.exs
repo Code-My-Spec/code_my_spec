@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Cms.GraphObservationsTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureIO
   alias Mix.Tasks.Cms.GraphObservations

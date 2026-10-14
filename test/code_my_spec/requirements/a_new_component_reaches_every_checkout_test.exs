@@ -24,7 +24,7 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
   `extra 0` is the tell — the projection was behind on creation rather than
   wrong about anything it held.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 

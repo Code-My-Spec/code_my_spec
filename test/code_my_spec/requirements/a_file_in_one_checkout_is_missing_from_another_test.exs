@@ -39,7 +39,7 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
   scaffolding — no rule or criterion on story 1020 asserts on it, deliberately.
   Testing the scaffolding is worth doing; claiming it in the story is not.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 

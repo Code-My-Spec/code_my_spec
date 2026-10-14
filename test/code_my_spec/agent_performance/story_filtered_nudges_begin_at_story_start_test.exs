@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AgentPerformance.StoryFilteredNudgesBeginAtStoryStartTest do
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.AgentPerformance.Chart
   alias CodeMySpec.AgentPerformance.Interventions

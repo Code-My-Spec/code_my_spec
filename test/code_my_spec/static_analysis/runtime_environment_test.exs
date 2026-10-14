@@ -1,5 +1,5 @@
 defmodule CodeMySpec.StaticAnalysis.RuntimeEnvironmentTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

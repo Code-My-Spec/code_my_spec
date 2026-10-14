@@ -6,6 +6,7 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
   project-level work.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   import CodeMySpecSpex.OfferHelpers, only: [coding_work_waiting: 1, next_task: 2, agent_frame: 2]

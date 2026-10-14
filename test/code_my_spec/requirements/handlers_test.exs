@@ -14,7 +14,7 @@ defmodule CodeMySpec.Requirements.HandlersTest do
   against.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 

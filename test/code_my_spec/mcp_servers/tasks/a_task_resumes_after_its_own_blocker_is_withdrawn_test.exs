@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Tasks.ATaskResumesAfterItsOwnBlockerIsWithdrawnT
   (never a role string), to settle whether a second defect exists once
   identity is used correctly.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.UsersFixtures

@@ -10,7 +10,7 @@ defmodule CodeMySpec.WorkingCopies.AppTransportTest do
   a connected copy and does not find an absent one.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

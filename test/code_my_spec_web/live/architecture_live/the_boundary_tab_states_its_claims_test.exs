@@ -5,7 +5,7 @@ defmodule CodeMySpecWeb.ArchitectureLive.TheBoundaryTabStatesItsClaimsTest do
   deep, which chain is longest, and which cycles exist.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   setup :register_log_in_setup_account
   setup :setup_active_project

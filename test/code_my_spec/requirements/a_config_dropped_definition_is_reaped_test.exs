@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
   writer. `deploy` under a legacy nil `devops` is the case (v2.0.177).
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures

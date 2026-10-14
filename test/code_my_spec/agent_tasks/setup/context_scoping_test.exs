@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ContextScopingTest do
   on any sync. Issue `282428a3`.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
