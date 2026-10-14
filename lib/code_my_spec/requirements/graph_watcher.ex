@@ -2,14 +2,13 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   @moduledoc """
   Where callers start, settle and ask after a project's requirement graph writer.
 
-  The writer is `ShadowProjector`, which keeps the graph current from events as
-  they arrive. This module was the batched pass that recomputed it; the pass is
-  gone and these are the entry points callers already use, now in front of the
-  projector.
+  The writer is `IncrementalGraph`, which keeps the graph current from events as
+  they arrive. Callers go through here so the sandbox allowance and the writer's
+  scope are decided in one place.
   """
 
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.SandboxAllowance
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -22,7 +21,7 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
   def ensure_watching(%Scope{active_project_id: nil}), do: {:error, :no_project}
 
   def ensure_watching(%Scope{} = scope) do
-    case ShadowProjector.ensure_projecting(writer_scope(scope)) do
+    case IncrementalGraph.ensure_projecting(writer_scope(scope)) do
       {:ok, pid} -> {:ok, SandboxAllowance.grant(pid)}
       other -> other
     end
@@ -57,9 +56,9 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
 
   @spec settle(Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
   def settle(project_id, vantage) when is_binary(project_id),
-    do: ShadowProjector.settle(project_id, [vantage])
+    do: IncrementalGraph.settle(project_id, [vantage])
 
   @doc "What this project's writer last did, or nil when nothing is writing it."
   @spec status(Ecto.UUID.t()) :: map() | nil
-  def status(project_id), do: ShadowProjector.status(project_id)
+  def status(project_id), do: IncrementalGraph.status(project_id)
 end

@@ -2,7 +2,7 @@ defmodule CodeMySpec.Requirements.SandboxAllowance do
   @moduledoc """
   A long-lived requirements process taking its starter's sandbox connection.
 
-  `GraphWatcher` and `ShadowProjector` outlive the caller that starts them and
+  `GraphWatcher` and `IncrementalGraph` outlive the caller that starts them and
   query from their own process. Under the SQL sandbox they need an allowance
   from a process that owns a connection, before their first query. No-op
   outside a sandboxed pool, or with no owner.

@@ -19,10 +19,10 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Requirements.Edge
+  alias CodeMySpec.Requirements.GraphStore
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Stories
 
   setup :register_log_in_setup_account
@@ -91,14 +91,14 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
   end
 
   defp settle(scope) do
-    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   # The event path's edges at this vantage, as node-key pairs.
   defp edges(scope) do
     ctx = Preloader.topology_context(scope)
-    source = {Shadow.event_target(), {Shadow.event_edges(), Edge}}
+    source = {GraphStore.event_target(), {GraphStore.event_edges(), Edge}}
     {_nodes, edges} = Projection.load(scope, ctx, source: source)
     MapSet.new(edges)
   end

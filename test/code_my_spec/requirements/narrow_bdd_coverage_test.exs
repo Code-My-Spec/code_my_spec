@@ -11,7 +11,7 @@ defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.{Preloader, RequirementGraph, ShadowProjector}
+  alias CodeMySpec.Requirements.{IncrementalGraph, Preloader, RequirementGraph}
   alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.WorkingCopies
 
@@ -55,10 +55,10 @@ defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
 
     refute Enum.find(nodes, &(&1.name == "bdd_specs_exist")).satisfied
 
-    {:ok, _} = ShadowProjector.ensure_projecting(scope)
+    {:ok, _} = IncrementalGraph.ensure_projecting(scope)
 
     :ok =
-      ShadowProjector.settle(scope.active_project_id, [
+      IncrementalGraph.settle(scope.active_project_id, [
         nil,
         scope.active_working_copy_id,
         other.id
@@ -68,7 +68,7 @@ defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
       AcceptanceCriteria.update_criterion(scope, criterion, %{description: "Revised criterion"})
 
     :ok =
-      ShadowProjector.settle(scope.active_project_id, [
+      IncrementalGraph.settle(scope.active_project_id, [
         nil,
         scope.active_working_copy_id,
         other.id

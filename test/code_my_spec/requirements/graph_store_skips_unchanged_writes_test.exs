@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Requirements.ShadowSkipsUnchangedWritesTest do
+defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
   @moduledoc """
   181f3469: a row EXCLUDED agrees with on every stored column is left alone,
   not rewritten -- proved here on the real table via `xmin`, Postgres's own
@@ -20,9 +20,9 @@ defmodule CodeMySpec.Requirements.ShadowSkipsUnchangedWritesTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
 
   setup do
     scope = full_scope_fixture()
@@ -39,6 +39,7 @@ defmodule CodeMySpec.Requirements.ShadowSkipsUnchangedWritesTest do
 
     assert inserted == 0, "nothing is new on a second write with nothing changed"
     assert reaped == 0, "a row this write still covers must not read as reaped"
+
     assert row_versions(ctx.story.id) == before_versions,
            "xmin moving means a row was rewritten even though nothing about it changed"
   end
@@ -70,7 +71,7 @@ defmodule CodeMySpec.Requirements.ShadowSkipsUnchangedWritesTest do
     {:ok, loaded} = Preloader.load(scope)
     config = Configurations.get_or_create(scope)
     {covered, nodes} = RequirementGraph.compute_entity(scope, loaded, config, {"story", story.id})
-    Shadow.write(scope, covered, nodes)
+    GraphStore.write(scope, covered, nodes)
   end
 
   defp set_devops(scope, level) do
@@ -82,7 +83,7 @@ defmodule CodeMySpec.Requirements.ShadowSkipsUnchangedWritesTest do
   end
 
   defp row_versions(story_id) do
-    Shadow.event_target()
+    GraphStore.event_target()
     |> where([n], n.story_id == ^story_id)
     |> select([n], {n.name, fragment("xmin::text")})
     |> Repo.all()

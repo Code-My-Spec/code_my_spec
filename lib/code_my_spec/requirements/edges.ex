@@ -31,7 +31,7 @@ defmodule CodeMySpec.Requirements.Edges do
 
   `over/4` is the whole set, and it is the set `compute_edges/3` draws.
   `edges_derived_per_entity_match_the_pass_test` holds the two together on a
-  fixture and `Shadow.diff/1` does on a live project; the three facts above
+  fixture and `GraphStore.diff/1` does on a live project; the three facts above
   are what that rests on, and a template edge that broke one of them would
   show up there first.
 

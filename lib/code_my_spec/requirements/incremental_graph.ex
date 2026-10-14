@@ -1,12 +1,11 @@
-defmodule CodeMySpec.Requirements.ShadowProjector do
+defmodule CodeMySpec.Requirements.IncrementalGraph do
   @moduledoc """
   One process per project, keeping the requirement graph current from
   invalidation marks: the incremental graph, and the only thing that writes it.
 
-  It writes `requirements` and `requirement_edges` (through `Shadow`) and
+  It writes `requirements` and `requirement_edges` (through `GraphStore`) and
   announces what moved. `GraphWatcher` is the front callers use to start and
-  settle it. The name is historical: it was built beside the batched pass as a
-  shadow projection, and took over when the pass was removed.
+  settle it.
 
   ## No debounce, and that is the point
 
@@ -55,6 +54,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Requirements.Edges
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Invalidation
   alias CodeMySpec.Requirements.Invalidations
@@ -62,7 +62,6 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.SandboxAllowance
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Users.Scope
 
   # -- Client --
@@ -78,7 +77,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   end
 
   def via(project_id),
-    do: {:via, Registry, {CodeMySpec.Requirements.Registry, {project_id, :shadow}}}
+    do: {:via, Registry, {CodeMySpec.Requirements.Registry, {project_id, :graph}}}
 
   @doc """
   Project this project's marks, if nothing is projecting them yet.
@@ -112,7 +111,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   """
   @spec running?(Ecto.UUID.t() | nil) :: boolean()
   def running?(project_id) when is_binary(project_id) do
-    Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) != []
+    Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) != []
   end
 
   def running?(_no_project), do: false
@@ -129,7 +128,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   def settle(project_id, requested \\ [])
 
   def settle(project_id, requested) when is_binary(project_id) do
-    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
       # Re-granted from each reader, as `GraphWatcher.settle/2` does: the
       # projector outlives whoever started it.
       [{pid, _}] ->
@@ -152,7 +151,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   """
   @spec reproject(Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
   def reproject(project_id, vantage) when is_binary(project_id) do
-    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
       [{pid, _}] ->
         SandboxAllowance.grant(pid)
         GenServer.call(pid, {:reproject, vantage}, 30_000)
@@ -170,7 +169,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   """
   @spec status(Ecto.UUID.t() | nil) :: map() | nil
   def status(project_id) when is_binary(project_id) do
-    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
       [{pid, _}] -> GenServer.call(pid, :status, 5_000)
       [] -> nil
     end
@@ -309,7 +308,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     error ->
       Logger.warning(
-        "[ShadowProjector] #{state.project_id} left #{inspect(error.__struct__)} pending: " <>
+        "[IncrementalGraph] #{state.project_id} left #{inspect(error.__struct__)} pending: " <>
           Exception.message(error)
       )
 
@@ -325,7 +324,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # the same dead sandbox, and enough of those took the application down.
   defp owner_gone(state, why) do
     Logger.warning(
-      "[ShadowProjector] stopping: the sandbox owner for #{state.project_id} is gone (#{why})"
+      "[IncrementalGraph] stopping: the sandbox owner for #{state.project_id} is gone (#{why})"
     )
 
     exit(:normal)
@@ -341,7 +340,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   #
   # A verdict is a statement about a checkout, so the graph is projected per
   # vantage and this process was settling whichever scope happened to start it,
-  # leaving the rest to whatever wrote them last. Found by `shadow_test`'s
+  # leaving the rest to whatever wrote them last. Found by `graph_store_test`'s
   # accepted-issue case, which settles one vantage and asserts on another.
   #
   # The fix is not to loop every vantage on every drain. A file sync happens in
@@ -383,8 +382,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
           # Counted per vantage rather than accumulated, and `log_handled/2` is
           # asked per vantage too. "This handler change matched no row" is a
           # statement about one checkout, so summing the lists first lets a hit
-          # in one worktree cover a miss in another — which is the class of bug
-          # the whole shadow exists to catch.
+          # in one worktree cover a miss in another.
           {state, handled, recomputed, kinds} =
             Enum.reduce(
               vantages,
@@ -427,7 +425,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   defp account_for(marks, project_id) do
     ids = marks |> Enum.map(& &1.observation_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
-    Logger.info("[ShadowProjector] accounted for #{length(ids)} observation(s)",
+    Logger.info("[IncrementalGraph] accounted for #{length(ids)} observation(s)",
       obs: Enum.join(ids, ","),
       cms_project: project_id
     )
@@ -558,7 +556,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # Correctness first: an event moves a *set* of requirements, and a reader
   # landing between two of its sweeps sees `spec_file` settled against
   # `spec_valid`'s previous answer — a projection that is internally
-  # inconsistent in a way neither sweep is. `Shadow.sweep/2` keeps its own
+  # inconsistent in a way neither sweep is. `GraphStore.sweep/2` keeps its own
   # transaction for its two halves; Ecto joins a nested one to the outer, so
   # this replaces twenty `BEGIN`/`COMMIT` pairs with one and changes nothing
   # else.
@@ -608,7 +606,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     {:ok, written} =
       Repo.transaction(fn ->
         written = Enum.map(changes, &write_change(scope, &1))
-        Enum.each(sweeps, &Shadow.sweep(scope, &1))
+        Enum.each(sweeps, &GraphStore.sweep(scope, &1))
         written
       end)
 
@@ -622,7 +620,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     do: Handlers.apply_event(scope, kind, payload || %{})
 
   defp write_change(scope, change) do
-    {:ok, count} = Shadow.put_verdict(scope, change)
+    {:ok, count} = GraphStore.put_verdict(scope, change)
     count
   end
 
@@ -676,11 +674,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   #
   # Rows that predate a definition are not rows to be partial against either.
   # A release that adds or removes a requirement changes what every entity
-  # should have, and no observation says so — see `Shadow.definitions_covered?/2`.
+  # should have, and no observation says so — see `GraphStore.definitions_covered?/2`.
   defp established?(state, vantage, config) do
     MapSet.member?(state.established_vantages, vantage) or
-      (Shadow.projected?(state.scope) and
-         Shadow.definitions_covered?(
+      (GraphStore.projected?(state.scope) and
+         GraphStore.definitions_covered?(
            state.scope,
            RequirementGraph.defined_names(Preloader.topology_context(state.scope), config)
          ))
@@ -721,7 +719,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
     if rows < changes do
       Logger.warning(
-        "[ShadowProjector] #{state.project_id}: #{changes - rows} handler change(s) matched no row"
+        "[IncrementalGraph] #{state.project_id}: #{changes - rows} handler change(s) matched no row"
       )
     end
 
@@ -778,7 +776,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     {:ok, ctx} = Preloader.load(state.scope)
 
     # Computed once and written once. This used to compute every entity on its
-    # own — `write_each/4`, one `compute_entity/4` and one `Shadow.write/3`
+    # own — `write_each/4`, one `compute_entity/4` and one `GraphStore.write/3`
     # transaction per entity — and then call `reproject_topology/3`, which
     # computed every node a second time to get the edges. Measured on dev: the
     # seed after every restart was **17.9-19.9s, 26,395 queries, 14,945 rows**
@@ -793,7 +791,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     topology = Freshness.topology(ctx, config)
     covered = ctx |> all_entities() |> MapSet.put({"project", state.project_id})
 
-    {write_us, {:ok, _moved}} = :timer.tc(fn -> Shadow.write(state.scope, covered, nodes) end)
+    {write_us, {:ok, _moved}} = :timer.tc(fn -> GraphStore.write(state.scope, covered, nodes) end)
 
     # Drawn over the rows just written, the way every later drain draws them.
     # Per vantage, and it has to be: every checkout sees its own stories, so
@@ -804,7 +802,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     {state, drawn} = redraw(state, enriched, config)
 
     Logger.info(
-      "[ShadowProjector] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
+      "[IncrementalGraph] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
         "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms; " <>
         "#{drawn.edges} edges in #{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
     )
@@ -829,7 +827,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
 
   # Answers whether any write added or reaped a row, beside what it covered.
   @spec narrow_each(Enumerable.t(), Scope.t(), map()) ::
-          {MapSet.t(Shadow.entity()), boolean()}
+          {MapSet.t(GraphStore.entity()), boolean()}
   defp narrow_each(entities, scope, config) do
     Enum.reduce(entities, {MapSet.new(), false}, fn entity, {done, moved?} ->
       if MapSet.member?(done, entity) do
@@ -837,7 +835,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       else
         {:ok, ctx} = narrow_load(scope, entity)
         {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
-        {:ok, %{inserted: inserted, reaped: reaped}} = Shadow.write(scope, covered, nodes)
+        {:ok, %{inserted: inserted, reaped: reaped}} = GraphStore.write(scope, covered, nodes)
         {MapSet.union(done, covered), moved? or inserted > 0 or reaped > 0}
       end
     end)
@@ -879,12 +877,12 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       # be handled by verdict sweeps, which cannot create its missing rows.
       # Establish those entities before drawing edges over the stored nodes.
       expected = RequirementGraph.defined_entities(shape, config)
-      incomplete = Shadow.incomplete_entities(state.scope, expected)
+      incomplete = GraphStore.incomplete_entities(state.scope, expected)
       narrow_each(incomplete, state.scope, config)
       {state, drawn} = redraw(state, shape, config)
 
       Logger.info(
-        "[ShadowProjector] redrew #{inspect(vantage(state))} — #{drawn.edges} edges in " <>
+        "[IncrementalGraph] redrew #{inspect(vantage(state))} — #{drawn.edges} edges in " <>
           "#{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
       )
 
@@ -905,11 +903,13 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   # saying that a drain of verdicts drew nothing.
   defp redraw(state, shape, config) do
     {state, plan} = edge_plan(state, shape, config)
-    ids = Shadow.node_ids(state.scope)
+    ids = GraphStore.node_ids(state.scope)
     story_ids = Enum.map(shape.stories, & &1.id)
 
-    {draw_us, edges} = :timer.tc(fn -> Edges.over(plan, story_ids, Shadow.present?(ids)) end)
-    {write_us, {:ok, moved}} = :timer.tc(fn -> Shadow.write_edges(state.scope, edges, ids) end)
+    {draw_us, edges} = :timer.tc(fn -> Edges.over(plan, story_ids, GraphStore.present?(ids)) end)
+
+    {write_us, {:ok, moved}} =
+      :timer.tc(fn -> GraphStore.write_edges(state.scope, edges, ids) end)
 
     :telemetry.execute(
       DrainCost.edges_rebuilt(),
@@ -954,7 +954,7 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
         {plan_us, plan} = :timer.tc(fn -> Edges.plan(state.scope, wide, config) end)
 
         Logger.info(
-          "[ShadowProjector] planned edges for #{map_size(plan.stories)} stories over " <>
+          "[IncrementalGraph] planned edges for #{map_size(plan.stories)} stories over " <>
             "#{length(plan.component_side)} component-side edges in #{div(plan_us, 1000)}ms"
         )
 

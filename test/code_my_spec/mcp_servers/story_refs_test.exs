@@ -43,7 +43,7 @@ defmodule CodeMySpec.McpServers.StoryRefsTest do
       assert Enum.any?(stories, &(&1.id != &1.number)),
              "the stories need ids that differ from their numbers"
 
-      # The projection carries integer ids and the shadow carries text.
+      # The projection carries integer ids and the rows carry text.
       [a, b, c] = stories
       nodes = [story_node(a.id), story_node(to_string(b.id)), story_node(c.id)]
 

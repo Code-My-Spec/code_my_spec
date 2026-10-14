@@ -15,7 +15,7 @@ defmodule Mix.Tasks.Cms.GraphObservationsTest do
   test "a completed event observation passes even inside the grace window", %{path: path} do
     File.write!(path, """
     ts=2026-10-10T14:00:00 obs=abc [Files] announcing a graph change
-    ts=2026-10-10T14:00:01 obs=abc [ShadowProjector] accounted for 1 observation(s)
+    ts=2026-10-10T14:00:01 obs=abc [IncrementalGraph] accounted for 1 observation(s)
     """)
 
     output = capture_io(fn -> GraphObservations.run(["--logs", path]) end)

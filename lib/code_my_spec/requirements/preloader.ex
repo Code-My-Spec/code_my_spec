@@ -437,7 +437,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   here reads file contents, problems or criteria. File membership is needed
   to exclude discovered components absent from this checkout's story edges.
 
-  Five queries. `ShadowProjector.reproject_topology/2` used to call `load/2`
+  Five queries. `IncrementalGraph.reproject_topology/2` used to call `load/2`
   for this on every narrow drain — the whole project, ~50 queries and the
   largest phase of a pass, to compare one fingerprint that had not moved.
   """

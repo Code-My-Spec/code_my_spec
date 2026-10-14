@@ -83,7 +83,7 @@ defmodule CodeMySpec.Requirements.QuestionsAnsweredSettleTest do
 
     assert swept_satisfied == checker_satisfied,
            "the settle sweep and the delegate checker disagree about the same story — " <>
-             "exactly the drift the shadow diff exists to catch, and exactly what a " <>
+             "exactly the drift the rows-vs-recompute diff exists to catch, and exactly what a " <>
              "missing settle/3 clause produces (the sweep never runs at all rather " <>
              "than running wrong)"
   end

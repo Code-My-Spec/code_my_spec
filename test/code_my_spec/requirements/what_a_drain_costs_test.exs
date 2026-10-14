@@ -30,7 +30,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
 
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
 
   @event [:code_my_spec, :requirements, :drain]
 
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
 
     on_exit(fn -> :telemetry.detach(handler) end)
 
-    {:ok, _pid} = ShadowProjector.ensure_projecting(ctx.scope)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(ctx.scope)
     :ok
   end
 
@@ -71,7 +71,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   defp recomputed(meta), do: Map.get(meta, :recomputed, 0)
 
   defp settle(scope) do
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
     drains()
   end
 

@@ -40,7 +40,7 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   `:no_handler` means nothing here knows about this event, and the caller falls
   back to invalidating and recomputing — correct, and slow. That is what lets
-  requirements move across one at a time while the shadow diff scores either
+  requirements move across one at a time while the rows-vs-recompute diff scores either
   path identically.
 
   `{:ok, [], []}` is a different answer: the event happened and moved nothing
@@ -140,7 +140,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   }
 
   # Handled kinds whose handler answers only part of what the event moved.
-  # `ShadowProjector.apply_handlers/2` drops an invalidation beside a handled
+  # `IncrementalGraph.apply_handlers/2` drops an invalidation beside a handled
   # event as answered; for these it keeps it, so the entities the event named
   # still go through `compute_entity/4`.
   @partial ~w(component_created component_changed component_deleted issue_created issue_accepted issue_dismissed issue_resolved issue_updated qa_attempt_submitted)
@@ -189,7 +189,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # by observation id, so any requirement left unsettled keeps whatever verdict
   # it already had, with nothing to correct it.
   #
-  # The shadow diff caught this on `story_changed`: sealing a story moves
+  # The rows-vs-recompute diff caught this on `story_changed`: sealing a story moves
   # `three_amigos_complete`, no handler settles it, and the diff came back
   # `disagree story:9058/three_amigos_complete`.
   #
@@ -411,7 +411,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # telling an agent where to write it, and `validation_errors` for an invalid
   # one. Per-entity data cannot ride on a sweep's default.
   #
-  # The population selects itself. `Shadow.sweep/2` matches `name` and entity
+  # The population selects itself. `GraphStore.sweep/2` matches `name` and entity
   # type, and only entities whose template produces that requirement have a row
   # — so a `:schema` component with no review requirement is never touched by
   # `review_file`, without this needing to know the templates or the config
@@ -464,7 +464,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # Default unsatisfied, because a story with no criteria is unsatisfied and
   # its reason is the only one that carries nothing per story. Every story that
   # *has* criteria is an exception — up to the whole population — which costs
-  # one statement now that `Shadow.put_verdicts/5` sends them as arrays.
+  # one statement now that `GraphStore.put_verdicts/5` sends them as arrays.
   defp settle("bdd_specs_exist", %{files: files, stories: stories}, _scope) do
     %{
       entity_type: "story",
@@ -690,7 +690,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   # A project requirement has one entity, so its sweep is one row — expressed as
   # a sweep anyway so every requirement settles through the same path.
   #
-  # No scope needed: `Shadow.sweep/2` matches on entity type, and there is only
+  # No scope needed: `GraphStore.sweep/2` matches on entity type, and there is only
   # ever one project row per vantage.
   defp project_sweep(name, satisfied?, satisfied_details, unsatisfied_details) do
     %{

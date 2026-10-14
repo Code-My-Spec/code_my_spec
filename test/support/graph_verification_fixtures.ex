@@ -7,13 +7,13 @@ defmodule CodeMySpecSpex.Fixtures.GraphVerification do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Node
-  alias CodeMySpec.Requirements.ShadowProjector
 
   def seed(scope) do
     {:ok, _} = GraphWatcher.ensure_watching(scope)
     :ok = GraphWatcher.settle(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
+    :ok = IncrementalGraph.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
     Requirements.recompute(scope)
     :ok
   end

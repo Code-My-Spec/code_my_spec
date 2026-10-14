@@ -10,8 +10,8 @@ defmodule CodeMySpec.Requirements.EventOnlyLifecycleTest do
   alias CodeMySpec.Requirements.{
     GraphInputs,
     GraphWatcher,
+    IncrementalGraph,
     RequirementGraph,
-    ShadowProjector,
     Verification
   }
 
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Requirements.EventOnlyLifecycleTest do
 
     on_exit(fn ->
       for {pid, _} <-
-            Registry.lookup(CodeMySpec.Requirements.Registry, {scope.active_project_id, :shadow}) do
+            Registry.lookup(CodeMySpec.Requirements.Registry, {scope.active_project_id, :graph}) do
         DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
       end
     end)
@@ -31,8 +31,8 @@ defmodule CodeMySpec.Requirements.EventOnlyLifecycleTest do
   test "startup starts the projector, and the diagnostics report it", %{scope: scope} do
     assert {:ok, projector} = GraphWatcher.ensure_watching(scope)
     assert is_pid(projector)
-    assert :ok = ShadowProjector.settle(scope.active_project_id)
-    assert ShadowProjector.running?(scope.active_project_id)
+    assert :ok = IncrementalGraph.settle(scope.active_project_id)
+    assert IncrementalGraph.running?(scope.active_project_id)
 
     [project] = DevState.report(scope.active_project_id).projects
     assert project.graph_writer.active
@@ -64,7 +64,7 @@ defmodule CodeMySpec.Requirements.EventOnlyLifecycleTest do
     on_exit(fn -> :telemetry.detach(handler) end)
 
     story = story_fixture(scope, %{ready_for_dev: true})
-    :ok = ShadowProjector.settle(scope.active_project_id, [scope.active_working_copy_id])
+    :ok = IncrementalGraph.settle(scope.active_project_id, [scope.active_working_copy_id])
     {nodes, _} = Requirements.cached_all(scope)
 
     assert Enum.any?(
@@ -88,5 +88,5 @@ defmodule CodeMySpec.Requirements.EventOnlyLifecycleTest do
     do: send(recipient, {:graph_wake, scope.active_project_id})
 
   defp assert_event_only(scope),
-    do: assert(ShadowProjector.running?(scope.active_project_id))
+    do: assert(IncrementalGraph.running?(scope.active_project_id))
 end

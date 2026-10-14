@@ -19,7 +19,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.StoriesFixtures
   alias CodeMySpec.Users.Scope
 
@@ -35,8 +35,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
       scope = %{project_scope | active_working_copy_id: nil}
       StoriesFixtures.story_fixture(scope)
       StoriesFixtures.story_fixture(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       stories = story_count(scope)
       assert rows_named(scope, "three_amigos_complete") == stories, "the premise did not hold"
@@ -67,8 +67,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
          %{scope: %Scope{} = project_scope} do
       scope = %{project_scope | active_working_copy_id: nil}
       story = StoriesFixtures.story_fixture(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       # A row a retired definition left behind.
       [{template_row_id}] =
@@ -117,8 +117,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
     test "redraws them", %{scope: %Scope{} = project_scope} do
       scope = %{project_scope | active_working_copy_id: nil}
       StoriesFixtures.story_fixture(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       drawn = story_edge_count(scope)
       assert drawn > 0, "the premise did not hold: no story edges were drawn"
@@ -163,13 +163,13 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   end
 
   defp restart_projector(%Scope{} = scope) do
-    pid = GenServer.whereis(ShadowProjector.via(scope.active_project_id))
+    pid = GenServer.whereis(IncrementalGraph.via(scope.active_project_id))
     ref = Process.monitor(pid)
     :ok = DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
     assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
-    {:ok, fresh} = ShadowProjector.ensure_projecting(scope)
+    {:ok, fresh} = IncrementalGraph.ensure_projecting(scope)
     refute fresh == pid, "the projector did not go away, so nothing arrived"
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   defp story_count(%Scope{active_project_id: project_id}) do

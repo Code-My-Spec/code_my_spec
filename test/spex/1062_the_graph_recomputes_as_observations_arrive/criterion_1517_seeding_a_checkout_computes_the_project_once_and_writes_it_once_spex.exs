@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3621Spex do
 
   Two things made it that, and both were per-entity where they should have been
   per-project. `run(:everything)` computed each entity on its own —
-  `compute_entity/4` and a `Shadow.write/3` transaction, ~1,300 times per
+  `compute_entity/4` and a `GraphStore.write/3` transaction, ~1,300 times per
   vantage — and then called `reproject_topology/3`, which computed every node a
   second time to get the edges. And `reap/4` inside each of those writes issued
   one `DELETE` per covered entity.
@@ -41,9 +41,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3621Spex do
 
   That every requirement and edge was written. The rows the event path writes
   are its own tables and no served surface reads them — that is by design, and
-  `Shadow.diff/1` is the unit-level oracle that compares them against the
+  `GraphStore.diff/1` is the unit-level oracle that compares them against the
   pass, row for row and edge for edge (`the_flag_is_a_switch_not_a_trap_test`
-  and `shadow_test` assert on it). A criterion here about the shadow's contents
+  and `graph_store_test` assert on it). A criterion here about the rows' contents
   would be a rule about scaffolding, and John was explicit that there are to be
   none.
   """
@@ -93,9 +93,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3621Spex do
                The page publishes no `event` drain, so the seed either did not
                run or did not report what it cost.
 
-               `GraphWatcher.report_shadow/2` settles the projector after every
-               pass while the projection is on, and a projector that has not
-               seeded seeds on its first drain. One of those did not happen.
+               `GraphWatcher.settle/2` drains the projector, and a projector that
+               has not seeded seeds on its first drain. One of those did not happen.
                """
 
         {:ok, context}

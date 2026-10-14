@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.{Node, Preloader, RequirementGraph, Shadow, ShadowProjector}
+  alias CodeMySpec.Requirements.{GraphStore, IncrementalGraph, Node, Preloader, RequirementGraph}
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
 
@@ -19,10 +19,10 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
   test "an unassigned story gains nodes and edges in the checkout it enters", %{scope: scope} do
     {:ok, other} = WorkingCopies.issue(scope, nil, label: "Other", device: device_fixture(scope))
     story = story_fixture(scope, %{ready_for_dev: true, working_copy_id: other.id})
-    {:ok, _} = ShadowProjector.ensure_projecting(scope)
+    {:ok, _} = IncrementalGraph.ensure_projecting(scope)
 
     :ok =
-      ShadowProjector.settle(scope.active_project_id, [
+      IncrementalGraph.settle(scope.active_project_id, [
         scope.active_working_copy_id,
         other.id,
         nil
@@ -31,7 +31,7 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
     assert story_names(scope, story) == []
 
     {:ok, _} = Stories.update_story(scope, story, %{working_copy_id: nil})
-    :ok = ShadowProjector.settle(scope.active_project_id, [scope.active_working_copy_id])
+    :ok = IncrementalGraph.settle(scope.active_project_id, [scope.active_working_copy_id])
 
     assert "bdd_specs_exist" in story_names(scope, story)
     report = Requirements.served_vs_recomputed(scope)
@@ -43,23 +43,23 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
   test "a complete story cannot conceal another story's missing nodes", %{scope: scope} do
     story_fixture(scope, %{ready_for_dev: true})
     missing = story_fixture(scope, %{ready_for_dev: true})
-    {:ok, _} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id, [scope.active_working_copy_id])
+    {:ok, _} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id, [scope.active_working_copy_id])
 
     defined =
       RequirementGraph.defined_names(Preloader.topology_context(scope), Configurations.get(scope))
 
-    assert Shadow.definitions_covered?(scope, defined)
+    assert GraphStore.definitions_covered?(scope, defined)
 
     Repo.delete_all(
       from n in Node,
         where: n.story_id == ^missing.id and n.working_copy_id == ^scope.active_working_copy_id
     )
 
-    refute Shadow.definitions_covered?(scope, defined)
+    refute GraphStore.definitions_covered?(scope, defined)
 
     assert MapSet.member?(
-             Shadow.incomplete_entities(scope, defined.entities),
+             GraphStore.incomplete_entities(scope, defined.entities),
              {"story", missing.id}
            )
   end
