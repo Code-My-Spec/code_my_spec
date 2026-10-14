@@ -41,7 +41,6 @@ defmodule CodeMySpec.Migration do
       CodeMySpec.Questions,
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],
     exports: :all

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Agents.PromotionNoticeRoutingTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Events
@@ -8,11 +8,8 @@ defmodule CodeMySpec.Agents.PromotionNoticeRoutingTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
     scope = CodeMySpec.UsersFixtures.full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     copy_id = CodeMySpec.WorkingCopies.ensure_default(scope)
     scope = %{scope | active_working_copy_id: copy_id}
 

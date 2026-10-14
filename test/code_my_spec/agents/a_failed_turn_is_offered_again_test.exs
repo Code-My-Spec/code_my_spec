@@ -5,7 +5,7 @@ defmodule CodeMySpec.Agents.AFailedTurnIsOfferedAgainTest do
   the agent speaking, nothing offered the work again, and the request was lost
   — six times from 09-23 to 10-01.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
@@ -19,10 +19,7 @@ defmodule CodeMySpec.Agents.AFailedTurnIsOfferedAgainTest do
   setup :setup_active_project
 
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     {:ok, agent} =
       AgentsRepository.create_agent(ctx.scope, %{

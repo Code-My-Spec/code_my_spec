@@ -42,7 +42,6 @@ defmodule CodeMySpec.DevState do
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],

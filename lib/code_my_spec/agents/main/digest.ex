@@ -131,16 +131,26 @@ defmodule CodeMySpec.Agents.Main.Digest do
   # working, whatever its queue says.
   #
   # A blocked task is no work in hand: it holds only itself (story 1080).
-  defp stalled?(%AgentWork{
-         agent_status: :running,
-         task_status: status,
-         idle?: false,
-         turn_started_at: nil,
-         tapped_out?: false,
-         provider_refusal: nil
-       })
+  #
+  # Nor one with a turn on its way (`Offers.in_flight?/1`): that is the seconds
+  # between an offer and its claim. Main was told "STALLED" for team 2's coder
+  # at 03:21:36 with the promote it claimed at 03:21:46 offered at 03:21:35, and
+  # a flag that fires on every handover is one main learns to discount
+  # (2026-10-13). A turn handed over before and never started is a stall even
+  # with another on its way — a harness that swallows turns is re-offered every
+  # recovery check — and says what was offered (`AgentWork.unclaimed_work/1`).
+  defp stalled?(
+         %AgentWork{
+           agent_status: :running,
+           task_status: status,
+           idle?: false,
+           turn_started_at: nil,
+           tapped_out?: false,
+           provider_refusal: nil
+         } = entry
+       )
        when status in [nil, :blocked],
-       do: true
+       do: not entry.turn_in_flight? or not is_nil(entry.unstarted_turn)
 
   defp stalled?(%AgentWork{}), do: false
 end

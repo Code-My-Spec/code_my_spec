@@ -147,8 +147,8 @@ defmodule CmsHarnessTest.HeldProvider do
   A turn with a tool boundary in it: the agent runs the call and asks again,
   and that next request is what a message sent now arrives in (story 1051).
   """
-  @spec release_with_tool_call(String.t(), map()) :: :ok
-  defdelegate release_with_tool_call(tool, arguments), to: Store
+  @spec release_with_tool_call(String.t(), map(), keyword()) :: :ok
+  defdelegate release_with_tool_call(tool, arguments, opts \\ []), to: Store
 
   @doc """
   Wait until a turn is actually in flight.
@@ -250,10 +250,14 @@ defmodule CmsHarnessTest.HeldProvider do
     )
   end
 
+  # A client that hung up stops the stream. Sending now interrupts the turn
+  # whose request this is, so the harness closing it mid-stream is expected.
   defp send_chunks(conn, chunks) do
-    Enum.reduce(chunks, conn, fn data, conn ->
-      {:ok, conn} = Plug.Conn.chunk(conn, data)
-      conn
+    Enum.reduce_while(chunks, conn, fn data, conn ->
+      case Plug.Conn.chunk(conn, data) do
+        {:ok, conn} -> {:cont, conn}
+        {:error, :closed} -> {:halt, conn}
+      end
     end)
   end
 
@@ -310,9 +314,14 @@ defmodule CmsHarnessTest.HeldProvider do
       GenServer.call(store!(), :release)
     end
 
-    @spec release_with_tool_call(String.t(), map()) :: :ok
-    def release_with_tool_call(tool, arguments) do
-      GenServer.call(store!(), {:release_with_tool_call, tool, arguments})
+    @doc """
+    Answer the held request with a tool call. `then: :hold` keeps holding what
+    comes next — the turn's request after the tool runs — so the turn is still
+    running when a test acts on it; the default lets it flow.
+    """
+    @spec release_with_tool_call(String.t(), map(), keyword()) :: :ok
+    def release_with_tool_call(tool, arguments, opts \\ []) do
+      GenServer.call(store!(), {:release_with_tool_call, tool, arguments, opts})
     end
 
     @spec seen() :: [String.t()]
@@ -371,9 +380,10 @@ defmodule CmsHarnessTest.HeldProvider do
       {:reply, :ok, %{state | mode: :flowing, held: []}}
     end
 
-    def handle_call({:release_with_tool_call, tool, arguments}, _from, state) do
+    def handle_call({:release_with_tool_call, tool, arguments, opts}, _from, state) do
       Enum.each(state.held, &GenServer.reply(&1, {:tool_call, tool, arguments}))
-      {:reply, :ok, %{state | mode: :flowing, held: []}}
+      mode = if opts[:then] == :hold, do: :holding, else: :flowing
+      {:reply, :ok, %{state | mode: mode, held: []}}
     end
 
     def handle_call(:seen, _from, state), do: {:reply, Enum.reverse(state.seen), state}

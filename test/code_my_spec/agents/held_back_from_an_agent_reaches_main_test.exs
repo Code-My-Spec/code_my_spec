@@ -12,7 +12,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
   that rather than reaching into the private notify.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
@@ -28,7 +28,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
   setup :setup_active_project
 
   setup ctx do
-    :ok = Fixtures.install_recording_agent_transport()
+    :ok = Fixtures.install_recording_agent_transport(ctx)
 
     {:ok, _} = WorkingCopies.designate_main(ctx.scope, ctx.scope.active_working_copy_id)
 
@@ -144,9 +144,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
 
     {:ok, _} =
       AgentsRepository.update_agent(ctx.scope, Repo.get!(Agent, agent_id), %{
-        turn_started_at: start,
-        work_request_id: nil,
-        work_requested_at: nil
+        turn_started_at: start
       })
 
     Agents.record_turn_event(

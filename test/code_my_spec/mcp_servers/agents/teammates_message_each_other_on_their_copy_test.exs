@@ -7,7 +7,7 @@ defmodule CodeMySpec.McpServers.Agents.TeammatesMessageEachOtherOnTheirCopyTest 
   "the fix is at commit X" between them.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
@@ -18,12 +18,8 @@ defmodule CodeMySpec.McpServers.Agents.TeammatesMessageEachOtherOnTheirCopyTest 
   alias CodeMySpecTest.AgentPresence
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    CodeMySpecTest.RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    CodeMySpecTest.RecordingAgentTransport.listen(scope)
     %{scope: scope, here: copy(scope), there: copy(scope)}
   end
 

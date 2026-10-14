@@ -634,6 +634,11 @@ defmodule CodeMySpecSpex.HarnessHooks do
         end
     end
   catch
+    # Busy is not stuck: a client in the middle of its first scan on a loaded
+    # gate machine does not answer within two seconds, and reading that as
+    # stuck ejected a batch with the backstop's fifty-eight seconds unspent
+    # (2026-10-13). The backstop bounds it; a client that is gone is stuck.
+    :exit, {:timeout, _} -> :progressing
     :exit, reason -> {:stuck, "the channel client did not answer (#{inspect(reason)})"}
   end
 

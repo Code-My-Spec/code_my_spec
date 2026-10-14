@@ -15,7 +15,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
-  alias CodeMySpec.PromotionQueue
+  alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -78,8 +78,8 @@ defmodule CodeMySpec.Agents.Work do
   later. The same shape held a coding agent on another project for eight days.
 
   Holding a task is not evidence of a live turn — `turn_started_at` is, and
-  this requires it to be nil. An open reservation is still respected, because
-  that window is a dispatch genuinely in flight.
+  this requires it to be nil. A turn already on its way is still respected
+  (`Offers.in_flight?/1`), because that is a dispatch genuinely in flight.
   """
   def resume_held_tasks(scope, copy_id) do
     scope
@@ -105,7 +105,7 @@ defmodule CodeMySpec.Agents.Work do
   # messages it (`Wake`, through `Waiting`).
   defp stranded?(scope, agent) do
     present?(agent) and is_nil(agent.turn_started_at) and
-      not reservation_open?(agent) and not is_nil(Agent.active_task(agent)) and
+      not Offers.in_flight?(agent.id) and not is_nil(Agent.active_task(agent)) and
       not is_nil(agent.working_copy_id) and Wake.decide(scope, agent, :resume) == :wake
   end
 
@@ -113,27 +113,22 @@ defmodule CodeMySpec.Agents.Work do
   # an off agent's thread never shows a turn it was not given (39af5611).
   defp resume(scope, agent) do
     with :ok <- Wake.allow?(scope, agent, :resume),
-         {:ok, {reserved, ref}} <- reserve_stranded(scope, agent.id) do
-      turn_prompt = resume_prompt(reserved)
-
-      offered =
-        reserved
-        |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, :resume, {"task", Agent.active_task(reserved).id})
+         {:ok, {waking, offered}} <- request_stranded_turn(scope, agent.id) do
+      turn_prompt = resume_prompt(waking)
+      Offers.link_prompt(offered, Conversations.record_sent_to_agent(waking, turn_prompt))
 
       case Transport.request_work_turn(
-             reserved.working_copy_id,
-             reserved,
-             ref,
+             waking.working_copy_id,
+             waking,
+             offered.id,
              turn_prompt,
              5_000
            ) do
         {:ok, :started} ->
-          {:ok, ref}
+          {:ok, offered.id}
 
         _error ->
           Offers.undelivered(offered)
-          release(scope, reserved.id, ref)
       end
     end
   end
@@ -150,10 +145,10 @@ defmodule CodeMySpec.Agents.Work do
       "that id when it is done."
   end
 
-  # Same row lock and stamp as `reserve/2`, against `stranded?/2` rather than
-  # `runnable_state?/3` — two events racing to resume one agent must still hand
-  # out a single turn.
-  defp reserve_stranded(scope, id) do
+  # Same row lock and turn request as `admit_turn/4`, against `stranded?/2` rather
+  # than `runnable_state?/3` — two events racing to resume one agent must still
+  # hand out a single turn.
+  defp request_stranded_turn(scope, id) do
     Repo.transaction(fn ->
       agent =
         Repo.one(
@@ -165,7 +160,9 @@ defmodule CodeMySpec.Agents.Work do
           )
         )
 
-      if agent && stranded?(scope, agent), do: reserve(agent), else: :not_stranded
+      if agent && stranded?(scope, agent),
+        do: request_turn(agent, :resume, {"task", Agent.active_task(agent).id}),
+        else: :not_stranded
     end)
   end
 
@@ -197,29 +194,11 @@ defmodule CodeMySpec.Agents.Work do
       when is_binary(preface) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, event),
-         {:ok, {reserved, ref}} <- reserve(scope, current.id, event) do
-      turn_prompt = turn_prompt(preface, event, reserved)
-
-      offered =
-        reserved
-        |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, notice_kind(event, subject), subject)
-
-      case Transport.request_work_turn(
-             reserved.working_copy_id,
-             reserved,
-             ref,
-             turn_prompt,
-             5_000
-           ) do
-        {:ok, :started} ->
-          {:ok, ref}
-
-        error ->
-          Offers.undelivered(offered)
-          release(scope, reserved.id, ref)
-          error
-      end
+         {:ok, {waking, offered}} <-
+           admit_turn(scope, current.id, event, {notice_kind(event, subject), subject}) do
+      turn_prompt = turn_prompt(preface, event, waking)
+      Offers.link_prompt(offered, Conversations.record_sent_to_agent(waking, turn_prompt))
+      hand_turn(waking, offered, turn_prompt)
     else
       hold -> not_admitted(hold)
     end
@@ -409,9 +388,10 @@ defmodule CodeMySpec.Agents.Work do
          :ok <- admit(scope, current, event),
          {:work, offer, subject} <- offer(scope, current),
          false <- already_declined?(current, offer, questions_only?(subject)),
-         {:ok, {reserved, ref}} <- reserve(scope, current.id, event),
-         :ok <- still_offered(scope, reserved, ref, subject) do
-      turn_prompt = offer_prompt(scope, reserved, subject)
+         {:ok, {waking, offered}} <-
+           admit_turn(scope, current.id, event, {offer_kind(subject), subject}),
+         :ok <- still_offered(scope, waking, offered, subject) do
+      turn_prompt = offer_prompt(scope, waking, subject)
 
       # Recorded as well as sent, and recorded first — the same reasoning as
       # `StopDecision.send_to/3`, which records because it dispatches through
@@ -424,26 +404,8 @@ defmodule CodeMySpec.Agents.Work do
       # and the retirement took the recording with it — story 1050 measures
       # routing off these rows, and every correctly routed turn read as
       # silence.
-      offered =
-        reserved
-        |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, offer_kind(subject), subject)
-
-      case Transport.request_work_turn(
-             reserved.working_copy_id,
-             reserved,
-             ref,
-             turn_prompt,
-             5_000
-           ) do
-        {:ok, :started} ->
-          {:ok, ref}
-
-        error ->
-          Offers.undelivered(offered)
-          release(scope, reserved.id, ref)
-          error
-      end
+      Offers.link_prompt(offered, Conversations.record_sent_to_agent(waking, turn_prompt))
+      hand_turn(waking, offered, turn_prompt)
     else
       :none -> {:ok, :not_runnable}
       :stale -> {:ok, :not_runnable}
@@ -452,22 +414,22 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # The offer is decided from a read taken before the reservation, and the
+  # The offer is decided from a read taken before the turn request, and the
   # agent can move in between: a898df49 — product started its design task,
   # asked a question that blocked it, and was offered that same task as work,
   # because the claimable read predated the block. Its turn was then held by a
   # stale offer and the triage it should have been offered could not land.
   #
-  # Held by the reservation, nothing else can offer this agent a turn, so
+  # Held by the turn request, nothing else can offer this agent a turn, so
   # recomputing here is the answer as of now. A subject no longer offered
-  # releases the reservation; the next observation offers what is there.
-  defp still_offered(scope, reserved, ref, subject) do
-    case offer(scope, reserved) do
+  # withdraws the request; the next observation offers what is there.
+  defp still_offered(scope, waking, offered, subject) do
+    case offer(scope, waking) do
       {:work, _offer, ^subject} ->
         :ok
 
       _moved ->
-        release(scope, reserved.id, ref)
+        Offers.withdraw(offered)
         :stale
     end
   end
@@ -485,29 +447,11 @@ defmodule CodeMySpec.Agents.Work do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, :cadence),
          true <- Keyword.get(opts, :attention?, false) or work_offered?(scope, current),
-         {:ok, {reserved, ref}} <- reserve(scope, current.id, :cadence) do
-      turn_prompt = render.(work_offered?(scope, reserved))
-
-      offered =
-        reserved
-        |> Conversations.record_sent_to_agent(turn_prompt)
-        |> Offers.record(reserved, :check_in, {"cadence", nil})
-
-      case Transport.request_work_turn(
-             reserved.working_copy_id,
-             reserved,
-             ref,
-             turn_prompt,
-             5_000
-           ) do
-        {:ok, :started} ->
-          {:ok, ref}
-
-        error ->
-          Offers.undelivered(offered)
-          release(scope, reserved.id, ref)
-          error
-      end
+         {:ok, {waking, offered}} <-
+           admit_turn(scope, current.id, :cadence, {:check_in, {"cadence", nil}}) do
+      turn_prompt = render.(work_offered?(scope, waking))
+      Offers.link_prompt(offered, Conversations.record_sent_to_agent(waking, turn_prompt))
+      hand_turn(waking, offered, turn_prompt)
     else
       false -> {:ok, :no_work}
       hold -> not_admitted(hold)
@@ -540,7 +484,7 @@ defmodule CodeMySpec.Agents.Work do
   Called from the turn-ended path, which is the only place that knows a turn
   finished with nothing claimed. Until this existed the agent was re-offered
   the same work immediately and forever: ending a turn clears `turn_started_at`
-  and the reservation, and declining leaves `active_task` nil, so every
+  and settles its offers, and declining leaves `active_task` nil, so every
   condition `runnable_state?/3` tests is satisfied again the instant the turn
   ends. The next observation — and a turn ending is itself enough to produce
   one — fires `consider_project/2` and hands the agent the offer it just
@@ -623,18 +567,10 @@ defmodule CodeMySpec.Agents.Work do
     end)
   end
 
-  def release(scope, agent_id, ref) do
-    from(a in Agent,
-      where:
-        a.id == ^agent_id and a.project_id == ^scope.active_project_id and
-          a.account_id == ^scope.active_account_id and a.work_request_id == ^ref
-    )
-    |> Repo.update_all(set: [work_request_id: nil, work_requested_at: nil])
-
-    :ok
-  end
-
-  defp reserve(scope, id, event) do
+  # The turn request is the offer `Offers.dispatch/3` writes, under the row
+  # lock: two events racing to admit the same agent both take it, and only the
+  # first sees a runnable state to write one.
+  defp admit_turn(scope, id, event, {kind, subject}) do
     Repo.transaction(fn ->
       agent =
         Repo.one(
@@ -647,23 +583,28 @@ defmodule CodeMySpec.Agents.Work do
         )
 
       if agent && runnable_state?(scope, agent, event),
-        do: reserve(agent),
+        do: request_turn(agent, kind, subject),
         else: :not_runnable
     end)
   end
 
-  # Stamping the reservation is what makes the request idempotent: two events
-  # racing to admit the same agent both take the row lock above, and only the
-  # first sees a runnable state to stamp.
-  defp reserve(agent) do
-    ref = Ecto.UUID.generate()
-
-    agent
-    |> Agent.changeset(%{work_request_id: ref, work_requested_at: DateTime.utc_now()})
-    |> Repo.update()
-    |> case do
-      {:ok, saved} -> {saved, ref}
+  defp request_turn(agent, kind, subject) do
+    case Offers.dispatch(agent, kind, subject) do
+      {:ok, offered} -> {agent, offered}
       {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  # The offer id is the turn's ref. A turn the harness would not take leaves
+  # its offer undelivered, which is what lets the next wake through.
+  defp hand_turn(agent, offered, turn_prompt) do
+    case Transport.request_work_turn(agent.working_copy_id, agent, offered.id, turn_prompt, 5_000) do
+      {:ok, :started} ->
+        {:ok, offered.id}
+
+      error ->
+        Offers.undelivered(offered)
+        error
     end
   end
 
@@ -675,7 +616,7 @@ defmodule CodeMySpec.Agents.Work do
   # it at all is `Wake`'s.
   defp idle?(agent) do
     present?(agent) and is_nil(agent.turn_started_at) and
-      not reservation_open?(agent) and not busy_on?(agent) and
+      not Offers.in_flight?(agent.id) and not busy_on?(agent) and
       not is_nil(agent.working_copy_id)
   end
 
@@ -700,7 +641,7 @@ defmodule CodeMySpec.Agents.Work do
   defp awaiting_landing?(agent, task) do
     case subject(agent, task) do
       nil -> false
-      {type, id} -> PromotionQueue.open_for(agent.id, type, id)
+      {type, id} -> Waits.open_for(agent.id, type, id)
     end
   end
 
@@ -739,36 +680,6 @@ defmodule CodeMySpec.Agents.Work do
   # Under the row lock: the same answer, without announcing it twice.
   defp runnable_state?(scope, agent, event),
     do: idle?(agent) and Wake.decide(scope, agent, event) == :wake
-
-  # A reservation is the gap between stamping a turn and the agent reporting it
-  # started — seconds. The turn itself is guarded by `turn_started_at`, so
-  # nothing legitimate sits in this window for minutes, and five is generous.
-  #
-  # It has to expire because every path that clears it needs a live process:
-  # `release/3` on a failed dispatch, and the agent's own completion. The case
-  # that strands one is the process going away after the transport accepted it.
-  # A harness restart brings the agent back present without passing through
-  # anything that clears it, so the row carries the stale reservation over.
-  #
-  # Measured on the math project 2026-09-22: coding stamped a reservation at
-  # 01:53, the harness restarted three times, and the row carried it through
-  # every one. `runnable_state?/3` requires no open reservation, so the agent
-  # was un-admittable for two hours while its own `spex_boundary_ready` sat
-  # ready and the other three roles waited behind it.
-  #
-  # Expiring rather than clearing on sight: `reserve/1` stamps a fresh ref over
-  # the top, and `release/3` matches on the ref it was given, so a late releaser
-  # for the dead reservation cannot clobber the live one.
-  @reservation_ttl_seconds 300
-
-  defp reservation_open?(%{work_request_id: nil}), do: false
-
-  # Stamped by a build that did not record the time. Treated as open rather than
-  # expired, because "no timestamp" is not evidence of age.
-  defp reservation_open?(%{work_requested_at: nil}), do: true
-
-  defp reservation_open?(%{work_requested_at: at}),
-    do: DateTime.diff(DateTime.utc_now(), at) < @reservation_ttl_seconds
 
   @doc """
   Forget what this agent last refused.
@@ -1027,8 +938,8 @@ defmodule CodeMySpec.Agents.Work do
   defp repeats_spent?(n, false), do: is_integer(n) and n >= @max_repeats
 
   # Recorded by a build that did not stamp the time. Treated as expired rather
-  # than open — the same reasoning as `reservation_open?/1` in reverse: here the
-  # conservative reading is the one that keeps the agent reachable.
+  # than open: the conservative reading is the one that keeps the agent
+  # reachable.
   defp within_window?(nil, _questions_only?), do: false
   defp within_window?(_at, true), do: true
   defp within_window?(at, false), do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds

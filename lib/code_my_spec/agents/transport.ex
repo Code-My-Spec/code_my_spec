@@ -95,6 +95,18 @@ defmodule CodeMySpec.Agents.Transport do
               :ok | {:error, term()}
 
   @doc """
+  Ask the machine running this agent to stop its current turn, so a message
+  sent now is its next one (story 1051). Fire and forget: `:ok` means the ask
+  went out; the turn ending is reported as any turn's end is.
+  """
+  @callback interrupt_turn(working_copy_id :: String.t(), agent :: Agent.t()) ::
+              :ok | {:error, term()}
+
+  # Optional: a transport with no running turns to stop answers
+  # `{:error, :unsupported}` through `interrupt_turn/2` below.
+  @optional_callbacks interrupt_turn: 2
+
+  @doc """
   Make a checkout on a machine that is running a harness.
 
   The one callback here that does not name a checkout, because it asks for one
@@ -129,6 +141,13 @@ defmodule CodeMySpec.Agents.Transport do
       %Agent{retired_at: %DateTime{}} = retired -> {:error, {:retired, retired}}
       off -> {:error, {:off, off}}
     end
+  end
+
+  @doc "Stop the agent's running turn for a message sent now (story 1051)."
+  def interrupt_turn(copy_id, %Agent{} = agent) do
+    if function_exported?(impl(), :interrupt_turn, 2),
+      do: impl().interrupt_turn(copy_id, agent),
+      else: {:error, :unsupported}
   end
 
   @doc "Launch, unless the agent is off or retired."

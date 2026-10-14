@@ -85,8 +85,8 @@ defmodule CodeMySpec.SpexGivensTest do
   # `Req.Test.stub` and `stage_`. A block saying "this agent's tools cannot be
   # resolved at launch" has made its precondition true in the only way
   # available: resolution happens on the machine, so an unreachable machine is
-  # the fact, and `config/test.exs` pins `:agent_transport` precisely so a suite
-  # can say that without owning a second box. Without it, criterion 3211 — an
+  # the fact, and the test transport routes each project so a suite can say
+  # that without owning a second box. Without it, criterion 3211 — an
   # agent whose tools do not resolve must fail loudly — has no legal way to be
   # written at all.
   #

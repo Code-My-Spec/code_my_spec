@@ -245,24 +245,9 @@ defmodule CodeMySpecTest.GraphHelpers do
     end
   end
 
-  @doc """
-  Install the recording transport and route deliveries here.
-
-  Restores the previous transport on exit rather than assuming the default —
-  the config key is global, so a spex using this must be `async: false`.
-  """
+  @doc "Route this context's project to the recording transport, delivering here."
   def install_recording_transport(context) do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    RecordingAgentTransport.listen()
-
-    ExUnit.Callbacks.on_exit(fn ->
-      case previous do
-        nil -> Application.delete_env(:code_my_spec, :agent_transport)
-        module -> Application.put_env(:code_my_spec, :agent_transport, module)
-      end
-    end)
-
+    RecordingAgentTransport.listen(context)
     context
   end
 

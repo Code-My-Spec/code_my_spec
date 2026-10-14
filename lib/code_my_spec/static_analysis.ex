@@ -14,9 +14,7 @@ defmodule CodeMySpec.StaticAnalysis do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Code,
       CodeMySpec.Compile,
-      CodeMySpec.Components,
       CodeMySpec.Documents,
       CodeMySpec.Environments,
       CodeMySpec.Files,

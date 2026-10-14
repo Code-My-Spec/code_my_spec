@@ -20,9 +20,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    Fixtures.use_recording_transport()
+    Fixtures.use_recording_transport(context)
   end
 
   spex "A coding agent messages a teammate on its own working copy directly", criterion: 2125 do
@@ -39,7 +39,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
         reply = join_working_copy(context, "/tmp/spex-2125-own-copy", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
-        coder = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2125-own-copy")
+        coder =
+          Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2125-own-copy")
+
         qa = Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-2125-own-copy")
 
         {:ok,
@@ -102,7 +104,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
   end
 
   spex "Reaching an agent on another working copy goes through a question, not a message",
-       criterion: 2125 do
+    criterion: 2125 do
     scenario "a coding agent tries to message a QA agent on another working copy" do
       given_ "a coding agent, and a QA agent on a different working copy", context do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)

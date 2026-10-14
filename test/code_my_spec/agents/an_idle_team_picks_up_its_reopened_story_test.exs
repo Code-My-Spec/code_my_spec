@@ -11,6 +11,8 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
   import CodeMySpec.IssuesFixtures
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offer
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -31,10 +33,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
     Slice.assert_active(Slice.next(ctx, %{agent_id: coding.id}), ctx, "complete")
 
     # Installed after the fixtures, which swap the transport themselves.
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    CodeMySpecTest.RecordingAgentTransport.listen()
+    CodeMySpecTest.RecordingAgentTransport.listen(ctx)
 
     # The backfill: nobody on the copy holds a story.
     Repo.update_all(Agent, set: [story_id: nil, continuous: true])
@@ -92,7 +91,8 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
                      500,
                      "the idle continuous coder is offered the reopened story"
 
-      Work.release(ctx.scope, coding_id, ref)
+      # The test takes the task itself, so the turn it was handed is withdrawn.
+      :ok = Offers.withdraw(%Offer{id: ref})
 
       start(ctx, ctx.coding, issue)
 

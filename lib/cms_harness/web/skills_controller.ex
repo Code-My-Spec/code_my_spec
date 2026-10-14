@@ -13,7 +13,7 @@ defmodule CmsHarness.Web.SkillsController do
   Resolution mirrors `HooksController`'s exactly: the id in the URL names a
   working copy (`WorkingCopies.root/1`), which names a project
   (`Projects.ensure_started/1`), whose channel is asked to do the work
-  (`ChannelClient.start_skill/2` here, `decide_hook/3` there) — the server
+  (`Channel.start_skill/2` here, `decide_hook/3` there) — the server
   computes the answer, this only carries the question and the reply.
 
   ## Every refusal is a sentence, and the sentences are not written here
@@ -35,8 +35,8 @@ defmodule CmsHarness.Web.SkillsController do
 
   require Logger
 
+  alias CmsHarness.Channel
   alias CmsHarness.HookDecision
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
 
   def start(conn, params) do
@@ -87,7 +87,7 @@ defmodule CmsHarness.Web.SkillsController do
   end
 
   defp ask(project, params) do
-    case ChannelClient.start_skill(project.root, params) do
+    case Channel.start_skill(project.root, params) do
       {:ok, result} when is_map(result) ->
         result
 

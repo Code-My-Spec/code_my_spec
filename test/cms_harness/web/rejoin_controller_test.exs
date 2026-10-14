@@ -18,6 +18,7 @@ defmodule CmsHarness.Web.RejoinControllerTest do
   use CmsHarnessTest.ConnCase, async: false
 
   alias CmsHarness.Agents.Liveness
+  alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
@@ -97,7 +98,7 @@ defmodule CmsHarness.Web.RejoinControllerTest do
 
       conn |> post_rejoin(project.root) |> response(200)
 
-      assert ChannelClient.connected?(other.root), """
+      assert Channel.connected?(other.root), """
       Rejoining one copy dropped another. That is the harness restart this
       exists to replace — one process serves every checkout, and taking them all
       down to see one reconnect is the cost that made these criteria untestable
@@ -124,7 +125,7 @@ defmodule CmsHarness.Web.RejoinControllerTest do
 
   defp await_connected(root, attempts \\ 100) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      halt_when_connected(ChannelClient.connected?(root))
+      halt_when_connected(Channel.connected?(root))
     end)
   end
 

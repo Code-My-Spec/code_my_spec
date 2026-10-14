@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
     criterion: 2003 do
     scenario "a story's tasks each opened and closed during its build, one of them waiting on a person" do
       given_ "a released story whose build task waited on a tap-out for half an hour", context do
-        reply = join_working_copy(context, "/tmp/spex-2003", "the checkout")
+        {reply, socket} = join_working_copy_socket(context, "/tmp/spex-2003", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
         frame = %Frame{assigns: %{current_scope: scope}}
@@ -66,14 +66,16 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
         {:reply, started, _frame} =
-          StartTask.execute(
-            %{
-              requirement_name: "implementation_file",
-              entity_type: "component",
-              entity_id: component.id
-            },
-            asking
-          )
+          as_an_empty_checkout(socket, fn ->
+            StartTask.execute(
+              %{
+                requirement_name: "implementation_file",
+                entity_type: "component",
+                entity_id: component.id
+              },
+              asking
+            )
+          end)
 
         refute started.isError, inspect(started)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))

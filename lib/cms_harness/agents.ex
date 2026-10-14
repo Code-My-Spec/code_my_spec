@@ -22,9 +22,21 @@ defmodule CmsHarness.Agents do
   options, and the engine owns the loop.
   """
 
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CmsHarness,
+      CmsHarness.Channel,
+      CodeMySpec.CodeMode,
+      # `Hooks.PreToolUse.route_command/4`: an in-app agent's `mix test` is
+      # routed the way a Claude Code agent's is.
+      CodeMySpec.Hooks
+    ],
+    exports: :all
+
   alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.ToolResults
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
 
   @doc """
   Start the agent this request describes.
@@ -92,11 +104,10 @@ defmodule CmsHarness.Agents do
       # caller.
       on_event: request["on_event"] || reporter_for(request["working_copy"]),
       on_consume: request["on_consume"],
-      on_send_now: request["on_send_now"],
       on_register:
         request["on_register"] ||
           fn agent_id, generation ->
-            ChannelClient.mailbox(request["working_copy"], %{
+            Channel.mailbox(request["working_copy"], %{
               "operation" => "register",
               "agent_id" => agent_id,
               "generation" => generation
@@ -149,6 +160,13 @@ defmodule CmsHarness.Agents do
   @doc "Request coalescible work on an idle engine; this carries no queued instruction."
   def request_work_turn(agent_id, ref, text, timeout \\ 180_000),
     do: Engine.request_work_turn(agent_id, ref, text, timeout)
+
+  @doc """
+  Stop this agent's running turn so a message sent now is its next one (story
+  1051). It keeps what it did up to its last completed tool call.
+  """
+  @spec interrupt(String.t()) :: :ok | :idle | {:error, term()}
+  defdelegate interrupt(agent_id), to: Engine
 
   @doc """
   Whether the agent currently has an executing turn.
@@ -241,14 +259,14 @@ defmodule CmsHarness.Agents do
   # finds no registry entry and stops — which is the right answer, because
   # there is nowhere to report to.
   defp drafter_for(nil, working_copy),
-    do: fn agent_id, envelope -> ChannelClient.report_draft(working_copy, agent_id, envelope) end
+    do: fn agent_id, envelope -> Channel.report_draft(working_copy, agent_id, envelope) end
 
   defp drafter_for(_on_event, _working_copy), do: nil
 
   defp reporter_for(working_copy) do
     fn agent_id, envelope ->
       warn_on_tool_failure(agent_id, envelope)
-      ChannelClient.report_turn_event(working_copy, agent_id, envelope)
+      Channel.report_turn_event(working_copy, agent_id, envelope)
       report_head_at_turn_end(working_copy, envelope)
     end
   end

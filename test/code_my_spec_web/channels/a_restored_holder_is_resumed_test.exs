@@ -11,12 +11,15 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
   use CodeMySpecSpex.Case, async: false
 
   import CodeMySpec.DevicesFixtures
+  import Ecto.Query
   import Phoenix.ChannelTest, except: [push: 3]
 
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Offer
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
   alias CodeMySpecTest.AgentPresence
@@ -31,10 +34,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
   setup ctx do
     Sandbox.mode(Repo, {:shared, self()})
 
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     {:ok, _reply, socket} =
       UserSocket
@@ -84,13 +84,20 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
       |> Repo.update()
 
     {:ok, agent} =
-      AgentsRepository.update_agent(
-        scope,
-        agent,
-        Map.take(attrs, [:turn_started_at, :work_request_id, :work_requested_at])
-      )
+      AgentsRepository.update_agent(scope, agent, Map.take(attrs, [:turn_started_at]))
 
+    turn_requested(agent, attrs[:turn_requested_at])
     agent
+  end
+
+  # A turn handed to the old harness: an open offer stamped when it went.
+  defp turn_requested(_agent, nil), do: :ok
+
+  defp turn_requested(agent, at) do
+    {:ok, offer} = Offers.dispatch(agent, :resume, {"task", "earlier"})
+
+    Repo.update_all(from(o in Offer, where: o.id == ^offer.id), set: [turn_requested_at: at])
+    :ok
   end
 
   defp restore(socket) do
@@ -152,7 +159,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
     idle_id = idle.id
     refute_received {:work_turn_requested, ^idle_id, _ref, _prompt}
     refute_received {:agent_dispatch, ^idle_id, _ref, _prompt}
-    assert is_nil(Repo.get(Agent, idle_id).work_request_id)
+    refute Offers.in_flight?(idle_id)
   end
 
   test "a turn that died mid-call leaves the restored agent free, not busy", ctx do
@@ -169,10 +176,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
 
   test "a wake the old harness took but never started does not hold the agent out", ctx do
     agent =
-      holder(ctx.scope, %{
-        work_request_id: Ecto.UUID.generate(),
-        work_requested_at: DateTime.add(DateTime.utc_now(), -30, :second)
-      })
+      holder(ctx.scope, %{turn_requested_at: DateTime.add(DateTime.utc_now(), -30, :second)})
 
     restart(ctx.socket, [agent])
 
@@ -181,7 +185,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
     assert_receive {:work_turn_requested, ^agent_id, _ref, _prompt},
                    5_000,
                    """
-                   A reservation stamped for the harness that died still fenced the
+                   A turn handed to the harness that died still fenced the
                    restored agent off, and the once-per-join sweep walked past it.
                    """
   end

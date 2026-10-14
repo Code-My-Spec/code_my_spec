@@ -74,6 +74,9 @@ defmodule CodeMySpec.Agents.Offer do
     # The policy step taken after this outcome (step 2).
     field :next_step, :string
     field :template_version, :string
+    # When this offer was handed to the agent's harness as a turn of its own.
+    # Open, with no turn running, it is a turn on its way (`Offers.in_flight?/1`).
+    field :turn_requested_at, :utc_datetime_usec
 
     has_many :messages, OfferMessage
 
@@ -92,7 +95,8 @@ defmodule CodeMySpec.Agents.Offer do
     :outcome_at,
     :reason,
     :note,
-    :next_step
+    :next_step,
+    :turn_requested_at
   ]
 
   def changeset(offer \\ %__MODULE__{}, attrs) do

@@ -131,8 +131,10 @@ defmodule CmsHarness.ServedRootsTest do
     Application.put_env(:code_my_spec, :harness_token, "fixture-user-token")
     Application.put_env(:code_my_spec, :root_test_roster, roster)
     pid = start_supervised!({WorkingCopyReporter, name: :served_roots_boot_test})
-    assert_receive :announced, 1_000
-    :sys.get_state(pid)
+    # Generous: the boot report waits on a timer and a credential lookup, and
+    # a 1s wait lost to gate load (2026-10-13). Returns as soon as it lands.
+    assert_receive :announced, 15_000
+    :sys.get_state(pid, 30_000)
   end
 
   defp serve_then_lose(root) do

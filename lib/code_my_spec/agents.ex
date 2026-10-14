@@ -51,7 +51,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
-      CodeMySpec.PromotionQueue,
+      CodeMySpec.PromotionQueue.Waits,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
@@ -757,35 +757,23 @@ defmodule CodeMySpec.Agents do
   `turn_started_at` is cleared for the mid-turn case, for the reason
   `restart_agent/2` already clears it: left set, `list_agent_work` and every
   check-in go on reporting a turn that opened before a process that no longer
-  exists (`4078e7bf`). Any open reservation is dropped for every agent, for the
-  same reason.
+  exists (`4078e7bf`). A turn handed to the old process and never started is
+  undelivered, for every agent, for the same reason.
   """
   @spec account_for_interrupted_turns(Scope.t(), [Agent.t()]) :: :ok
   def account_for_interrupted_turns(%Scope{} = scope, agents) when is_list(agents) do
     Enum.each(agents, &account_for_interrupted_turn(scope, &1))
   end
 
-  defp account_for_interrupted_turn(scope, %Agent{turn_started_at: nil} = agent),
-    do: drop_dead_reservation(scope, agent)
+  # A turn handed to the harness that just died can never start. Left open it
+  # fences the agent out of the join's one sweep for up to five minutes, and
+  # nothing sweeps again (0d3b800d).
+  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent),
+    do: Offers.abandon_turns(agent.id)
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
-    AgentsRepository.update_agent(scope, agent, %{
-      turn_started_at: nil,
-      work_request_id: nil,
-      work_requested_at: nil
-    })
-
+    AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
     {:ok, _} = Mailbox.carry_on(scope, agent.id)
-    :ok
-  end
-
-  # A reservation is a wake handed to the harness that just died, so it can
-  # never become a turn. Left open it fences the agent out of the join's one
-  # sweep for up to five minutes, and nothing sweeps again (0d3b800d).
-  defp drop_dead_reservation(_scope, %Agent{work_request_id: nil}), do: :ok
-
-  defp drop_dead_reservation(scope, agent) do
-    AgentsRepository.update_agent(scope, agent, %{work_request_id: nil, work_requested_at: nil})
     :ok
   end
 
@@ -1671,6 +1659,13 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc "Record a provisioning failure for its project's agent, including during startup."
+  def notify_provisioning_failure(%Scope{} = scope, agent_id, text) when is_binary(text) do
+    with {:ok, %Agent{role: :main} = agent} <- AgentsRepository.fetch_agent(scope, agent_id) do
+      notify(scope, agent, :provisioning_failed, text, nil, nil)
+    end
+  end
+
   defp notify(scope, main, event, text, offer, instruction_offer) do
     ref = Ecto.UUID.generate()
 
@@ -2308,6 +2303,8 @@ defmodule CodeMySpec.Agents do
              Keyword.get(opts, :sender_id, "operator"),
              Keyword.take(opts, [:send_now])
            ) do
+      if Keyword.get(opts, :send_now), do: interrupt_if_busy(scope, agent.id)
+
       result =
         deliver_recorded(agent, admission, timeout)
         |> record_dispatch_result(message, offered)
@@ -2373,7 +2370,7 @@ defmodule CodeMySpec.Agents do
   end
 
   defp admit_if_allowed(agent, message, event, offered, admit_opts) do
-    case Wake.allow?(agent_scope(agent), agent, event) do
+    case Wake.allow_admission?(agent_scope(agent), agent, event) do
       :ok ->
         Mailbox.admit(agent, message, event, admit_opts)
         {message, :ok}
@@ -2508,13 +2505,35 @@ defmodule CodeMySpec.Agents do
     do: Mailbox.withdraw(scope, id, ref)
 
   @doc """
-  Let a message already waiting for the turn to end into the running turn, at
-  its next tool boundary (story 1051). A message the agent has already taken is
-  refused as delivered.
+  Send a message that is waiting for the turn to end now (story 1051): it goes
+  to the front of the queue, and a busy agent's turn is stopped so it is the
+  next one. The agent keeps what it did up to its last completed tool call. A
+  message the agent has already taken is refused as delivered.
+
+  This used to let the message in at the turn's next tool boundary, and the
+  server only handed it over inside a turn the mailbox had started: a turn the
+  graph started never took it, and a correction to team 2's coder waited out
+  sixteen minutes of the work it was correcting (John, 2026-10-13).
   """
   @spec send_now(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, term()} | {:error, term()}
-  def send_now(%Scope{} = scope, id, ref) when is_binary(ref),
-    do: Mailbox.send_now(scope, id, ref)
+  def send_now(%Scope{} = scope, id, ref) when is_binary(ref) do
+    with {:ok, _} = sent <- Mailbox.send_now(scope, id, ref) do
+      interrupt_if_busy(scope, id)
+      sent
+    end
+  end
+
+  # Mid-turn is the row's `turn_started_at`. Idle, the message already starts
+  # the next turn and there is nothing to stop.
+  defp interrupt_if_busy(scope, id) do
+    case AgentsRepository.fetch_agent(scope, id) do
+      {:ok, %Agent{turn_started_at: %DateTime{}} = agent} ->
+        Transport.interrupt_turn(agent.working_copy_id, agent)
+
+      _idle_or_gone ->
+        :ok
+    end
+  end
 
   @doc """
   Write one step an agent took to the conversation it belongs to.
@@ -2583,9 +2602,7 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
            AgentsRepository.update_agent(scope, agent, %{
-             turn_started_at: agent.turn_started_at || DateTime.utc_now(),
-             work_request_id: nil,
-             work_requested_at: nil
+             turn_started_at: agent.turn_started_at || DateTime.utc_now()
            }),
          _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
@@ -3158,8 +3175,6 @@ defmodule CodeMySpec.Agents do
   @running_afresh %{
     status: :running,
     turn_started_at: nil,
-    work_request_id: nil,
-    work_requested_at: nil,
     stopped_reason: nil
   }
 
@@ -3238,6 +3253,8 @@ defmodule CodeMySpec.Agents do
   end
 
   defp upsert(%Agent{} = agent, scope, report) do
+    :ok = abandon_turns(agent)
+
     {:ok, updated} =
       AgentsRepository.update_agent(
         scope,
@@ -3413,12 +3430,13 @@ defmodule CodeMySpec.Agents do
   # is actually gone they are the only way to reach it again.
   # Stopping clears what only a live process could have meant.
   #
-  # `turn_started_at` and `work_request_id` both say "something is happening
-  # right now" — a turn in flight, a turn reserved and about to be dispatched —
-  # and neither can be true of an agent with no process behind it. Left set,
-  # they are worse than stale: `Work.runnable_state?/1` requires both to be nil,
-  # so a reaped agent that comes back is permanently un-admittable, and nothing
-  # would ever clear them because clearing them is what this function is for.
+  # `turn_started_at` and a turn request (`Offers.in_flight?/1`) both say
+  # "something is happening right now" — a turn in flight, a turn handed over and
+  # about to start — and neither can be true of an agent with no process behind
+  # it. Left standing they are worse than stale: `Work.runnable_state?/1`
+  # requires neither, so a reaped agent that comes back is un-admittable, and
+  # nothing would ever close them because closing them is what this function is
+  # for.
   #
   # The agent's *tasks* are deliberately not touched. A claim is a statement
   # about work, not about a process, and cancelling somebody's attempt because
@@ -3439,11 +3457,15 @@ defmodule CodeMySpec.Agents do
       stopped_reason: reason,
       os_pid: nil,
       os_boot_id: nil,
-      turn_started_at: nil,
-      work_request_id: nil,
-      work_requested_at: nil
+      turn_started_at: nil
     })
+    |> tap(fn _ -> abandon_turns(agent) end)
   end
+
+  # The process the turn went to is gone, so nothing it was handed can still
+  # start or finish there (`Offers.abandon_turns/2`).
+  defp abandon_turns(%Agent{id: id, turn_started_at: started}),
+    do: Offers.abandon_turns(id, not is_nil(started))
 
   defp trimmed(value) when is_binary(value) do
     case String.trim(value) do
@@ -3471,6 +3493,7 @@ defmodule CodeMySpec.Agents do
   @spec record_started(Scope.t(), Agent.t(), map()) ::
           {:ok, Agent.t()} | {:error, :cross_project | Ecto.Changeset.t()}
   def record_started(%Scope{} = scope, %Agent{} = agent, %{agent_id: _id}) do
+    :ok = abandon_turns(agent)
     AgentsRepository.update_agent(scope, agent, @running_afresh)
   end
 

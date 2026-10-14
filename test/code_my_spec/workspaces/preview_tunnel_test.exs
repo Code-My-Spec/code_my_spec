@@ -453,6 +453,46 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert saved.preview_url == nil
     end
 
+    test "release/1 clears a copy whose app has stopped since it was shared", %{
+      scope: scope,
+      main: main
+    } do
+      {:ok, sibling} =
+        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+
+      {:ok, sibling} =
+        WorkingCopies.record_app_status(sibling, %{
+          status: "serving",
+          url: "http://127.0.0.1:41234"
+        })
+
+      host = PreviewAddress.host(sibling.id)
+
+      stub_shared_cloudflare(self(), [
+        %{"hostname" => host, "service" => "http://127.0.0.1:41234"}
+      ])
+
+      assert {:ok, _} = PreviewTunnel.ensure(sibling)
+      assert_receive {:put_config, _}, @arrival_timeout
+      {:ok, sibling} = WorkingCopies.fetch(sibling.id)
+      {:ok, sibling} = WorkingCopies.record_app_status(sibling, %{status: "down"})
+
+      stub_shared_cloudflare(
+        self(),
+        [
+          %{"hostname" => host, "service" => "http://127.0.0.1:41234"},
+          %{"service" => "http_status:404"}
+        ],
+        [%{"id" => "rec-shared-1", "content" => @tunnel_id <> ".cfargotunnel.com"}]
+      )
+
+      assert :ok = PreviewTunnel.release(sibling)
+
+      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      assert saved.preview_url == nil
+      assert saved.preview_tunnel_id == nil
+    end
+
     test "release/1 does nothing when the DNS record was already removed by hand", %{
       scope: scope,
       main: main

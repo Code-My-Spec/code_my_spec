@@ -261,7 +261,7 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   # `ChannelClient`'s join actually lands, so this returns the instant that
   # happens instead of on a fixed clock.
   #
-  # The previous version polled `ChannelClient.connected?/1` on a 200×10ms
+  # The previous version polled `Channel.connected?/1` on a 200×10ms
   # (2s) budget — a sleep loop, and one this project's own rule forbids in
   # tests. It also went red under Criterion Binding's full-suite branch
   # sweep (run 52853, 14 of story 1108's spex, all "never connected"): the

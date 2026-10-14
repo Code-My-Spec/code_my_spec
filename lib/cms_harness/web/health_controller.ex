@@ -11,8 +11,8 @@ defmodule CmsHarness.Web.HealthController do
   use Phoenix.Controller, formats: [:json]
 
   alias ClientUtils.Harness.Onboarding
+  alias CmsHarness.Channel
   alias CmsHarness.Config
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Projects
   alias CodeMySpec.BootVersion
@@ -39,8 +39,8 @@ defmodule CmsHarness.Web.HealthController do
           # and cannot hang: a health check that blocks on the network is its
           # own outage. `nil` means the server has never answered this channel,
           # which is a different fact from `connected: false`.
-          server_replied_ago_s: ChannelClient.server_replied_ago(root),
-          joined_ago_s: ChannelClient.joined_ago(root),
+          server_replied_ago_s: Channel.server_replied_ago(root),
+          joined_ago_s: Channel.joined_ago(root),
           # Whether this copy can run anything, which the two flags above do not
           # say. `connected` is about the socket and `watching` is about the
           # watcher; a copy can have both and still fail every analyzer.

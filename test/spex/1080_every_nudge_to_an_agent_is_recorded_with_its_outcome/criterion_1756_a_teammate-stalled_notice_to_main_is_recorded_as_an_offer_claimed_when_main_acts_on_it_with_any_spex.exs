@@ -5,7 +5,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
   claimed when main acts on it with any tool call before its turn ends.
 
   A stall is a continuous teammate whose role has work waiting that takes no
-  turn. Main's check-in sees it and tells main once; that notice is the offer.
+  turn — none running, and none on its way. Main's check-in sees it and tells main once; that notice is the offer.
   """
 
   use CodeMySpecSpex.Case
@@ -22,9 +22,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok = Fixtures.install_recording_agent_transport()
+    :ok = Fixtures.install_recording_agent_transport(context)
     :ok
   end
 
@@ -142,12 +142,23 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
     end
   end
 
+  # The turn the coder was offered never started and is past its window: what
+  # "takes no turn" means once a turn on its way is not a stall. Waited for, then
+  # aged — while it stands no second turn is handed out, so the next one can only
+  # come from the check-in's own recovery wake, after the digest has looked.
+  defp never_starts(context) do
+    coder = context.coder
+    assert_receive {:work_turn_requested, ^coder, _ref, _prompt}, 5_000
+    Fixtures.age_turn_request(context.scope, coder, 301)
+  end
+
   # Main's cadence timer fires once. Main is mid-turn, so the stall arrives as
   # its own notice rather than inside a check-in turn.
   defp check_in(context) do
     {:reply, configured, _} = Cadence.execute(%{seconds: 30}, frame(context))
     refute configured.isError, response_text(configured)
     :ok = Fixtures.start_recovery_timer(context.scope)
+    :ok = never_starts(context)
 
     changed_at = DateTime.utc_now()
     {:reply, response, _} = Cadence.execute(%{seconds: 1}, frame(context))

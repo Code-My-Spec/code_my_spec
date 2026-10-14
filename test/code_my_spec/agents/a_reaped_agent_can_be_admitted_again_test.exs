@@ -2,10 +2,10 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
   @moduledoc """
   Reaping an agent has to clear what only a live process could have meant.
 
-  `turn_started_at` and `work_request_id` both say "something is happening
-  right now" — a turn in flight, a turn reserved and about to be dispatched.
+  `turn_started_at` and a turn request both say "something is happening
+  right now" — a turn in flight, a turn handed over and about to start.
   Neither can be true of an agent with no process behind it, and
-  `Work.runnable_state?/1` requires both to be nil. So a reaped agent that
+  `Work.runnable_state?/3` requires neither. So a reaped agent that
   comes back carrying either one is permanently un-admittable, and nothing
   would ever clear them, because clearing them is what reaping is for.
 
@@ -24,6 +24,7 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Repo
   alias CodeMySpecTest.AgentPresence
 
@@ -62,12 +63,10 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
   # row's next `:running` life and reported a turn in flight for an agent that
   # was not mid-response. Found by QA on story 1012, `4ce6d903`.
   defp mid_turn(scope, agent) do
+    {:ok, _turn} = Offers.dispatch(agent, :resume, {"task", "earlier"})
+
     {:ok, agent} =
-      AgentsRepository.update_agent(scope, agent, %{
-        turn_started_at: DateTime.utc_now(),
-        work_request_id: Ecto.UUID.generate(),
-        work_requested_at: DateTime.utc_now()
-      })
+      AgentsRepository.update_agent(scope, agent, %{turn_started_at: DateTime.utc_now()})
 
     agent
   end
@@ -91,10 +90,8 @@ defmodule CodeMySpec.Agents.AReapedAgentCanBeAdmittedAgainTest do
     assert is_nil(agent.turn_started_at),
            "#{path} left a turn in flight on an agent whose process has just started"
 
-    assert is_nil(agent.work_request_id),
-           "#{path} left a turn reservation on an agent whose process has just started"
-
-    assert is_nil(agent.work_requested_at)
+    refute Offers.in_flight?(agent.id),
+           "#{path} left a turn on its way to an agent whose process has just started"
   end
 
   test "record_started/3 clears a stale turn", ctx do

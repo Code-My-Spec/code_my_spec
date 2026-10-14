@@ -214,13 +214,11 @@ defmodule CodeMySpec.Agents.Agent do
     # and `gave_up` to what the harness said when it gave up on the agent.
     field :lifecycle, :any, virtual: true
     field :gave_up, :map, virtual: true
-    field :work_request_id, :string
-    field :work_requested_at, :utc_datetime_usec
 
     # The offer this agent was last handed and did not take.
     #
     # An agent that ends a turn without claiming anything clears every other
-    # in-flight mark — no open turn, no reservation, no active task — so
+    # in-flight mark — no open turn, no turn on its way, no active task — so
     # `Work.runnable_state?/1` finds it instantly eligible again and re-offers
     # the same work. Nothing recorded that it had just refused, so nothing
     # could tell the second offer from the first.
@@ -402,8 +400,6 @@ defmodule CodeMySpec.Agents.Agent do
       :retired_reason,
       :continuous,
       :turn_started_at,
-      :work_request_id,
-      :work_requested_at,
       :declined_offer,
       :declined_offer_at,
       :declined_offer_count,

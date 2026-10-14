@@ -3,16 +3,14 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
   import CodeMySpec.UsersFixtures
   alias CodeMySpec.Agents.{AgentsRepository, CompletionHandoffs}
   alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Promotion.HandoffGate
   alias CodeMySpecTest.{AgentPresence, RecordingAgentTransport}
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     device = CodeMySpec.DevicesFixtures.device_fixture(scope)
     {:ok, main_copy} = CodeMySpec.WorkingCopies.issue(scope, nil, device: device)
     {:ok, copy} = CodeMySpec.WorkingCopies.issue(scope, nil, device: device)
@@ -104,7 +102,7 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
 
   test "receipt is not acknowledgement and only main can release the artifact gate", ctx do
     assert {:error, _} =
-             CodeMySpec.Promotion.HandoffGate.check(ctx.scope.active_project_id, ctx.copy.id)
+             HandoffGate.check(ctx.scope.active_project_id, ctx.copy.id)
 
     {:ok, _} =
       CompletionHandoffs.complete(ctx.scope, ctx.owner.id, ctx.task, ctx.handoff.id, ctx.evidence)
@@ -126,7 +124,7 @@ defmodule CodeMySpec.Agents.CompletionHandoffsTest do
 
     assert acknowledged.status == :acknowledged
     assert CompletionHandoffs.pending(ctx.scope) == []
-    assert :ok = CodeMySpec.Promotion.HandoffGate.check(ctx.scope.active_project_id, ctx.copy.id)
+    assert :ok = HandoffGate.check(ctx.scope.active_project_id, ctx.copy.id)
   end
 
   test "wrong owner, wrong task and mismatched gitlink cannot report completion", ctx do

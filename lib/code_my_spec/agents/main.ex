@@ -1623,6 +1623,20 @@ defmodule CodeMySpec.Agents.Main do
 
   def question_raised(%Scope{}, _request), do: :ok
 
+  @doc "The running agent behind an escalation's holder, never the asker itself."
+  @spec escalator(Scope.t(), Agent.t(), String.t()) :: Agent.t() | nil
+  def escalator(scope, %Agent{} = asker, "product_agent") do
+    case product_agent(scope, asker.working_copy_id) do
+      %Agent{id: id} = product when id != asker.id -> product
+      _ -> nil
+    end
+  end
+
+  def escalator(scope, %Agent{} = asker, "main_agent"),
+    do: main_agent_other_than(scope, asker.id)
+
+  def escalator(_scope, _asker, _holder), do: nil
+
   # The main agent by role rather than by checkout. `Agents.main_agent/1`
   # answers "the agent on the designated copy", which is the right answer to a
   # different question and the wrong one here: several agents share a checkout,

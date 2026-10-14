@@ -1281,6 +1281,7 @@ defmodule CodeMySpec.Notifications do
       # nobody, because nothing in front of the agent changed.
       {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :answered)
       deliver_answer_content(updated, released > 0)
+      tell_escalator(updated)
       {:ok, updated}
     end
   end
@@ -1342,6 +1343,42 @@ defmodule CodeMySpec.Notifications do
       _released_or_gone ->
         :ok
     end
+  end
+
+  # The agent that handed the question up hears the answer too: it escalated
+  # it, and an answer that went only to the asker left product unable to act
+  # on the user's decision or even read it (2026-10-13).
+  defp tell_escalator(%{escalated_by: by, agent_id: asker_id} = request)
+       when is_binary(by) and is_binary(asker_id) do
+    case Repo.get(Agent, asker_id) do
+      %Agent{} = asker ->
+        announce(:escalated_answer_reached, %{
+          scope: owner_scope(asker),
+          asker: asker,
+          escalated_by: by,
+          text: escalator_message(request, asker)
+        })
+
+      nil ->
+        :ok
+    end
+  end
+
+  defp tell_escalator(_request), do: :ok
+
+  defp escalator_message(%{questions: questions, answers: answers} = request, asker) do
+    body =
+      Enum.map_join(questions, "\n\n", fn question ->
+        text = MapAccess.get(question, :question)
+        "Q: #{text}\nA: #{said(answers, text)}"
+      end)
+
+    """
+    The user answered question #{request.id}, which you escalated for the \
+    #{asker.role} agent #{asker.id}. The asker has the answer too.
+
+    #{body}
+    """
   end
 
   # What the agent reads mid-turn. Self-contained, because it is arriving in

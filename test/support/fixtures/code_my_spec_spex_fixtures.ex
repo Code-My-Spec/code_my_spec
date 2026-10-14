@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Fixtures do
     exports: [GraphVerification, StoryIssueBag],
     deps: [
       CmsHarness,
+      CmsHarness.Agents,
+      CmsHarness.Project,
       CodeMySpec,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Embeddings,
@@ -939,18 +941,8 @@ defmodule CodeMySpecSpex.Fixtures do
   `OperatorMessagesWaitForDeliveryTest` and its siblings use to exercise
   `message_agent`/`restart_agent` without one.
   """
-  @spec use_recording_transport() :: :ok
-  def use_recording_transport do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous)
-    end)
-
-    RecordingAgentTransport.listen()
-    :ok
-  end
+  @spec use_recording_transport(term()) :: :ok
+  def use_recording_transport(project), do: RecordingAgentTransport.listen(project)
 
   @doc """
   Put an agent mid-turn, the way a turn actually starts.
@@ -3180,7 +3172,6 @@ defmodule CodeMySpecSpex.Fixtures do
     )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
-    |> Map.put("on_send_now", callbacks[:on_send_now])
     |> CmsHarness.Agents.launch()
   end
 
@@ -3199,9 +3190,6 @@ defmodule CodeMySpecSpex.Fixtures do
       end,
       on_consume: fn id, ref, generation ->
         CodeMySpec.Agents.Mailbox.consume(scope, id, ref, generation)
-      end,
-      on_send_now: fn id, generation ->
-        CodeMySpec.Agents.Mailbox.take_send_now(scope, id, generation)
       end
     ]
   end
@@ -3297,20 +3285,17 @@ defmodule CodeMySpecSpex.Fixtures do
   criterion cannot name `CodeMySpecTest`, and should not. Needed for
   criterion 1376 (story 1046) — `Promotion.tell_the_agent/4`'s correction on
   a failed restart is a fire-and-forget dispatch with no other observable
-  surface: no DB row, no MCP response. Restores the previous transport on
-  exit; the config key is global, so this is `async: false` territory.
+  surface: no DB row, no MCP response. Routes only `project`, so tests that
+  each route their own project can run concurrently.
   """
-  @spec install_recording_agent_transport() :: :ok
-  def install_recording_agent_transport do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
+  @spec install_recording_agent_transport(term()) :: :ok
+  def install_recording_agent_transport(project),
+    do: CodeMySpecTest.RecordingAgentTransport.listen(project)
 
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous)
-    end)
-
-    CodeMySpecTest.RecordingAgentTransport.listen()
-  end
+  @doc "Route `project`'s agent traffic to `transport`, for this test alone."
+  @spec route_agent_transport(term(), module()) :: :ok
+  def route_agent_transport(project, transport),
+    do: CodeMySpecTest.AgentTransportRouter.route(project, transport)
 
   @doc "Say what this scope's working copy machine can do, as a join would."
   def record_machine_tools(%Scope{active_working_copy_id: id}, names) do
@@ -4580,19 +4565,21 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc """
   Put this agent's outstanding turn request in the past.
 
-  A turn offered to an agent reserves it for five minutes; an agent that never
-  takes the turn is offered again once that lapses. Time passing has no
-  surface, so this backdates the reservation the way `age_agent_messages/3`
-  backdates a transcript.
+  A turn offered to an agent stands for five minutes; an agent that never takes
+  the turn is offered again once that lapses, and main is told it stalled. Time
+  passing has no surface, so this backdates the open turn request the way
+  `age_agent_messages/3` backdates a transcript.
   """
-  @spec age_work_reservation(Scope.t(), String.t(), number()) :: :ok
-  def age_work_reservation(%Scope{} = _scope, agent_id, seconds) do
+  @spec age_turn_request(Scope.t(), String.t(), number()) :: :ok
+  def age_turn_request(%Scope{} = _scope, agent_id, seconds) do
     at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
 
-    from(a in CodeMySpec.Agents.Agent,
-      where: a.id == type(^agent_id, :binary_id) and not is_nil(a.work_request_id)
+    from(o in CodeMySpec.Agents.Offer,
+      where:
+        o.agent_id == type(^agent_id, :binary_id) and o.status == :open and
+          not is_nil(o.turn_requested_at)
     )
-    |> Repo.update_all(set: [work_requested_at: at])
+    |> Repo.update_all(set: [turn_requested_at: at])
 
     :ok
   end

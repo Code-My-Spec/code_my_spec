@@ -21,14 +21,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   # Components describe implementation work. Test outcomes and acceptance
   # checks remain story requirements; markdown specs and reviews are inputs,
   # not additional work stages in the component graph.
+  #
+  # A container's dependencies gate its children through one `dependencies_met`
+  # node: every dependency's exit points at it and it points at each child, so a
+  # context with D dependencies and N children draws D + N edges rather than
+  # D × N (Agents' 29 × 53). The parent's own file waits on it too, for a
+  # context with no children yet; with children that edge is redundant and the
+  # reduction drops it.
   def context_graph do
     [
-      implementation(9, :child, [], :develop_context),
-      implementation(11, :parent, [9], :develop_context)
+      dependencies_met(8),
+      implementation(9, :child, [8], :develop_context),
+      implementation(11, :parent, [9, 8], :develop_context)
     ]
   end
 
   # A live context is a container: only its children have implementations.
+  # No junction: the namespace has no row of its own (`barren_components/2`),
+  # and a UI surface's dependencies fan out to few children.
   def live_context_graph do
     [implementation(9, :child, [], :develop_live_context)]
   end
@@ -39,6 +49,24 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   def json_graph, do: [implementation(2, :self)]
   def controller_graph, do: [implementation(4, :self)]
   def liveview_graph, do: [implementation(5, :self)]
+
+  # Never work: always satisfied, and blocking is transitive, so a child behind
+  # it is blocked exactly while some dependency is unfinished.
+  defp dependencies_met(id) do
+    new!(%{
+      id: id,
+      name: "dependencies_met",
+      role: :coding,
+      node_scope: :parent,
+      check_type: :always,
+      config: %{},
+      satisfied_by: nil,
+      artifact_type: :dependencies,
+      description: "Where the container's dependencies gate its children",
+      prerequisites: [],
+      execution_type: :sub_agent
+    })
+  end
 
   defp implementation(id, node_scope, prerequisites \\ [], orchestrated_by \\ nil) do
     new!(%{

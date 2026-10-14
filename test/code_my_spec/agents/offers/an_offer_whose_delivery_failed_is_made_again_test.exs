@@ -35,18 +35,13 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
     :ok
   end
 
-  defp unreachable do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+  defp unreachable(scope) do
+    CodeMySpecTest.AgentTransportRouter.route(scope, UnreachableMachine)
     :ok
   end
 
-  defp reachable do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.RecordingAgentTransport)
-    CodeMySpecTest.RecordingAgentTransport.listen()
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
+  defp reachable(scope) do
+    CodeMySpecTest.RecordingAgentTransport.listen(scope)
     :ok
   end
 
@@ -86,7 +81,7 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
     :ok = GraphWatcher.settle(ctx.scope)
     agent = agent(ctx.scope)
 
-    unreachable()
+    unreachable(ctx.scope)
 
     assert {:error, :harness_not_connected} =
              Work.request_turn_if_runnable(ctx.scope, agent, :test)
@@ -100,7 +95,7 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
 
     # The undelivered offer is recorded; nothing holds the work back once the
     # machine answers.
-    reachable()
+    reachable(ctx.scope)
 
     assert {:ok, ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
     assert is_binary(ref)
@@ -113,7 +108,7 @@ defmodule CodeMySpec.Agents.Offers.AnOfferWhoseDeliveryFailedIsMadeAgainTest do
     :ok = GraphWatcher.settle(ctx.scope)
     agent = agent(ctx.scope)
 
-    unreachable()
+    unreachable(ctx.scope)
 
     assert {:error, :harness_not_connected} =
              Work.request_turn_if_runnable(ctx.scope, agent, :test)

@@ -14,7 +14,6 @@ defmodule CodeMySpec.ProvisioningPlan do
     deps: [
       CodeMySpec.Configurations,
       CodeMySpec.Projects,
-      CodeMySpec.Provisioning.Environment,
       CodeMySpec.Provisioning.EnvironmentRepository,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,

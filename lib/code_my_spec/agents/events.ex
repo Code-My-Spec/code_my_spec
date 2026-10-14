@@ -15,34 +15,43 @@ defmodule CodeMySpec.Agents.Events do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.IssueAssignment
+  alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Stories
 
+  @provisioning_failed [:code_my_spec, :provisioning, :failed]
   @task_completed [:code_my_spec, :tasks, :completed]
   @task_released [:code_my_spec, :tasks, :released]
   @issue_qa_passed [:code_my_spec, :qa, :issue_passed]
+  @story_qa_passed [:code_my_spec, :qa, :story_passed]
   @promotion_team_free [:code_my_spec, :promotion, :team_free]
   @promotion_report [:code_my_spec, :promotion, :report]
   @decline_cleared [:code_my_spec, :notifications, :decline_cleared]
   @tap_out_denied [:code_my_spec, :notifications, :tap_out_denied]
   @decision_reached [:code_my_spec, :notifications, :decision_reached]
   @answer_reached [:code_my_spec, :notifications, :answer_reached]
+  @escalated_answer_reached [:code_my_spec, :notifications, :escalated_answer_reached]
 
   @doc "Attach every handler. Called once, after the application tree starts."
   def attach do
     :telemetry.attach_many(
       {__MODULE__, :handlers},
       [
+        @provisioning_failed,
         @task_completed,
         @task_released,
         @issue_qa_passed,
+        @story_qa_passed,
         @promotion_team_free,
         @promotion_report,
         @decline_cleared,
         @tap_out_denied,
         @decision_reached,
-        @answer_reached
+        @answer_reached,
+        @escalated_answer_reached
       ],
       &__MODULE__.handle_event/4,
       nil
@@ -50,6 +59,12 @@ defmodule CodeMySpec.Agents.Events do
   end
 
   @doc false
+  def handle_event(@provisioning_failed, _measurements, %{scope: scope, step: step}, _config) do
+    CodeMySpec.Agents.ProvisioningFailure.deliver(scope, step)
+  catch
+    kind, reason -> log(:provisioning_failed, kind, reason)
+  end
+
   # A completed task can unblock work for the copy's other agents. Off the
   # caller's process: a missed nudge is the acceptable failure, and the next
   # completion sends it again.
@@ -88,6 +103,29 @@ defmodule CodeMySpec.Agents.Events do
     IssueAssignment.free(meta.scope, meta.issue)
   catch
     kind, reason -> log(:issue_qa_passed, kind, reason)
+  end
+
+  # A story whose QA passed with nothing left to land finishes here: it was
+  # already on main, so no promotion is coming to announce the team free. Story
+  # 1016 passed QA at 04:45 with its work on main and team 2 sat idle for seven
+  # hours, main never told (2026-10-13). One that still needs promoting is
+  # freed by its landing instead.
+  def handle_event(@story_qa_passed, _measurements, %{scope: scope, story_id: id}, _config) do
+    with %{working_copy_id: copy_id} = story when is_binary(copy_id) <-
+           Stories.get_story(scope, id),
+         at_copy = %{scope | active_working_copy_id: copy_id},
+         true <-
+           Requirements.satisfied_now?(at_copy, %{
+             entity_type: "story",
+             entity_id: id,
+             name: "story_promoted"
+           }) do
+      Assignment.notify_team_free(scope, copy_id, story)
+    else
+      _ -> :ok
+    end
+  catch
+    kind, reason -> log(:story_qa_passed, kind, reason)
   end
 
   # A story finished by promotion offers main the same team-free kind an issue
@@ -176,6 +214,17 @@ defmodule CodeMySpec.Agents.Events do
     :ok
   catch
     kind, reason -> log(:answer_reached, kind, reason)
+  end
+
+  def handle_event(@escalated_answer_reached, _measurements, meta, _config) do
+    case MainAgent.escalator(meta.scope, meta.asker, meta.escalated_by) do
+      nil -> :ok
+      agent -> _ = Agents.send_to_agent(agent.id, meta.text, :own_reply)
+    end
+
+    :ok
+  catch
+    kind, reason -> log(:escalated_answer_reached, kind, reason)
   end
 
   # `catch`, not `rescue`: an exit (a sandbox owner gone, a call timing out)

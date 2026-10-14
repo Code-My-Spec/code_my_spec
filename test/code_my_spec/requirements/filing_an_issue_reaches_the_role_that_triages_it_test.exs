@@ -33,10 +33,6 @@ defmodule CodeMySpec.Requirements.FilingAnIssueReachesTheRoleThatTriagesItTest d
   before the issue is filed and actionable after it, or the wake proves nothing.
   """
 
-  # Not async: this swaps `:agent_transport` in the application environment,
-  # which every other test shares. Run concurrently it passes alone and fails in
-  # a suite, which is how it presented — the wake lands in another test's
-  # recorder.
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
@@ -51,10 +47,7 @@ defmodule CodeMySpec.Requirements.FilingAnIssueReachesTheRoleThatTriagesItTest d
   setup :setup_active_project
 
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     # The whole graph green, which is the only premise that makes this test
     # mean what its name says. `issues_triaged` waits on `spex_boundary_ready`,

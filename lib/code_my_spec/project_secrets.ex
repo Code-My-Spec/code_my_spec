@@ -45,7 +45,6 @@ defmodule CodeMySpec.ProjectSecrets do
       CodeMySpec.Encrypted.Binary,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
-      CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],
     exports: :all

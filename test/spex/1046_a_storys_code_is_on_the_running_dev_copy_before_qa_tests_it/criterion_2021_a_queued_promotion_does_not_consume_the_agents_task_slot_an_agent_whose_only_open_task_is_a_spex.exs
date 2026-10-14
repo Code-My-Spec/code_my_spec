@@ -29,14 +29,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion2021Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
   spex "An agent with a queued promotion can still claim other assigned work",
-       criterion: 2021 do
+    criterion: 2021 do
     scenario "the agent claims a second story's work while its promotion waits in the queue" do
       given_ "a queued promotion, and another story for the same agent", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()

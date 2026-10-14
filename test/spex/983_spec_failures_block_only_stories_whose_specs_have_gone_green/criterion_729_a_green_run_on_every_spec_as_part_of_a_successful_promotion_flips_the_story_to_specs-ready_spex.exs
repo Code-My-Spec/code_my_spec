@@ -28,8 +28,8 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
   setup :setup_active_project
 
   # The queue gates and lands from its own worker, and tells the agent.
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end

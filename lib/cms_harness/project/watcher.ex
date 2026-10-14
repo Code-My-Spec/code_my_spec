@@ -27,7 +27,7 @@ defmodule CmsHarness.Project.Watcher do
 
   require Logger
 
-  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Channel
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Paths
 
@@ -87,8 +87,7 @@ defmodule CmsHarness.Project.Watcher do
   @default_liveness_check_ms :timer.minutes(5)
 
   defp liveness_check_ms,
-    do:
-      Application.get_env(:code_my_spec, :harness_watch_liveness_ms, @default_liveness_check_ms)
+    do: Application.get_env(:code_my_spec, :harness_watch_liveness_ms, @default_liveness_check_ms)
 
   defstruct [
     :project,
@@ -164,7 +163,7 @@ defmodule CmsHarness.Project.Watcher do
 
   @impl true
   def handle_continue(:check_connection, state) do
-    if ChannelClient.connected?(state.project.root) do
+    if Channel.connected?(state.project.root) do
       {:noreply, start_watching(state)}
     else
       {:noreply, state}
@@ -213,7 +212,7 @@ defmodule CmsHarness.Project.Watcher do
   end
 
   def handle_info(:sync, state) do
-    ChannelClient.request_sync(state.project.root)
+    Channel.request_sync(state.project.root)
     {:noreply, %{state | timer: nil}}
   end
 

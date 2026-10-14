@@ -770,8 +770,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   attr :message, :any, required: true
 
-  # Story 1051: into the running turn at its next tool call, rather than when
-  # the turn ends.
+  # Story 1051: stops a busy agent's turn so this is its next message, rather
+  # than waiting for the turn to end.
   defp send_now_button(assigns) do
     ~H"""
     <button
@@ -1632,7 +1632,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       {:noreply,
        put_flash(socket, :error, "That message could not be taken back (#{inspect(reason)}).")}
 
-  defp mailbox_label("send_now"), do: "at its next tool call"
+  defp mailbox_label("send_now"), do: "sending now — stopping its turn"
   defp mailbox_label(nil), do: "queued"
   defp mailbox_label(state), do: state
 

@@ -7,11 +7,8 @@ defmodule CodeMySpec.Users do
     top_level?: true,
     deps: [
       CodeMySpec.Analytics,
-      CodeMySpec.ClientUsers.ClientUser,
-      CodeMySpec.Environments,
       CodeMySpec.Mailer,
-      CodeMySpec.Repo,
-      CodeMySpec.Users.Scope
+      CodeMySpec.Repo
     ],
     exports: :all
 

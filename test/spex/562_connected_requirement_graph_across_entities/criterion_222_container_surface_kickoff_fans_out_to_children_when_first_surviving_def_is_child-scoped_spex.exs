@@ -5,6 +5,10 @@ defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
   to every direct child whose type supports the first surviving
   child-scoped def, instead of landing on the surface itself.
 
+  Since the dependency junction (2026-10-13), the kickoff lands on the
+  container's `dependencies_met`, which gates each child; the fan-out
+  to the children is that junction's.
+
   Symmetric counterpart of criterion 5654 (container surface's
   `ready_for_qa` fans IN from every child's terminal).
 
@@ -54,10 +58,16 @@ defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
-      then_ "bdd_specs_exist has an outgoing edge to each child's implementation_file",
+      then_ "bdd_specs_exist reaches each child's implementation_file through the container's junction",
             context do
         bdd_exist_key =
           GraphAssertions.node_key("story", context.story.id, "bdd_specs_exist")
+
+        junction_key =
+          GraphAssertions.node_key("component", context.parent_context.id, "dependencies_met")
+
+        assert GraphAssertions.edge?(context.graph, bdd_exist_key, junction_key),
+               "expected bdd_specs_exist → #{context.parent_context.module_name}.dependencies_met edge, missing"
 
         children = [context.child_strategy, context.child_overview]
 
@@ -65,8 +75,8 @@ defmodule CodeMySpecSpex.Story562.Criterion6074Spex do
           target_key =
             GraphAssertions.node_key("component", child.id, "implementation_file")
 
-          assert GraphAssertions.edge?(context.graph, bdd_exist_key, target_key),
-                 "expected bdd_specs_exist → #{child.module_name}.implementation_file edge, missing"
+          assert GraphAssertions.edge?(context.graph, junction_key, target_key),
+                 "expected dependencies_met → #{child.module_name}.implementation_file edge, missing"
         end)
 
         {:ok, context}

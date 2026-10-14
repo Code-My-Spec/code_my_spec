@@ -16,12 +16,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     integration_fixture(scope.user, %{provider: :anthropic})
 
     {:ok, copy} =
@@ -181,9 +177,8 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
   end
 
   test "a delivery event arriving before the transport reply is retained", ctx do
-    Application.put_env(
-      :code_my_spec,
-      :agent_transport,
+    CodeMySpecTest.AgentTransportRouter.route(
+      ctx.scope,
       CodeMySpecTest.DeliveryBeforeAckTransport
     )
 
@@ -241,7 +236,7 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
 
   test "unconfirmed transport leaves the durable message pending without accusing the agent",
        ctx do
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpecTest.UnreachableMachine)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, CodeMySpecTest.UnreachableMachine)
 
     assert {:error, :harness_not_connected} =
              Agents.message_agent(ctx.scope, ctx.agent.id, "Inspect this.")

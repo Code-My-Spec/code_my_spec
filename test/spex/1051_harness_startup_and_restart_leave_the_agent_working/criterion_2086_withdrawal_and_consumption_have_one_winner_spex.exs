@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2086Spex do
     scenario "Durable mailbox authority" do
       given_ "delivery is claimed but its transport acknowledgement is missing", ctx do
         ctx = H.start(ctx)
-        H.transport(H.Unconfirmed)
+        H.transport(ctx, H.Unconfirmed)
 
         assert {:error, :message_timed_out} =
                  Agents.send_to_agent(ctx.agent.id, "withdraw this", :operator_message)
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2086Spex do
       end
 
       then_ "a later message consumed first cannot be withdrawn", ctx do
-        H.transport(CodeMySpecTest.InProcessAgentTransport)
+        H.transport(ctx, CodeMySpecTest.InProcessAgentTransport)
         HeldProvider.hold()
 
         assert {:ok, :started} =

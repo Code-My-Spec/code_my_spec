@@ -31,9 +31,9 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    Fixtures.use_recording_transport()
+    Fixtures.use_recording_transport(context)
   end
 
   spex "Restarting the agent working a story counts the restart against that story",

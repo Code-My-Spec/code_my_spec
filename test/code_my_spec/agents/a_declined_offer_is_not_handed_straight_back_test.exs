@@ -53,10 +53,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   # requirement rather than an empty graph — without it "not admitted" is true
   # either way and the assertions cannot tell the damper from nothing to do.
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)
@@ -98,20 +95,16 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
 
   # What the turn-ended path does: clears the turn, then records that nothing
   # was claimed. No task is ever added, which is the whole premise.
-  # A whole turn, as the real events drive it: `turn_started` clears the
-  # reservation that admitting the turn stamped, `turn_ended` clears the turn
-  # and records what it did. Leaving the reservation in place is what made an
-  # earlier version of this test pass for the wrong reason — `runnable_state?/1`
-  # refuses an agent holding one, so the refusal under test was never reached.
+  # A whole turn, as the real events drive it: `turn_ended` clears the turn,
+  # settles the offer that admitting it wrote, and records what it did. Leaving
+  # the turn request open is what made an earlier version of this test pass for
+  # the wrong reason — `runnable_state?/3` refuses an agent with a turn on its
+  # way, so the refusal under test was never reached.
   defp ended_turn_without_claiming(scope, agent) do
     started = DateTime.add(DateTime.utc_now(), -30, :second)
 
-    {:ok, agent} =
-      AgentsRepository.update_agent(scope, agent, %{
-        turn_started_at: nil,
-        work_request_id: nil,
-        work_requested_at: nil
-      })
+    {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+    :ok = Offers.settle_turn(agent)
 
     {:ok, agent} = Work.record_decline(scope, agent, started)
     agent
@@ -136,12 +129,8 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
       completed_at: DateTime.utc_now()
     }
 
-    {:ok, agent} =
-      AgentsRepository.update_agent(scope, agent, %{
-        turn_started_at: nil,
-        work_request_id: nil,
-        work_requested_at: nil
-      })
+    {:ok, agent} = AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
+    :ok = Offers.settle_turn(agent)
 
     {:ok, agent} = Work.record_decline(scope, %{agent | tasks: [task]}, started)
     agent
@@ -171,12 +160,11 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   test "an undeliverable turn is recorded as offer attempts, not a refusal", ctx do
     # No transport registered for this copy, so the dispatch fails the way an
     # unreachable machine fails.
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpec.Agents.Transport.Harness)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, CodeMySpec.Agents.Transport.Harness)
 
     agent =
       Enum.reduce(1..3, ctx.agent, fn _, acc ->
         acc = reload(ctx.scope, acc)
-        {:ok, acc} = AgentsRepository.update_agent(ctx.scope, acc, %{work_request_id: nil})
         _ = Work.request_turn_if_runnable(ctx.scope, acc, :test)
         acc
       end)
@@ -227,9 +215,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
 
     {:ok, agent} =
       AgentsRepository.update_agent(scope, agent, %{
-        turn_started_at: DateTime.add(DateTime.utc_now(), -30, :second),
-        work_request_id: nil,
-        work_requested_at: nil
+        turn_started_at: DateTime.add(DateTime.utc_now(), -30, :second)
       })
 
     :ok =

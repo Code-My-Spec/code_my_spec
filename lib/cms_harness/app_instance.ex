@@ -51,8 +51,8 @@ defmodule CmsHarness.AppInstance do
   require Logger
 
   alias CmsHarness.AppInstance.Runner
+  alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
-  alias CmsHarness.Project.ChannelClient
 
   # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
   # test proving the idle-stop path fires should not have to wait 30 real
@@ -423,16 +423,30 @@ defmodule CmsHarness.AppInstance do
   def handle_info(:timeout, %{main?: true} = state) do
     # Main's app is never stopped for idling — rule, not a longer timeout.
     Process.send_after(self(), :timeout, idle_check_interval())
-    {:noreply, state, :infinity}
+    {:noreply, refresh_status(state), :infinity}
   end
 
   def handle_info(:timeout, state) do
     if running?(state) and recently_active?(state) do
       Process.send_after(self(), :timeout, idle_check_interval())
-      {:noreply, state, :infinity}
+      {:noreply, refresh_status(state), :infinity}
     else
       new_state = if running?(state), do: stop_process(state), else: state
       {:stop, :normal, new_state}
+    end
+  end
+
+  # Status is otherwise only taken when something is asked of the app, so one
+  # that came up after its health wait gave up stayed "down" and could not be
+  # shared (story 1117 QA). Each tick re-reads a running app and reports a
+  # change.
+  defp refresh_status(state) do
+    if running?(state) do
+      probed = probe(state)
+      if probed.status != state.status, do: deliver_app_status(probed)
+      probed
+    else
+      state
     end
   end
 
@@ -554,7 +568,7 @@ defmodule CmsHarness.AppInstance do
   # directly (a spex, an operator) — `record_app_status/2` never reads it,
   # so carrying it is not a schema change.
   defp deliver_app_status(state, reason \\ nil) do
-    ChannelClient.deliver_app_status(state.root, %{
+    Channel.deliver_app_status(state.root, %{
       "status" => state.status,
       "url" => url(state.port, state.status),
       "commit" => state.commit,

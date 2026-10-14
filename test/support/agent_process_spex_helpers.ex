@@ -288,24 +288,10 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   @spec running?(String.t()) :: boolean()
   defdelegate running?(agent_id), to: Machine
 
-  @doc """
-  Put the agent's machine out of reach for this scenario.
-
-  Restored afterwards, because the transport is application-wide: leaving it
-  swapped would make every later spex in the run talk to a machine that refuses
-  everything, and they would fail for a reason that has nothing to do with them.
-  """
-  @spec machine_out_of_reach() :: :ok
-  def machine_out_of_reach do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous)
-    end)
-
-    :ok
-  end
+  @doc "Put this project's agent machine out of reach for the scenario."
+  @spec machine_out_of_reach(term()) :: :ok
+  def machine_out_of_reach(project),
+    do: CodeMySpecSpex.Fixtures.route_agent_transport(project, UnreachableMachine)
 
   # Somewhere disposable for the agent to be pointed at. It has to exist:
   # starting an agent on a checkout that is not there is refused, which is its

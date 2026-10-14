@@ -67,6 +67,32 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
     {reply, socket}
   end
 
+  @doc """
+  Run `fun` while this test answers the checkout's file requests the way an
+  empty checkout does: nothing there.
+
+  The joined socket's harness is the test process, so a request the server
+  sends it, such as listing rules on `start_task`, otherwise waits out its
+  full timeout.
+  """
+  @spec as_an_empty_checkout(Phoenix.Socket.t(), (-> result)) :: result when result: term()
+  def as_an_empty_checkout(socket, fun) do
+    task = Task.async(fun)
+    answer_as_empty(socket, task)
+  end
+
+  defp answer_as_empty(socket, %Task{ref: task_ref} = task) do
+    receive do
+      %Phoenix.Socket.Message{event: "fs_request", payload: %{"ref" => ref}} ->
+        push(socket, "fs_result", %{"ref" => ref, "error" => "enoent"})
+        answer_as_empty(socket, task)
+
+      {^task_ref, result} ->
+        Process.demonitor(task_ref, [:flush])
+        result
+    end
+  end
+
   # The device the harness is announcing from.
   #
   # Named explicitly when a criterion is about which machine a checkout is on,

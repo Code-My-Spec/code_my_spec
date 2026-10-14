@@ -38,8 +38,8 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
 
   # Promotion is queued: the queue's worker gates and lands it and tells the
   # agent, so the given waits for that before this criterion's own work starts.
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end

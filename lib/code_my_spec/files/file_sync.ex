@@ -358,12 +358,15 @@ defmodule CodeMySpec.Files.FileSync do
   # also the one that makes the skip visible.
   defp project_components(_scope, %{changed_entries: [], removed: 0}), do: :unchanged
 
+  # No environment: the manifest is the harness's own report, and reading a file
+  # back from inside its channel asks the process that is waiting on this one.
   defp project_components(scope, summary) do
     changed_paths = Enum.map(summary.changed_entries, & &1.path)
     removed_module_names = ComponentSync.removed_module_names(summary.removed_records)
 
     {:ok, components} =
       ComponentSync.sync_from_files(scope,
+        environment: nil,
         changed_paths: changed_paths,
         removed_module_names: removed_module_names
       )

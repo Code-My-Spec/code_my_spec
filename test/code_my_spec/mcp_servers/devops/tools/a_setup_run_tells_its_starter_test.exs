@@ -18,10 +18,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ASetupRunTellsItsStarterTest do
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    previous_transport = Application.get_env(:code_my_spec, :agent_transport)
     previous_async = Application.get_env(:code_my_spec, :provisioning_async)
     previous_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
     Application.put_env(:code_my_spec, :provisioning_async, true)
 
     test = self()
@@ -33,15 +31,14 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ASetupRunTellsItsStarterTest do
     )
 
     on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous_transport)
       Application.put_env(:code_my_spec, :provisioning_async, previous_async)
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous_opts)
     end)
 
-    RecordingAgentTransport.listen()
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
 
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{

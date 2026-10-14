@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1676Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentProcessHelpers, only: [machine_out_of_reach: 0]
+  import CodeMySpecSpex.AgentProcessHelpers, only: [machine_out_of_reach: 1]
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
 
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1676Spex do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
         context = HarnessHooks.ensure_live_harness(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
-        :ok = machine_out_of_reach()
+        :ok = machine_out_of_reach(context)
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         {:ok, context |> start_session() |> Map.put(:coder, coder.id)}
       end

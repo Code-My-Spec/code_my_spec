@@ -30,6 +30,7 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.TurnTimeout
   alias CodeMySpec.Agents.Work
@@ -97,6 +98,8 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
         last_said_at: Map.get(last_said, agent.id),
         blocked_reasons: Map.get(questions, agent.id, []),
         tapped_out?: MapSet.member?(tapped_out, agent.id),
+        turn_in_flight?: Offers.in_flight?(agent.id),
+        unstarted_turn: Offers.unstarted_turn(agent.id),
         turn_started_at: agent.turn_started_at,
         continuous?: agent.continuous,
         provider_refusal: agent.provider_refusal,
