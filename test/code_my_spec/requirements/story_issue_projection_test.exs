@@ -6,7 +6,7 @@ defmodule CodeMySpec.Requirements.StoryIssueProjectionTest do
   import CodeMySpec.IssuesFixtures
   import Ecto.Query
 
-  alias CodeMySpec.Requirements.{Node, NodeRepository, Projection, Requirement, Shadow}
+  alias CodeMySpec.Requirements.{NodeRepository, Projection, Requirement, Shadow}
 
   test "issue identity round trips and a visited story reaps its departed issue nodes" do
     scope = full_scope_fixture()
@@ -25,17 +25,17 @@ defmodule CodeMySpec.Requirements.StoryIssueProjectionTest do
     visited = %{components: [], stories: [story.id]}
     ids = NodeRepository.upsert_all(scope, [node], visited)
     assert is_integer(ids[{"issue", issue.id, "submitted"}])
-    row = Repo.one!(from(n in Node, where: n.issue_id == ^issue.id))
+    row = Repo.one!(from(n in Shadow.pass_target(), where: n.issue_id == ^issue.id))
     assert row.story_id == nil
     assert row.project_id == nil
     ctx = %{components: [], components_by_id: %{}, stories: [story], story_issues: [issue]}
-    {[served], []} = Projection.load(scope, ctx)
+    {[served], []} = Projection.load(scope, ctx, source: Shadow.pass_source())
     assert served.entity_type == "issue"
     assert served.entity_id == issue.id
     assert served.parent_entity_id == story.id
     assert NodeRepository.upsert_all(scope, [node], visited) == ids
     NodeRepository.upsert_all(scope, [], visited)
-    refute Repo.exists?(from(n in Node, where: n.issue_id == ^issue.id))
+    refute Repo.exists?(from(n in Shadow.pass_target(), where: n.issue_id == ^issue.id))
   end
 
   test "event writer covers issue rows through their story, retaining stable ids" do

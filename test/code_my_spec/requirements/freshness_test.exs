@@ -5,6 +5,7 @@ defmodule CodeMySpec.Requirements.FreshnessTest do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.{Freshness, Preloader}
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Shadow
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -36,7 +37,7 @@ defmodule CodeMySpec.Requirements.FreshnessTest do
     # project has only ever been computed from one checkout.
     stored =
       Repo.all(
-        from n in "requirements",
+        from n in elem(Shadow.pass_target(), 0),
           where: n.story_id in ^[a.id, b.id],
           select: {n.story_id, n.working_copy_id, n.inputs_fingerprint}
       )

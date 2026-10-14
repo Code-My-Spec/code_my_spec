@@ -40,7 +40,7 @@ defmodule CodeMySpec.Requirements.AGraphTooBigForOneStatementTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Requirement}
+  alias CodeMySpec.Requirements.{Edge, NodeRepository, Requirement, Shadow}
 
   setup do
     # Six parameters a statement: two edge rows at three columns, and — since
@@ -122,7 +122,7 @@ defmodule CodeMySpec.Requirements.AGraphTooBigForOneStatementTest do
 
     assert {:ok, 5} = NodeRepository.replace_edges(scope, edges, keys)
 
-    statements = inserts_into(ref, "requirement_edges")
+    statements = inserts_into(ref, Shadow.pass_edges())
 
     assert length(statements) > 1, """
     Five edge rows at three columns were written in #{length(statements)}
@@ -133,7 +133,8 @@ defmodule CodeMySpec.Requirements.AGraphTooBigForOneStatementTest do
     one has stored something.
     """
 
-    assert Repo.aggregate(Edge, :count) == 5, "splitting the work must not lose any of it"
+    assert Repo.aggregate({Shadow.pass_edges(), Edge}, :count) == 5,
+           "splitting the work must not lose any of it"
   end
 
   test "nodes beyond the budget are too, and their ids still survive", %{scope: scope} do
@@ -146,12 +147,12 @@ defmodule CodeMySpec.Requirements.AGraphTooBigForOneStatementTest do
 
     keys = NodeRepository.upsert_all(scope, nodes)
 
-    assert length(inserts_into(ref, "requirements")) > 1,
+    assert length(inserts_into(ref, elem(Shadow.pass_target(), 0))) > 1,
            "ten columns a row means the node table refuses at 6,553 — the narrower " <>
              "of the two limits, and the one nothing would have hit first because " <>
              "edges outnumber nodes"
 
-    assert Repo.aggregate(Node, :count) == 4
+    assert Repo.aggregate(Shadow.pass_target(), :count) == 4
 
     # The property the whole table design rests on: a node's id is what edges
     # point at, so chunking the upsert must not turn one pass into new ids.

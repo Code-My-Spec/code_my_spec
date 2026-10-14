@@ -45,9 +45,6 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -147,7 +144,7 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
   # rewritten with the same verdict and a different reason is still a row
   # another project answered.
   defp verdicts(%Scope{active_project_id: project_id}, name) do
-    from(n in "shadow_requirements",
+    from(n in "requirements",
       join: s in "stories",
       on: s.id == n.story_id,
       where: n.name == ^name and s.project_id == type(^project_id, :binary_id),

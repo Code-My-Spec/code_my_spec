@@ -13,16 +13,6 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
   alias CodeMySpec.WorkingCopies
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    source = Application.get_env(:code_my_spec, :graph_event_is_source, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    Application.put_env(:code_my_spec, :graph_event_is_source, true)
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, :graph_shadow_projection, previous)
-      Application.put_env(:code_my_spec, :graph_event_is_source, source)
-    end)
-
     %{scope: full_scope_fixture()}
   end
 

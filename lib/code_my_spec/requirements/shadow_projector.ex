@@ -154,6 +154,25 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   def settle(_no_project, _requested), do: :ok
 
   @doc """
+  Rebuild one vantage from the domain: forget that this process established it,
+  then drain, which seeds it whole. For "recompute now" — a story with no rows
+  is not something any observation will create.
+  """
+  @spec reproject(Ecto.UUID.t(), Ecto.UUID.t() | nil) :: :ok
+  def reproject(project_id, vantage) when is_binary(project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+      [{pid, _}] ->
+        SandboxAllowance.grant(pid)
+        GenServer.call(pid, {:reproject, vantage}, 30_000)
+
+      [] ->
+        :ok
+    end
+  catch
+    :exit, _ -> :ok
+  end
+
+  @doc """
   What this projector last did, in the shape `GraphWatcher.status/1` answers,
   so a reader served from its rows is told about the writer it is served from.
   """
@@ -234,6 +253,17 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     {:reply, :ok, state |> remember(requested) |> drain()}
   end
 
+  def handle_call({:reproject, vantage}, _from, state) do
+    state = %{
+      state
+      | established_vantages: MapSet.delete(state.established_vantages, vantage),
+        requested_vantages: MapSet.put(state.requested_vantages, vantage)
+    }
+
+    state = state |> Map.put(:drain_kind, :reseed) |> drain() |> Map.delete(:drain_kind)
+    {:reply, :ok, state}
+  end
+
   @impl true
   def handle_call(:status, _from, state) do
     {:reply,
@@ -282,6 +312,9 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       {_seeded, marks, _asked} -> apply_marks(state, marks)
     end
   rescue
+    error in DBConnection.OwnershipError ->
+      owner_gone(state, Exception.message(error))
+
     error ->
       Logger.warning(
         "[ShadowProjector] #{state.project_id} left #{inspect(error.__struct__)} pending: " <>
@@ -289,7 +322,28 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
       )
 
       %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}
+  catch
+    :exit, reason ->
+      if owner_exited?(reason), do: owner_gone(state, "owner exited"), else: exit(reason)
   end
+
+  # Only under the sandbox: the process that owned this projector's connection
+  # is gone, so a scenario ended and this projector outlived it. Stopped as
+  # `GraphWatcher` stops, normally: crashing had its supervisor restart it into
+  # the same dead sandbox, and enough of those took the application down.
+  defp owner_gone(state, why) do
+    Logger.warning(
+      "[ShadowProjector] stopping: the sandbox owner for #{state.project_id} is gone (#{why})"
+    )
+
+    exit(:normal)
+  end
+
+  defp owner_exited?({{:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}, _call}),
+    do: true
+
+  defp owner_exited?({:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}), do: true
+  defp owner_exited?(_reason), do: false
 
   # The vantages these marks are about — asked of the marks, not enumerated.
   #
@@ -326,7 +380,11 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
     # against one that applied its events would be comparing two systems.
     state =
       DrainCost.measure(
-        %{kind: :event, project_id: state.project_id, observations: length(marks)},
+        %{
+          kind: Map.get(state, :drain_kind, :event),
+          project_id: state.project_id,
+          observations: length(marks)
+        },
         fn ->
           vantages = vantages(state, marks)
 

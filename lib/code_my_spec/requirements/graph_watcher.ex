@@ -258,8 +258,9 @@ defmodule CodeMySpec.Requirements.GraphWatcher do
         allow_projector(project_id)
         GenServer.call(pid, {:settle, vantage}, 30_000)
 
+      # No pass running: the projector is the writer, so settling is draining it.
       [] ->
-        :ok
+        ShadowProjector.settle(project_id, [vantage])
     end
   catch
     :exit, _ -> :ok

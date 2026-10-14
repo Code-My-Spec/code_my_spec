@@ -32,7 +32,7 @@ defmodule CodeMySpec.Requirements.UiPublishRespectsDefaultCheckoutTest do
 
   alias CodeMySpec.Files
   alias CodeMySpec.Projects
-  alias CodeMySpec.Requirements.{Preloader, Projection, RequirementGraph}
+  alias CodeMySpec.Requirements.{Preloader, Projection, RequirementGraph, Shadow}
   alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -49,7 +49,7 @@ defmodule CodeMySpec.Requirements.UiPublishRespectsDefaultCheckoutTest do
 
   defp stored_impl_node(scope, component) do
     {:ok, ctx} = Preloader.load(scope)
-    {nodes, _edges} = Projection.load(scope, ctx)
+    {nodes, _edges} = Projection.load(scope, ctx, source: Shadow.pass_source())
     impl_node(nodes, component)
   end
 
@@ -65,7 +65,10 @@ defmodule CodeMySpec.Requirements.UiPublishRespectsDefaultCheckoutTest do
     scope = %{scope | active_project: project}
 
     {:ok, other_wc} =
-      WorkingCopies.issue(scope, nil, label: "a different checkout", device: device_fixture(scope))
+      WorkingCopies.issue(scope, nil,
+        label: "a different checkout",
+        device: device_fixture(scope)
+      )
 
     component = component_fixture(scope, %{module_name: "MyApp.Stale", type: "schema"})
 

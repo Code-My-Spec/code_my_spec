@@ -35,9 +35,6 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -141,18 +138,18 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   # checkout is answered from — and `=` against it matches nothing.
   defp flip_one_verdict(%Scope{} = scope) do
     [{id, name, satisfied}] =
-      scope |> at_vantage("shadow_requirements") |> Ecto.Query.limit(1) |> Repo.all()
+      scope |> at_vantage("requirements") |> Ecto.Query.limit(1) |> Repo.all()
 
     {1, _} =
-      from(n in "shadow_requirements", where: n.id == ^id)
+      from(n in "requirements", where: n.id == ^id)
       |> Repo.update_all(set: [satisfied: not satisfied])
 
     name
   end
 
   defp disagreements(%Scope{} = scope) do
-    stored = scope |> at_vantage("shadow_requirements") |> Repo.all() |> Map.new(&key/1)
-    computed = scope |> at_vantage("requirements") |> Repo.all() |> Map.new(&key/1)
+    stored = scope |> at_vantage("requirements") |> Repo.all() |> Map.new(&key/1)
+    computed = scope |> at_vantage("shadow_requirements") |> Repo.all() |> Map.new(&key/1)
 
     for {k, v} <- stored, Map.has_key?(computed, k), computed[k] != v, do: {k, v, computed[k]}
   end

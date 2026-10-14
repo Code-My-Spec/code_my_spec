@@ -7,21 +7,20 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
   alias CodeMySpec.Components
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Edge, GraphInputs, Preloader, Projection, Shadow, ShadowProjector}
+
+  alias CodeMySpec.Requirements.{
+    Edge,
+    GraphInputs,
+    Preloader,
+    Projection,
+    Shadow,
+    ShadowProjector
+  }
+
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
 
   setup do
-    previous_shadow = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    previous_source = Application.get_env(:code_my_spec, :graph_event_is_source, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    Application.put_env(:code_my_spec, :graph_event_is_source, true)
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, :graph_shadow_projection, previous_shadow)
-      Application.put_env(:code_my_spec, :graph_event_is_source, previous_source)
-    end)
-
     %{scope: full_scope_fixture()}
   end
 

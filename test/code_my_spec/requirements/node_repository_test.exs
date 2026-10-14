@@ -23,9 +23,9 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
     Edge,
     Node,
     NodeRepository,
-    Projection,
     Requirement,
-    RequirementGraph
+    RequirementGraph,
+    Shadow
   }
 
   setup do
@@ -43,8 +43,12 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
     }
   end
 
+  # The pass's own tables: these test the pass writer, wherever it writes.
+  defp pass_nodes, do: Shadow.pass_target()
+  defp pass_edges, do: {Shadow.pass_edges(), Edge}
+
   defp xmin(id) do
-    Node
+    pass_nodes()
     |> where([n], n.id == ^id)
     |> select([n], fragment("xmin::text"))
     |> Repo.one!()
@@ -68,13 +72,13 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
       NodeRepository.upsert_all(scope, [node("component", component.id, "implementation_file")])
 
-      assert Repo.aggregate(Node, :count) == 1
+      assert Repo.aggregate(pass_nodes(), :count) == 1
 
       # The next pass visits it and produces nothing for it — the empty-template
       # case — so its row is departed.
       NodeRepository.upsert_all(scope, [], %{components: [component.id], stories: []})
 
-      assert Repo.aggregate(Node, :count) == 0,
+      assert Repo.aggregate(pass_nodes(), :count) == 0,
              """
              A component that was visited and produced no requirements kept its
              rows.
@@ -95,7 +99,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       # pass did not load. Its rows are not this computation's to remove.
       NodeRepository.upsert_all(scope, [], %{components: [], stories: []})
 
-      assert Repo.aggregate(Node, :count) == 1,
+      assert Repo.aggregate(pass_nodes(), :count) == 1,
              "a component outside this computation must not be treated as departed"
     end
   end
@@ -130,7 +134,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
         node("component", component.id, "implementation_file")
       ])
 
-      row = Repo.one!(Node)
+      row = Repo.one!(pass_nodes())
 
       assert is_nil(row.working_copy_id), """
       A publish with no checkout named must land where `Projection.vantage/1`
@@ -150,21 +154,6 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       `Preloader.files_vantage/1` — which is a different question from whose
       answer this is.
       """
-
-      ctx = %{
-        components: [component],
-        components_by_id: %{component.id => component},
-        stories: []
-      }
-
-      {nodes, _edges} = Projection.load(ui_scope, ctx)
-
-      assert length(nodes) == 1, """
-      This is the actual symptom behind cc4745dc: a graph published from the
-      UI read back short on the very next UI read, because the write and the
-      read resolved the same nil-scope caller to two different working
-      copies.
-      """
     end
   end
 
@@ -177,7 +166,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       assert %{{"project", ^project_id, "stories_exist"} => id} = keys
       assert is_integer(id)
 
-      row = Repo.get(Node, id)
+      row = Repo.get(pass_nodes(), id)
       assert row.project_id == project_id
       assert row.component_id == nil
       assert row.story_id == nil
@@ -202,12 +191,12 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       %{{"project", ^project_id, "stories_exist"} => id} =
         NodeRepository.upsert_all(scope, [node("project", project_id, "stories_exist", false)])
 
-      refute Repo.get(Node, id).satisfied
+      refute Repo.get(pass_nodes(), id).satisfied
 
       NodeRepository.upsert_all(scope, [node("project", project_id, "stories_exist", true)])
 
-      assert Repo.get(Node, id).satisfied
-      assert Repo.aggregate(Node, :count) == 1
+      assert Repo.get(pass_nodes(), id).satisfied
+      assert Repo.aggregate(pass_nodes(), :count) == 1
     end
 
     # 181f3469 / a69525bd: a row EXCLUDED agrees with on every stored column
@@ -237,7 +226,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
         ])
 
       assert map_size(keys) == 2
-      assert Repo.aggregate(Node, :count) == 2
+      assert Repo.aggregate(pass_nodes(), :count) == 2
     end
 
     # The half `upsert_all/2` was missing. Inserting and updating without ever
@@ -256,15 +245,15 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
         node("project", project_id, "a_requirement_since_dropped")
       ])
 
-      assert Repo.aggregate(Node, :count) == 2
+      assert Repo.aggregate(pass_nodes(), :count) == 2
 
       NodeRepository.upsert_all(scope, [node("project", project_id, "stories_exist")])
 
-      assert Repo.aggregate(Node, :count) == 1,
+      assert Repo.aggregate(pass_nodes(), :count) == 1,
              "a requirement the graph stopped producing must stop being reported, " <>
                "or an agent is handed work its project does not have"
 
-      assert Repo.one!(Node).name == "stories_exist"
+      assert Repo.one!(pass_nodes()).name == "stories_exist"
     end
 
     # Removal is scoped to what this computation covered. A component the graph
@@ -278,19 +267,19 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
         node("component", component.id, "implementation_file")
       ])
 
-      assert Repo.aggregate(Node, :count) == 2
+      assert Repo.aggregate(pass_nodes(), :count) == 2
 
       # A computation covering only the project entity.
       NodeRepository.upsert_all(scope, [node("project", project_id, "stories_exist")])
 
-      assert Repo.aggregate(Node, :count) == 2,
+      assert Repo.aggregate(pass_nodes(), :count) == 2,
              "the component was not part of this computation, so its nodes are not " <>
                "evidence of anything having been dropped"
     end
 
     test "an empty list writes nothing", %{scope: scope} do
       assert NodeRepository.upsert_all(scope, []) == %{}
-      assert Repo.aggregate(Node, :count) == 0
+      assert Repo.aggregate(pass_nodes(), :count) == 0
     end
   end
 
@@ -316,7 +305,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
       assert {:ok, 1} = NodeRepository.replace_edges(scope, [%{from: from, to: to}], keys)
 
-      assert [edge] = Repo.all(Edge)
+      assert [edge] = Repo.all(pass_edges())
       assert edge.from_requirement_id == keys[from]
       assert edge.to_requirement_id == keys[to]
     end
@@ -326,11 +315,11 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       edges = [%{from: from, to: to}]
 
       {:ok, _} = NodeRepository.replace_edges(scope, edges, keys)
-      [first] = Repo.all(Edge)
+      [first] = Repo.all(pass_edges())
 
       NodeRepository.replace_edges(scope, edges, keys)
 
-      assert [second] = Repo.all(Edge)
+      assert [second] = Repo.all(pass_edges())
       assert second.id == first.id, "an unchanged graph should not rewrite its edges"
     end
 
@@ -343,7 +332,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       {:ok, 1} = NodeRepository.replace_edges(scope, [%{from: from, to: to}], keys)
       {:ok, 0} = NodeRepository.replace_edges(scope, [], keys)
 
-      assert Repo.all(Edge) == []
+      assert Repo.all(pass_edges()) == []
     end
 
     # A partial recompute resolves ids only for the entities it recomputed, and
@@ -370,7 +359,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
       NodeRepository.replace_edges(scope, [%{from: from, to: to}], partial)
 
-      assert [survivor] = Repo.all(Edge),
+      assert [survivor] = Repo.all(pass_edges()),
              "a partial write deleted an edge it could not rewrite — the edges " <>
                "leading out of every recomputed node into a kept one go with it"
 
@@ -385,7 +374,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       stranger = {"project", scope.active_project_id, "not_a_node_here"}
 
       assert {:ok, 0} = NodeRepository.replace_edges(scope, [%{from: from, to: stranger}], keys)
-      assert Repo.all(Edge) == []
+      assert Repo.all(pass_edges()) == []
     end
 
     test "a self-edge is refused by the changeset", %{scope: scope} do
@@ -405,9 +394,9 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       {keys, from, to} = two_nodes(scope)
       {:ok, 1} = NodeRepository.replace_edges(scope, [%{from: from, to: to}], keys)
 
-      Repo.delete!(Repo.get!(Node, keys[to]))
+      Repo.delete!(Repo.get!(pass_nodes(), keys[to]))
 
-      assert Repo.all(Edge) == []
+      assert Repo.all(pass_edges()) == []
     end
   end
 
@@ -425,11 +414,11 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       # Guard against the assertion below passing on 0 == 0.
       assert nodes != [], "a project with no nodes makes this test vacuous"
 
-      assert Repo.aggregate(Node, :count) == length(nodes),
+      assert Repo.aggregate(pass_nodes(), :count) == length(nodes),
              "every computed node should have a row, or the projection is partial " <>
                "in a way nothing would notice until a reader depended on it"
 
-      assert Repo.aggregate(Edge, :count) == length(edges)
+      assert Repo.aggregate(pass_edges(), :count) == length(edges)
     end
 
     # The round-trip check runs on the write path, so a computation whose rows
@@ -482,7 +471,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       component = component_fixture(scope, %{type: "infrastructure"})
 
       NodeRepository.upsert_all(scope, [node("component", component.id, "spec_file")])
-      assert Repo.aggregate(Node, :count) >= 1
+      assert Repo.aggregate(pass_nodes(), :count) >= 1
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
@@ -497,13 +486,13 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
     test "recomputing an unchanged graph writes nothing new", %{scope: scope} do
       RequirementGraph.compute_graph(scope)
-      node_count = Repo.aggregate(Node, :count)
-      edge_count = Repo.aggregate(Edge, :count)
+      node_count = Repo.aggregate(pass_nodes(), :count)
+      edge_count = Repo.aggregate(pass_edges(), :count)
 
       RequirementGraph.compute_graph(scope)
 
-      assert Repo.aggregate(Node, :count) == node_count
-      assert Repo.aggregate(Edge, :count) == edge_count
+      assert Repo.aggregate(pass_nodes(), :count) == node_count
+      assert Repo.aggregate(pass_edges(), :count) == edge_count
     end
   end
 

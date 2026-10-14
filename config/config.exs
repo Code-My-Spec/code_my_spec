@@ -224,6 +224,15 @@ config :code_my_spec, CodeMySpec.Vault,
 # `localhost:4004` for a problem that was never there.
 config :plug, :statuses, %{529 => "Overloaded"}
 
+# The requirement graph is kept by the event projection in every environment;
+# the batched pass no longer runs continuously. (Dev has served from the event
+# path since 2026-09-21.)
+config :code_my_spec,
+  graph_event_is_source: true,
+  graph_shadow_projection: true,
+  graph_pass_enabled: false,
+  graph_shadow_diff: false
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

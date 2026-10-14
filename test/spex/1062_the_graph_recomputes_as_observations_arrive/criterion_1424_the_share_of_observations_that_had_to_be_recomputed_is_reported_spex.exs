@@ -62,9 +62,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3515Spex do
   # path is off by default outside dev. Filed as `e0729ea9`; not this
   # criterion's subject.
   defp project_the_marks(_context) do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 

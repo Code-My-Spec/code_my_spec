@@ -29,9 +29,6 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 

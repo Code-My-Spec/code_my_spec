@@ -148,10 +148,11 @@ defmodule CodeMySpec.Requirements.DrainCost do
   absent from every surface that asked.
 
   `:pass` is a whole recompute; `:event` is a projection maintained from
-  handlers.
+  handlers; `:reseed` is the projector rebuilding a vantage whole, which is
+  what "recomputing" costs once the pass is gone.
   """
-  @spec last(Ecto.UUID.t() | nil, :pass | :event) :: map() | nil
-  def last(project_id, kind) when is_binary(project_id) and kind in [:pass, :event] do
+  @spec last(Ecto.UUID.t() | nil, :pass | :event | :reseed) :: map() | nil
+  def last(project_id, kind) when is_binary(project_id) and kind in [:pass, :event, :reseed] do
     case :ets.whereis(@table) do
       :undefined -> nil
       _ -> @table |> :ets.lookup({project_id, kind}) |> unwrap()
@@ -176,7 +177,7 @@ defmodule CodeMySpec.Requirements.DrainCost do
   maintained from handlers — the distinction the swap turns on, and the one that
   makes two numbers comparable or not.
   """
-  @type meta :: %{required(:kind) => :pass | :event, optional(atom()) => term()}
+  @type meta :: %{required(:kind) => :pass | :event | :reseed, optional(atom()) => term()}
 
   @doc """
   Run `fun`, and say what it cost.

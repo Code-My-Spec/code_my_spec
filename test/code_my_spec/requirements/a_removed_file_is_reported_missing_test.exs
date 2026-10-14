@@ -51,9 +51,6 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
   setup :setup_active_project
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -67,9 +64,9 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
   # What the event path says about this component's implementation file, at this
   # checkout. Read from the shadow rows rather than the endpoint because the
   # endpoint serves the pass's answer, and the pass is not what is under test.
-  defp shadow_verdict(scope, component_id) do
+  defp served_verdict(scope, component_id) do
     base =
-      from(n in "shadow_requirements",
+      from(n in "requirements",
         where:
           n.component_id == type(^component_id, :binary_id) and
             n.name == "implementation_file",
@@ -104,14 +101,14 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
       {:ok, _} = FileSync.sync(scope)
       settle(scope)
 
-      assert shadow_verdict(scope, component.id) == true,
+      assert served_verdict(scope, component.id) == true,
              "the file was synced and the event path does not report it present"
 
       :ok = Environments.delete_file(env, @impl_path)
       {:ok, _} = FileSync.sync(scope)
       settle(scope)
 
-      assert shadow_verdict(scope, component.id) == false,
+      assert served_verdict(scope, component.id) == false,
              """
              The file is gone and the event path still reports it present.
 

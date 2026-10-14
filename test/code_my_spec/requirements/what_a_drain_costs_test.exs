@@ -38,10 +38,6 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   setup :setup_active_project
 
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
-
     handler = "drain-cost-#{inspect(self())}"
     test = self()
 

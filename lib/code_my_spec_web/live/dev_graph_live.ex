@@ -263,7 +263,11 @@ defmodule CodeMySpecWeb.DevGraphLive do
       drain: DrainCost.last(project.id),
       drains_by_kind:
         Enum.reject(
-          [DrainCost.last(project.id, :event), DrainCost.last(project.id, :pass)],
+          [
+            DrainCost.last(project.id, :event),
+            DrainCost.last(project.id, :reseed),
+            DrainCost.last(project.id, :pass)
+          ],
           &is_nil/1
         )
     )
