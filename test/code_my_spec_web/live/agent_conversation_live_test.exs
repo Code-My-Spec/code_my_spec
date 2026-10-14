@@ -725,7 +725,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       on_exit(fn -> Drafts.clear(conversation.id) end)
       assert has_element?(view, "#agent-writing", "Install pgvector")
 
-      CodeMySpec.Agents.record_turn_event(scope, agent.id, %{
+      CodeMySpec.Agents.record_turn_event(%{scope | active_project_id: project.id}, agent.id, %{
         "kind" => "message",
         "text" => guidance
       })
