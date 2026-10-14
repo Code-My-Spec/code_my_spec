@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Fixtures do
       # `launch_agent/1` names the carried tools the way the channel's launch does.
       CodeMySpec.McpServers,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
       CodeMySpec.Architecture,
@@ -132,6 +133,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analytics.GoogleAnalytics
@@ -1173,9 +1175,40 @@ defmodule CodeMySpecSpex.Fixtures do
   def stop_desktop_fixture_copies(directory) do
     prefix = Path.expand(directory) <> "/"
 
-    CmsHarness.Projects.list()
-    |> Enum.filter(&String.starts_with?(Path.expand(&1), prefix))
-    |> Enum.each(&CmsHarness.Projects.stop_serving/1)
+    roots =
+      CmsHarness.Projects.list()
+      |> Enum.filter(&String.starts_with?(Path.expand(&1), prefix))
+
+    # Closing the client side's socket does not wait for the matching
+    # server-side HarnessProjectChannel to notice and exit -- that happens on
+    # its own, async, over the local websocket. A channel still mid a
+    # reconcile when this test's Sandbox owner stops next outlives the
+    # connection it was using (add46395, 9d81dfbd). Monitored here, while the
+    # registry entry is still live, and waited out below.
+    refs = Enum.map(desktop_channel_pids(prefix), &Process.monitor/1)
+
+    Enum.each(roots, &CmsHarness.Projects.stop_serving/1)
+
+    Enum.each(refs, &await_desktop_channel_down/1)
+  end
+
+  # `root` is reported to the registry, not an identity it resolves by (see
+  # `HarnessRegistry.register_executor/3`'s own moduledoc) -- so this scans
+  # every entry and filters on it directly, instead of first resolving a
+  # working_copy_id for each root the way an ordinary caller would.
+  defp desktop_channel_pids(prefix) do
+    HarnessRegistry
+    |> Registry.select([{{:"$1", :"$2", {:_, :"$3"}}, [{:is_binary, :"$1"}], [{{:"$2", :"$3"}}]}])
+    |> Enum.filter(fn {_pid, root} -> is_binary(root) and String.starts_with?(Path.expand(root), prefix) end)
+    |> Enum.map(fn {pid, _root} -> pid end)
+  end
+
+  defp await_desktop_channel_down(ref) do
+    receive do
+      {:DOWN, ^ref, :process, _pid, _reason} -> :ok
+    after
+      5_000 -> raise "a desktop harness's server-side channel outlived the client copy that closed on it"
+    end
   end
 
   def desktop_setup_main_agent(user) do
