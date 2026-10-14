@@ -1,20 +1,16 @@
 defmodule CodeMySpec.Requirements.ShadowProjector do
   @moduledoc """
-  One process per project, turning invalidation marks into a second projection.
+  One process per project, keeping the requirement graph current from
+  invalidation marks: the incremental graph, and the only thing that writes it.
 
-  The event-based replacement being built beside the fingerprint pass, so the
-  two can be compared on the same traffic before either is retired. It writes
-  `shadow_requirements` and decides nothing; `Shadow.diff/2` is what says
-  whether it is ready to.
+  It writes `requirements` and `requirement_edges` (through `Shadow`) and
+  announces what moved. `GraphWatcher` is the front callers use to start and
+  settle it. The name is historical: it was built beside the batched pass as a
+  shadow projection, and took over when the pass was removed.
 
   ## No debounce, and that is the point
 
-  `GraphWatcher` coalesces a burst into one pass because a fingerprint pass is
-  whole-project: it preloads everything, hashes everything and rebuilds the
-  project nodes whatever moved, so paying that per event would be ruinous and
-  waiting two seconds is the cheaper mistake.
-
-  None of that is true here. A mark names an entity, `RequirementGraph.compute_entity/4`
+  A mark names an entity, `RequirementGraph.compute_entity/4`
   computes that entity, and the cost is proportional to what actually moved. So
   there is no timer: a mark that arrives is handled. Marks still arrive in
   groups when this process is behind or was down, and they are handled one at a
@@ -27,8 +23,8 @@ defmodule CodeMySpec.Requirements.ShadowProjector do
   decides what has to be read:
 
     * `:everything` — a writer could not say what it moved, or this projector
-      has not seeded. Whole context, every entity. This is the pass the event
-      path exists to replace, and it is what an un-narrowed writer costs.
+      has not seeded. Whole context, every entity. This is what an un-narrowed
+      writer costs.
     * `{:narrow, entities}` — every mark named something. One narrow load per
       entity — `load_story/3`, `load_component_family/3` or `load_project/2` —
       and `Preloader.load/1` is never called.

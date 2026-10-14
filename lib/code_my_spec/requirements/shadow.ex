@@ -1,55 +1,18 @@
 defmodule CodeMySpec.Requirements.Shadow do
   @moduledoc """
-  The event-derived projection, and how far it is from the real one.
+  Reads and writes the requirement graph's rows, for the event projection.
 
-  `shadow_requirements` mirrors `requirements` column for column, so the same
-  nodes land the same way and a difference between the two tables is a
-  difference in the *decision* that produced them — which is the only variable
-  under test. Everything downstream of that decision is shared.
+  `ShadowProjector` decides what each entity's requirements are; this is where
+  those answers land in `requirements` and `requirement_edges`. Writes are per
+  entity and per event: `write/3` replaces what one computation covered,
+  `put_verdict/2` and `put_verdicts/5` move a verdict a handler already knew,
+  `sweep/2` settles one requirement across every owner of a type, and
+  `write_edges/3` writes an edge set as a difference. The projection checks —
+  `projected?/1`, `definitions_covered?/2`, `incomplete_entities/2` — tell the
+  projector when a vantage's rows cannot be trusted and must be seeded.
 
-  ## What the diff means, and which direction is fatal
-
-  Three numbers, and they are not equally bad:
-
-    * `missing` — the live projection has a row the shadow does not. The event
-      path never computed that entity, so a writer owes a mark. This is the
-      direction that must reach zero: in production it is a requirement nobody
-      revisits, which costs an agent a session.
-
-    * `extra` — the shadow has a row the live projection does not. Usually the
-      shadow retained a requirement the pass no longer has. An extra requirement
-      can offer work that should not exist, so this also fails agreement.
-
-    * `disagree` — both have the row and the verdicts differ. The expensive one
-      to read, because it is either a stale shadow row (a missed mark, same as
-      `missing`) or a genuine computation difference, and the sample is what
-      tells them apart.
-
-  Agreement requires zero missing, extra and disagreeing nodes and edges.
-  Agreement with another implementation is not independent proof of correctness.
-
-  ## What the diff cannot see
-
-  It proves *coverage*, not *narrowness*. A writer that names nothing records a
-  project-wide mark, the projector reads that as "any of it" and recomputes
-  every entity, and the diff agrees — exactly as it would for a writer that
-  named its entities precisely. Verified by turning `Invalidations` off
-  entirely, which is the only thing that makes the comparison fail: a story
-  created after the seed came back as three `missing` rows, named.
-
-  So this number answers "would the event path have missed something", and the
-  cost question — how often a project-wide mark drags the whole project through
-  a recompute that a narrowed writer would have avoided — is a different
-  measurement, taken from how often those marks fire. Reading agreement as
-  evidence of narrowness is the mistake this paragraph exists to prevent.
-
-  ## Why the diff is not per event
-
-  Writing is per entity and per event — that is the point. Comparing is not:
-  it reads both projections whole, so doing it per event would cost more than
-  the thing it measures. It runs on the fingerprint pass, which is already
-  loading the context and is exactly the moment the two systems can be asked
-  the same question.
+  The name is historical: this was the shadow projection, compared against the
+  batched pass until the event path took over and the pass was removed.
   """
 
   import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2, select: 3]
