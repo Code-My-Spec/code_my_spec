@@ -30,6 +30,10 @@ defmodule CmsHarness.Agents.Tools.StartAnalysis do
     stop when you have nothing else to do, and the result is delivered to you as
     a message when it lands.
 
+    `paths` scopes the run to specific files instead of the full suite — one
+    focused test, say. A scoped run can never satisfy freshness on its own, so
+    use it for a targeted validation, not as a substitute for the full sweep.
+
     Usually you do not need this: editing files and calling `sync_project` will
     enqueue the analyzers by itself. Reach for it when a result is stale and
     nothing is running.
@@ -45,6 +49,12 @@ defmodule CmsHarness.Agents.Tools.StartAnalysis do
           type: "string",
           enum: ["spex", "exunit", "credo", "compiler"],
           description: "Which analyzer to run."
+        },
+        paths: %{
+          type: "array",
+          items: %{type: "string"},
+          description:
+            "Scope the run to these paths instead of the full suite. Empty runs everything."
         }
       },
       required: ["source"]
