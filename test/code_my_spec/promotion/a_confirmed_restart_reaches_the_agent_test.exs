@@ -34,12 +34,6 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
-
     test = self()
     handler = {__MODULE__, test}
 
@@ -133,6 +127,7 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
   defp ready_to_promote do
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     {running_root, agent_root, gate_root} = a_project_whose_restart_succeeds()
 
     running_copy = a_copy(scope, running_root, "the checkout the dev app runs in")

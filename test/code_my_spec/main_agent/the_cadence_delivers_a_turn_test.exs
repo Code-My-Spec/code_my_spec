@@ -37,13 +37,10 @@ defmodule CodeMySpec.Agents.Main.TheCadenceDeliversATurnTest do
     :ok
   end
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(context)
 
     test_pid = self()
     handler = {__MODULE__, make_ref()}

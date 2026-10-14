@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   A conversation id in this scope names its agent. One outside it is not found,
   and not-found says so without inventing a project mismatch.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
@@ -29,11 +29,6 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   @project_mismatch ~r/(another|different|other) project/i
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
 
     {scope, agent, conversation} = agent_with_conversation("the coding agent's own words")
 
@@ -47,6 +42,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
 
   defp agent_with_conversation(said) do
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     integration_fixture(scope.user, %{provider: :anthropic})
 
     {:ok, copy} =

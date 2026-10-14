@@ -10,7 +10,7 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
   channel registry instead of trusting the column, and `restart_agent/2`
   is what `set_agent_continuous/3` reaches for once it finds nothing there.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
@@ -25,13 +25,9 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    CodeMySpecTest.AgentTransportRouter.route(scope, RecordingAgentTransport)
+    RecordingAgentTransport.listen(scope)
     integration_fixture(scope.user, %{provider: :anthropic})
 
     {:ok, copy} =

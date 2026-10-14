@@ -18,7 +18,7 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
   John: "We need to fix the reset problem. Agents with tasks should continue on
   start."
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
@@ -31,13 +31,9 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    CodeMySpecTest.AgentTransportRouter.route(scope, RecordingAgentTransport)
+    RecordingAgentTransport.listen(scope)
     integration_fixture(scope.user, %{provider: :anthropic})
 
     {:ok, copy} =
@@ -142,7 +138,7 @@ defmodule CodeMySpec.Agents.AnAgentHoldingWorkIsResumedNotReplacedTest do
   test "the resumed agent is asked for a turn, not merely marked running", ctx do
     {stopped, _task} = stopped_agent_with(ctx.scope, ctx.copy, :active)
 
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     {:ok, started} =
       Agents.start_agent(ctx.scope, %{

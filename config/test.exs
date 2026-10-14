@@ -335,7 +335,9 @@ config :code_my_spec, :generator_runner, CodeMySpecTest.ScriptedGeneratorRunner
 # A group id naming nothing answers `:ok`, so a test carrying an invented
 # `os_pid` needs no process arranged for it, and one that spawns something real
 # gets it genuinely signalled.
-config :code_my_spec, :agent_transport, CodeMySpecTest.InProcessAgentTransport
+# Each test routes its own project through `CodeMySpecTest.AgentTransportRouter`;
+# an unrouted project gets `InProcessAgentTransport`.
+config :code_my_spec, :agent_transport, CodeMySpecTest.AgentTransportRouter
 
 # The agent's own MCP session, without a socket. `CodeMySpecWeb.Endpoint` runs
 # `server: false` here, so the harness cannot make the HTTP hop its tools make

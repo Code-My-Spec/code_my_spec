@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.Mailbox.SendingNowStopsABusyAgentsTurnTest do
   over only inside a turn the mailbox had started: a correction to team 2's
   coder waited out sixteen minutes of the work it was correcting (2026-10-13).
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
@@ -17,12 +17,8 @@ defmodule CodeMySpec.Agents.Mailbox.SendingNowStopsABusyAgentsTurnTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
 
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{

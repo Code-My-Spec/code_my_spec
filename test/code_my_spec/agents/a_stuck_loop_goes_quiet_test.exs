@@ -23,7 +23,7 @@ defmodule CodeMySpec.Agents.AStuckLoopGoesQuietTest do
   and never trips it; an unchanging menu does, after the same five repeats
   every other class of message already gets.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
@@ -34,13 +34,9 @@ defmodule CodeMySpec.Agents.AStuckLoopGoesQuietTest do
   alias CodeMySpecTest.RecordingAgentTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture()
+    CodeMySpecTest.AgentTransportRouter.route(scope, RecordingAgentTransport)
+    RecordingAgentTransport.listen(scope)
 
     {:ok, copy} =
       CodeMySpec.WorkingCopies.issue(scope, nil,

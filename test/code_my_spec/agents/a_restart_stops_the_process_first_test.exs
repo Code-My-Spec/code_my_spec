@@ -31,10 +31,6 @@ defmodule CodeMySpec.Agents.ARestartStopsTheProcessFirstTest do
   alias CodeMySpecTest.RestartWatchingTransport
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RestartWatchingTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
     RestartWatchingTransport.listen()
 
     # A restart fetches a credential before it does anything else, and this
@@ -53,6 +49,7 @@ defmodule CodeMySpec.Agents.ARestartStopsTheProcessFirstTest do
     end)
 
     scope = full_scope_fixture()
+    CodeMySpecTest.AgentTransportRouter.route(scope, RestartWatchingTransport)
 
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{

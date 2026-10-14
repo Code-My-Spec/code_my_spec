@@ -49,6 +49,7 @@ defmodule CodeMySpec.Agents.Main do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Questions
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
@@ -707,13 +708,16 @@ defmodule CodeMySpec.Agents.Main do
   defp why(:not_recorded),
     do: "the project does not record an answer to this, so it is yours to decide"
 
-  defp why(:precedent_does_not_fit),
-    do:
-      "this resembles something you decided before, and differs in a way that could " <>
-        "change the answer — so it is yours rather than ours to carry forward"
-
   defp why(:no_precedent),
     do: "no earlier decision of yours covers this"
+
+  defp why(:no_citation),
+    do: "the main agent had nothing to cite from its own reading, so this is yours to decide"
+
+  defp why({:not_inspected, citation}),
+    do:
+      "the main agent cited #{inspect(citation)}, which does not match anything in its own " <>
+        "session, so this is yours to decide"
 
   defp why(reason), do: "the main agent could not answer this: #{inspect(reason)}"
 
@@ -1062,8 +1066,21 @@ defmodule CodeMySpec.Agents.Main do
     recorded?(scope, question, answer)
   end
 
-  defp verify("precedent", scope, question, _answer, opts) do
-    fits?(scope, question, Keyword.get(opts, :precedent_id))
+  defp verify("precedent", scope, _question, _answer, opts) do
+    fits?(scope, Keyword.get(opts, :precedent_id))
+  end
+
+  # Issue da5a5ebf: `record` and `precedent` are the only two bases, and
+  # neither covers an answer grounded in the answerer's own reading -- a code
+  # review, a config file, project state read through its own tools. Six
+  # occurrences of the same refusal: a correct, substance-backed answer with
+  # nowhere to go, because what it rests on is not a project row and is not an
+  # earlier answered question either. `inspected` (criteria 2180, 2181) is
+  # that third basis: the citation is checked against the answerer's own
+  # session, the same way `record` is checked against the project's rows, so
+  # this cannot become a free pass for "I looked at something" either.
+  defp verify("inspected", scope, _question, _answer, opts) do
+    inspected?(scope, Keyword.get(opts, :inspector_id), Keyword.get(opts, :citation))
   end
 
   defp verify(basis, _scope, _question, _answer, _opts), do: {:error, {:unknown_basis, basis}}
@@ -1087,8 +1104,10 @@ defmodule CodeMySpec.Agents.Main do
   # behind them, and 3220 and 3222 exist because a cited record can still be
   # the wrong one.
   defp recorded?(scope, question, answer) do
-    [&epic_membership/2, &fleet/2, &filed_issues/2]
-    |> Enum.any?(fn reading -> reading.(scope, answer) end)
+    readings = [&epic_membership/2, &fleet/2, &filed_issues/2]
+
+    (Enum.any?(readings, fn reading -> reading.(scope, answer) end) or
+       resolved_questions(scope, question, answer))
     |> supported(question)
   end
 
@@ -1129,6 +1148,21 @@ defmodule CodeMySpec.Agents.Main do
   defp short_id(id) when is_binary(id), do: String.slice(id, 0, 8)
   defp short_id(_id), do: nil
 
+  # Issue 5a78b7c4: a resolved Question (BDD red card) is a record main
+  # itself just wrote, on a story, the same way an accepted issue is one
+  # someone else already filed - and the original three readings missed it
+  # entirely. `question` carries no story of its own until it is one of
+  # these, so there is nothing to check without it.
+  defp resolved_questions(_scope, %{story_id: nil}, _answer), do: false
+
+  defp resolved_questions(scope, %{story_id: story_id}, answer) do
+    scope
+    |> Questions.list_questions_for_story(story_id)
+    |> Enum.filter(&(&1.status == :resolved))
+    |> Enum.map(&short_id(&1.id))
+    |> names?(answer)
+  end
+
   # A needle short enough to appear by accident makes every answer recorded,
   # which is the failure the basis exists to prevent. A copy rooted at `/`, or
   # an issue titled `bug`, would support anything at all.
@@ -1148,31 +1182,51 @@ defmodule CodeMySpec.Agents.Main do
   defp supported(true, _question), do: {:ok, :record}
   defp supported(false, _question), do: {:error, :not_recorded}
 
-  # A precedent is the same question, not a similar one.
-  #
-  # 3258's whole subject. A search returns similar text by construction, so the
-  # claim has to be checked — and "same" is the question's own text, because any
-  # looser rule is the stretching the criterion forbids.
-  defp fits?(_scope, _question, nil), do: {:error, :no_precedent}
+  # Criterion 1228 ("a precedent is the same question, not a similar one")
+  # required the precedent's question text to match exactly, to stop a
+  # search-found, merely-similar answer being stretched over a different
+  # case. Retired by product (John, 2026-10-13, question 839bf593): never
+  # asked for, and it meant a precedent stating a general rule could never
+  # fit a differently-worded question either -- the rule had to be
+  # re-derived, or answered off the record, every time it came up worded
+  # differently (issue f43e1c5b). Criteria 2182/2183 are what replaces it:
+  # citing a precedent by id is the answerer's own judgement that it
+  # applies, and the only thing checked is that the id really is an
+  # answered question -- the citation is on the record either way.
+  defp fits?(_scope, nil), do: {:error, :no_precedent}
 
-  defp fits?(scope, question, precedent_id) do
-    scope
-    |> QuestionsRepository.fetch_answered(precedent_id)
-    |> same_question?(question)
+  defp fits?(scope, precedent_id) do
+    case QuestionsRepository.fetch_answered(scope, precedent_id) do
+      nil -> {:error, :no_precedent}
+      earlier -> {:ok, {:precedent, earlier}}
+    end
   end
 
-  defp same_question?(nil, _question), do: {:error, :no_precedent}
-
-  defp same_question?(earlier, question) do
-    matched(texts(earlier) == texts(question), earlier)
+  # A citation is a claim about the answerer's own session, and a claim about
+  # a session is checkable the same way a claim about the project is: it has
+  # to name something actually there. `read_agent_conversation/3` is already
+  # how everything else reads a session back; this is the first caller that
+  # checks what it reads rather than just displaying it.
+  defp inspected?(_scope, nil, _citation), do: {:error, :no_citation}
+  defp inspected?(_scope, _inspector_id, citation) when citation in [nil, ""] do
+    {:error, :no_citation}
   end
 
-  defp matched(false, _earlier), do: {:error, :precedent_does_not_fit}
-  defp matched(true, earlier), do: {:ok, {:precedent, earlier}}
+  defp inspected?(scope, inspector_id, citation) do
+    case read_agent_conversation(scope, inspector_id) do
+      {:ok, %{turns: turns}} ->
+        turns
+        |> Enum.map_join("\n", &turn_line/1)
+        |> String.contains?(citation)
+        |> inspected(citation)
 
-  defp texts(%{questions: questions}) do
-    Enum.map(questions, fn question -> MapAccess.get(question, :question) end)
+      {:error, _reason} ->
+        {:error, :no_citation}
+    end
   end
+
+  defp inspected(true, _citation), do: {:ok, :inspected}
+  defp inspected(false, citation), do: {:error, {:not_inspected, citation}}
 
   # An answer the user already gave says so.
   #

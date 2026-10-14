@@ -49,12 +49,6 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-
-    RecordingAgentTransport.listen()
-
     # The correction is sent from the detached restart task, which checks out
     # its own connection.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
@@ -174,6 +168,7 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
 
   test "a restart that really failed is retracted to the agent that was told QA could start" do
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     # The scope's own project, not a second one minted beside it: the join
     # issues the running copy into whichever project its payload names, and a
     # promotion reads `main` off the scope's project. Two different projects

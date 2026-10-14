@@ -24,12 +24,9 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
 
   setup do
     Sandbox.mode(Repo, {:shared, self()})
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
 
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     {:ok, _main_copy} = Staffing.designate_main(scope, scope.active_working_copy_id)
 
     %{scope: scope}
@@ -185,7 +182,7 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
   end
 
   test "a notice whose acknowledgement failed remains pending", ctx do
-    Application.put_env(:code_my_spec, :agent_transport, UnreachableMachine)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, UnreachableMachine)
     ctx = main(ctx)
     announce(ctx, "a1b2c3d4")
 

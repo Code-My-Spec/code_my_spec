@@ -19,7 +19,11 @@ defmodule CodeMySpec.Agents.ATurnEndInsideTheChannelStillAsksForWorkTest do
   # Stands in for the harness transport and says which process asked.
   defmodule CallerReportingTransport do
     def request_work_turn(_copy_id, agent, _ref, _prompt, _timeout) do
-      send(:persistent_term.get({__MODULE__, :test}), {:request_work_turn, agent.id, self()})
+      send(
+        CodeMySpecTest.AgentTransportRouter.owner(agent.project_id),
+        {:request_work_turn, agent.id, self()}
+      )
+
       {:ok, :started}
     end
 
@@ -30,14 +34,7 @@ defmodule CodeMySpec.Agents.ATurnEndInsideTheChannelStillAsksForWorkTest do
   setup :setup_active_project
 
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, CallerReportingTransport)
-    :persistent_term.put({CallerReportingTransport, :test}, self())
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, :agent_transport, previous)
-      :persistent_term.erase({CallerReportingTransport, :test})
-    end)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, CallerReportingTransport)
 
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)

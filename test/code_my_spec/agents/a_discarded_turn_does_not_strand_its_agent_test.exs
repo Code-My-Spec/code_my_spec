@@ -21,7 +21,7 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
   requires it to be nil before offering anything — an agent genuinely mid-turn
   is still left alone, which is what the guard was for.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query
 
@@ -40,10 +40,7 @@ defmodule CodeMySpec.Agents.ADiscardedTurnDoesNotStrandItsAgentTest do
   setup :setup_active_project
 
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)

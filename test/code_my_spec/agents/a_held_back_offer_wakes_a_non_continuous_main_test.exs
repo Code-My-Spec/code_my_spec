@@ -34,12 +34,9 @@ defmodule CodeMySpec.Agents.AHeldBackOfferWakesANonContinuousMainTest do
 
   setup do
     Sandbox.mode(Repo, {:shared, self()})
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
 
     scope = full_scope_fixture()
+    RecordingAgentTransport.listen(scope)
     {:ok, _} = Staffing.designate_main(scope, scope.active_working_copy_id)
 
     {:ok, copy} =

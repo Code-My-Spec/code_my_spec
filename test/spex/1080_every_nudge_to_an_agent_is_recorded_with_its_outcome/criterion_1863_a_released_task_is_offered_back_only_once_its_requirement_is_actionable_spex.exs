@@ -26,9 +26,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1863Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    :ok = Fixtures.install_recording_agent_transport()
+    :ok = Fixtures.install_recording_agent_transport(context)
     :ok
   end
 

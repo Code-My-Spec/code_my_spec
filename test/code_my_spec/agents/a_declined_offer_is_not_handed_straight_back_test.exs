@@ -53,10 +53,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   # requirement rather than an empty graph — without it "not admitted" is true
   # either way and the assertions cannot tell the damper from nothing to do.
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)
@@ -163,7 +160,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   test "an undeliverable turn is recorded as offer attempts, not a refusal", ctx do
     # No transport registered for this copy, so the dispatch fails the way an
     # unreachable machine fails.
-    Application.put_env(:code_my_spec, :agent_transport, CodeMySpec.Agents.Transport.Harness)
+    CodeMySpecTest.AgentTransportRouter.route(ctx, CodeMySpec.Agents.Transport.Harness)
 
     agent =
       Enum.reduce(1..3, ctx.agent, fn _, acc ->

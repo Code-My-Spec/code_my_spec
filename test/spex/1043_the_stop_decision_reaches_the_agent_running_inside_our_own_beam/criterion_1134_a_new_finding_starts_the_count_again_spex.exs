@@ -37,9 +37,9 @@ defmodule CodeMySpecSpex.Story1043.Criterion3060Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
+  setup context do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
-    Fixtures.use_recording_transport()
+    Fixtures.use_recording_transport(context)
   end
 
   spex "An agent told the same thing it could not act on is eventually left alone",

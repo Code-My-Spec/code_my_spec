@@ -27,10 +27,7 @@ defmodule CodeMySpec.Agents.Main.AnAgentIsIdleWhenItsWorkIsHeldTest do
   # One step short of `bdd_specs_passing`: a named coding node on the board, so
   # "not idle" in the premise is real work rather than an empty graph.
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
+    RecordingAgentTransport.listen(ctx)
 
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)

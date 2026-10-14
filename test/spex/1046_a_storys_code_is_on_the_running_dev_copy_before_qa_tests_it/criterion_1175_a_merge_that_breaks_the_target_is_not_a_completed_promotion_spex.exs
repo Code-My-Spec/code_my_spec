@@ -27,8 +27,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3168Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  setup do
-    :ok = Fixtures.install_recording_agent_transport()
+  setup context do
+    :ok = Fixtures.install_recording_agent_transport(context)
 
     # The joins go through a real channel, which runs in a process of its own,
     # and the queue gates and lands from its own worker.

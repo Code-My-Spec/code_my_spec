@@ -6,7 +6,7 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
   Both widget doors used to message main (`WidgetIssueNotice`, 6da8e0e5). The
   issue now reaches the fleet as `issues_triaged`, product's requirement.
   """
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures
@@ -22,12 +22,8 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
   @deploy_key :crypto.strong_rand_bytes(64) |> Base.encode16(case: :lower)
 
   setup %{conn: conn} do
-    previous = Application.get_env(:code_my_spec, :agent_transport)
-    Application.put_env(:code_my_spec, :agent_transport, RecordingAgentTransport)
-    on_exit(fn -> Application.put_env(:code_my_spec, :agent_transport, previous) end)
-    RecordingAgentTransport.listen()
-
     scope = full_scope_fixture(%{deploy_key: @deploy_key})
+    RecordingAgentTransport.listen(scope)
     {:ok, _copy} = Staffing.designate_main(scope, scope.active_working_copy_id)
 
     {:ok, main} =

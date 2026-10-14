@@ -16,7 +16,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
   `allow` is deliberately not woken: it takes the agent out of the loop, which
   is what it asked for, and waking it would answer the opposite question.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Work
@@ -28,7 +28,7 @@ defmodule CodeMySpec.Notifications.DenyingATapOutPutsTheAgentBackToWorkTest do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
-  setup do: CodeMySpecSpex.Fixtures.install_recording_agent_transport()
+  setup context, do: CodeMySpecSpex.Fixtures.install_recording_agent_transport(context)
 
   # Staffed after the graph settles, so the only thing that can admit a turn is
   # the decision under test. `GraphWatcher.settle/1` fires its own
