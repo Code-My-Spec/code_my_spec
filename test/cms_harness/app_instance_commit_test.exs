@@ -56,7 +56,10 @@ defmodule CmsHarness.AppInstanceCommitTest do
       FakeAppInstanceRunner.configure(current_commit: "bbbb2222", probe: unquote(health))
       result = push_app_event("ensure_app_running")
 
-      assert result["app_status"] == to_string(unquote(health))
+      assert result["app_status"] == to_string(unquote(health)),
+             "Unexpected app reply: #{inspect(result, limit: :infinity)}\n" <>
+               "Runner calls: #{inspect(FakeAppInstanceRunner.calls(), limit: :infinity)}"
+
       assert result["app_commit"] == "aaaa1111"
       assert result["app_head"] == "bbbb2222"
       assert is_binary(result["app_action_reason"])
