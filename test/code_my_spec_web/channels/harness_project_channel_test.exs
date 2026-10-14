@@ -130,6 +130,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "head_commit" do
+    alias CodeMySpec.PromotionQueue
+
+    # 68d37919: a live code reload can land this module's recompile before
+    # PromotionQueue's, or the reverse, leaving a window where the function it
+    # calls does not exist yet. That raised straight out of handle_in/3 and
+    # crashed the whole channel process -- one per project, carrying every
+    # working copy's events -- which took an unrelated create_working_copy
+    # down with it, still waiting on this same process to reply.
+    test "an undefined release_moved_certifications/3 does not crash the channel", %{
+      scope: scope,
+      topic: topic
+    } do
+      :meck.new(PromotionQueue, [:passthrough, :no_link])
+      on_exit(fn -> :meck.unload(PromotionQueue) end)
+
+      :meck.expect(PromotionQueue, :release_moved_certifications, fn _scope, _copy_id, _sha ->
+        raise UndefinedFunctionError,
+          module: PromotionQueue,
+          function: :release_moved_certifications,
+          arity: 3
+      end)
+
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref = push(channel, "head_commit", %{"sha" => String.duplicate("a", 40)})
+
+      assert_reply ref, :ok
+    end
+  end
+
   describe "sops keys on join" do
     alias CodeMySpec.ProjectSecrets
 
