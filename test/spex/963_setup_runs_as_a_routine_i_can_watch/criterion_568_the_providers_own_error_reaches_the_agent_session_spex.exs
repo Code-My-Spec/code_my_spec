@@ -23,17 +23,17 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
 
   alias CodeMySpecSpex.Fixtures
 
-  setup context do
-    Fixtures.install_recording_agent_transport()
-    {:ok, context}
-  end
-
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
   setup :fake_providers
+
+  setup context do
+    Fixtures.install_recording_agent_transport(context.scope)
+    {:ok, context}
+  end
 
   spex "The provider's own error reaches the agent session", criterion: 568 do
     scenario "the escalation carries what the provider actually said" do

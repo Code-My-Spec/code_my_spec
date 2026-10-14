@@ -8,8 +8,8 @@ defmodule CodeMySpec.Agents.ProvisioningFailureTest do
   alias CodeMySpecSpex.Fixtures
 
   setup do
-    Fixtures.install_recording_agent_transport()
     scope = full_scope_fixture()
+    Fixtures.install_recording_agent_transport(scope)
     {:ok, _} = WorkingCopies.designate_main(scope, scope.active_working_copy_id)
     main = Fixtures.running_agent(scope, role: "main", continuous: true)
     %{scope: scope, main: main}
@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.ProvisioningFailureTest do
 
   test "a provider refusal reaches the project's agent transport and conversation", ctx do
     other_scope = full_scope_fixture()
+    Fixtures.install_recording_agent_transport(other_scope)
     {:ok, _} = WorkingCopies.designate_main(other_scope, other_scope.active_working_copy_id)
     other = Fixtures.running_agent(other_scope, role: "main", continuous: true)
     reason = "Registrar refused to register the domain: token lacks Zone:Edit"
@@ -43,6 +44,7 @@ defmodule CodeMySpec.Agents.ProvisioningFailureTest do
 
   test "a failure waits in the mailbox until the starting agent is present" do
     scope = full_scope_fixture()
+    Fixtures.install_recording_agent_transport(scope)
     {:ok, _} = WorkingCopies.designate_main(scope, scope.active_working_copy_id)
 
     {:ok, main} =
@@ -100,6 +102,7 @@ defmodule CodeMySpec.Agents.ProvisioningFailureTest do
 
   test "missing agent prerequisites leave the provider failure intact" do
     scope = full_scope_fixture()
+    Fixtures.install_recording_agent_transport(scope)
 
     log =
       ExUnit.CaptureLog.capture_log(fn ->
