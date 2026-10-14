@@ -482,8 +482,10 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   defp analysis_endpoint(_scope, _served_by), do: :error
 
   # One plain `curl`, no `sh -c`. The server answers a failing run 422 with the
-  # tool's output, and `--fail-with-body` prints that body and exits nonzero,
-  # so the run reads as `mix test` would: output, then pass or fail.
+  # tool's output, and `--fail-with-body` prints that body and exits nonzero.
+  # Curl's exit 22 covers both failing suites and transport failures, so the
+  # footer exposes HTTP status separately from the analyzer's own exit status.
+  # A missing analyzer header must remain unavailable, never default to zero.
   #
   # It used to be a `sh -c` script that split an appended status line off the
   # body to exit with the tool's own code. Claude Code's removal guard cannot
@@ -494,7 +496,9 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     url = "http://localhost:#{port}#{path(endpoint)}"
 
     "curl -sS --fail-with-body -X POST '#{url}' -H 'Content-Type: application/json' " <>
-      header(endpoint) <> "--data #{shell_quote(payload)}"
+      header(endpoint) <>
+      "--data #{shell_quote(payload)} " <>
+      "--write-out '\nAnalysis HTTP status: %{http_code}\nAnalyzer exit status (blank if unavailable): %header{x-exit-status}\n'"
   end
 
   defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"
