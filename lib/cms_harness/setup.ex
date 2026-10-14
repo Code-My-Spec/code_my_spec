@@ -60,6 +60,43 @@ defmodule CmsHarness.Setup do
     end
   end
 
+  @doc "Observes a pending connection without repeating configuration or completed checks."
+  def refresh_connection(opts \\ []) do
+    locked(opts, fn directory ->
+      with {:ok, snapshot} <- Store.load(directory) do
+        refresh_pending_connection(snapshot, directory, opts)
+      end
+    end)
+  end
+
+  defp refresh_pending_connection(
+         %{
+           "operations" => %{
+             "connect" =>
+               %{"state" => "pending", "result" => %{"root" => root} = result} = operation
+           }
+         } = snapshot,
+         directory,
+         opts
+       ) do
+    case CmsHarness.Setup.Connection.observe(root, 0) do
+      %{connected: true} = observation ->
+        completed =
+          Map.merge(operation, %{
+            "state" => "done",
+            "result" => Map.merge(result, json_map(observation)),
+            "finished_at" => observation.observed_at
+          })
+
+        persist_operation(directory, snapshot, "connect", completed, opts)
+
+      _pending ->
+        {:ok, snapshot}
+    end
+  end
+
+  defp refresh_pending_connection(snapshot, _directory, _opts), do: {:ok, snapshot}
+
   defp project_operation(key, request, opts, execute) do
     locked(opts, fn directory ->
       with {:ok, snapshot} <- Store.load(directory),
@@ -99,6 +136,18 @@ defmodule CmsHarness.Setup do
     with {:ok, started} <- persist_operation(directory, snapshot, key, operation, opts) do
       finish_operation(execute.(), directory, started, key, operation, opts)
     end
+  end
+
+  defp finish_operation(
+         {:ok, %{connection_state: "pending"} = result},
+         directory,
+         snapshot,
+         "connect",
+         operation,
+         opts
+       ) do
+    pending = Map.merge(operation, %{"state" => "pending", "result" => json_map(result)})
+    persist_operation(directory, snapshot, "connect", pending, opts)
   end
 
   defp finish_operation({:ok, result}, directory, snapshot, key, operation, opts) do

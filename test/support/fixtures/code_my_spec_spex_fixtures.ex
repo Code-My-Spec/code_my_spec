@@ -1191,6 +1191,22 @@ defmodule CodeMySpecSpex.Fixtures do
     Map.put(context, :setup_main_agent, agent)
   end
 
+  def desktop_setup_connected_harness(scope) do
+    previous = System.get_env("CMS_PROJECT_ID")
+    System.delete_env("CMS_PROJECT_ID")
+    ExUnit.Callbacks.on_exit(fn -> restore_desktop_project_id(previous) end)
+
+    CmsHarnessTest.FakeServer.start()
+    project = CmsHarnessTest.Projects.project_dir(project_id: scope.active_project_id)
+    ExUnit.Callbacks.on_exit(fn -> CmsHarnessTest.Projects.stop_project(project.root) end)
+    {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+    %{connected: true} = CmsHarness.Setup.Connection.observe(project.root)
+    project
+  end
+
+  defp restore_desktop_project_id(nil), do: System.delete_env("CMS_PROJECT_ID")
+  defp restore_desktop_project_id(value), do: System.put_env("CMS_PROJECT_ID", value)
+
   def desktop_harness_credential(user) do
     {:ok, token} =
       ExOauth2Provider.AccessTokens.create_token(user, %{expires_in: 3600},

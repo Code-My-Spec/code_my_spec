@@ -273,6 +273,7 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
     with false <- socket.assigns.setup_busy,
          %{id: project_id, root: root} <- socket.assigns.setup_project,
          true <- CmsHarness.Projects.connected?(root),
+         {:ok, _snapshot} <- Setup.refresh_connection([]),
          {:ok, %{project_id: ^project_id, root: ^root}} <- Setup.handoff([]),
          {:ok, _project} <-
            CodeMySpec.Projects.get_project(socket.assigns.current_scope, project_id) do
@@ -289,8 +290,14 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
   end
 
   def handle_event("refresh_setup_connection", _params, socket) do
+    {snapshot, error} = loaded(Setup.refresh_connection([]))
+
     {:noreply,
-     assign(socket, :project_connected, connected_project?(socket.assigns.setup_project))}
+     assign(socket,
+       setup_snapshot: snapshot,
+       setup_error: error,
+       project_connected: connected_project?(socket.assigns.setup_project)
+     )}
   end
 
   def handle_event("check_prerequisites", _params, socket) do
@@ -389,11 +396,12 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
   defp recorded_project(
          %{
            "operations" => %{
-             "connect" => %{"state" => "done", "result" => %{"id" => id, "root" => root}}
+             "connect" => %{"state" => state, "result" => %{"id" => id, "root" => root}}
            }
          },
          scope
-       ) do
+       )
+       when state in ["done", "pending"] do
     case CodeMySpec.Projects.get_project(scope, id) do
       {:ok, project} -> %{id: project.id, name: project.name, root: root}
       {:error, _} -> nil

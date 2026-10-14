@@ -44,7 +44,13 @@ defmodule CmsHarness.SetupTest do
       File.rm_rf!(root)
     end)
 
-    %{root: root, bin: bin, log: log, opts: [directory: Path.join(root, "setup")]}
+    %{
+      root: root,
+      bin: bin,
+      log: log,
+      original_path: previous_path,
+      opts: [directory: Path.join(root, "setup")]
+    }
   end
 
   test "reading a fresh machine does not execute or create setup", ctx do
@@ -231,6 +237,100 @@ defmodule CmsHarness.SetupTest do
     assert {:ok, ^checked} = Setup.status(ctx.opts)
     refute File.exists?(Path.join(ctx.root, ".cms_harness.json"))
   end
+
+  test "a refused connection records a finished failure without rerunning checks", ctx do
+    assert {:ok, checked} = Setup.check_prerequisites(ctx.opts)
+    commands = File.read!(ctx.log)
+
+    File.write!(
+      Path.join(ctx.root, "mix.exs"),
+      "defmodule Refused.MixProject do\n  use Mix.Project\nend\n"
+    )
+
+    :ok =
+      CmsHarness.HarnessConfig.write(ctx.root, %{
+        project_id: "recorded-project",
+        working_copy_id: "recorded-copy",
+        root: ctx.root
+      })
+
+    identity = %{
+      project_id: "different-project",
+      working_copy_id: "recorded-copy",
+      app: "refused"
+    }
+
+    assert {:error, {:project_identity_conflict, "recorded-project"}} =
+             Setup.connect_project(ctx.root, identity, ctx.opts)
+
+    assert {:ok, failed} = Setup.status(ctx.opts)
+    operation = failed["operations"]["connect"]
+    assert operation["state"] == "errored"
+    assert operation["error"] =~ "project_identity_conflict"
+    assert {:ok, _, _} = DateTime.from_iso8601(operation["finished_at"])
+    assert failed["steps"] == checked["steps"]
+    assert {:ok, ^failed} = Setup.refresh_connection(ctx.opts)
+    assert File.read!(ctx.log) == commands
+  end
+
+  @tag timeout: 30_000
+  test "pending connection stays unfinished until explicit refresh observes a live connection",
+       ctx do
+    assert {:ok, checked} = Setup.check_prerequisites(ctx.opts)
+    commands = File.read!(ctx.log)
+    restore_path(ctx.original_path)
+    previous_id = System.get_env("CMS_PROJECT_ID")
+    System.delete_env("CMS_PROJECT_ID")
+    on_exit(fn -> restore_project_id(previous_id) end)
+
+    CmsHarnessTest.FakeServer.start(hold_joins: true)
+    project = CmsHarnessTest.Projects.project_dir()
+    on_exit(fn -> CmsHarnessTest.Projects.stop_project(project.root) end)
+
+    File.write!(
+      Path.join(project.root, "mix.exs"),
+      "defmodule Pending.MixProject do\n  use Mix.Project\n  def project, do: [app: :pending, version: \"0.1.0\", deps: []]\nend\n"
+    )
+
+    identity = %{project_id: project.id, working_copy_id: project.working_copy_id, app: "pending"}
+
+    assert {:ok, pending} = Setup.connect_project(project.root, identity, ctx.opts)
+    operation = pending["operations"]["connect"]
+    assert operation["state"] == "pending"
+    assert operation["finished_at"] == nil
+    assert operation["result"]["connection_state"] == "pending"
+    assert operation["result"]["connected"] == false
+    assert {:ok, _, _} = DateTime.from_iso8601(operation["result"]["observed_at"])
+    bytes = File.read!(pending["results_path"])
+    assert {:ok, ^pending} = Setup.status(ctx.opts)
+    assert {:ok, ^pending} = Setup.refresh_connection(ctx.opts)
+    assert {:error, :project_not_connected} = Setup.handoff(ctx.opts)
+    assert File.read!(pending["results_path"]) == bytes
+
+    CmsHarnessTest.Projects.stop_project(project.root)
+    CmsHarnessTest.FakeServer.hold_joins(false)
+    assert {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+    assert %{connected: true} = CmsHarness.Setup.Connection.observe(project.root)
+    assert {:ok, ^pending} = Setup.status(ctx.opts)
+    assert {:ok, completed} = Setup.refresh_connection(ctx.opts)
+    finished = completed["operations"]["connect"]
+    assert finished["state"] == "done"
+    assert finished["result"]["connected"] == true
+    assert finished["result"]["connection_state"] == "connected"
+    assert finished["finished_at"] == finished["result"]["observed_at"]
+    assert finished["started_at"] == operation["started_at"]
+    assert completed["steps"] == checked["steps"]
+    assert completed["run_id"] == checked["run_id"]
+    assert File.read!(ctx.log) == commands
+    assert {:ok, handoff} = Setup.handoff(ctx.opts)
+    assert handoff.project_id == project.id
+    completed_bytes = File.read!(completed["results_path"])
+    assert {:ok, ^completed} = Setup.refresh_connection(ctx.opts)
+    assert File.read!(completed["results_path"]) == completed_bytes
+  end
+
+  defp restore_project_id(nil), do: System.delete_env("CMS_PROJECT_ID")
+  defp restore_project_id(value), do: System.put_env("CMS_PROJECT_ID", value)
 
   test "handoff requires a recorded project and never reruns checks", ctx do
     assert {:error, :prerequisites_not_checked} = Setup.handoff(ctx.opts)
