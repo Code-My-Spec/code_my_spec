@@ -12,13 +12,8 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetupResultsTest do
     Application.put_env(:code_my_spec, :env, :desktop)
 
     on_exit(fn ->
-      if previous_root,
-        do: System.put_env("CMS_PROJECT_DIR", previous_root),
-        else: System.delete_env("CMS_PROJECT_DIR")
-
-      if previous_env,
-        do: Application.put_env(:code_my_spec, :env, previous_env),
-        else: Application.delete_env(:code_my_spec, :env)
+      restore_project_dir(previous_root)
+      restore_app_env(previous_env)
 
       File.rm_rf!(root)
     end)
@@ -56,4 +51,10 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetupResultsTest do
     :ok = Store.save(context.directory, snapshot)
     assert DesktopSetupResults.load(context.project_id) == nil
   end
+
+  defp restore_project_dir(nil), do: System.delete_env("CMS_PROJECT_DIR")
+  defp restore_project_dir(value), do: System.put_env("CMS_PROJECT_DIR", value)
+
+  defp restore_app_env(nil), do: Application.delete_env(:code_my_spec, :env)
+  defp restore_app_env(value), do: Application.put_env(:code_my_spec, :env, value)
 end
