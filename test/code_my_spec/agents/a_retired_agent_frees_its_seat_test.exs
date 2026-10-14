@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures
+  import CodeMySpec.StoriesFixtures
 
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
@@ -111,6 +112,22 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
     assert Repo.get(Agent, retired.id), "the retired row is kept for its history"
     assert Agents.off_agents(ctx.scope) == []
     refute Enum.any?(MainAgent.list_agent_work(ctx.scope), &(&1.agent_id == retired.id))
+  end
+
+  test "a replacement with no live teammate inherits the retired one's story", ctx do
+    story = story_fixture(ctx.scope)
+    {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.agent, %{story_id: story.id})
+
+    retire(ctx)
+
+    {:ok, fresh} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    assert fresh.story_id == story.id
   end
 
   test "an off agent that is then retired leaves the off list and frees its seat", ctx do

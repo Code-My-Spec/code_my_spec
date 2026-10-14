@@ -238,7 +238,7 @@ defmodule CodeMySpec.Agents.Assignment do
   def inherit(%{working_copy_id: copy_id, role: role} = attrs) when is_binary(copy_id) do
     if team_member?(role) do
       attrs
-      |> maybe_put(:story_id, WorkingCopies.team_story_id(copy_id))
+      |> maybe_put(:story_id, WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id))
       |> maybe_put(:epic_id, team_epic_id(copy_id))
     else
       attrs
@@ -246,6 +246,31 @@ defmodule CodeMySpec.Agents.Assignment do
   end
 
   def inherit(attrs), do: attrs
+
+  # A seat filled the moment it is vacated finds no *live* teammate to
+  # inherit from -- `WorkingCopies.team_story_id/1` excludes a retired row on
+  # purpose, because "retired" means gone and an ordinary read should not
+  # surface years-old history for a copy nobody is on. But a seat
+  # `retire_agent/3` just freed is not stale history: it is the same work,
+  # mid-handoff, and the copy keeps no story of its own to fall back on
+  # (John's ruling: "we don't have to record the active story on the copy, it
+  # just blows through"). A replacement with no live teammate to inherit from
+  # takes the most recently retired team member's story instead of starting
+  # unbound -- the shape that left `submit_story_issue` answering
+  # `story_not_assigned_to_agent` for work the predecessor had already queued.
+  defp retired_team_story_id(copy_id) do
+    roles = team_roles() |> Enum.map(&to_string/1)
+
+    from(a in "agents",
+      where:
+        a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role in ^roles and
+          not is_nil(a.retired_at) and not is_nil(a.story_id),
+      order_by: [desc: a.retired_at],
+      select: a.story_id,
+      limit: 1
+    )
+    |> Repo.one()
+  end
 
   defp maybe_put(attrs, _key, value) when value in [nil, false], do: attrs
   defp maybe_put(attrs, key, value), do: Map.put_new(attrs, key, value)
