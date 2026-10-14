@@ -4,6 +4,13 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
   alias CodeMySpecSpex.Fixtures
 
   def fresh_machine(context) do
+    # `register/3` (CodeMySpecWeb.AppLive.DesktopProject) links a project
+    # through CmsHarness.Projects.ensure_started/1, which starts a child
+    # under CmsHarness.CopiesSupervisor. `mix spex` loads no test helper, so
+    # nothing boots that supervisor unless this does -- it previously relied
+    # on some other spex file happening to start it first in the same BEAM.
+    CmsHarnessTest.Projects.ensure_harness_supervisor_started()
+
     root =
       Path.join(System.tmp_dir!(), "desktop-setup-spex-#{System.unique_integer([:positive])}")
 
