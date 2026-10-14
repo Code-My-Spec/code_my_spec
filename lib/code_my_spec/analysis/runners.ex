@@ -609,7 +609,7 @@ defmodule CodeMySpec.Analysis.Runners do
   # into the run's `stats["error"]`, which Reconciler.fail truncates at 500.
   defp error_excerpt(nil), do: ""
 
-  # The exception marker wins where there is one, and the tail only otherwise.
+  # Without an ExUnit summary, use the exception marker, then the output tail.
   #
   # `Enum.take(-3)` alone picks the least informative part of a mix crash: the
   # last three lines are always the same boilerplate —
@@ -629,9 +629,29 @@ defmodule CodeMySpec.Analysis.Runners do
   # line, at the end. Run 54391 was recorded with exactly that log line as its
   # reason, which sent the flake hunt after the database.
   defp error_excerpt(output) do
-    case output
-         |> String.split("\n")
-         |> Enum.filter(&String.starts_with?(String.trim_leading(&1), "** (")) do
+    lines = output |> String.replace(~r/\e\[[0-9;]*m/, "") |> String.split("\n")
+
+    case Enum.find(Enum.reverse(lines), &Regex.match?(~r/^\s*\d+ tests?, \d+ failures?\b/, &1)) do
+      nil -> exception_excerpt(output, lines)
+      summary -> suite_excerpt(summary, lines)
+    end
+  end
+
+  # Process crashes logged deliberately by tests are not the suite's verdict.
+  # Prefer ExUnit's summary, followed by its first numbered failure and location.
+  defp suite_excerpt(summary, lines) do
+    failure =
+      lines
+      |> Enum.drop_while(&(not Regex.match?(~r/^\s*1\) /, &1)))
+      |> Enum.take(2)
+
+    [summary | failure]
+    |> Enum.map_join(" | ", &String.trim/1)
+    |> String.slice(0, 300)
+  end
+
+  defp exception_excerpt(output, lines) do
+    case Enum.filter(lines, &String.starts_with?(String.trim_leading(&1), "** (")) do
       [] -> tail_excerpt(output)
       markers -> markers |> List.last() |> String.trim() |> String.slice(0, 300)
     end
@@ -649,15 +669,32 @@ defmodule CodeMySpec.Analysis.Runners do
   # cut after the first byte of a "—" left 0xe2 before the newline, Postgres
   # refused the row, and a green exunit run was recorded as one that could not
   # run (2026-10-12).
-  defp cap(output) do
+  @doc "Retain the start and failure tail of analyzer output within 100KB, including markers."
+  @spec cap(binary()) :: String.t()
+  def cap(output) do
     output = String.replace_invalid(output)
 
     if byte_size(output) > @output_cap do
-      output |> binary_part(0, @output_cap) |> drop_partial_char() |> Kernel.<>("\n… (truncated)")
+      gap = "\n… (middle omitted) …\n"
+      marker = "\n… (truncated)"
+      head = output |> binary_part(0, 20_000) |> drop_partial_char()
+      tail_size = @output_cap - byte_size(head) - byte_size(gap) - byte_size(marker)
+
+      tail =
+        output
+        |> binary_part(byte_size(output) - tail_size, tail_size)
+        |> drop_leading_partial_char()
+
+      head <> gap <> tail <> marker
     else
       output
     end
   end
+
+  defp drop_leading_partial_char(<<byte, rest::binary>>) when byte in 0x80..0xBF,
+    do: drop_leading_partial_char(rest)
+
+  defp drop_leading_partial_char(binary), do: binary
 
   # The input is already valid, so only a trailing partial sequence can fail.
   defp drop_partial_char(binary) do
