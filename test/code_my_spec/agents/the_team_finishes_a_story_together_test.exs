@@ -17,8 +17,7 @@ defmodule CodeMySpec.Agents.TheTeamFinishesAStoryTogetherTest do
   times and the team's rows were moved within the minute anyway.
   """
 
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Repo
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice

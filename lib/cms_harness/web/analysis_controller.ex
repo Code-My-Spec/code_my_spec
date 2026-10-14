@@ -13,12 +13,11 @@ defmodule CmsHarness.Web.AnalysisController do
   copy is named in the URL rather than inferred from a directory, so a worktree,
   a sprite and another laptop are all distinguishable.
 
-  The body is the tool's own output and nothing else — no footer, no run id,
-  no trace that this was routed at all. Pass or fail travels as the HTTP
-  status (200 clean, 422 otherwise) instead, because that is the one thing
-  the rewritten curl script can read without printing it: identical in shape
-  to `CodeMySpecLocalWeb.AnalysisController`, because from the agent's side
-  a routed `mix test` and a real one must be indistinguishable.
+  A completed run's body is the tool's own output. HTTP status distinguishes
+  clean runs (200), unsuccessful runs (422), and transport failures (502).
+  The analyzer's exit status travels separately in `x-exit-status`; the routed
+  curl prints both statuses so its own exit 22 cannot be mistaken for the
+  analyzer's result. Transport failures carry no analyzer exit status.
   """
   use Phoenix.Controller, formats: [:json]
 
@@ -124,9 +123,9 @@ defmodule CmsHarness.Web.AnalysisController do
     end
   end
 
-  # The tool's own exit status rides in `x-exit-status`, so the routed command
-  # exits with what `mix test` would have (2 for failures, 1 for a crash), not
-  # a generic 1.
+  # The tool's own exit status rides in `x-exit-status`, so the caller can
+  # report what mix returned (2 for test failures, 1 for a crash) separately
+  # from curl's HTTP failure code.
   defp reply(conn, {:ok, %{"output" => output} = run}) do
     status = exit_status(run)
 
@@ -143,8 +142,25 @@ defmodule CmsHarness.Web.AnalysisController do
     fail(conn, 502, "unreadable analysis reply: #{inspect(other)}")
   end
 
+  defp reply(conn, {:error, %{"reason" => "unmatched topic"}}) do
+    fail(
+      conn,
+      502,
+      "Analysis request was rejected before dispatch: unmatched topic. " <>
+        "This request did not start the analyzer. The harness is reconnecting to the server. " <>
+        "No test outcome is available; the HTTP client's exit code is not an ExUnit exit status."
+    )
+  end
+
   defp reply(conn, {:error, reason}) do
-    fail(conn, 502, "analysis run failed: #{inspect(reason)}")
+    fail(
+      conn,
+      502,
+      "Analysis transport failed: #{inspect(reason)}. " <>
+        "The analyzer's execution state and test outcome are unknown. " <>
+        "The HTTP client's exit code is not an ExUnit exit status. " <>
+        "Confirm the existing run's state before retrying."
+    )
   end
 
   # A run that failed without a tool exit code — a crash, a skip, a timeout —

@@ -32,9 +32,8 @@ defmodule CmsHarness.Channel do
   @doc """
   Whether this project's channel is joined right now.
 
-  `false` covers "never connected", "dropped", and "refused" alike — from the
-  caller's point of view they are the same fact: the harness cannot ask the
-  server anything about this project.
+  `false` covers "never connected", "dropped", and "refused" alike: the harness
+  cannot ask the server anything about this project.
   """
   @spec connected?(String.t()) :: boolean()
   def connected?(root) do
@@ -49,15 +48,8 @@ defmodule CmsHarness.Channel do
   @doc """
   Seconds since this project's channel joined, or `nil` if it is not joined.
 
-  `connected?/1` answers "can I ask the server", which is the right question
-  before sending. This answers a different one, asked *after* a request came
-  back empty: how long has this channel been up?
-
-  A channel that joined moments ago has usually just been rebuilt after dying,
-  and a request in flight when it died is simply gone. Reporting that as "the
-  channel is joined, so this is the server or the network" sent three agents
-  after a connection that was fine — the server had crashed, dropped the
-  channel, and the harness had reconnected before anyone looked. `1dc29224`.
+  Asked after a request came back empty: a channel that joined moments ago was
+  usually just rebuilt, and a request in flight when it died is gone.
   """
   @spec joined_ago(String.t()) :: non_neg_integer() | nil
   def joined_ago(root) do
@@ -72,15 +64,9 @@ defmodule CmsHarness.Channel do
   @doc """
   Seconds since the server last answered this project's channel, or `nil`.
 
-  The question `connected?/1` cannot answer. That one reports this process's
-  belief about its own socket, set at join — it cannot be wrong from where it
-  stands, and it read `true` throughout an incident where the server's registry
-  held no entry for this harness and every request came back
-  `:harness_unreachable`. Both ends reported healthy because neither had done a
-  round trip.
-
-  A reply is evidence, because the server is what sent it. Recorded on replies
-  that already happen, so this costs nothing to ask and cannot hang.
+  `connected?/1` is this process's belief about its socket; a reply is
+  evidence from the server. Recorded on replies that already happen, so this
+  cannot hang.
   """
   @spec server_replied_ago(String.t()) :: non_neg_integer() | nil
   def server_replied_ago(root) do
@@ -95,11 +81,7 @@ defmodule CmsHarness.Channel do
   @doc """
   Send a completed model turn to the server to be recorded.
 
-  Fire and forget, and deliberately so. Recording is evidence for whoever is
-  watching, never a step the agent's turn depends on — a cast cannot make the
-  turn slower, cannot fail it, and cannot block it behind a server that is
-  briefly unreachable. A turn lost from the record is a gap the operator is
-  shown; a turn lost to the recorder would be work destroyed.
+  Fire and forget: recording must never slow, fail or block the turn.
   """
   @spec record_turn(String.t(), map()) :: :ok
   def record_turn(root, payload) do
@@ -132,10 +114,8 @@ defmodule CmsHarness.Channel do
   @doc """
   Ask the server to resolve a skill invocation to a prompt.
 
-  Same shape as `decide_hook/3` — resolving a skill is a DB-bound lookup
-  (`StartAgentTask.run/2` creates a session row and returns a prompt string;
-  it does not run the agent turn itself), not a `mix` invocation, so it shares
-  `decide_hook/3`'s timeout class rather than `await_analysis/3`'s.
+  Same shape and timeout as `decide_hook/3`: a database lookup, not a `mix`
+  run.
   """
   @spec start_skill(String.t(), map()) ::
           {:ok, map()} | {:error, :not_connected | :no_credential | :no_reply}
@@ -161,14 +141,11 @@ defmodule CmsHarness.Channel do
   @doc """
   Run one analyzer for the agent and wait for the server's answer.
 
-  The agent's own `mix test`, rewritten by the PreToolUse hook. It goes to the
-  server rather than straight to `mix` so the run gets a ledger row, joins an
-  identical run already in flight instead of a second one contending for
-  `_build`, and reconciles its Problems centrally — none of which a bare shell
-  command can do, which is why the same suite used to be run twice.
+  The agent's own `mix test`, rewritten by the PreToolUse hook. Routed through
+  the server so the run gets a ledger row, joins an identical run in flight,
+  and reconciles its Problems centrally.
 
-  Blocks for as long as the suite takes. The server replies out of band, so no
-  channel process is held while it does.
+  Blocks for as long as the suite takes; the server replies out of band.
   """
   @spec await_analysis(String.t(), String.t(), [String.t()]) ::
           {:ok, map()} | {:error, term()}
@@ -204,10 +181,8 @@ defmodule CmsHarness.Channel do
   Promote this working copy and wait for the outcome.
 
   Backs `POST /api/harnesses/<id>/promotion/run`. The promotion runs on the
-  *server* — `Promotion.gate/1` reads the database and this machine has none —
-  and its disk half comes straight back here as `fs_request` ops, so this waits
-  on a round trip that passes through this process twice. Which is fine: the
-  server replies out of band, so nothing is held while it does.
+  server (it reads the database) and its disk half comes back here as
+  `fs_request` ops; the server replies out of band, so nothing is held.
 
   `{:ok, %{"status" => "promoted" | "refused", "report" => text}}` for anything
   the promotion decided, including a refusal. `{:error, …}` only when it could
@@ -307,12 +282,8 @@ defmodule CmsHarness.Channel do
   end
 
   @doc """
-  A working copy's own app_status transition its background first-start
-  watch just observed — starting → serving, or starting → erroring with a
-  reason. Story 1108's `ensure_app_running`/`restart_app` replies already
-  carry `app_status` on every call; this is the same fact, pushed
-  unprompted for the one case nothing is calling back to ask — a first
-  start left running in the background after its own short reply window.
+  An app status change nobody is waiting on — a backgrounded first start
+  resolving, or a tick noticing a change. Same fact app verb replies carry.
   """
   @spec deliver_app_status(String.t(), map()) :: :ok
   def deliver_app_status(root, payload) do
@@ -348,11 +319,8 @@ defmodule CmsHarness.Channel do
         GenServer.cast(pid, {:analysis_result, payload})
 
       [] ->
-        # The channel died between the run starting and finishing. The server
-        # closed that run's ledger row when the socket went, so this result has
-        # nowhere to land — said out loud rather than dropped silently, because
-        # the visible symptom otherwise is an analyzer that appears never to
-        # have run.
+        # The channel died mid-run; the server already closed the run's row.
+        # Logged, since otherwise the analyzer appears never to have run.
         Logger.error(
           "[CmsHarness] #{payload["source"]} finished for project #{root} but the " <>
             "channel is gone — the result was discarded. It will be re-run on rejoin."

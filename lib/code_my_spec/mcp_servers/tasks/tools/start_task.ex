@@ -2,16 +2,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   @moduledoc """
   Start working on a requirement.
 
-  Takes a requirement_id (from `list_requirements` or `get_next_requirement`),
-  creates and activates a task on your session in one step, and returns the
-  work prompt.
+  Takes a requirement (`requirement_name` + `entity_type` + `entity_id`, or
+  `requirement_name` + `module_name`, as `get_next_requirement` offers it),
+  creates and activates a task on its owner in one step, and returns the work
+  prompt.
 
-  The `session_id` is injected automatically by the PreToolUse hook — you
-  don't need to pass it. Optionally pass `agent_id` to claim ownership
-  (useful when a subagent starts the task).
+  The owner is the agent on the connection when there is one, otherwise the
+  Claude Code session whose `session_id` the PreToolUse hook injects. `agent_id`
+  may also carry a sub-agent label, which owns tasks on the caller's session.
 
-  If a task already exists for this requirement on your session, it returns
-  the prompt without creating a duplicate.
+  If the owner already holds an open task for this requirement, it returns
+  that task's prompt (resuming a blocked one whose blocker is resolved)
+  without creating a duplicate.
+
+  See knowledge/tools, "start_task".
   """
 
   use Anubis.Server.Component, type: :tool
@@ -69,13 +73,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   @impl true
   def execute(params, frame) do
-    # Who is calling comes off the connection, not out of the arguments. The
-    # header is the server's own value — it minted the agent row and sent the id
-    # over the channel to start it — and `Plugs.AgentScope` has already checked
-    # it names an agent on this project.
-    #
-    # Durable agents choose their own work. An argument cannot change the
-    # authenticated owner; legacy session subagent labels remain supported.
+    # Who is calling comes off the connection, not the arguments:
+    # `Plugs.AgentScope` has already checked it names an agent on this project.
+    # An argument cannot change the authenticated owner.
     caller_agent_id = frame.assigns[:agent_id]
     session_id = Map.get(params, :session_id)
     agent_id = Map.get(params, :agent_id) || caller_agent_id
@@ -90,9 +90,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  # An issue is not in the requirement graph (story 1091): the offer
-  # `get_next_requirement` gave is read the same way here, through
-  # `Agents.Work`, rather than looked up in `RequirementGraph`.
+  # Issue work is not in the requirement graph, so the offer is read through
+  # `Agents.Work`, as `get_next_requirement` gave it.
   defp resolve_requirement(
          scope,
          %{requirement_name: name, entity_type: "issue", entity_id: id},
@@ -136,7 +135,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp resolve_from_graph(scope, name, entity_type, entity_id, owner) do
-    # Find the matching node in the computed graph
     {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     found =
@@ -150,24 +148,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  # A story placed on another copy has no node here. Product reads every story
-  # wherever it is placed, so its own work on one is read at that copy, as
-  # `get_next_requirement` offered it (a31f1cd6 step 4d).
+  # A story placed on another copy has no node here; its work is read at that
+  # copy, as `get_next_requirement` offered it.
   defp placed(scope, %Agent{role: role}, name, "story", story_id),
     do: Requirements.placed_story_node(scope, role, name, story_id)
 
   defp placed(_scope, _owner, _name, _entity_type, _entity_id), do: nil
 
-  # An agent we run holds its own tasks, so it is the owner and no session is
-  # involved at all. It has none and cannot get one — it fires no hooks, so
-  # nothing injects a `session_id`, and `register_session` is not a tool it
-  # carries. Before this it could take turns, call tools, and never claim work:
-  # "this session must be registered before a task can start, but
-  # `register_session` is not available in the provided tools."
-  #
-  # Ahead of the session clause deliberately. A call that carries both is an
-  # agent of ours whose caller also named a session, and the agent is the one
-  # that will be asked for its active task at the end of the turn.
+  # An agent we run owns its tasks; it fires no hooks, so it has no session.
+  # Checked ahead of the session: when both arrive, the agent is the one asked
+  # for its active task at the end of the turn.
   defp resolve_owner(scope, session_id, caller_agent_id, subject_agent_id)
 
   defp resolve_owner(scope, _session_id, caller, subject) when is_binary(caller) do
@@ -181,9 +171,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp resolve_owner(scope, session_id, caller_agent_id, subject) when is_binary(subject) do
     case Agents.fetch_agent(scope, subject) do
       {:ok, agent} -> {:ok, agent}
-      # Not an agent row. `agent_id` also carries sub-agent labels — `aqa-1013-…`
-      # rather than a uuid — which own tasks on the caller's session and have no
-      # row to land on. Those keep the behaviour they had.
+      # Not an agent row: a sub-agent label, which owns tasks on the caller's
+      # session.
       _ -> resolve_owner(scope, session_id, caller_agent_id)
     end
   end
@@ -200,15 +189,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Sessions.get_by_external_id(scope, session_id) do
       nil ->
-        # Try as DB UUID (an agent may pass the internal id), then lazily
-        # register. On the first session of a conversation the SessionStart
-        # hook may not have fired — Claude Code loads hooks once at session
-        # start, so a session opened before the plugin's hooks were enabled
-        # never gets its session row, and the agent would dead-end here until
-        # a full /clear + restart. Rather than error, create the row under the
-        # same scope the hook would have used (the /mcp pipeline and the hook
-        # pipeline both resolve it from the harness id), so the flow self-heals
-        # in place.
+        # Try as the internal id, then register lazily: a session opened
+        # before the plugin's hooks were enabled never got its row from
+        # SessionStart. The /mcp and hook pipelines resolve the same scope.
         case safe_get_session(scope, session_id) do
           nil -> lazily_register_session(scope, session_id)
           session -> {:ok, session}
@@ -236,9 +219,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp safe_get_session(scope, id), do: Utils.safe_get(fn -> Sessions.get_session(scope, id) end)
 
   defp start_or_resume(scope, owner, requirement, agent_id, frame) do
-    # Check for existing task for this exact requirement + entity. Must
-    # match on entity ID too — multiple subagents may have tasks with the
-    # same requirement_name for different components.
+    # Match on entity too: sub-agents may hold the same requirement for
+    # different components.
     entity_id = to_string(requirement.entity_id)
     existing = find_existing_task(owner, requirement, entity_id)
 
@@ -341,13 +323,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp owner_scope(scope, %Session{}), do: scope
 
-  # A fresh claim is checked against the caller's role as resuming one is
-  # (a31f1cd6): work its role is not offered is work nothing would hand it.
-  # A session has no role and claims as before. An agent holding an active task
-  # is told that first, by `TaskOwner`: it is the refusal it must act on before
-  # any other claim (story 1047).
-  # Not in `Requirements.Registry` to be offered_to? anyone — the node already
-  # named this agent's own role (`Agents.IssueWork`), which is the check.
+  # A fresh claim is checked against the caller's role: work its role is not
+  # offered is work nothing would hand it. A session has no role. An agent
+  # holding an active task passes here and is refused by `TaskOwner`, which is
+  # the refusal it must act on first. Issue nodes already name their role.
   defp role_may_claim(%Agent{role: role}, %{entity_type: "issue", role: role}), do: :ok
 
   defp role_may_claim(%Agent{role: role} = agent, requirement) when not is_nil(role) do
@@ -370,12 +349,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       "start it. `get_next_requirement` lists the work your role is offered."
   end
 
-  # An agent with an active story claims only that story's work, as it is only
-  # offered that (4292518a). Another story's story-level work is
-  # `team_may_claim/3`'s refusal; this one covers everything else — every
-  # project-level requirement, and other stories' components.
-  # Explicit issue work has its own bag and role checks. Assigning that bag
-  # clears the team's story assignment, so this story-only check does not apply.
+  # An agent bound to a story claims only that story's work, as it is only
+  # offered that. Story-level work on another story is `team_may_claim/3`'s
+  # refusal; this covers project-level work and other stories' components.
+  # Issue work has its own checks.
   defp story_may_claim(_scope, _owner, %{entity_type: "issue"}), do: :ok
 
   defp story_may_claim(scope, %Agent{} = agent, requirement) do
@@ -404,11 +381,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       "`get_next_requirement` lists it."
   end
 
-  # Work the graph still offers but that is already done (67e6b5cb): the 1118
-  # `story_promoted` repeats, and the eval's silently certified `ready_for_qa`.
-  # Refused rather than started, and the graph is told so the offer clears.
-  # Not a graph node, so there is nothing for `Requirements.satisfied_now?/2`
-  # to ask: `Agents.IssueWork` only ever offers the stage that is still open.
+  # Work the graph still offers but that is already done is refused, and the
+  # graph is refreshed so the offer clears. Issue work is skipped:
+  # `Agents.IssueWork` only offers the stage still open.
   defp not_already_done(_scope, _owner, %{entity_type: "issue"}), do: :ok
 
   defp not_already_done(scope, owner, requirement) do
@@ -458,14 +433,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     resume_eligible?(Work.actionable(scope, resume_role(owner), owner), requirement)
   end
 
-  # A story-type task's own eligibility must not be bypassed by an unrelated
-  # issue binding: `Work.actionable/3` answers "what should be dispatched
-  # next" and hides every story-graph node while the owner holds an issue
-  # (`Work.work_for/4`'s own moduledoc), which wrongly refused to resume a
-  # real, still-eligible story task whenever its owner also happened to hold
-  # an issue (issue ae97b26c). `Work.story_actionable/3` answers the same
-  # question without that bypass, while still respecting another agent
-  # withholding the same work.
+  # `Work.actionable/3` hides story-graph nodes while the owner holds an
+  # issue, which would refuse a still-eligible story task.
+  # `Work.story_actionable/3` answers without that, still respecting another
+  # agent withholding the same work.
   defp eligible_to_resume(scope, owner, requirement) do
     resume_eligible?(Work.story_actionable(scope, resume_role(owner), owner), requirement)
   end
@@ -522,11 +493,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
   defp review_new_task(_scope, _owner, task), do: {:ok, task}
 
-  # A team member works its team's story (a31f1cd6, `Agents.claim_story/3`):
-  # another story's work is refused while the team holds one, and with none
-  # the story is assigned to the whole team before the task starts. An agent
-  # already holding an active task is refused by `TaskOwner` first, so it moves
-  # no team.
+  # A team member works its team's story (`Agents.claim_story/3`): another
+  # story's work is refused while the team holds one, and with none the story
+  # is assigned to the whole team before the task starts. An agent already
+  # holding an active task is refused by `TaskOwner`, so it moves no team.
   defp team_may_claim(scope, %Agent{} = agent, %{
          entity_type: "issue",
          details: %{"story_id" => story_id}
@@ -577,10 +547,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       execution_type: requirement.execution_type || :main_agent,
       validation_type: requirement.validation_type || :automatic,
       status: :active,
-      # Microsecond resolution so started_at lands strictly past any
-      # file mtime synced earlier in the same request. Lets
-      # Validation.changed_since short-circuit deterministically
-      # without sleeping across a second boundary in tests.
+      # Microsecond resolution, so started_at lands strictly past any file
+      # mtime synced earlier in the same request.
       started_at: DateTime.utc_now(),
       agent_id: agent_id
     }
@@ -600,11 +568,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp issue_ref(%{entity_type: "issue", entity_id: id}), do: to_string(id)
   defp issue_ref(_req), do: nil
 
-  # Session-only, and it has to be: `init_session/2` exists so
-  # `StartImplementation` can set `continuous` on a Session, and an agent we run
-  # carries its own `continuous` column with its own switch on it. Running it
-  # against an agent would be a second thing writing the mode, which is how the
-  # two would come to disagree.
+  # Session-only: `init_session/2` sets `continuous` on a Session, and an agent
+  # we run has its own `continuous` column; two writers would disagree.
   defp maybe_init_session(scope, %Session{} = session, task_module) do
     if Code.ensure_loaded?(task_module) and function_exported?(task_module, :init_session, 2) do
       {:ok, s} = task_module.init_session(scope, session)
@@ -657,13 +622,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # message). Prefer the message when present.
   defp format_error_reason(reason), do: CodeMySpec.AgentTasks.format_error(reason)
 
-  # Neither identity arrived, so there is nothing to look the task up on.
-  #
-  # `register_session` is named only where it can be followed. It is a Claude
-  # Code tool and no coding agent carries one — an Alloy agent told to call it
-  # gets "register_session is not a tool a coding agent carries" and is no
-  # closer, which is exactly what happened on 2026-09-06 while its task stayed
-  # open.
+  # Neither identity arrived. `register_session` is advice for Claude Code only;
+  # an agent we run does not carry it.
   defp no_owner_message do
     "No session_id and no agent id on this call, so there is no owner to find " <>
       "the task on.\n\n" <>

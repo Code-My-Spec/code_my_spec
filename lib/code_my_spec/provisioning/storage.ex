@@ -1,39 +1,19 @@
 defmodule CodeMySpec.Provisioning.Storage do
   @moduledoc """
-  Object storage in Sam's own Hetzner account — buckets, retention, and the
-  dumps that land in them.
+  Object storage in the user's own Hetzner account — buckets, retention, and
+  the dumps that land in them.
 
-  ## The buckets are his, and that is the point
+  - **The buckets are the user's.** Every call signs with the project's own
+    credentials against their account, so the resources survive us;
+    `owner: "user"` on each recorded resource makes that checkable.
+  - **One bucket per environment** (`bucket_name/2`), so a UAT test upload
+    can never sit beside real customer data.
+  - **Retention is a bucket lifecycle rule** (`put_lifecycle/4`), not a
+    pruning job that one broken cron turns into an ever-growing bill.
+  - **Credentials** are never minted here (Hetzner has no API for S3 keys);
+    the `storage` step pauses for them and re-verifies on resume.
 
-  Story 968 exists because uploads and database dumps held in platform-owned
-  storage stop being Sam's the day he stops paying us. Every call here signs
-  with *his* credentials against *his* account, so the resources this creates
-  survive us. `owner: "user"` on each recorded resource is that claim made
-  checkable (criterion 8011), not a label.
-
-  ## One bucket per environment
-
-  `bucket_name/2` derives a distinct bucket per environment because criterion
-  8012 is about a specific failure: poking at UAT puts a test upload in the
-  same place as real customer data, with nothing afterwards to tell the two
-  apart. Separate buckets make that mistake impossible rather than merely
-  discouraged.
-
-  ## Retention is the bucket's job
-
-  `put_lifecycle/4` sets an S3 lifecycle rule rather than scheduling a delete
-  job. Criterion 8016 asks for retention *enforced* rather than hoped for, and
-  a pruning script is one broken cron away from a bill that grows forever —
-  quietly, for exactly as long as nobody looks. A lifecycle rule keeps running
-  when the server it was configured from is gone.
-
-  ## Credentials
-
-  Hetzner will not mint S3 keys over an API — they are created in the console
-  and nowhere else. So this module never tries: it takes the credentials it is
-  given, and the `storage` step pauses to ask for them when a project has
-  none. That pause is honest about a real provider limit, and re-verifies on
-  return rather than trusting that the errand was done (criterion 7967).
+  See knowledge/provisioning, "Storage".
   """
 
   alias CodeMySpec.Provisioning.Wait
@@ -43,8 +23,8 @@ defmodule CodeMySpec.Provisioning.Storage do
 
   require Logger
 
-  # Hetzner's object storage speaks S3 per location, and the location is both
-  # the host and the signing region.
+  # Hetzner's object storage speaks S3 per location; the location is both the
+  # host and the signing region.
   @default_location "fsn1"
 
   @type credentials :: [
@@ -56,10 +36,8 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   The bucket for one environment of one project.
 
-  Bucket names are globally unique within a provider and DNS-shaped, so this
-  lowercases and strips anything S3 will not take rather than trusting a
-  project name to already be legal — project names are free text and bucket
-  names are not.
+  Bucket names are DNS-shaped and unique, so this lowercases and strips
+  anything S3 will not take; project names are free text.
 
   ## Examples
 
@@ -77,10 +55,8 @@ defmodule CodeMySpec.Provisioning.Storage do
           |> String.trim("-")
 
         _ ->
-          # Deliberately not a generic fallback. Bucket names are unique per
-          # account, so "project-prod" would be *shared* by every project
-          # missing a name — two of Sam's apps writing dumps and uploads into
-          # one bucket, discovered when one of them restores the other's data.
+          # No generic fallback: bucket names are unique per account, so two
+          # unnamed projects would share one bucket.
           raise ArgumentError,
                 "cannot derive a bucket name: #{inspect(project)} has no name"
       end
@@ -88,9 +64,7 @@ defmodule CodeMySpec.Provisioning.Storage do
     "#{base}-#{environment}"
   end
 
-  # Projects arrive as an Ecto struct here and as a plain map in tests and
-  # fixtures; structs do not implement Access, so `project[:name]` raises on
-  # the real one. This reads both without the caller having to care.
+  # Ecto structs do not implement Access; tests pass plain maps.
   defp field(project, key) when is_struct(project), do: Map.get(project, key)
 
   defp field(project, key) when is_map(project),
@@ -99,20 +73,11 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   Create a bucket, treating "already yours" as success.
 
-  Re-running setup must converge (criterion 7965), and S3 answers an existing
-  bucket you own with a 409 rather than a 200. Reporting that as failure would
-  make the second run of an idempotent step fail, which is the opposite of
-  what convergence means.
+  S3 answers an existing bucket you own with a 409; that is success (marked
+  `"adopted"`), so re-running setup converges.
 
-  ## It waits for the bucket to be usable, not merely created
-
-  Hetzner answers `PUT /bucket` immediately and lists the bucket right after,
-  while object writes to it still 404 for about a second. Returning as soon as
-  the create succeeds therefore hands the caller a bucket that rejects the
-  first upload — and the backups step uploads a dump the moment storage is
-  done, so the failure lands on the first run and disappears on the second.
-  That is the worst shape a bug can have, so this blocks until the bucket
-  actually answers.
+  Blocks until the bucket answers a HEAD: Hetzner lists a new bucket at once
+  while writes to it still 404 for about a second.
   """
   @spec ensure_bucket(String.t(), credentials(), keyword()) :: {:ok, map()} | {:error, term()}
   def ensure_bucket(bucket, credentials, opts \\ []) do
@@ -154,9 +119,7 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   Set the retention window as a bucket lifecycle rule.
 
-  The rule expires objects under the dumps prefix after `days`. Criterion 8016
-  wants retention the bucket enforces on its own — see the moduledoc for why a
-  pruning job is not the same promise.
+  The rule expires objects under the prefix (dumps by default) after `days`.
   """
   @spec put_lifecycle(String.t(), pos_integer(), credentials(), keyword()) ::
           :ok | {:error, term()}
@@ -164,10 +127,8 @@ defmodule CodeMySpec.Provisioning.Storage do
     location = Keyword.get(opts, :location, @default_location)
     prefix = Keyword.get(opts, :prefix, dumps_prefix())
 
-    # Hand-built rather than `ExAws.S3.put_bucket_lifecycle/2`: that builder
-    # emits the rule's children in reverse (Filter, Status, ID) and omits the
-    # namespace. Amazon accepts it; Hetzner runs Ceph, which answers
-    # MalformedXML. So the XML is written in the documented order here.
+    # Hand-built: ExAws's builder emits the rule's children out of order and
+    # without the namespace, which Hetzner's Ceph rejects as MalformedXML.
     body = """
     <?xml version="1.0" encoding="UTF-8"?>
     <LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -194,10 +155,8 @@ defmodule CodeMySpec.Provisioning.Storage do
     put_lifecycle_rule(operation, bucket, credentials, location, opts)
   end
 
-  # A fresh bucket HEADs 200 before it will accept a lifecycle rule, so
-  # `await_bucket/6` returning is not a promise this call will land — same Ceph
-  # lag `get_object/6` already retries, caught by the drill as a 404
-  # NoSuchBucket one interaction after the bucket HEADed 200.
+  # A fresh bucket HEADs 200 before it accepts a lifecycle rule (404
+  # NoSuchBucket), so this retries like `get_object/6`.
   defp put_lifecycle_rule(operation, bucket, credentials, location, opts, attempts \\ 20) do
     case run(operation, credentials, location) do
       {:ok, _} ->
@@ -231,9 +190,8 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   The dumps in a bucket, newest first.
 
-  Each entry carries the key, its size and when it landed — enough for the
-  page to say whether backups are still arriving without downloading any of
-  them.
+  Each entry carries the key, size and when it landed — enough to tell
+  whether backups are still arriving without downloading any.
   """
   @spec list_dumps(String.t(), credentials(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def list_dumps(bucket, credentials, opts \\ []) do
@@ -254,10 +212,8 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   Upload one object.
 
-  Deliberately not `Content.S3Client`, which signs against whatever the global
-  `:ex_aws` config points at — for the content-publishing path that is the
-  right answer, and here it would send Sam's dumps to Amazon instead of the
-  Hetzner bucket this module just created.
+  Not `Content.S3Client`, which signs against the global `:ex_aws` config and
+  would send the user's data to the wrong store.
   """
   @spec put_object(String.t(), String.t(), iodata(), credentials(), keyword()) ::
           :ok | {:error, term()}
@@ -283,11 +239,8 @@ defmodule CodeMySpec.Provisioning.Storage do
       {:ok, %{body: body}} ->
         {:ok, body}
 
-      # `NoSuchBucket` on a bucket we have just written to is Hetzner's Ceph
-      # catching up, not a missing bucket: the gateway that answers the read
-      # need not be the one that took the write. Retried narrowly — only this
-      # code, never `NoSuchKey` — because a genuinely absent object must stay
-      # an immediate answer rather than an eight-second wait.
+      # `NoSuchBucket` right after a write is Ceph catching up (a different
+      # gateway answered). Only that is retried; `NoSuchKey` stays immediate.
       {:error, reason} ->
         if attempts > 1 and no_such_bucket?(reason) do
           Wait.sleep(Keyword.get(opts, :interval_ms, 1_000))
@@ -317,9 +270,8 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   Remove many objects in one request.
 
-  One round trip per object made emptying a bucket the slow half of teardown,
-  and teardown runs in `on_exit` where slow means "killed by a timeout, and the
-  bucket leaks". S3 takes up to a thousand keys at a time.
+  Teardown runs in `on_exit`, where slow means killed and leaked. S3 takes up
+  to a thousand keys per request.
   """
   @spec delete_objects(String.t(), [String.t()], credentials(), keyword()) ::
           :ok | {:error, term()}
@@ -341,10 +293,8 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   Delete a bucket. Only used by teardown in tests; setup never destroys.
 
-  Retries, because Ceph answers 409 for around half a minute after the last
-  object is removed — the listing reports the bucket empty the whole time. A
-  teardown that gave up on the first 409 left buckets behind, and a bucket
-  left behind is a line on somebody's invoice.
+  Retries: Ceph answers 409 for around half a minute after the last object is
+  removed while listing the bucket empty.
   """
   @spec delete_bucket(String.t(), credentials(), keyword()) :: :ok | {:error, term()}
   def delete_bucket(bucket, credentials, opts \\ []) do
@@ -354,13 +304,8 @@ defmodule CodeMySpec.Provisioning.Storage do
     delete_bucket(bucket, credentials, location, opts, attempts)
   end
 
-  # Backing off rather than sleeping a flat ten seconds each time. Ceph usually
-  # catches up in well under a second, so a fixed interval spent the entire
-  # budget waiting on the common case: eight attempts at ten seconds is eighty
-  # seconds per bucket, and clearing a dozen of them read as a hang rather than
-  # as a retry. Doubling from half a second covers the same worst case in a
-  # quarter of the time and returns almost immediately when the bucket was
-  # ready all along.
+  # Backing off from 500ms (doubling, capped): Ceph usually catches up in well
+  # under a second, and a flat interval made clearing many buckets look hung.
   defp delete_bucket(bucket, credentials, location, opts, attempts) do
     interval = Keyword.get(opts, :delete_interval_ms, 500)
 
@@ -389,17 +334,8 @@ defmodule CodeMySpec.Provisioning.Storage do
     end
   end
 
-  # S3 will not delete a bucket that still holds objects, so this emptied
-  # nothing and retried the refusal eight times.
-  #
-  # It went unnoticed for as long as every bucket teardown removed was empty.
-  # The registry's is not — it holds the image layers, which is the whole
-  # point of it — so a project's registry bucket could never be deleted, and
-  # the next drill refused to start on residue its own teardown was incapable
-  # of clearing.
-  #
-  # A page at a time, because a bucket with thousands of layers is exactly the
-  # case that breaks a single listing.
+  # S3 refuses to delete a bucket that still holds objects or unfinished
+  # multipart uploads (a registry bucket holds both).
   defp empty_then_delete(bucket, credentials, location) do
     with :ok <- empty_bucket(bucket, credentials, location),
          :ok <- abort_uploads(bucket, credentials, location) do
@@ -407,14 +343,9 @@ defmodule CodeMySpec.Provisioning.Storage do
     end
   end
 
-  # Parts of uploads that were started and never finished.
-  #
-  # They hold a bucket open exactly like objects do, and `list_objects_v2`
-  # does not show them — so a registry bucket that had had a push interrupted
-  # listed as empty and still refused to delete, which Hetzner reports as a
-  # request that times out rather than as `BucketNotEmpty`. A registry push is
-  # multipart by nature and a drill is killed mid-push often enough, so this
-  # is the normal state of the bucket rather than an edge case.
+  # Unfinished multipart parts hold a bucket open, `list_objects_v2` does not
+  # show them, and Hetzner reports the refusal as a timeout. An interrupted
+  # registry push leaves them.
   defp abort_uploads(bucket, credentials, location) do
     case ExAws.S3.list_multipart_uploads(bucket) |> run(credentials, location) do
       {:ok, %{body: %{uploads: uploads}}} -> abort_each(bucket, uploads, credentials, location)
@@ -434,12 +365,8 @@ defmodule CodeMySpec.Provisioning.Storage do
     end)
   end
 
-  # A page at a time, always from the start, until the bucket lists empty.
-  #
-  # From the start rather than following a continuation token, because the
-  # objects in the page just deleted are gone — a token taken before a delete
-  # points into a listing that no longer exists. Re-listing costs one request
-  # per page and cannot skip anything.
+  # A page at a time, always from the start: a continuation token taken before
+  # a delete points into a listing that no longer exists.
   defp empty_bucket(bucket, credentials, location) do
     case ExAws.S3.list_objects_v2(bucket) |> run(credentials, location) do
       {:ok, %{body: %{contents: []}}} ->
@@ -464,18 +391,13 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   A project's storage credentials, or `:none`.
 
-  Read from `ProjectSecrets` rather than the platform's own environment: these
-  are Sam's keys, held for him, and the whole story falls apart if setup
-  quietly falls back to ours.
+  Read from `ProjectSecrets`, never the platform's own environment: these are
+  the user's keys.
 
-  `opts[:environment]`, when given, is tried first — a project that wants
-  UAT and production isolated at the credential level, not just the bucket
-  level (a distinct Hetzner project/console key per environment, matching
-  how `database_password_<environment>` and `age_private_key_<environment>`
-  already keep those two apart), can set one. Falls back to the shared
-  `"global"` secret otherwise, which is what every project has by default:
-  Hetzner's own access keys are not bucket-scoped, so one key pair
-  ordinarily manages every environment's bucket fine.
+  `opts[:environment]` is tried first, for a project that keeps UAT and
+  production on separate key pairs; otherwise the shared `"global"` secret.
+  Hetzner's access keys are not bucket-scoped, so one pair ordinarily serves
+  every environment.
   """
   @spec credentials(Scope.t(), keyword()) :: {:ok, credentials()} | :none
   def credentials(%Scope{} = scope, opts \\ []) do
@@ -507,7 +429,7 @@ defmodule CodeMySpec.Provisioning.Storage do
   defp with_region({:ok, id, secret}, location),
     do: {:ok, [access_key_id: id, secret_access_key: secret, region: location]}
 
-  @doc "What Sam is told to go do when his project has no storage keys yet."
+  @doc "What the user is told to do when the project has no storage keys yet."
   @spec credentials_instructions() :: String.t()
   def credentials_instructions do
     "Hetzner does not issue object-storage keys over an API — they exist only in the console. " <>
@@ -521,28 +443,18 @@ defmodule CodeMySpec.Provisioning.Storage do
   @doc """
   The same instructions, naming the page to save the keys on.
 
-  For a step that pauses, because whoever reads that is not looking at the app.
-  Often it is an agent, and an agent has no way to link a credential and should
-  not be handed one to relay — `set_provisioning_credential` existed for a
-  fortnight and was reverted for exactly that (`1e826564`). What it can do is
-  hand a person somewhere to go, and until now it could not: the instructions
-  said "save it on this project" and named no project and no page
-  (`e2a9ed8c`).
-
-  The value still never passes through the agent. It goes from the person's
+  For a step that pauses: whoever reads that (often an agent) is not looking
+  at the app. An agent must never be handed a credential to relay, so this
+  names the page where a person saves the keys; the value goes from the
   browser to the server, and setup re-checks on resume.
-
-  `credentials_instructions/0` stays for `ProvisioningLive`, which is already
-  the page this would link to.
   """
   @spec credentials_instructions(term()) :: String.t()
   def credentials_instructions(project_id) do
     credentials_instructions() <> " Save them at #{credentials_url(project_id)}."
   end
 
-  # Built from `:base_url` the way `widget_socket_url/0` is, rather than with
-  # `~p`: verified routes bind an endpoint at compile time, and this string is
-  # read by somebody on a different machine from the one that wrote it.
+  # Built from `:base_url` rather than `~p`: verified routes bind an endpoint
+  # at compile time, and this string is read on another machine.
   defp credentials_url(project_id) do
     base = Application.get_env(:code_my_spec, :base_url) || "https://codemyspec.com"
 
@@ -560,13 +472,8 @@ defmodule CodeMySpec.Provisioning.Storage do
     }
   end
 
-  # ExAws.S3 owns the operations and the signing; this only supplies the
-  # endpoint. Path-style throughout: ExAws prepends the bucket to the path
-  # unless `virtual_host: true`, so a host that already carries the bucket
-  # produces `bucket.host/bucket/` and a NoSuchBucket on a call that was
-  # meant to create it. Found live.
-  # Bounded, and deliberately not infinite: a bucket that never answers is a
-  # provider problem the step should report rather than hang on.
+  # Bounded: a bucket that never answers is a provider problem to report, not
+  # to hang on.
   defp await_bucket(bucket, credentials, location, opts, origin, attempts \\ 20) do
     case ExAws.S3.head_bucket(bucket) |> run(credentials, location) do
       {:ok, _} ->
@@ -581,6 +488,8 @@ defmodule CodeMySpec.Provisioning.Storage do
     end
   end
 
+  # Path-style throughout: a host that already carries the bucket would
+  # produce `bucket.host/bucket/` and NoSuchBucket.
   defp run(operation, credentials, location) do
     config =
       Keyword.merge(

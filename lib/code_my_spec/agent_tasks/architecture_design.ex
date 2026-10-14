@@ -1,6 +1,15 @@
 defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @moduledoc """
   Map user stories to application components via proposal + MCP-tool mutations.
+
+  Two modes. *Initial* (no components, no proposal): the agent writes
+  `proposal.md` and the evaluator validates and executes it. *Revision*
+  (components exist, or a proposal does): the agent edits through the
+  architecture tools and the evaluator checks the task's story is linked. The
+  mode chosen at `command/2` is recorded in a marker file that `evaluate/2`
+  reads.
+
+  See knowledge/tools, "Agent task prompts".
   """
 
   alias CodeMySpec.Architecture.Proposal
@@ -25,11 +34,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @doc """
   Generate the command/prompt for Claude to start architecture design.
 
-  Called by the slash command to build the prompt with:
-  - Current architecture overview
-  - Unsatisfied user stories
-  - Component counts by type
-  - References to architecture view files
+  The prompt carries the component count and the tools to read them, the
+  unsatisfied stories with their criteria, and the mode's procedure.
 
   Returns {:ok, prompt_text}
   """
@@ -39,8 +45,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     stories = Stories.list_unsatisfied_stories(scope)
     component_count = Components.count_components(scope)
 
-    # The caller's environment or none. Inventing one at this server's
-    # directory made `proposal_exists?` answer about *this* repository.
+    # The caller's environment or none, never one at this server's directory.
     env = CodeMySpec.AgentTasks.environment(scope)
 
     proposal_exists? = revision_mode?(env, component_count)
@@ -52,28 +57,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     {:ok, prompt}
   end
 
-  # Revision when there is an architecture to revise, whatever became of the
-  # file that first described it.
-  #
-  # `proposal.md`'s presence used to be the entire decision, and that file is an
-  # artifact of how the architecture was *first* produced rather than a
-  # description of its current state. A project with 912 components has been
-  # designed; whether anyone kept — or ever wrote, or has since deleted — the
-  # proposal that designed it is a different question. Answering the first with
-  # the second is what put "The project has 910 existing components" eleven
-  # lines above "Mode — initial. No proposal exists yet."
-  #
-  # Component count alone, not "components *and* every story linked" as the
-  # report suggested: unlinked stories on an existing architecture still want
-  # revision's tools — `set_story_component` against what is already there —
-  # and initial mode would answer them by redesigning the project.
-  #
-  # The file still means something when there are no components: "there is no
-  # proposal to patch". It just never again means "there is no architecture".
-  #
-  # Note the stat is skipped entirely once components exist, which is both the
-  # common case and the one where the environment is most likely to be a harness
-  # on the far end of a channel.
+  # Revision when there is an architecture to revise: component count decides
+  # first, since `proposal.md` only records how the architecture was first
+  # produced. Unlinked stories on an existing architecture want revision's
+  # tools, not a redesign. With no components, the file decides.
   defp revision_mode?(_env, component_count) when component_count > 0, do: true
 
   defp revision_mode?(env, _component_count) do
@@ -84,22 +71,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       :absent ->
         false
 
-      # Could not look. Reported as *present*, because the two answers are not
-      # symmetric: treating an unreadable environment as "no proposal" selects
-      # initial mode, which tells the agent to design the architecture end-to-end
-      # and has the evaluator execute the result as one transaction. Treating it
-      # as "proposal present" selects revision mode, whose worst case is an agent
-      # making no incremental edits.
-      #
-      # This is exactly what `Environments`' own moduledoc warns about: "no disk"
-      # and "not there" are the same reply from `file_exists?/2`, "which is fine
-      # for rendering a prompt and is *not* fine for deciding a requirement is
-      # unmet". Choosing the mode is deciding.
-      #
-      # Observed: `proposal.md` was on disk, 8KB, and the prompt said "Mode —
-      # initial. No proposal exists yet." The harness was unreachable at that
-      # moment, `request/3` answered `{:error, :harness_unreachable}`, and
-      # `match?({:ok, _}, ...)` turned it into `false`.
+      # Could not look: assume present. Initial mode has the evaluator execute a
+      # proposal end-to-end; revision's worst case is no edits.
+      # See knowledge/tools, "Unobservable environments".
       :unobservable ->
         Logger.warning(
           "[ArchitectureDesign] could not read #{@proposal_path} in this environment. " <>
@@ -117,10 +91,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   defp record_session_start_state(env, false),
     do: Environments.delete_file(env, @patch_mode_marker)
 
-  # Same asymmetry as `proposal_status/1`, and the same resolution. The guard on
-  # `evaluate/2` below catches a nil environment because that decided *initial*
-  # — the branch that rewrites the proposal end-to-end — but an environment that
-  # exists and cannot be read reaches here and decides the same way.
+  # Same asymmetry as `proposal_status/1`: an unreadable marker stays in patch
+  # mode rather than promoting to a full proposal execution.
   defp patch_mode?(env) do
     case Environments.stat(env, @patch_mode_marker) do
       {:ok, _} ->
@@ -148,23 +120,16 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - {:ok, :valid} if proposal is valid and execution succeeds
   - {:ok, :invalid, feedback} if proposal has errors or execution fails
   """
-  # No disk, no answer. `patch_mode?/1` is a `file_exists?/2` call, and that
-  # returns `false` for "no environment" exactly as it does for "not there" —
-  # the asymmetry `Environments`' moduledoc warns about. So a nil environment
-  # did not merely fail to decide the mode, it decided *initial*, which is the
-  # branch that rewrites the proposal end-to-end. Refuse before the guess.
+  # No environment, no answer: refuse before guessing a mode.
   def evaluate(scope, task) do
     env = CodeMySpec.AgentTasks.environment(scope)
 
     if is_nil(env) do
       {:error, :no_environment}
     else
-      # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
-      # A failing patch-mode evaluate (e.g. unlinked story) used to clear the
-      # marker and silently promote the next evaluate to full proposal
-      # validation, forcing the architect to hand-edit proposal.md after
-      # any DB-side fix. The marker survives until the next `start_task`,
-      # which re-records based on proposal existence.
+      # The marker is never cleared here; `command/2` owns it. Clearing it on a
+      # failing patch-mode evaluate would promote the next one to a full
+      # proposal execution.
       if patch_mode?(env) do
         evaluate_patch_mode(scope, task)
       else
@@ -173,10 +138,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     end
   end
 
-  # Patch mode: an architecture already exists and the architect used the
-  # incremental tools without rewriting the proposal. A task for one story's
-  # `component_linked` is done when that story has a component; other stories
-  # are their own tasks, and orphans are not a gate (John, 2026-10-02).
+  # Patch mode: a task for one story is done when that story has a component.
+  # Other stories are their own tasks, and orphan components are not a gate.
   defp evaluate_patch_mode(scope, %{story_id: story_id}) when not is_nil(story_id) do
     case Stories.get_story(scope, story_id) do
       %{component_id: nil} = story -> {:ok, :invalid, unlinked_story_feedback(story)}
@@ -229,11 +192,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       {:error, validation_errors} when is_list(validation_errors) ->
         {:ok, :invalid, format_validation_errors(validation_errors)}
 
-      # "Could not look" is not "unmet". Flattened into `:invalid` it became the
-      # gate's whole answer — `Blocking: Error: :no_environment`, naming no task,
-      # no working copy and no way out — and it bypassed the branch built for
-      # precisely this in `TaskEvaluator`, because that branch matches
-      # `{:error, reason}` and this had already turned it into a verdict (074b7c83).
+      # "Could not look" is not "unmet": passed through as an error so
+      # `TaskEvaluator` can name it.
       {:error, reason} ->
         if Environments.unobservable?(reason) do
           {:error, reason}
@@ -277,25 +237,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     "## Warnings\n\n#{bullets}"
   end
 
-  # `module_name` is the only authority. It is what the sprite names the
-  # generated app after, so it is the one value guaranteed to match the modules
-  # and boundaries actually on disk.
-  #
-  # This module used to derive a second app name alongside this one, by
-  # stripping every non-alphanumeric out of the project's *display* name and
-  # camelizing the result. For a project called "e2e-todo" that produced
-  # `E2etodo` while the repo defined `E2eTodo` — one letter apart, and a module
-  # tree no boundary claims. Two derivations in one file, disagreeing, and the
-  # prompt handed out the wrong one: an agent registered fourteen components
-  # under `E2etodo.` before noticing and refused to paper over it in code.
-  # `file_exists?/2` cannot answer this, by documented design: it returns
-  # `false` both for "not there" and for "no disk to look at". `stat` can, and
-  # the same `Environments` moduledoc points at `Setup.Context.dir_status/2` as
-  # the pattern for a caller that must tell them apart.
-  #
-  # `nil` env is genuinely absent rather than unobservable: it means this server
-  # holds no working copy for the project, which is a known state, not a failed
-  # read.
+  # `stat`, not `file_exists?/2`, because only `stat` tells "not there" from
+  # "could not look". A `nil` env is a known state (no working copy here), not
+  # a failed read.
   defp proposal_status(nil), do: :absent
 
   defp proposal_status(env) do
@@ -306,6 +250,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     end
   end
 
+  # `module_name` is the authority: it is what the generated app and its
+  # boundaries are named after. A second derivation from the display name
+  # disagrees with it (`E2etodo` vs `E2eTodo`).
   defp get_app_name(%{module_name: module_name}) when is_binary(module_name), do: module_name
 
   # Last resort only. Underscore first so `-` and ` ` are word boundaries —
@@ -345,8 +292,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     Please fix these issues in #{@proposal_path} and try again.
     """
   end
-
-  # Private functions
 
   defp build_prompt(project, stories, component_count, proposal_exists?) do
     stories_section = format_stories(stories)

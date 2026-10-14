@@ -11,24 +11,12 @@ defmodule CodeMySpec.Analysis.Runners do
   cassette escape hatches (`:output_file`) so spex can drive runs from
   pre-recorded tool output.
 
-  This is the device half of analysis: it needs a shell and the working copy,
-  and nothing else. Problems come back unstamped — `Reconciler.stamp_project/2`
-  sets `project_id` on every problem it persists, and `stamp_component_ids/3`
-  resolves components through the Files table, which is a database join this
-  side has no business doing. Runners used to set `project_id` too; the value
-  was overwritten on the way in every time.
+  Problems come back unstamped: the Reconciler sets `project_id` and resolves
+  `component_id` when it persists them.
 
-  ## Execution and conversion are separate, because they are on separate machines
-
-  `run/4` executes locally. `from_raw/2` converts what an analyzer printed into
-  the same result map without executing anything, and that is the entry point
-  the light harness's results come in through: the harness has the disk and the
-  toolchain, the server has the `Problem` schema, so the harness runs the tool
-  and sends the diagnostics and this converts them.
-
-  `run/4` goes through `from_raw/2` as well. That is the point — a Problem row
-  produced from a harness run and one produced from a server run come out of the
-  same function, so the two paths cannot disagree about what a diagnostic means.
+  `run/4` executes locally; `from_raw/2` converts what an analyzer printed
+  (a harness `analysis_result`) without executing anything. `run/4` goes
+  through `from_raw/2` too, so both paths read a diagnostic identically.
 
   The raw shape is per source and is the wire contract with `CmsHarness.Analysis`:
 
@@ -40,10 +28,8 @@ defmodule CodeMySpec.Analysis.Runners do
       spex      %{"exit_status" => int, "partition" => string,
                   "diagnostics" => [%{"spex", "scenario", "file", "line", "message"}]}
 
-  `partition` is which test database the suite opened, and only the two sources
-  that open one send it. It lands in the run's `stats` rather than on each
-  problem: one fact per run, where four hundred identical copies would otherwise
-  go. An older harness omits it and the run simply records none.
+  `partition` is which test database the suite opened (exunit and spex only).
+  It lands in the run's `stats`, not on each problem; an older harness omits it.
   """
 
   alias CodeMySpec.BddSpecs.Spex
@@ -91,18 +77,10 @@ defmodule CodeMySpec.Analysis.Runners do
     })
   end
 
-  # Credo scope follows the run kind: no args → project-wide sweep (full,
-  # memoizable); path args → scoped `--files` run over the changed set
-  # (partial — refreshes only those files' problems, mirrors the old
-  # pipeline's per-turn scoping and its recorded cassettes).
-  #
-  # Goes straight to `Analyzers.Credo`, not through `StaticRunner.run/3`,
-  # because that generic interface answers `{:ok, [Problem.t()]}` for every
-  # analyzer it wraps — no raw output channel. `run_with_output/2` is the one
-  # place that contract was loosened, for exactly this caller — Sobelow now
-  # has the same, below. `available?/2` is checked with the execution options
-  # here explicitly since skipping `StaticRunner` also skips its availability
-  # check.
+  # No args → project-wide sweep (full); path args → `--files` run over the
+  # changed set (partial: refreshes only those files' problems).
+  # Calls `Analyzers.Credo` directly because `StaticRunner.run/3` has no raw
+  # output channel; that also skips its availability check, hence `available?/2`.
   defp run_resolved("credo", %Scope{} = scope, args, opts) do
     files = if args == [], do: nil, else: args
     runner_opts = opts |> Keyword.put(:files, files) |> maybe_output_file(opts)
@@ -126,9 +104,7 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  # Always a full project sweep — `Analyzers.Sobelow.build_sobelow_args/1`
-  # takes no `--files`/scoped-path option, unlike credo, so there is no
-  # partial-run shape to preserve here.
+  # Always a full sweep: sobelow takes no `--files` option.
   defp run_resolved("sobelow", %Scope{} = scope, _args, opts) do
     runner_opts = maybe_output_file(opts, opts)
 
@@ -205,39 +181,17 @@ defmodule CodeMySpec.Analysis.Runners do
 
   @doc """
   Convert what an analyzer printed into a runner result, without running
-  anything.
-
-  This is what a light harness's `analysis_result` goes through: the tool ran on
-  the machine with the disk, and the `%Problem{}` schema is here.
+  anything. A harness's `analysis_result` comes in through here.
   """
   @spec from_raw(String.t(), map()) :: {:ok, result()} | {:error, term()}
   def from_raw("compiler", raw) do
     problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_compiler/1)
     {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
 
-    # A build that failed and said nothing is not a clean build.
-    #
-    # `Compile` deliberately returns no diagnostics when it cannot tell a real
-    # compile error from a transient one — a config change forcing a rebuild,
-    # build-lock contention, a project without the `:diagnostics` compiler. That
-    # restraint is right: synthesising a problem out of Mix's progress banner
-    # would block stops on a phantom.
-    #
-    # But the result was still recorded `:completed` with zero problems, and
-    # `:completed` with zero problems is how this system says "looked, and it is
-    # clean". So "the compiler failed and I could not tell you why" and "the code
-    # is fine" arrived identically — the exact collapse this project exists to
-    # prevent, on the analyzer that matters most.
-    #
-    # Failing the run says the third thing. It does not block: a failed run is
-    # re-enqueued on the next stop rather than turned into a Problem, so no
-    # phantom error blocks anybody. What it stops doing is claiming success.
-    #
-    # Keyed on whether diagnostics were *available*, not on the exit status.
-    # `mix compile --return-errors` exits 0 even on a compile error — that is
-    # what the flag is for — so exit status says nothing about whether the code
-    # compiled. An earlier version of this check keyed on exit status and was
-    # therefore inert for the exact case it was written for.
+    # A build that failed and said nothing is not a clean build: fail the run
+    # (re-enqueued, never a Problem). Keyed on `diagnostics_available`, not exit
+    # status — `--return-errors` exits 0 on a compile error.
+    # See knowledge/analysis, "A run that saw nothing is not clean".
     if raw["diagnostics_available"] == false do
       {:error, {:compile_diagnostics_unavailable, raw["exit_status"]}}
     else
@@ -257,94 +211,32 @@ defmodule CodeMySpec.Analysis.Runners do
     {:ok, summarize(problems, raw["exit_status"], %{"issues" => length(problems)}, raw["output"])}
   end
 
-  # `mix test` exited nonzero without reporting a single failure: bad args, a
-  # compile error, missing deps. The suite never ran, so this result says
-  # nothing about the code.
-  #
-  # Returning `{:ok, problems: []}` here was actively harmful. The Reconciler
-  # clears a source's Problems wholesale before inserting, so an empty result
-  # wiped every real exunit Problem and then finished the run `:completed` at
-  # the current fingerprint — and a fresh completed run with zero problems is
-  # exactly what `ready_for_qa`'s own certification reads off this source. A
-  # `mix test` that failed to start therefore reported the component's tests
-  # as passing.
-  #
-  # Failing the run leaves it `:failed`: never fresh, never problem-clearing,
-  # and re-enqueued on the next stop.
+  # The suite never ran (bad args, compile error, missing deps). An empty `:ok`
+  # would clear every exunit Problem and read as passing tests; a failed run is
+  # never fresh and is re-enqueued.
+  # See knowledge/analysis, "A run that saw nothing is not clean".
   def from_raw("exunit", %{"execution_status" => "error"} = raw) do
     {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
   end
 
-  # `mix test` exited without error having run nothing at all.
-  #
-  # Zero tests is not zero failures. The suite reports `execution_status:
-  # success` with no diagnostics, which reaches `exunit_result/1` as `{:ok,
-  # problems: []}` — identical to a clean sweep of the whole project — and the
-  # Reconciler then clears every recorded exunit Problem and finishes the run
-  # `:completed` at the current fingerprint. That is the trap the
-  # `execution_status: "error"` clause above exists to close; this is the same
-  # trap reached through a zero exit, which that clause cannot see.
-  #
-  # Observed: a 1,502ms `exunit []` against a project whose suite takes ~165s.
-  # It was rejected downstream as `unknown_run`, which is luck rather than a
-  # guard — accepted, it would have reported every component's tests as passing
-  # on the strength of a run that executed nothing.
-  #
-  # Only the exact `%{"tests" => 0}` shape matches, so a payload carrying no
-  # stats falls through to the clause below rather than being failed on a guess.
+  # Zero tests is not zero failures: the same trap reached through a zero exit.
+  # Only the exact `%{"tests" => 0}` shape matches; a payload with no stats
+  # falls through rather than being failed on a guess.
   def from_raw("exunit", %{"execution_status" => status, "stats" => %{"tests" => 0}} = raw)
       when is_binary(status) do
     {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
   end
 
-  # This used to fail the whole run when a failure's message matched
-  # `module ... is not available`, or another module ever being undefined at
-  # runtime, on the theory that a genuinely missing module fails compilation
-  # — so seeing it among reported results meant the build changed mid-run,
-  # not that the module never existed.
-  #
-  # The theory is wrong for exactly the code this project writes most:
-  # calling a module by name, resolved at runtime, is a compile-time warning
-  # in Elixir, not an error — the suite compiles and runs fine, and the
-  # failure only shows up when that one path executes. A spec-first spex
-  # exercising a tool nobody has implemented yet produces precisely this
-  # signature, on a module that never existed for a millisecond, let alone
-  # disappeared mid-run. Every diagnostic in the same run was then discarded
-  # with it — not just the one message, the whole result — and the run
-  # failed instead of completing, so the source's Problems never cleared and
-  # never reflected the real (correct, expected, "not built yet") failure.
-  # phx-new-generator sat unable to promote for about thirteen hours this way,
-  # green suite and all, and nothing said why: `fb7b1002`.
-  #
-  # No replacement heuristic. Whatever the analyzer reports is what gets
-  # reported — a message that happens to look like a build race is still a
-  # real result from a real run, and guessing which diagnostics to trust
-  # before recording them is the failure mode, not a detail of it. John:
-  # "We should not be dropping any diagnostics."
+  # Whatever the analyzer reports is recorded; no diagnostic is dropped or
+  # second-guessed.
+  # See knowledge/analysis, "Never drop diagnostics".
   def from_raw("exunit", %{"execution_status" => status} = raw) when is_binary(status) do
     exunit_result(raw)
   end
 
-  # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}` for
-  # a missing file, so "the run never happened" and "everything is clean" are
-  # indistinguishable by the failure list alone — the nonzero exit is the only
-  # thing separating them. Fail the run rather than let an empty result clear
-  # every spex Problem and finish `:completed`.
-  #
-  # The excerpt is the difference between a failure you can act on and one you
-  # cannot. This said `{:spex_suite_did_not_run, code}` and nothing else, so a
-  # sweep that died — a spex that would not compile, a crash before
-  # `:suite_finished` — left no account of why anywhere: `harness.log` records
-  # only the command, and the output was discarded at `Spex.execute`. exunit has
-  # carried its excerpt since `runners.ex:214`; this is the same tuple, one
-  # analyzer late.
-  #
-  # Used to also carry exunit's build-changed-mid-run check, on the same
-  # reasoning applied to a source where it holds even less: spex exercises
-  # the real running app, and spec-first spex naming a tool nobody has built
-  # yet is exactly the same "never existed" signature, not a build race.
-  # Removed for the reasons above `from_raw("exunit", ...)` gives in full —
-  # whatever the analyzer reports is what gets recorded.
+  # `Spex.parse_jsonl/1` answers `{:ok, []}` for a missing file, so a nonzero
+  # exit with no failures is a suite that never ran: fail the run, carrying an
+  # output excerpt so the reason is recorded somewhere.
   def from_raw("spex", raw) do
     exit_code = raw["exit_status"]
 
@@ -357,10 +249,8 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  # An exunit payload with no `execution_status`, or any source this server does
-  # not know, is refused rather than read charitably. Both would otherwise
-  # produce a `:completed` run with no problems, which is the one answer that
-  # must never be reached by accident.
+  # An exunit payload with no `execution_status`, or an unknown source, is
+  # refused: read charitably it would become a clean `:completed` run.
   def from_raw(source, _raw), do: {:error, {:unreadable_result, source}}
 
   defp spex_result(failures, exit_code, output) do
@@ -371,9 +261,8 @@ defmodule CodeMySpec.Analysis.Runners do
     summarize(problems, exit_code, %{"failures" => length(failures)}, output)
   end
 
-  # `diagnostics` is required, not defaulted. A payload arriving without the key
-  # is version skew or a bug, and defaulting it to `[]` would report the source
-  # clean — which is the failure this whole path exists to prevent. It raises.
+  # Required, not defaulted: a missing key defaulted to `[]` would report the
+  # source clean. It raises.
   defp diagnostics(%{"diagnostics" => diagnostics}) when is_list(diagnostics), do: diagnostics
 
   defp diagnostics(raw) do
@@ -409,21 +298,9 @@ defmodule CodeMySpec.Analysis.Runners do
      )}
   end
 
-  # Which database this run answered about, kept on the run rather than on each
-  # problem — it is one fact per run, and a per-problem copy would be four
-  # hundred identical strings.
-  #
-  # A working copy has three test databases and a run uses exactly one. Measured
-  # twice, and both times every available signal pointed at the code: 479 spex
-  # failures naming a column the tree had, against a partition five days behind
-  # the base (`d86b09cd`); and a criterion passing in isolation while failing
-  # every sweep, because `working_copies_device_id_fkey` was `CASCADE` on one
-  # database and `RESTRICT` on the other (`9d4ae2de`). The second cost three
-  # promotion refusals before anybody asked which database had answered.
-  #
-  # Absent for the compiler and credo, which read files rather than opening a
-  # connection — and absent from an older harness, which sends no such key. Both
-  # simply carry no partition, which is the truthful answer for each.
+  # Which test database answered, once per run. Absent for compiler and credo
+  # (no connection) and from an older harness.
+  # See knowledge/analysis, "Runner results".
   defp with_partition(summary, %{"partition" => partition})
        when is_binary(partition) and partition != "" do
     %{summary | stats: Map.put(summary.stats, "partition", partition)}
@@ -431,15 +308,10 @@ defmodule CodeMySpec.Analysis.Runners do
 
   defp with_partition(summary, _raw), do: summary
 
-  # `output` is the tool's own text — what `mix compile`/`mix credo`/`mix
-  # spex` actually printed — not a summary reformatted from `problems`. See
-  # `.code_my_spec/rules/analysis_output_fidelity.md`.
-  #
-  # The `format_problem_lines/1` fallback exists for exactly one case: an
-  # older harness that predates this field and sends no `"output"` key at
-  # all. It is not a style choice for the normal path — every current caller
-  # passes real output, and a caller with real output at hand and a nil
-  # here would be the same defect this rule exists to catch.
+  # `output` is the tool's own text, not a summary of `problems`
+  # (`.code_my_spec/rules/analysis_output_fidelity.md`). The
+  # `format_problem_lines/1` fallback is only for an older harness that sends
+  # no `"output"`.
   defp summarize(problems, exit_status, stats, output) do
     %{
       problems: problems,
@@ -458,73 +330,26 @@ defmodule CodeMySpec.Analysis.Runners do
     })
   end
 
-  # Where a spex failure belongs: its spec, not wherever the exception was
-  # raised.
-  #
-  # `error.file` is the top stacktrace frame — for a failure reported from
-  # inside a scenario. For an assertion inside the spec those are the same file,
-  # which is why this held for so long. For anything that *raises* from library
-  # code they are not: two cassette failures filed against
-  # `lib/req_cassette/plug.ex:481` and `:607`, the plug that raised,
-  # with nothing left pointing at the specs that failed.
-  #
-  # There is a second shape, and it is worth knowing before reasoning about this
-  # function. `SexySpex.JsonlFormatter.backstop_failure/2` handles failures that
-  # never reached a scenario — a `setup` that raised, and the `{:EXIT, pid}` kind
-  # ExUnit uses when a linked process takes the test down — and it sets
-  # `error.file` to `test.tags[:file]`, the spex's *own* file, absolute. So the
-  # fallback below is the branch those take, and its `_spex.exs` guard passes
-  # trivially for them rather than doing the filtering it does for the first
-  # shape. That absoluteness is `cc643bf3`, fixed on the harness side before the
-  # failure reaches here.
-  #
-  # That costs three things. The story link is gone — a spex path carries its
-  # story id and a library path carries nothing — so the finding cannot be
-  # traced back to the work. It reads as a bug in the library rather than a
-  # cassette that was never recorded. And under `:block_changed` it blocks
-  # whoever touches the library, who is never the person who can fix it.
-  #
-  # The spec frame is still in the stacktrace, so this takes the file *and* the
-  # line from the same frame — taking only the file would pair a spec path with
-  # a line number from somewhere else, which is worse than either alone.
+  # A spex failure belongs to its spec or to no file, never to the library
+  # frame that raised. File and line come from the same frame.
+  # See knowledge/analysis, "Spex failure location".
   @doc false
-  # Public only so the rule can be asserted without a live `mix spex` — the
-  # half that was wrong is the choice of location, not the conversion.
+  # Public so the rule can be asserted without a live `mix spex`.
   def spex_location(error, spec_file \\ nil)
 
   def spex_location(nil, _spec_file), do: {nil, nil}
 
   def spex_location(error, spec_file) do
     case spec_frame(error.stacktrace) do
-      # No spec frame at all — a raise from a setup block, a shared fixture, or
-      # a plug, with nothing in the trace naming the spec that was running.
-      #
-      # This used to fall back to `error.file`, on the reasoning that filing it
-      # somewhere beat filing it nowhere. That was wrong, and it recurred with
-      # the fix in place: `ReqCassette.Plug` raised from a cassette miss and two
-      # spex failures were filed at `lib/req_cassette/plug.ex:481` — no story,
-      # no criterion, and blocking for whoever next touches the plug. Which is
-      # the whole defect the location rule was written to remove.
-      #
-      # A spex failure belongs to a spec or to no file. Saying "somewhere" when
-      # the somewhere is wrong is the louder version of saying nothing.
+      # No spec frame (raise from setup, a fixture, a plug): never fall back to
+      # a non-spec `error.file`.
       nil -> spec_file_fallback(error, spec_file)
       frame -> {frame_get(frame, "file"), frame_get(frame, "line")}
     end
   end
 
-  # `error.file` when it is itself a spec, and nothing otherwise.
-  #
-  # The rule above is "a spex failure belongs to a spec or to no file", and the
-  # reason it stopped reading `error.file` is that the top stacktrace frame is
-  # often library code — `ReqCassette.Plug` raised and two failures were filed
-  # against the plug. Applying the same `_spex.exs` test the stacktrace search
-  # uses keeps that property: library paths are still refused.
-  #
-  # What it recovers is the failure with no usable stacktrace at all. Those were
-  # landing on `unknown`, which reads to an agent as "a spex failed somewhere"
-  # and is one step better than nothing — the file was right there in the
-  # payload, unused.
+  # `error.file` when it is itself a spec (the formatter's backstop failures set
+  # it to the spex's own file), and the declared spec otherwise.
   defp spec_file_fallback(error, spec_file) do
     file = error_get(error, :file)
 
@@ -535,25 +360,9 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  # The last resort, and the only one available when the raise happened on
-  # another process's stack.
-  #
-  # `cd2a0db4`: a provider call from a LiveView — `ProvisioningLive.load/2`
-  # reaching Resend at mount, outside every cassette — raises with 20 frames of
-  # library code and none of them in a spec, because the spec is not on that
-  # process's stack at all. No improvement to `spec_frame/1` could find it, and
-  # `error.file` is the raise site, which the clause above correctly refuses.
-  # So the failure carries its own spec, and this is where that is spent.
-  #
-  # The line is deliberately `nil`. The spec file is known; *where in it* is
-  # not, and the comment above already records why pairing a spec path with a
-  # line number from somewhere else is worse than either alone.
-  #
-  # This fires only when there is no spec frame **and** `error.file` is not a
-  # spec, so it cannot change the attribution of anything attributed today: the
-  # backstop path keeps working through `error.file`, and stacktrace-attributed
-  # failures keep preferring their own frame. Its blast radius is exactly the
-  # set that lands on `unknown` now.
+  # Last resort, for a raise on another process's stack (e.g. a LiveView), where
+  # no frame names the spec. Line is deliberately `nil`: where in the spec is
+  # unknown.
   defp declared_spec(spec_file) when is_binary(spec_file) do
     if String.ends_with?(spec_file, "_spex.exs"), do: {spec_file, nil}, else: {nil, nil}
   end
@@ -604,35 +413,38 @@ defmodule CodeMySpec.Analysis.Runners do
   defp first_line(nil), do: ""
   defp first_line(message), do: message |> String.split("\n", parts: 2) |> hd()
 
-  # mix reports *why* it wouldn't run at the very end of its output ("Paths
-  # given to mix test did not match...", a compile error summary), so the tail
-  # carries the signal and the head is compile chatter. Kept short: this rides
-  # into the run's `stats["error"]`, which Reconciler.fail truncates at 500.
+  # Kept short: rides into the run's `stats["error"]`, which `Reconciler.fail`
+  # truncates at 500.
   defp error_excerpt(nil), do: ""
 
-  # The exception marker wins where there is one, and the tail only otherwise.
-  #
-  # `Enum.take(-3)` alone picks the least informative part of a mix crash: the
-  # last three lines are always the same boilerplate —
-  # `Mix.Task.run_alias/6 | Mix.CLI.run_task/2 | bin/mix:7` — while the line
-  # naming what actually broke sits above them. Measured on the first spex
-  # failure this helper ever reported: the excerpt arrived, and said nothing.
-  #
-  # `CmsHarness.Web.UpstreamError.exception_text/1` reached the same conclusion
-  # for Phoenix debug pages and is the precedent — "the marker wins where there
-  # is one: it is the line naming what broke".
-  #
-  # The *last* marker that opens a line, though, not the first one anywhere. A
-  # full suite logs `Postgrex.Protocol ... disconnected: ** (DBConnection.
-  # ConnectionError) client #PID<...> exited` whenever a task dies mid-query,
-  # and the first marker in 181 seconds of output is that log line, not
-  # whatever ended `mix test`. A crash prints its exception at the start of a
-  # line, at the end. Run 54391 was recorded with exactly that log line as its
-  # reason, which sent the flake hunt after the database.
+  # Without an ExUnit summary: the last line-opening `** (` marker, else the
+  # output tail. The last three lines of a mix crash are boilerplate, and the
+  # first marker is often a mid-suite Postgrex log line.
+  # See knowledge/analysis, "Runner results".
   defp error_excerpt(output) do
-    case output
-         |> String.split("\n")
-         |> Enum.filter(&String.starts_with?(String.trim_leading(&1), "** (")) do
+    lines = output |> String.replace(~r/\e\[[0-9;]*m/, "") |> String.split("\n")
+
+    case Enum.find(Enum.reverse(lines), &Regex.match?(~r/^\s*\d+ tests?, \d+ failures?\b/, &1)) do
+      nil -> exception_excerpt(output, lines)
+      summary -> suite_excerpt(summary, lines)
+    end
+  end
+
+  # Process crashes logged deliberately by tests are not the suite's verdict.
+  # Prefer ExUnit's summary, followed by its first numbered failure and location.
+  defp suite_excerpt(summary, lines) do
+    failure =
+      lines
+      |> Enum.drop_while(&(not Regex.match?(~r/^\s*1\) /, &1)))
+      |> Enum.take(2)
+
+    [summary | failure]
+    |> Enum.map_join(" | ", &String.trim/1)
+    |> String.slice(0, 300)
+  end
+
+  defp exception_excerpt(output, lines) do
+    case Enum.filter(lines, &String.starts_with?(String.trim_leading(&1), "** (")) do
       [] -> tail_excerpt(output)
       markers -> markers |> List.last() |> String.trim() |> String.slice(0, 300)
     end
@@ -646,19 +458,34 @@ defmodule CodeMySpec.Analysis.Runners do
     |> String.slice(0, 300)
   end
 
-  # On a character boundary, as the harness's own cap does (e82d6a37): a byte
-  # cut after the first byte of a "—" left 0xe2 before the newline, Postgres
-  # refused the row, and a green exunit run was recorded as one that could not
-  # run (2026-10-12).
-  defp cap(output) do
+  # On a character boundary: a split multibyte char makes Postgres refuse the
+  # row, and a green run is recorded as one that could not run.
+  @doc "Retain the start and failure tail of analyzer output within 100KB, including markers."
+  @spec cap(binary()) :: String.t()
+  def cap(output) do
     output = String.replace_invalid(output)
 
     if byte_size(output) > @output_cap do
-      output |> binary_part(0, @output_cap) |> drop_partial_char() |> Kernel.<>("\n… (truncated)")
+      gap = "\n… (middle omitted) …\n"
+      marker = "\n… (truncated)"
+      head = output |> binary_part(0, 20_000) |> drop_partial_char()
+      tail_size = @output_cap - byte_size(head) - byte_size(gap) - byte_size(marker)
+
+      tail =
+        output
+        |> binary_part(byte_size(output) - tail_size, tail_size)
+        |> drop_leading_partial_char()
+
+      head <> gap <> tail <> marker
     else
       output
     end
   end
+
+  defp drop_leading_partial_char(<<byte, rest::binary>>) when byte in 0x80..0xBF,
+    do: drop_leading_partial_char(rest)
+
+  defp drop_leading_partial_char(binary), do: binary
 
   # The input is already valid, so only a trailing partial sequence can fail.
   defp drop_partial_char(binary) do

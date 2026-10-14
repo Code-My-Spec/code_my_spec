@@ -4,22 +4,9 @@ defmodule CmsHarness.Agents do
   @moduledoc """
   Agents running on this machine — start one, say which are running, stop one.
 
-  Harness-side because the working copy is here. An agent session is hundreds of
-  read, edit and bash calls; server-side each one would be a channel round-trip
-  whose failure mode is a broken turn rather than a deferred sync.
-
-  ## What this used to be
-
-  Starting `pi` as a detached OS process, in a process group of its own, with a
-  boot id recorded beside the group id so a recycled number could not be
-  mistaken for ours. That apparatus existed to make a foreign process reachable,
-  and it never worked end to end: the extension that was supposed to join the
-  harness and hold `pi` open was never published, so `pi` started, found nothing
-  to do, and exited zero — silently, which is why it produced no diagnosis.
-
-  `CmsHarness.Agents.Engine` replaces it with a supervised process. What is left
-  here is translation: the server sends a request, this turns it into engine
-  options, and the engine owns the loop.
+  Harness-side because the working copy is here: an agent's hundreds of file
+  and shell calls stay local. This module translates a server request into
+  `CmsHarness.Agents.Engine` options; the engine owns the loop.
   """
 
   use Boundary,
@@ -41,10 +28,8 @@ defmodule CmsHarness.Agents do
   @doc """
   Start the agent this request describes.
 
-  Answers `{:ok, %{agent_id: id}}` — the id is the handle now. There is no
-  process group and no boot id, because there is no foreign process to reach:
-  the id resolves through the harness's registry while the harness is running,
-  which is the honest scope for it.
+  Answers `{:ok, %{agent_id: id, pid: pid}}`. The id resolves through the
+  harness's registry while the harness is running.
   """
   @spec launch(map()) :: {:ok, %{agent_id: String.t(), pid: pid()}} | {:error, term()}
   def launch(%{"agent_id" => agent_id} = request) do
@@ -53,13 +38,8 @@ defmodule CmsHarness.Agents do
       provider: request["provider"],
       credential: credential(request),
       working_copy: request["working_copy"],
-      # The system prompt arrives in pieces and `SystemPrompt.compose/1`
-      # orders them general to specific: the universal half, then what this
-      # project and checkout are, then what this agent is for.
-      #
-      # All of it is resolved server-side. Role semantics, the loop and the
-      # tool list are the framework's, and the project's own description is a
-      # column — none of it is knowable from the machine.
+      # System prompt pieces, all resolved server-side;
+      # `SystemPrompt.compose/1` orders them general to specific.
       universal: request["universal"],
       project_brief: request["project_brief"],
       provider_brief: request["provider_brief"],
@@ -67,41 +47,24 @@ defmodule CmsHarness.Agents do
       tool_index: request["tool_index"],
       tool_reach: request["tool_reach"],
       direct_tools: request["direct_tools"],
-      # Where the application is running, off the project's main working
-      # copy. Only the server knows it — it is a column there — and an
-      # agent that cannot answer it cannot open the thing it is testing.
+      # Where the project's app runs; only the server knows it.
       app_url: request["app_url"],
-      # Which checkout this is, as the server knows it. The agent's own
-      # MCP session is addressed by it — `x-harness-id` is what makes a
-      # script act for this copy and no other — so an agent without it
-      # can edit its files and reach none of the project's tools.
-      #
-      # Read from the request when the server says, and from the copy's
-      # own config when it does not, because a caller that named a root
-      # has already said which checkout it means.
+      # Addresses the agent's MCP session (`x-harness-id`); without it the
+      # agent reaches none of the project's tools. Falls back to the copy's
+      # own config.
       working_copy_id: request["working_copy_id"] || copy_id(request["working_copy"]),
       model: request["model"],
-      # What this agent already knows. An agent dies with its harness
-      # and the transcript is the state — which is only true if the
-      # transcript actually arrives, and until it did, a restarted agent
-      # came back with no memory of anything it had been told.
+      # The transcript to resume from: an agent dies with its harness and
+      # the transcript is its state.
       messages: request["messages"],
-      # An OpenAI-compatible endpoint that is not the provider's own:
-      # a self-hosted gateway, a proxy, a company's own deployment. The
-      # provider has always read this and nothing has ever sent one.
+      # An OpenAI-compatible endpoint other than the provider's own.
       base_url: request["base_url"],
-      # In front of the provider's HTTP client. A function, so only an
-      # in-process caller can set it — which is what a recording of a
-      # real turn needs and what nothing on the wire can carry.
+      # Options for the provider's HTTP client; in-process callers only
+      # (recordings).
       req_options: request["req_options"],
-      # Where an agent finishes what it was part-way through before the
-      # process goes. Nothing on the wire sets it yet; the seam exists so
-      # a graceful stop is observable rather than merely intended.
+      # Called on a graceful stop. Nothing on the wire sets it yet.
       on_stop: request["on_stop"],
-      # The channel for the copy this agent runs in, unless the caller
-      # names somewhere else. Settable for the same reason `on_stop` is:
-      # the default is right for the harness and it is not the only
-      # caller.
+      # Defaults to this copy's channel; in-process callers may override.
       on_event: request["on_event"] || reporter_for(request["working_copy"]),
       on_consume: request["on_consume"],
       on_register:
@@ -141,9 +104,7 @@ defmodule CmsHarness.Agents do
   @doc """
   Stop one agent, and say whether it was there to stop.
 
-  One, and only one — a stop that reaps a tree, or matches by name and catches a
-  sibling, is indistinguishable from this at the call site and is worse than
-  having no stop at all.
+  Stops exactly one agent: never a tree, never a match by name.
   """
   @spec halt(String.t()) :: :ok | {:error, :not_running}
   defdelegate halt(agent_id), to: Engine, as: :stop
@@ -162,8 +123,8 @@ defmodule CmsHarness.Agents do
     do: Engine.request_work_turn(agent_id, ref, text, timeout)
 
   @doc """
-  Stop this agent's running turn so a message sent now is its next one (story
-  1051). It keeps what it did up to its last completed tool call.
+  Stop this agent's running turn so a message sent now is its next one. It
+  keeps what it did up to its last completed tool call.
   """
   @spec interrupt(String.t()) :: :ok | :idle | {:error, term()}
   defdelegate interrupt(agent_id), to: Engine
@@ -178,10 +139,8 @@ defmodule CmsHarness.Agents do
   @doc """
   What this agent carries.
 
-  Asked of the running agent rather than of a list, because that is the claim
-  worth being able to check: two project tools reach the ninety-eight behind
-  them, and a constant naming two modules says nothing about the agent that was
-  started.
+  Asked of the running agent rather than a constant, so the answer describes
+  the agent that was actually started.
   """
   @spec tools(String.t()) :: [module()]
   defdelegate tools(agent_id), to: Engine, as: :agent_tools
@@ -201,25 +160,16 @@ defmodule CmsHarness.Agents do
   @doc """
   What one agent knows — the turns its loop is actually holding.
 
-  Distinct from its transcript, which is what was written down. The two come
-  apart exactly when an agent has been restarted, which is the case worth being
-  able to ask about.
+  Distinct from its transcript, which is what was written down; the two differ
+  after a restart.
   """
   @spec history(String.t()) ::
           {:ok, [Alloy.Message.t()]} | {:error, :not_running | :busy}
   defdelegate history(agent_id), to: Engine
 
-  # What the agent said, out of what Alloy hands back.
-  #
-  # The result carries the whole turn — every message, the tool manifest, the
-  # prompt that went to the provider. Passed through whole it reached the
-  # operator as four thousand tokens of scaffolding with the actual answer
-  # somewhere inside, so the reply is narrowed here, where the wire contract
-  # already says it is a string.
-  #
-  # A turn that failed comes back as an `:ok` result carrying an error, and a
-  # clause that only looks at `text` reports that as "(no message)" — the agent
-  # ignoring you, rather than the agent's provider refusing.
+  # What the agent said, narrowed out of Alloy's whole-turn result (the wire
+  # contract is a string). A failed turn is an `:ok` result carrying an error;
+  # it must read as a failure, not "(no message)".
   defp said(%{status: :error, error: reason}), do: "(the turn failed: #{inspect(reason)})"
 
   defp said(%{text: text}) when is_binary(text) and text != "", do: text
@@ -237,27 +187,8 @@ defmodule CmsHarness.Agents do
   @spec running() :: [String.t()]
   defdelegate running(), to: Engine
 
-  # A step, on its way to whoever is watching.
-  #
-  # Sent per event rather than accumulated, because the point of watching is
-  # seeing an agent go wrong while it is going wrong. A batch that arrives when
-  # the turn ends is a report, not a view — and a turn that fails never ends.
-  #
-  # Fire and forget: an agent's work does not stop because nobody is watching,
-  # and a reporting failure must not become a turn failure.
-  #
-  # ## One channel, not every channel
-  #
-  # This looped over `Projects.list()` and pushed each step down every copy the
-  # harness serves. One harness serves several checkouts, and several of those
-  # are usually worktrees of the same project — so every channel on that
-  # project recorded the same step, and a transcript held each line once per
-  # sibling checkout. Two here; ten on a busy box.
-  #
-  # An agent runs in one working copy. That copy's channel is the one that
-  # should hear about it, and a copy this harness does not serve is a cast that
-  # finds no registry entry and stops — which is the right answer, because
-  # there is nowhere to report to.
+  # Steps go per event, fire and forget, to the channel of the one copy the
+  # agent runs in. See knowledge/harness, "Agents".
   defp drafter_for(nil, working_copy),
     do: fn agent_id, envelope -> Channel.report_draft(working_copy, agent_id, envelope) end
 
@@ -277,31 +208,10 @@ defmodule CmsHarness.Agents do
 
   defp report_head_at_turn_end(_root, _envelope), do: :ok
 
-  # A tool call that failed, said out loud on the machine.
-  #
-  # Every tool call already ends with an event carrying `error`, populated on
-  # all four failure paths — a returned `{:error, reason}`, a rescued crash, a
-  # blocked call, an unknown tool. It travels to the server too, where
-  # `tool_meta/1` puts it on the wire and the transcript keeps it.
-  #
-  # What it did not do was reach a log. Only Alloy's *crash* branch logs; a
-  # tool that returns an error is handed to the model, stored, and mentioned
-  # nowhere else. So an agent whose every call fails is completely silent here,
-  # which is exactly the shape of the incident story 1051 was written for: four
-  # hours of an agent reporting a full tool list and failing every call, with
-  # nothing in `harness.log` to grep for.
-  #
-  # `:warning` rather than `:error`, deliberately. A tool answering "no such
-  # story" is an ordinary outcome and not a fault, and SexySpex fails any spex
-  # during which anything logs at `:error` — several criteria drive refusals on
-  # purpose (1038's catalogue, 1050's 3202/3203/3226), so erroring here would
-  # turn green specs red for exercising the behaviour they are about. The
-  # documented log recipe greps `level=(warning|error)`, so this is findable
-  # either way.
-  # Read with `Map.get/2` rather than matched as a required key, the same way
-  # `ChannelClient.tool_meta/1` reads it. A pattern demanding `:error` would
-  # never match an event that omits the key, and the symptom of that is
-  # silence — which is the thing this exists to end.
+  # A failed tool call, logged on the machine: otherwise only Alloy's crash
+  # branch logs. `:warning`, not `:error` — refusals are ordinary outcomes and
+  # spex fail on any `:error` log. `Map.get/2`, so an event without the key
+  # still matches. See knowledge/harness, "Agents".
   defp warn_on_tool_failure(agent_id, %{payload: %{name: name} = payload})
        when is_binary(name),
        do: warn_failure(agent_id, name, Map.get(payload, :error))
@@ -318,12 +228,7 @@ defmodule CmsHarness.Agents do
   # goes to a file that rotates at 10 MB.
   defp failure_text(error), do: error |> ToolResults.describe() |> String.slice(0, 500)
 
-  # This checkout's id, from the file it keeps it in.
-  #
-  # `read_file/1` and not `read/1`, for the reason `WorkingCopies.all/0` gives:
-  # `read/1` honours `CMS_HARNESS_ID`, which is set in the environment of every
-  # worktree session on this machine, so it would answer every root with
-  # whichever one the session happened to belong to.
+  # This checkout's id, from its own `.cms_harness.json`.
   defp copy_id(nil), do: nil
 
   defp copy_id(root) do
@@ -333,19 +238,9 @@ defmodule CmsHarness.Agents do
     end
   end
 
-  # The server sends whatever the provider needs. Passed through rather than
-  # interpreted, because deciding what a credential means is `Provider`'s job,
-  # and doing it in two places is how the two drift apart.
-  #
-  # No subscription arrives here any more. This used to accept a ChatGPT token
-  # and write it to disk for `codex exec` to read, and that cannot be made to
-  # work: the refresh token is single-use, the CLI rotates it on startup, and
-  # every other copy — including the operator's own `~/.codex` login — dies the
-  # moment a second agent starts. Measured 2026-09-08 across four agents on one
-  # machine, failing intermittently since 09-03.
-  #
-  # A codex agent runs on this machine's own Codex login now, which `Provider`
-  # names as `codex_home`. Nothing to pass, nothing to write, nothing to rotate.
+  # Passed through uninterpreted: what a credential means is `Provider`'s job.
+  # A codex agent uses this machine's own Codex login (`codex_home`); no token
+  # is ever written to disk. See knowledge/harness, "Providers".
   defp credential(request) do
     %{}
     |> put_if(:codex_home, request["codex_home"])

@@ -2,14 +2,14 @@ defmodule CodeMySpec.Analysis.Reconciler do
   @moduledoc """
   Persists a finished analyzer run — the single write path for run results.
 
-  Atomically reconciles Problems (clear + insert in one transaction, scoped by
-  run kind), stamps `component_id` on test problems, marks the run finished,
-  prunes old ledger rows, then re-evaluates the project's active sessions so a
-  task whose analyzers just passed completes without waiting for another stop.
+  Replaces a full run's Problems for its source in one transaction, stamps
+  `component_id` from Files, marks the run finished, prunes old ledger rows,
+  and emits `[:code_my_spec, :analysis, :run_reconciled]` (re-evaluating tasks
+  and the phone push answer it) and, when warranted, `:run_reported` (the
+  report to agents).
 
-  Runs inside the analysis Task — never inside a GenServer callback and never
-  tied to an HTTP connection's lifetime, so an aborted hook request can no
-  longer strand half-reconciled problems.
+  Runs inside the analysis Task, never a GenServer callback or an HTTP
+  request, so an aborted hook request cannot strand a half-written reconcile.
   """
 
   require Logger
@@ -32,18 +32,9 @@ defmodule CodeMySpec.Analysis.Reconciler do
   @spec reconcile(Scope.t(), Run.t(), map(), keyword()) :: {:ok, Run.t()} | {:error, term()}
   def reconcile(scope, run, result, opts \\ [])
 
-  # A targeted run (`mix test test/foo_test.exs`, rewritten by the PreToolUse
-  # hook) only covers the files it names, so its result is not the complete
-  # picture for the source. The reconcile below is wholesale — clear the
-  # source, insert what this run found — and applying that to a one-file run
-  # deletes every Problem the run never looked at, then finishes `:completed`
-  # at the current fingerprint. That combination reported the whole suite
-  # fresh and passing off a single test file.
-  #
-  # So a partial finishes with output, exit status and stats — which is what
-  # the model reads back from the analysis API — and leaves Problems alone.
-  # `latest_full_run/2` filters `kind == :full`, so it never satisfies
-  # freshness either. The stop hook's full run stays the authoritative sweep.
+  # A partial run covers only the files it names, so it finishes with output
+  # and stats and leaves Problems alone; the wholesale replace below would
+  # delete everything it never looked at. `latest_full_run/2` ignores it.
   def reconcile(%Scope{}, %Run{kind: :partial} = run, result, _opts) do
     Logger.info(
       "[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched"
@@ -80,9 +71,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
           })
 
         RunsRepository.prune(scope, run.source)
-        # Re-evaluating tasks and pushing to the user's phone answer this event
-        # (`AgentTasks.RunReconciled`, `Notifications.AnalysisPush`); Analysis
-        # sits below both.
+        # Events, because Analysis sits below `AgentTasks` and `Notifications`.
         :telemetry.execute(
           [:code_my_spec, :analysis, :run_reconciled],
           %{},
@@ -94,14 +83,8 @@ defmodule CodeMySpec.Analysis.Reconciler do
           }
         )
 
-        # The internal half of story 1042. `Notifications.AnalysisPush` is the push to
-        # the *person*; this is the push to the agents running in our own BEAM,
-        # which have a process to reach and should not have to wait on one.
-        #
-        # A Claude Code session in the same copy is not told here — it collects
-        # the digest on its next tool call through `Hooks.AnalysisAlert`. Two
-        # consumers, two shapes, and telling both here would tell one of them
-        # twice.
+        # The push to agents in this BEAM. A Claude Code session is not told
+        # here; it picks the alert up on its next tool call.
         announce_if_new(scope, run, problems, previous, signatures)
 
         Logger.info(
@@ -127,16 +110,10 @@ defmodule CodeMySpec.Analysis.Reconciler do
   Finish a run whose analyzer output was already reconciled under a
   different run_id.
 
-  The harness ties a request for a busy source onto the one already
-  queued rather than running the analyzer twice (story 839,
-  `CmsHarness.Project.AnalysisServer.tie_to_queued/4`) — every tied
-  run_id gets the identical result the primary one does. The primary's
-  own `reconcile/4` call already cleared and re-inserted Problems for
-  this exact output; doing that again here would double every row
-  (`57333540` — 42 rows where 21 existed, each exactly twice). This
-  closes the tied run's own ledger entry — whoever is waiting on that
-  specific run_id still needs a real, `:completed` answer — without a
-  second write over data the primary already got right.
+  The harness ties a request for a busy source onto the one already queued,
+  and every tied run_id gets the primary's result. The primary's `reconcile/4`
+  already wrote the Problems; writing again would double every row. This only
+  closes the tied run's ledger entry so its waiter gets a `:completed` answer.
   """
   @spec finish_tied(Scope.t(), Run.t(), map()) :: {:ok, Run.t()} | {:error, term()}
   def finish_tied(%Scope{}, %Run{} = run, result) do
@@ -183,14 +160,12 @@ defmodule CodeMySpec.Analysis.Reconciler do
   end
 
   @doc """
-  Tell the agent that requested a failed run that it failed, and why.
+  Tell the agents that requested or wait on a failed run that it failed, and
+  why.
 
-  Every path that marks a run `:failed` ends here — `fail/2`, and
-  `Analysis.resume_orphaned/2` for a run a harness disconnect or a server
-  restart stranded that it will not run again. A
-  requested run always answers (see `announce_if_new/5`); before this, only a
-  completed one did, and an agent whose spex run was killed by a server restart
-  waited on it forever. A run nobody requested fails silently.
+  Every path that marks a run `:failed` ends here — `fail/3`, and
+  `Analysis.resume_orphaned/2` for a run stranded by a disconnect or restart.
+  A requested run always answers; a run nobody requested fails silently.
   """
   @spec announce_failed(Run.t(), term()) :: :ok
   def announce_failed(%Run{} = run, reason) do
@@ -217,66 +192,20 @@ defmodule CodeMySpec.Analysis.Reconciler do
     end
   end
 
-  # A string reason is stored as itself; everything else is inspected.
-  #
-  # This was `inspect/1` unconditionally, which wrapped an already-readable
-  # message in quotes and flattened its newlines into literal `\n`. That was
-  # invisible while nothing read the column back. It stopped being invisible
-  # when `Validation.failure_reason/1` started surfacing it in the stop response
-  # (`639d0fc1`), where the reader is an agent being told why an analyzer could
-  # not run:
-  #
-  #     "credo crashed: … has not been onboarded.\nRun: mix harness.onboard"
-  #
-  # — one quoted line instead of two, with the remedy buried in an escape.
-  #
-  # Non-binaries still go through `inspect/1`, and must: `skipped_for_compile_errors?/1`
-  # matches on the inspected atom.
+  # A string reason is stored as itself (agents read it in the stop response,
+  # so no quoting or escaped newlines); anything else is inspected.
   defp error_text(reason) when is_binary(reason), do: String.slice(reason, 0, 500)
   defp error_text(reason), do: String.slice(inspect(reason), 0, 500)
 
-  # The other half of a run's id being in these lines at all: knowing which
-  # row this was still leaves "who asked for it" as a separate lookup unless
-  # the line says that too. Blank unless `build_job/4` was given one — most
-  # runs still won't be until more callers are taught to pass it.
-  # Only when this run says something the last one did not.
-  #
-  # The report to agents (`Agents.AnalysisReport`) used to fire on every completed run, and every stop
-  # hook re-enqueues credo, so an unchanged finding announced itself once a
-  # turn forever. A main agent on the math project spent four consecutive turns
-  # answering "same repeated alert — already covered by issue ..., no action"
-  # and never reached `work_dispatched`, which is the requirement that puts
-  # story work in flight. It diagnosed its own livelock and filed `bffa0da7`
-  # before anyone looked: "no file was edited and no new analysis was requested
-  # between repeats, so nothing about the tree changed between alerts".
-  #
-  # `new` is empty both when nothing changed and when problems only went away,
-  # and neither is worth a wake — the digest counts what remains, which the
-  # agent has already been told. An absent baseline reads as all-new, so a
-  # first run, and a run whose predecessor predates signature recording, both
-  # still announce.
-  #
-  # A run an agent *asked for* always answers, whatever the delta says. That is
-  # the half this was missing, and it stalled the fleet within the hour: coding
-  # started a spex sweep, said "not polling — will act on the result when it
-  # arrives as a message, task stays open until then", and stopped. The sweep
-  # found the same seven criteria failing for a new reason, so the signatures —
-  # `file:line criterion-name`, which do not carry the error — were unchanged,
-  # the delta was empty, and the answer was swallowed. The agent waited on a
-  # message that was never going to come, holding its task, for twenty-two
-  # minutes.
-  #
-  # The distinction is who started it. An unsolicited repeat is noise; a reply
-  # to a question the agent asked is a reply, and silence there is not quiet, it
-  # is a hang.
+  # Reports only when this run found something the last one did not, or when
+  # an agent requested or waits on it. See knowledge/analysis, "Reporting runs".
   defp announce_if_new(scope, run, problems, previous, signatures) do
     requester = requesting_agent_id(run)
     waiters = waiters(run)
 
     if requester || waiters != [] || new_findings?(previous, signatures) do
-      # An event rather than a call: `Agents.AnalysisReport` is attached to it,
-      # and Analysis does not depend on Agents. Handled synchronously, in this
-      # process, as the direct call was.
+      # An event because Analysis does not depend on Agents; handled
+      # synchronously in this process.
       :telemetry.execute(
         [:code_my_spec, :analysis, :run_reported],
         %{},
@@ -293,15 +222,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
     end
   end
 
-  # Threaded through so `deliver/4` can answer the asker on a clean run while
-  # leaving everyone else the silence criterion 3046 buys them. Without it a
-  # green run told nobody at all, and an agent that had asked for one waited on
-  # an answer that was never going to be sent.
+  # Threaded through so `AnalysisReport.deliver/4` answers the asker even on
+  # a clean run, which everyone else is not told about.
   defp requesting_agent_id(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: id
   defp requesting_agent_id(_run), do: nil
 
-  # Agents waiting on a run somebody else started (28d72f8a): a promotion that
-  # found one already running at its commit. Answered as the requester is.
+  # Agents waiting on a run somebody else started (e.g. a promotion that found
+  # one already running at its commit). Answered as the requester is.
   defp waiters(%{requested_by: %{"waiters" => waiters}}) when is_list(waiters),
     do: Enum.filter(waiters, &is_binary/1)
 
@@ -319,10 +246,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   Close a run that never ran because one for the same source was already
   queued.
 
-  At `:info`, not `:warning` — nothing is wrong. A duplicate enqueue is the
-  ordinary result of a stop hook asking again while work is pending, and
-  logging it as a failure taught readers to ignore a level that should mean
-  something.
+  Logged at `:info`: a duplicate enqueue is ordinary, not a failure.
   """
   @spec supersede(Run.t(), term()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
   def supersede(%Run{} = run, reason) do
@@ -341,24 +265,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
   defp stamp_project(problem, scope),
     do: %{problem | project_id: scope.active_project_id}
 
-  # Compiler fallback errors recovered from raw output carry no file — the
-  # Problem schema requires file_path, and one nil row would roll back the
-  # whole reconcile.
+  # Compiler fallback errors carry no file; one nil `file_path` would roll back
+  # the whole reconcile.
   defp patch_file_path(%{file_path: nil} = problem), do: %{problem | file_path: "unknown"}
 
-  # Every path in this table is relative to the working copy root, and until
-  # `cc643bf3` nothing said so or checked. An absolute one is not merely
-  # inconsistent: `clear_problems_for_missing_files/2` deletes any Problem whose
-  # path is not in the current file list, that list is relative, so the row is
-  # removed on the next sync as though its file had been deleted. Four spex
-  # failures spent an unknown period appearing on one sweep and vanishing on the
-  # next because of it.
-  #
-  # Warned rather than rejected, deliberately. A changeset that refused would
-  # roll back `insert_all_problems/2` and take every other problem for that
-  # source with it — losing a whole analyzer's findings to punish one bad path
-  # is the wrong trade. This makes the next violation announce itself, which is
-  # the property that was missing.
+  # Paths are relative to the working copy root; an absolute one is deleted by
+  # the next file sync. Warned, not rejected: rejecting would roll back the
+  # source's other findings. See knowledge/analysis, "Problem file paths are relative".
   defp patch_file_path(%{file_path: "/" <> _rest = path} = problem) do
     Logger.warning(
       "[Analysis] problem recorded with an absolute file_path: #{path}. Paths are relative " <>
@@ -371,13 +284,8 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   defp patch_file_path(problem), do: problem
 
-  # Every problem lands on a file path; join to Files to stamp the owning
-  # component. Without this, anything that rolls up problems per component by
-  # filtering on a non-nil `component_id` would count zero regardless of what
-  # the underlying analyzer actually found. Originally
-  # scoped to exunit/spex only, which meant credo and compiler problems never
-  # carried a component_id regardless of whether their file belonged to a
-  # tracked component (2fc35efb).
+  # Join to Files to stamp the owning component, so per-component rollups
+  # count these problems.
   defp stamp_component_ids(problems, scope, source)
        when source in ["exunit", "spex", "credo", "compiler"] do
     paths = problems |> Enum.map(& &1.file_path) |> Enum.uniq()
@@ -400,14 +308,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   # -- Clear scope --
 
-  # Every run sweeps the whole project, so every run replaces its source's
-  # Problems wholesale: clear all, then insert what this run found — one
-  # transaction, so the old set stays readable until the new one lands.
-  #
-  # This deliberately replaced a scoped variant that derived the clear set by
-  # parsing paths back out of `run.args`. It could only ever clear part of the
-  # table, so a problem fixed by an edit elsewhere never went away, and the
-  # arg parsing was fragile besides (an extension-less token was treated as a
-  # directory and expanded to every file beneath it).
+  # A full run replaces its source's Problems wholesale, in one transaction, so
+  # the old set stays readable until the new one lands.
   defp clear_scope(_scope, %Run{}), do: :all
 end

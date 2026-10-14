@@ -1,6 +1,5 @@
 defmodule CodeMySpec.AgentTasks.ASupersededStoryReviewIsReplacedTest do
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents

@@ -2,34 +2,17 @@ defmodule CodeMySpec.Provisioning.Teardown do
   @moduledoc """
   Removes what setup created — and only what setup recorded creating.
 
-  ## Why this is its own module
+  - **Its own module**, because `Provisioning` exposes nothing that destroys:
+    the ability has to be reached on purpose.
+  - **Resources, not names.** Every function works from the `resources` a
+    persisted `Step` recorded; nothing matches by pattern. A resource created
+    outside setup is invisible here, which is correct.
+  - **Adopted resources are spared**, except a DNS record aimed at a server
+    this project owns.
+  - **Removal is verified**: each delete is confirmed by re-reading the
+    provider, since providers accept a delete and finish it later.
 
-  `Provisioning` deliberately exposes nothing that destroys, and a test asserts
-  that. The original reasoning stands: a routine that can destroy is a routine
-  nobody runs unattended, and `run/3` is meant to be run unattended. So the
-  ability exists, and it is somewhere you have to go on purpose rather than
-  something reachable by a typo next to `run/3`.
-
-  ## It destroys resources, not names
-
-  Every function here works from the `resources` recorded on a persisted
-  `Step` — the bucket URL, the server name, the DNS record id that setup
-  actually wrote down. Nothing matches by pattern or by convention.
-
-  That constraint is the safety property. A teardown that searched for
-  `*-prod` buckets would find production; one that can only remove what a step
-  recorded can only remove what that step made. It also means a resource
-  created outside setup is invisible here, which is the correct answer rather
-  than a limitation.
-
-  ## Removal is verified, not assumed
-
-  Each function re-reads from the provider afterwards and reports what is
-  still there. Providers accept a delete and take their time about it —
-  Hetzner detaches a firewall only once the server is really gone, and Ceph
-  answers `DELETE /bucket` with a 409 for about half a minute after the last
-  object goes. A teardown that returned on the first acknowledgement would
-  leave resources behind that nobody is billing anybody's attention for.
+  See knowledge/provisioning, "Teardown".
   """
 
   alias CodeMySpec.Provisioning.Wait
@@ -46,15 +29,13 @@ defmodule CodeMySpec.Provisioning.Teardown do
   @doc """
   Remove everything a step recorded, and confirm it is gone.
 
-  For a step that runs independently per environment (`Sequence.scope/1` ==
-  `:environment`), `opts[:environment]` names which environment's row —
-  required, since tearing down "every environment of this key" by default is
-  exactly the silent-broad-action this module's other functions are written
-  to refuse. A project-wide step ignores it.
+  For a per-environment step (`Sequence.scope/1 == :environment`),
+  `opts[:environment]` names which environment's row; nothing defaults to
+  every environment. A project-wide step ignores it.
 
   Returns `{:ok, removed}` when nothing remains, or `{:error, {:left_behind,
-  remaining}}` naming what survived. The error case is the one worth having:
-  silence here means somebody pays for a resource nobody remembers.
+  remaining}}` naming what survived. On full success the row is reset to
+  `:not_started` with no resources.
   """
   @spec step(Scope.t(), atom(), keyword()) :: outcome()
   def step(%Scope{} = scope, key, opts \\ []) do
@@ -74,8 +55,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
         case Enum.filter(outcomes, &match?({:error, _}, &1)) do
           [] ->
             forget(scope, key, environment)
-            # Only what was removed. A skipped adoption is still standing, and
-            # counting it here is how a teardown reports work it did not do.
+            # Only what was removed; a skipped adoption is still standing.
             {:ok, for({:ok, r} <- outcomes, do: r)}
 
           failures ->
@@ -84,19 +64,9 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # A torn-down step is not a done step, and until this existed it stayed one.
-  # Teardown removed the provider resources and never wrote to the row, so the
-  # step kept `state: done` and every resource it had recorded — and `verify/3`
-  # reads those.
-  #
-  # What that cost: the drill's `inbound_proof` survived two teardowns, and on
-  # the rebuilt environment `inbound` reported done in 0.2s by adopting a proof
-  # earned nine hours earlier against servers that no longer existed. It
-  # overrode a real delivery failure from ten minutes before. The proof of an
-  # environment cannot outlive the environment (1040172a).
-  #
-  # Only on full success. A step that left something behind is not undone, and
-  # forgetting what it still owns is how a leak becomes invisible.
+  # A torn-down step is not done: reset it so `verify/3` cannot satisfy itself
+  # from a proof recorded against servers that no longer exist. Only on full
+  # success — forgetting what a step still owns hides a leak.
   defp forget(scope, key, environment) do
     StepRepository.upsert(scope, key, environment, %{state: :not_started, resources: []})
   end
@@ -104,31 +74,19 @@ defmodule CodeMySpec.Provisioning.Teardown do
   @doc """
   Remove an environment and everything provisioning made for it.
 
-  ## The order is the safety property
+  The DNS record goes before the server: Hetzner recycles public IPv4
+  addresses, so a record left pointing at a released address is a subdomain
+  takeover.
 
-  The DNS record goes first, before the server is released. Hetzner recycles
-  public IPv4 addresses between customers, so a record left pointing at a
-  released address resolves to whoever is given it next — a subdomain of the
-  customer's own domain, under their proxy and TLS config, answering from a
-  machine they do not own. Releasing the address first opens that window;
-  removing the record first closes it. This is the standard subdomain-takeover
-  shape and it arrives by doing nothing rather than by doing something wrong.
-
-  ## It reports what it could not remove
-
-  Returns `{:ok, removed}` when everything named is gone, or
-  `{:error, {:left_behind, remaining}, removed}`. The row is deleted either
-  way: an environment nobody can see is worse than one whose leftovers are
-  named, because the row is the only thing that still knows the host and the
-  server to go looking for. What survived is in the error so the caller can
-  say so.
+  Returns `{:ok, removed}`, or `{:error, {:left_behind, remaining}, removed}`.
+  The environment row is deleted either way, and every step's resources
+  tagged with this environment are forgotten.
   """
   @spec environment(Scope.t(), String.t(), keyword()) ::
           {:ok, [map()]} | {:error, {:left_behind, [map()]}, [map()]}
   def environment(%Scope{} = scope, name, opts \\ []) do
-    # Injectable for the same reason `run_step/3` takes `:verify` and
-    # `:execute`: the ordering is the claim worth testing, and proving it
-    # should not cost a real server and a real DNS record.
+    # Injectable so the ordering can be tested without a real server and DNS
+    # record.
     teardown = Keyword.get(opts, :teardown, &__MODULE__.resource/2)
 
     case EnvironmentRepository.get(scope, name) do
@@ -151,27 +109,10 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # A resource belonging to an environment that no longer exists is not a
-  # resource anybody owns.
-  #
-  # Deleting the row left every step still claiming that environment's server,
-  # database, registry and DNS record — and permanently, because only `step/3`
-  # calls `forget/2` and only on full success. Nothing else ever revisits what
-  # a step recorded.
-  #
-  # What that cost is criterion 7969, "Sam reads back what he now owns": the
-  # page listed `qa-fixture-project-uat`, `-qa2` and `-prod` as owned when one
-  # existed, and a `dns_record` for a name that returned nothing from the
-  # zone's own nameservers — with no "(not found)" annotation on any of it, so
-  # nothing distinguished the two servers that were gone from the one that was
-  # not (92445d6f). Two of the three were not in any provider console, which is
-  # exactly what that criterion promises they will be.
-  #
-  # Matched on the `environment=` the identifiers already carry, tokenised
-  # rather than by substring: `environment=uat` must not take `environment=uat2`
-  # with it. A resource with no marker is left alone — it belongs to the
-  # project rather than to one environment, like the shared firewall, network
-  # and ssh key, and those outlive any single environment.
+  # Forget every step's resources that belong to the removed environment.
+  # Matched on the `environment=<name>` token in the identifier (so `uat`
+  # never takes `uat2`). Resources without a marker belong to the project
+  # (firewall, network, ssh key) and are kept.
   defp forget_environment(scope, name) do
     for step <- StepRepository.list(scope) do
       forget_environment_step(scope, step, name)
@@ -180,19 +121,14 @@ defmodule CodeMySpec.Provisioning.Teardown do
     :ok
   end
 
-  # A step's own row for the environment being removed goes with it outright
-  # — no more resources to have belonged to it once the row itself is gone.
-  # This is the shape a per-environment step's rows always had once this
-  # schema landed (058d20ed's era predates it): the resource list on a row
-  # never spans two environments, so there is nothing left to filter.
+  # A per-environment step's row for this environment goes outright.
   defp forget_environment_step(scope, %{environment: environment, key: key}, name)
        when environment == name do
     StepRepository.delete(scope, key, environment)
   end
 
-  # A project-wide step (server, dns, ...) keeps one row across every
-  # environment, tagging which resources belong to which — this is the
-  # filtering `forget_environment/2` always did, unchanged.
+  # A project-wide step keeps one row across environments; drop only the
+  # resources tagged with this one.
   defp forget_environment_step(scope, %{environment: nil} = step, name) do
     kept = Enum.reject(step.resources, &belongs_to_environment?(&1, name))
 
@@ -213,8 +149,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   defp belongs_to_environment?(_resource, _name), do: false
 
-  # Ordered, not merely listed. `Teardown.resource/3` is called down this list
-  # in sequence, so the DNS record has to come before the server.
+  # Ordered: `resource/3` is applied in sequence, DNS record before server.
   defp environment_resources(environment) do
     dns =
       case environment.host do
@@ -240,38 +175,17 @@ defmodule CodeMySpec.Provisioning.Teardown do
   @doc """
   Remove one recorded resource.
 
-  Unknown kinds are reported rather than ignored. A resource this does not
-  know how to remove is one that will be left behind, and saying so is the
-  difference between an incomplete teardown and a silent leak.
+  Returns `{:ok, r}`, `{:skipped, r}` (adopted, left standing) or
+  `{:error, r}`. Unknown kinds are an error: a resource this cannot remove
+  will be left behind, and saying so is the difference from a silent leak.
   """
   @spec resource(Scope.t(), map(), keyword()) :: {:ok, map()} | {:error, map()}
   def resource(scope, resource, opts \\ [])
 
-  # Adopted, not created. Setup found this and reused it; removing it destroys
-  # something the user had before setup ever ran.
-  #
-  # This is not hypothetical. Teardown deleted a real, long-standing Resend
-  # sending domain that `ensure_domain` had merely adopted, and because
-  # Resend fixes a domain's capabilities at creation, the recreate that
-  # followed silently dropped inbound mail for it. "Only remove what the step
-  # recorded" was not a sufficient safety property — a step records what it
-  # adopted too.
-  #
-  # Skipped is its own outcome, not a quiet success. Reporting it as `{:ok, r}`
-  # is what let the drill's teardown say "14/14, everything recorded came down"
-  # in 9.5 seconds while a `dns_record cloudflare/uat.spex-drill.legwork.ca
-  # (adopted)` was never touched — the server really was released, the record
-  # really was still live, and the summary could not tell those apart because
-  # the two outcomes had the same shape (167394ad).
-  #
-  # With one exception, and it is the reason that drill mattered. A DNS record
-  # aimed at a server this project owns is not something Sam had before setup
-  # ran — it is a record setup pointed at a machine, and when that machine is
-  # released the name resolves to whoever Hetzner hands the address to next.
-  # Sparing it does not preserve something of Sam's; it manufactures the
-  # subdomain takeover `environment/3`'s ordering exists to prevent, and then
-  # the next build's apex guard reads the record it should have removed as a
-  # live site and refuses to repoint it (7f999888).
+  # Adopted, not created: skipped, as its own outcome so a summary cannot
+  # count it as removed. Exception: a DNS record aimed at a server this
+  # project owns is removed, or the name resolves to whoever gets the
+  # address next. See knowledge/provisioning, "Teardown".
   def resource(%Scope{} = scope, %{origin: "adopted"} = r, opts) do
     case aimed_at_our_server(scope, r, opts) do
       {:ok, address} ->
@@ -288,12 +202,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # Four operations behind one catch-all, which is three too few to debug.
-  # Registry buckets survived teardown twice and the only evidence was
-  # `{:error, r}` — indistinguishable between credentials that would not
-  # resolve, a bucket that would not empty, a delete that was refused, and a
-  # delete that succeeded but did not show up in the confirming list. Each
-  # stage now says which it was; the outcome is unchanged.
+  # Each stage (credentials, empty, delete, confirm) logs its own failure.
   def resource(%Scope{} = scope, %{kind: "bucket", location: location} = r, opts) do
     bucket = bucket_from(location)
 
@@ -311,7 +220,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
     with {:ok, %{"id" => id}} <- Hetzner.find_server(scope, name),
          {:ok, _} <- Hetzner.delete_server(scope, id) do
-      # Deletion is asynchronous, so "accepted" is not "gone".
+      # Deletion is asynchronous: accepted is not gone.
       confirm(r, absent?(fn -> Hetzner.find_server(scope, name) end))
     else
       {:error, :not_found} -> {:ok, r}
@@ -319,10 +228,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # Removed after the servers on it, for the same reason a firewall is: Hetzner
-  # refuses to delete a network with something still attached, and the servers
-  # may be mid-deletion when this runs. "Attached" is a state that clears
-  # itself moments later, so it is worth waiting for rather than reporting.
+  # Removed after its servers; Hetzner refuses while anything is attached,
+  # which clears moments later, so it retries.
   def resource(%Scope{} = scope, %{kind: "network", location: location} = r, _opts) do
     name = after_slash(location)
 
@@ -343,8 +250,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
       confirm(r, absent?(fn -> Hetzner.find_firewall(scope, name) end))
     else
       {:error, :not_found} -> {:ok, r}
-      # A firewall still attached to a live server will not delete, and the
-      # server may be mid-deletion. Retrying is the whole reason this waits.
+      # Attached to a server that may be mid-deletion: retry.
       _ -> retry_firewall(scope, name, r)
     end
   end
@@ -360,11 +266,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # The DNS step records one resource per domain but writes a record for the
-  # apex *and* one for each hostname under it, so teardown removes everything
-  # in the zone at or beneath that name. Without this clause `dns_record` was
-  # an unknown kind: every spex that wrote DNS reported "left behind" and left
-  # real records pointing at a server that had already been deleted.
+  # The DNS step records one resource per domain but writes the apex and each
+  # hostname beneath it, so this removes what `doomed?/4` selects.
   def resource(%Scope{} = scope, %{kind: "dns_record", location: location} = r, opts) do
     name = after_slash(location)
 
@@ -409,11 +312,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # `sending_record` belongs here because that is what it is — a Cloudflare
-  # record, written by the email step so Resend has something to verify
-  # against. Without this clause it fell to the catch-all below, which logs and
-  # leaves it: DKIM and SPF records stranded on the user's live domain after
-  # the sending domain they belonged to was removed.
+  # `sending_record`: the DKIM/SPF records the email step wrote to Cloudflare.
   def resource(%Scope{} = scope, %{kind: kind, location: location} = r, opts)
       when kind in ["dns_record", "mx_record", "sending_record"] do
     name = after_slash(location)
@@ -432,25 +331,13 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # A registered domain is never removed. Registration costs money and is not
-  # refundable, and "stop managing it" is what turning the option off means —
-  # the one place the original setup-only rule still holds outright.
+  # A registered domain is never removed: registration is non-refundable, and
+  # turning the option off means "stop managing it".
   def resource(_scope, %{kind: "domain"} = r, _opts), do: {:ok, r}
 
-  # Nothing provider-side to remove: these live in the project's own repo or
-  # in our encrypted store, and both are removed with the project.
-  #
-  # `age_key_delivery` is not a resource at all — it records that a key was
-  # handed to a process, which is a fact about a run rather than a thing that
-  # exists somewhere. Without it here every teardown that followed a deploy
-  # reported a leak it could never resolve, which is the noise that makes a
-  # real "left behind" easy to skip past.
-  # `inbound_proof`, `widget_proof`, `widget_render` and `verification` join
-  # them for the same reason: each records that a check was made and what it
-  # said. There is nothing at a provider to delete, and having no rule at all
-  # meant `inbound_proof` reported as left behind on every teardown that had
-  # earned one — noise in the report, and worse, it survived into the next
-  # environment and satisfied `verify/3` there (1040172a).
+  # Nothing provider-side to remove: repo/encrypted-store artefacts, or
+  # records that a check was made (`*_proof`, `verification`,
+  # `age_key_delivery`). Listed so they do not read as leaks.
   def resource(_scope, %{kind: kind} = r, _opts)
       when kind in ~w(age_key age_key_delivery callback_credential commit certificate retention
                       restore_proof content deployment monitor dump repository dns_verification
@@ -465,33 +352,10 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   ## Internals
 
-  # Which records this teardown may remove, as a predicate.
-  #
-  # Below the apex it is the subtree, unchanged: the dns step writes a record
-  # for the hostname and one for each name beneath it, and removing the lot is
-  # what the clause above exists for.
-  #
-  # **At the apex the subtree is the entire zone**, and that is not a corner
-  # case — `prod`'s host *is* the bare domain, because `assign_hosts/2` gives it
-  # one. So removing a prod environment deleted every record the customer had:
-  # apex, every subdomain, MX, DKIM, SPF. Measured, on a real domain during QA
-  # of story 849 — astralbi.com went to zero records, and recovering it took a
-  # hand-rebuilt apex and a separate bug fix before the mail records could be
-  # republished (ab6029c5).
-  #
-  # `at_or_under?/2` is not wrong; it is being asked the wrong question. Its
-  # label-boundary check stops teardown reaching *outside* the name it was
-  # given, and nothing stopped it reaching everything inside — which, for a
-  # zone apex, is everything.
-  #
-  # So at the apex: the exact name only, and only where the record points at an
-  # address this project owns. That is the record setup aimed at a machine it is
-  # releasing, which is the one that must go or the name resolves to whoever
-  # gets the address next. Everything else at the apex belonged to the customer
-  # before setup ran. It is also what the dns step's own apex guard already
-  # promises the user — it refuses to repoint a resolving apex and says
-  # "remove the `prod` environment to leave the apex alone", and that sentence
-  # was false in the most expensive possible way.
+  # Which records this teardown may remove. Below the apex: the subtree.
+  # At the zone apex (prod's host is the bare domain): only the exact name,
+  # and only records pointing at an address this project owns — the subtree
+  # of an apex is the customer's whole zone.
   defp doomed?(scope, name, zone_name, opts) do
     if apex?(name, zone_name) do
       ours = project_addresses(scope, opts)
@@ -510,37 +374,11 @@ defmodule CodeMySpec.Provisioning.Teardown do
     |> Enum.filter(&(is_binary(&1) and &1 != ""))
   end
 
-  # Whether an adopted DNS record is one setup pointed at a machine of ours.
-  #
-  # Narrow on purpose. "Ignore origin for DNS records" would be the easy
-  # version and it breaks domains setup did not build: an apex a customer
-  # already had, pointing at Cloudflare's proxy or at a site hosted somewhere
-  # else, is exactly the resource the adopted rule exists to spare.
-  #
-  # Matched on the environment's host, because that is the name setup assigns
-  # and therefore the name setup owns. `assign_hosts/2` hands `uat` the name
-  # `uat.example.com`; a record there is the dns step's record whatever its
-  # content happens to be today.
-  #
-  # It was matched on the recorded address first, and that was wrong — QA on
-  # story 851 caught it on the run that was meant to confirm it. The dns step
-  # records `identifier: "5.161.239.73 environment=uat"`, but on a rebuild the
-  # identifier keeps the address from the run before: the uat box really was at
-  # 49.12.189.154, in the environment row and in Hetzner and in `dig`, while
-  # its recorded resource still said 5.161.239.73. So the comparison that was
-  # supposed to catch the takeover missed the one live instance of it. The
-  # address is kept as a second trigger — when it is current it is direct
-  # evidence — but it can no longer be the only one (filed separately).
-  #
-  # The apex is the case worth stating. `prod`'s host is the domain itself, so
-  # a host match would reach a record Sam definitely had first — but the dns
-  # step cannot record a resource there without passing the apex guard, which
-  # pauses rather than writes whenever the name already resolves to something
-  # else. A recorded apex record means setup was given that name deliberately.
-  #
-  # An environment row that is already gone reads as `:none` and the record is
-  # spared, which is today's behaviour. `environment/3` builds its own list
-  # with `origin: "created"` and does not come through here at all.
+  # Whether an adopted DNS record is one setup pointed at a machine of ours:
+  # its name is an environment's assigned host, or its recorded address is an
+  # environment's current IP (recorded addresses can be stale after a
+  # rebuild, so the host is the primary test). A record at an apex only exists
+  # if setup passed the apex guard. No environment row means `:none`.
   defp aimed_at_our_server(scope, %{kind: "dns_record", location: location} = r, opts) do
     environments = project_environments(scope, opts)
     host = after_slash(location)
@@ -572,9 +410,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   defp recorded_address(_resource), do: nil
 
-  # Injectable for the same reason `environment/3` takes `:teardown`: the
-  # decision is the claim worth testing, and proving it should not cost a real
-  # server and a real DNS record.
+  # Injectable so the decision can be tested without real servers.
   defp project_environments(scope, opts) do
     case Keyword.fetch(opts, :project_environments) do
       {:ok, environments} -> environments
@@ -585,8 +421,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
   defp confirm(resource, true), do: {:ok, resource}
   defp confirm(resource, false), do: {:error, resource}
 
-  # Providers accept a delete and finish it later, so "gone" is a poll rather
-  # than a return value.
+  # Providers finish deletes later, so "gone" is a poll.
   defp absent?(lookup, attempts \\ 10) do
     case lookup.() do
       {:error, :not_found} ->
@@ -601,14 +436,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # Has to outlast the servers it is attached to. Hetzner will not delete a
-  # firewall while a server still references it, and server deletion is
-  # asynchronous — `absent?/2` waits up to 20s for one to disappear. Retrying
-  # for 10s meant the firewall gave up first on every real run, and the criterion
-  # 8156 recording left one behind each time: six lookups, five refused deletes,
-  # then honestly reported as left behind.
-  #
-  # 15 attempts at 2s is 30s, comfortably past the servers' own window.
+  # Outlasts the servers it is attached to: `absent?/2` waits up to 20s for a
+  # server, so this retries for 30s.
   defp retry_firewall(scope, name, r, attempts \\ 15) do
     case Hetzner.find_firewall(scope, name) do
       {:error, :not_found} ->
@@ -635,12 +464,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # Accepted is not gone, the same distinction the server clause draws.
-  # Returning ok on the API's say-so reported a teardown that had not happened,
-  # which is the one thing this module exists to prevent.
-  # Shaped like the `find_*` calls `absent?/1` polls elsewhere: `:not_found`
-  # means gone, anything else means keep waiting. A `case` nested inside the
-  # `confirm` call said the same thing three levels deep.
+  # Shaped like the `find_*` lookups `absent?/2` polls: `:not_found` means
+  # gone.
   defp any_record_left(scope, zone_id, doomed) do
     case Cloudflare.list_dns_records(scope, zone_id) do
       {:ok, remaining} -> still_present(remaining, doomed)
@@ -648,10 +473,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # Confirmed against the same predicate that chose what to delete. Asking
-  # `at_or_under?` here instead would never confirm an apex teardown: the
-  # records deliberately left standing are all "under" the apex, so a teardown
-  # that did exactly the right thing would report itself failed.
+  # Confirmed against the same predicate that chose what to delete; at the
+  # apex, the records deliberately kept are all "under" it.
   defp still_present(remaining, doomed) do
     if Enum.any?(remaining, doomed),
       do: {:ok, :present},
@@ -705,9 +528,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # Ceph keeps listing a deleted bucket for a moment, so reading the listing
-  # once reported FAILED for deletes that had in fact worked — the leak audit
-  # said the same buckets were gone seconds later.
+  # Ceph keeps listing a deleted bucket for a moment.
   defp await_gone(bucket, credentials, opts, attempts \\ 10) do
     case Storage.list_buckets(credentials, opts) do
       {:ok, remaining} ->
@@ -736,9 +557,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   defp bucket_from(location), do: location |> String.split("/") |> List.last()
 
-  # `spex.astralbi.com` and `app.spex.astralbi.com` are the step's own records;
-  # `notspex.astralbi.com` is somebody else's. Matching on a label boundary is
-  # what keeps teardown from reaching outside what the step wrote.
+  # On a label boundary: `app.spex.example.com` is under `spex.example.com`,
+  # `notspex.example.com` is not.
   defp at_or_under?(record_name, name) when is_binary(record_name) and is_binary(name) do
     record_name == name or String.ends_with?(record_name, "." <> name)
   end
@@ -752,9 +572,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  # `mail.example.com` lives in zone `example.com`. Naive on purpose: a
-  # multi-label public suffix would need a real list, and every domain setup
-  # manages is one it registered or adopted, so the caller can pass `:zone`.
+  # Naive (last two labels); callers can pass `:zone` for multi-label
+  # suffixes.
   defp registrable(name) do
     name |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
   end

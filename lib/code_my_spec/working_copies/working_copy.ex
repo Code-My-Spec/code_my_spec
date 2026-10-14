@@ -2,23 +2,13 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
   @moduledoc """
   One working copy the server knows about.
 
-  The grain that files and problems belong to. A project id is shared by every
-  checkout of a project; this is not, which is the whole point — a manifest is
-  a statement about one checkout, and reconciling two of them against one set
-  of rows makes each sync delete what the other just wrote.
+  The grain files and problems belong to: a manifest is a statement about one
+  checkout, and two checkouts reconciled against one set of rows would delete
+  each other's writes.
 
-  `label` is the harness's own description of itself and is display only. Two
-  checkouts may carry the same label — two containers at `/workspace/app` on
-  hosts with generated names produce identical strings — and still be two
-  harnesses. That collision is exactly why identity is issued here instead of
-  derived from anything the client can see.
-
-  `root` is the same kind of thing: reported, not identifying. It is where the
-  harness says its working copy is, recorded so a hook that names an id can be
-  answered with a directory. Nothing resolves a harness *by* it — that was the
-  old routing, and a path that had to be guessed at by walking up to the
-  nearest `mix.exs` resolved one session to different roots depending on which
-  subdirectory it fired from.
+  `label` is display only; two checkouts may share one. `root` is reported, not
+  identifying: recorded so a hook naming an id can be answered with a
+  directory. Identity is the server-issued id.
   """
 
   use Ecto.Schema
@@ -54,120 +44,54 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     field :root, :string
     field :last_seen_at, :utc_datetime_usec
 
-    # When the harness serving this copy last reported that nothing is at its
-    # root any more — nil while the checkout is there, and nil before anybody
-    # has looked.
-    #
-    # Those two are deliberately one state. Neither is a reason to warn: a copy
-    # nobody has reported on has not gone anywhere, it has merely not been
-    # spoken about, and the whole point of keying on a path rather than on a
-    # clock is that silence stops meaning anything.
+    # When the harness first reported nothing at its root. Nil both while the
+    # checkout is there and before anybody has looked — deliberately one state:
+    # silence is not a reason to warn.
     field :path_missing_since, :utc_datetime_usec
 
-    # Whether this is the checkout the project's own agent runs in.
-    #
-    # Designated, never inferred — six checkouts of one repository, several of
-    # them worktrees of each other, and nothing about a path or a timestamp
-    # picks the one the work belongs to. At most one per project, held by a
-    # partial unique index rather than by whoever remembers to clear the others.
+    # Whether this is the checkout the project's own agent runs in, and the
+    # promotion target. Designated, never inferred (except a project's only
+    # checkout). At most one per project, by a partial unique index.
     field :main, :boolean, default: false
 
-    # `commits_ahead_of_main`, `commits_behind_main`, `tree_dirty` and
-    # `git_state_at` were here, reported by the harness on every sync. They are
-    # gone, and what is worth keeping is why they were a mistake rather than
-    # merely unused.
-    #
-    # They are a property of a git repository, not of this domain. Nothing here
-    # ever decided on them: `Promotion.promoted/2` answers `story_promoted`
-    # from the story's own `promoted_version` stamp, and the promote gate
-    # measures git live by running it — `git merge --ff-only` is the
-    # precondition and the merge in one command. A cached second copy of git's
-    # answer could only ever be a staler version of something we can ask for.
-    #
-    # Being a mirror, it went stale the way mirrors do, and `Sync` recorded one:
-    # "at 06:01 git said `ahead=0 behind=0` and the row still said `ahead=3`".
-    #
-    # And it was expensive. `Freshness.story/2` hashed these into every story's
-    # fingerprint, so one keystroke in any checkout reconsidered every story in
-    # the project; `record_git_state/2` announced a graph change on every sync,
-    # charging a pass and a preload per copy to discover nothing had moved.
-    # Measured on dev: `working_copies` took 22 distinct digests in an hour
-    # while every other shared input took between 2 and 6.
+    # No git state (ahead/behind/dirty) is mirrored here: the promote gate runs
+    # git live. See knowledge/promotion, "Lessons".
 
-    # Whether the application this checkout runs is answering, measured against
-    # `preview_url` — the address QA browses, not a local port only this machine
-    # knows.
-    #
-    # `serving` | `erroring` | `down`, and three rather than two because a 500 is
-    # an application that came up and is failing, which is a QA finding, while a
-    # refused connection is one that is not there, which is not. `nil` is never
-    # checked, which is a third thing again.
+    # Whether the app is answering at `preview_url`, the address QA browses.
+    # `serving` | `erroring` (a 500: up and failing, a QA finding) | `down`;
+    # `nil` is never checked.
     field :preview_status, :string
     field :preview_checked_at, :utc_datetime_usec
 
-    # What this copy's machine can do beyond the server's own tools — a browser,
-    # today. Reported on join, and read when an agent is started here so its
-    # tool list is computed from what its machine actually has rather than from
-    # what a role says it should.
-    #
-    # `nil` is a harness too old to report; `[]` is a machine that reported and
-    # has no browser. Both give an agent no browser tools and only the second is
-    # actionable.
+    # What this copy's machine can do beyond the server's own tools (a
+    # browser), reported on join and read when an agent starts here. `nil` is
+    # a harness too old to report; `[]` reported none.
     field :machine_tools, {:array, :string}
 
     field :machine_tool_docs, :map
 
-    # Why the list beside this is empty, because `[]` covered two machines: one
-    # with no browser, and one whose browser is installed and could not be
-    # reached. `"absent"` and `"unreachable"` respectively, `"ready"` when there
-    # are tools, and `nil` for a harness that has not said.
-    #
-    # The second is the one worth telling somebody about. An agent there is
-    # recorded with its tools, none of which can look at a page, and until this
-    # existed the only record was a warning in the harness log — it does not
-    # fail, it never looks. `browser_error` carries the reason so the state is
-    # actionable rather than merely distinguishable.
+    # Why the tool list is what it is: `"ready"`, `"absent"` (no browser),
+    # `"unreachable"` (installed, not answering — `browser_error` says why), or
+    # `nil` (not said).
     field :browser_status, :string
     field :browser_error, :string
 
-    # Where this checkout's running preview answers, when it is the one serving
-    # the project. Null on every other copy, and expected to be: every worktree
-    # can run the app and only one of them is the project's, so an address on a
-    # sibling would be a second answer to a question with one.
-    #
-    # Written down rather than held by the harness, so a restart does not lose
-    # it and nobody has to onboard the checkout again to get it back.
+    # Where this checkout's preview answers: the main copy's, or a copy with
+    # its own app that was given a tunnel (`PreviewTunnel.ensure/1`). Stored so
+    # a harness restart does not lose it.
     field :preview_url, :string
 
-    # The tunnel that carries that address to wherever the app is listening.
-    #
-    # The id is public — it is the CNAME target in DNS, so anyone who resolves
-    # the name already has it. The secret is what lets a process claim to *be*
-    # the tunnel, and Cloudflare hands it back exactly once, at creation: there
-    # is nowhere to re-fetch it from, which is why it is stored rather than
-    # looked up, and encrypted rather than stored plainly.
+    # The tunnel carrying that address. The id is public (the DNS CNAME
+    # target); the secret is returned by Cloudflare once, at creation, so it is
+    # stored, encrypted.
     field :preview_tunnel_id, :string
     field :preview_tunnel_secret, CodeMySpec.Encrypted.Binary
 
-    # Story 1108: every copy runs its own instance of the app, not only the
-    # main checkout's preview above. `app_url` is this copy's own local
-    # address — never the tunnel `preview_url` answers for, and never
-    # refused on a non-main copy the way `record_preview_url/2` is, because
-    # every copy is expected to have one.
-    #
-    # `app_commit` is this copy's own answer to "which commit is running,"
-    # separate from `Project.head_commit` because that field is one value
-    # per project and cannot hold two copies' different answers at once.
-    #
-    # `app_status` follows `preview_status`'s three states for the same
-    # reason: a 500 is a QA finding, a refused connection is nothing to
-    # report yet. `down` always clears `app_url` — a stale address pointing
-    # at nothing running is the exact failure story 1108 exists to prevent
-    # (issue 2d612ae8: QA silently served main's code through a stale link).
-    #
-    # `starting` is a fourth, narrower state: a first start's cold
-    # `npm install`/compile still running in the background past
-    # `AppInstance`'s own short inline wait. See `WorkingCopies.record_app_status/2`.
+    # Every copy runs its own instance of the app. `app_url` is this copy's own
+    # local address (never the tunnel); `app_commit` the commit it launched
+    # from (per copy, unlike `Project.head_commit`). `app_status` is
+    # `preview_status`'s three states plus `starting` (a cold first start still
+    # running); `down` clears `app_url`. See `WorkingCopies.record_app_status/2`.
     field :app_status, :string
     field :app_checked_at, :utc_datetime_usec
     field :app_url, :string
@@ -177,10 +101,9 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # hot reload moves this one and leaves `app_commit` on the launch.
     field :app_serving_commit, :string
 
-    # The machine this checkout is on. Nullable and staying that way: a copy
-    # onboarded before devices existed has none until its daemon reconnects and
-    # says which machine it is announcing from. That is a real state — "we have
-    # not been told" — and different from a copy whose device is known.
+    # The machine this checkout is on. Nullable for rows never seen (the
+    # `seen_copies_are_on_a_machine` constraint requires it once `last_seen_at`
+    # is set); new mints always carry one.
     belongs_to :device, Device
 
     belongs_to :project, Project
@@ -192,15 +115,9 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
   def changeset(harness, attrs) do
     harness
     |> cast(attrs, [
-      # Castable so a caller that already knows this copy's id can insert under
-      # it. `WorkingCopies.mint/2` writes the id into the checkout's own
-      # `.cms_harness.json` before the server is told anything — the file and
-      # the row are supposed to hold one value, not two derivations of one — and
-      # without this the id was silently dropped and a fresh one generated.
-      #
-      # Only ever supplied on insert. Nothing passes it on update, and an id in
-      # an update's attrs would be a caller trying to move a row rather than
-      # change it.
+      # Castable so onboarding (`Staffing.mint/2`), which writes the id into
+      # `.cms_harness.json` first, can insert under the same id. Insert only;
+      # never pass it on update.
       :id,
       :label,
       :last_seen_at,

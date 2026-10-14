@@ -19,8 +19,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
   The environment files are scaffolding: named `.enc.env` so the encrypted
   shape is established from the first commit, and containing no values. A
-  generator that scaffolds a plaintext `.env` and trusts `.gitignore` leaks on
-  the first mistake somebody makes with it (criterion 7979).
+  plaintext `.env` trusted to `.gitignore` leaks on the first mistake.
   """
 
   alias CodeMySpec.Environments
@@ -31,14 +30,9 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   @doc """
   The OTP application name for a project — not the repository name.
 
-  `module_name` is where the app name already lives (e.g. `DevopsDrill`), and
-  underscoring it is the conversion `mix` makes in the other direction. The
-  fallback replaces hyphens rather than passing them through: `Repository.
-  default_name/1` is the project name slugified for GitHub, where hyphens are
-  correct and required, but an OTP app name cannot carry one — `DeployArtifacts`
-  interpolates this into a release name, a `_build/prod/rel/<app>` path and a
-  module name, and a hyphen breaks all three the same way it broke
-  `defmodule Devops-drillWeb.Router`.
+  `module_name` underscored (e.g. `DevopsDrill` -> `devops_drill`). The slug
+  fallback replaces hyphens: this is interpolated into a release name, a
+  `_build/prod/rel/<app>` path and module names, none of which can carry one.
   """
   @spec otp_app_name(map()) :: String.t()
   def otp_app_name(%{module_name: name}) when is_binary(name) and name != "",
@@ -84,10 +78,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         {:ok, _} ->
           {:cont, {:ok, [path | written]}}
 
-        # Reported, not crashed. A write that fails partway leaves a project
-        # holding some of what a deploy needs, and saying which file could not
-        # be written is the difference between fixing a permission and
-        # guessing at a half-generated tree.
+        # Reported, not crashed: name the file that could not be written.
         other ->
           {:halt, {:error, {path, other}}}
       end
@@ -96,9 +87,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       {:ok, written} ->
         written = Enum.reverse(written)
 
-        # A script that is not executable fails with :enoent, which reads as
-        # "the generator never wrote it" rather than "it wrote it without the
-        # bit that lets it run".
+        # A non-executable script fails with :enoent, which reads as "never
+        # written".
         for path <- written,
             String.starts_with?(path, "bin/") or String.contains?(path, "overlays/bin/") do
           Environments.cmd(env, "chmod", ["+x", path])
@@ -114,30 +104,18 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   @doc """
   Every artifact this generator can write, as `{path, content}`.
 
-  `:image`, when given, names the exact repository path the image lives at —
-  `owner`/`app` compose one that matches ghcr.io's naming (an org and a repo
-  under it), which is not what every registry uses. `CodeMySpec.Provisioning.
-  Registry` — the box-wide, self-hosted registry `:server` actually
-  provisions — has no owner segment at all; two projects never collide there
-  because each gets its own repository path, not because of an org name. A
-  caller generating for that registry passes its own `Registry.image/2`
-  rather than trusting this to guess it from `owner`/`app`.
+  Options:
 
-  `:kamal_image` is a second, separate field from `:image` because the two
-  templates below want different shapes of the same idea: the CI workflow
-  builds and pushes with `docker build -t <full reference>`, which needs the
-  host; kamal's own `image:` wants a bare repository path with no host at
-  all, reading the host from `registry.server` instead — confirmed against a
-  real, already-deployed config on a shared box
-  (`market_my_spec/config/deploy.yml`: `image: market-my-spec`, no host).
-  Defaults to `:image` for a project generated before it had a real
-  registry, where there is nothing better to offer.
-
-  `:prod_registry`/`:uat_registry` override `:registry` per environment —
-  two environments on two different boxes have two different registry
-  addresses, and a single project-wide value cannot be right for both.
-  Each defaults to `:registry` for a project with no server linked yet,
-  where neither address is knowable.
+    * `:image` — the exact image reference. Defaults to
+      `<registry>/<owner>/<app>` (ghcr.io naming); a caller deploying to the
+      self-hosted `CodeMySpec.Provisioning.Registry`, which has no owner
+      segment, passes `Registry.image/2`.
+    * `:kamal_image` — kamal's `image:`, a bare repository path (kamal reads
+      the host from `registry.server`), where CI's `docker build -t` needs the
+      full reference. Defaults to `:image`.
+    * `:prod_registry` / `:uat_registry` — per-environment registry hosts,
+      since two environments may sit on two boxes. Each defaults to
+      `:registry`.
   """
   @spec files(keyword()) :: [{String.t(), String.t()}]
   def files(opts) do
@@ -271,9 +249,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # Multi-arch, because the box may be ARM (Hetzner's cax range) or amd64 and
-  # an image built for the wrong one fails at `docker run` with an error that
-  # names nothing useful (criterion 7975).
+  # Multi-arch: the box may be ARM (Hetzner's cax range) or amd64, and the
+  # wrong one fails at `docker run` with an error that names nothing useful.
   defp ci_workflow(image) do
     """
     name: build
@@ -316,68 +293,15 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # One file per environment, because "each environment has its own deploy
-  # configuration" is what keeps a UAT deploy from touching production's host
-  # (criterion 7976).
+  # One file per environment, so a UAT deploy cannot touch production's host.
+  # `servers.web` is the environment's hostname: the DNS step points it at the
+  # box before the deploy step runs.
   #
-  # `servers.web` is the environment's own hostname, the same value the proxy
-  # block below uses. Generation happens before any server exists, so there is
-  # no IP to write — but the DNS step points that name at the environment's box
-  # before the deploy step runs, so kamal reaches the right machine by the time
-  # it looks.
-  #
-  # It previously emitted `<%= #{}_host %>` — an EEx tag in a YAML file nothing
-  # renders, handed to kamal verbatim by bin/deploy. Everything around it
-  # interpolated correctly, so the file read as complete while naming a server
-  # that could not exist.
-  # `registry` names the same host `image` was built from (`files/2` composes
-  # `image` as `"#{registry}/#{owner}/#{app}"`) — this used to hardcode
-  # `ghcr.io` regardless, which was never wrong for a fresh project (the only
-  # registry `generate/2` ever produced) until `:server` started provisioning
-  # a real, working self-hosted registry (`CodeMySpec.Provisioning.Registry`,
-  # box-wide singleton on `localhost:5000`) for a project onboarded onto
-  # infrastructure it did not start with. `Deploy.run/3`'s own
-  # `with_registry_credential_for_deploy/2` has supplied that registry's real
-  # credential as `KAMAL_REGISTRY_USERNAME`/`PASSWORD` at deploy time all
-  # along — env var *names* Kamal reads regardless of which registry they
-  # point at — so only the host Kamal logs into was ever wrong here.
-  # `CMS_SSH_KEY_PATH` is already read by `Deploy.run/3`'s own `script_env/1`
-  # and handed to `bin/deploy`'s environment — set by `with_builder_ssh` from
-  # the same account key `Servers.access_key/1` uploaded to every box this
-  # account owns. It went nowhere from there: nothing in the generated
-  # config or script ever consumed it, so kamal fell back to offering every
-  # identity the ambient agent held. A box with the default `MaxAuthTries 6`
-  # disconnects before ever reaching the right one, and kamal's own SSH
-  # library falls back to an interactive password prompt that crashes with
-  # `Errno::ENOTTY` the moment there is no tty to read one from — which is
-  # every non-interactive deploy this step ever runs.
-  #
-  # Found live adopting broken_oaths, but the gap is not specific to an
-  # adopted project — a fresh `cms_new` project carries this same template,
-  # so the same failure was one coincidentally-crowded agent away on any
-  # project this generator has ever produced.
-  #
-  # ERB, not Elixir string interpolation: kamal itself processes every config
-  # file through ERB before parsing YAML, so this renders at deploy time
-  # against whatever `CMS_SSH_KEY_PATH` names for *that* run, not once at
-  # generation time — the env var's value is only known at run time. Guarded
-  # rather than emitted unconditionally: a human running `bin/deploy` by hand,
-  # with no CodeMySpec provisioning step setting this, still gets kamal's own
-  # default (ambient agent) behavior instead of an empty `keys: []` doing
-  # something kamal was never asked to test against.
-  # `log_level: debug`, guarded by the same condition as `keys_only` — a
-  # human running `bin/deploy` by hand gets kamal's own default (`:fatal`,
-  # near-silent) instead of Net::SSH's verbose auth trace. Added live
-  # against broken_oaths: `keys_only: true` demonstrably works in an
-  # isolated `Net::SSH.start` using the same delivered key and the same
-  # host (clean `AuthenticationFailed`, never a password prompt), yet
-  # kamal's own connection for the exact same host still fell through to
-  # an interactive password prompt and died `Errno::ENOTTY` — a real
-  # divergence between kamal's actual connection and a bare probe, the
-  # same shape of gap the host-key-mismatch bug turned out to hide in.
-  # `:fatal` swallows whatever Net::SSH itself logs about why publickey
-  # auth was abandoned before it ever prints; this is the only way to see
-  # it without instrumenting Net::SSH or SSHKit directly.
+  # The ssh block is ERB, rendered by kamal at deploy time against
+  # `CMS_SSH_KEY_PATH` (set by provisioning). `keys_only` stops kamal offering
+  # every agent identity and hitting `MaxAuthTries`, then an interactive prompt
+  # that dies with `Errno::ENOTTY`. Guarded so a human run keeps kamal's
+  # defaults. See knowledge/infrastructure, "Generated deploy artifacts".
   defp kamal_ssh_block do
     """
     <% if ENV["CMS_SSH_KEY_PATH"] %>
@@ -443,8 +367,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # One recipient per environment: UAT's key cannot open production's secrets,
-  # which is the whole point of having two.
+  # One recipient per environment: UAT's key cannot open production's secrets.
   defp sops_rules do
     """
     # Written by CodeMySpec. One age recipient per environment — a key for one
@@ -463,20 +386,11 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # Both overlays need the same environment for the same reason: each starts
-  # the release, and the release evaluates `runtime.exs`, which reads
-  # DATABASE_URL and SECRET_KEY_BASE from its environment.
-  #
-  # This is one function because the two drifted apart once already. The
-  # decryption was written for the serving path and `migrate` was left running
-  # the release raw, so every migration died on "environment variable
-  # DATABASE_URL is missing" — a deploy that could never complete, on every
-  # project the generator produced.
-  #
-  # Both failures are named before sops is asked to do anything. An absent key
-  # makes sops fail with "no identity matched any of the recipients", which
-  # reads as the file being encrypted to somebody else rather than as nobody
-  # having supplied a key.
+  # Shared by both overlays: each starts the release, whose `runtime.exs` reads
+  # DATABASE_URL and SECRET_KEY_BASE. One function so the two cannot drift.
+  # A missing file or key is named before sops runs, because sops reports an
+  # absent key as "no identity matched any of the recipients".
+  # See knowledge/infrastructure, "Generated deploy artifacts".
   defp sops_preamble(command) do
     """
     set -eu
@@ -502,9 +416,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # `exec` so the release is PID 1 and receives the signals a container stop
-  # sends. Running it as a child would leave kamal's stop waiting for a process
-  # that never hears it.
+  # `exec` so the release is PID 1 and receives the container's stop signals.
   defp boot_overlay(app) do
     """
     #!/bin/sh
@@ -531,11 +443,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # `migrate_overlay/1` calls `<App>.Release.migrate` inside the released
-  # binary, where Mix does not exist to run `mix ecto.migrate`. Without this
-  # module the call is to a function that was never generated, and the
-  # failure surfaces as a migration crash on a real box (`d903556b`) rather
-  # than as a missing file the readiness audit could have caught first.
+  # `migrate_overlay/1` calls `<App>.Release.migrate` inside the release, where
+  # there is no Mix to run `mix ecto.migrate`.
   defp release_module(app) do
     module = Macro.camelize(app)
 
@@ -571,25 +480,11 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # Two callers, two shapes of the same two phases.
-  #
-  # `CodeMySpec.Provisioning.Deploy.run/3` calls `migrate <env>` and, only if
-  # its own health probe of whatever is *already* serving passes, `swap
-  # <env>` — never running this script's "all" branch, and never invoking
-  # `kamal` directly itself. It already built the image on its own builder
-  # and pushed it to the project's own registry (`CMS_IMAGE`, the exact
-  # `registry/repo:tag` reference), so re-deriving a version from `git
-  # rev-parse HEAD` and waiting on CI here would silently deploy a *different*
-  # commit than the one setup verified — criterion 8240 is a deploy that
-  # needs no GitHub credential at all, which this satisfies by not touching
-  # GitHub in that path.
-  #
-  # A human running `bin/deploy [uat|prod]` by hand has no `CMS_IMAGE` to
-  # give it, so the "all" branch falls back to what this script always did:
-  # push, wait for GitHub Actions, then run both phases itself in order —
-  # migrate before swap, because the migration has to succeed before traffic
-  # moves. A deploy that swapped first and migrated after would leave a new
-  # version talking to an old schema.
+  # Two callers. `CodeMySpec.Provisioning.Deploy.run/3` calls `migrate <env>`,
+  # health-checks, then `swap <env>`, with `CMS_IMAGE` naming the image it
+  # already built and pushed, so that path never touches GitHub. A human runs
+  # the "all" branch: push, wait for CI, migrate, swap.
+  # See knowledge/infrastructure, "Generated deploy artifacts".
   defp deploy_script do
     """
     #!/usr/bin/env bash
@@ -694,27 +589,10 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # Byte-for-byte the same script `cms_new` generates at project creation
-  # (`templates/deploy/backup_script.eex`) — deliberately, not accidentally.
-  #
-  # This function exists only for a project that was never scaffolded by
-  # `mix cms.new` (the manual `generate_deploy_files` backfill path) and for
-  # the spex harness, which builds a project's file tree without ever
-  # shelling out to a real `mix cms.new`. Every ordinary project already has
-  # `bin/backup` the moment it exists — `generate/2` never overwrites a file
-  # that is already there — so this is not a second implementation a real
-  # project's file could ever actually run. It is a second *copy* of the one
-  # implementation, and it drifted: an earlier version of this function used
-  # `SUM(n_live_tup)` for its restore proof (an estimate — a table restored a
-  # second ago reports zero live rows while holding every one), required
-  # aws-cli, and had no zero-byte-dump guard, none of which the canonical
-  # version has had a problem with. Two sources that can independently drift
-  # is the defect (issue d4997fe9) — keeping this one byte-identical to the
-  # template, rather than removing it outright, keeps the "deploy boilerplate
-  # is always emitted, no flag" design this module already commits to for
-  # every other file in `files/2`, without leaving the spex harness (which
-  # depends on `generate/2` actually writing this file) with nothing to
-  # generate.
+  # Must stay byte-identical to the script `cms_new` generates
+  # (`templates/deploy/backup_script.eex`). Used only for projects not
+  # scaffolded by `mix cms.new` and by the spex harness.
+  # See knowledge/infrastructure, "Generated deploy artifacts".
   defp backup_script do
     """
     #!/usr/bin/env bash
@@ -1052,11 +930,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # The proxy probes `/health` before it moves traffic, so that route has to
-  # answer without a session, without auth and without the database — anything
-  # it depends on becomes a thing that can fail a deploy that would otherwise
-  # have been fine (criterion 7977). Hence its own pipeline: not `:browser`,
-  # which fetches a session and CSRF token it does not need.
+  # The proxy probes `/health` before moving traffic, so it answers without a
+  # session, auth or database — hence no `:browser` pipeline.
   defp router(app) do
     web = Macro.camelize(app) <> "Web"
 
@@ -1090,20 +965,9 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # `force_ssl` must not redirect the proxy's probe. kamal-proxy asks over
-  # plain HTTP from inside the network, and a 301 reads to it as unhealthy —
-  # so the deploy never completes and the reason is a redirect nobody sees
-  # (criterion 7978).
-  # `:app`, `AppWeb.Endpoint`, `App.Repo` — every other function in this module
-  # takes `app` and interpolates it; this one did not, so `config :app,
-  # AppWeb.Endpoint, ...` shipped in every generated project regardless of its
-  # real OTP app name. Config registered under an application that is not
-  # running configures nothing: `Application.get_env(:devops_drill,
-  # DevopsDrillWeb.Endpoint)` never sees a value written under `:app`, so
-  # `url`, `http`, `secret_key_base` and `force_ssl` were silently inert on
-  # every project this generator produced — including the `force_ssl` fix
-  # right below, which could not have mattered under the wrong key even once
-  # its `exclude:` shape was corrected.
+  # `force_ssl` must not redirect the proxy's probe: kamal-proxy asks over plain
+  # HTTP, and a 301 reads as unhealthy. Config is keyed on the real OTP app
+  # name; under any other key it configures nothing.
   defp runtime_config(app) do
     web = Macro.camelize(app) <> "Web.Endpoint"
     repo = Macro.camelize(app) <> ".Repo"
@@ -1147,9 +1011,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # Scaffolding, not secrets. The encrypted *shape* exists from the first
-  # commit so nobody reaches for a plaintext `.env` to get started — that file
-  # is what leaks when somebody force-adds it or edits `.gitignore`.
+  # Scaffolding, not secrets: the encrypted shape exists from the first commit
+  # so nobody reaches for a plaintext `.env`.
   defp env_scaffold(environment) do
     """
     # #{environment} secrets for this project, encrypted with sops.

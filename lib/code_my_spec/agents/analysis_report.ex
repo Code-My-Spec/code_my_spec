@@ -2,70 +2,21 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   @moduledoc """
   Tell the agents in a working copy that their analysis has landed.
 
-  The internal half of story 1042. There are two consumers of an analyzer
-  result and they are not variations of one thing:
+  The push half for internal (Alloy) agents: an agent starts a run, ends its
+  turn, and is messaged when the run lands. External (Claude Code) agents pull
+  the digest on `PostToolUse` via `Hooks.AnalysisAlert` instead.
 
-    * An **external** agent — Claude Code — keeps running and fires hooks. It is
-      offered a wait endpoint, and the digest reaches it on `PostToolUse` via
-      `Hooks.AnalysisAlert`. That path is a *pull*: the agent's next tool call
-      collects it.
+  A clean run says nothing to agents that did not ask; the agent that
+  requested the run (or is waiting on it) is answered either way, because
+  silence is the answer it is blocked on. Delivery enters the durable mailbox
+  without waiting for the agent's turn; an agent with no process is not owed
+  one.
 
-    * An **internal** agent — Alloy, in our own BEAM — has a process we can
-      reach. It should start a run, end its turn, and be told when the run is
-      done. That is a *push*, and it is this module.
+  Attached as a telemetry handler on `[:code_my_spec, :analysis, :run_reported]`
+  so `Analysis` does not depend on `Agents`; it runs synchronously in the
+  emitting reconciler.
 
-  John, when the internal agent was found waiting on a `curl` instead: "the
-  analysis tool is different for the Alloy agent — when we run analysis, the
-  agent should stop, we should run analysis, and then when it's done running
-  analysis it should message the Alloy agent back."
-
-  ## Why the wording differs from the hook's
-
-  `Alert.message/2` is capped at 199 characters, and its own comment says why:
-  "it rides on every tool call in every turn, so the budget is a sentence."
-  That is the *hook's* budget, not a message's. A push costs one delivery, so
-  it can carry the counts by source and say what to do next — which is the
-  difference between "something is failing" and something the agent can act on
-  without a round trip.
-
-  ## Silence is a result, except to whoever asked
-
-  A clean run says nothing (criterion 3046). A message wakes a process and
-  costs it a turn, and an agent woken to be told its tree is fine has been
-  charged for no information — the same rule `StopDecision` keeps everywhere.
-
-  That holds for an agent that did not ask. For the agent that *requested* the
-  run, silence is not the absence of information, it is the answer it is
-  blocked on — and `runs.requested_by` already records who that is.
-
-  Measured on the math project 2026-09-22: a coding agent called
-  `start_analysis(spex)`, said "not polling; will act when it lands", and its
-  run came back green. `digest/2` answers `nil` for a clean tree, so nothing was
-  sent. The agent held an open `bdd_specs_passing` task for 25 minutes, and
-  `Work.runnable_state?/1` skips an agent with an open task — so no wake path in
-  the system could reach it. A human had to tell it the run was green. Three
-  times in one session, 22 to 26 minutes each.
-
-  So `deliver/4` takes the requester\'s id: everyone else keeps the silence,
-  and the one who asked gets an answer either way.
-
-  Delivery enters the durable mailbox without waiting for the agent's turn.
-  The reconciler can finish recording the run while the notification waits
-  for consumption.
-
-  An agent with no process is not owed delivery and is not a failure
-  (criterion 3049). `dispatch_message` answers `{:error, :not_running}` and this
-  drops it — an agent halted on purpose is not news anybody is waiting for.
-
-  ## Why this is a telemetry handler
-
-  `Analysis` announces a finished run as the `[:code_my_spec, :analysis, :run_reported]` event and
-  this module, attached at application start, answers it. Analysis used to call
-  it directly, which made Analysis depend on Agents — the analyzer knowing that
-  agents exist. A telemetry handler runs synchronously in the emitting process,
-  so delivery still happens inside the reconciler exactly as the direct call
-  did (and a test's sandboxed connection is still the one it reads through),
-  without Analysis naming this module.
+  See knowledge/agents/coordination, "Analysis reports".
   """
 
   require Logger
@@ -87,10 +38,8 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     :telemetry.attach({__MODULE__, :deliver}, @event, &__MODULE__.handle_event/4, nil)
   end
 
-  # Rescued and logged rather than left to raise: `:telemetry` detaches a
-  # handler that raises, permanently and after one log line, so a single bad
-  # delivery would silently end every later one. Logged at error, not
-  # swallowed — the failure stays loud each time it happens.
+  # Rescued and logged at error: `:telemetry` permanently detaches a handler
+  # that raises, so one bad delivery would silently end every later one.
   @doc false
   def handle_event(@event, _measurements, %{failure: reason} = meta, _config) do
     deliver_failure(meta.scope, meta.source, reason, askers(meta))
@@ -112,7 +61,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
       )
   end
 
-  # The requester, then any agent waiting on a run it did not start (28d72f8a).
+  # The requester, then any agent waiting on a run it did not start.
   defp askers(meta), do: [meta.requester | Map.get(meta, :waiters, [])]
 
   @doc """
@@ -181,12 +130,9 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     """
   end
 
-  # `requested_by["agent_id"]` carries two kinds of id. `start_analysis` stores an
-  # in-app agent's UUID; the `subagent_stop` hook stores a Claude Code subagent
-  # id, which is short hex (`af6cbaec65372da7a`) and is never an `agents` row.
-  # Queried as `:binary_id` the second raised, failing the reconcile — so a leg
-  # recorded as failed a run that had completed, which is the one thing this
-  # module says it must not do. Only a UUID can name an agent here.
+  # `requested_by["agent_id"]` is an agent UUID or a Claude Code subagent id
+  # (short hex, never an `agents` row). Only a UUID is queried: the other raised
+  # as `:binary_id` and failed a completed reconcile.
   defp agent_uuid(id) when is_binary(id) do
     case Ecto.UUID.cast(id) do
       {:ok, uuid} -> uuid
@@ -224,25 +170,10 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     """
   end
 
-  # Alloy only. A Claude Code session in the same copy has its own path and
-  # would be told twice — once here and once on its next tool call — which is
-  # the duplicate criterion 3048 exists to keep out.
-  #
-  # Every alloy agent on the copy, and nothing more: who hears what is
-  # `tell_one/5`'s payload rule and `Wake`'s agent rule. The broadcast's role
-  # filter (only roles that fix code hear findings nobody asked for — telling
-  # QA about 47 spex errors it cannot read is a turn with no move) is
-  # `RoleProfile.wake` naming `:findings`; the asker is answered as
-  # `:own_reply` whatever its role.
-  #
-  # Measured 2026-09-23, and why the asker is not filtered by role: a QA agent
-  # on Broken Oaths story 947 started credo and spex through `start_analysis`,
-  # both completed at 16:02, and the query that picked the broadcast roles
-  # removed the asker before it could be answered. Fifty minutes, and the only
-  # thing that moved it was a person noticing.
-  #
-  # `askers` are cast by `agent_uuids/1`: a Claude Code session writes its own
-  # non-UUID id into `requested_by`, and comparing that to this column raised.
+  # Alloy only: a Claude Code session in the copy gets the hook path and would
+  # be told twice. Every alloy agent on the copy, unfiltered by role here — the
+  # role filter is `Wake` (`RoleProfile.wake` naming `:findings`), so an asker
+  # of any role is still answered as `:own_reply`.
   defp internal_agents(%Scope{active_project_id: project_id}, copy_id) do
     Agent
     |> where(
@@ -262,24 +193,17 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     |> Repo.all()
   end
 
-  # Off the caller's process: a run failed on channel death or join is announced
-  # from inside the harness channel, and dispatch is a call back into it,
-  # refused as :would_deadlock (same class as 104bcb23). Whether it reaches the
-  # agent at all is `Wake`'s: a stopped agent is not owed one (criterion 3049).
-  #
-  # Admission is synchronous and durable; only transport runs off this process.
+  # Admission is synchronous and durable; only transport runs off this process,
+  # because a failure may be announced from inside the harness channel and
+  # dispatch calls back into it (`:would_deadlock`).
   defp tell(_scope, %Agent{} = agent, event, message, offer \\ nil) do
     CodeMySpec.Agents.send_to_agent(agent.id, message, event, offer: offer, async: true)
 
     :ok
   end
 
-  # What landed, by source, and what to do about it. `nil` when there is nothing
-  # worth waking anyone for.
-  #
-  # Counted by `Validation.blockable/2`, the gate's own definition: this used to
-  # count errors only, so a run whose warnings blocked certification reported
-  # "no problems" (4a4cb998).
+  # What landed, by source, and what to do about it; `nil` when nothing blocks.
+  # Counted by `Validation.blockable/2`, the gate's own definition.
   defp digest(_source, 0, _advisory), do: nil
 
   defp digest(source, count, advisory) do

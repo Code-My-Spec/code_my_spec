@@ -23,22 +23,14 @@ defmodule CodeMySpecWeb.Application do
     env = Application.get_env(:code_my_spec, :env, :prod)
     maybe_install_file_logger()
 
-    # Which commit is answering. A dev server runs the checkout it was started
-    # from, so a fix committed, pushed and green can still be absent from every
-    # response an agent sees — and because the responses in question are messages
-    # about correctness, a stale one reads as the fix not working rather than as
-    # the build being old. Three of those cost a diversion in one session
-    # (5e59a29d). Logged once at boot and reported by `register_session`.
+    # Which commit is answering; logged at boot and reported by `register_session`.
+    # See knowledge/web, "Boot".
     CodeMySpec.BootVersion.capture()
     log_boot_version()
 
-    # Whether this boot is the server. Everything the server owns that acts
-    # outside this process — the promotion queue, waking agents, the dev
-    # tunnel, sweeps that write and fetch — starts only then, never under
-    # `mix run`, a task or a script against the same database
-    # (`when_serving/2`). 2026-10-05, 09:48: an agent read one row with
-    # `mix run`, and its boot requeued the promotion batch the server's worker
-    # held and tried to claim dev.codemyspec.com's tunnel.
+    # Children that act outside this process start only when this boot serves
+    # (`when_serving/2`).
+    # See knowledge/web, "Boot".
     serving? = Phoenix.Endpoint.server?(:code_my_spec, CodeMySpecWeb.Endpoint)
 
     children =
@@ -50,112 +42,49 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
-        # Embeddings rework step 2 (577de9bb): the server does its own
-        # inference now instead of trusting a harness to have embedded
-        # content before it arrived. Gated on the backend actually being
-        # configured (unset in :test, which stays on the ETS-backed
-        # TestBackend) rather than on env name, so this follows whatever
-        # `embeddings_backend` says rather than drifting from it.
-        #
-        # One OrtexServing, not one per priority: John's call, reviewing
-        # step 2 — a plain mailbox would starve search behind a queued
-        # bulk batch, so the server itself prioritises search internally
-        # (see OrtexServing's own moduledoc) rather than needing two
-        # instances to fake it.
+        # Gated on the configured backend, not the env name (`:test` stays on
+        # the ETS TestBackend). One serving: it prioritises search internally.
         embeddings_configured?() && CodeMySpec.Embeddings.OrtexServing,
-        # `min: 0` — no runner sits idle between hex-doc reconciles
-        # (step 3). `max: 4` is a starting guess for round 1's
-        # FLAME.LocalBackend, where a "runner" is just a local spawned
-        # process rather than real infrastructure being provisioned, so
-        # being wrong here costs nothing to revisit.
-        #
-        # Step 7 (577de9bb): prod runs real bursts on `FLAME.FlyBackend`,
-        # since this app is already a Fly machine — `FLY_APP_NAME` and
-        # `FLY_IMAGE_REF` are Fly's own runtime env, so the only new
-        # requirement is the `FLY_API_TOKEN` secret (not auto-injected by
-        # Fly for security reasons). `embed_pool_backend/1` falls back to
-        # `LocalBackend` when neither secret is set yet, so a prod boot
-        # before either is configured still works — see that function.
-        # Hetzner (story 877) is now real — `hetzner_burst_box_configured?/0`
-        # wins when present, `FlyBackend` otherwise. dev/test keep
-        # `LocalBackend`, where a
-        # "runner" costs nothing to get wrong.
+        # `min: 0`: no idle runner between reconciles. Backend per env in
+        # `embed_pool_backend/1`.
         embeddings_configured?() &&
           {FLAME.Pool,
            name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
-        # Backstop for the live mix.lock trigger in `Files.FileSync` (step 3)
-        # — not gated on `embeddings_configured?()` like the two above,
-        # because `project_dependencies` is dependency bookkeeping on its
-        # own, independent of whether anything embeds hex docs from it here.
+        # Backstop for the live mix.lock trigger in `Files.FileSync`. Not gated on
+        # embeddings: `project_dependencies` is bookkeeping on its own.
         when_serving(serving?, CodeMySpec.Files.LockfileSweep),
-        # The hex-doc reconciler's own driver (step 3) — gated like
-        # `OrtexServing`/`EmbedPool` above, since embedding is exactly what
-        # it does and it has nothing to drive without them.
         when_serving(serving?, embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep),
-        # Framework knowledge (step 4): one reconcile per boot, no watcher. A
-        # `:temporary`, non-raising Task, so it never blocks or fails boot.
+        # One reconcile per boot; a `:temporary`, non-raising Task, so it never
+        # blocks or fails boot.
         when_serving(
           serving?,
           embeddings_configured?() && CodeMySpec.Embeddings.FrameworkKnowledgeReconciler
         ),
-        # How many `FLAME.call`s are in flight on `CodeMySpec.EmbedPool` right
-        # now, per pool — the fact `BurstBox.busy?/3`'s embedding half needs
-        # (story 877, item 1 correction) with no FLAME-internals
-        # introspection. Same shape as `Faults`/`DrainCost` below: a process
-        # that owns one ETS table, unconditional for the same reason they
-        # are — it costs nothing idle, and gating it on
-        # `embeddings_configured?()` would just be one more thing a test
-        # starting its own pool has to remember to start first.
+        # In-flight `FLAME.call`s per pool, for `BurstBox.busy?/3`. One ETS
+        # table, unconditional: costs nothing idle.
         CodeMySpec.Embeddings.InFlightCalls,
-        # Per-caller failure injection, so QA can break one project's digest or
-        # one visitor's intake without breaking the shared box. Owns an ETS
-        # table and nothing else; only `/dev/faults` ever writes to it, and that
-        # route is compile-time absent from the release.
+        # Per-caller failure injection for QA. Only `/dev/faults` writes it, and
+        # that route is compile-time absent from the release.
         CodeMySpec.Faults,
-        # Holds what the last graph drain cost, per project, so a reader can ask
-        # rather than grep a log. Same shape as `Faults` above: a process that
-        # owns one ETS table. The numbers are already emitted as telemetry; this
-        # is only the most recent one, kept where the graph endpoint can reach
-        # it.
+        # The last graph drain's cost per project, for the graph endpoint.
         CodeMySpec.Requirements.DrainCost,
-        # Guided intake conversations, one process per plan. The conversation
-        # owns the flow so a LiveView can come and go without taking it — every
-        # bug in that feature has been a variation on the socket holding state
-        # it could not keep.
+        # Intake conversations, one process per plan, so the flow outlives any
+        # LiveView.
+        # See knowledge/web, "Intake workspace".
         {Registry, keys: :unique, name: CodeMySpec.Intake.ConversationRegistry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: CodeMySpec.Intake.ConversationSupervisor},
-        # One watcher per project with something happening in it, turning writes
-        # to the graph's inputs into a recomputed graph and a woken agent.
-        # Before it, the only thing that ever recomputed was somebody reading —
-        # so an idle agent never learned that work had appeared, measured at
-        # ninety minutes of a product agent waiting on four untriaged issues.
-        #
-        # Started on demand by `GraphWatcher.ensure_watching/1` rather than one
-        # per project at boot: a project nobody is working on needs no watcher.
         # One worker per project with a promotion queue (`PromotionQueue`).
         {Registry, keys: :unique, name: CodeMySpec.PromotionQueue.Registry},
         {DynamicSupervisor, name: CodeMySpec.PromotionQueue.Supervisor, strategy: :one_for_one},
+        # Graph watchers, one per active project, started on demand by
+        # `GraphWatcher.ensure_watching/1`.
         {Registry, keys: :unique, name: CodeMySpec.Requirements.Registry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: CodeMySpec.Requirements.WatcherSupervisor},
-        # And re-establish them for whatever was already being worked. Watchers
-        # are in memory, so a restart takes them all, and a deploy is exactly
-        # when agents are mid-run — an agent that goes idle after one would have
-        # nothing watching for the work that wakes it.
-        #
-        # `:temporary` because failing to seed is not a reason to refuse to
-        # boot. This used to add "the next stop decision on a project starts its
-        # watcher anyway", which is not true — the only callers of
-        # `ensure_watching/1` are this task and the two continuous toggles in
-        # `agents.ex`, and no stop path is among them (07f42ebf, where the same
-        # false self-healing claim in `DevState`'s diagnostic cost a QA cycle).
-        #
-        # So the consequence of a failed seed is worse than that sentence
-        # implied: nothing watches until somebody toggles a loop or the server
-        # restarts again. Still not a reason to refuse to boot — a server that
-        # will not start helps nobody — but it is a reason to read a failure
-        # here as something to act on rather than as self-correcting.
+        # Re-seeds watchers after a restart. `:temporary`: a failed seed must
+        # not stop boot, but it is not self-correcting.
+        # See knowledge/web, "Boot".
         when_serving(
           serving?,
           Supervisor.child_spec(
@@ -164,26 +93,13 @@ defmodule CodeMySpecWeb.Application do
             restart: :temporary
           )
         ),
-        # One cadence per project with agents running in it, waking the main
-        # agent on an interval with the digest in hand.
-        #
-        # Same shape as the watcher above, and missing entirely until QA went
-        # looking: `MainAgent.Cadence` was written, supervised by nobody, and
-        # called `start_link/1` from nowhere, so no check-in ever fired — the
-        # story's whole promise, that a problem surfaces even when the agent in
-        # trouble cannot report it, silently did not happen.
-        #
-        # Nothing said so. `running?/1` reads the stood-down set, so it answered
-        # true for every project that had never stood down, including every one
-        # with no timer at all; and the spex start the process themselves, so
-        # they proved the loop and not the wiring.
+        # One cadence per project with agents running, waking the main agent on
+        # an interval with the digest.
+        # See knowledge/web, "Boot".
         {Registry, keys: :unique, name: CodeMySpec.Agents.Main.CadenceRegistry},
         {DynamicSupervisor,
          strategy: :one_for_one, name: CodeMySpec.Agents.Main.CadenceSupervisor},
-        # And re-establish them after a restart, for the reason the watcher's
-        # seeding gives: timers are in memory and a deploy lands mid-run.
-        # `:temporary` on the same grounds — failing to seed is not a reason to
-        # refuse to boot.
+        # Re-seeds cadences after a restart; `:temporary` like the watcher seed.
         when_serving(
           serving?,
           Supervisor.child_spec(
@@ -192,46 +108,29 @@ defmodule CodeMySpecWeb.Application do
             restart: :temporary
           )
         ),
-        # Which projects a light harness is holding, and therefore where their
-        # analyzers run. Here rather than in `Analysis.Supervisor` because that
-        # subtree only starts where analyzers run locally, and this table is
-        # about the projects where they do not.
+        # Which projects a light harness holds (so where their analyzers run).
+        # Not in `Analysis.Supervisor`, which starts only where analyzers run locally.
         CodeMySpec.Analysis.HarnessRegistry,
-        # Which working copies are mid-reconcile. Same reasoning as the table
-        # above — it is about state the server holds on behalf of harnesses that
-        # run elsewhere, so it belongs to the web app rather than to the
-        # analysis subtree.
+        # Working copies mid-reconcile; server-held state for remote harnesses.
         CodeMySpec.Files.ReconcileRegistry,
-        # Which projects have a setup run in flight. Provisioning talks to real
-        # providers from here, not from the local harness, so the lock that
-        # keeps two runs from racing the same project belongs here too.
+        # One setup run per project; provisioning calls providers from here.
         CodeMySpec.Provisioning.RunLock,
         # Timers for agents the provider refused until a named time: the held
         # turn end runs then. Re-armed on a harness reconnect.
         CodeMySpec.Agents.RefusalWake,
-        # Which projects have a promotion in flight. A promotion merges and
-        # restarts the one running checkout a project has, and two of them at
-        # once decide the surviving build by timing (db97272b) — the lock
-        # that closes that belongs here for the same reason RunLock does.
+        # One promotion per project: two at once would pick the surviving build
+        # by timing.
         CodeMySpec.Promotion.Lock,
-        # Which tunnel has an ingress read-modify-write in flight. A shared
-        # tunnel's ingress list (criterion 1586) is written by more than one
-        # working copy independently, and the GET-modify-PUT round trip is
-        # not atomic on its own — same reasoning as the lock above, scoped to
-        # a different resource.
+        # Serialises a shared tunnel's ingress GET-modify-PUT across working copies.
         CodeMySpec.Workspaces.TunnelIngressLock,
-        # What agents are writing before it becomes a message. Before the
-        # endpoint, which is where the drafts arrive from.
+        # Agents' in-progress drafts. Before the endpoint, which delivers them.
         CodeMySpec.Conversations.Drafts,
         CodeMySpecWeb.Presence,
         # Which agents' processes are alive, tracked by their copies' channels.
         CodeMySpec.Agents.Presence,
-        # The harness tools. Same server module the local process runs — the
-        # only difference is where scope comes from, and the tools never had to
-        # know. `session_idle_timeout` matches the local mount for the same
-        # reason it was raised there: an agent's workflow has long gaps between
-        # MCP calls while it writes code and runs tests, and the 30-minute
-        # default dropped sessions mid-run.
+        # The harness tools, same module as the local mount. A 4h idle timeout:
+        # agents go long between MCP calls, and the 30-minute default dropped
+        # sessions mid-run.
         {CodeMySpec.McpServers.LocalServer,
          transport: :streamable_http, session_idle_timeout: to_timeout(hour: 4)},
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
@@ -269,12 +168,6 @@ defmodule CodeMySpecWeb.Application do
     end
   end
 
-  # Alongside stdout, never instead of it: in prod that stream is what `fly logs`
-  # reads, and in dev it is the terminal the developer is watching.
-  #
-  # Without this the dev server's only log was that terminal's scrollback, which
-  # nobody but its owner can reach — so questions about :4000 got answered from
-  # server.log, a different process on a different port, and answered wrongly.
   defp log_boot_version do
     Logger.info("[Boot] serving #{CodeMySpec.BootVersion.describe()}")
   end
@@ -284,25 +177,9 @@ defmodule CodeMySpecWeb.Application do
       CodeMySpec.Embeddings.PgVectorBackend
   end
 
-  # Hetzner is the capability (story 877) — never activated by this alone.
-  # `hetzner_burst_box_configured?/0` is the gate: present and valid, same as
-  # `FLY_API_TOKEN` was meant to be for `FlyBackend` above, this wins; absent,
-  # :prod falls back to `FlyBackend` exactly as before this existed. Dev and
-  # test are untouched either way — `embed_pool_backend/1` is never called
-  # for them at all (see `embeddings_configured?/0` above).
-  #
-  # Go-live checklist: HETZNER_API_TOKEN and the five BURST_BOX_WG_* vars
-  # are staged as Fly secrets; config/runtime.exs maps the WG ones into
-  # BurstBox.FlyPeering. Left: a human deploying those staged secrets.
-  #
-  # `min: 0` means no runner boots at app start regardless — a backend's own
-  # `init/1` only ever runs lazily, inside the pool's own async boot task,
-  # the first time a burst actually needs a runner. That isolates a missing
-  # token to one failed boot attempt rather than a boot-time crash, but
-  # "isolated" still means every burst fails until someone notices —
-  # checking the token is present is the one fact that tells a backend's
-  # `init/1` apart from "will actually boot something" before committing to
-  # it.
+  # Prod: Hetzner when `HETZNER_API_TOKEN` is set, else Fly when `FLY_API_TOKEN`
+  # is, else local. Checked here because a backend's `init/1` runs lazily, so a
+  # missing token would only show as every burst failing.
   defp embed_pool_backend(:prod) do
     cond do
       hetzner_burst_box_configured?() ->
@@ -333,19 +210,9 @@ defmodule CodeMySpecWeb.Application do
     end
   end
 
-  # The three closures `HetznerFlameBackend`'s own moduledoc already
-  # sketches, built here rather than inside either boundary: `Embeddings` and
-  # `Provisioning` are both `top_level?: true` with no dependency between
-  # them (see that module's own moduledoc for the forbidden-reference this
-  # avoids), so the wiring can only happen where both are already in scope —
-  # this module already depends on `CodeMySpec.Provisioning` (`RunLock`
-  # above) and on `CodeMySpec.Embeddings` (`OrtexServing`, `HexDocSweep`
-  # above).
-  #
-  # `%Scope{}` — no account, no project — is the platform acting for itself,
-  # the same reading `BurstBox.ensure_box/3`'s own `platform_scope?/1` and
-  # `Hetzner.token/1`'s application-config fallback both already give that
-  # shape of scope.
+  # Wired here because `Embeddings` and `Provisioning` are separate top-level
+  # boundaries that may not reference each other. `%Scope{}` (no account, no
+  # project) is the platform acting for itself.
   defp configure_hetzner_flame_backend! do
     platform_scope = %Scope{}
 
@@ -361,6 +228,8 @@ defmodule CodeMySpecWeb.Application do
     )
   end
 
+  # Alongside stdout, never instead of it: prod's `fly logs` and dev's terminal
+  # read that stream.
   defp maybe_install_file_logger do
     if Application.get_env(:code_my_spec, :install_file_logger, false) do
       CodeMySpec.Logging.install_file_handler!(
@@ -405,29 +274,13 @@ defmodule CodeMySpecWeb.Application do
 
   def children(children, _env, _serving?), do: children
 
-  # `tunnel_config` is main's own tunnel — a hardcoded hostname, tunnel id and
-  # account tag in this file, read unconditionally by every :dev boot. A
-  # non-main working copy booting the same way (`CmsHarness.AppInstance`,
-  # story 1108) started this GenServer too, which ran a second `cloudflared`
-  # answering for main's tunnel from a different port — harmless only because
-  # every copy's config named the same origin main's did, and a live risk the
-  # moment one didn't (Cloudflare splitting main's public traffic between the
-  # two apps). `CMS_MAIN_COPY` is set by `AppInstance.Runner.Local.launch/7`
-  # for exactly this reason; unset (a developer's own `mix phx.server`, not
-  # going through the harness at all) reads as main, matching every boot
-  # before this existed.
+  # `tunnel_config` is main's tunnel; only main may run its connector. Set by
+  # `AppInstance.Runner.Local`; unset (a plain `mix phx.server`) reads as main.
+  # See knowledge/web, "Dev tunnel".
   defp main_copy?, do: System.get_env("CMS_MAIN_COPY") != "false"
 
-  # The other half of the same fact `CmsHarness.AppInstance.ensure_tunnel/3`
-  # acts on: `true` exactly when this copy's tunnel is DB-backed
-  # (`PreviewTunnel.stored_credentials/1` found one) and the harness is
-  # therefore already running — or about to run — the connector for it
-  # itself. This dev tunnel's own `tunnel_config` above is a config-only
-  # bootstrap with no DB row, so `stored_credentials/1` finds nothing for it
-  # and this reads `false` — the app keeps running its own, exactly as
-  # before this existed. Set by `AppInstance.Runner.Local.launch/7`; unset
-  # (a developer's own `mix phx.server`) reads as `false`, the same
-  # not-going-through-the-harness default `main_copy?/0` uses.
+  # True when the harness runs this copy's (DB-backed) tunnel connector itself.
+  # Unset reads as false.
   defp tunnel_held_by_harness?, do: System.get_env("CMS_TUNNEL_HELD_BY_HARNESS") == "true"
 
   # Tell Phoenix to update the endpoint configuration

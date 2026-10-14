@@ -745,13 +745,9 @@ defmodule CodeMySpec.Architecture.Proposal do
     }
   end
 
-  # Components as records, step 2 (3aeb66cf). Execution writes the graph as
-  # records: components, their parents and their dependency edges, all marked
-  # `:authored`. It used to write a spec stub per component and upsert only
-  # name, type, description and module; the edges arrived later, when
-  # `ComponentSync` parsed each stub's `## Dependencies`, and re-executing never
-  # rewrote a stub that already existed — so a changed dependency list was
-  # silently lost. No spec file is written, and no working copy is needed.
+  # Execution writes the graph as records: components, their parents and their
+  # dependency edges, all marked `:authored`. No spec file is written, and no
+  # working copy is needed.
   defp do_execute(proposal, scope, opts) do
     components = to_components(proposal)
     pre_existing_db_names = list_db_component_names(scope)
@@ -799,7 +795,7 @@ defmodule CodeMySpec.Architecture.Proposal do
   #
   # `:authored` on every one: writing a component the proposal names is
   # authoring it, and a component discovered from code under the same module
-  # name becomes authored here (criterion 1626).
+  # name becomes authored here.
   defp upsert_components(scope, components) do
     Enum.reduce_while(components, {:ok, %{}}, fn attrs, {:ok, by_module} ->
       parent_id = with %{id: id} <- by_module[Map.get(attrs, :parent_module)], do: id
@@ -823,7 +819,7 @@ defmodule CodeMySpec.Architecture.Proposal do
 
   # The proposal's edges are the whole truth about its own components' outgoing
   # dependencies: declared ones are added, and any other outgoing edge one of
-  # them has is removed (criterion 1620). A target outside the proposal is
+  # them has is removed. A target outside the proposal is
   # resolved from the database; validation has already refused any that is in
   # neither.
   defp sync_dependencies(scope, components, by_module) do
@@ -858,15 +854,8 @@ defmodule CodeMySpec.Architecture.Proposal do
     end)
   end
 
-  # Two stages:
-  #   1. Build the (story_id, component_id) link list in input order. Surface
-  #      components come last in the input, so duplicate story claims (context
-  #      + surface) end up with the surface link last — that's what gives
-  #      surface its "wins on overwrite" property once the bulk call applies
-  #      them in order.
-  #   2. One `Stories.bulk_set_story_component/2` call. On the CLI this is a
-  #      single HTTP POST + a single local-cache write-through transaction,
-  #      replacing 2N round-trips.
+  # Builds the (story_id, component_id) links in input order, then applies them
+  # in one `Stories.bulk_set_story_component/2` call (all-or-nothing).
   defp link_stories(scope, components, by_module) do
     raw_links =
       Enum.flat_map(components, fn attrs ->
@@ -877,11 +866,9 @@ defmodule CodeMySpec.Architecture.Proposal do
         |> Enum.map(&%{story_id: &1, component_id: component_id})
       end)
 
-    # Dedupe by story_id keeping the LAST occurrence. `components` is ordered
-    # `context_components ++ surface`, so the last claim of a given story_id
-    # belongs to the surface component. Deduping here makes "surface wins"
-    # deterministic — independent of `apply_link/4`'s order semantics or any
-    # downstream reordering in the bulk path.
+    # Dedupe by story_id keeping the last occurrence: `components` is
+    # `context_components ++ surface`, so the surface component deterministically
+    # wins a story claimed twice.
     links = dedupe_links_last_wins(raw_links)
 
     apply_story_links(scope, links)

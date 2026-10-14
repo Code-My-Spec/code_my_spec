@@ -2,46 +2,20 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   @moduledoc """
   Runs an instance as a real OS process on this machine — no Docker.
 
-  Mirrors `docker/devbox/entrypoint.sh`'s own sequence, because that script is
-  already the proven answer to "how does a CodeMySpec project come up from
-  nothing": generate with `mix cms.new` (or reuse what is already there), fetch
-  dependencies, set up the database, start the harness, start the app. This
-  runs the same five steps directly on the host instead of inside a container.
+  Mirrors `docker/devbox/entrypoint.sh`: generate with `mix cms.new` (or
+  reuse), fetch deps, set up the database, claim the identity, start the
+  harness, start the app.
 
-  ## What Docker was doing for free, and is not free here
+  What a container gave for free is done by hand: each instance gets its own
+  directory under the workspace root; the app gets its port via `PORT` and the
+  harness its own free port (two cannot share :4000/:4003 on one host);
+  teardown kills a process tree this module owns.
 
-  A container gives each instance its own filesystem, its own loopback (so
-  `cms start` can always bind :4003 and the app can always bind :4000), and one
-  `docker rm --force` that tears down everything at once. None of that exists
-  on bare metal:
+  Assumes Elixir, Erlang and Postgres are installed.
 
-    * Each instance gets its own directory under `workspace_root/0` instead of
-      its own filesystem.
-    * The app is told its port with `PORT`, because two instances cannot both
-      bind :4000 on one host the way two containers can. The harness gets its
-      own free port for the same reason — `cms start` defaulting to :4003
-      would collide with a harness already serving this machine's own working
-      copies.
-    * Teardown is a process tree this module owns and kills, not a daemon call.
-
-  ## Prerequisites are out of scope here
-
-  This assumes Elixir, Erlang and Postgres are already on the machine — the
-  same assumption the container's base image makes by being built with them
-  already installed. Detecting and installing what is missing on an unknown
-  host is a different kind of problem (diagnose-and-adapt, not a fixed
-  sequence) and belongs to whatever bootstraps prerequisites, not to this
-  module.
-
-  ## Persisting past this BEAM
-
-  The detached script is launched with `setsid` where available (Linux) so it
-  survives this process the way a container survives the daemon's caller. On
-  macOS, which ships no `setsid`, the child is merely disowned (`disown`
-  inside the subshell) — it survives this function returning, but a full
-  supervisor tree restart could still orphan it while leaving the row
-  pointing at a live process `alive?/1` can no longer find. Known gap, not
-  silently assumed away.
+  Launched with `setsid` where available (Linux). macOS has none, so the child
+  is only disowned: a full supervisor restart could orphan it while the row
+  points at a pid `alive?/1` can no longer find. Known gap.
   """
 
   @behaviour CodeMySpec.Workspaces.Runner
@@ -70,11 +44,8 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   @doc """
   Everything a workspace needs on disk before anything is launched.
 
-  Split out so it can be asserted on. Driving `start/4` in a test spawns a real
-  `mix cms.new`; what can regress here is whether the identity is written at
-  all and what the script does with it — and blinding showed that testing
-  `write_identity/2` alone leaves the call site uncovered, which is the half
-  that was missing in `ac7a510b`.
+  Split out so it can be asserted on without spawning a real `mix cms.new`:
+  whether the identity is written, and what the script does with it.
   """
   @spec prepare(String.t(), String.t(), integer(), term()) :: map()
   def prepare(container_name, app_name, port, env \\ []) do
@@ -101,62 +72,18 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     }
   end
 
-  # The whole boot as one script, not a series of `System.cmd/3` calls from
-  # here. `start/3` has to return as soon as the runner accepts the instance
-  # — `Workspaces.boot/1`'s caller is a LiveView mount waiting on it — and
-  # generating, fetching deps and migrating together can run a minute or more.
-  # A container backgrounds that same work by being `docker run --detach`;
-  # this backgrounds it by launching one script and returning immediately.
+  # One detached script, so `start/4` returns at once (its caller is a
+  # LiveView mount; the boot can take minutes).
   #
-  # `log()`'s format matches `docker/devbox/entrypoint.sh`'s exactly —
-  # `\n==> message\n` — because `BootSteps.announced?/2` is the reader on the
-  # other end and it was written against that script's output. No changes
-  # there; this produces what it already expects.
+  # `log()` matches the devbox entrypoint's `\n==> message\n` format, which
+  # `BootSteps.announced?/2` reads. "on :4000" is `BootSteps`' fixed marker,
+  # not where the app binds — `PORT` places it.
   #
-  # The started app's marker still says "on :4000" regardless of the real
-  # port. That string is `BootSteps`' literal, fixed marker — Docker's own
-  # entrypoint is only accurate there because the *container's* internal port
-  # never changes; only the externally published one does. This runner has no
-  # such internal/external split, so the line is informational scaffolding
-  # for the same marker match, not a claim about where the app is actually
-  # bound — `PORT` is what actually places it.
-  #
-  # `CMS_NODE_NAME` and `CMS_PROJECT_DIR` on the harness line are both
-  # load-bearing, not decoration — two separate gaps that produced the exact
-  # same visitor-facing failure ("dumped into the cockpit, no preview, and
-  # every message refused with 'nothing here is holding that working copy'")
-  # and were only distinguishable by reading this workspace's own `run.log`,
-  # which nothing serves or reads.
-  #
-  # `CMS_NODE_NAME=#{container_name}`: `rel/env.sh.eex` names every
-  # `cms start` node `codemyspec` by default — one cms per machine is the
-  # desktop-install assumption — and its own comment already names this exact
-  # failure: "a fixed sname makes the second one die at boot with 'the name
-  # codemyspec@<host> seems to be in use', including when a sprite runs next
-  # to a developer's own cms." A box that also runs its own persistent `cms
-  # harness` for other checkouts — this one does, continuously — collided
-  # with every workspace booted here on the very first boot, silently: the
-  # app came up and answered fine while the harness died on `epmd`
-  # registration. One unique name per workspace, reusing the same
-  # `container_name` that already keys everything else about it, is what
-  # `CMS_NODE_NAME` exists for.
-  #
-  # `CMS_PROJECT_DIR=#{app_dir}`: fixing the name collision surfaced a second,
-  # independent gap behind it — the harness came up cleanly, under its own
-  # name, and still never served this project. `CmsHarness.Projects`'
-  # moduledoc says why: a project is served either because `CMS_PROJECT_DIR`
-  # named it at boot (the *sprite* path — "one checkout... started at boot
-  # rather than waiting for the first hook") or because a hook request from
-  # an already-running session picked it up (the *laptop* path). A workspace
-  # booted here is the sprite case exactly — there is no developer already
-  # sitting in this checkout to fire a first hook — but this runner never set
-  # the variable that path depends on, so the harness sat idle forever
-  # waiting for a hook that had no way to ever arrive.
-  #
-  # No third variable for device isolation, though there is a third gap here
-  # — `CmsHarness.Device.path/0` now derives it from `CMS_PROJECT_DIR`
-  # itself, one directory up. See that function's own comment for why a
-  # workspace needs to be a device of its own at all.
+  # Both harness variables are load-bearing: `CMS_NODE_NAME` gives each
+  # workspace a unique node name (the default `codemyspec` collides with the
+  # box's own harness), and `CMS_PROJECT_DIR` makes the harness serve this
+  # project at boot (no hook will ever arrive to pick it up).
+  # `CmsHarness.Device.path/0` derives the workspace's device from it too.
   defp build_script(container_name, dir, app_dir, app_name, port, harness_port) do
     """
     #!/bin/bash
@@ -224,66 +151,32 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   @doc """
   How a boot script is shelled out.
 
-  `merge_clean_env/1`, not `clean_otp_env/0`, and the difference is the whole
-  bug. The scrub clears the release and `MIX_*` variables but leaves PATH in
-  whatever order this server inherited — and under a version manager that order
-  names our own resolved Elixir *ahead* of the shims, because that is how we got
-  our Elixir. A child `mix` inherits that resolution wholesale.
-
-  The script runs `mix cms.new` in a brand-new empty directory, which pins no
-  version of its own, so the shims would have fallen back to the machine's
-  default. Instead it got ours — 1.19.4-otp-28, where `cms_new` is not
-  installed as an archive — and every boot died on
-
-      ** (Mix) The task "cms.new" could not be found
-
-  Deterministic, not flaky: four rounds of story 1033's QA, each attributed to
-  disk exhaustion or Docker, on a box with 33GiB free running no containers at
-  all (`114843ff`). The error was only ever in the workspace's own `run.log`,
-  which nothing was reading.
-
-  `Environments.merge_clean_env/1`'s own comment names this exact situation —
-  "the two callers that run a child mix inside another project's directory,
-  which is the only situation where whose toolchain resolves is a question".
-  This was a third such caller and was not on the list.
+  `Environments.merge_clean_env/1`, not `clean_otp_env/0`: the script runs a
+  child `mix` in another project's directory, and it must resolve the
+  machine's toolchain (where `cms_new` is installed), not this server's
+  Elixir ahead of the version-manager shims on PATH.
 
   Public so the environment can be asserted on without shelling anything out.
   """
   @spec launch_env() :: keyword()
   def launch_env, do: Environments.merge_clean_env(stderr_to_stdout: true)
 
-  # What the host knows about this copy, written where the copy will look.
-  #
-  # `Workspaces.instance_env/1` already mints the id and assembles the deploy
-  # key and server url; they were handed to `start/4` and this runner dropped
-  # them, which is `ac7a510b`. They are written to a file rather than exported,
-  # because identity is read from `.cms_harness.json` and from nowhere else.
-  #
-  # Beside the workspace rather than inside the application, because the
-  # application does not exist yet — `mix cms.new` creates it, and a generator
-  # will not run into a directory somebody has already put files in. The script
-  # moves it in once the tree is there.
-  #
-  # 0600, and never into the script text: it carries a deploy key, and a script
-  # on disk is readable by anyone on the machine.
+  # A file, not env vars: identity is read from `.cms_harness.json` only.
+  # Written beside the workspace, since `mix cms.new` will not generate into a
+  # non-empty directory; the script moves it in. 0600 and never in the script
+  # text: it carries a deploy key.
   @doc """
-  Write what the host knows about this copy, where the copy will read it.
+  Write what the host knows about this copy (`Workspaces` passes it to
+  `start/4`) as `.cms_harness.json` in `dir`, mode 0600. Nothing is written
+  when there is nothing to write.
 
-  Public because it is the part worth asserting on: driving `start/4` launches a
-  real workspace, and what can regress here is which fields land and who can
-  read them.
+  Public so which fields land, and who can read them, can be asserted on.
   """
   @spec write_identity(String.t(), term()) :: :ok
   def write_identity(dir, env) do
-    # `instance_env/1` hands back string-keyed 2-tuples, not a keyword list, so
-    # `env[:KEY]` finds nothing and finds it silently.
-    #
-    # The five `preview_*` keys are exactly what `ClientUtils.Harness.
-    # Preview.config/2` reads out of this same file to decide whether
-    # `ClientUtils.CloudflareTunnel` has anything to dial — absent, it reads
-    # `enabled: false` and the generated app's preview stays a permanently
-    # empty frame, which is what every instance did before `preview_env/1`
-    # existed to provision one at all.
+    # `env` is string-keyed 2-tuples, not a keyword list (`env[:KEY]` finds
+    # nothing, silently). The `preview_*` keys are what
+    # `ClientUtils.Harness.Preview.config/2` reads to enable the tunnel.
     fields = %{
       "working_copy_id" => value(env, "CMS_WORKING_COPY_ID"),
       "project_id" => value(env, "CMS_PROJECT_ID"),
@@ -311,8 +204,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
 
   defp value(_env, _key), do: nil
 
-  # No id, nothing to claim. A workspace started by hand comes up un-onboarded
-  # rather than failing, which is what the container path does too.
+  # Nothing to claim: a workspace started by hand comes up un-onboarded.
   defp put_identity(fields, _dir) when map_size(fields) == 0, do: :ok
 
   defp put_identity(fields, dir) do
@@ -367,14 +259,8 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     )
   end
 
-  # Pinnable under test, like every other Req caller here.
-  #
-  # The usual argument for pinning is a credential leaking into a real request.
-  # This one carries none — it is a loopback probe — and the risk is the other
-  # way round: the port is an argument, so a test that passes 4000 probes the
-  # developer's own dev server and reads whatever it says as this workspace's
-  # health. `HttpClientsAreStubbableTest` is right to demand it even though the
-  # usual reason does not apply.
+  # Pinnable under test: a test passing port 4000 would otherwise probe the
+  # developer's own dev server.
   defp req_plug do
     case Application.get_env(:code_my_spec, __MODULE__, []) |> Keyword.get(:plug) do
       nil -> []
@@ -393,8 +279,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     end
   end
 
-  # `kill -0` sends no signal, only checks whether the pid could be signalled
-  # at all — the standard, portable "is this pid still there" probe.
+  # `kill -0` sends no signal; it checks the pid still exists.
   defp os_pid_alive?(pid) do
     case System.cmd("kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true) do
       {_out, 0} -> true
@@ -424,12 +309,8 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     :ok
   end
 
-  # The process group, not just the recorded pid. `mix phx.server` is what
-  # gets tracked, but it is a parent of a BEAM node which is itself a parent
-  # of however many workers a Phoenix app runs — killing only the leader
-  # leaves the tree running, attached to nothing this module can find again.
-  # `pkill -P` walks children; the leader gets the same signal directly in
-  # case it has none.
+  # Children (`pkill -P`) and the recorded pid: killing only the leader leaves
+  # its tree running, attached to nothing this module can find again.
   defp kill_tree(pid) do
     System.cmd("pkill", ["-TERM", "-P", Integer.to_string(pid)], stderr_to_stdout: true)
     System.cmd("kill", ["-TERM", Integer.to_string(pid)], stderr_to_stdout: true)
@@ -462,17 +343,9 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   @doc """
   Where an instance of `app_name` under `container_name` actually lands.
 
-  The bare-metal counterpart to `Workspaces.instance_root/1`'s Docker case —
-  "the entrypoint generates into /workspace/<app> and nowhere else" has no
-  equivalent fixed truth here, since a boot's root depends on this box's own
-  `local_workspace_root` configuration (`~/.codemyspec/workspaces` by
-  default) rather than a path baked into an image. Public so the server can
-  ask rather than assume the container path: `WorkingCopies.report_root/2`
-  recording `/workspace/<app>` for an instance that actually landed
-  somewhere under that real root is a path the harness can never match once
-  it joins under its own — which reads as `cms harness`'s own agent-restore
-  failing with `:working_copy_missing`, not as a wrong path, since nothing
-  compares the two directly.
+  Under the configured `local_workspace_root` (`~/.codemyspec/workspaces` by
+  default). `Workspaces.instance_root/1` asks this rather than assuming the
+  container path, which the joining harness could never match.
   """
   @spec root(String.t(), String.t()) :: String.t()
   def root(container_name, app_name), do: container_name |> workspace_dir() |> Path.join(app_name)
@@ -485,9 +358,8 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
     |> Keyword.get(:local_workspace_root, Path.expand("~/.codemyspec/workspaces"))
   end
 
-  # Defaults to the published release, which is the only correct answer on a
-  # customer's own laptop — see `HarnessSource`'s own moduledoc for what
-  # trusting it unconditionally cost this dev box specifically.
+  # Defaults to the published release, the right answer on a customer's
+  # laptop; see `HarnessSource`.
   defp harness_source do
     :code_my_spec
     |> Application.get_env(CodeMySpec.Workspaces, [])

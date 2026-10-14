@@ -5,28 +5,14 @@ defmodule CodeMySpec.Resources do
   ## Two checks, one answer
 
   **Per project** the expected set comes from `ProvisioningPlan.Sequence` and the
-  project's chosen options — the same source the run itself uses, so the
-  checklist cannot disagree with the thing that does the work. A second
-  manifest would be a second truth, and this page exists because the first one
-  was already hard enough to trust.
+  project's chosen options — the same source the run itself uses.
 
   **Across the account** the checks no single project can make: a DNS record
-  aimed at an address no server holds, a bucket no environment names. Neither
-  the record nor the server is wrong on its own. What is wrong is the
-  relationship, and only something looking at everything can see a relationship.
+  aimed at an address no server holds, a bucket no environment names.
 
-  ## Which projects count
-
-  `devops != :off`. That setting is the statement "this one is meant to be
-  deployed", and it is the only thing that should decide. Inferring intent from
-  whether setup happens to have run would let a project you turned on and never
-  provisioned report as healthy — the case most worth flagging.
-
-  ## Never from stored step state
-
-  `provisioning_steps.state` records what happened on the last run. A
-  certificate that expired since then still reads `done`. The expected side is
-  ours; the actual side is the providers', every time.
+  Projects count when `devops != :off`, whether or not setup has run. The
+  actual side always comes from the providers, never from stored step state.
+  See knowledge/infrastructure, "Resource health".
   """
 
   use Boundary,
@@ -81,16 +67,13 @@ defmodule CodeMySpec.Resources do
     world = world(scope, found, errors)
     resources = Enum.map(found, &classify(&1, world))
 
-    # `:unknown` is not a problem. It is the absence of an answer, and counting
-    # it would turn one provider's outage into a page full of complaints about
-    # resources nothing is wrong with.
+    # `:unknown` is the absence of an answer, not a problem.
     problems =
       Enum.count(resources, &(&1.status == :dangling)) +
         Enum.count(checklist, &(&1.state == :missing))
 
     %{
-      # An unreadable provider is not a clean bill. We do not know what it
-      # holds, and saying "healthy" would be a guess dressed as an all-clear.
+      # An unreadable provider is not a clean bill.
       status: if(problems == 0 and errors == %{}, do: :healthy, else: :unhealthy),
       problems: problems,
       resources: Enum.sort_by(resources, &{&1.owner, &1.kind, &1.location}),
@@ -114,10 +97,8 @@ defmodule CodeMySpec.Resources do
   @doc """
   Everything trim would remove: dangling, and only dangling.
 
-  Separate from `trim/1` on purpose. A resource Sam has said to keep must not
-  appear in the set the delete path is handed at all — a guarantee that
-  depends on the delete path checking a flag has already put an irreversible
-  button underneath something he asked to keep.
+  Separate from `trim/1` on purpose: a kept resource never appears in the set
+  the delete path is handed, rather than relying on that path to check a flag.
   """
   @spec trim_candidates(Scope.t()) :: [map()]
   def trim_candidates(%Scope{} = scope) do
@@ -154,12 +135,8 @@ defmodule CodeMySpec.Resources do
   @doc """
   Run one project's setup, converging on whatever is missing.
 
-  The action is the project's sequence rather than an individual step. Steps
-  are ordered and depend on each other, so running one alone fails whenever
-  the gap is not the very next one — and fails in a way that reads like a
-  broken feature rather than an ordering constraint. The sequence is already
-  idempotent, which is what makes it safe to offer: it builds what is absent
-  and leaves what is not.
+  Runs the whole sequence rather than one step: steps depend on each other,
+  and the sequence is idempotent, building what is absent and leaving the rest.
   """
   @spec fix(Scope.t(), Ecto.UUID.t()) :: term()
   def fix(%Scope{} = scope, project_id) when is_binary(project_id) do
@@ -170,10 +147,8 @@ defmodule CodeMySpec.Resources do
       project ->
         project_scope = project_scope(scope, project)
 
-        # The same opts `ProvisioningLive` passes. `run_step/3` does not read
-        # this env itself, so a caller that omits it silently runs the real
-        # providers — which is what this did first time round, failing every
-        # step against credentials that were never meant to be used.
+        # The configured step opts, which the run does not read itself;
+        # omitting them silently runs the real providers.
         Provisioning.run(project_scope, Provisioning.setup_options(project), step_opts())
     end
   end
@@ -181,9 +156,7 @@ defmodule CodeMySpec.Resources do
   @doc """
   Run setup for every project meant to be deployed.
 
-  Each runs on its own: a refusal halts that project and nothing else. One
-  provider saying no to one project must not decide what happens to the rest,
-  or the button is unusable on any account with more than one.
+  Each runs on its own: a refusal halts that project and nothing else.
   """
   @spec fix_all(Scope.t()) :: [{Ecto.UUID.t(), term()}]
   def fix_all(%Scope{} = scope) do
@@ -193,22 +166,11 @@ defmodule CodeMySpec.Resources do
   @doc """
   Start one project's setup without waiting for it to finish.
 
-  `fix/2` blocks for the whole run, which is the honest shape for a page
-  holding a connection open — and exactly what breaks a caller that cannot:
-  the MCP transport's call timeout is far shorter than a real run (deploy
-  alone measured ~167s), so `run_devops_setup` calling `fix/2` returned
-  `-32603` to the caller long before the run itself finished. The run kept
-  going server-side regardless, and the caller — reading the timeout as
-  failure — retried into a project that already had a run in flight, racing
-  its own writes against real Cloudflare/Hetzner/Resend/GitHub state.
-
-  This returns as soon as the run has either started or been refused —
-  never once the work is done. `RunLock` is what makes "started or refused"
-  the only two outcomes: a project already mid-run gets
-  `{:error, {:already_running, started_at}}` back immediately, without a
-  second `Provisioning.run/3` ever starting. The caller polls
-  `Resources.report/1` (what `devops_status` already reads) to watch it
-  converge.
+  For callers that cannot hold a connection for a whole run (an MCP call
+  times out long before a deploy finishes). Returns as soon as the run has
+  started or been refused; a project already mid-run gets
+  `{:error, {:already_running, started_at}}` from `RunLock` without a second
+  run starting. The caller polls `report/1` to watch it converge.
 
   `opts[:holder]` is what `RunLock.with_lock/3` records as the run's holder;
   `opts[:on_finish]` is called with the run's result when it lands — how the
@@ -239,19 +201,10 @@ defmodule CodeMySpec.Resources do
     for project <- deployable(scope), do: {project.id, start_fix(scope, project, [])}
   end
 
-  # The handshake that makes `fix_async/2` genuinely async while still
-  # answering "did it start" synchronously: the spawned task claims the lock
-  # first and only then signals the caller, so the caller learns the true
-  # outcome — locked-and-running, or refused — in milliseconds, without ever
-  # waiting on the run itself. `RunLock.with_lock/2`'s `Registry.register/3`
-  # is the atomic step; the ack just carries its result back across process
-  # boundaries so this function can return synchronously with an answer.
-  #
-  # In tests, run inline instead — same reasoning as `content_pull_async:
-  # false`. The spawned Task is a genuinely different process, so it holds
-  # neither the Ecto Sandbox checkout nor the Req.Test stub allowances the
-  # test process set up; against fakes there is nothing to wait for anyway,
-  # so running synchronously costs nothing and shares both.
+  # The spawned task claims the lock first, then signals the caller, so "did it
+  # start" is answered synchronously without waiting on the run. Inline in
+  # tests (`:provisioning_async`), where a separate process would hold neither
+  # the sandbox checkout nor the Req.Test stubs.
   defp start_fix(scope, project, opts) do
     project_scope = project_scope(scope, project)
     options = Provisioning.setup_options(project)
@@ -318,23 +271,10 @@ defmodule CodeMySpec.Resources do
   One project's own status — what it should have against what it actually
   has, for that project alone.
 
-  Unlike `report/1` (the whole account, for `/app/resources` — the
-  cross-project dangling checks genuinely need to see everything, and
-  `Inventory.list/1` asking each provider for every resource on the account
-  is how they see it), this never looks past the one project it is given.
-  A harness-scoped caller has no business learning what devops state,
-  missing steps, or dangling resources some *other* project in the same
-  account carries — least of all by accident, through a report that
-  happened to include it regardless of whether the caller's own project
-  was on or off.
-
-  Confirmed live: `devops_status`'s original fix refused cleanly when the
-  calling project's own devops was `:off`, but once it was turned on the
-  tool still called `report/1` underneath — so a *different*,
-  independently devops-enabled project in the same account kept appearing
-  in full detail beside the real answer. This is what closes that: no
-  `deployable/1`, no `Inventory.list/1`, nothing that could ever name a
-  project other than the one given.
+  Unlike `report/1` (the whole account), this never looks past the one
+  project it is given: no `deployable/1`, no `Inventory.list/1`, nothing that
+  could name another project. A harness-scoped caller must not learn another
+  project's state.
 
   Errors when this project's own devops level is off — nothing to report,
   not another project's checklist instead.
@@ -368,8 +308,7 @@ defmodule CodeMySpec.Resources do
   defdelegate setup_missing(scope, project, environment), to: ProvisioningPlan
 
   # What each project meant to be deployed should have, from the same sequence
-  # the run uses. `ProvisioningPlan.plan/3` fills the gaps a run never reached, which is the
-  # only reason a step nobody started can appear here at all.
+  # the run uses; steps nobody started appear because the plan fills them in.
   defp checklist(scope) do
     for project <- deployable(scope),
         entry <- ProvisioningPlan.checklist(scope, project),
@@ -429,8 +368,7 @@ defmodule CodeMySpec.Resources do
     end
   end
 
-  # Everything the cross-checks need, gathered once. Also the answer to an
-  # N+1: `bucket_names/1` used to run per bucket.
+  # Everything the cross-checks need, gathered once.
   defp world(scope, found, errors) do
     recorded = recorded_resources(scope)
 
@@ -439,33 +377,21 @@ defmodule CodeMySpec.Resources do
         MapSet.new(for %{kind: "server", identifier: ip} <- found, is_binary(ip), do: ip),
       recorded_addresses: addresses_in(recorded),
       recorded_buckets: names_in(recorded, "bucket"),
-      # Whether we can say anything about what servers exist right now. When
-      # Hetzner cannot be asked, the comparison set is missing rather than
-      # empty, and treating those as the same thing flagged every A record on
-      # the account during an outage.
+      # Hetzner unreadable means the comparison set is missing, not empty.
       servers_known?: not Map.has_key?(errors, :hetzner),
       bucket_names: bucket_names(scope),
       kept: Acknowledgement.kept(scope)
     }
   end
 
-  # Dangling is defined per kind, because "points at nothing" means something
-  # different for each. One generic rule would either miss the DNS case or
-  # flag things that are fine, and a flag that is wrong often enough stops
-  # being read.
-  #
-  # The load-bearing qualifier throughout: a resource can only dangle if it
-  # was **ours**. The first version flagged anything that did not match our
-  # records, which on a real account means every record pointing at a host
-  # somewhere else — six of seven flags on John's account were his own
-  # marketing site on Fly. "Points at nothing" has to mean "points at
-  # something we released", not "points somewhere we do not recognise".
+  # Dangling is defined per kind, and a resource can only dangle if it was
+  # **ours**: "points at something we released", not "points somewhere we do
+  # not recognise". See knowledge/infrastructure, "Resource health".
   defp classify(%{kind: "dns_record"} = resource, world) do
     put(resource, :domain, dns_status(address_of(resource), world), world.kept)
   end
 
-  # Same rule. A bucket we never created is somebody else's storage; a bucket
-  # we did create and no environment names anymore is one we are paying for.
+  # Same rule: only a bucket we created that no environment names dangles.
   defp classify(%{kind: "bucket"} = resource, world) do
     name = resource.location |> String.split("/") |> List.last()
 
@@ -490,8 +416,7 @@ defmodule CodeMySpec.Resources do
 
   defp dns_status(address, world) do
     cond do
-      # Never one of ours. Somebody else's host, and none of our business
-      # whether it is still up.
+      # Never one of ours.
       not MapSet.member?(world.recorded_addresses, address) -> :present
       # Ours, and we cannot see what is running to know if it still is.
       not world.servers_known? -> :unknown
@@ -500,14 +425,11 @@ defmodule CodeMySpec.Resources do
     end
   end
 
-  # Only an A record can dangle against a server address. A CNAME or TXT points
-  # at a name or a string, and checking those against IPs would flag every one
-  # of them.
+  # Only an A record can dangle against a server address.
   defp address_of(%{identifier: "A " <> address}), do: String.trim(address)
   defp address_of(_resource), do: nil
 
-  # What setup wrote down that it made, across every project on the account.
-  # This is the record of what was once ours, which is what makes "released"
+  # What setup recorded making, across the account: what makes "released"
   # distinguishable from "never mine".
   defp recorded_resources(%Scope{active_account_id: account_id}) when is_binary(account_id) do
     Step
@@ -546,10 +468,8 @@ defmodule CodeMySpec.Resources do
 
   defp put(resource, owner, status), do: put(resource, owner, status, MapSet.new())
 
-  # A dangling resource Sam has accounted for is `:kept` — still listed, still
-  # saying what it is, and no longer counted against him. Marking says "keep
-  # this", never "hide this": a resource nobody can see is the failure this
-  # whole epic keeps finding.
+  # A kept dangling resource is `:kept`: still listed, no longer counted.
+  # Marking says "keep this", never "hide this".
   defp put(resource, owner, :dangling, kept) do
     if MapSet.member?(kept, {resource.kind, resource.location}) do
       build(resource, owner, :kept)
@@ -564,9 +484,7 @@ defmodule CodeMySpec.Resources do
     resource
     |> Map.put(:owner, owner)
     |> Map.put(:status, status)
-    # Everything the providers report is something that exists; whether *we*
-    # made it is a separate question, and one trimming needs answered before
-    # it can offer to delete anything.
+    # Whether *we* made it is a separate question trimming needs answered.
     |> Map.put_new(:origin, :unrecorded)
   end
 end

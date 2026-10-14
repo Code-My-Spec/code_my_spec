@@ -311,25 +311,18 @@ defmodule CodeMySpec.Users do
      exist but we delete all of them for best security practices.
 
   3. The user has not confirmed their email but a password is set.
-     This cannot happen in the default implementation but may be the
-     source of security pitfalls. See the "Mixing magic link and password registration" section of
-     `mix help phx.gen.auth`.
+     Refused with `{:error, :unconfirmed_with_password}` — allowing it is a
+     session-fixation risk. Reachable by registering with a password and
+     requesting a magic link before confirming. See the "Mixing magic link
+     and password registration" section of `mix help phx.gen.auth`.
   """
   def login_user_by_magic_link(token) do
     {:ok, query} = UserToken.verify_magic_link_token_query(token)
 
     case Repo.one(query) do
-      # Prevent session fixation attacks by disallowing magic links for unconfirmed users with password
-      #
-      # Refused, not raised. The refusal is right — allowing it is the
-      # vulnerability this names — but raising made the *only remaining door*
-      # for this user a 500 stack trace. The password form is gone from
-      # `/users/log-in`, so an account with a password and no confirmation had
-      # no way in at all: one door removed, the other throwing.
-      #
-      # It is reachable without any special setup — register with a password,
-      # request a magic link before confirming — and it is what every QA pass
-      # hit, because the seed user is created exactly this way.
+      # Prevent session fixation: no magic links for unconfirmed users with a
+      # password. Refused, not raised — raising left such an account with no
+      # way in but a 500, since the password form is gone from `/users/log-in`.
       {%User{confirmed_at: nil, hashed_password: hash}, _token} when not is_nil(hash) ->
         {:error, :unconfirmed_with_password}
 

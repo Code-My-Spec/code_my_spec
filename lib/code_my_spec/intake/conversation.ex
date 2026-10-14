@@ -2,15 +2,8 @@ defmodule CodeMySpec.Intake.Conversation do
   @moduledoc """
   One guided-intake conversation, as a process.
 
-  The LiveView used to drive the flow: it decided whether a submission was a
-  description or an answer, recorded the turn, called the model, and assigned
-  the result. That put the conversation in the socket, and a socket is the one
-  thing in this system guaranteed to go away — a reload, a dropped connection, a
-  phone locking. Every bug in this feature has been a variation on that: the
-  turns lost on reload, the call lost mid-flight, the re-ask that produced a
-  different question each time because there was nothing to restore.
-
-  So the conversation owns itself. `said/2` is the only way in: the process
+  The conversation owns itself rather than living in a socket, which is
+  guaranteed to go away (a reload, a dropped connection). `said/2` is the only way in: the process
   decides what the submission means from the plan's own status, records it, asks
   the model, writes the result, and tells whoever is watching. A LiveView
   subscribes and renders. It can come and go freely, and several can watch at
@@ -18,10 +11,9 @@ defmodule CodeMySpec.Intake.Conversation do
 
   ## Why a process and not a task
 
-  A task per turn would survive a reload, which was the first fix. It would not
-  serialise: two submissions racing produce two model calls and two answers for
-  one question, and the row keeps whichever lands second. A process per
-  conversation has a mailbox, so turns queue behind each other by construction.
+  A task per turn would survive a reload but not serialise: two racing
+  submissions would make two model calls for one question. A process's mailbox
+  queues turns by construction.
 
   ## Lifetime
 
@@ -39,21 +31,12 @@ defmodule CodeMySpec.Intake.Conversation do
 
   require Logger
 
-  # Long enough to cover a visitor thinking about their answer, short enough
-  # that an abandoned intake does not hold a process for the afternoon. The row
-  # outlives it either way.
+  # Covers a visitor thinking about an answer; the row outlives the process.
   @idle_timeout to_timeout(minute: 30)
 
-  # A watchdog for the case `resume/1` cannot reach: the process and its task
-  # stay alive, but the model call never returns and never crashes — no `:DOWN`
-  # fires, so nothing marks the row failed, and a visitor on the same open
-  # connection watches a composer that already cleared for an answer that never
-  # comes (`7df5485e`). `resume/1` only helps a *new* mount; this covers the one
-  # already open. 120s default is 8x the slowest normal call measured (~15s)
-  # for real margin against a "solo app" idea's longer reasoning, while still
-  # bounding the stuck window to something a waiting visitor eventually sees
-  # resolve. Configurable so a test can prove the stall path fires without
-  # actually waiting two minutes.
+  # A watchdog for a model call that neither returns nor crashes (no `:DOWN`),
+  # which `resume/1` cannot reach for a connection already open. 120s is ~8x
+  # the slowest normal call. Configurable for tests.
   defp shape_timeout,
     do: Application.get_env(:code_my_spec, :intake_shape_timeout_ms, to_timeout(second: 120))
 
@@ -71,9 +54,7 @@ defmodule CodeMySpec.Intake.Conversation do
       |> GenServer.call({:said, text}, to_timeout(second: 10))
     else
       # Inline in test, where a process the sandbox does not own cannot see the
-      # transaction — the `content_pull_async` convention. `ConversationTest`
-      # exercises the real process with an explicit ownership grant, so the
-      # thing this module exists for is still covered.
+      # transaction. `ConversationTest` exercises the real process.
       case record_and_shape_inline(plan, text) do
         {:ok, _} = ok -> ok
         other -> other
@@ -119,14 +100,9 @@ defmodule CodeMySpec.Intake.Conversation do
   @doc """
   Picks a conversation back up if the row says a call is out and none is.
 
-  A deploy, a crash or an evicted machine takes the process and its task with
-  it, and leaves `shaping_status: :thinking` on the row with nothing left to
-  finish it. Nothing recovered that: the page rendered "Thinking…" and meant it
-  forever. Measured the hard way — six deploys while somebody was using it.
-
-  Idempotent by construction. The process knows whether it has work out, so a
-  call here while it does is a no-op, and a call here when it does not is the
-  work being restarted.
+  A deploy, a crash or an evicted machine leaves `shaping_status: :thinking` on
+  the row with nothing left to finish it. Idempotent: the process knows
+  whether it has work out, so a call while it does is a no-op.
   """
   @spec resume(Plan.t()) :: :ok
   def resume(%Plan{shaping_status: :thinking} = plan) do
@@ -144,9 +120,8 @@ defmodule CodeMySpec.Intake.Conversation do
 
   @impl true
   def handle_call({:said, text}, _from, %{plan_id: plan_id} = state) do
-    # Re-read rather than trusting what the caller held. Two tabs are two
-    # callers, and the one that submits second must build on the first's turn
-    # rather than on the plan as it looked when its page loaded.
+    # Re-read: of two tabs, the one that submits second must build on the
+    # first's turn.
     case Intake.get_plan_by_id(plan_id) do
       nil ->
         {:reply, {:error, :no_plan}, state, @idle_timeout}
@@ -187,20 +162,14 @@ defmodule CodeMySpec.Intake.Conversation do
       "[Intake.Conversation] shaping crashed on #{state.plan_id}: #{inspect(reason)}"
     )
 
-    # A crashed call leaves the row saying thinking, and the row is what the
-    # next page load reads. Say it failed instead, so the visitor is told rather
-    # than left watching.
+    # A crashed call leaves the row saying thinking; say it failed instead.
     state.plan_id |> Intake.get_plan_by_id() |> Intake.mark_shaping_failed()
 
     {:noreply, %{state | working: nil}, @idle_timeout}
   end
 
-  # The call neither finished nor crashed — no `:DOWN` for `resume/1`'s next
-  # mount to react to, and this process is still the one a stuck visitor's
-  # open connection is subscribed through. Demonitoring first: the task may
-  # still complete after this fires (a slow answer, not a dead one), and its
-  # late `{ref, result}` / `:DOWN` must not land on a `working` ref this has
-  # already cleared and reused.
+  # The call neither finished nor crashed. Demonitored first: a late
+  # `{ref, result}` / `:DOWN` must not land on a cleared `working` ref.
   def handle_info({:shape_stalled, ref}, %{working: ref} = state) do
     Logger.warning(
       "[Intake.Conversation] shaping stalled past #{shape_timeout()}ms on #{state.plan_id}"
@@ -219,9 +188,8 @@ defmodule CodeMySpec.Intake.Conversation do
   def handle_info(:timeout, %{working: nil} = state), do: {:stop, :normal, state}
   def handle_info(_message, state), do: {:noreply, state, @idle_timeout}
 
-  # Owned by this process rather than fired and forgotten, so it knows whether a
-  # call is out. That is what makes `resume/1` safe to call on every page load:
-  # without it, a second viewer arriving mid-call would start a second call.
+  # Owned by this process, so it knows whether a call is out; that makes
+  # `resume/1` safe on every page load.
   defp start_work(plan) do
     task =
       Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
@@ -233,9 +201,7 @@ defmodule CodeMySpec.Intake.Conversation do
     task.ref
   end
 
-  # What a submission means is a property of where the conversation has got to,
-  # which is on the row. The LiveView used to decide this from its own assigns
-  # and pass the right event name, which is the same fact stored twice.
+  # What a submission means is decided from the row's status, not the caller.
   defp record_and_shape(%Plan{status: :describing} = plan, text, state) do
     with {:ok, described} <- Intake.describe(plan, text), do: begin(described, state)
   end
@@ -259,12 +225,8 @@ defmodule CodeMySpec.Intake.Conversation do
     end
   end
 
-  # Owned when there is a process to own it, run here when there is not.
-  #
-  # `async_nolink/2` replies to whoever called it, so the inline path was
-  # spawning a task whose `{ref, result}` landed in the LiveView — which has no
-  # clause for it and died. The inline path has no process to be in flight, so
-  # it does the work and returns the finished plan.
+  # Owned when there is a process to own it, run here when there is not: an
+  # `async_nolink/2` task replies to its caller, which inline is the LiveView.
   defp run(plan, _state) do
     if process?(), do: plan, else: Intake.shape(plan)
   end

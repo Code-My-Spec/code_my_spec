@@ -1,38 +1,21 @@
 defmodule CodeMySpec.Environments do
   @moduledoc """
-  Provides execution primitives for running commands and file system operations
-  across different execution contexts (server, CLI with tmux, VS Code client).
+  Execution primitives — commands and file operations — over an opaque
+  `Environment`, delegating to the implementation for its type (`:cli`,
+  `:local`, `:container`, `:harness`, `:memory`).
 
-  This module delegates to specific environment implementations while maintaining
-  a consistent interface through the opaque Environment struct.
-
-  Declared as its own Boundary so spex specs can write into the
-  in-memory environment they were handed by the case setup. Spex always
-  drives the `:memory` adapter (`CodeMySpec.Support.InMemoryEnvironment`),
-  so reaching through `Environments.write_file/3` etc. never touches the
-  real filesystem.
+  Its own Boundary so spex can write into the `:memory` environment
+  (`CodeMySpec.Support.InMemoryEnvironment`) the case setup handed them.
 
   ## No environment is a configuration, not a bug
 
-  Every file operation here accepts `nil` and answers instead of raising. That
-  is the light harness: the server has no local working copy, so no local
-  runtime is available and there is no disk to reach.
-
-  Until these clauses existed, each of these raised `FunctionClauseError` on the
-  way to building an agent's task prompt, and a requirement whose prompt cannot
-  be rendered cannot be worked. An agent driving a real project hit it on nine
-  requirements in a row — `technical_strategy`, `code_generation`, the four QA
-  plans, `release` — and could get no further than a stack trace naming
-  `glob/2`, `write_file/3` or `list_directory/2`.
-
-  The answers are the ones callers already handle: `{:error, :no_environment}`
-  where a result was expected, `[]` for a search that found nothing reachable,
-  `false` for existence. Note the asymmetry that leaves behind — "no disk" and
-  "not there" are now the same reply for `file_exists?/2`, which is fine for
-  rendering a prompt and is *not* fine for deciding a requirement is unmet. A
-  checker that must tell those apart has to say so itself; see
-  `CodeMySpec.AgentTasks.Setup.Context.dir_status/2`, which returns
-  `:unobservable` rather than pretending to know.
+  Every file operation accepts `nil` (the server has no local working copy) and
+  answers instead of raising: `{:error, :no_environment}` where a result was
+  expected, `[]` for a search, `false` for existence. So "no disk" and "not
+  there" are the same reply for `file_exists?/2` — fine for rendering a prompt,
+  not for deciding a requirement is unmet; use `unobservable?/1` or
+  `CodeMySpec.AgentTasks.Setup.Context.dir_status/2` for that.
+  See knowledge/infrastructure, "Execution environments".
   """
 
   use Boundary, top_level?: true, deps: [], exports: :all
@@ -55,22 +38,16 @@ defmodule CodeMySpec.Environments do
   @doc """
   Whether an error means "could not look" rather than "not there".
 
-  The distinction the moduledoc above draws, as something callers can ask
-  instead of each keeping its own list. A checker that flattens these into a
-  requirement failure tells an agent to redo work that is very likely already
-  done, and no amount of redoing it will clear the gate.
+  A checker that flattens these into a requirement failure tells an agent to
+  redo work that is very likely already done.
   """
   @spec unobservable?(term()) :: boolean()
   def unobservable?(:no_environment), do: true
   def unobservable?({:error, reason}), do: unobservable?(reason)
   def unobservable?(_), do: false
 
-  # OTP/release env vars that, if inherited by a child process, point its
-  # `erl` at the parent release's ERTS. The harness ships as an OTP release
-  # whose `erl` exports these into the OS environment; a child `mix`/`erl`
-  # launched against a user's project then resolves its boot files to OUR
-  # ERTS instead of the user's installed OTP and dies with "cannot get
-  # bootfile".
+  # Release vars that, inherited, point a child `erl` at our ERTS ("cannot get
+  # bootfile"). See knowledge/infrastructure, "Child process environment".
   @otp_release_vars ~w(
     ROOTDIR BINDIR EMU PROGNAME ERL_LIBS
     RELEASE_ROOT RELEASE_SYS_CONFIG RELEASE_TMP RELEASE_NODE RELEASE_VSN
@@ -82,18 +59,9 @@ defmodule CodeMySpec.Environments do
     beforeExtra parsErlang endLoop
   )
 
-  # Our Mix environment is ours. It leaks into a child `mix` run against the
-  # user's project and silently changes which of *their* dependencies exist:
-  # provisioning's widget step shelled `mix cms_gen.support_widget` from a
-  # suite running under MIX_ENV=test, the generator package is a `:dev`
-  # dependency of the target app, and mix reported "the task could not be
-  # found" — which reads as a missing generator and is really our own
-  # environment deciding the answer.
-  #
-  # Separate from the release vars because a caller may legitimately choose the
-  # child's Mix environment (the analyzer runs the project's tests, which needs
-  # `test`). An explicit `:env` entry wins; silence means the child picks its
-  # own default rather than inheriting ours.
+  # Our Mix environment would change which of the child project's deps exist.
+  # Separate from the release vars because a caller may choose the child's
+  # (`merge_clean_env/1` lets an explicit `:env` entry win).
   @mix_env_vars ~w(MIX_ENV MIX_TARGET MIX_BUILD_PATH MIX_DEPS_PATH MIX_HOME MIX_ARCHIVES)
 
   @doc """
@@ -109,32 +77,10 @@ defmodule CodeMySpec.Environments do
       path_without_release_dirs()
   end
 
-  # The shims first, so a child resolves the toolchain its *own* directory pins.
-  #
-  # A version manager works by putting a shim on PATH that reads
-  # `.tool-versions` from the working directory. Running under one, the parent's
-  # PATH already names a resolved version's bin directory ahead of the shims —
-  # that is how the parent got its own Elixir — and a child inherits that
-  # resolution wholesale. So `mix` run inside the user's project used ours.
-  #
-  # Which is not cosmetic: the generated application pins `~> 1.20` and the
-  # widget step, which runs a generator inside it, refused itself with
-  #
-  #   ** (Mix) You're trying to run :cms_drill_app on Elixir v1.19.4 but it has
-  #   declared in its mix.exs file it supports only Elixir ~> 1.20
-  #
-  # reported as a broken generator rather than as two checkouts on two Elixirs.
-  # Putting the shims back in front restores the per-directory resolution the
-  # user installed them for. A machine without a version manager is unaffected;
-  # the directory simply does not exist and PATH is untouched.
-  #
-  # Deliberately *not* part of `clean_otp_env/0`, which is a scrub: it removes
-  # the release's own directories from PATH and adds nothing, and says nothing
-  # about PATH at all when there is nothing to remove. Folding this into it
-  # made it emit a PATH it had no business setting, which is three of its own
-  # tests. This belongs to `merge_clean_env/1` instead — the path taken by the
-  # two callers that run a child `mix` inside *another project's* directory,
-  # which is the only situation where whose toolchain resolves is a question.
+  # Version-manager shims first, so a child resolves the toolchain its own
+  # directory pins rather than ours. Only for `merge_clean_env/1`, never
+  # `clean_otp_env/0`, which is a scrub and adds nothing.
+  # See knowledge/infrastructure, "Child process environment".
   defp path_for_children do
     case path_without_release_dirs() do
       [{"PATH", path}] -> [{"PATH", prepend_shims(path)}]
@@ -149,13 +95,8 @@ defmodule CodeMySpec.Environments do
     end
   end
 
-  # asdf and mise, the two this project's checkouts are managed with. Only
-  # directories that exist, and **moved** to the front rather than added there:
-  # a version manager's shims are almost always on PATH already, just behind the
-  # resolved version's bin directory, which is precisely the ordering that has
-  # to change. Skipping the ones already present left PATH untouched and the
-  # child still resolved our Elixir — the fix was inert for exactly the case it
-  # was written for. Nothing is dropped; the order is what changes.
+  # asdf and mise, only where the directory exists. **Moved** to the front, not
+  # added: the shims are usually on PATH already, behind the resolved bin dir.
   defp prepend_shims(path) do
     sep = path_separator()
     existing = String.split(path, sep, trim: true)
@@ -190,18 +131,10 @@ defmodule CodeMySpec.Environments do
     Keyword.update(opts, :env, scrub, &(&1 ++ scrub))
   end
 
-  # Clearing ROOTDIR is necessary but not sufficient: the release's own
-  # `erts-*/bin` is on PATH — *first* under the Windows MSI — so a child
-  # `mix`/`elixir` resolves `erl` to OUR erl regardless of what we unset. That
-  # erl then derives ROOTDIR from its own location and looks for
-  # `<root>/bin/start.boot`, a path no release has (boot files live in
-  # `releases/<vsn>/`), so the child dies with "cannot get bootfile" before it
-  # ever runs. Every compile, test and credo run on that machine failed this
-  # way while the scrub list was working perfectly.
-  #
-  # Dropping every PATH entry inside RELEASE_ROOT leaves the child resolving
-  # the user's own toolchain. Off a release RELEASE_ROOT is unset and PATH is
-  # passed through untouched.
+  # Clearing ROOTDIR is not enough: the release's `erts-*/bin` is on PATH, so a
+  # child would still find our `erl`. Drop every PATH entry inside RELEASE_ROOT;
+  # off a release PATH passes through untouched.
+  # See knowledge/infrastructure, "Child process environment".
   defp path_without_release_dirs do
     with root when is_binary(root) <- System.get_env("RELEASE_ROOT"),
          path when is_binary(path) <- System.get_env("PATH"),
@@ -270,16 +203,9 @@ defmodule CodeMySpec.Environments do
   Returns `nil` when no override is registered — the caller should fall
   back to its default env construction.
 
-  Also nil when the registry itself is not running, which is a caller outside a
-  started application rather than a caller with no override. Both are "there is
-  nothing registered for you", and both want the caller's own message about it.
-
-  Without this, `mix cms.harness.onboard --project <id>` died as
-  `** (ArgumentError) unknown registry: CodeMySpec.Environments.Registry` from
-  inside `Registry.lookup/2` — the task starts `:req` and nothing else, on
-  purpose, so a checkout that has never been booted can still onboard. Its own
-  `Mix.raise("no environment is registered for project \#{id}")` was unreachable,
-  and the task's comment two lines above it says absence has to report itself.
+  Also `nil` when the registry itself is not running (a caller outside a
+  started application, such as a mix task that starts only `:req`), so the
+  caller reports the absence in its own words.
   """
   @spec lookup_registered(any()) :: Environment.t() | nil
   def lookup_registered(project_id) do
@@ -293,11 +219,8 @@ defmodule CodeMySpec.Environments do
     end
   end
 
-  # Asked, not rescued. `Registry.lookup/2` raises when the registry is not
-  # started, and catching that cannot tell "not running" from any other
-  # `ArgumentError` the lookup might raise — including a genuinely wrong module
-  # name, which is how a transport spent a day reporting every machine
-  # unreachable while a rescue quietly agreed with it.
+  # Asked, not rescued: a rescue cannot tell "not running" from any other
+  # `ArgumentError`, such as a wrong registry name.
   defp running?(registry), do: is_pid(Process.whereis(registry))
 
   @doc """
@@ -315,7 +238,7 @@ defmodule CodeMySpec.Environments do
 
   ## Examples
 
-      # Create CLI environment with tmux
+      # Create CLI environment
       {:ok, env} = Environments.create(:cli, session_id: 123)
 
       # Create local environment
@@ -355,12 +278,9 @@ defmodule CodeMySpec.Environments do
   release` and `mix phx.gen` themselves resolve every `lib/<app>(_web)/...`
   path from.
 
-  `nil` when `mix.exs` cannot be read (a remote or disconnected environment
-  server-side code has no real access to — see `CodeMySpec.Provisioning.
-  Steps.app_path/1`) or does not contain a plain `app: :name`. Callers with a
-  real filesystem underneath them (a harness's own sync, a local checkout)
-  always get a real answer; callers that do not get a clean absence to fall
-  back from, not a wrong guess.
+  `nil` when `mix.exs` cannot be read (no environment, or one server-side code
+  cannot reach) or does not contain a plain `app: :name` — a clean absence to
+  fall back from, not a wrong guess.
   """
   @spec mix_exs_app_name(env :: Environment.t() | nil) :: String.t() | nil
   def mix_exs_app_name(env) do
@@ -446,12 +366,9 @@ defmodule CodeMySpec.Environments do
   # "ask the harness", and swapping it would mean swapping the transport.
   defp impl(:harness), do: CodeMySpec.Environments.Harness
 
-  # No `:server` clause and no catch-all on purpose. `Environment.type` is
-  # `Ecto.Enum, values: [:cli, :local, :vscode]`, so neither was reachable —
-  # and both returned an `{:error, _}` tuple where every caller immediately
-  # does `impl(type).some_function(...)`, which would have crashed with
-  # "tuple.some_function/N is undefined" rather than surfacing the error.
-  # An unknown type now raises FunctionClauseError, naming the real problem.
+  # No catch-all on purpose: an unknown type raises FunctionClauseError, which
+  # names the problem, where an `{:error, _}` here would crash the caller's
+  # `impl(type).fun(...)` with a confusing undefined-function error.
 
   def environment_setup_command(environment, attrs) do
     impl(environment).environment_setup_command(environment, attrs)
@@ -548,4 +465,20 @@ defmodule CodeMySpec.Environments do
 
   def exec_file_exists?(%Environment{type: type} = env, path),
     do: impl(type).exec_file_exists?(env, path)
+
+  @doc """
+  Whether the project's justfile declares the recipe `name`.
+
+  How a project runs its own suites is the project's to say: a runner that
+  finds `spex` or `test` here runs `just <name> …` instead of `mix <name> …`,
+  with the same arguments, so the recipe must pass them through.
+  """
+  @spec recipe?(Environment.t() | nil, String.t()) :: boolean()
+  def recipe?(env, name) do
+    exec_file_exists?(env, "justfile") and
+      case cmd(env, "just", ["--list"], []) do
+        {out, 0} -> Regex.match?(~r/^\s*#{Regex.escape(name)}(\s|$)/m, out)
+        _ -> false
+      end
+  end
 end

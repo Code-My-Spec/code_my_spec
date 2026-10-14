@@ -6,8 +6,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
   find it on its own — reserved to its copy, or released to nobody.
   """
 
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpec.IssuesFixtures
 

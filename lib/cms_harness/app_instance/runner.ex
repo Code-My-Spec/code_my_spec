@@ -2,12 +2,10 @@ defmodule CmsHarness.AppInstance.Runner do
   @moduledoc """
   Whatever actually touches the machine on `CmsHarness.AppInstance`'s behalf.
 
-  Same shape as `CodeMySpec.Workspaces.Runner`: the orchestration (does this
-  copy need cloning, is it idle, what does a stopped copy report) lives in
-  `AppInstance` itself and is worth testing at full speed and determinism;
-  shelling out to `just`, `psql`, `pg_dump` and a real OS process is not —
-  see the "no live shell-outs in tests" rule this project already enforces
-  everywhere else. Configure with:
+  Same shape as `CodeMySpec.Workspaces.Runner`: orchestration lives in
+  `AppInstance` and is tested at full speed; shelling out to `just`, `psql`,
+  `pg_dump` and real OS processes lives behind this behaviour, so tests never
+  shell out. Configure with:
 
       config :code_my_spec, CmsHarness.AppInstance, runner: MyRunner
 
@@ -32,18 +30,12 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @doc """
   The `{http, https}` ports main's own `config/dev.exs` falls back to, or
-  `nil` for the whole pair when `PORT` cannot be resolved at all. Main's app
-  cannot be allocated a free port the way every other copy's is — it is the
-  one address every bookmark, browser tab and the MCP endpoint already
-  point at — so it has to be read off the same file that configures it, the
-  same way `main_database_name/1` already does for the database.
+  `nil` for the whole pair when `PORT` cannot be resolved. Main keeps the
+  address everything already points at, so it is read off the file that
+  configures it.
 
-  `https` is independently `nil` when the app declares no HTTPS endpoint at
-  all — a real, ordinary shape (metric_flow's own `config/dev.exs`, `PORT`
-  only), not a malformed config. Treating it as required read that shape as
-  no address resolvable at all: `{:cannot_resolve_main_address, root}` for a
-  checkout whose `PORT` was right there, because the missing HTTPS half
-  failed the whole lookup.
+  `https` is independently `nil` when the app declares no HTTPS endpoint — an
+  ordinary shape, not a malformed config.
   """
   @callback main_ports(root :: String.t()) ::
               {pos_integer(), pos_integer() | nil} | nil
@@ -77,40 +69,15 @@ defmodule CmsHarness.AppInstance.Runner do
   `DATABASE_NAME`/`CMS_MAIN_COPY`/`CMS_TUNNEL_HELD_BY_HARNESS`/`PHX_HOST`
   set and its output redirected to `log_path`.
 
-  `host` is the tunnel's own public hostname — `nil` for a copy holding no
-  tunnel, in which case `PHX_HOST` is omitted entirely and the app falls
-  back to whatever it already defaults to. Without this, a booting app had
-  no way to learn the one address it is actually reachable at: `Endpoint.
-  url()` built every link (a login email, an OAuth redirect) against
-  whatever `config/dev.exs` happened to hardcode, which drifts the moment
-  a copy's real preview address differs from it — observed live, a login
-  link pointing at a stale tunnel address a browser could not reach.
+  `host` is the tunnel's public hostname, set as `PHX_HOST` so `Endpoint.url()`
+  builds links against the address the app is reachable at; omitted when
+  `nil`. `HTTPS_PORT` is likewise omitted when `https_port` is `nil`.
 
-  `https_port` is `nil` for a main checkout whose `config/dev.exs` declares
-  no HTTPS endpoint at all (see `main_ports/1`) — `HTTPS_PORT` is omitted
-  from the launched env entirely in that case, not interpolated as the
-  string `"nil"`.
-
-  `main?` tells the booting app whether it is the checkout every bookmark
-  already points at. A non-main copy has no business starting its own
-  `ClientUtils.CloudflareTunnel` — that GenServer reads main's own hardcoded
-  tunnel credentials and hostname straight out of `config/dev.exs`, so every
-  copy that started one was a second connector answering for main's tunnel,
-  each pointed at whatever local port *this* copy happened to get. Harmless
-  only because every copy's config also happened to name the same origin
-  main's did; the moment a copy's config named its own port instead,
-  Cloudflare would split main's public traffic between the two apps.
-
-  `tunnel_held_by_harness?` is the other half of the same fact
-  `CmsHarness.AppInstance.ensure_tunnel/3` acts on: `true` exactly when
-  `PreviewTunnel.stored_credentials/1` found a tunnel for this copy, which
-  means the harness is about to run — or already runs — the connector for
-  it. The launched app reads this and skips its own tunnel child when it is
-  set, the same way it already skips one for `main?: false`; a copy whose
-  tunnel is still `config/dev.exs`'s hardcoded bootstrap (no DB row) sees
-  `false` and keeps running its own, exactly as before this existed. Both
-  sides derive the same answer from the same fact — there is no separate
-  flag to keep in sync, and no state where both or neither are running one.
+  `main?` (`CMS_MAIN_COPY`): a non-main app must not start its own
+  `ClientUtils.CloudflareTunnel`, which would answer for main's tunnel.
+  `tunnel_held_by_harness?` (`CMS_TUNNEL_HELD_BY_HARNESS`) is true exactly when
+  the harness runs this copy's connector, so the app skips its own; both sides
+  derive it from the same fact. See knowledge/harness, "App instances".
   """
   @callback launch(
               root :: String.t(),
@@ -148,38 +115,25 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @doc """
   The `os_pid` of whatever is listening on `port` right now, or `nil` if
-  nothing is. Main's port is fixed, not freshly allocated the way every
-  other copy's is, so it can already be held by a process this instance
-  never launched and holds no tracked `os_pid` for — the checkout's own
-  pre-story-1108 dev server, still running from before the first unified
-  restart ever ran against it.
+  nothing is. Main's port is fixed, so it can be held by a process this
+  instance never launched.
   """
   @callback listener_pid(port :: pos_integer()) :: pos_integer() | nil
 
   @doc """
   The working directory of `os_pid`, or `nil` if it can't be read (the
   process is already gone, or this platform has no way to ask). Compared
-  against a copy's own `root` before that copy's app instance ever adopts
-  (kills) whatever it finds holding its port — a match confirms the
-  listener is this checkout's own old process; anything else is refused
-  rather than assumed and killed.
+  against a copy's `root` before anything is adopted or killed.
   """
   @callback process_root(os_pid :: pos_integer()) :: String.t() | nil
 
   @doc """
-  Start a named Cloudflare tunnel for this copy's own credentials, pointed at
-  `origin_url`. Unlinked from the caller on purpose (`GenServer.start/1`, not
-  `start_link/1`) — `AppInstance` holds the pid it gets back and re-checks
-  `Process.alive?/1` on every later call rather than trapping an exit, the
-  same reasoning `running?/1` already applies to the app's own OS process:
-  a dead tunnel should read as "not running," not crash the process
-  supervising it.
+  Start a named Cloudflare tunnel for these credentials, pointed at
+  `origin_url`. Not linked to the caller: `AppInstance` re-checks
+  `Process.alive?/1` on later calls, so a dead tunnel reads as "not running".
 
-  Only ever called for a copy confirmed main, right now, by the server —
-  see `CmsHarness.HarnessProjectChannel.put_tunnel/2`'s own comment. Never
-  called for a copy sharing another's tunnel (criterion 1586); that hostname
-  reaches the shared tunnel through main's own connector, not one of its
-  own.
+  Keyed on the tunnel id: every caller handed the same tunnel gets the one
+  running connector.
   """
   @callback start_tunnel(
               credentials :: %{

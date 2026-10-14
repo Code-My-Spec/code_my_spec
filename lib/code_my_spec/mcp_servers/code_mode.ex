@@ -4,13 +4,10 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   This is the half that knows about MCP: which tools are registered, how to
   build a frame, and how to read a `Response`. `CodeMode` itself knows none of
-  it — Boundary saw to that, and it is why the runtime's tests need two fake
-  tools rather than a server.
+  it.
 
-  The registrations come from `ScriptableTools`, not `LocalServer`. Story 971
-  took the long tail off the advertised list, and taking them off `LocalServer`
-  alone would have taken them away from scripts too — unregistered is
-  unreachable, not merely unadvertised.
+  The registrations come from `ScriptableTools`, not `LocalServer`: the long
+  tail is registered there so scripts can reach it without it being advertised.
 
   ## Scope is captured here
 
@@ -24,16 +21,11 @@ defmodule CodeMySpec.McpServers.CodeMode do
   Data from a tool that implements `ScriptResult.script_result/2`, and the
   tool's prose from one that does not.
 
-  The prose fallback is not a degraded mode; it is what every tool gave scripts
-  before that callback existed. What it cannot do is be iterated — a formatted
-  listing is a string — so composing over a result is exactly what opting in
-  buys.
+  Prose cannot be iterated, so composing over a result is what opting in buys.
 
-  Deliberately **not** `structured_content`. Anubis can put structured data on
-  the wire, and Claude then ignores the text beside it — measured, and the
-  reason every tool here answers with prose alone. Serving scripts that way
-  would make every direct tool call pay for it. The script path is separate and
-  a direct caller never sees it.
+  Deliberately **not** `structured_content`: Claude ignores the text beside
+  structured data on the wire, so direct calls answer with prose alone. The
+  script path is separate and a direct caller never sees it.
   """
 
   alias Anubis.Server.{Frame, Response}
@@ -60,23 +52,15 @@ defmodule CodeMySpec.McpServers.CodeMode do
   @doc """
   The same, carrying who is asking.
 
-  `caller` is `%{session_id: …, agent_id: …}`, either key optional. Without it
-  a script could not call a tool that needs to know whose work it is — which
-  covered `list_tasks`, `evaluate_task`, `start_task`, `cancel_task` and
-  `assign_task`, so a caller could script everything except claiming or
-  finishing a piece of work. Issue `1a892606`.
+  `caller` is `%{session_id: …, agent_id: …}`, either key optional, so tools
+  that need to know whose work it is (`list_tasks`, `start_task`, …) work from
+  a script.
 
-  Two carriers because there are two kinds of caller, and neither can use the
-  other's. An agent we run is identified by its connection, so `agent_id` is on
-  the frame the outer call arrived on; a Claude Code session is identified by a
-  `session_id` the `PreToolUse` hook injects into the tool's input. The script
-  path had a fresh frame and untouched arguments, so it dropped both.
-
-  What that looked like from outside was worse than a missing feature: a caller
-  was told to call `register_session`, did, was told it had worked, and got the
-  same "no owner" refusal from the very next line of the same script — so the
-  advice read as a lie and the caller went looking for a session id to pass by
-  hand. There was none to find.
+  Two carriers because there are two kinds of caller. An agent we run is
+  identified by its connection, so `agent_id` goes on the script's frame; a
+  Claude Code session is identified by a `session_id` the `PreToolUse` hook
+  injects into tool input, so it is added to the arguments (see
+  `identified/3`).
   """
   @spec catalog(Scope.t(), [String.t()] | nil, map()) :: Catalog.t()
   def catalog(scope, allowed, caller) do
@@ -87,27 +71,14 @@ defmodule CodeMySpec.McpServers.CodeMode do
   @doc """
   The machine's tools, as their own catalog.
 
-  Separated from ours because they are a different kind of thing under a wall
-  clock. Roughly eighty-five of the tools reachable from a script are the
-  browser's, and several of them *wait by design* — `browser_wait_for_text`,
-  `browser_wait_for_url`, `browser_sleep` all take a duration from the caller,
-  and `browser_start` has been seen taking the better part of an hour. Ours are
-  database reads.
+  Separate from ours because browser tools wait by design (they take
+  durations from the caller) while ours are database reads, and one wall clock
+  cannot suit both. They run in their own sandbox, entered through
+  `run_browser_script`, with a deadline the caller sets; each call gets that
+  deadline less `@machine_call_margin_ms`. The machine's tools arrive as one
+  tool on the agent, not as their list.
 
-  One wall clock cannot be right for both, and the old arrangement made that
-  concrete: this catalog's calls were given a hardcoded 30s while the sandwich
-  around them was also 30s, so they expired together and a browser call that
-  used its budget left the script no time to do anything with the answer — if
-  the brutal kill even let the timeout's error return.
-
-  So they get their own sandbox, entered through `run_browser_script`, with a
-  deadline the caller sets. John's call: they have very different properties and
-  do not need to interact with our tools in one script.
-
-  Costs exactly one tool on the agent. Story 1038's criterion 3017 asks that a
-  third-party MCP server "arrives as one tool, not as its list" and the previous
-  design beat it by arriving as none; this gives that up and still satisfies the
-  rule, at one schema against eighty-five.
+  See knowledge/tools, "Machine tools".
   """
   @spec machine_catalog(Scope.t(), [String.t()] | nil, pos_integer()) :: Catalog.t()
   def machine_catalog(scope, allowed, timeout) do
@@ -121,9 +92,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
   @doc """
   What the machine reports it can do, scoped to what this agent carries.
 
-  `tool_docs` wants the names without invokers built for them — its job is to
-  say a tool exists and where it is called from, and after the split the where
-  is an answer worth giving.
+  For `tool_docs`, which needs the names without invokers built for them.
   """
   @spec machine_tool_names(Scope.t(), [String.t()] | nil) :: [String.t()]
   def machine_tool_names(scope, allowed \\ nil) do
@@ -132,23 +101,10 @@ defmodule CodeMySpec.McpServers.CodeMode do
     |> Enum.filter(&permitted?(&1, allowed))
   end
 
-  # The agent's list is about *our* tools, and this filters the *machine's*.
-  #
-  # Those are two vocabularies with nothing in common, so filtering one by the
-  # other let exactly one thing through: nothing. An agent with no list got
-  # every browser tool and an agent with any list got none — and the one whose
-  # entire job is a browser had a list. On 2026-09-07 the war-epic QA agent's
-  # browser sandbox bound 27 project tools, the exclusion stubs, and not one of
-  # the 85 browser tools its machine was reporting as `ready`.
-  #
-  # So the browser is a capability rather than 85 names. `@browser_capability`
-  # in the agent's list grants the machine's catalog whole, which is the only
-  # useful grain: the names are published by the machine, change when the
-  # browser server changes, and a role that may drive a browser may drive it.
-  #
-  # Per-name grants still work — a name that matches is still permitted — so a
-  # future "this agent may only read the page" stays expressible without
-  # unpicking this.
+  # The browser is a capability, not a list of names: `@browser_capability` in
+  # the agent's list grants the machine's catalog whole, because the names are
+  # the machine's and change with its browser server. A matching name is still
+  # permitted on its own. See knowledge/tools, "Machine tools".
   @browser_capability "browser"
 
   @doc "The token that grants an agent the machine's browser tools."
@@ -162,17 +118,8 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   defp permitted?(_name, _allowed), do: false
 
-  # The tools that live on the agent's machine — a browser, today.
-  #
-  # Mounted the same way ours are, which is the whole of criterion 3017: they go
-  # into the catalog a script already reaches rather than onto the agent, so
-  # twenty-nine browser schemas never reach a turn. Their invoker pushes down
-  # the channel to the copy that reported them, because that is where Chrome is.
-  #
-  # Only the ones the agent carries. `allowed` is the list on its row, and a
-  # machine tool it was not given is out of scope for the same reason one of
-  # ours is.
-
+  # The tools the agent's working copy reported, today a browser. Their invoker
+  # pushes down the channel to that copy, because that is where Chrome is.
   defp machine_tools(%{active_working_copy_id: id}) when is_binary(id) do
     case CodeMySpec.WorkingCopies.fetch(id) do
       {:ok, %{machine_tools: names}} when is_list(names) -> names
@@ -182,11 +129,8 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   defp machine_tools(_scope), do: []
 
-  # What the machine said each of its tools takes, reported with the manifest.
-  #
-  # `%{}` for a harness too old to have sent them, which is the case every entry
-  # below has to survive: the tool is still callable, and what it takes is a
-  # question only its own machine can answer.
+  # What the machine said each of its tools takes, reported with the manifest;
+  # `%{}` from a harness that sent none, and the tools stay callable.
   defp machine_tool_docs(%{active_working_copy_id: id}) when is_binary(id) do
     case CodeMySpec.WorkingCopies.fetch(id) do
       {:ok, %{machine_tool_docs: docs}} when is_map(docs) -> docs
@@ -197,9 +141,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
   defp machine_tool_docs(_scope), do: %{}
 
   # The call gets the script's budget less a margin, so a hung tool reports as a
-  # timeout instead of being taken out by the sandbox at the same instant. They
-  # used to be the same number, which meant whichever fired first the caller
-  # could not tell which, and the brutal kill could take the error with it.
+  # timeout before the sandbox kills the script and the error with it.
   @machine_call_margin_ms 2_000
 
   defp machine_tool(scope, name, doc, timeout) do
@@ -208,15 +150,11 @@ defmodule CodeMySpec.McpServers.CodeMode do
     %{
       name: name,
       description: description(doc),
-      # `:schema`, which is what `Catalog.describe/2` normalises `:input_schema`
-      # into and what `Docs` reads. These entries are built here rather than
-      # through `Catalog.from/3`, so the normalisation does not happen to them —
-      # and the old key meant `tool_docs({name = "browser_click"})` would have
-      # raised `KeyError` if anything had reached it.
+      # `:schema`, the key `Catalog.describe/2` normalises to and `Docs` reads;
+      # these entries do not go through `Catalog.from/3`.
       schema: schema(doc),
-      # Stated on the entry, not only closed over. The deadline is derived, and
-      # a derivation nothing can read is how the inner call and the sandbox
-      # around it came to be the same thirty seconds with nobody noticing.
+      # Stated on the entry, not only closed over, so the derived deadline is
+      # readable.
       timeout: call_timeout,
       invoke: fn args ->
         Transport.impl().call_machine_tool(
@@ -229,11 +167,8 @@ defmodule CodeMySpec.McpServers.CodeMode do
     }
   end
 
-  # The machine's own words when it sent them. The fallback is what every
-  # machine tool used to say — and it pointed at `tool_docs`, which had nothing
-  # to answer with, because the names arrived without the schemas beside them.
-  # Now that they arrive together, the pointer is only for a harness that has
-  # not reconnected since.
+  # The machine's own words when it sent them; the fallback is for a harness
+  # that reported names without docs.
   defp description(%{"description" => text}) when is_binary(text) and text != "", do: text
 
   defp description(_doc) do
@@ -266,13 +201,8 @@ defmodule CodeMySpec.McpServers.CodeMode do
   # than through the frame — the tools read it from their params and there is no
   # reason for the script path to be the one place that differs.
   #
-  # Only where the tool declares it. Merging it into every call would hand a
-  # field to tools whose schemas do not have one, and the schema is the thing
-  # that decides a call is malformed.
-  #
-  # Never over what the script passed. A caller naming a session explicitly is
-  # making a choice, and silently substituting its own would be the same class
-  # of bug as answering the oldest pending question instead of the named one.
+  # Only where the tool's schema declares it, since unknown arguments are
+  # rejected. Never over a session the script named explicitly.
   defp identified(tool, args, %{session_id: session_id}) when is_binary(session_id) do
     if takes_session_id?(tool) and not Map.has_key?(args, "session_id") do
       Map.put(args, "session_id", session_id)
@@ -290,10 +220,10 @@ defmodule CodeMySpec.McpServers.CodeMode do
     |> Map.has_key?("session_id")
   end
 
-  # 87a3b848: validation drops keys the schema does not name, so
-  # `list_issues({ search = "sops" })` ran unfiltered and its 1060 issues read
-  # as the answer. Checked after `StoryRefs.normalize_args/2`, which has
-  # already turned the story aliases into declared arguments.
+  # Validation drops keys the schema does not name, so an unknown argument
+  # would silently run the call unfiltered. Checked after
+  # `StoryRefs.normalize_args/2` has turned story aliases into declared
+  # arguments.
   defp known(tool, args) do
     declared = tool |> Map.get(:input_schema, %{}) |> Map.get("properties", %{})
 
@@ -318,16 +248,11 @@ defmodule CodeMySpec.McpServers.CodeMode do
   defp valid(declared),
     do: declared |> Map.keys() |> Enum.sort() |> Enum.map_join(", ", &"`#{&1}`")
 
-  # The same casting a real MCP call goes through. Skipping it would make a
-  # script a second, laxer door onto the same tools, and the casting is
-  # load-bearing besides — the schema is what turns a Lua number into the
-  # integer a tool expects.
+  # The same casting a real MCP call goes through, so a script is not a laxer
+  # door; the schema also turns a Lua number into the integer a tool expects.
   #
-  # A rejection here is `:invalid_call`, not `:error`, and the difference is the
-  # whole of story 1032. `:error` means the tool ran and could not answer, which
-  # a script handles. This means the tool never ran because the call was
-  # malformed — there is nothing to handle, and handing back `nil, err` let a
-  # script carry on and answer from a call that never happened.
+  # A rejection is `:invalid_call`, not `:error`: the tool never ran, so the
+  # script stops rather than answering from a call that did not happen.
   defp validate(%{validate_input: validate}, args) when is_function(validate, 1) do
     case validate.(args) do
       {:ok, params} -> {:ok, params}
@@ -337,9 +262,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   defp validate(_tool, args), do: {:ok, args}
 
-  # Data when the tool can give it, prose when it cannot. The fallback is not a
-  # degraded mode — it is what every tool gave scripts before `script_result/2`
-  # existed, and most still do.
+  # Data when the tool implements `script_result/2`, prose otherwise.
   defp execute(tool, params, frame) do
     if ScriptResult.implemented?(tool.handler),
       do: script_result(tool, params, frame),
@@ -377,10 +300,9 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   defp describe(reason) when is_binary(reason), do: reason
 
-  # Validation errors arrive as structs carrying a readable sentence and a lot
-  # of machinery around it. `inspect/1` on the struct puts the machinery in the
-  # agent's context and buries the sentence — and in a loop, twenty times. Pull
-  # the sentence out, name the field, drop the rest.
+  # Validation errors are structs around one readable sentence. Pull the
+  # sentence out and name the field rather than `inspect/1` the struct into the
+  # agent's context.
   defp describe(errors) when is_list(errors) do
     case Enum.map(errors, &describe/1) do
       [] -> "invalid"

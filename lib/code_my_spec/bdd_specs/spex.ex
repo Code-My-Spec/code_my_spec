@@ -22,6 +22,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
     - `:environment` - Environment to run specs in (required); commands run in its cwd
     - `:quiet` - Suppress console output (default: false)
     - `:jsonl_path` - Custom path for JSONL output file (defaults to temp file)
+    - `:output_file` - An existing JSONL to parse instead of running anything
+    - `:extra_env` - Extra environment for the child process
 
   ## Returns
 
@@ -71,18 +73,10 @@ defmodule CodeMySpec.BddSpecs.Spex do
       {:error, {:execution_error, Exception.message(exception)}}
   end
 
-  # `:output_file` is the test-only escape hatch — the caller has already
-  # supplied the run's JSONL, so there is nothing for a subprocess to
-  # produce. Shelling out anyway meant the exit code came from an
-  # ExCliVcr recording rather than from the results in hand, which made a
-  # *passing* spex run unsimulatable: every stop-hook cassette records
-  # `mix spex --jsonl=*` at exit 1, so supplying an empty (green) JSONL
-  # tripped `runners.ex`'s `{:ok, [], exit_code != 0}` "suite did not run"
-  # guard.
-  #
-  # Same shape the Credo analyzer already uses for its own
-  # `:output_file` short-circuit. Exit status is derived from the parsed
-  # failures, which is the thing the caller actually cares about.
+  # `:output_file` is the test-only seam: the caller supplied the run's JSONL,
+  # so nothing is shelled out and the exit status is derived from the parsed
+  # failures (a recorded exit code would make a passing run unsimulatable).
+  # Same shape as the Credo analyzer's.
   defp replay_only?(opts), do: Keyword.has_key?(opts, :output_file)
 
   # `nil` env on purpose: a caller-provided output file is a real path on
@@ -92,10 +86,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     case parse_jsonl(output_file, nil) do
       {:ok, failures} ->
         Logger.info("[Spex] Replaying #{length(failures)} failure(s) from #{output_file}")
-        # Empty output, and honestly so: nothing was shelled out, so there is
-        # nothing `mix spex` printed. The fourth element exists for the
-        # suite-did-not-run diagnosis, and this path cannot reach it — the exit
-        # status is derived from the parsed failures rather than observed.
+        # Empty output: nothing was shelled out.
         {:ok, failures, if(failures == [], do: 0, else: 1), ""}
 
       {:error, reason} ->
@@ -106,35 +97,18 @@ defmodule CodeMySpec.BddSpecs.Spex do
   defp shell_out(args, opts, environment, project_root, quiet, temp_file, caller_provided_file) do
     args = expand_directory_args(args, project_root, environment)
     spex_args = build_args(args, temp_file, quiet)
-    command = "mix " <> Enum.join(spex_args, " ")
+    program = program(environment, "spex")
+    command = program <> " " <> Enum.join(spex_args, " ")
 
     # The scrub keeps the child `mix`/`erl` off our Burrito ERTS (see
     # CodeMySpec.Environments.clean_otp_env/0), and `merge_clean_env/1` applies
     # it without overwriting anything chosen here.
-    # `extra_env` is how the harness hands over `MIX_TEST_PARTITION`, and it
-    # carries the guarantee that the database exists — `TestDatabase.env/1`
-    # creates and migrates before returning the name. Without it a spex run
-    # falls back to whatever `config/test.exs` derives, which is the right name
-    # for a database nothing has created, and Postgrex answers
-    # `invalid_catalog_name` six frames below a sandbox error that names the
-    # spec file. "2 tests, 2 failures" with no mention of a database is how an
-    # agent ends up editing specs that were never wrong.
-    # `merge_clean_env/1`, never `++ clean_otp_env()`. The scrub sets MIX_ENV to
-    # nil, and appending it last unsets the "test" chosen on the line above —
-    # measured: `System.cmd` applies duplicate `:env` entries in order, so
-    # set-then-clear leaves the child with no MIX_ENV at all.
-    #
-    # `mix spex` happens to survive that, which is what let it stand: this
-    # project's `cli/0` declares `preferred_envs: [spex: :test]`, so Mix picks
-    # test for a task invoked with MIX_ENV unset. That is a net under the
-    # runner, not the runner being right — it holds only while every project
-    # this runs against declares it, and while nothing else in the invocation
-    # reads MIX_ENV.
-    #
-    # `tests.ex` was fixed for this and carries the same note. The ecto tasks it
-    # used to run alongside did not survive the scrub: they took MIX_ENV as
-    # given, ran in dev, and migrated `code_my_spec_dev`, the database every
-    # agent shares.
+    # `extra_env` is how the harness hands over `MIX_TEST_PARTITION`, a database
+    # `TestDatabase.env/1` has already created and migrated; without it a run
+    # fails on a missing database in a way that looks like failing specs.
+    # `merge_clean_env/1`, never `++ clean_otp_env()`: duplicate `:env` entries
+    # apply in order, and the scrub's MIX_ENV=nil would unset "test".
+    # See knowledge/requirements_graph/checkers, "BDD specs".
     cmd_env =
       Environments.merge_clean_env(
         env: [{"MIX_ENV", "test"}] ++ Keyword.get(opts, :extra_env, [])
@@ -142,17 +116,10 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
     Logger.info("[Spex] Running: #{command}")
 
-    # The output is returned, not discarded. `{_raw_output, exit_code}` was the
-    # whole of why a failing spex sweep could not be diagnosed: an empty JSONL
-    # plus a nonzero exit becomes `{:spex_suite_did_not_run, code}`, and the
-    # reason — a spex that would not compile, a crash before `:suite_finished`,
-    # anything `mix spex` printed — existed nowhere afterwards. Not in
-    # `harness.log`, which records only the command; not on the server; not in
-    # the stop response.
-    #
-    # exunit already carries it: `{:test_suite_did_not_run, status, excerpt}`
-    # (`runners.ex:214`). This is the same tuple one analyzer short.
-    case Environments.cmd(environment, "mix", spex_args, stderr_to_stdout: true, env: cmd_env) do
+    # The output is returned, not discarded: an empty JSONL with a nonzero exit
+    # means the suite did not run, and the output is the only record of why (as
+    # exunit's `{:test_suite_did_not_run, status, excerpt}`).
+    case Environments.cmd(environment, program, spex_args, stderr_to_stdout: true, env: cmd_env) do
       {raw_output, exit_code} ->
         result =
           parse_and_return_failures(
@@ -185,10 +152,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
   `{:ok, [Failure.t()]}` - List of parsed failures (empty if file doesn't exist or is empty)
   `{:error, term()}` - If JSON parsing fails
   """
-  # The JSONL is produced by `mix spex` running *inside* the environment, so it
-  # is read back through the same environment. Reading it with File.read meant
-  # the run wrote its results on one machine and the parser looked for them on
-  # another — which surfaces as "0 failures", the same answer as a clean run.
+  # The JSONL is written inside the environment, so it is read back through it;
+  # reading the wrong machine's disk reads as "0 failures", a clean run.
   @spec parse_jsonl(String.t(), Environment.t() | nil) ::
           {:ok, [Failure.t()]} | {:error, term()}
   def parse_jsonl(path, env_or_nil \\ nil) do
@@ -207,20 +172,15 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end
   end
 
-  # A nil environment means the caller already holds the file on this machine —
-  # the `:output_file` replay seam. `Environments.read_file(nil, _)` answers
-  # `:no_environment`, so every replay failed to parse and the analyzer
-  # contributed nothing, which reads as a clean run rather than as an error.
+  # A nil environment means the file is on this machine (the replay seam);
+  # `Environments.read_file(nil, _)` would answer `:no_environment`.
   defp read_jsonl(nil, path), do: File.read(path)
   defp read_jsonl(env, path), do: Environments.read_file(env, path)
 
   # Private functions
 
-  # `mix spex` (sexy_spex) filters explicit args with File.exists?/1 only — a
-  # directory passes that check, loads zero tests, and the run reports "clean"
-  # with an empty JSONL no matter what the directory contains. Expand directory
-  # args to their *_spex.exs files here so `mix spex test/spex/some_story/`
-  # runs what the caller meant.
+  # `mix spex` accepts a directory arg, loads zero tests from it, and reports
+  # clean.
   @doc """
   Expands any directory args (that `mix spex` would otherwise silently pass
   through with zero tests loaded) into their `*_spex.exs` files.
@@ -257,6 +217,12 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   defp directory?(env, path), do: match?({:ok, _}, Environments.list_directory(env, path))
 
+  # The project's `spex` recipe when it declares one, so how the suite runs —
+  # sharded, say — is the project's choice. The arguments are the same either
+  # way: `just spex …` and `mix spex …` both begin with the recipe/task name.
+  defp program(environment, recipe),
+    do: if(Environments.recipe?(environment, recipe), do: "just", else: "mix")
+
   defp build_args(args, temp_file, quiet) do
     base_args = ["spex" | args] ++ ["--jsonl=#{temp_file}"]
 
@@ -287,26 +253,12 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end
   end
 
-  # `error.file` is the one path in a failure that can arrive absolute, and it
-  # has to leave here relative to the working copy root.
-  #
-  # `Runners.spex_location/1` normally takes the file from a stacktrace frame,
-  # which is already relative. Its fallback — a failure with no `_spex.exs`
-  # frame at all, which is what `** (EXIT from #PID<…>) an exception was raised`
-  # produces when a linked LiveView dies — reads `error.file` instead, and that
-  # is absolute.
-  #
-  # An absolute path is not merely inconsistent. `clear_problems_for_missing_files/2`
-  # deletes every Problem whose path is not in the current file list, and that
-  # list is relative, so such a row is removed on the next sync as though its
-  # file had been deleted. The failure disappears without being fixed and
-  # returns on the next sweep — four of them observed doing exactly that
-  # (`cc643bf3`). It also costs the component link and session attribution,
-  # which both join on relative paths.
-  #
-  # Here rather than server-side: `Runners.from_raw/2` converts where there is
-  # no working copy and no cwd to relativize against, which is how this went
-  # unnoticed.
+  # `error.file` and `spec_file` can arrive absolute (ExUnit records
+  # `test.tags[:file]` absolute; `Runners.spex_location/1` falls back to it when
+  # no `_spex.exs` frame exists) and must leave relative to the working copy:
+  # problem cleanup, component links and attribution all join on relative
+  # paths. Done here, the only side with a root to relativize against.
+  # See knowledge/requirements_graph/checkers, "BDD specs".
   @doc """
   Public only so the rule can be asserted without a live `mix spex` — the same
   reason `Runners.spex_location/1` is, and for the same kind of rule.
@@ -328,11 +280,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   defp relativize_error(failure, _project_root), do: failure
 
-  # `spec_file` arrives absolute for the same reason `error.file` does on the
-  # backstop path: both come from `test.tags[:file]`, and ExUnit records that
-  # absolute. Relativized here rather than in the fork, so the fork emits one
-  # unambiguous thing and this side owns what the working copy's paths look
-  # like.
+  # Relativized here rather than in the formatter, so this side owns what the
+  # working copy's paths look like.
   defp relativize_spec_file(%Failure{spec_file: file} = failure, project_root)
        when is_binary(file) do
     %{failure | spec_file: Path.relative_to(file, project_root)}
@@ -370,9 +319,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     %Failure{
       spex: data["spex"],
       scenario: data["scenario"],
-      # Absent until the formatter emits it (cd2a0db4). `nil` reads exactly as
-      # it does today — the reader lands before the writer, which is the safe
-      # order for a protocol change.
+      # `nil` when the formatter does not emit it.
       spec_file: data["spec_file"],
       steps: build_steps(data["steps"] || []),
       error: build_error(data["error"])

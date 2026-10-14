@@ -7,47 +7,20 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   `CodeMySpec.Integrations.Providers.Cloudflare`), falling back to a
   configured API token so cassette recording can run without a user scope.
 
-  ## Registration is the one gate in the epic
+  - **Registration needs confirmation.** `register_domain/3` requires
+    `confirmed: true` and otherwise returns `{:error, :confirmation_required}`
+    without a request: registrations are non-refundable. The guard lives here
+    so no caller can bypass it.
+  - **A domain step ends three ways**: registered, adopted (already owned —
+    an ordinary way in), or paused with a dashboard errand (TLD outside the
+    Registrar API beta, or no billing method).
+    `classify_registration_error/1` downgrades only failures it recognises.
+  - **Records are unproxied by default.** A proxied record terminates the
+    HTTP-01 challenge at Cloudflare's edge and certificate issuance hangs.
+  - **Account id** comes from `GET /accounts`, falling back to the zone list;
+    `{:error, :no_account_visible}` when neither shows one.
 
-  Everything else in setup runs unattended. Registration does not:
-  `register_domain/4` requires `confirmed: true` and returns
-  `{:error, :confirmation_required}` otherwise. Registrations are
-  non-refundable, so an automatic purchase of a name Sam merely typed is money
-  he cannot get back (criterion 7990). The guard lives here rather than only
-  in the LiveView so no other caller can bypass it.
-
-  ## Three ways a domain step ends, and only one is a failure
-
-  - registered through the API,
-  - **adopted** — Sam already owns it, which is an ordinary way in rather than
-    an error path (criterion 8052),
-  - **paused** with a dashboard errand — the Registrar API is in beta and
-    covers only a subset of TLDs, and a missing billing prerequisite is
-    likewise not something an API call can fix. Criterion 7993 requires a
-    detour, not a wall, and 7994 requires the reason be named rather than
-    guessed at.
-
-  `classify_registration_error/1` is what turns a provider error into that
-  distinction, and it is deliberately conservative: anything it does not
-  recognise stays a hard error rather than being silently downgraded to a
-  pause that would tell Sam to go do something undefined.
-
-  ## Records are unproxied, and that is not a preference
-
-  `create_dns_record/5` defaults `proxied: false`. A proxied record terminates
-  the HTTP-01 challenge at Cloudflare's edge, so the proxy on Sam's box never
-  sees it and certificate issuance hangs with DNS that looks correct
-  (criterion 7996). Passing `proxied: true` is possible but never what the
-  certificate path wants.
-
-  ## The account id problem
-
-  Zone creation needs an account id and there is no `account.read` scope. The
-  id is read off the zone list instead — every zone carries its account. A
-  brand-new Cloudflare account with no zones therefore cannot self-serve a
-  zone create, which is a real limit of the delegated grant rather than a bug
-  here; `account_id/1` returns `{:error, :no_account_visible}` so a caller can
-  say so plainly.
+  See knowledge/provisioning, "Cloudflare".
   """
 
   require Logger
@@ -70,24 +43,11 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
 
   Returns `{:ok, %{name, supported_tld, availability, price, current_registrar}}`.
 
-  ## What Cloudflare will actually tell us
-
-  Verified against the live API rather than the docs: the registrar returns
-  full detail — `available`, `can_register`, `current_registrar`, expiry — only
-  for domains **already associated with the account**. For any other name it
-  returns `{name, supported_tld}` and nothing else:
-
-      astralbi.com        -> available=false, current_registrar="Hostinger, UAB"
-      sams-new-thing.com  -> %{"name" => ..., "supported_tld" => true}
-
-  So availability and price are not answerable for a name Sam does not
-  already hold. `:unknown` says that, rather than an absent `available` field
-  being read as `false` — which is what the earlier version did, quietly
-  reporting every new name as taken.
-
-  This is why registering a new name is a dashboard errand rather than an API
-  call: the API cannot price it, and setup will not ask Sam to confirm a
-  purchase whose cost it could not read.
+  The registrar returns full detail (`available`, `can_register`, price) only
+  for domains already associated with the account; for any other name it
+  returns only `{name, supported_tld}`. A missing `available` is therefore
+  `:unknown`, never `:taken`. Registering a new name is a dashboard errand
+  because the API cannot price it.
   """
   @spec check_availability(Scope.t(), String.t()) :: {:ok, map()} | error()
   def check_availability(%Scope{} = scope, name) when is_binary(name) do
@@ -121,10 +81,8 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
       current_registrar: nil
     }
 
-  # Absent is not false. A name Cloudflare says nothing about is one it cannot
-  # price or sell through the API — a different answer from "taken", and the
-  # difference decides whether Sam is offered a purchase or sent to the
-  # dashboard.
+  # Absent is not false: "cannot price through the API" sends the user to the
+  # dashboard, "taken" does not.
   defp availability(%{"available" => true}), do: :available
   defp availability(%{"available" => false}), do: :taken
   defp availability(_), do: :unknown
@@ -135,7 +93,7 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   Register a domain. Requires an explicit confirmation.
 
   `opts` must carry `confirmed: true`. Without it this returns
-  `{:error, :confirmation_required}` and makes no request — criterion 7990.
+  `{:error, :confirmation_required}` and makes no request.
   """
   @spec register_domain(Scope.t(), String.t(), keyword()) ::
           {:ok, body()}
@@ -172,9 +130,8 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   Turn a registration failure into either a pause with an errand, or a real
   error.
 
-  Conservative on purpose: an unrecognised failure stays an error. Downgrading
-  an unknown failure to a pause would hand Sam a dashboard errand without
-  telling him what to actually do there.
+  Conservative on purpose: an unrecognised failure stays an error rather than
+  becoming a pause with an undefined errand.
   """
   @spec classify_registration_error({integer(), term()}) :: {:paused, String.t()} | error()
   def classify_registration_error({status, body}) do
@@ -214,17 +171,13 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @doc """
   Whether a domain is already in the account's registrar list.
 
-  This is the adoption path (criterion 8052) and the idempotence check
-  (criterion 7991) at once — a retried step finds the domain already there and
-  does not buy a second one.
+  The adoption path and the idempotence check at once — a retried step finds
+  the domain already there and does not buy a second one.
   """
   @spec owned?(Scope.t(), String.t()) :: {:ok, boolean()} | error()
   def owned?(%Scope{} = scope, name) when is_binary(name) do
-    # A domain is an ordinary way in if the account either registered it *or*
-    # manages its DNS. The registrar list alone is too narrow: a domain bought
-    # elsewhere but run as a Cloudflare zone is one setup can adopt and write
-    # records to, and treating it as unknown would send Sam to buy a name he
-    # already controls.
+    # Owned means registered here *or* run as a Cloudflare zone: a domain
+    # bought elsewhere but served by a zone can be adopted.
     with {:ok, zone_owned} <- zone_owned?(scope, name) do
       if zone_owned do
         {:ok, true}
@@ -290,16 +243,9 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @spec find_zone(Scope.t(), String.t()) :: {:ok, body()} | {:error, :not_found} | error()
   def find_zone(%Scope{} = scope, name) do
     with {:ok, zones} <- list_zones(scope) do
-      # A zone is a registrable domain, but a project's domain need not be one:
-      # `app.example.com` is served from the `example.com` zone, and so is
-      # `uat.app.example.com`. Matching only exact names meant any subdomain
-      # failed with :not_found — which reads as "the domain is not on this
-      # account" when the account holds it perfectly well, one level up.
-      #
-      # Longest match wins: with both `example.com` and `app.example.com` as
-      # zones, a record for `uat.app.example.com` belongs in the more specific
-      # one. Matching on a label boundary so `notexample.com` never matches
-      # `example.com`.
+      # Longest zone that covers the name on a label boundary:
+      # `uat.app.example.com` lives in `app.example.com` over `example.com`,
+      # and `notexample.com` never matches `example.com`.
       zones
       |> Enum.filter(&zone_covers?(&1["name"], name))
       |> Enum.max_by(&String.length(&1["name"]), fn -> nil end)
@@ -319,18 +265,9 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @doc """
   The account id.
 
-  `GET /accounts` first, the zone list second.
-
-  This used to read the zone list alone, on the belief that there is no
-  account-read scope. There is — the endpoint answers 200 for a grant with no
-  zone visibility at all — and the zones-only path failed for precisely the
-  case setup exists to serve: a Cloudflare account with no zones in it yet.
-  The failure surfaced as `:no_account_visible`, which reads like a
-  permissions problem and is not one.
-
-  The zone fallback stays because it costs a call only when the first path
-  returns nothing, and a grant scoped to one zone rather than the account is a
-  configuration somebody has.
+  `GET /accounts` first, the zone list second. The account endpoint answers
+  even for a grant with no zones, which is the brand-new-account case setup
+  exists to serve; the zone fallback covers a grant scoped to one zone.
   """
   @spec account_id(Scope.t()) :: {:ok, String.t()} | {:error, :no_account_visible} | error()
   def account_id(%Scope{} = scope) do
@@ -356,16 +293,14 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @doc """
   Create a DNS record, unproxied by default.
 
-  `proxied` defaults to false deliberately — see the moduledoc. A proxied
-  record breaks HTTP-01 issuance while looking correct in the dashboard.
+  `proxied` defaults to false: a proxied record breaks HTTP-01 issuance while
+  looking correct in the dashboard.
   """
   @spec create_dns_record(Scope.t(), String.t(), String.t(), String.t(), keyword()) ::
           {:ok, body()} | error()
   def create_dns_record(%Scope{} = scope, zone_id, name, content, opts \\ []) do
-    # MX records carry a priority and Cloudflare rejects one without it. It is
-    # not cosmetic for inbound mail either: Resend only receives when its MX is
-    # the lowest-priority record for the name, so a missing or higher value
-    # means mail goes somewhere else and nothing reports a problem.
+    # MX records need a priority (Cloudflare rejects one without), and Resend
+    # only receives when its MX is the lowest-priority record for the name.
     payload =
       %{
         type: Keyword.get(opts, :type, "A"),
@@ -412,8 +347,7 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   when the content differs.
 
   Idempotent so a retried DNS step converges rather than stacking duplicate
-  records on the same name — which for an apex record would break inbound mail
-  rather than merely being untidy.
+  records on the same name.
   """
   @spec ensure_dns_record(Scope.t(), String.t(), String.t(), String.t(), keyword()) ::
           {:ok, body()} | error()
@@ -425,11 +359,9 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
         nil ->
           create_dns_record(scope, zone_id, name, content, opts)
 
-        # For MX, identical content at a different priority is NOT the same
-        # record: Resend only receives on the lowest-priority MX, so leaving a
-        # higher one in place delivers mail somewhere else silently.
-        # Already there and already right. Marked as adopted so teardown leaves
-        # it alone — a record that predates setup is the user's, not ours.
+        # Same content: adopted (teardown leaves it alone) unless priority or
+        # proxy differs, which updates it — for MX a different priority is not
+        # the same record.
         %{"content" => ^content} = existing ->
           reconcile_matching_record(scope, zone_id, name, content, opts, existing)
 
@@ -440,10 +372,7 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   end
 
   # `:records` lets a caller writing several records into one zone list it
-  # once instead of once per record. Beyond the saved round-trips this makes
-  # the call count a function of how many records are written rather than of
-  # how many times the zone happened to be listed, which is what a sequential
-  # cassette needs in order to replay the same way it recorded.
+  # once, which also keeps the call count stable for sequential cassettes.
   defp dns_records_for(scope, zone_id, opts) do
     case Keyword.fetch(opts, :records) do
       {:ok, records} -> {:ok, records}
@@ -466,8 +395,7 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @doc """
   Delete a DNS record. Teardown only — setup never destroys.
 
-  Exists so live tests can remove what they published; a test that leaves
-  records in a production zone is worse than no test.
+  Exists so live tests can remove what they published.
   """
   @spec delete_dns_record(Scope.t(), String.t(), String.t()) :: {:ok, body()} | error()
   def delete_dns_record(%Scope{} = scope, zone_id, record_id) do
@@ -485,10 +413,8 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @doc """
   Make an arbitrary authenticated Cloudflare API call.
 
-  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can let an
-  agent make ad hoc Cloudflare calls without ever holding the token itself —
-  the credential is resolved and applied here, same as every other call in
-  this module, and never leaves this process.
+  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can make ad
+  hoc calls for an agent without the token ever leaving this process.
   """
   @spec request(Scope.t(), atom(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def request(scope, method, path, opts \\ []) do
@@ -507,16 +433,8 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
         |> Req.request()
         |> handle_response()
 
-      # Passed through, not crashed. `access_token/1` returns this deliberately
-      # — a connected-but-unusable grant must not fall back to the environment
-      # and quietly use another account's credential — and this had no clause
-      # for it, so a token needing reauthorization arrived as
-      #
-      #   (CaseClauseError) no case clause matching:
-      #     {:error, {:cloudflare_token_unusable, :reauthorize_required}}
-      #
-      # raised from inside `devops_status`, naming the case statement rather
-      # than the credential. Every caller here already handles `{:error, _}`.
+      # Passed through: a connected-but-unusable grant must surface, not fall
+      # back to another account's configured token.
       {:error, reason} ->
         {:error, reason}
 
@@ -548,10 +466,8 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
       {:error, :not_found} ->
         configured_token()
 
-      # Connected but unusable — expired past renewal, or the provider refused
-      # the refresh. Falling through to the environment here would quietly use
-      # a different account's credential and report success, so the reason has
-      # to surface instead.
+      # Connected but unusable: surface it. Falling back to the configured
+      # token would quietly use a different account's credential.
       {:error, reason} ->
         {:error, {:cloudflare_token_unusable, reason}}
     end

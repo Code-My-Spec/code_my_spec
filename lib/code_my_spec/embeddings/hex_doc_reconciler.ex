@@ -1,71 +1,44 @@
 defmodule CodeMySpec.Embeddings.HexDocReconciler do
   @moduledoc """
   Embeds a hex package's docs once, server-side, for every project that
-  depends on it — the step 3 half of the embeddings rework (577de9bb).
+  depends on it.
 
-  `project_dependencies` records what's pinned (step 3's own trigger,
-  `Files.FileSync.reconcile_lockfile/1`, keeps it current from each
-  project's main copy's `mix.lock`); `doc_packages` records what's
-  embedded. This is the convergence between the two: for every
-  `{package, version}` no project's `doc_packages` row has reached yet,
-  fetch the hex.pm tarball, verify it against the checksum the lock itself
-  pinned, parse its `.ex` sources with `HexDocParser`,
-  chunk and embed each module's docs, and write the `doc_packages` marker
-  last — in the same transaction as the final chunk, so "present" means
-  "complete" even across a crash mid-package.
+  `project_dependencies` records what's pinned (kept current by
+  `Files.FileSync.reconcile_lockfile/2` from each project's main copy's
+  `mix.lock`); `doc_packages` records what's embedded. For every
+  `{package, version}` with no finished `doc_packages` row at the current
+  model, this fetches the hex.pm tarball, verifies it against the lock's
+  checksum, parses its `.ex` sources with `HexDocParser`, chunks and embeds
+  each module's docs, and writes the `doc_packages` marker in the same
+  transaction as the chunks — "present" means "complete", even across a
+  crash.
 
-  One `FLAME.call` per package@version, not per project: many projects
-  commonly pin the same package at the same version, and the embedding is
-  a property of `(package, version, model)`, never of any one project — the
-  same reasoning `doc_embeddings`' shared rows already follow for framework
-  knowledge.
+  One `EmbedPool` call per package@version, not per project: the embedding is
+  a property of `(package, version, model)`, never of a project.
 
-  Capped at `@bulk_batch_size` chunks per `Serving.embed_batch/2` call. The
-  serving's own queue can't preempt a job already dispatched to its worker
-  (see `OrtexServing`'s moduledoc), so a package with hundreds of chunks
-  embedded as one call would make a pending search wait behind the whole
-  thing; slicing into capped calls bounds that wait to one small batch.
+  Capped at `@bulk_batch_size` chunks per `Serving.embed_batch/2` call: the
+  serving cannot preempt a dispatched job (see `OrtexServing`), so capped
+  calls bound how long a pending search waits.
 
-  ## Deterministic failures are recorded once; everything else is retried,
-  ## bounded
+  ## Terminal failures are recorded once; the rest retry, bounded
 
-  Every step from the fetch down to the final chunk insert resolves to
-  `{:ok, _} | {:error, reason}` — never a raise, which is what lets the
-  two outcomes below actually happen instead of a crash deciding for them.
+  Every step resolves to `{:ok, _} | {:error, reason}`, never a raise.
 
-    * **Terminal** — a 404 (the version was never published, so it's
-      `no_docs`), a checksum mismatch, an unparseable tarball, any other
-      HTTP status: the request got a real, final answer, and asking again
-      would get the same one. Recorded as one `doc_packages` row (`failed`
-      or `no_docs`), which `pending/0`'s "no row yet" check then excludes
-      from every later sweep — no separate retry bookkeeping.
-    * **Deferred** — a closed connection, a timeout, hex.pm's own 5xx, a
-      failure embedding or storing: none of these say anything about the
-      package's *content*, only that something was unreachable or busy
-      just now. Recorded as `status: "pending"` with an incremented
-      `attempts`, which `pending/0` keeps offering up to `@max_attempts`
-      — bounded, unlike leaving no row at all, which is what the first cut
-      of this module did and which cannot tell "will recover on its own"
-      from "hangs identically on every single attempt". Past the cap, a
-      deferred failure becomes a terminal `failed` one.
+    * **Terminal** — a 404 (`no_docs`), a checksum mismatch, an unparseable
+      tarball, any other non-5xx HTTP status: asking again gets the same
+      answer. One `doc_packages` row (`failed` or `no_docs`), which
+      `pending/0` then excludes.
+    * **Deferred** — a transport failure, a timeout, hex.pm's 5xx, an
+      embedding or storage failure: nothing about the package's content.
+      Recorded as `status: "pending"` with `attempts` incremented;
+      `pending/0` offers it until `@max_attempts`, then it becomes `failed`.
 
-  Found live: the first real sweep went silent for 40+ minutes with no
-  log line anywhere, because `Task.async_stream`'s killed-on-timeout task
-  produces an `{:exit, reason}` in the result stream that nothing was
-  reading — not a raise `reconcile_one/1`'s `rescue` could see, not a
-  return value `defer/3` could record. `reconcile_all/0` now reads that
-  stream instead of discarding it, logs one summary line per sweep
-  (pending count, outcome tally, duration), and `FLAME.call`'s own
-  timeout is explicit and shorter than the stream's, so a wedged package
-  gets FLAME's clean `{:error, _}` before the stream's blunter kill ever
-  has to fire.
-
-  `reconcile_one/1` still carries a `rescue` around the whole thing — not
-  the normal failure path (every modeled failure above already resolves
-  without raising), but the last line against a genuinely unanticipated
-  crash, which it marks `failed` rather than swallowing silently: unlike
-  a deferred failure, an unknown one deserves a human looking at why
-  before it's retried.
+  `reconcile_all/0` reads `Task.async_stream`'s `{:exit, _}` results (a task
+  killed at `@task_timeout`) and defers them, and logs one summary line per
+  sweep. The pool call's timeout is shorter than the stream's, so a wedged
+  package usually gets a clean `{:error, _}` first. `reconcile_one/1`'s
+  `rescue` is the last line against an unanticipated crash, marked `failed`
+  so a human looks before it retries.
   """
 
   require Logger
@@ -85,31 +58,20 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
 
   @bulk_batch_size 20
 
-  # Matches `CodeMySpec.EmbedPool`'s own `max: 4` (application.ex). Fetching
-  # and parsing a tarball is genuinely parallel work; the actual embedding
-  # still serializes through `OrtexServing`'s one worker regardless of how
-  # many packages are in flight here, which is what keeps a concurrent
-  # search's wait bounded by `@bulk_batch_size`, not by this number.
+  # Matches `CodeMySpec.EmbedPool`'s `max: 4`. Embedding still serializes
+  # through `OrtexServing`'s one worker; this only parallelizes fetch/parse.
   @max_concurrency 4
 
-  # How many deferred attempts a package gets before a failure that says
-  # nothing deterministic becomes terminal anyway. Without a cap, a
-  # package that hangs or errors identically on every attempt — not a
-  # genuine transient blip — would retry forever, burning a concurrency
-  # slot every sweep.
+  # Deferred attempts before a failure becomes terminal, so a package that
+  # fails identically every time stops taking a slot every sweep.
   @max_attempts 3
 
-  # FLAME's own call timeout, explicit rather than the pool's 30s default:
-  # a package with a hundred-plus chunks spends real time in
-  # `OrtexServing`'s one worker, and 30s was tight enough to plausibly
-  # defer large packages on nothing more than their own size.
+  # Explicit, not the pool's 30s default: a large package spends real time in
+  # `OrtexServing`'s one worker.
   @flame_timeout :timer.minutes(3)
 
-  # Always longer than `@flame_timeout`, so FLAME's own deadline produces
-  # a clean `{:error, _}` first in the ordinary case; this is the hard
-  # backstop for whatever FLAME's timeout cannot reach — a stuck NIF call
-  # blocking its scheduler thread is the one failure mode nothing short of
-  # killing the task (or the node) can interrupt.
+  # Longer than `@flame_timeout`, so the pool's deadline fires first; this is
+  # the backstop for what it cannot interrupt (a stuck NIF call).
   @task_timeout :timer.minutes(4)
 
   @doc """
@@ -182,9 +144,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   @doc """
   Reconcile every pending package@version, up to `@max_concurrency` at
   once. Best-effort: one failure doesn't stop the rest. Logs one summary
-  line — pending count, outcome tally, duration — so a sweep that stalls
-  is visible from the log the moment it happens, not discovered by
-  noticing `doc_packages` stopped moving.
+  line — pending count, outcome tally, duration — so a stalled sweep is
+  visible in the log.
   """
   @spec reconcile_all() :: :ok
   def reconcile_all do
@@ -213,11 +174,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
 
   defp resolve_outcome({{:ok, outcome}, _item}), do: outcome
 
-  # The one result `Task.async_stream` itself can produce without ever
-  # calling `reconcile_one/1`'s body again: the task was killed for
-  # running past `@task_timeout`. Routed through the same `defer/3` every
-  # other retryable failure uses, so it counts against the same attempt
-  # cap instead of retrying forever.
+  # A task killed at `@task_timeout`. Deferred like any retryable failure, so
+  # it counts against the same attempt cap.
   defp resolve_outcome({{:exit, reason}, %{name: name, version: version}}) do
     Logger.warning(
       "[HexDocReconciler] #{name}@#{version} killed after #{@task_timeout}ms: #{inspect(reason)}"
@@ -251,9 +209,7 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     end
   end
 
-  # A 404 means this exact version was never published (or was retracted)
-  # — deterministic, so it's recorded the same way a genuinely undocumented
-  # package is: nothing to embed, nothing to gain by asking again.
+  # This version was never published (or was retracted): deterministic.
   defp handle_fetch_failure(name, version, {:http_status, 404}) do
     Logger.info("[HexDocReconciler] #{name}@#{version}: 404, no docs published at this version")
     mark(name, version, "no_docs", chunk_count: 0)
@@ -264,9 +220,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     defer(name, version, {:http_status, status})
   end
 
-  # Any other HTTP status (auth, rate limit, redirect loop, ...) is treated
-  # as deterministic for this exact request, same reasoning as a checksum
-  # mismatch: retrying the identical request won't change hex.pm's answer.
+  # Any other status (auth, rate limit, redirect loop): retrying the identical
+  # request won't change hex.pm's answer.
   defp handle_fetch_failure(name, version, {:http_status, status}) do
     mark_failed(name, version, "http_status_#{status}")
   end
@@ -281,16 +236,11 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     mark_failed(name, version, inspect(reason))
   end
 
-  # Everything else — a closed connection, a timeout, DNS, any other
-  # transport-level failure `Req` can raise — says nothing about this
-  # package's content, only that hex.pm couldn't be reached just now.
+  # Any other transport failure says nothing about the package's content.
   defp handle_fetch_failure(name, version, reason), do: defer(name, version, reason)
 
-  # Retryable, but bounded: `attempts` is read off whatever row already
-  # exists (none yet means 0) and written back incremented, which is what
-  # lets `pending/0` keep offering this package up to `@max_attempts` —
-  # past that, a failure that keeps recurring identically stops being
-  # "probably transient" and gets recorded as `failed` instead.
+  # `attempts` is read off the existing row (none means 0) and written back
+  # incremented; at `@max_attempts` the failure is recorded as `failed`.
   defp defer(name, version, reason) do
     Logger.warning(
       "[HexDocReconciler] #{name}@#{version} deferred (retryable): #{inspect(reason)}"
@@ -323,12 +273,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
       sources
       |> Map.values()
       |> Enum.flat_map(&HexDocParser.docs_from_source/1)
-      # A module documented from more than one source file (seen live:
-      # bandit's Bandit.Clock) would otherwise chunk and store under the
-      # same path twice, tripping the identity index's own uniqueness on
-      # the second write. First occurrence wins — deterministic, and which
-      # file "owns" the docs is not a distinction this pipeline needs to
-      # make.
+      # A module documented from more than one source file would store under
+      # the same path twice and trip the identity index. First one wins.
       |> Enum.uniq_by(fn {module_name, _markdown} -> module_name end)
 
     entries = Enum.flat_map(docs, &chunk_entries/1)
@@ -336,10 +282,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
   end
 
   # One module's markdown, split into `{path, index, chunk, file_hash}`
-  # entries ready to embed. `file_hash` is the whole module's own hash —
-  # there is no incremental "did this module change" check here, unlike
-  # `EmbeddingService.embed_file/4`: a package@version is embedded exactly
-  # once, ever, gated by `pending/0` finding no `doc_packages` row at all.
+  # entries. `file_hash` is the whole module's: a package@version is embedded
+  # once, so there is no per-module change check.
   defp chunk_entries({module_name, markdown}) do
     file_hash = EmbeddingService.content_hash(markdown)
     path = "#{module_name}.md"
@@ -358,10 +302,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     source = "hexdocs:#{name}"
     model = Serving.model_name()
 
-    # Deferred, not failed: neither embedding nor storage says anything
-    # about this package's own content — a failure here is the serving or
-    # the database having trouble right now, which the next sweep is
-    # exactly as likely to find recovered.
+    # Deferred, not failed: the serving or the database had trouble, not the
+    # package's content.
     with {:ok, embedded} <- embed_all(entries),
          {:ok, :embedded} <- store_and_mark(name, version, model, source, embedded) do
       :embedded
@@ -388,15 +330,9 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
     end)
   end
 
-  # Any ordinary failure here — including the unique-violation two
-  # concurrent attempts at the same package@version would race into, since
-  # nothing claims a package as "in progress" before starting it — has to
-  # come back as `{:error, _}`, never a raised exception. A raise rolls the
-  # transaction back exactly the same way `Repo.rollback/1` does, but
-  # leaves nothing for `embed_and_store/3` to catch: the package stays
-  # pending forever instead of landing a recorded `failed` marker, which is
-  # the one outcome `pending/0`'s "no doc_packages row yet" check cannot
-  # tell apart from "never attempted".
+  # Failures return `{:error, _}`, never raise, so `embed_and_store/3` can
+  # defer them — including the unique violation two concurrent attempts at one
+  # package@version race into (nothing claims a package in progress).
   defp store_and_mark(name, version, model, source, embedded) do
     Repo.transaction(fn ->
       with :ok <- store_all_chunks(name, version, model, source, embedded),

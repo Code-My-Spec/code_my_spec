@@ -2,14 +2,14 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   @moduledoc """
   Agent task for fixing failing BDD specifications.
 
-  Reads spex failures from the Problems table, derives which stories and components
-  they belong to, filters to only failures whose component has a satisfied
-  `implementation_file` requirement, and builds a prompt instructing the agent to
-  fix the implementation code so the specs pass.
+  Reads spex failures from the Problems table, scopes them to the task's story
+  (or the whole project when the task has none), keeps only failures whose
+  story's component has a satisfied `implementation_file` requirement, and
+  builds a prompt instructing the agent to fix the implementation so the specs
+  pass.
 
-  Two main functions:
-  - `command/3` — Reads spex problems, builds fix prompt with failure details
-  - `evaluate/3` — the ready-for-QA certification (`ReadyForQa`)
+  - `command/2` — reads spex problems, builds the fix prompt
+  - `evaluate/2`, `evaluate/3` — the ready-for-QA certification (`ReadyForQa`)
   """
 
   def analyzers, do: [:spex_stale]
@@ -45,21 +45,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     end
   end
 
-  # The gate is per story and so is the prompt.
-  #
-  # It used to ignore `task` entirely and list every spex failure in the
-  # project. Asked for story 885 it returned twenty failures across 841, 851,
-  # 852, 858, 859, 871 and 883 — not one of them 885's — under the heading "the
-  # following BDD specs are failing" and the instructions "fix the
-  # implementation code" and "read the implementation code". An agent that
-  # follows its task prompt, which is the first rule in CLAUDE.md, goes and
-  # edits eight components it was never asked to touch. In the reported case
-  # that meant another agent's devops territory, which it had been told
-  # explicitly to stay out of.
-  #
-  # `evaluate/2` was filtering correctly the whole time, through
-  # `story_spex_problems/2`, and passed instantly on the same task. So the
-  # evaluator knew the failures were irrelevant and the prompt did not.
+  # Per story: a story's task lists only that story's failures, so the agent
+  # is never sent into components it was not asked to touch.
   defp story_command(scope, story) do
     case story_spex_problems(scope, story) do
       [] -> {:ok, green_message(story)}
@@ -88,11 +75,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   @doc """
   Completing this task is the ready-for-QA certification (`ReadyForQa`).
 
-  The specs-passing gate it used to evaluate is gone (John, 2026-10-02): no
-  requirement reads analysis results any more, and a story's specs are
-  required green by `Promotion.certify/3` — at ready-for-QA and again at
-  promotion. So this delegates, which is also what lets a task held on the
-  retired `bdd_specs_passing` complete through the new check.
+  A story's specs are required green by `Promotion.certify/3`, at ready-for-QA
+  and again at promotion, so this delegates.
   """
   def evaluate(scope, task), do: ReadyForQa.evaluate(scope, task)
 
@@ -104,28 +88,9 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   defp story_for(_scope, _task), do: nil
 
-  # Spex problems whose file belongs to THIS story. Without the scoping a
-  # single red spex anywhere in the project would hold every story short
-  # of ready — the exact symptom the deleted per-story checker guarded
-  # against.
-  #
-  # Matched on `files.story_id`, which the sync resolves from the spec itself.
-  # Both previous attempts parsed the directory name and both were wrong for
-  # most of a project, in opposite directions: comparing to `story.id` "matched
-  # nothing once the two diverged", and comparing to `story.number` matched
-  # nothing for every directory named from an id.
-  #
-  # Neither failure was visible, because this feeds a `cond` whose empty branch
-  # latches `specs_ready`. A story whose specs could not be found read as a
-  # story whose specs all passed. Measured on Broken Oaths 2026-09-08: 38 of 54
-  # spec directories were id-prefixed, and 47 of 61 stories carried
-  # `specs_ready: true` over 127 red specs for features nobody had written —
-  # so `bdd_specs_passing` stopped being actionable and the only coding work
-  # the graph could still offer was writing yet more specs.
-  #
-  # A path lookup cannot fail this way. If a spec file is not linked to a story
-  # it simply is not that story's problem, and the gate stays shut rather than
-  # opening on an empty list.
+  # Spex problems whose file belongs to this story, matched on the file
+  # records' `story_id` (resolved by the sync from the spec itself), never
+  # parsed from directory names. An unlinked spec is not this story's problem.
   defp story_spex_problems(scope, story) do
     story_paths =
       scope
@@ -194,18 +159,8 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     """
   end
 
-  # The state that cost the reporter most of a session: specs green, latch not
-  # set, and the old prompt answering with other stories' failures.
-  #
-  # `bdd_specs_passing` reads `story.specs_ready`, and the only thing that sets
-  # it is `evaluate/2` reaching its empty-problems branch. A completed sweep
-  # does not set it. So three full spex runs — 213s, one killed at 12 minutes,
-  # 393s — all landed green and the requirement stayed unsatisfied, with nothing
-  # anywhere saying that an evaluation was the missing step. Three wrong
-  # theories were built to explain it and one was filed as an issue that had to
-  # be withdrawn.
-  #
-  # Completing the task is the ready-for-QA certification (`ReadyForQa`).
+  # Green specs do not complete the task by themselves; the prompt says that
+  # evaluating it is the step that certifies (`ReadyForQa`).
   defp green_message(story) do
     """
     # Specs Passing — complete to certify
@@ -303,8 +258,4 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     #{failure_details}
     """
   end
-
-  # ============================================================================
-  # Feedback
-  # ============================================================================
 end

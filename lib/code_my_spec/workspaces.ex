@@ -74,10 +74,9 @@ defmodule CodeMySpec.Workspaces do
   @doc """
   What the app is doing right now, asked rather than inferred.
 
-  The pane cannot work this out from the proxy's answer: a booting container
-  and a crashed one both fail to reply, and an app raising on every request
-  replies just as readily as a healthy one. Those are three different things
-  to tell Sam — wait, we broke it, you broke it — so they are three states.
+  The proxy's answer cannot tell these apart (booting and crashed both fail to
+  reply; an app raising on every request replies like a healthy one), and the
+  visitor is told different things — wait, we broke it, you broke it.
 
   `:starting` is ours and is read off the stored step. `:broken` is the app's
   own doing. `:down` is an instance that is not there.
@@ -112,20 +111,15 @@ defmodule CodeMySpec.Workspaces do
     |> boot_workspace(scope)
   end
 
-  # A stored `:running` is a claim about a container that may no longer exist —
-  # a prune, a host reboot or a teardown removes the instance and leaves the
-  # row behind. Trusting it showed the visitor "It's running" over a link that
-  # refused the connection, so the claim is checked before it is repeated.
+  # A stored `:running` is a claim about a container that may no longer exist
+  # (pruned, rebooted, torn down), so it is checked before it is repeated.
   defp boot_workspace(%Workspace{status: :running} = workspace, scope) do
     if still_serving?(workspace), do: {:ok, workspace}, else: start_instance(workspace, scope)
   end
 
-  # One page view calls this twice — LiveView mounts disconnected, then again
-  # over the socket — and each call used to take a fresh port and start the
-  # container again, leaving the row pointing at the second instance and two
-  # watchers polling for it. An instance that is already coming up is the
-  # answer to "bring one up", so only a `:booting` row with nothing behind it
-  # starts anything.
+  # One page view calls this twice (LiveView mounts disconnected, then over the
+  # socket). An instance already coming up is the answer, so only a `:booting`
+  # row with nothing behind it starts anything.
   defp boot_workspace(%Workspace{status: :booting} = workspace, scope) do
     if Runner.alive?(workspace.container_name),
       do: {:ok, workspace},
@@ -160,21 +154,10 @@ defmodule CodeMySpec.Workspaces do
     end
   end
 
-  # What the instance needs to know about itself.
-  #
-  # A container comes up holding an application and nothing else — no checkout
-  # anybody onboarded, no identity, no credential. Handed these it can onboard
-  # itself on the way up, which is what turns it from a directory that happens
-  # to be running into a working copy the visitor owns: a row they can see, a
-  # harness that joins, and a preview address provisioned the same way a
-  # laptop's is.
-  #
-  # The id is minted here rather than inside, because minting needs the server
-  # and the whole point of onboarding a copy is that it already has one. Same
-  # reason `mix cms.harness.onboard` asks the server before it writes anything.
-  # Takes the caller's scope rather than building one from the project, because
-  # minting the deploy key is a write and a scope with no account cannot make
-  # one. The synthesised scope was enough while this only read.
+  # What the instance needs to onboard itself on the way up: its working copy
+  # id, project id, deploy key, server URL and preview tunnel. The copy is
+  # issued here because minting needs the server. Takes the caller's scope:
+  # minting a deploy key is a write and needs an account.
   defp instance_env(%Scope{active_project: %Project{} = project} = scope) do
     label = "the cloud copy of #{project.name}"
 
@@ -186,64 +169,26 @@ defmodule CodeMySpec.Workspaces do
              label: label,
              device: device
            ),
-         # Where it will be, said now rather than waited for. A row is not a
-         # checkout until it says where it is, and only a rooted copy can be the
-         # project's main one — which is what the preview endpoint requires
-         # before it will provision anything.
-         #
-         # The server knows the path because the server chose it: the entrypoint
-         # generates into `/workspace/<app>` and nowhere else. Waiting for the
-         # instance to report it instead is what left the copy rootless, never
-         # main and never previewed — the harness picks a copy up on its first
-         # hook request, and an instance a visitor is merely watching never makes
-         # one.
+         # The root, recorded now rather than waited for: only a rooted copy can
+         # be main and get a preview, and an instance a visitor only watches may
+         # never send the hook that would report it. The server chose the path
+         # (`instance_root/1`).
          {:ok, copy} <- WorkingCopies.report_root(copy, instance_root(project)) do
       [{"CMS_WORKING_COPY_ID", copy.id}, {"CMS_PROJECT_ID", project.id}] ++
         deploy_key_env(project) ++ server_url_env() ++ preview_env(copy)
     else
       {:error, reason} ->
-        # Not fatal. An instance that comes up un-onboarded still runs the
-        # application, which is most of what the visitor came for — and saying
-        # so beats refusing to start one at all.
+        # Not fatal: an un-onboarded instance still runs the application.
         Logger.warning("[Workspaces] could not issue a working copy: #{inspect(reason)}")
         []
     end
   end
 
-  # The copy this project's cloud instance already has, if it has one.
-  #
-  # Booting replaces the container -- `Runner.start/4` removes whatever was
-  # there first -- so an instance that has gone down and been brought back is
-  # the same working copy at the same root, not a second one. Minting a fresh
-  # copy each time was visible: a workspace that crashed and was retried came
-  # back with a copy that was not the project's main one, and only the main copy
-  # is given a preview. The visitor's rebuilt project could never get an
-  # address, while the address on their screen belonged to the copy that no
-  # longer existed and answered 530.
-  #
-  # Matched on the root because that is what identifies a checkout, and the root
-  # is ours to know: the entrypoint generates into `/workspace/<app>` and
-  # nowhere else. `recognised/3` inside `issue/3` cannot do this for us -- it
-  # needs a device, and a cloud instance has none until its harness joins, which
-  # is after this runs.
-  # The machine a cloud copy is on, which is not anybody's laptop.
-  #
-  # A seen `working_copies` row must name its device — the check constraint is
-  # `device_id IS NOT NULL OR last_seen_at IS NULL`, not a plain NOT NULL — and a
-  # cloud copy is seen the moment it connects. A checkout is identified by
-  # {project, device, root}, and `/workspace/<app>` is a path every container
-  # shares, so without a device two visitors' instances are one indistinguishable
-  # row. This is also the only place `kind: :cloud` is written from, and it is
-  # what will let an agent on this copy know it may not spend a subscription:
-  # the providers do not license one for a server running agents on somebody's
-  # behalf, so a cloud copy's agent needs an API key.
-  #
-  # One device per project, not one per boot. `announce/3` recognises by
-  # `{account, device_id}` and this has no id to present, so announcing on every
-  # boot would mint a row every time a visitor restarted their workspace — the
-  # duplicate the working-copy lookup exists to prevent, one table over. The
-  # copy that is already there is what remembers which machine it was, so it is
-  # asked first.
+  # The machine a cloud copy is on. A seen copy must name a device, and
+  # `/workspace/<app>` is every container's path, so the device is what tells
+  # two visitors' instances apart. The only writer of `kind: :cloud` (a cloud
+  # copy's agent needs an API key, not a subscription). One device per project,
+  # not per boot: the existing copy remembers it, so it is asked first.
   defp cloud_device(scope, %Project{} = project) do
     case device_of_existing_cloud_copy(scope, project) do
       nil -> Devices.announce(scope, nil, %{hostname: "cloud-#{project.id}", kind: :cloud})
@@ -263,6 +208,9 @@ defmodule CodeMySpec.Workspaces do
     end
   end
 
+  # The copy this project's cloud instance already has, by root (the server
+  # chose it). A rebooted instance is the same copy, not a second one — a new
+  # one would not be main and would get no preview.
   defp existing_cloud_copy(scope, %Project{} = project) do
     root = instance_root(project)
 
@@ -278,20 +226,11 @@ defmodule CodeMySpec.Workspaces do
   @doc """
   Where the instance actually lands, whichever runner is configured.
 
-  One place decides this and it is not the instance: `docker/devbox/entrypoint.sh`
-  generates into `/workspace/$APP_NAME` and nowhere else — true only for
-  `Runner.Docker`. A bare-metal boot has no such fixed path (it depends on
-  this box's own `local_workspace_root` configuration), so `Runner.Local.root/2`
-  is asked instead of assumed. Getting this wrong is silent and specific: the
-  harness joins under its real root, the server has recorded the container
-  one, the two never match, and `cms harness` reports it as
-  `:working_copy_missing` on agent restore rather than as a root mismatch,
-  since nothing here compares them directly.
+  `/workspace/<app>` for `Runner.Docker` (the devbox entrypoint generates
+  there); `Runner.Local.root/2` for a bare-metal boot. A wrong answer is silent:
+  the harness joins under its real root, which never matches the recorded one.
 
-  Public so the branch on the configured runner can be asserted on directly —
-  the same reason `Runner.Local.prepare/4` is public — rather than only
-  through a full `boot/1`, which runs against whichever runner test config
-  happens to have installed and so never actually exercises this choice.
+  Public so the runner branch can be tested directly.
   """
   @spec instance_root(Project.t()) :: String.t()
   def instance_root(%Project{} = project) do
@@ -307,27 +246,15 @@ defmodule CodeMySpec.Workspaces do
     |> Keyword.get(:runner, Runner.Docker)
   end
 
-  # The instance's only credential. `ensure_deploy_key/2` is what makes this
-  # clause reachable: nothing mints a key at project creation, so a project
-  # made through intake had none, and an instance handed no key could not
-  # authenticate to ask for its own preview. It came up and served, which is
-  # why that went unnoticed.
+  # The instance's only credential (`ensure_deploy_key/2` above guarantees one).
   defp deploy_key_env(%Project{deploy_key: key}) when is_binary(key) and key != "",
     do: [{"CMS_DEPLOY_KEY", key}]
 
   defp deploy_key_env(_project), do: []
 
-  # Where the instance's harness reports back to.
-  #
-  # Without it the harness joins whatever URL it was compiled with, which is
-  # production — so a container a developer started would announce its working
-  # copy to the live server, and the copy the visitor is waiting to see would
-  # never appear here.
-  #
-  # Configured rather than derived, because the answer is a property of where
-  # the instance runs rather than of this server: inside a container
-  # `localhost:4000` is the container, so the host has to be named the way the
-  # container can actually reach it.
+  # Where the instance's harness reports back to; without it, the compiled-in
+  # production URL. Configured, not derived: inside a container `localhost` is
+  # the container.
   defp server_url_env do
     :code_my_spec
     |> Application.get_env(CodeMySpec.Workspaces, [])
@@ -338,28 +265,11 @@ defmodule CodeMySpec.Workspaces do
     end
   end
 
-  # This is what `mix harness.onboard`'s own flow already does for Docker:
-  # `entrypoint.sh` runs that task (client_utils'), which calls
-  # `ClientUtils.Harness.Preview.ensure/4` — one HTTP POST to this same
-  # server, landing on `HarnessLookupController.preview/2`, which calls the
-  # very `PreviewTunnel.ensure/1` this function calls — and writes the
-  # `preview_*` keys into `.cms_harness.json` itself. Docker was never the
-  # gap.
-  #
-  # `Runner.Local` never runs `mix harness.onboard` at all: its identity is
-  # written directly by this module's `write_identity/2`, not minted by any
-  # onboarding task, so nothing ever asked for a tunnel on a bare-metal
-  # instance's behalf. That left every such instance boot into
-  # `enabled: false` in `ClientUtils.CloudflareTunnel` — the visitor's app
-  # ran, and nothing was ever wrong loudly enough to say why the frame stayed
-  # empty. Measured live, 2026-09-21: an agent told to "deploy" a project had
-  # no tool that could ever make this true, because the credentials it would
-  # need were never something this boot path handed the checkout.
-  #
-  # Best-effort, like the other three: a checkout that is not yet the
-  # project's main one, or an account with no Cloudflare zone configured,
-  # still gets an application. It just does not get a preview, which is the
-  # answer `PreviewLive` already gives for that case everywhere else.
+  # The preview tunnel, provisioned here because `Runner.Local` writes the
+  # instance's identity directly (`Runner.Local.write_identity/2`) and never
+  # runs the onboarding task that would ask for one; under Docker the
+  # entrypoint's onboarding reaches the same `PreviewTunnel.ensure/1`.
+  # Best-effort: no tunnel still gets an application, just no preview.
   defp preview_env(copy) do
     case PreviewTunnel.ensure(copy) do
       {:ok, %{tunnel_id: id, tunnel_secret: secret, hostname: host, account_tag: tag} = tunnel} ->

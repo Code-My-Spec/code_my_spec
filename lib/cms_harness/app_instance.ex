@@ -1,49 +1,19 @@
 defmodule CmsHarness.AppInstance do
   @moduledoc """
-  One working copy's own instance of the app it holds — story 1108.
+  One working copy's own instance of the app it holds, on its own port and
+  database, so a branch can be tested before it is promoted.
 
-  Each copy runs on its own port and its own database, so QA can test a
-  story's branch before it is promoted instead of finding out the hard way
-  that a copy's own address silently served main's pre-fix code (issue
-  2d612ae8, metric_flow: story 1103's fix was committed on the feature copy,
-  but the only running app was main's).
+  Launch, track and kill follow `CodeMySpec.Workspaces.Runner.Local` (state in
+  a JSON file, `kill -0` liveness, process-tree kill); a non-main copy's
+  database is cloned from main's dev database. Lives under
+  `CmsHarness.Copy.Supervisor` beside the channel chain, never in it: an app
+  must survive a reconnect.
 
-  ## Where this borrows from
-
-  The launch/track/kill strategy — a bash one-liner that backgrounds the
-  process and echoes its pid, `setsid` where it exists and `disown` on macOS
-  where it does not, state persisted to a JSON file rather than held only in
-  this process's memory, `kill -0` for liveness, `pkill -TERM -P` then
-  `kill -TERM` to take the whole process tree with it — is
-  `CodeMySpec.Workspaces.Runner.Local`'s, written for the customer-facing
-  Workspaces demo feature. That module runs on the CodeMySpec server, for an
-  instance with no working copy at all; this one runs on the harness's own
-  machine, for a working copy that already exists, and clones its starting
-  data from main's dev database instead of booting empty.
-
-  ## Why a process per copy, outside the project's own supervision chain
-
-  `CmsHarness.Project.Supervisor` is `rest_for_one`: its channel client, its
-  analyzer queue and its watcher all restart together because they answer to
-  one join. This app has nothing to do with any one join — it must survive a
-  reconnect, a channel blip, a `mix test` run in the same copy — so it is a
-  sibling of its copy's channel chain and agents under `CmsHarness.Copy.Supervisor`,
-  found by `root` in the same `CmsHarness.Registry` everything else here uses.
-
-  ## Idle timeout
-
-  Same shape as `CodeMySpec.Intake.Conversation`: every reply re-arms the
-  idle timeout via the fourth element of the `{:reply, ..., state, timeout}`
-  tuple, and `handle_info(:timeout, ...)` stops the process — `restart:
-  :temporary`, because an idle stop is a normal exit, not a crash to recover
-  from. Requests count as activity via the app's own log file: whether its
-  mtime moved inside the window, checked on a periodic self-tick rather than
-  by proxying traffic. A byte-level TCP relay would count requests exactly and
-  survive a LiveView websocket for free, but it is a new piece of network
-  infrastructure to get right; a log file every `mix phx.server` already
-  writes needs none of that, at the cost of also counting non-request
-  activity (a migration, a boot) as "not idle" — which only ever delays a stop
-  a working copy nobody is using, never causes a wrong one.
+  Idle timeout: every reply re-arms it; `:timeout` stops the process
+  (`restart: :temporary`). Activity is the app log's mtime, checked on a
+  periodic tick — it also counts boots and migrations, which only delays a
+  stop. Main's app is never stopped for idling.
+  See knowledge/harness, "App instances".
   """
 
   use GenServer, restart: :temporary
@@ -54,9 +24,7 @@ defmodule CmsHarness.AppInstance do
   alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
 
-  # Configurable, same reasoning as `Intake.Conversation.shape_timeout/0`: a
-  # test proving the idle-stop path fires should not have to wait 30 real
-  # minutes to do it.
+  # Configurable so a test of the idle stop need not wait 30 minutes.
   defp idle_timeout,
     do: Application.get_env(:code_my_spec, :app_instance_idle_timeout_ms, to_timeout(minute: 30))
 
@@ -77,24 +45,15 @@ defmodule CmsHarness.AppInstance do
     # The commit the process launched from.
     :commit,
     # The commit the app serves now: `commit` after a launch, the reload's
-    # commit after a reload. Its own field so a reloaded app is not read as
-    # still on its launch commit, and a launch commit is not rewritten.
+    # commit after a reload.
     :serving_commit,
     :status,
     :log_path,
     :state_path,
     :tunnel_pid,
     :tunnel_id,
-    # Monotonic `System.monotonic_time(:millisecond)` deadline for a first
-    # start's 10-minute ceiling — `nil` outside that window. Deliberately
-    # never persisted: it only drives the in-BEAM `Process.send_after/3`
-    # polling loop below, and a harness restart mid-first-start loses that
-    # loop's timer along with everything else in this BEAM anyway. The next
-    # explicit `ensure_running` call after such a restart still finds the
-    # detached `just serve` process alive (`os_pid`/`port` *are* persisted)
-    # and probes it fresh — losing the exact "exceeded 10 min" wording on a
-    # restart this rare is an accepted trade against persisting a deadline
-    # nothing else needs to survive one.
+    # Monotonic deadline for a first start's background watch; `nil`
+    # otherwise. Not persisted: it only drives an in-BEAM timer.
     :first_start_deadline,
     main?: false,
     tunnel_held_by_harness?: false
@@ -113,21 +72,13 @@ defmodule CmsHarness.AppInstance do
   current state either way. Idempotent — the caller does not need to know
   whether anything was actually started.
 
-  `main?: true` marks this as the project's designated copy, so main's app
-  is never stopped for idling — told fresh on every call rather than
-  remembered, since only the server knows who holds the designation and it
-  can change while this process is alive.
+  `main?: true` marks the project's designated copy (never idled out).
+  `tunnel:` carries the tunnel credentials this copy should hold. Both are told
+  fresh on every call, never remembered: only the server knows them and they
+  can change while this process lives.
 
-  `tunnel:` carries main's own tunnel credentials when it holds one — same
-  "told fresh, never remembered" reasoning as `main?`, and for the same
-  underlying hazard: a copy that kept running a connector after losing the
-  designation (or a copy that never held one running one anyway) is exactly
-  the stray-connector bug this project has already shipped one fix for. See
-  `ensure_tunnel/3`.
-
-  `head` rides beside `commit`. The app restarts only on a promote, so once
-  the copy's HEAD moves it is still serving `commit`; saying both keeps that
-  from reading as a stale report (048d1f4f).
+  `head` rides beside `commit`: the app restarts only on a promote, so a moved
+  HEAD is not a stale report.
   """
   @spec ensure_running(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def ensure_running(root, opts \\ []) do
@@ -186,26 +137,10 @@ defmodule CmsHarness.AppInstance do
   Bring this copy's tunnel connector up if it should hold one, without
   starting or touching the app itself.
 
-  2026-09-29 follow-up: a join is not an `ensure_app_running`/`restart_app`
-  call, and used to carry no tunnel — so a harness restart (which this
-  project's own after-promote recipe causes 13-30s after every promote, see
-  `ensure_tunnel/3`'s own moduledoc) took a main copy's connector down with
-  nothing to bring it back except a further `ensure_app_running`, which
-  nothing calls on its own. That left a promoted copy's public preview down
-  until an operator or agent happened to ask for its app again. The join
-  reply now carries the same "told fresh" `tunnel` an app-ensure does, and
-  this is where the harness acts on it.
-
-  Resolved from `Runner.main_ports/1` rather than a running `AppInstance`'s
-  own state, because there may be no running `AppInstance` for this root yet
-  at join — a main copy's port is fixed by its own `config/dev.exs` rather
-  than assigned like a QA copy's, so nothing here needs the app already
-  launched, tracked, or even known about by this module.
-
-  Idempotent by way of `Runner.start_tunnel/2`'s own `DynamicSupervisor`
-  child id: calling this against a tunnel already running under
-  `CmsHarness.TunnelSupervisor` finds it rather than duplicating it, the
-  same guarantee `ensure_tunnel/3`'s own tunnel path relies on.
+  Called at join, which carries the tunnel so a harness restart does not leave
+  the public preview down. The origin comes from `Runner.main_ports/1` (main's
+  port is fixed by its `config/dev.exs`), since no `AppInstance` may be running
+  yet. Idempotent: `Runner.start_tunnel/2` finds a running connector by id.
   """
   @spec ensure_tunnel_only(String.t(), map()) :: :ok
   def ensure_tunnel_only(root, tunnel) do
@@ -240,12 +175,8 @@ defmodule CmsHarness.AppInstance do
   """
   @spec stop_app(String.t()) :: :ok | {:error, term()}
   def stop_app(root) do
-    # Through `find_or_start/1`, not a bare registry lookup: a harness
-    # restart between a start and this stop takes the in-memory registration
-    # with it, but `init/1` reads the persisted state file back — the same
-    # reason `Runner.Local` persists to disk rather than to a process. A bare
-    # lookup finding nothing here would report success while an orphaned
-    # `mix phx.server` kept running and kept spending.
+    # `find_or_start/1`, not a bare lookup: after a harness restart only
+    # `init/1`'s read of the state file knows about a still-running app.
     with {:ok, pid} <- find_or_start(root) do
       GenServer.call(pid, :stop, op_timeout())
     end
@@ -253,11 +184,8 @@ defmodule CmsHarness.AppInstance do
 
   @doc """
   Stop this copy's app and drop the database it was cloned into — offboarding,
-  not idling. The clone and the process are both this feature's own disposable
-  artifacts, never the user's checkout or main's database, so this is safe to
-  do without asking; `WorkingCopies.offboard/2`'s own "never touches disk"
-  rule is about the checkout, not about what this story's own clone left
-  behind on the Postgres server beside it.
+  not idling. Both are this module's own disposable artifacts, never the
+  checkout or main's database.
   """
   @spec discard(String.t()) :: :ok
   def discard(root) do
@@ -297,8 +225,7 @@ defmodule CmsHarness.AppInstance do
 
   defp op_timeout, do: Application.get_env(:code_my_spec, :app_instance_op_timeout_ms, 120_000)
 
-  # A reload compiles in place, and a promote's version bump to `mix.exs`
-  # recompiles the whole project, so it gets the server's own restart ceiling.
+  # A reload may recompile the whole project.
   defp reload_timeout,
     do:
       Application.get_env(:code_my_spec, :app_instance_reload_timeout_ms, to_timeout(minute: 10))
@@ -378,11 +305,8 @@ defmodule CmsHarness.AppInstance do
   @impl true
   def handle_cast(:touch, state), do: {:noreply, state, idle_timeout()}
 
-  # A first start's background watch, past its own short inline reply
-  # window (see `start_first_run/3`). Guarded on `first_start_deadline` so a
-  # stray message reaching a copy that has since actually started (a
-  # concurrent `ensure_running` call already saw it serving and cleared the
-  # deadline) or been stopped is simply ignored rather than re-armed forever.
+  # A first start's background watch (see `start_first_run/3`). A stray check
+  # after the deadline was cleared is ignored, never re-armed.
   @impl true
   def handle_info(:first_start_check, %__MODULE__{first_start_deadline: deadline} = state)
       when is_integer(deadline) do
@@ -407,9 +331,7 @@ defmodule CmsHarness.AppInstance do
         {:noreply, new_state, idle_timeout()}
 
       true ->
-        # Neither settled nor out of time — still `starting`, regardless of
-        # what this probe's raw HTTP answer was; a `down`/`erroring` reading
-        # mid-compile is not a real failure yet.
+        # Still `starting`: `down`/`erroring` mid-compile is not a failure.
         new_state = %{probed | status: "starting"}
         persist!(new_state)
         schedule_first_start_check()
@@ -436,10 +358,8 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  # Status is otherwise only taken when something is asked of the app, so one
-  # that came up after its health wait gave up stayed "down" and could not be
-  # shared (story 1117 QA). Each tick re-reads a running app and reports a
-  # change.
+  # Each tick re-probes a running app and reports a change, so an app that came
+  # up after its health wait gave up does not stay "down".
   defp refresh_status(state) do
     if running?(state) do
       probed = probe(state)
@@ -481,10 +401,8 @@ defmodule CmsHarness.AppInstance do
     )
   end
 
-  # The app stays up: migrations and the code reloader's compile run against
-  # the live process, and the probe decides whether it took. A failure
-  # replies an error and runs no hook — the caller restarts, and that
-  # restart runs the hook, so the harness restarts once either way.
+  # The app stays up; the probe decides whether the reload took. A failure
+  # runs no hook — the caller's restart will.
   defp reload_in_place(state, from, main?, tunnel) do
     Logger.info("[CmsHarness] reload of #{state.root}: running `just reload` on #{state.port}")
 
@@ -523,12 +441,8 @@ defmodule CmsHarness.AppInstance do
     {:reply, {:error, {:reload_unhealthy, probed.status}}, probed, idle_timeout()}
   end
 
-  # Main replies before the hook runs, not after: this repo's own
-  # after-promote recipe (`just refresh-harness`) kills the very harness BEAM
-  # that is answering this call, partway through running it. Nothing queued
-  # behind that kill ever leaves this process, so the confirmation has to
-  # already be handed off — reply first, then run the hook and only log what
-  # it does. A reload and a restart reach the hook the same way.
+  # Main replies before the hook runs: an after-promote recipe may kill this
+  # BEAM mid-run, so the reply must already be out.
   defp reply_then_hook(from, reply, new_state, true) do
     GenServer.reply(from, reply)
     after_promote(new_state)
@@ -541,8 +455,7 @@ defmodule CmsHarness.AppInstance do
   # --- Internals: status ---
 
   @doc """
-  Public only so the shape can be tested without booting a real process —
-  same reasoning as `AnalysisServer.insert_by_cost/2`.
+  The reply shape. Public so it can be tested without a real process.
   """
   def result(%__MODULE__{status: status, port: port, commit: commit} = state) do
     %{
@@ -557,16 +470,9 @@ defmodule CmsHarness.AppInstance do
   def url(_port, status) when status in [nil, "down"], do: nil
   def url(port, _status), do: "http://127.0.0.1:#{port}"
 
-  # Pushed unprompted — the one case nothing is calling back to ask: a first
-  # start whose result (`starting` → `serving`, or `starting` → `erroring`)
-  # is discovered by this copy's own background watch, well after the
-  # `ensure_app_running` call that started it already got its own `starting`
-  # reply and returned. `WorkingCopies.record_app_status/2`'s own shape —
-  # `record_app_result/2` on the server side reads the exact same three keys
-  # from an `_result` reply, so this is not a new contract, just a new way
-  # to reach it. `reason` rides along for whoever is watching this push
-  # directly (a spex, an operator) — `record_app_status/2` never reads it,
-  # so carrying it is not a schema change.
+  # Pushed unprompted when a background watch resolves a status nobody is
+  # waiting on. Same keys an app verb's `_result` carries; `reason` is extra
+  # and the server ignores it.
   defp deliver_app_status(state, reason \\ nil) do
     Channel.deliver_app_status(state.root, %{
       "status" => state.status,
@@ -576,27 +482,15 @@ defmodule CmsHarness.AppInstance do
     })
   end
 
-  # A recycled pid is the hazard, not a hypothetical one. `os_pid` can come
-  # from disk (`restore_persisted/1`, on every fresh `init/1`) as easily as
-  # from a launch this same process watched happen, and between a stop and
-  # the next check the OS is free to hand that number to anything. `alive?/1`
-  # alone cannot tell "still ours" from "reassigned" — only that *something*
-  # answers to it — so a stale `state.json` naming a dead process's old pid
-  # reads as running the moment the OS reissues it, and a subsequent stop
-  # would `kill -TERM` a stranger. Same check `ensure_port_free/2` already
-  # makes before adopting a port: alive is necessary, the cwd matching this
-  # copy's own root is what makes it *this* process rather than merely *a*
-  # process.
+  # Alive and running in this copy's root: a persisted pid may have been
+  # recycled, and a stop must never signal a stranger.
   defp running?(%__MODULE__{os_pid: nil}), do: false
 
   defp running?(%__MODULE__{os_pid: pid, root: root}) do
     Runner.alive?(pid) and Runner.process_root(pid) == Path.expand(root)
   end
 
-  # Requests count as activity by way of the log file `just serve` redirects
-  # into — its mtime moving inside the idle window is read as "not idle."
-  # This also counts a migration or a boot, which only ever delays a stop
-  # nobody needed yet, never causes a wrong one.
+  # The app log's mtime moving inside the idle window means "not idle".
   defp recently_active?(%__MODULE__{log_path: log_path}) do
     case File.stat(log_path, time: :posix) do
       {:ok, %File.Stat{mtime: mtime}} ->
@@ -624,11 +518,9 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  # The half `start_app/2` and `start_first_run/3` share: get the OS process
-  # running and the state persisted, before either decides how long to wait
-  # on it. `status: "starting"` here is only ever the value `wait_for_health/1,2`
-  # sees on its own first (always-taken) probe — real `probe/1` output
-  # overwrites it before either caller's own reply is built.
+  # Shared by `start_app/3` and `start_first_run/3`: launch and persist, before
+  # either decides how long to wait. A probe overwrites `"starting"` before any
+  # reply is built.
   defp launch_process(state, tunnel) do
     with :ok <- ensure_serve_recipe(state),
          {:ok, {port, https_port, database}} <- ensure_port_and_database(state),
@@ -653,28 +545,15 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  # A copy that has never once come up — `commit` is set only once `launch_process/1`
-  # succeeds, so its absence means exactly "no successful start yet," never
-  # "started a while ago and idled out" (that copy's last-persisted commit
-  # survives a stop). Only this case gets the long, backgrounded first-start
-  # treatment below; an ordinary restart (`:restart`, or `ensure_running` on a
-  # copy that has run before) keeps today's synchronous `start_app/1` path and
-  # its existing, unchanged timeout.
+  # Never launched: `commit` is set by `launch_process/2` and survives a stop.
+  # Only this case gets the backgrounded first start.
   defp first_start?(%__MODULE__{commit: nil}), do: true
   defp first_start?(_state), do: false
 
-  # Harness session, live QA defect: a cold `npm install` plus compile can
-  # legitimately outrun the 120s ceiling every other `ensure_running` call
-  # gets, and a `GenServer.call` that does not reply within its own timeout
-  # reads as a crash to its caller — an agent's own tool-call timeout, not
-  # just this one. So a first start never blocks past a short inline window
-  # (`first_start_probe_attempts/0`, ~30s): if the app is not yet serving by
-  # then, this replies `starting` right away — with the address, so the
-  # caller knows where it will be — and keeps polling in the background
-  # toward its own 10-minute ceiling (`first_start_ceiling_ms/0`), pushing
-  # `app_status` unprompted the moment it actually resolves (see
-  # `handle_info(:first_start_check, ...)`), rather than making the next
-  # `ensure_app_running` call respond stale or wait through the launch again.
+  # A cold first start (deps, assets, compile) can outrun the call timeout. So
+  # it waits a short inline window, then replies `starting` with the address
+  # and polls in the background up to `first_start_ceiling_ms/0`, pushing
+  # `app_status` when it resolves.
   defp start_first_run(state, main?, tunnel) do
     case launch_process(state, tunnel) do
       {:ok, launched_state} ->
@@ -686,11 +565,8 @@ defmodule CmsHarness.AppInstance do
           new_state = ensure_tunnel(settled_state, main?, tunnel)
           {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
         else
-          # Not yet serving after the short window — reported as `starting`,
-          # not whatever the raw probe answered (`down`/`erroring` mid-compile
-          # is not a real failure yet), and never re-launched by a concurrent
-          # `ensure_running` call in the meantime: `os_pid` is already set, so
-          # `running?/1` is already true.
+          # Reported as `starting`. `os_pid` is set, so a concurrent
+          # `ensure_running` will not re-launch it.
           deadline = System.monotonic_time(:millisecond) + first_start_ceiling_ms()
           new_state = %{settled_state | status: "starting", first_start_deadline: deadline}
           persist!(new_state)
@@ -724,40 +600,10 @@ defmodule CmsHarness.AppInstance do
     if Runner.recipe?(state.root, "serve"), do: :ok, else: {:error, :no_start_recipe}
   end
 
-  # Story 1108, criterion 4663: the project-specific half of a promote's
-  # restart. `Promotion.Runner.restart/3` only ever calls the generic half
-  # (bring the app back up, the same as any other copy) — this repo's own
-  # need to also refresh its harness afterward, because server and harness
-  # here are the same codebase, cannot live in that shared module without
-  # every other project's promotion also having to answer for it. So it is
-  # an optional recipe instead: declared once, in this project's own
-  # justfile, run from here — the same `Runner.recipe?/2` check `serve`
-  # already uses — right after the app it names is confirmed serving.
-  #
-  # Only called for `main?`, and only from a successful `:restart` or `:reload`
-  # (a promote deploys by one or the other) — never `:ensure_running`'s
-  # "already running, just probe" or "never started before" branches, and
-  # never for a non-main copy's own "HEAD moved" restart. The recipe lives in
-  # this project's *shared* justfile, so every working copy's checkout has it
-  # — calling it unconditionally would bounce the one shared harness every
-  # time any agent's ordinary commit restarted their own copy's app, taking
-  # every other agent's in-flight hooks down with it for no reason. A promote
-  # is main's alone, so the hook is too.
-  #
-  # Its own failure can only be logged, never replied: by the time it runs,
-  # `handle_call` has already handed the success reply to `from` (see above)
-  # — the one case this hook exists for is a recipe that kills this very
-  # process before anything queued after that reply could go out.
-  #
-  # A project with nothing declared pays nothing for a hook it never asked
-  # for — `recipe?/2` is the same one-line `just --list` check either way.
-  #
-  # Logged on both sides because this repo's recipe restarts the harness
-  # 13-30s later with nothing else saying so, and an old harness pid read
-  # in that window looked like a restart that never happened (bf5fe2a4).
-  # The recipe runs synchronously under this BEAM and kills it, so the
-  # "done" line never lands here — the start line says what confirms it
-  # instead, and is flushed to disk before the recipe can kill anything.
+  # The project's optional `after-promote` recipe: main only, and only after
+  # a successful restart or reload. Its failure is only logged (the reply is
+  # already out). The start line is flushed first, since the recipe may kill
+  # this BEAM. See knowledge/harness, "App instances".
   defp after_promote(state) do
     if Runner.recipe?(state.root, "after-promote") do
       run_after_promote(state.root)
@@ -802,15 +648,9 @@ defmodule CmsHarness.AppInstance do
     :ok
   end
 
-  # Reused across restarts once allocated — a stable address is worth more
-  # than a fresh one, and QA bookmarking a link should not have it move under
-  # them on every restart.
-  #
-  # `https_port` is allocated whether or not the app has an HTTPS endpoint —
-  # cheaper than asking, and an app with none just never reads the variable.
-  # Skipping it is what cost code_my_spec's own copy its first real start:
-  # `HTTPS_PORT` unset fell back to config's default 4001, and boot failed
-  # `:eaddrinuse` against main's own dev server already holding it.
+  # Reused across restarts once allocated: a stable address. `https_port` is
+  # always allocated; unset, an app falls back to its config default and
+  # collides with main's.
   defp ensure_port_and_database(%__MODULE__{
          port: port,
          https_port: https_port,
@@ -820,11 +660,8 @@ defmodule CmsHarness.AppInstance do
     {:ok, {port, https_port, database}}
   end
 
-  # Main is not allocated a free port and a clone the way every other copy
-  # is — it is the one address every bookmark, browser tab and the MCP
-  # endpoint already point at, and its database is the real dev database,
-  # not a disposable copy of it. Both come from main's own `config/dev.exs`,
-  # the same source `Runner.main_database_name/1` already reads for cloning.
+  # Main keeps its own address and real dev database, both from its
+  # `config/dev.exs`.
   defp ensure_port_and_database(%__MODULE__{main?: true} = state) do
     with {http, https} <- Runner.main_ports(state.root),
          database when is_binary(database) <- Runner.main_database_name(state.root) do
@@ -840,26 +677,9 @@ defmodule CmsHarness.AppInstance do
       state.database || database_name(state)}}
   end
 
-  # Main's port is fixed — read off `config/dev.exs`, not freshly allocated
-  # the way every other copy's is — so it can already be held by a process
-  # this instance never launched and holds no tracked `os_pid` for: this
-  # checkout's own pre-story-1108 dev server, still running from before the
-  # first unified restart or ensure ever ran against it. `running?/1` only
-  # ever tracks a *persisted* `os_pid` (see `stop_process/1`), so that old
-  # server would otherwise sit on the port forever — `launch/5`'s
-  # `mix phx.server` either fails `:eaddrinuse` next to it, or somehow
-  # answers alongside it.
-  #
-  # Adopted (killed) only once its own working directory is confirmed to be
-  # this checkout's own root — never assumed from the port number alone,
-  # since something entirely unrelated could be squatting on 4000. Anything
-  # that fails that check is refused loudly instead of killed: `launch/5`
-  # was never going to succeed next to it either way, and guessing wrong
-  # here means killing a stranger's process.
-  #
-  # Never reached for a non-main copy: its port came from `free_port/0`
-  # a moment ago, allocated by binding it and immediately closing it again,
-  # so nothing else has had the chance to take it in between.
+  # Main's fixed port may be held by an untracked server. Killed only when its
+  # cwd is this checkout's root; anything else is refused, never killed.
+  # Non-main ports come fresh from `free_port/0`.
   defp ensure_port_free(%__MODULE__{main?: true} = state, port) do
     case Runner.listener_pid(port) do
       nil ->
@@ -877,9 +697,7 @@ defmodule CmsHarness.AppInstance do
 
   defp ensure_port_free(_state, _port), do: :ok
 
-  # `<app>_dev_wc_<hash of this copy's root>` — stable across restarts of this
-  # same checkout, distinct from every other copy of the same project without
-  # needing to ask anything for an id.
+  # `<app>_dev_wc_<hash of root>`: stable per checkout, distinct across copies.
   defp database_name(state) do
     app = Runner.app_name(state.root) || "app"
 
@@ -892,10 +710,7 @@ defmodule CmsHarness.AppInstance do
     "#{app}_dev_wc_#{suffix}"
   end
 
-  # Refuses anything that doesn't look like this module's own naming
-  # convention — belt and suspenders on top of `discard/1` only ever being
-  # called with this process's own state: a `DROP DATABASE` is exactly the
-  # one command here with no undo.
+  # Drops only names in this module's own `_dev_wc_` convention: no undo.
   defp drop_database(%__MODULE__{database: database})
        when is_binary(database) do
     if safe_identifier?(database) and String.contains?(database, "_dev_wc_") do
@@ -931,9 +746,8 @@ defmodule CmsHarness.AppInstance do
 
   @doc """
   Whether `name` is safe to interpolate into the shell string
-  `CmsHarness.AppInstance.Runner.Local.clone_database/3` builds — public so a
-  regression here is caught by a test, not discovered as a
-  command-injection seam.
+  `CmsHarness.AppInstance.Runner.Local.clone_database/3` builds. Public so it
+  is tested.
   """
   def safe_identifier?(name), do: is_binary(name) and Regex.match?(~r/^[a-zA-Z0-9_]+$/, name)
 
@@ -952,19 +766,13 @@ defmodule CmsHarness.AppInstance do
     )
   end
 
-  # The tunnel map's hostname, atomised the same way `ensure_tunnel/3`'s own
-  # clauses already pattern-match it — the one piece of it a booting app
-  # needs to answer `Endpoint.url()` correctly from the moment it starts,
-  # rather than only once something pointed the Cloudflare tunnel at it.
+  # A booting app needs the hostname to answer `Endpoint.url()` correctly.
   defp tunnel_host(%{hostname: hostname}), do: hostname
   defp tunnel_host(_), do: nil
 
-  # Until the app serves, its process exits, or `deadline` passes, whichever
-  # comes first; the reply is the last probe. A fixed 15×1s used to end it, and
-  # a boot that compiles takes longer: restart_app answered "down" for an app
-  # that served 30s later, and the agent restarted it again (181d5fdd).
-  # `erroring` does not end the wait — mid-boot, before the JS bundle is
-  # built, a healthy app answers it.
+  # Until the app serves, its process exits, or `deadline` passes; the reply is
+  # the last probe. `erroring` does not end the wait: a booting app answers it
+  # before its assets are built.
   defp wait_for_health(state, deadline) do
     probed = probe(state)
 
@@ -994,8 +802,7 @@ defmodule CmsHarness.AppInstance do
   defp stop_process(%__MODULE__{os_pid: pid} = state) when is_integer(pid) do
     Runner.stop_process(pid)
 
-    # A stale address on a stopped copy is the exact failure story 1108
-    # exists to prevent — never left standing.
+    # A stopped copy never keeps a stale address.
     new_state = %{state | status: "down"}
     persist!(new_state)
     new_state
@@ -1005,52 +812,15 @@ defmodule CmsHarness.AppInstance do
 
   # --- Internals: tunnel ---
   #
-  # 2026-09-29, John: "the harness should hold the tunnel, not the generated
-  # app." An app restart (a promote, a crash, `just serve` bouncing) no
-  # longer needs to take the connector down with it — this process's own
-  # lifetime, not the OS child it launches and relaunches, is what the
-  # tunnel's lifetime now follows. Only ever reached for `main?: true`; see
-  # `ensure_running/2`'s doc and `CmsHarness.HarnessProjectChannel.put_tunnel/2`
-  # for why a sharing sibling (criterion 1586) must never run a connector of
-  # its own.
-  #
-  # The other side of that trade: the tunnel now lives and dies with *this*
-  # process, not with the app. This repo's own `after-promote` recipe
-  # restarts the harness BEAM 13-30s after every promote (see `after_promote/1`
-  # above), which takes this tunnel down with it — where the old, app-held
-  # tunnel survived a harness restart untouched. The public preview blips on
-  # every promote now, where it did not before. Probably acceptable, since a
-  # promote already restarts the app the preview is serving — but it is the
-  # trade being made, not a side effect nobody chose.
-  #
-  # No feature flag: which side holds the tunnel is derived per copy from
-  # data already here, not a switch somebody has to remember to flip. `tunnel`
-  # is `nil` exactly when `PreviewTunnel.stored_credentials/1` found nothing
-  # for this copy (this repo's own main today — its dev tunnel is still
-  # `config/dev.exs`'s hardcoded bootstrap, no DB row) — and only then does
-  # this do nothing, leaving the app free to keep running its own, exactly as
-  # before. The moment a copy's tunnel *is* DB-backed, `tunnel` is never nil,
-  # and the app is told not to start one of its own — see `launch/6`'s
-  # `tunnel_held_by_harness?` and `Runner.launch/7`'s doc for the other half
-  # of this: the two sides derive the same answer from the same fact, so
-  # there is no window where both, or neither, are running one.
-  #
-  # Story 1117: every copy on a machine is handed the machine's one tunnel,
-  # main or not, so whether to hold it is decided by whether one was handed
-  # over — never by main-ness. Several copies holding the same tunnel share one
-  # connector: `Runner.start_tunnel/2` keys it on the tunnel id and answers the
-  # running one to every later caller.
-  #
-  # Handed none: nothing to run, and nothing stopped — a connector this copy
-  # shares carries other copies' addresses, so one copy losing its tunnel is no
-  # reason to take everyone's down.
+  # The harness holds the tunnel, not the app, so an app restart keeps the
+  # connector. Whether to hold one is decided by whether one was handed over,
+  # never by main-ness; copies handed the same tunnel share one connector.
+  # Handed none: nothing to run and nothing stopped (a shared connector carries
+  # other copies' addresses). See knowledge/harness, "App instances".
   defp ensure_tunnel(state, _main?, nil), do: state
 
-  # Already running this exact tunnel — re-checked on every call rather than
-  # trusted once: a connector this process did not itself stop can still
-  # have died on its own, and `start_tunnel/2` starts it unlinked for
-  # exactly this reason (see its own doc) — a dead tunnel should read as
-  # "not running," not crash the process supervising it.
+  # Already running this tunnel: re-checked each call, since an unlinked
+  # connector can die on its own.
   defp ensure_tunnel(
          %__MODULE__{tunnel_pid: pid, tunnel_id: id} = state,
          _main?,
@@ -1062,9 +832,7 @@ defmodule CmsHarness.AppInstance do
       else: start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
 
-  # Holding a tunnel already, but for different credentials — re-provisioned
-  # under us. Swap to the new ones rather than leaving a connector answering
-  # for a tunnel this copy no longer holds the secret for.
+  # Holding a tunnel for different credentials: swap to the new ones.
   defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, _main?, tunnel) when is_pid(pid) do
     Runner.stop_tunnel(pid)
     start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
@@ -1098,11 +866,8 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  # A running copy already has its own port persisted. An `ensure_running`/
-  # `restart` whose `start_app` itself failed still reaches here — main's
-  # port is fixed and known from its own `config/dev.exs` regardless of
-  # whether its app ever came up, the same source `ensure_port_and_database/1`
-  # already reads it from.
+  # The persisted port, else main's fixed port from `config/dev.exs` (reached
+  # when the app's own start failed).
   defp tunnel_origin(%__MODULE__{port: port}) when is_integer(port),
     do: "http://127.0.0.1:#{port}"
 
@@ -1158,20 +923,12 @@ defmodule CmsHarness.AppInstance do
   end
 
   @doc """
-  What this copy's app is, read from the harness's own `state.json` (00bd7d4a).
+  What this copy's app is, read from the harness's own `state.json`.
 
-  The durable answer to "which commit is running here". A restart's result
-  reaches the server as a channel reply or push, and a harness that restarted
-  mid-reply leaves the server holding a commit the app is not running â
-  metric_flow's main copy reported `app_commit` c3eb20b at HEAD 59dc451. This is
-  the value the harness itself wrote down, so a join can converge the server on
-  it.
-
-  Read from disk rather than from a running process, deliberately: an
-  `AppInstance` is started lazily by an app verb, and the moment this is needed
-  is a join, which may be the first thing a restarted harness does. `nil` when
-  nothing was ever written â "we have not been told" is a real state, and
-  different from a commit.
+  The durable answer to "which commit is running here", sent on join so the
+  server converges even if a reply was lost to a harness restart. Read from
+  disk because no `AppInstance` may be running yet. `nil` when nothing was ever
+  written.
   """
   @spec reported(String.t()) :: map() | nil
   def reported(root) when is_binary(root) do

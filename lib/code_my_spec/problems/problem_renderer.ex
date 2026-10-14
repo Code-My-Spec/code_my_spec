@@ -13,10 +13,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Compactness policy for stop-hook responses. The agent's context window
   # is finite — the response must stay tight.
   @per_problem_cap 200
-  # Ten is story 554's answer and criterion 5094 pins it. Lowering it to three
-  # made the stop hook shorter, which is what was asked for, and broke 5094 and
-  # 5095 — the latter because the response then no longer reached the 4 KB cap it
-  # exists to exercise. Changing it is a story-554 decision, not a renderer one.
+  # Pinned by acceptance criteria; changing it is a product decision, not a
+  # renderer one.
   @per_source_list_cap 10
   @total_response_cap 4096
 
@@ -160,11 +158,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   - Each blocking problem is one line: `file:line — first-line message`
     truncated to `@per_problem_cap` bytes.
   - Per source, at most `@per_source_list_cap` blocking problems are
-    enumerated; overflow surfaces as `... N more <source> problems
-    (use get_issue to inspect)`.
+    enumerated; overflow surfaces as `... N more <source> problems` with a
+    `list_problems` call to page through them.
   - Advisory problems are never enumerated — they collapse to one
-    summary line per source: `<source>: N <severity>s on untouched
-    scope (advisory)`.
+    summary line per source: `- <source>: N <severity>s (advisory)`.
   - The total response is capped at `@total_response_cap` bytes; excess
     is truncated with `... more problems omitted (response size limit)`.
 
@@ -180,13 +177,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     reproduce = Keyword.get(opts, :reproduce_commands, %{})
     session_paths = Keyword.get(opts, :session_paths)
 
-    # One fact, read once, answering two questions.
-    #
-    # An agent running inside our own BEAM has no session and never will, and
-    # that changes both halves of the footer: it is not the one waiting on the
-    # rerun, and it is not failing to attribute its edits — it owns the whole
-    # checkout by design. Threaded as a single value because the two readings
-    # cannot legitimately disagree.
+    # An in-app agent has no session and owns its whole checkout. Threaded to
+    # `attribution_note/2`, which does not currently vary on it.
     internal? = Keyword.get(opts, :internal_agent?, false)
     header = "Fix these problems before stopping:\n\n"
 
@@ -221,24 +213,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   @doc """
   What an allowed stop says about findings that are not blocking it.
 
-  Nothing blocked, so there is no findings list to hang a sentence under — which
-  is exactly the gap. Story 895's rule 3 says a working copy surfaces every
-  finding about it regardless of assignment, and until this an allowed stop said
-  nothing at all: a red spex on another checkout's story is advisory here,
-  correctly, and the agent standing in the checkout where it failed never heard
-  of it.
-
-  So this names them, one line each, with whose story each one is. `nil` when
-  there is nothing to say, so the caller can send no message rather than an
-  empty one.
-
-  Only the ones with an owner to report. A finding whose story is this
-  checkout's own is left out — an agent does not need telling that its own work
-  is its own — and `Validation` supplies no assignments at all on a project
-  where nobody has assigned anything, so an ordinary project sees none of this.
-  That is the guard against the wallpaper failure `Analysis.Alert` argues
-  against: a paragraph on every stop that nobody can act on is one the model
-  learns to skip.
+  A working copy surfaces every finding about it regardless of assignment. This
+  names advisory findings on stories assigned elsewhere or to no checkout, one
+  line each. Findings on this checkout's own stories are left out, and a project
+  with no assignments sees none of this. `nil` when there is nothing to say.
   """
   @spec advisory_assignment_note([Problem.t()], map()) :: String.t() | nil
   def advisory_assignment_note(advisory, assignment) when map_size(assignment) > 0 do
@@ -270,25 +248,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   def advisory_assignment_note(_advisory, _assignment), do: nil
 
-  # Who owns the stories behind these spex findings.
-  #
-  # Story 895's third rule: a working copy surfaces every finding about it,
-  # regardless of assignment. Nothing is hidden and nothing is demoted — what
-  # changes is that the response says whose work each one is, so an agent
-  # holding a red spex can tell "mine", "nobody's, so mine too" and "another
-  # checkout's" apart. Before this they read identically, and the only available
-  # reading was the discouraging one.
-  #
-  # Deliberately not a blocking decision. `specs_ready` still decides that, and
-  # it is the right gate: the latch is earned by a green run, so a red spex on a
-  # latched story is a regression whoever is stopping should care about — story
-  # 895's own rule 4, and 983's "blocks any agent in the working copy". This
-  # paragraph is orientation, not an escape hatch.
-  #
-  # Covers blocking and advisory together, because the sentence an agent needs
-  # most is about a finding that did *not* block: "assigned elsewhere, listed
-  # here, not yours to fix" is exactly the case that used to read as being stuck
-  # behind somebody.
+  # Whose stories these findings are on, blocking and advisory alike.
+  # Orientation only: it never changes what blocks.
+  # See knowledge/analysis, "Stop response".
   defp assignment_note(_blocking, _advisory, assignment) when map_size(assignment) == 0, do: ""
 
   defp assignment_note(blocking, advisory, assignment) do
@@ -333,13 +295,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp join_labels([a, b]), do: "#{a} and #{b}"
   defp join_labels(many), do: Enum.join(many, ", ")
 
-  # When and where a blocking spex finding's specs_ready latch was earned
-  # (`51e319db`). The latch is project-wide and a checkout without the fix
-  # yet gets held to it same as everywhere else, by design — this is
-  # orientation, not an escape hatch, the same rule `assignment_note/3`
-  # follows: nothing here changes what blocks, it only gives a reader on a
-  # checkout that never made the fix something concrete to check (its own
-  # HEAD against the commit named here) before assuming they broke it.
+  # When and on what commit a blocking spex finding's project-wide
+  # specs_ready latch was earned, so a checkout without the fix can check its
+  # HEAD before assuming it broke it. Orientation only.
   defp specs_ready_note(_blocking, stamps) when map_size(stamps) == 0, do: ""
 
   defp specs_ready_note(blocking, stamps) do
@@ -385,14 +343,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp commit_phrase(nil), do: nil
   defp commit_phrase(commit), do: "commit #{String.slice(commit, 0, 8)}"
 
-  # `runs` carries what the ledger says about each source — the run its
-  # findings came from, and why it never completed. One
-  # value rather than four positional arguments threaded two levels down, for
-  # the same reason `flight` is one: they are only ever read together, and the
-  # list was already seven long.
-  #
-  # `attribution` is whose each finding is: the paths this session wrote, and
-  # the paths on a latched story (`specs_ready_stamp`'s keys).
+  # `runs` is what the ledger says about each source (answering run, failures,
+  # analyzer staleness, failed reruns). `attribution` is the paths this session
+  # wrote and the paths on a latched story (`specs_ready_stamp`'s keys).
   defp render_blocking_section(blocking, runs, reproduce, attribution) do
     blocking
     |> Enum.group_by(& &1.source)
@@ -428,20 +381,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       failed_rerun_note(source, runs)
   end
 
-  # The one case where "stop again and let a rerun replace these" is wrong for a
-  # reason the reader cannot see: the rerun will run the same old code.
-  #
-  # A harness runs the analyzer it booted with, so a fix to `StaticAnalysis` is
-  # not in force until it is rebuilt. `d9f0846c` measured three stop-hook loops
-  # spent on findings already fixed, while the compiled pipeline sat eleven
-  # commits behind for a whole session. The response said "stale, a rerun is in
-  # flight" — true, and useless — and rendered identically both to an ordinary
-  # stale finding and to the real defect it was masking, so each time the
-  # diagnosis stopped at the first plausible cause. Recovering it needed a
-  # `.beam` timestamp.
-  #
-  # On the source's own group rather than in the footer: one analyzer can be
-  # behind while another is current, and the advice differs for each.
+  # A harness runs the analyzer it booted with, so a rerun repeats old code
+  # until it is rebuilt. Per source: one analyzer can be behind while another
+  # is current.
   defp stale_build_note(source, %{analyzer_staleness: notes}) do
     case Map.get(notes, source) do
       note when is_binary(note) -> "\n  Analyzer build: #{note}."
@@ -467,34 +409,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp failed_rerun_note(_source, _runs), do: ""
 
-  # Why a spex still blocks after being marked as somebody else's.
-  #
-  # `(not edited by this session)` means "advisory, demoted" on every other
-  # source — `split_unattributed/2` moves those out of the blocking set. Spex is
-  # exempt (`@attribution_exempt_sources`), so the identical marker sits on a
-  # finding that is still blocking, and nothing in the response distinguishes
-  # the two readings.
-  #
-  # The exemption is right, and so is the block. `specs_ready` is not set
-  # optimistically by anyone — the specs-passing gate sets it on a fresh green
-  # run and `clear_specs_ready_on_readiness_change/1` clears it whenever the
-  # story is released or parked. So a red spex on a latched story is a story
-  # whose specs went green and have since gone red: a regression in this working
-  # copy, which is a different thing from somebody's in-flight work and is why
-  # attribution must not demote it.
-  #
-  # What the agent is missing is that sentence. It is holding a red spex in a
-  # file it never touched, and the only reading available from the response is
-  # "somebody else's problem, and I am stuck behind it" — which is the bind
-  # `b9a9f9bc` describes, and which cost story 985 four unrelated sessions
-  # before anyone traced it.
-  #
-  # Only when there is a foreign finding to explain, and only for spex: an agent
-  # looking at its own red spex does not need a paragraph about latches.
-  #
-  # And only for a finding on a latched story. An orphan, or a finding with no
-  # file at all, never earned a latch, and telling the reader "these went green
-  # once" sent them hunting for a regression that never happened (d91436b7).
+  # Why a spex still blocks in a file this session did not touch: spex is exempt
+  # from attribution demotion (`@attribution_exempt_sources`). Only for a
+  # foreign finding on a latched story; an orphan never earned a latch.
+  # See knowledge/analysis, "Stop response".
   defp foreign_spex_note("spex", items, %MapSet{} = session_paths, latched) do
     foreign? =
       MapSet.size(session_paths) > 0 and
@@ -523,25 +441,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp foreign_spex_note(_source, _items, _session_paths, _latched), do: ""
 
-  # A group whose every finding is a killed process is reporting on the machine,
-  # not on the code, and nothing else in this footer can say so. `** (EXIT …)
-  # killed` is a process being terminated — never an assertion — so a suite that
-  # was killed under load arrives looking exactly like a suite that failed.
-  #
-  # Measured over four consecutive stops: twelve distinct findings, a different
-  # set each sweep including a different *line* of the same file, every one of
-  # them passing standalone in seconds. Load 6–8.5, two agents and the harness
-  # driving suites through one `_build/test`.
-  #
-  # The advice is what makes it expensive rather than merely noisy. "Stop again
-  # and let the rerun replace these" is correct — the rerun does land, and does
-  # replace them — with another random set, at a rate that has nothing to do
-  # with the code. Followed as instructed it produces a fresh block every couple
-  # of minutes forever, and the only exit is `clear_problems`, which requires
-  # already knowing what `killed` means.
-  #
-  # All rather than any: one killed process beside three real failures is a run
-  # that mostly worked, and calling that environmental would hide the three.
+  # A group whose every finding is `** (EXIT …) killed` reports on the machine,
+  # not the code. All rather than any: one kill beside real failures is a run
+  # that mostly worked.
+  # See knowledge/analysis, "Stop response".
   defp killed_note([]), do: ""
 
   defp killed_note(items) do
@@ -553,8 +456,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  # "all 1 are killed processes" is what counting without reading produces, and
-  # it lands in front of every agent that hits this.
+  # Singular wording for one, rather than "all 1 are".
   defp killed_subject(1),
     do:
       "this is a killed process, not an assertion — the suite was terminated rather than failing. That is"
@@ -568,27 +470,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp killed?(_problem), do: false
 
-  # A criterion that never reached its assertions has not regressed.
-  #
-  # `d145faae`: `docker/fleet/keys/fleet` is gitignored and generated by
-  # `docker/fleet/fleet.sh up` into whichever working copy ran it, so every
-  # criterion needing the fleet box is unpassable in every other checkout —
-  # while the fleet itself runs fine. `CodeMySpecSpex.Case.fleet_box/1` raises
-  # before any assertion executes, deliberately, because a criterion that
-  # quietly passed without running the commands it is about would be the worse
-  # failure.
-  #
-  # The block is machine-wide: on this machine five worktrees were held by a
-  # precondition living in one. And the footer told the agent it was a
-  # regression here and to fix it or park the story — fixing is impossible from
-  # the wrong checkout, and parking means changing `ready_for_dev` on someone
-  # else's story to unblock your own session, which is the worst move available
-  # and the one the wording nudged toward.
-  #
-  # Counted rather than all-or-nothing, unlike `killed_note/1`. A killed process
-  # says nothing about which finding it replaced, so a mixed group there is a
-  # run that mostly worked; an unmet precondition is identifiable per finding,
-  # so naming how many is both safe and more useful than a verdict on the group.
+  # A criterion that never reached its assertions (a missing local
+  # precondition, e.g. the gitignored fleet key) has not regressed. Counted per
+  # finding, unlike `killed_note/1`, because each one is identifiable.
   defp precondition_note([]), do: ""
 
   defp precondition_note(items) do
@@ -613,17 +497,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp missing_precondition?(_problem), do: false
 
-  # How to see these yourself. Only where the gate's command and the obvious
-  # one disagree — credo, whose plain invocation hides the low-priority band
-  # these are promoted from — so this stays a fact worth reading rather than
-  # noise appended to every group.
-  # The `{command, why}` form also says why the obvious command was wrong.
-  # Handing an agent a longer command it did not ask for reads as pedantry
-  # unless it knows its own green was false: `mix credo` prints "Showing
-  # priority issues: ↑ ↗ →" and suppresses the band these are promoted from, so
-  # it says the file is clean while the gate blocks on it. Measured on
-  # `context_design_review.ex:20` — 0 findings plain, 1 with the gate's args, no
-  # config difference (14f141c1).
+  # How to see these yourself, only where the gate's command and the obvious one
+  # disagree (plain `mix credo` hides the low-priority band these are promoted
+  # from). `{command, why}` also says why the obvious command was wrong.
   defp reproduce_line(source, reproduce) do
     case Map.get(reproduce, source) do
       {command, why} when is_binary(command) and command != "" ->
@@ -640,13 +516,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp why_line(why) when is_binary(why) and why != "", do: "\n  (#{why})"
   defp why_line(_why), do: ""
 
-  # Which run recorded these findings: its commit and how long ago it finished.
-  #
-  # Findings always block, from the latest completed run however old (28d72f8a).
-  # There is no "stale" label: whether that run saw the current code is the
-  # promote gate's question, and the label sent agents to wait out reruns
-  # rather than read the finding. The commit and the age are facts a reader can
-  # check against their own checkout.
+  # Which run recorded these findings: its commit and age. No "stale" label:
+  # findings from the latest completed run always block, and a label sent agents
+  # to wait out reruns instead of reading the finding.
   defp run_marker(source, %{answers: answers, failures: failures}) do
     case Map.get(answers, source) do
       %{} = answer ->
@@ -663,17 +535,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp finished(%DateTime{} = at), do: ", finished #{ago(at)}"
   defp finished(_at), do: ""
 
-  # Why it never completed, in the analyzer's own words.
-  #
-  # "has never completed" is true and says nothing about the cause, and the
-  # cause is already in `Run.output` — `Reconciler.fail/2` writes it there and
-  # nothing read it back. `6f89b278` is three days of blocked stops where the
-  # answer sat in that column: a test database two migrations behind, and the
-  # exact command for the right partition.
-  #
-  # Indented under the group rather than folded into the marker: this is
-  # somebody else's output, often multi-line, and running it into our sentence
-  # is how a stack trace ends up reading like our own prose.
+  # Why it never completed, in the analyzer's own words (`Run.output`, written by
+  # `Reconciler.fail/2`). Indented so foreign output never reads as our prose.
   defp failure_clause(nil), do: ""
 
   defp failure_clause(reason) do
@@ -698,23 +561,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     "  - #{format_location(problem)} — #{message}#{unedited_marker(problem, session_paths)}"
   end
 
-  # Whose finding this is, when the answer is known.
-  #
-  # Several agents share one repo and rebase onto main, so a warning one pushes
-  # blocks every other's stop in the same voice as their own work — and the
-  # obvious repair on someone else's in-flight file can be actively wrong. One
-  # case: deleting an unused `@endpoint` that a preview story overrides on
-  # purpose, which silently falls back to the local endpoint that `~p` binds at
-  # compile time.
-  #
-  # An empty set means no evidence rather than no edits: a session restart or a
-  # path shape that did not normalize looks identical to a turn that wrote
-  # nothing. Marking everything foreign on that reading would tell an agent to
-  # ignore its own work, so absence of evidence stays silent.
-  #
-  # Marks only. Whether an unattributed finding should still block is a
-  # question about what the gate is for, and getting it wrong switches the gate
-  # off silently — not a decision to take from a message renderer.
+  # Marks a finding in a file this session did not edit. An empty set is no
+  # evidence, so it marks nothing. Marks only: blocking is `Validation`'s call.
   defp unedited_marker(%Problem{file_path: path}, %MapSet{} = session_paths)
        when is_binary(path) do
     cond do
@@ -726,39 +574,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp unedited_marker(_problem, _session_paths), do: ""
 
-  # Say when nothing could be attributed, because the two states that produce no
-  # demotion look identical from the response and lead opposite ways.
-  #
-  # `split_unattributed/2` used to refuse to demote on an empty path set as well
-  # as a `nil` one, and this sentence was the compensation: the agent was handed
-  # somebody else's finding in the same voice as its own, with no marker
-  # (`unedited_marker/2` returns "" on an empty set, having nothing to compare
-  # against), so the note told it to check `git log -1 -- <path>` itself.
-  #
-  # An empty set now demotes, so the note reports that instead of asking for the
-  # work. It still says something, because silence would be wrong in the other
-  # direction: an agent whose findings all became advisory should know why they
-  # stopped blocking, and that the reason is a claim about *this session* rather
-  # than a judgment that the findings do not matter. A gate that stops blocking
-  # has to say so; that is the same rule the `unattributed_count` field follows.
-  #
-  # `76008385` is what the old shape cost: a QA agent, which writes no project
-  # files by nature, followed this note exactly — `git log -1` per path,
-  # confirmed neither was its own, escalated to the owner — and got the same
-  # block again on the next stop, with no action available that would change it.
-  #
-  # Two claims in the old wording became false and are corrected here, both
-  # reported as a single self-contradicting message (339725c7): findings with no
-  # file, and spex findings, were named as still blocking while the same
-  # paragraph announced a blanket demotion. Under story 894's rule an agent that
-  # made no edits is blocked by nothing, spex and file-less findings included —
-  # they block the next session that does edit.
-  #
-  # "No file this project tracks" rather than "no recorded edits", because the
-  # session that reads this most often did record edits: a QA agent writing
-  # under `.code_my_spec/qa/`, which git ignores, so nothing it wrote is a file
-  # here (a9e9caca). Being told it had no recorded edits, having just written
-  # its brief, reads as the gate being broken.
+  # An empty path set: every finding was demoted, and a gate that stops blocking
+  # says so. "No file this project tracks" because a QA agent writes only
+  # gitignored files and did record edits.
   defp attribution_note(%MapSet{} = session_paths, _internal?) do
     if MapSet.size(session_paths) == 0 do
       "\n\nThis session changed no file this project tracks, so every finding was " <>
@@ -772,26 +590,10 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  # `nil` means project files changed while this task ran and nothing this
-  # session recorded names a file the project has a record of. Blocking is the
-  # intended answer — findings cannot be matched to a session, so none can be
-  # demoted — and that part is unchanged.
-  #
-  # What this used to *say* was that the recording is broken, and invite a
-  # framework issue. That is one cause and not the common one. The ordinary one
-  # is a file created this turn: `verify_against_ledger/3` needs recorded paths
-  # to join `File` rows, and a file the scanner has not reached yet has no row,
-  # so a genuine edit to a genuine file lands here with a perfectly good ledger.
-  #
-  # Two agents filed that issue in one day (07bcd520, 6c27799f), both correct
-  # that they had edited the file and both concluding sub-agent edits go
-  # unrecorded — which is not the mechanism. They were reading the sentence
-  # exactly as written, and following it cost them a report each and left the
-  # real explanation, that the file is simply too new to have a row, unsaid.
-  #
-  # So it describes the state and orders the causes by how often they are it.
-  # The invitation to report stays, narrowed to the case that is actually a
-  # defect: paths that could never name a file here.
+  # `nil`: files changed but nothing recorded names a tracked file, so nothing
+  # is demoted and all block. The usual cause is a file too new to have a `File`
+  # row (`verify_against_ledger/3` joins on them); a framework issue only for
+  # paths that could never name a file here.
   defp attribution_note(_session_paths, _internal?) do
     "\n\nFiles in this project changed while this task ran, and nothing this " <>
       "session recorded names a file the project has a record of — so no finding " <>
@@ -831,10 +633,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     "\n\nAdditional problems (not blocking):\n" <> lines <> demoted_note(unattributed)
   end
 
-  # Said out loud, because this is the gate having declined to block on
-  # something. Folding them into the advisory counts unannounced would make
-  # "the gate stopped blocking" and "there was nothing to block on" read the
-  # same, which is the one confusion a demotion must not create.
+  # Said out loud, so "the gate declined to block" never reads as "nothing to
+  # block on".
   defp demoted_note(0), do: ""
 
   defp demoted_note(count) do

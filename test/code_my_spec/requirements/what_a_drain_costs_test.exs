@@ -26,8 +26,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   duration is a flake that fires hardest exactly when the machine is busiest,
   which is when a real regression is least likely to be what changed.
   """
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias CodeMySpec.Requirements.IncrementalGraph
@@ -40,11 +39,20 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   setup ctx do
     handler = "drain-cost-#{inspect(self())}"
     test = self()
+    project_id = ctx.scope.active_project_id
 
+    # This project's drains only: telemetry is node-wide, and every test
+    # running alongside drains too.
     :telemetry.attach(
       handler,
       @event,
-      fn _e, measurements, meta, _ -> send(test, {:drain, measurements, meta}) end,
+      fn
+        _e, measurements, %{project_id: ^project_id} = meta, _ ->
+          send(test, {:drain, measurements, meta})
+
+        _e, _measurements, _meta, _ ->
+          :ok
+      end,
       nil
     )
 

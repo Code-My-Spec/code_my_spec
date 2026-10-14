@@ -2,28 +2,17 @@ defmodule CodeMySpec.Migration do
   @moduledoc """
   Copies a project's authored records from a local harness onto the cloud.
 
-  Story 991. What travels is what Sam wrote: stories, rules, scenarios,
-  personas, epics, issues, questions, components and their dependencies, and
-  the project's configuration. What does not travel is everything the harness
-  can recompute — files, problems, sessions, requirements. Those are most of
-  the rows a local project holds, and the cloud rebuilds them from the working
-  copy on first sync.
+  What travels is what the user authored: stories, epics, personas and their
+  story links, rules, criteria, issues, questions, QA attempts, components and
+  their dependencies, and the components-authored stamp. What does not
+  (`derived_kinds/0`) is everything the harness recomputes — the cloud rebuilds
+  it from the working copy on first sync.
 
-  Components travel since they became records (3aeb66cf, step 6): an
-  architecture authored through the tools exists nowhere else, and a frozen
-  project's sync no longer re-derives it from files.
+  One call, one transaction: a refused or failed import writes nothing.
+  Re-running is safe — every kind is matched against what is already here.
 
-  One call, one transaction. A migration that half-lands is worse than one that
-  fails: Sam would have to work out what arrived before he could retry, and the
-  story forbids leaving him that job.
-
-  ## Remapping
-
-  The hard part, and the reason this is not a database copy. Local ids mean
-  nothing here — stories are integers assigned by a SQLite sequence, and the
-  cloud assigns its own. Every reference is rewritten as the graph lands, which
-  is why insert order is fixed rather than incidental: a criterion cannot be
-  written until both the story and the rule it points at have real ids.
+  Local ids mean nothing on the cloud, so every reference is rewritten as the
+  graph lands, in a fixed insert order. See knowledge/promotion, "Migration".
   """
 
   use Boundary,
@@ -75,16 +64,11 @@ defmodule CodeMySpec.Migration do
   @doc """
   Read one project's authored graph off the local harness.
 
-  Reads through the contexts rather than the database, because the local
-  harness runs this same code over SQLite — so there is no second set of
-  queries to keep in step with the schema, and no raw SQL to drift.
+  Reads through the contexts rather than the database: the local harness runs
+  this same code over SQLite, so there are no second queries to drift.
 
   Local ids travel as `local_id` and are the only thing tying the payload
-  together. The cloud assigns its own and rewrites every reference as it lands.
-
-  Reads nothing and writes nothing outside this project: story 991 says
-  migrating one project leaves Sam's others alone, and the surest way to keep
-  that true is to never look at them.
+  together. Reads nothing outside this project.
   """
   @spec export_project(Scope.t()) :: map()
   def export_project(%Scope{} = scope) do
@@ -98,9 +82,6 @@ defmodule CodeMySpec.Migration do
       "persona_stories" => export_persona_links(scope, stories),
       "rules" => Enum.flat_map(stories, &export_rules(scope, &1)),
       "criteria" => Enum.flat_map(stories, &export_criteria(scope, &1)),
-      # The moduledoc has always said these travel. They did not — export_project
-      # built six collections and stopped, so a migrated project arrived with no
-      # issue history, no open questions and no QA record at all.
       "issues" => export_issues(scope),
       "questions" => Enum.flat_map(stories, &export_questions(scope, &1)),
       "qa_attempts" => Enum.flat_map(stories, &export_qa_attempts(scope, &1)),
@@ -147,14 +128,9 @@ defmodule CodeMySpec.Migration do
 
   defp components_authored_at(_scope), do: nil
 
-  # One walk per export, keyed by the criterion id embedded in each filename.
-  # Memoised in the process dictionary: 921 criteria each globbing the tree is
-  # 921 walks of the same directory.
-  #
-  # Only the harness has a disk. On a server this finds nothing and every
-  # criterion falls back to whatever it already recorded, which is correct —
-  # the server does not hold spex files, it holds what the harness said about
-  # them.
+  # One walk per export (memoised in the process dictionary), keyed by the
+  # criterion id in each filename. On a server there is no disk, and each
+  # criterion keeps the `spec_path` it already recorded.
   defp spex_files(scope) do
     case Process.get(:cms_migration_spex_files) do
       nil ->
@@ -262,29 +238,15 @@ defmodule CodeMySpec.Migration do
       "title" => story.title,
       "story" => story.story,
       "description" => story.description,
-      # Authored state, all of it. Carrying only title/story/description
-      # left every migrated story parked: `ready_for_dev` is what releases a
-      # story into the requirement graph, so a project arrived with 91 stories
-      # marked ready at the source and 0 here, and the graph saw almost nothing
-      # to work on. `notes`, `priority` and `specs_ready` were dropped the same
-      # way — 26, 52 and 8 stories' worth.
+      # All authored state: `ready_for_dev` is what releases a story into the
+      # requirement graph.
       "ready_for_dev" => story.ready_for_dev,
       "specs_ready" => story.specs_ready,
       "notes" => story.notes,
       "priority" => story.priority,
-      # The importer has always read this to rewire the epic; nothing ever
-      # wrote it, so all 16 epic memberships were silently dropped while the
-      # epics themselves migrated.
       "epic_local_id" => story.epic_id,
-      # By module name, not id. Components are projections of files — each
-      # deployment derives its own from the same source, so the ids differ and
-      # the module name is what both sides agree on. It is the natural key
-      # `components_module_name_project_id_index` already enforces.
-      #
-      # Without this the link is simply dropped, and requirements are computed
-      # per story and component: a migrated project reports 0/0 satisfied for
-      # everything, which reads as "nothing is done" rather than "nothing is
-      # linked".
+      # By module name, not id: component ids are derived from the project id,
+      # so they differ across the move.
       "component_module_name" => story.component && story.component.module_name
     }
 
@@ -292,10 +254,7 @@ defmodule CodeMySpec.Migration do
     do: %{
       "local_id" => epic.id,
       "name" => epic.name,
-      # Carried because they are authored. Only the name travelled before, so
-      # an epic arrived with its description gone and a slug the destination
-      # re-derived from the name — which is a different string whenever Sam
-      # edited one without the other.
+      # Carried, not re-derived from the name: both are authored.
       "slug" => epic.slug,
       "description" => epic.description
     }
@@ -305,9 +264,7 @@ defmodule CodeMySpec.Migration do
       "local_id" => persona.id,
       "name" => persona.name,
       "slug" => persona.slug,
-      # The headline is the persona in one line, and it was dropped. So was the
-      # type, which decides whether a persona is a proto sketch or researched —
-      # a distinction the product surfaces treat differently.
+      # `persona_type` separates a proto sketch from a researched persona.
       "headline" => persona.headline,
       "persona_type" => persona.persona_type && to_string(persona.persona_type)
     }
@@ -345,21 +302,10 @@ defmodule CodeMySpec.Migration do
         "rule_local_id" => &1.rule_id,
         "description" => &1.description,
         "body" => &1.body,
-        # Read off disk rather than derived. The derived path was pinned to the
-        # criterion's id and a slug of its description, and both move: the id on
-        # migration — which renumbers every story, so all 86 directories name
-        # something else — and the slug whenever somebody edits the words.
-        #
-        # Taking the real filename means the destination records where the file
-        # actually is, and a re-run brings it across unchanged.
+        # The real filename, never re-derived: a derived path depends on the
+        # id (which the move changes) and on a slug of editable text.
         "spec_path" => &1.spec_path || Map.get(spex, to_string(&1.id)),
-        # 912 of 921 criteria in this project carry a kind, and none of them
-        # arrived with one. It separates the happy path from the failure path,
-        # which is the whole shape of a scenario set — a migrated project looked
-        # like it had 921 undifferentiated criteria.
         "kind" => &1.kind && to_string(&1.kind),
-        # QA state. Nothing is verified in this project today, so this has cost
-        # nothing yet; it would have, silently, the first time it mattered.
         "verified" => &1.verified,
         "verified_at" => &1.verified_at
       }
@@ -387,11 +333,9 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # Checked before `do_import/2` opens its transaction — criterion 8228's
-  # whole point is that a refused migration writes nothing, and the story
-  # keeps billing out of this path entirely: migrating is how Sam upgrades,
-  # not where he buys, so the refusal has to be legible on its own rather
-  # than a validation error he reads as "my data is malformed."
+  # Checked before the transaction opens, so a refused migration writes
+  # nothing, and refused as `:plan_required` rather than a validation error
+  # that would read as malformed data. Billing is not part of this path.
   defp require_paid_plan(%Scope{active_account: %{plan: :free}}), do: {:error, :plan_required}
   defp require_paid_plan(_scope), do: :ok
 
@@ -406,13 +350,10 @@ defmodule CodeMySpec.Migration do
     end)
   end
 
-  # What Sam authored, in the order the references demand.
-  #
-  # Personas and their links come before criteria, not after. A criterion
-  # cannot be created for a story with no linked persona — the harness refuses
-  # with :persona_linkage_required, because a scenario without a persona has no
-  # voice. Rules need stories, criteria need rules AND a persona-linked story,
-  # and stories need their epic.
+  # The authored graph, in the order references demand: components before
+  # stories (their link), epics before stories, personas linked before criteria
+  # (a criterion needs a persona-linked story, `:persona_linkage_required`),
+  # rules before criteria.
   defp put_graph(scope, payload) do
     with {:ok, components} <- put_components(scope, payload["components"] || []),
          {:ok, dependencies} <-
@@ -551,15 +492,11 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # Each of these returns a map of local_id => the record the cloud created, and
-  # every later step reads references out of those maps rather than out of the
-  # payload. That is the remapping, and keeping it in one shape per kind is what
-  # stops it leaking into the individual inserts.
+  # Each `put_*` returns a map of local_id => the record the cloud created, and
+  # every later step reads references out of those maps, never the payload.
+  # That is the remapping.
 
-  # Epics are unique on (project_id, name), so a second run collides unless it
-  # recognises what it wrote the first time. This was the last thing standing
-  # between the real dataset and a repeatable migration — the spex covered
-  # re-running stories, rules, criteria and personas, and never an epic.
+  # Epics are unique on (project_id, name): a second run reuses by name.
   defp put_epics(scope, epics) do
     existing = Epics.list_epics(scope)
 
@@ -595,22 +532,10 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # `known` is the destination as it was *before* this run, and is not updated
-  # as rows are created — so a title this run has already inserted is invisible
-  # to every later story, and the second one inserts again and dies on
-  # `stories_title_project_id_index`. That surfaced as a 500 from
-  # `POST /api/migrations` importing 98 stories into an empty project, with
-  # nothing in the message naming the title or either source story.
-  #
-  # `made` closes that. What it does about a collision depends on which one it
-  # is, because the two want opposite handling:
-  #
-  #   - the same source story twice in one payload is a duplicate entry, and
-  #     the right answer is the row already created for it
-  #   - two *different* source stories sharing a title cannot both exist under
-  #     a unique index, and no import can decide which of Sam's stories to
-  #     keep. Adopting one for the other is the silent merge `match_by_title`
-  #     already refuses; this says so instead, naming both.
+  # `known` is the destination before this run; `made` is what this run has
+  # created, by title. The same source story twice reuses its row; two
+  # different source stories sharing a title cannot both exist under the unique
+  # index, so the import refuses with `:duplicate_title`, naming both.
   defp put_story(scope, story, known, made, epics) do
     case Map.get(made, story["title"]) do
       nil -> create_or_relink(scope, story, known, epics)
@@ -639,21 +564,10 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # A story that is already here still takes its authored state from the
-  # payload: the component it is mapped to, and the flags that decide what the
-  # graph does with it.
-  #
-  # Recognising a row and returning it untouched made "idempotent" mean
-  # "inert": a correction upstream carried nothing, so every one needed a
-  # hand-written backfill against the destination. That is how nine stories
-  # came to point at components that no longer existed, and how 91 stories
-  # stayed parked after `ready_for_dev` started being exported — the first run
-  # created them without it, and no later run could put it right.
-  #
-  # Title, narrative and description are deliberately not re-applied. Those are
-  # edited at the destination once a project has moved, and the source stops
-  # being authoritative about them the moment somebody does. Readiness and
-  # priority are the migration's business until the move is finished.
+  # A story already here still takes its authored state from the payload
+  # (component, epic, readiness, priority, notes), so a re-run carries
+  # corrections. Title, narrative and description are not re-applied: they
+  # are edited at the destination once a project has moved.
   defp relink(scope, story, epics, payload) do
     story
     |> resync_attrs(scope, epics, payload)
@@ -663,11 +577,9 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # The same rule the story reuse path follows, for the entities whose reuse is
-  # a plain find: a row that is already here still takes the payload's authored
-  # values. Without it, a field added to the export after a project has moved
-  # can never reach the rows migrated before it — 912 criteria sat without a
-  # kind for exactly that reason.
+  # The same rule for entities reused by a plain find: a row already here takes
+  # the payload's values for `keys`, so a field added to the export later still
+  # reaches rows migrated before it.
   defp resync(record, payload, keys, update) do
     keys
     |> Enum.reduce(%{}, fn key, acc ->
@@ -699,14 +611,8 @@ defmodule CodeMySpec.Migration do
     if Map.get(story, key) == value, do: changes, else: Map.put(changes, key, value)
   end
 
-  # Two indexes because a second run has two ways to recognise its own work, and
-  # they are not equally good. `migrated_from_id` is the source's own id, which
-  # nothing here edits; title is a string a human rewrites. Before the id was
-  # recorded, retitling a story upstream made it a second story here on the next
-  # run, and two stories sharing a title collapsed into one.
-  #
-  # Title is still consulted, for rows written before the id existed. It is the
-  # fallback rather than the key.
+  # `migrated_from_id` (the source's own id, never edited here) is the key;
+  # title is the fallback for rows written before the id was recorded.
   defp index_stories(stories) do
     %{
       by_source:
@@ -722,15 +628,10 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # Title only decides for a row that cannot say where it came from. A row that
-  # already names a *different* source story is a different story that happens
-  # to share a title, and treating it as this one merges two of Sam's stories
-  # into whichever arrived first — silently, since the importer then reports it
-  # as migrated.
-  #
-  # Returning nil sends it to the insert, where the destination's unique title
-  # index refuses it and the whole import rolls back. Loud and recoverable beats
-  # quiet and lossy.
+  # Title decides only for a row that cannot say where it came from. A row
+  # naming a different source story is not this one: nil sends it to the
+  # insert, where the unique title index rolls the import back — loud rather
+  # than a silent merge.
   defp match_by_title(nil, _story), do: nil
 
   defp match_by_title(%{migrated_from_id: nil} = candidate, _story), do: candidate
@@ -739,11 +640,8 @@ defmodule CodeMySpec.Migration do
     if source_id == story["local_id"], do: candidate, else: nil
   end
 
-  # A component this deployment does not have yet is left unlinked rather than
-  # invented. Components are synced from files, so the missing one either
-  # arrives with the next scan — and the story can be linked then — or it never
-  # existed here, and a component conjured from a name would be a fiction the
-  # requirement graph would then compute against.
+  # The link is set from the computed id whether or not the component row
+  # exists; a component is never invented from a name.
   defp put_component(attrs, scope, module_name) do
     put_component_id(attrs, component_id(scope, module_name))
   end
@@ -751,42 +649,18 @@ defmodule CodeMySpec.Migration do
   defp put_component_id(attrs, nil), do: attrs
   defp put_component_id(attrs, id), do: Map.put(attrs, :component_id, id)
 
-  # Computed, not looked up.
-  #
-  # A component's id is a pure function of its project and its module name —
-  # `Component.deterministic_id/2`, a UUIDv5 over
-  # `project:<project_id>:module:<module_name>` — so the destination can name the
-  # component this story belongs to without that component existing yet.
-  #
-  # It has to be able to. Components are `@derived`: this module deliberately
-  # does not carry them, because the destination rebuilds them from the working
-  # copy on first sync — which happens *after* the import. Looking the id up in
-  # the components table meant asking a question at the one moment it could not
-  # be answered, and every story on a first migration landed unlinked. Broken
-  # Oaths arrived with 52 stories, 38 linked in the source and 0 in the
-  # destination, against 171 components that showed up minutes later and matched
-  # by name exactly.
-  #
-  # The id cannot simply travel, for the same reason it can be computed: the
-  # project id is part of it, and a migration changes the project. The same
-  # module is a different id on the far side, so a carried id would name a row
-  # nothing will ever create — and `stories.component_id` has no foreign key to
-  # catch that.
-  #
-  # A story pointing at a component that never syncs reads *unsatisfied* rather
-  # than falsely linked: `component_linked` checks that the component exists,
-  # not merely that the field is set.
+  # Computed, not looked up: `Component.deterministic_id/2` is a UUIDv5 of the
+  # project and module name, so it names the component whether or not its row
+  # exists yet, and cannot be carried across (the project id changes).
+  # `stories.component_id` has no foreign key; a link to a component that never
+  # appears reads unsatisfied, since `component_linked` checks it exists.
   defp component_id(_scope, nil), do: nil
   defp component_id(_scope, ""), do: nil
 
   defp component_id(%Scope{active_project_id: project_id}, module_name),
     do: Component.deterministic_id(project_id, module_name)
 
-  # Idempotence by natural key rather than by remembering local ids. Migrating
-  # twice must not produce two of anything, and the second run has no memory of
-  # the first — so the question it can answer is "is this story already here",
-  # not "did I write this before". A title within a project is the identity Sam
-  # would use himself.
+  # The destination's stories before this run, for `index_stories/1`.
   defp project_stories(scope) do
     case Stories.list_project_stories(scope) do
       {:ok, stories} -> stories
@@ -836,12 +710,8 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # Matched on `submitted_at` within a story: microsecond precision, and an
-  # attempt is a point-in-time event rather than something edited.
-  #
-  # `issue_ids` are rewritten against what this run created — an attempt naming
-  # an issue by the harness's id would point at nothing here, or worse, at some
-  # other project's row.
+  # Matched on `submitted_at` within a story (microsecond precision; an attempt
+  # is never edited). `issue_ids` are rewritten against what this run created.
   defp put_attempts(scope, attempts, stories, issues) do
     collect(attempts, fn attempt ->
       case stories[attempt["story_local_id"]] do
@@ -861,11 +731,8 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  # Compared as instants, not as strings. `to_string/1` on a DateTime renders
-  # "2026-05-17 22:17:32.734931Z" while the payload carries the ISO8601
-  # "2026-05-17T22:17:32.734931Z" — a space against a T. They never matched, so
-  # every run inserted a fresh copy of every attempt and one project reached
-  # 954 rows for 159 real ones before the audit caught it.
+  # Compared as instants, not strings: `to_string/1` renders a space where the
+  # payload's ISO8601 has a `T`, and every re-run would duplicate every attempt.
   defp same_instant?(%DateTime{} = recorded, iso) when is_binary(iso) do
     case DateTime.from_iso8601(iso) do
       {:ok, parsed, _offset} -> DateTime.compare(recorded, parsed) == :eq
@@ -889,9 +756,7 @@ defmodule CodeMySpec.Migration do
     |> Repo.insert()
   end
 
-  # An issue this run did not create is dropped rather than carried as a
-  # dangling id. The attempt still records that it failed and what it said; it
-  # simply cannot point at a row that is not here.
+  # An issue this run did not create is dropped rather than left dangling.
   defp remap_issue_ids(nil, _issues), do: []
 
   defp remap_issue_ids(local_ids, issues) do
@@ -918,17 +783,9 @@ defmodule CodeMySpec.Migration do
   defp reuse_or_create_rule(nil, scope, story, rule),
     do: BddRules.create_rule(scope, story.id, attrs(rule, BddRules.Rule))
 
-  # Idempotent across runs without collapsing duplicates within one.
-  #
-  # Sam's real project has four scenarios sharing a description with a sibling
-  # under the same story. Matching on text alone dropped them — and still
-  # counted them as migrated, so the summary said 658 while 654 arrived, which
-  # is the one number he would have checked.
-  #
-  # So the rows that existed before this run are snapshotted per story and
-  # consumed as they are matched. A second migration finds its own earlier rows
-  # and reuses them one for one; two identical scenarios in the payload consume
-  # two, or insert a second. Nothing is deduped that was not already there.
+  # Idempotent across runs without collapsing duplicates within one: rows that
+  # existed before this run are snapshotted per story and consumed as matched,
+  # so two criteria sharing a description reuse two rows or insert a second.
   defp put_criteria(scope, criteria, stories, rules) do
     snapshots =
       stories
@@ -961,9 +818,7 @@ defmodule CodeMySpec.Migration do
 
   defp step({:error, reason}, _acc, _snaps, _local_id), do: {:halt, {:error, reason}}
 
-  # A criterion already here still takes its kind. Matching one and returning it
-  # untouched left 912 of them without the field the moment it started being
-  # exported — the same way stories stayed parked and nine links stayed stale.
+  # A criterion already here still takes its exported fields (`resync/4`).
   defp reuse_or_create_criterion(%{} = already, scope, _story, criterion, _rules) do
     resync(
       already,
@@ -996,10 +851,8 @@ defmodule CodeMySpec.Migration do
     existing = Personas.list_personas(scope)
 
     collect(personas, fn persona ->
-      # Matched on slug or name, because the harness derives its own slug and
-      # the one the payload carried may not be the one it kept. Missing here is
-      # not a near miss: the unique index catches it instead, and a constraint
-      # violation inside the transaction takes the whole migration down.
+      # Slug or name: the destination derives its own slug. A miss here hits
+      # the unique index and rolls the whole migration back.
       case Enum.find(existing, &(&1.slug == persona["slug"] or &1.name == persona["name"])) do
         %{} = already ->
           resync(already, persona, [:headline], &Personas.update_persona(scope, &1, &2))
@@ -1023,9 +876,8 @@ defmodule CodeMySpec.Migration do
     end)
   end
 
-  # A link that already exists is the migration being run twice, which the
-  # story explicitly allows. Inserting it again trips a unique constraint and
-  # takes the whole transaction down with it.
+  # An existing link is a re-run; inserting it again would trip the unique
+  # constraint and roll the transaction back.
   defp ensure_linked(scope, persona, story) do
     if Enum.any?(Personas.list_personas_for_story(scope, story.id), &(&1.id == persona.id)) do
       :ok
@@ -1039,18 +891,10 @@ defmodule CodeMySpec.Migration do
 
   @wire_only ~w(local_id story_local_id rule_local_id epic_local_id persona_local_id)
 
-  # local_id is the wire's business, not the schema's, so it is dropped here.
-  #
-  # Atom keys, because the contexts merge their own atom keys (:project_id,
-  # :story_id) into whatever they are handed, and Ecto refuses a map with
-  # mixed keys. `to_existing_atom` rather than `to_atom`: the wire is external
-  # input, and an unknown field is dropped rather than allowed to grow the atom
-  # table.
-  # Keyed by the schema's own field list rather than by converting strings to
-  # atoms. The wire is external input: `to_existing_atom` would need a rescue to
-  # be safe, and asking the schema what it accepts is both narrower and honest —
-  # a field the schema does not have is not a field, whatever the sender called
-  # it.
+  # Wire-only keys dropped; the rest mapped to the schema's own atom fields
+  # (contexts merge atom keys, and Ecto refuses mixed keys). The wire is
+  # external input, so a key the schema does not have is dropped, never
+  # turned into an atom.
   defp attrs(record, schema) do
     allowed = schema.__schema__(:fields)
 

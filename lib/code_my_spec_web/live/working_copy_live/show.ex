@@ -1,41 +1,18 @@
 defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   @moduledoc """
-  One working copy: what it is, and every agent running on it.
+  One working copy: what it is, and every agent on it, each its own row with
+  engine, provider, process and evidence of life. Also staffing, the copy's
+  continuous switch, designating the main copy, and its story/epic queue.
 
-  This is where the hierarchy is actually visible. The copy is the harness on
-  somebody's machine; the agents are the lanes it started, told apart by role.
-  The index can only summarise that ("2 agents present"); here each lane is its
-  own row with its own engine, provider, process and evidence of life.
+  One chat link per agent conversation, named by the conversation
+  (`Conversations.display_name/1`), not the role: roles are not unique on a
+  copy. A link is offered only for an on-duty Alloy agent (`reachable_chats/1`);
+  a Claude Code agent has no channel to receive a reply.
 
-  ## One chat link per agent, named so they can be told apart
-
-  A conversation belongs to an agent, so a copy running five of them has five
-  transcripts and this lists five links.
-
-  Named by the conversation, not by the agent's role. The role was the obvious
-  handle and it is not unique: `start_agent` takes no role, so every agent
-  started that way is "main" and a copy running two of them showed two links
-  reading "Open main chat", one above the other. They went to different
-  conversations, which is worse than it sounds — an operator who picks the
-  wrong one has redirected the agent they were not watching, and nothing on
-  either page says so. A conversation's generated name is unique and already on
-  the page it leads to. It used to be one link per copy,
-  keyed `pi:<root>`, from when a copy ran one lane — with several, their turns
-  interleaved into one thread and a single link could only open the one nobody
-  had asked for.
-
-  A link appears only where a conversation exists. A Claude Code agent has no
-  lane to route a message to, so offering its chat would accept text and drop
-  it — worse than offering nothing, because the person believes they redirected
-  an agent and finds out when the work comes back wrong.
-
-  ## Firing retires; nothing here stops a harness
-
-  Firing an agent (criterion 2207) retires it for good — its seat is freed and
-  its conversation stays readable — which is a different act from a stop: a
-  stop only ever ends the one process. There is still no control here for the
-  harness itself. `os_pid` is shown because it is how somebody goes and looks
-  on the box that owns the process — which is where the lifecycle lives.
+  Firing an agent (criterion 2207) retires it for good -- its seat is freed
+  and its conversation stays readable. There is still no control here for a
+  harness itself. `os_pid` is shown so somebody can look on the box that owns
+  the process.
   """
 
   use CodeMySpecWeb, :live_view
@@ -83,10 +60,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket),
     do: {:noreply, load(socket, socket.assigns.project)}
 
-  # Re-render on a timer as well as on news. Every liveness line is elapsed
-  # time computed at render, so a page that only redraws when an agent moves
-  # shows "Running just now" for as long as nothing happens — the one reading
-  # that cannot be true after the first minute.
+  # Re-render on a timer too: liveness lines are elapsed time computed at render.
   def handle_info(:tick, socket) do
     schedule_tick()
     {:noreply, load(socket, socket.assigns.project)}
@@ -94,16 +68,15 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
-  # Matches `LaneReporter`'s heartbeat: redrawing faster than the facts arrive
-  # invents precision the page does not have.
+  # Every 30s; faster would invent precision the facts do not have.
   defp schedule_tick, do: Process.send_after(self(), :tick, :timer.seconds(30))
 
   defp main_copy_refusal?({_role, {:main_copy_occupied, _role_name, _root}}), do: true
   defp main_copy_refusal?({_role, {:not_at_home, _role_name, _root}}), do: true
   defp main_copy_refusal?(_failure), do: false
 
-  # Not an error. The project's main checkout holds its main and product agents,
-  # one each; coding and QA work on feature copies (John, step 4c).
+  # Not an error. The main checkout holds the main and product agents, one each;
+  # coding and QA work on feature copies.
   defp main_copy_note([]),
     do:
       "This is the project's main checkout, which holds the main and product agents " <>
@@ -142,7 +115,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     end
   end
 
-  # A role somebody turned off is skipped, and said so (39af5611).
+  # A role somebody turned off is skipped, and said so.
   defp left_off([]), do: ""
 
   defp left_off(agents) do
@@ -154,13 +127,12 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
       end)
   end
 
-  # A copy is understaffed when a seat is truly empty. An off agent holds its
-  # seat (39af5611), so it counts as staffed; `ensure_copy_agents/2` skips it
-  # too, so the button appears exactly when pressing it would do something.
+  # Understaffed when a seat is truly empty. An off agent holds its seat (and
+  # `ensure_copy_agents/2` skips it), so the button shows only when it would act.
   defp understaffed?(copy, agents, off),
     do: Agents.empty_seats(agents ++ off, Agents.home_roles(copy)) != []
 
-  # Since step 4c: main and product on the main copy, coding and QA elsewhere.
+  # Main and product on the main copy, coding and QA elsewhere.
   defp home_roles_text(copy),
     do: copy |> Agents.home_roles() |> Enum.map_join(" and ", &role_name/1)
 
@@ -222,11 +194,6 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     |> assign_new(:armed_agent_id, fn -> nil end)
   end
 
-  # Designating this checkout as the one the project's own agent runs in.
-  #
-  # Re-reads the row rather than patching the one in assigns: designating
-  # clears whichever copy held it before, so the page's own idea of the project
-  # is stale the moment this returns.
   @impl true
   def handle_event("add_story_to_queue", %{"queue" => %{"story_number" => number}}, socket),
     do: edit_story_queue(socket, number, :add)
@@ -280,6 +247,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     end
   end
 
+  # Makes this the checkout the project's own agent runs in. Reloads: the
+  # previous main copy was cleared.
   def handle_event("designate_main", _params, socket) do
     case Staffing.designate_main(
            socket.assigns.current_scope,
@@ -297,31 +266,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     end
   end
 
-  # Put the whole copy to work, or let it stop. Story 538's R13.
-  #
-  # Reads the current state off the rows rather than a toggle in assigns, so the
-  # control does what the page is showing even when something else moved it —
-  # `set_working_copy_loop` is the same switch reached from an agent.
-  #
-  # Re-loads afterwards for the reason `designate_main` does: the label, the
-  # state line and the button all read from the agents, and the page's copy of
-  # them is stale the moment this returns.
-  # Idempotent, so a second click on a partly-staffed copy fills the gaps rather
-  # than doubling the roster: `ensure_copy_agents/2` skips any role already live.
-  #
-  # Both halves of the report are said. A copy whose harness is connected for
-  # one role and not another gets the agents it can have, and the ones it cannot
-  # are the operator's next problem — swallowing them would leave somebody
-  # looking at a roster that is quietly short.
+  # Idempotent: `ensure_copy_agents/2` skips any role already live. Both what
+  # started and what failed are reported.
   def handle_event("staff_copy", _params, socket) do
     scope = socket.assigns.current_scope
 
     case Agents.ensure_copy_agents(scope, socket.assigns.row.harness) do
-      # The project's main checkout holds main and product only, so a role
-      # refused there is said in words rather than as
-      # `{:main_copy_occupied, :product, "/Users/..."}`, which is an
-      # inspect of an internal tuple — `AgentsMapper` already writes this out
-      # for the MCP surface and the page was not using the same sentence.
+      # A main-copy refusal is said in words, not as an inspected tuple.
       %{failed: [_ | _] = failed} = report ->
         if Enum.all?(failed, &main_copy_refusal?/1) do
           {:noreply,
@@ -337,6 +288,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     end
   end
 
+  # Put the whole copy to work, or let it stop. The direction comes from the
+  # agents' rows, not an assign.
   def handle_event("toggle_working", _params, socket) do
     scope = socket.assigns.current_scope
     working? = working?(socket.assigns.row.agents)
@@ -353,10 +306,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     end
   end
 
-  # A copy is working when any of its agents is. Deliberately not "all": the
-  # roles are allowed to diverge — R6 lets a coding agent stop when coding work
-  # runs out while product carries on — and a page that only said "working" once
-  # every role agreed would go quiet exactly when the first one finished.
+  # Working when any agent is, not all: roles may diverge (coding can stop when
+  # its work runs out while product carries on).
   defp working?(agents), do: Enum.any?(agents, &(&1.continuous == true))
 
   defp edit_story_queue(socket, number, action) do
@@ -382,15 +333,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
     end
   end
 
-  # The chat is only an offer where there is something on the other end of it.
-  #
-  # What an agent started here can look at, in the words somebody would use.
-  #
-  # On the page because the failing case is invisible everywhere else: a machine
-  # whose vibium will not answer reports the same empty list as a machine with no
-  # vibium, and an agent there is recorded with its tools, none of which can look
-  # at a page. Until this existed the only record was a warning in the harness
-  # log — issue 02b03d04.
+  # What an agent started here can look at. Shown because "installed but not
+  # answering" reports the same empty tool list as "absent" everywhere else.
   defp browser_label(%{browser_status: "ready"} = harness),
     do: "#{length(harness.machine_tools || [])} browser tools"
 
@@ -401,60 +345,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   defp browser_label(_), do: "Not reported"
 
-  # `:running`, not merely `:pi` — the same mistake `Liveness` made, one panel
-  # further down the page. Gating on engine alone offered "Open agent chat" for
-  # a lane that had not confirmed, so the page said "no harness has confirmed
-  # it" and then invited you to message it. The moduledoc above is the argument:
-  # a box with no lane behind it accepts text and drops it, which is worse than
-  # no box, and an *offer* to open one is the same promise one click earlier.
+  # The offer and the "nothing to talk to" explanation are one decision.
   defp chattable?(row), do: reachable_chats(row) != []
 
-  # The lanes there is something to say something to.
-  #
-  # This existed as a predicate over the whole row while the buttons were drawn
-  # from the unfiltered list, so the two disagreed and the page rendered both
-  # halves of the disagreement: "Open agent chat" for a lane, and underneath it
-  # "there is nothing joined to receive a message". One function now, because
-  # the offer and the explanation are the same decision seen from two sides.
-  #
-  # One fact decides it: a thread with an agent nobody has stopped.
-  #
-  # It used to also require `status == :running`, and that is a status this
-  # deployment cannot produce. A row leaves `:starting` only through
-  # `record_reported/2`, driven by `LaneReporter`, which the light harness never
-  # starts — it runs `CmsHarness.Supervisor` alone: no Presence, no
-  # SocketSupervisor, no reporter. So nothing ever moved a row to `:running` and
-  # this panel hid every working agent behind it. The war-epic product agent
-  # answered a real turn while its row said `:starting` and the page offered no
-  # chat at all.
-  #
-  # Checking the harness connection here instead was the next wrong answer, and
-  # criterion 2896 is why: an agent whose machine cannot be reached must still
-  # get a send box, because the criterion is that the failure is *reported*. A
-  # box that is missing cannot tell you the machine is unreachable; it just
-  # looks like there was never an agent.
-  #
-  # That resolves what issue 90930fca was really about. Its complaint was a send
-  # that wrote the message and pushed it to a topic with nothing joined —
-  # silence indistinguishable from delivery. The fix belongs at the send, and is
-  # there: `Agents.dispatch_message/3` answers `{:error, :not_running}`. Once
-  # failure is honest, withholding the box buys nothing and costs the operator
-  # the explanation.
-  #
-  # Off or retired still filters, because that one is reliable — the outcome of
-  # somebody asking, not an inference about a process.
+  # Alloy agents nobody turned off or retired. Reachability is not asked: an
+  # unreachable agent still gets a box, and `Agents.dispatch_message/3` reports
+  # the failure.
+  # See knowledge/web, "Agent conversation".
   defp reachable_chats(%{chats: chats}) when is_list(chats),
     do: Enum.filter(chats, &(&1.agent.engine == :alloy and Agents.on_duty?(&1.agent)))
 
   defp reachable_chats(_row), do: []
 
-  # Why there is nothing to talk to, in the terms of this copy rather than in
-  # general. "A Claude Code agent reports over hooks" is a true sentence and the
-  # wrong one in front of somebody looking at a copy with no agents on it.
-  #
-  # The unconfirmed-lane branch went with the status gate. It said the chat
-  # "opens once the harness reports it" — a wait with no end on any machine
-  # running the light harness, since nothing reports.
+  # Why there is nothing to talk to, in this copy's terms.
   defp no_chat_reason(%{agents: []}), do: "Nothing is running on this copy to talk to."
 
   defp no_chat_reason(%{agents: _agents}) do

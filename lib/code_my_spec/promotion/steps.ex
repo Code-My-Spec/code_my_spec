@@ -1,31 +1,15 @@
 defmodule CodeMySpec.Promotion.Steps do
   @moduledoc """
-  The three things a promotion does to a disk, and nothing else.
+  The git and disk operations a promotion performs on a checkout, and nothing
+  else: precheck, merge, submodule sync, version tagging, and the promotion
+  queue's batch building, test-database reset and asset build.
 
-  Extracted because they are the only part that cannot happen on the server. A
-  project's checkout is on someone else's machine. Scope identifies the
-  project and working copy; explicit runtime resolution determines where
-  file operations can run. `Environments.Harness.cmd/4` answers
-  `{:error, :not_supported_on_harness}` on purpose — it carries file operations
-  to the disk, not commands.
-
-  So the gate stays on the server, where the database is, and these run wherever
-  the checkout is. `Promotion.Runner` picks: `Runner.Local` calls straight into
-  here, `Runner.Harness` sends the same three operations down the channel to be
-  answered by this module on the far side.
-
-  Three named operations rather than one `promote`, because `precheck` reads
-  the *promoting* copy's root while `merge` and `restart` act on the
-  *running* one — two different disks a single op cannot address — and
-  because `restart` is dispatched separately from the other two on purpose
-  (54aa534c, phase two): `promote/1` answers as soon as `merge` lands, and
-  the restart it starts afterward is never awaited, so it cannot be a step
-  inside the same call that reports the merge.
-
-  Three named operations rather than a general `cmd`, because that route was
-  refused deliberately: `analysis/run` already owns command execution on the
-  harness along with the run ledger, single-flight and `_build`, and a second
-  way to run a command there would drift from it.
+  They run wherever the checkout is, while the gate stays on the server with
+  the database. `Promotion.Runner` calls them directly for a local environment
+  or sends each as a named op down the harness channel, answered by this
+  module on the far side. Named ops rather than a general `cmd`:
+  `Environments.Harness.cmd/4` refuses on purpose, since `analysis/run` owns
+  command execution on the harness. See knowledge/promotion, "Runner and steps".
   """
 
   require Logger
@@ -39,43 +23,23 @@ defmodule CodeMySpec.Promotion.Steps do
   @doc """
   Whether this checkout has uncommitted work, and what branch it is on.
 
-  Both in one operation because they are one question — "what is here, and is it
-  safe to move?" — and because a round trip to another machine is not free.
+  One operation because it is one question — "what is here, and is it safe to
+  move?" — and a round trip to another machine is not free. Refused before the
+  merge rather than cleaned up after.
 
-  Refused before the merge rather than cleaned up after: an aborted half-merge
-  leaves the running checkout in a state nobody asked for, and the agent then
-  has two problems instead of one.
-
-  `--untracked-files=no`, matching what the gate measures and for the reason
-  the gate already documents: refusing on untracked files means refusing
-  essentially always, which is the same as not having the check. A build is
-  made of what is committed and what is modified, not of scratch files beside
-  them.
-
-  Without it the two disagreed, and the disagreement was a trap rather than an
-  inconsistency. `story_promoted` passed a checkout whose only dirt was
-  untracked, told the agent its remedy was `promote`, and `promote` then refused
-  that same checkout — measured on Broken Oaths, where an untracked
-  `code_my_spec_test_repos` directory belonging to nobody on the team would have
-  blocked every promotion from that copy forever.
-
-  `--ignore-submodules=all`, for the same reason and matching the same gate:
-  `.code_my_spec` is a submodule a QA agent writes into continuously for the
-  one-to-two hours it works — a brief drafted, a screenshot captured,
-  `prompt.md` regenerated on every task — none of which touches anything this
-  checkout's own merge would carry. Without the flag here too, the two checks
-  would disagree again the moment one of them dropped it: `story_promoted`
-  waving a copy through while `promote` refused the same submodule dirt it had
-  just ignored (c97bb142).
+  `--untracked-files=no` and `--ignore-submodules=all`, matching the
+  `story_promoted` gate: untracked scratch files and `.code_my_spec` writes are
+  not part of the build, and the two checks must agree or an agent is told to
+  promote and then refused. Untracked files are reported, not refused.
 
   `main`, when given, is main's HEAD. A copy that does not contain it is
-  refused first: analysing a branch that is behind certifies a commit that
-  cannot merge (28d72f8a). The result carries `head`, the commit a promotion
-  certifies and then merges.
+  refused first: a branch that is behind cannot merge the commit it would
+  certify. The result carries `head`, the commit a promotion certifies and then
+  merges.
 
   With `main`, a copy whose HEAD moves the `.code_my_spec` gitlink is also
   refused unless the new pointer is on the submodule's `origin` and descends
-  from main's (7e7539ec).
+  from main's.
   """
   @spec precheck(Environments.Environment.t(), String.t(), String.t() | nil) :: result()
   def precheck(env, root, main \\ nil) do
@@ -98,9 +62,8 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # Not under git at all (67e6b5cb). "could not read this checkout's state"
-  # led an agent to `git init && git commit` to get a clean tree — which would
-  # certify a history nobody else has. Said plainly, with what to do instead.
+  # Not under git at all. Said plainly: a vague error led an agent to
+  # `git init` a clean tree, which would certify a history nobody else has.
   defp unreadable(out) do
     if out =~ "not a git repository" do
       {:error,
@@ -141,12 +104,10 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # 7e7539ec: one promote moved main's gitlink back to an older docs commit (a
-  # stale submodule checkout committed with the work); another pinned a commit
-  # never pushed, so fresh clones failed with "not our ref". Checked here, not
-  # in `Promotion.gate/3`: the gate runs on the server with no checkout, and
-  # this runs where the promoting copy's submodule is on disk. Only when the
-  # pointer moved, so an unchanged one costs no fetch.
+  # Guards main's gitlink against moving backwards (a stale submodule committed
+  # with the work) and against unpushed pointers ("not our ref" on fresh
+  # clones). Here, not in `Promotion.gate/3`, because the submodule is on this
+  # disk. Only when the pointer moved, so an unchanged one costs no fetch.
   defp submodule_pointer(_env, _root, nil), do: :ok
 
   defp submodule_pointer(env, root, main) do
@@ -342,21 +303,9 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # Reported, not refused, and the distinction is the whole point.
-  #
-  # An untracked file can be a source file somebody forgot to `git add`, and
-  # promoting without it puts QA in front of an application missing the work it
-  # was sent to verify — the failure this story exists to prevent. So it must
-  # not be silent.
-  #
-  # It must not block either. `tree_dirty` is measured with
-  # `--untracked-files=no`, so a checkout whose only dirt is untracked passes
-  # the gate, and the gate's remedy is `promote`. A `promote` that refused what
-  # the gate had just waved through would be one system handing an agent two
-  # contradictory instructions — and the thing blocking it here was a symlink
-  # pointing outside the repository, which is nobody's to commit.
-  #
-  # Naming them in the result gets the warning without the contradiction.
+  # Reported, not refused: an untracked file may be forgotten work, so it must
+  # not be silent, but the gate ignores untracked files and promote must not
+  # refuse what the gate passed.
   defp untracked(env, root) do
     case git(env, root, ["ls-files", "--others", "--exclude-standard"]) do
       {out, 0} -> out |> String.split("\n", trim: true) |> Enum.take(20)
@@ -367,41 +316,19 @@ defmodule CodeMySpec.Promotion.Steps do
   @doc """
   Merge `branch` into the checkout at `root`.
 
-  Fast-forward only. A promotion no longer attempts a three-way merge at
-  all: `branch` must already contain everything `root`'s current HEAD has,
-  and `git merge --ff-only` is both the precondition check and the merge in
-  one command — it either advances the ref instantly with nothing that could
-  conflict, or refuses instantly having touched nothing, with no third
-  outcome (John: "we should guarantee with our preconditions that the merge
-  will be clean").
+  Fast-forward only: `git merge --ff-only` is both the precondition check and
+  the merge — it advances the ref with nothing that could conflict, or refuses
+  having touched nothing. The shared checkout is never left mid-merge.
 
-  This replaced a three-way merge that aborted on conflict (`git merge
-  --abort`, `bed1d974`) rather than leaving one in place. That was already
-  right about *never leaving the shared checkout wedged* — a promotion lands
-  cleanly or does not touch the tree at all — but a real conflict was still
-  reachable, and reaching it meant a promotion had already spent the time to
-  find out. Requiring the ancestor relationship up front removes the
-  question rather than answering it faster: a branch missing commits from
-  main cannot conflict here any more than it can succeed here, because
-  neither is attempted.
+  An unconcluded merge already in the checkout (left by a human) is concluded
+  first when its conflicts are resolved, and refused when markers remain.
 
-  `git merge` also refuses outright while `MERGE_HEAD` exists from an
-  earlier, unconcluded merge — the shape a three-way merge could leave and a
-  fast-forward cannot create going forward. Concluding a resolved one before
-  starting this one, below, stays as a defensive path for a checkout that
-  still carries one from before this change, or from a human merging by hand
-  outside a promotion.
-
-  A successful merge's result also carries `before`/`after` — the checkout's
-  HEAD on either side of it, which `Promotion` logs — and `changed`, the paths
-  between them, which `Promotion` reads to choose a reload or a restart.
-
-  It also carries `version` — the version this promotion originated by tagging
-  the certified commit `vX.Y.Z` (the nearest tag's patch, plus one), or `nil`
-  for a merge that moved nothing. `Promotion` uses it to stamp every story on the promoting copy with a
-  permanent record that its code reached main, in place of asking the
-  promoting copy's live git state the same question again later and getting a
-  different answer once that copy has moved on to something else.
+  The result carries `before`/`after` (HEAD on either side), `changed` (the
+  paths between them, which choose reload or restart), `version` (the
+  `vX.Y.Z` tag this promotion minted on the certified commit — nearest tag's
+  patch plus one — or `nil` for a merge that moved nothing), `version_error`
+  (the merge landed and the tag did not), and `stamp_version` (what landed
+  stories are stamped with). See knowledge/promotion, "Versions".
   """
   @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
@@ -412,23 +339,10 @@ defmodule CodeMySpec.Promotion.Steps do
     |> resume(env, root, branch, before)
   end
 
-  # A merge already in progress, finished before this one starts.
-  #
-  # `git merge` refuses outright while `MERGE_HEAD` exists — "you have not
-  # concluded your merge" — which is a state only a three-way merge could ever
-  # leave. `--ff-only` cannot: it either advances the ref or refuses having
-  # touched nothing, so nothing here is reachable from a promotion that ran
-  # under this version. Kept for a checkout still carrying one from before
-  # this change, or from a human merging by hand outside a promotion —
-  # measured cost of a stale one going unhandled: eight hours resolving a
-  # conflict that was four hours old and already resolved, because the old
-  # code read `git status` fresh and reported it as new.
-  #
-  # Concluding somebody's resolution is not the same as guessing at it. If no
-  # unmerged path still carries conflict markers then the decision has been
-  # made and only the commit is missing, which is a step and not a judgement. A
-  # marker anywhere means the question is still open, and that is refused —
-  # saying what the state actually is, which is the sentence that was missing.
+  # A merge already in progress (`MERGE_HEAD`, which `--ff-only` never leaves)
+  # blocks `git merge`. With no conflict markers left the resolution is made
+  # and only the commit is missing, so it is concluded; a marker anywhere is
+  # refused, saying it is the earlier merge, not a new one.
   defp resume({:ok, []}, env, root, branch, before), do: do_merge(env, root, branch, before)
 
   defp resume({:ok, paths}, env, root, branch, before) do
@@ -519,24 +433,9 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # `git merge --ff-only` fails for more than one reason, and the refusal used
-  # to assert the same one every time.
-  #
-  # A dirty tree is the other common one: git aborts with "would be overwritten
-  # by merge" and names the files, *while printing the fast-forward it was about
-  # to make*. Reporting that as "behind main" sends the reader to
-  # `git merge --ff-only main`, which is a no-op for it — so the remedy confirms
-  # the diagnosis by changing nothing, and the next attempt fails identically.
-  #
-  # Measured on the math project 2026-09-22: one untracked `mix.lock` in the
-  # target. The coding agent verified `git merge-base --is-ancestor main sum`
-  # twice, ran the suggested merge twice, and filed a framework issue saying
-  # promote "looks like it is comparing against a stale or wrong reference
-  # rather than the actual git ancestry". It was reading the only evidence it
-  # had, and the evidence was wrong.
-  #
-  # `out` was already being carried on the error; now it decides what the error
-  # says.
+  # `--ff-only` fails for two reasons and the refusal names which: "would be
+  # overwritten by merge" is local files in the target, not divergence, and
+  # telling that agent to merge main changes nothing.
   @doc false
   def merge_refusal(root, branch, out), do: merge_refused(root, branch, out)
 
@@ -571,69 +470,22 @@ defmodule CodeMySpec.Promotion.Steps do
      }}
   end
 
-  # `git merge --ff-only` exits 0 for "Already up to date." too — the branch
-  # named nothing this checkout did not already have, and `before == after`
-  # says so directly. A promotion that landed nothing does not get to
-  # originate a version for it: a version is supposed to answer "which
-  # promotion put this on main," and one with no commits behind it answers
-  # that question about nothing. Confirmed empirically before this guard
-  # existed: a repeated or racing `promote` call minted a fresh tag and
-  # patch bump on every call, with no corresponding change to anything.
+  # "Already up to date" also exits 0. A merge that moved nothing mints no
+  # version, or every repeated promote would bump the patch.
   defp version_if_moved(_env, _root, same, same), do: :none
   defp version_if_moved(env, root, _before, _after), do: tag_version(env, root)
 
-  # The version a story carried onto main should be stamped with, which is not
-  # the same question as the version this promotion originated.
-  #
-  # `version_if_moved/4` above answers "did this merge mint a version," and nil
-  # is the right answer for an "Already up to date" merge — a promotion that
-  # landed no commits does not get to mint a patch bump, and the guard above
-  # exists because repeated promotes used to do exactly that. `Promotion` was
-  # then reusing that same nil to decide whether to stamp any story, and those
-  # two questions come apart precisely where it matters.
-  #
-  # A story whose code is already on main is the story a no-op merge is looking
-  # at. Refusing to stamp it means nothing ever can: the only thing that stamps
-  # is a merge that moves the sha, and for that story there is nothing left to
-  # move. The gate it feeds never becomes satisfiable again by any sequence of
-  # actions an agent can take.
-  #
-  # Measured on Broken Oaths 2026-09-22. Story 937's code reached main on the
-  # 23:30 promote that minted 0.3.3; its `specs_ready` latch — which is what
-  # `mark_ready_stories_promoted/2` selects on — was written at 23:38:07, eight
-  # minutes after that stamp set was taken. The three promotes that followed
-  # were all no-ops (05d5453 -> 05d5453, "version none"), so the story sat at
-  # 23 of 24 requirements permanently while the graph went on offering its
-  # promote to every role. Three agents declined it nineteen times between them
-  # before the damper capped them.
-  #
-  # So a no-op stamps with the version main already carries, which is the
-  # honest answer to "which promotion put this on main" — for 937 that is
-  # 0.3.3, the merge that did carry it. Nothing is minted: no tag is added,
-  # `version` stays nil, and the log line still reads "version none".
-  #
-  # e1174640 closed the exposure this used to widen: a promote now stamps only
-  # the story it names (`Stories.mark_story_promoted/4`), not every specs-ready
-  # story in the project.
+  # The version main already carries: what a no-op merge stamps a story with.
+  # Not the same question as "did this merge mint a version" — a story whose
+  # code is already on main must still be stampable.
+  # See knowledge/promotion, "Versions".
   defp current_version(env, root), do: tagged_version(env, root) || mix_version(env, root)
 
-  # The version this promotion originates, or nil.
-  #
-  # An annotated tag on the commit the gate certified, which is main's HEAD the
-  # instant the ff-only merge lands. Nothing is committed: main is byte-identical
-  # to the certified commit, so a branch already level with it stays level and
-  # the next promotion does not have to merge main again (John, 2026-10-04).
-  #
-  # Patch only, from the nearest `vX.Y.Z` tag. A checkout with no tag yet starts
-  # from the literal version in its `mix.exs`, which is what every promotion
-  # before this bumped. nil says "this promotion minted no version", not "it
-  # failed": `Promotion` then stamps nothing, as before. Local only — a tag
-  # leaves the machine when someone pushes it.
-  #
-  # A tag that should have been made and was not is `{:error, reason}`, never
-  # nil. The switch-over promote (8d02c068b) ran the code before this, whose
-  # bump found no literal in the new `mix.exs` and minted nothing without a
-  # word; "version none" in an info line was the only trace.
+  # The version this promotion mints: an annotated tag on the certified commit
+  # (main's HEAD once the ff-only merge lands), nothing committed, so a branch
+  # level with main stays level. Patch bump from the nearest `vX.Y.Z` tag, or
+  # from `mix.exs`'s literal when untagged. Local only. `:none` means nothing
+  # to count from; a tag that failed is `{:error, reason}`, never silent.
   defp tag_version(env, root) do
     case current_version(env, root) do
       nil ->
@@ -686,17 +538,8 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # `--ff-only` refuses before touching the tree — no three-way merge is
-  # attempted, so there is nothing to abort and no conflicted file to name.
-  # The one thing it can mean is the one thing it says: `branch` does not
-  # already contain everything `root`'s current HEAD has.
-  #
-  # Said as routine, not as fault. This is the most-read string in the
-  # system — someone else's promotion landing on main while this one was
-  # being worked is ordinary on a shared box, not a mistake, and it will fire
-  # often (phx-new-generator-0f: three times in two hours on this machine).
-  # The wording says so directly rather than reading like an error the agent
-  # caused.
+  # `branch` does not contain main's HEAD. Worded as routine, not fault:
+  # another promotion landing meanwhile is ordinary on a shared box.
   defp not_fast_forward(root, branch, out) do
     {:error,
      %{
@@ -711,15 +554,10 @@ defmodule CodeMySpec.Promotion.Steps do
      }}
   end
 
-  # `nil` rather than raising when HEAD cannot be read — `before` is read
-  # before anything is known to be safe, and a checkout with no commits yet
-  # (or a transient git failure) must not take the merge down over a value
-  # that only ever feeds an optimization, never a correctness check.
   # The repository sets `submodule.recurse`, so a reset would also check out
-  # the commit's `.code_my_spec` pointer, and refuses when the gate's submodule
-  # does not have that docs commit — 0dab340e, 2026-10-05, a pointer never
-  # pushed to the docs remote, and a batch reset over and over. The gate copy's
-  # submodule stays where it is, as it does when a batch is built by merges.
+  # the commit's `.code_my_spec` pointer and refuse when the gate's submodule
+  # lacks that docs commit (an unpushed pointer wedged the queue). The gate
+  # copy's submodule stays where it is.
   @leave_submodules ["-c", "submodule.recurse=false"]
 
   @doc """
@@ -744,9 +582,9 @@ defmodule CodeMySpec.Promotion.Steps do
              @leave_submodules ++ ["checkout", "--quiet", "--detach", "--force", base]
            ),
          {_, 0} <- git(env, root, @leave_submodules ++ ["reset", "--quiet", "--hard", base]),
-         # Nobody works in the gate, so an untracked file there is a leftover,
-         # and one a candidate adds refused its merge as a conflict naming no
-         # file (2026-10-06). Ignored files (`_build`, `deps`) stay.
+         # Nobody works in the gate, so an untracked file there is a leftover
+         # (one a candidate adds reads as a conflict naming no file). Ignored
+         # files (`_build`, `deps`) stay.
          {_, 0} <- git(env, root, ["clean", "--quiet", "-d", "--force"]) do
       {merged, conflicted} =
         Enum.reduce(commits, {[], []}, fn commit, {merged, conflicted} ->
@@ -774,10 +612,9 @@ defmodule CodeMySpec.Promotion.Steps do
   analyzers run a new candidate. The runs' own `ecto.create` and `ecto.migrate`
   rebuild them from the candidate's migrations.
 
-  `ecto.migrate` only goes forward: a candidate the gate ejected left its
-  migrations in these databases, and the next candidate failed 749 tests on a
-  schema it never had (2026-10-11). Only ever for the gate copy — nobody works
-  there — never for a requester's copy.
+  `ecto.migrate` only goes forward, so an ejected candidate's migrations would
+  otherwise stay in these databases and fail the next candidate. Only ever for
+  the gate copy — nobody works there — never for a requester's copy.
 
   `{:ok, %{dropped: [partition]}}`.
   """
@@ -800,13 +637,10 @@ defmodule CodeMySpec.Promotion.Steps do
     end)
   end
 
-  # Run in the project's own VM, so it works for any project: whatever Ecto repos
-  # it configures, and none means nothing to drop. A task of our own here once
-  # failed every other project's gate, which has no such task (2026-10-12).
-  #
-  # `MIX_ENV` is given, and the script still refuses anything but a test
-  # database: an environment with it scrubbed once acted on dev, and
-  # `CMS_DRILL_DB` points our test config at `code_my_spec_dev`.
+  # A script run in the project's own VM, not a mix task of ours, so it works
+  # for any project's Ecto repos. It refuses anything but a test database even
+  # with `MIX_ENV` given: a scrubbed env once acted on dev, and `CMS_DRILL_DB`
+  # points our test config at `code_my_spec_dev`.
   defp drop_test_database(env, root, partition) do
     env
     |> Environments.cmd("mix", ["run", "--no-start", "-e", drop_script()],
@@ -822,18 +656,12 @@ defmodule CodeMySpec.Promotion.Steps do
   tailwind) in the gate checkout at `root`, so a bundle the running app
   could not actually serve does not land green.
 
-  None of `compiler`, `credo`, `exunit` or `spex` run the asset pipeline, so
-  a broken JS import landed with every one of them green (issue 47568b2a:
-  story 1092's `echarts` import failed esbuild from the moment the batch
-  landed; the dev app ran every LiveView page with no JavaScript at all,
-  and nothing in the gate had noticed).
+  No analyzer runs the asset pipeline, so without this a broken JS import
+  lands with every analyzer green.
 
-  Skipped, not failed, when `root` has no `mix.exs`: a fixture exercising
-  the queue's own mechanics (a bare git repo with no Phoenix project in it)
-  has no assets to build and is not what this check is for.
-
-  `MIX_ENV=test`, the same env `reset_test_databases/3`'s comment already
-  established the gate's analyzers reuse the build from.
+  Skipped, not failed, when `root` has no loadable `mix.exs` (a queue fixture
+  with no Phoenix project). `MIX_ENV=test`, the build the gate's analyzers
+  reuse.
   """
   @spec build_assets(Environments.Environment.t(), String.t()) :: result()
   def build_assets(env, root) do
@@ -851,11 +679,8 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # Not every `mix.exs` in this project's own fixtures is a real, loadable
-  # module -- several write a bare `version: "X.Y.Z"` literal on purpose, for
-  # `mix_version/2`'s own regex read, with no `defmodule` wrapper at all. A
-  # real project's `mix.exs` always has one; a fixture's bare literal does
-  # not, which is the distinction this checks instead of mere existence.
+  # Some fixtures write a bare `version: "X.Y.Z"` `mix.exs` with no
+  # `defmodule`; a real project's always has one.
   defp loadable_mix_exs?(env, root) do
     case Environments.read_file(env, Path.join(root, "mix.exs")) do
       {:ok, content} -> String.contains?(content, "defmodule")
@@ -866,7 +691,8 @@ defmodule CodeMySpec.Promotion.Steps do
   defp asset_build_result({_out, 0}, _root), do: {:ok, %{}}
 
   defp asset_build_result({out, _status}, root),
-    do: {:error, %{reason: "the project's assets failed to build in #{root}:\n#{String.trim(out)}"}}
+    do:
+      {:error, %{reason: "the project's assets failed to build in #{root}:\n#{String.trim(out)}"}}
 
   @refusal """
   fn env, database ->
@@ -977,7 +803,7 @@ defmodule CodeMySpec.Promotion.Steps do
   literal in `mix.exs` — moving nothing.
 
   What a promote from the running copy stamps a story with: the merge path's
-  rule for a no-op merge, without the merge (e1174640).
+  rule for a no-op merge, without the merge.
   """
   @spec current(Environments.Environment.t(), String.t()) :: result()
   def current(env, root),
@@ -990,22 +816,12 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # Paths git considers unmerged. Empty when no merge is in progress, which is
-  # the ordinary case and the one that costs a single command.
+  # Paths git considers unmerged; empty when no merge is in progress.
   #
-  # "'git status --porcelain=2' failed in submodule <name>" is git's own
-  # wrapper message for a submodule's status check failing for any reason --
-  # most often its gitdir's `core.worktree` naming a path that no longer
-  # exists. That happens when a `git submodule update` run in some OTHER
-  # worktree that happened to share this submodule's gitdir rewrote
-  # `core.worktree` to point at itself: a worktree whose own `.code_my_spec`
-  # is a linked worktree of THIS checkout's submodule repo, rather than its
-  # own, can break this checkout from entirely outside it (67cf1eaa). The
-  # inner git error varies by version ("cannot chdir to", "Invalid path"),
-  # so this detects git's own wrapper line, not the inner text. Named here
-  # rather than left as the raw error, which otherwise reads as this
-  # checkout's own corruption and invites exactly the wrong fix (reinit,
-  # reclone) for a config line that only needs resetting.
+  # "failed in submodule <name>" is git's wrapper for a submodule status check
+  # failing, most often a `core.worktree` rewritten by `git submodule update`
+  # in another worktree sharing the gitdir. Named, so it is not mistaken for
+  # this checkout's own corruption. See knowledge/promotion, "Lessons".
   defp unmerged(env, root) do
     case git(env, root, ["diff", "--name-only", "--diff-filter=U"]) do
       {out, 0} -> {:ok, String.split(out, "\n", trim: true)}
@@ -1078,9 +894,8 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   # A gitlink is a tree entry of mode 160000. `rev-parse <commit>:<path>` also
-  # answers for a plain tracked directory, with its tree SHA — which then read as
-  # a moved pin, and a project that tracks `.code_my_spec` as ordinary files
-  # (metric_flow, 8b27cc4c) had every merge refused and rolled back.
+  # answers for a plain tracked directory, which a project tracking
+  # `.code_my_spec` as ordinary files would read as a moved pin.
   defp gitlink(env, root, commit) do
     case git(env, root, ["ls-tree", commit, "--", @submodule]) do
       {"160000 commit " <> rest, 0} -> rest |> String.split("\t") |> hd() |> String.trim()
@@ -1091,13 +906,9 @@ defmodule CodeMySpec.Promotion.Steps do
   # The superproject check matters: in an uninitialised submodule directory
   # `git -C` would find the superproject and check the SHA out *there*.
   #
-  # Refused ahead of the checkout when the submodule's own tree is dirty,
-  # rather than letting `git checkout` decide: a plain checkout only refuses
-  # a path whose committed content actually differs between the two commits,
-  # and leaves an uncommitted edit outside that diff sitting in place but now
-  # against a detached HEAD the next `git status` reads as clean against —
-  # silently stranding whatever was there (issue 42559860: a QA subagent's
-  # rewritten brief, reverted mid-pass with no signal it had happened).
+  # A dirty submodule tree refuses before the checkout: `git checkout` only
+  # refuses paths that differ between the two commits and silently strands any
+  # other uncommitted edit.
   defp check_out_pinned(env, sub, source, pinned) do
     with :ok <- ensure_submodule(env, sub, pinned),
          :ok <- ensure_clean(env, sub, pinned),
@@ -1193,7 +1004,7 @@ defmodule CodeMySpec.Promotion.Steps do
     end
   end
 
-  # The version commit when one was minted, else the fast-forwarded head.
+  # The tagged commit when a version was minted, else the fast-forwarded head.
   defp promoted_head(_env, _root, %{version: nil, after: after_sha}), do: after_sha
 
   defp promoted_head(env, root, %{version: version}) do
@@ -1218,17 +1029,7 @@ defmodule CodeMySpec.Promotion.Steps do
   defp drop_tag(_env, _root, nil), do: :ok
   defp drop_tag(env, root, version), do: git(env, root, ["tag", "-d", "v#{version}"])
 
-  # Story 1108, criterion 4663: bringing the application back up after a
-  # promotion no longer runs through here. `Promotion.Runner.restart/3` calls
-  # `WorkingCopies.AppTransport.restart_app/2` directly — the same per-copy
-  # app mechanism every working copy already uses, reached through
-  # `Analysis.HarnessRegistry` rather than through `Environments`. What used
-  # to be `just restart`'s own harness-refresh tail call on this repo (this
-  # repo's own `refresh-harness`, keeping server and harness on one commit)
-  # is now an optional `after-promote` recipe `CmsHarness.AppInstance` runs
-  # on the far side after the app is confirmed serving — declared once, in
-  # this project's own justfile, rather than as a branch here that every
-  # other project's promotion would also have to answer for.
+  # Restarting or reloading the app is not here: see `Promotion.Runner`.
 
   # An explicit `:cd` beats the environment's own cwd, which is what lets one
   # environment drive both checkouts.
@@ -1238,10 +1039,8 @@ defmodule CodeMySpec.Promotion.Steps do
     |> normalize()
   end
 
-  # `{:error, reason}` is not `{output, status}`, and every caller here matches
-  # the latter. Normalized to a non-zero result carrying the reason as its
-  # output, so a refusal reads as a refusal rather than crashing the tool —
-  # `String.trim(:error)` is what the first real invocation did instead.
+  # Every caller matches `{output, status}`, so `{:error, reason}` becomes a
+  # non-zero result carrying the reason, a refusal rather than a crash.
   defp normalize({:error, reason}), do: {"#{inspect(reason)}", 1}
   defp normalize({output, status}) when is_binary(output), do: {output, status}
   defp normalize(other), do: {"#{inspect(other)}", 1}

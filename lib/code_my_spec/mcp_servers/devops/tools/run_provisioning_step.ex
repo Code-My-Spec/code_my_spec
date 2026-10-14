@@ -4,83 +4,31 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   halt-on-first-failure ordering.
 
   `run_devops_setup` walks `Sequence.for_options/1` in order and halts at the
-  first step that is not done — the ordering *is* the dependency model, so a
-  step later in the sequence normally has no business running before an
-  earlier one does. That stops being true the moment an earlier step is
-  blocked for a reason that has nothing to do with whether later steps can
-  actually succeed: `:repository` and `:secrets` need to run real commands
-  against a local checkout, which nothing reached through the light harness
-  (`/mcp/harness`) can currently do — so they read "missing" indefinitely
-  regardless of whether the account's real infrastructure (`:server`,
-  `:domain`, `:dns`, and anything else that is purely a provider API call) is
-  actually fine. Waiting on the sequence to reach them means never verifying
-  the parts that already work.
+  first step that is not done. That stops being useful when an earlier step is
+  blocked for a reason unrelated to later ones — `:repository` and `:secrets`
+  need a local checkout the light harness cannot provide, while provider-API
+  steps (`:server`, `:domain`, `:dns`, …) can still be verified. This bypasses
+  ordering only: the step is the same `Provisioning.run_step/3`, verified
+  against the provider first, under the same `RunLock`, and a step that cannot
+  run yet is still that step's to refuse.
 
-  This is the same `run_step/3` `run_devops_setup` and `adopt_repository`
-  both already use underneath — verified against the provider first, same
-  `RunLock` respected, same honest outcome reported back. It does not bypass
-  a step's own verification; it only bypasses *ordering*. Running `:deploy`
-  before `:server` genuinely exists is still that step's problem to refuse,
-  not this tool's to prevent.
+  ## Confirmations an agent can give
 
-  ## `inbound_probe_to` is the other gap `adopt_repository` already had
+  `inbound_probe_to`, `confirm_apex_repoint` and `confirm_inbound_mx_repoint`
+  carry the answers a step pauses for, so an agent with no person at the
+  console can supply them. `:server` never creates a server here: an unlinked
+  environment's step always pauses; only `Steps.provision_account_server/3`,
+  through the account-level tool, creates one.
 
-  `Steps.run(:inbound, ...)` already accepts `opts[:inbound_probe_to]` — an
-  address on the project's own domain to prove receiving actually works,
-  since Resend accepts mail only to addresses configured for the domain and
-  offers no way to ask which those are. This tool never exposed a way to
-  supply one, so the step paused indefinitely asking for something a caller
-  had no parameter to give it — the same shape as `adopt_repository`'s
-  missing `:owner` before it could name an organisation's repository.
+  ## Returns when the step starts, not when it finishes
 
-  ## `confirm_apex_repoint` is the same gap, for `:dns`
+  A step can outlive the caller's transport and the code-mode sandbox's 30s
+  wall clock (`:deploy` takes minutes). The spawned task claims `RunLock` and
+  only then acks, so the reply is "started" or "already running". An agent
+  that started the step is messaged its outcome; any other caller watches
+  `devops_status`.
 
-  `Steps.apex_repoint/4` refuses to move a live apex onto a freshly created
-  server without `opts[:confirm_apex_repoint]` — reasonable, since the apex
-  might be serving real traffic today. But that flag was only ever threaded
-  from `CodeMySpecWeb.ProvisioningLive`'s own `"confirm_apex_repoint"` event,
-  so an agent driving this tool instead of a human clicking a button had no
-  way to say yes: every retry re-detected the live apex and paused again,
-  identically, with `devops_status` never explaining why nothing progressed.
-  Confirmed live: a prod cutover the operator had already approved sat paused
-  through repeated retries because the only "confirm" that existed was a
-  LiveView click nothing here could reach.
-
-  ## `confirm_inbound_mx_repoint` is the same gap again, for `:inbound`
-
-  `Steps.check_competing_mx/3` refuses to replace an MX record the domain
-  already has without `opts[:confirm_inbound_mx_repoint]`, for the same
-  reason `apex_repoint/4` refuses an unconfirmed apex move — an existing MX
-  might be routing real mail today. Metric Flow's onboarding hit this live:
-  `provisioning_live.ex` grew a "Repoint it anyway" control at the same time
-  this field was added, but the main agent driving setup for a project with
-  no human at the LiveView needed the same "yes" through MCP.
-
-  ## The `:server` step never creates a server here, under any circumstance
-
-  `Steps.server_creation_gate/3` used to accept `opts[:confirm_new_server]`
-  as a way to create a brand-new server for an unlinked environment anyway —
-  removed after `broken-oaths-uat` and `broken-oaths-prod` got created by
-  accident this way instead of sharing the account's existing
-  `fuellytics`/`fuellytics-prod` boxes. There is no escape hatch left: an
-  unlinked environment's `:server` step always pauses, naming what the
-  account would need to link first. Only `Steps.provision_account_server/3`,
-  reached through the account-level provisioning tool, may create one.
-
-  ## This returns as soon as the step starts, not when it finishes
-
-  Same reason `run_devops_setup` already documents this, for the same
-  underlying cost: `:deploy` alone has measured ~167s, far longer than the
-  code-mode sandbox's own 30s wall clock. This used to call `Provisioning.
-  run_step/2` and wait, which is exactly the shape `run_step_async/3`'s own
-  moduledoc describes as unsurvivable — confirmed live running `:deploy`
-  against a harness-only project: every call was brutally killed at 30s with
-  no trace of what it had started, indistinguishable from a hang. `RunLock`
-  is what makes "started or refused" the only two outcomes here, the same
-  handshake `Resources.fix_async/2` uses: the spawned task claims the lock
-  and only then acks this call, so "started" means the run genuinely holds
-  it. An agent that started the step is messaged its outcome when it lands;
-  any other caller watches `devops_status`.
+  See knowledge/tools, "run_provisioning_step".
   """
 
   use Anubis.Server.Component, type: :tool
@@ -216,13 +164,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
     end
   end
 
-  # Deploying is a decision about one environment, never a batch operation —
-  # confirmed live against cleaner_crm: two calls with no `:environment` both
-  # deployed prod first (environments have no defined order) and never
-  # reached uat at all, because `deploy_environments/3` halts on the first
-  # failure. John was explicit: a deploy call must always name the one
-  # environment it means, so this refuses before ever reaching `Steps.run/3`
-  # rather than silently defaulting to "every environment."
+  # Deploying is a decision about one environment. Without one, the step
+  # deploys every environment in no defined order (prod included) and halts at
+  # the first failure, so this refuses before reaching the step.
   defp require_environment(:deploy, params) do
     case Map.get(params, :environment) do
       environment when is_binary(environment) and environment != "" ->
@@ -236,11 +180,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
 
   defp require_environment(_key, _params), do: :ok
 
-  # Same `:provisioning_run_async` flag `Provisioning.run_step_async/3`
-  # reads, for the same reason: a spawned `Task.Supervisor` child is a
-  # genuinely different process, so under test it holds neither the caller's
-  # Ecto Sandbox checkout nor its `Req.Test` stub allowances. Synchronous
-  # under test shares those instead of racing the test's own lifetime.
+  # The `:provisioning_run_async` flag `Provisioning.run_step_async/3` reads:
+  # under test a spawned child holds neither the Ecto sandbox checkout nor the
+  # `Req.Test` allowances, so the step runs synchronously.
   defp start_step_async(scope, project, key, opts, starter) do
     case Application.get_env(:code_my_spec, :provisioning_run_async, true) do
       true -> spawn_step_async(scope, project, key, opts, starter)
@@ -248,13 +190,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
     end
   end
 
-  # `Resources.start_fix_async/3`'s handshake, for one named step instead of
-  # the whole sequence: the spawned task claims `RunLock` first and only then
-  # signals this call, so the caller learns the true outcome — locked and
-  # running, or refused — in milliseconds, without ever waiting on the step
-  # itself. The step keeps running under `CodeMySpec.TaskSupervisor`, a
-  # process this call's own transport timeout (or the sandbox's 30s wall
-  # clock) cannot reach.
+  # `Resources.fix_async/3`'s handshake, for one step: the spawned task claims
+  # `RunLock` first and only then signals, so the caller learns "running" or
+  # "refused" in milliseconds. The step runs on under `CodeMySpec.TaskSupervisor`,
+  # out of reach of this call's timeouts.
   defp spawn_step_async(scope, project, key, opts, starter) do
     parent = self()
     ref = make_ref()
@@ -291,14 +230,12 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
     {:reply, ok("#{step} for #{project.name} started — #{then_what(frame)}"), frame}
   end
 
-  # The synchronous (test-mode) outcomes — `Provisioning.run_step/2`'s own
-  # result, unchanged from before this tool went async.
+  # The synchronous (test-mode) outcomes: `Provisioning.run_step/3`'s result.
   defp reply({:ok, %{state: state}}, step, project, frame) do
     {:reply, ok("#{step} for #{project.name} is now #{state}."), frame}
   end
 
-  # Paused is a real, expected outcome — waiting on something only a person
-  # can do — not a failure of this call.
+  # Paused (waiting on a person) is an expected outcome, not a failure.
   defp reply({:halt, %{state: :paused}, reason}, step, project, frame) do
     {:reply, ok("#{step} for #{project.name} is paused: #{reason}"), frame}
   end

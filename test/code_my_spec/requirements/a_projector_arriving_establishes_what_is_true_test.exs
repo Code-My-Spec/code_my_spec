@@ -21,8 +21,7 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   below — and a row nothing observes stays as it is, which is the same trust
   the pass places in its stored rows.
   """
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo

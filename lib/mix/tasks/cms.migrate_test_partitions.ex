@@ -19,14 +19,8 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   last week's schema, and `ecto.migrate` answers "Migrations already up",
   truthfully, about a different database.
 
-  Measured (`d86b09cd`): 479 spex problems, every one
-  `ERROR 42703 (undefined_column) column q0.resolution does not exist`, against
-  a tree whose migration was written, committed and applied. An hour across two
-  people, and four confident wrong diagnoses on the way — that the migration had
-  not been written, that it had not been committed, that the analyzer was
-  serving stale records, that the fingerprint had deadlocked. The actual answer
-  was two databases with different schemas both answering, and nothing naming
-  which one had.
+  A behind sibling fails as hundreds of `undefined_column` errors on a tree
+  whose migration is written and applied — to a different database.
 
   ## "Up to date" is about versions, not about DDL
 
@@ -35,17 +29,9 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   be true of a database whose tables are wrong, and this repo has produced
   exactly that.
 
-  Two migrations were stamped `20260912010000`. Only one row can record that
-  version, so on some databases the loser was marked applied without ever
-  running. Renumbering fixed the file and could not un-record the version, so
-  those databases carry a complete `schema_migrations` and an incomplete schema,
-  and nothing that reads versions can tell.
-
-  Measured 2026-09-12: after this task reported all three partitions up to date,
-  `working_copies_device_id_fkey` was `ON DELETE CASCADE` on the base and
-  `ON DELETE RESTRICT` on the spex partition. Criterion 2848 asserts a device
-  deletion takes its checkouts with it; it passed on one database and raised
-  `Ecto.ConstraintError` on the other, from the same commit.
+  Two migrations once shared a version. Only one row can record it, so on
+  some databases the loser was marked applied without running, and those
+  carry a complete `schema_migrations` and an incomplete schema.
 
   **The repair for that is `DROP DATABASE`, not another migrate.** These hold
   nothing but test data and are rebuilt on demand, so dropping the `a` and `s`
@@ -56,31 +42,24 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   ## Existing partitions only — nothing is created here
 
   A partition nothing has used yet has no database, and that is not a problem to
-  solve here: `Mix.Tasks.Cms.CheckTestMigrations` creates one lazily at the
-  moment something actually needs it. Creating them here as well would be a
-  second place holding that judgement, and it would pay a full migration
-  (~37.6s) for a database that may never be used — on a box whose Postgres
-  connection arithmetic already reaches its limit exactly (`51fb4adb`).
+  solve here: `Mix.Tasks.Cms.CheckTestMigrations` creates one lazily when
+  something needs it. Creating them here would pay a full migration for a
+  database that may never be used, and add Postgres connections.
 
   ## Why a task and not an alias on `ecto.migrate`
 
   `cms.check_test_migrations` refuses a run whose database is behind and prints
-  the exact command for *that* partition, because migrating on every invocation
-  costs ~14s and a suite should not pay it. That refusal is the signal; this is
-  the remedy it points at. Three databases means three of those refusals, one
+  the command for *that* partition. Three databases means three refusals, one
   run at a time — this settles all three in one pass.
 
   ## Why this runs entirely in this VM
 
   Each sibling is migrated through its own dynamically-configured connection to
-  `Repo`, never by exporting `MIX_TEST_PARTITION` and shelling out to `mix` per
-  partition. That is the reason `CmsHarness.TestDatabase`'s own moduledoc gives
-  for not doing it: `Environments.clean_otp_env/0` scrubs `MIX_ENV` from a
-  child's environment, so a shelled-out "migrate this partition" ran against
-  **dev** and a sibling truncate emptied the shared development database three
-  times on 2026-08-13. A dynamic repo connection is named by this function call,
-  in this process, from a database string built here — there is no child and no
-  environment variable for anything to misdirect.
+  `Repo`, never by exporting `MIX_TEST_PARTITION` and shelling out to `mix`:
+  `Environments.clean_otp_env/0` scrubs `MIX_ENV` from a child's environment,
+  so a shelled-out migrate runs against **dev** (see `CmsHarness.TestDatabase`).
+  A dynamic repo connection is named in this process — there is no child and
+  no environment variable to misdirect.
   """
 
   use Mix.Task
@@ -110,18 +89,14 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
   recorded for this working copy — and not from the resolved repo config or from
   `MIX_TEST_PARTITION`.
 
-  Both of those are wrong here for the same reason. A session inherits
-  `MIX_TEST_PARTITION` from whatever launched it, and on this machine that is
-  routinely another checkout's value (measured: a session in this worktree
-  carrying `h0a2edd36`, the main checkout's, while its own recording says
-  `h789652af`). And the resolved database may already carry an analyzer suffix,
-  which cannot be taken back off reliably — a partition is a path digest and can
-  itself end in `a` or `s`, so stripping produces a base nothing uses and a run
-  that migrates three databases which do not exist.
+  Both are wrong here. A session inherits `MIX_TEST_PARTITION` from whatever
+  launched it, routinely another checkout's value. And the resolved database
+  may already carry an analyzer suffix, which cannot be stripped reliably — a
+  partition is a path digest and can itself end in `a` or `s`.
 
-  Reading the recording has neither problem: it is one value, it names this
-  working copy, and it is the same one `config/test.exs` prefers. A copy with no
-  recording raises, naming the command that fixes it.
+  The recording is one value, names this working copy, and is the one
+  `config/test.exs` prefers. A copy with no recording raises, naming the
+  command that fixes it.
   """
   @spec partitions(String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
   def partitions(base) do
@@ -158,10 +133,8 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
     end
   end
 
-  # From config rather than `Repo.__adapter__/0`, which is the same value fixed
-  # at compile time: under the SQLite harness env its `storage_status/1` cannot
-  # return an error, and the type checker then fails that build on the clause
-  # Postgres needs.
+  # From config rather than `Repo.__adapter__/0` (fixed at compile time): under
+  # the SQLite harness env the type checker would fail the Postgres clause.
   defp adapter, do: Application.get_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres)
 
   # A plain, unpooled connection for the duration of one migration — never the

@@ -24,10 +24,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  # Postgres binds one parameter per column per row and counts them in a 16-bit
-  # field. Declared here rather than beside its first user, because a module
-  # attribute is read at the point of use during compilation: defined lower down,
-  # it was `nil` in `delete_edges_outside/3` and `chunk_every/2` raised.
+  # Postgres caps a statement at 65,535 bind parameters (one per column per row).
+  # Declared before any user: a module attribute read above its definition is `nil`.
   @bind_budget 60_000
 
   @table {"requirements", Node}
@@ -46,33 +44,17 @@ defmodule CodeMySpec.Requirements.GraphStore do
   @doc """
   Replace the graph rows for everything this computation covered.
 
-  `covered` and the nodes' own owners are deliberately separate inputs.
-  `RequirementGraph.compute_entity/4` answers for a component's whole family —
-  a context's template produces its children's rows, so they cannot be computed
-  apart from it — and within that family a member can legitimately produce
-  nothing. Reaping by `covered` and writing by each node's own owner is what
-  makes "this component now has no requirements" expressible; keying both sides
-  off the nodes would leave that component's old rows standing forever.
+  Rows are written by each node's own owner and reaped by `covered`, which are
+  separate inputs: a component family is computed together and a member can
+  legitimately produce nothing, so "this component now has no requirements" has
+  to reap its old rows.
 
-  ## Upsert then reap, because a row id is referenced
+  Upsert then reap, never delete-then-insert: edges reference row ids, so a
+  reinserted row orphans every edge touching it. See knowledge/requirements_graph,
+  "Edges".
 
-  This deleted every covered row and inserted fresh ones, which reads as the
-  narrower operation and is not: an inserted row gets a **new id**, and
-  `write_edges/2` stores `from_requirement_id` and `to_requirement_id`. So every
-  edge touching a rewritten node pointed at a row that no longer existed, and
-  `edge_keys/6` — which resolves an edge through its own node table — could not
-  resolve it. The edge was still in the table and gone from the graph.
-
-  Measured 2026-09-17, on a project with 27 edges: creating a component through
-  the real surface dropped the rows' resolvable topology to 12 while the pass
-  went to 33. It was invisible for as long as it existed because `log/1`
-  reported node counts only, and only reprojecting topology in the same drain
-  put the ids back — so a verdict-only drain orphaned edges permanently.
-
-  `NodeRepository.upsert_all/3` has always done this properly for the real
-  table, on the same three partial unique indexes this table carries. After the
-  swap the event path inherits that writer, so the delete-then-insert version
-  would not have fixed itself by flipping the flag.
+  Answers how many rows arrived and how many departed, so the caller knows
+  whether the node set moved and edges must be redrawn.
   """
   @spec write(Scope.t(), Enumerable.t(), [map()]) ::
           {:ok, %{inserted: non_neg_integer(), reaped: non_neg_integer()}}
@@ -83,13 +65,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
     :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
 
-    # Answers how the node set moved — rows that did not exist before and rows
-    # that departed — because edges are a function of the node set and the
-    # caller has to know whether to redraw them. A story whose rows arrive a
-    # drain after the shape first showed it is otherwise never wired in: the
-    # rebuild ran over a node set without it, the shape hash has not moved
-    # since, and nothing asks again. Read before the upsert, so a row it
-    # inserts is not already among the rows that were there.
+    # Read before the upsert, so a row it inserts is not counted as already there.
     Repo.transaction(fn ->
       existing = existing_rows(target, covered, working_copy_id)
       before = existing |> Enum.map(& &1.id) |> MapSet.new()
@@ -122,10 +98,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   end
 
   # One upsert per entity type, because each has its own conflict target.
-  # Answers the `{owner_id, name}` pairs it wrote, which is what the reap needs
-  # to know to leave them alone.
-  # Returns the ids the write landed on, so the departed rows can be subtracted
-  # rather than reconstructed.
+  # Returns the ids the write landed on, so departed rows are a subtraction.
   defp upsert_group(target, entity_type, nodes, working_copy_id, now) do
     rows = Enum.map(nodes, &row(&1, entity_type, &1.entity_id, working_copy_id, now))
 
@@ -143,36 +116,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
     end)
   end
 
-  # Everything the covered entities own that this write did not produce.
-  #
-  # One statement per entity rather than one for all of them, for the reason
-  # `owner_filter/2` is shaped the way it is: the three owner columns are
-  # different columns, and a covered set mixes types freely.
-  # Rows the write did not land on, for the entities it covered.
-  #
-  # One select and one delete per owner kind, not one delete per entity. This
-  # was `Enum.each(covered, ... Repo.delete_all())` — a `DELETE` per covered
-  # entity, which on a seed is every entity in the project, once per vantage.
-  # Nine vantages of ~1,300 entities is where most of the seed's 26,395 queries
-  # came from.
-  #
-  # The same shape `NodeRepository.delete_departed/4` uses on the pass side:
-  # select the candidates for the covered owners, subtract in memory what the
-  # write just returned, delete what is left. `kept` is a set of ids, which is
-  # exact — a row this write produced is kept whatever it is named.
-  # What an upsert overwrites on conflict, and when `checked_at` moves.
-  #
-  # `checked_at` is what `computed_at` on every graph read is made of, and it
-  # has to mean one thing whichever path wrote the row. A sweep stamps a row
-  # only when its answer moved — both halves of `sweep/2` carry
-  # `IS DISTINCT FROM` — so a whole-vantage write stamps the same way, or the
-  # one un-narrowed writer left in the system restamps every row it touches
-  # and a read sees every verdict "reconsidered" by an analyzer run that
-  # changed nothing (criterion 3448). Every row is still updated, so
-  # `returning: [:id]` still names them all and the reap leaves them alone.
-  #
+  # What an upsert overwrites on conflict. `checked_at` moves only when the
+  # answer did, as in `sweep/2`: graph reads report it as `computed_at`.
   # Named columns rather than `:replace_all`, which would overwrite `id` and
-  # `inserted_at` — and the id is the whole point of upserting here.
+  # `inserted_at` — keeping the id is the point of upserting.
   defp on_conflict({_table, _schema} = target) do
     from(n in target,
       update: [
@@ -193,13 +140,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
             )
         ]
       ],
-      # 181f3469: a row EXCLUDED agrees with on every stored column is left
-      # alone rather than rewritten -- no new tuple, no WAL, no index churn,
-      # on a drain that is otherwise thousands of writes changing nothing.
-      # Postgres answers RETURNING only for rows this touches, so a skipped
-      # row is invisible to it -- `write/3` gets `kept` from the rows it was
-      # asked to write, not from this result, so a merely-unchanged row does
-      # not read as reaped.
+      # An unchanged row is not rewritten. RETURNING omits it, so `write/3`
+      # takes what it kept from its input, not from this result.
       where:
         fragment(
           "? IS DISTINCT FROM EXCLUDED.satisfied OR ? IS DISTINCT FROM EXCLUDED.details OR ? IS DISTINCT FROM EXCLUDED.description OR ? IS DISTINCT FROM EXCLUDED.inputs_fingerprint OR ? IS DISTINCT FROM EXCLUDED.owner_component_type OR ? IS DISTINCT FROM EXCLUDED.node_scope",
@@ -213,12 +155,9 @@ defmodule CodeMySpec.Requirements.GraphStore do
     )
   end
 
-  # Every row the covered owners hold at this vantage, with the natural key
-  # (owner, name) that identifies it. What a write may reap is exactly this
-  # set minus what it still covers — and never a row of an owner it did not
-  # cover. Carries the key, not just the id, because `on_conflict/1` skips
-  # RETURNING a row it leaves unchanged, so `write/3` has to know what this
-  # write still covers from its own input rather than from that result.
+  # Every row the covered owners hold at this vantage, with its (owner, name)
+  # key — the only rows a write may reap. Carries the key because an unchanged
+  # row is absent from RETURNING (see `on_conflict/1`).
   defp existing_rows(target, covered, working_copy_id) do
     story_ids = for {"story", id} <- covered, do: id
 
@@ -300,9 +239,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
   defp owners_filter("story", ids), do: dynamic([n], n.story_id in ^ids)
   defp owners_filter("project", ids), do: dynamic([n], n.project_id in ^ids)
 
-  # The three partial unique indexes, matching `NodeRepository.owner/1`. An
-  # `unsafe_fragment` because the index is partial and Ecto cannot name one any
-  # other way; the predicates are literals here, not interpolation.
+  # The partial unique indexes, one per owner column. `unsafe_fragment` because
+  # Ecto cannot name a partial index otherwise; the predicates are literals.
   defp conflict_target("component"),
     do: {:unsafe_fragment, "(component_id, name, working_copy_id) WHERE component_id IS NOT NULL"}
 
@@ -318,15 +256,12 @@ defmodule CodeMySpec.Requirements.GraphStore do
   @doc """
   Set one requirement's verdict, without recomputing anything around it.
 
-  What an event handler writes. `GraphStore.write/3` replaces everything an entity
-  owns and is what a recompute needs; this touches the single row the event
-  settled and leaves its siblings alone — which is the whole difference between
-  applying an event and re-deriving from one.
+  What an event handler writes: the single row the event settled, siblings
+  untouched (`write/3` is the recompute).
 
-  Answers `{:ok, 0}` when no row matched, and that is information rather than a
-  failure: the projection only holds rows the seed created, so a miss means the
-  event named an entity this vantage has never projected. The caller counts
-  those — a handler quietly writing nothing is a silent failure otherwise.
+  `{:ok, 0}` when no row matched — the event named an entity this vantage has
+  never projected (rows are created by seeding, never here). The caller counts
+  misses.
   """
   @spec put_verdict(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def put_verdict(%Scope{} = scope, change) do
@@ -350,60 +285,16 @@ defmodule CodeMySpec.Requirements.GraphStore do
   @doc """
   Settle one requirement across every entity of a type, then the exceptions.
 
-  What a set-based handler writes. `story_issues_triaged` uses a grouped query
-  naming stories that carry incoming issues; every other story is triaged
-  *by absence*, and there is no list of them to iterate. So the default
-  goes on with one `UPDATE`, and the named few are corrected after.
+  What a set-based handler writes: one `UPDATE` for the default (every entity
+  not named, e.g. stories triaged *by absence*) and one for the named
+  exceptions (`put_verdicts/5`), in a transaction so a reader never sees the
+  new default beside stale exceptions. The two halves are disjoint.
 
-  Two statements for a population of any size, which is the whole reason a
-  handler owns a requirement rather than an entity.
+  Neither statement writes a row whose answer did not move (`IS DISTINCT FROM`),
+  which keeps `checked_at` — and so `computed_at` on reads — still when nothing
+  changed. See knowledge/requirements_graph, "Verdicts and handlers".
 
-  ## Neither statement writes a row whose answer did not move
-
-  Both halves carry `IS DISTINCT FROM`, and it is not only an optimisation.
-
-  A sweep used to rewrite every row of a requirement on every drain, which
-  `DrainCost` measured at 1,264 rows for one `files_synced` where a full
-  recompute of the same vantage wrote 15 — the same values written over
-  themselves, plus the index maintenance behind them.
-
-  It is also what `checked_at` has to mean. `computed_at` on every graph read is
-  `max(checked_at)`, and story 1063 asserts it *holds still* when nothing
-  changed — `criterion_3231` compares it across a heartbeat that carried no
-  change. A sweep that stamps every row moves that timestamp on every drain, so
-  without this the event projection fails three criteria the batched pass
-  passes, for work it did not do.
-
-  ## The two halves are disjoint, which is why order no longer matters
-
-  The default used to run across the whole population and the exceptions
-  corrected it afterwards, so ordering was load-bearing. With `IS DISTINCT FROM`
-  that breaks: an exception row already holding its exception value would be
-  written to the default and then written back, netting no change and two
-  writes. So the default excludes the exception entities outright and each half
-  owns its own rows.
-
-  The transaction stays. A reader landing between them still sees the new
-  default beside the exceptions' previous values, which is a projection claiming
-  every component has a spec.
-
-  ## One statement for the exceptions, and it used to be one per entity
-
-  `Enum.each(spec.except, &put_verdict/2)` was a round trip per entity inside the
-  transaction, which made the claim above true for the issue requirements and
-  false for every one whose exceptions are per entity. `DrainCost` read it on
-  the first try: one `files_synced` cost **6,614 queries** where a full
-  recompute of the same vantage cost 57 — 1,140 `UPDATE`s for `review_file`,
-  another 1,140 for `review_valid`, 6,536 in total. The event projection was
-  correct and more expensive than the pass it replaces.
-
-  So the exceptions go in one statement, joined against an `unnest` of their own
-  values. The verdicts genuinely differ per entity — a missing spec carries its
-  own `expected_path` — so there is no grouping that collapses them, and the
-  array is the shape that does.
-
-  Answers how many rows it actually wrote — not how many it matched, which is
-  the whole population and says nothing.
+  Answers how many rows it actually wrote, not how many it matched.
   """
   @spec sweep(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def sweep(%Scope{} = scope, %{entity_type: entity_type, name: name} = spec) do
@@ -422,40 +313,18 @@ defmodule CodeMySpec.Requirements.GraphStore do
   end
 
   # Every row of this requirement the exceptions did not name, where the answer
-  # differs from the default.
+  # differs from the default. `NOT (owner = ANY($ids))` so the ids travel as one
+  # array parameter; an empty array excludes nothing.
   #
-  # `NOT (owner = ANY($ids))` rather than `NOT IN`, so the exception ids travel
-  # as one array parameter instead of one bind per entity — the same reason
-  # `put_verdicts/5` uses `unnest`. An empty array excludes nothing, because
-  # `x = ANY('{}')` is false.
-  #
-  # Scoped to the project, which it was not, and `put_verdicts/5` beside it does
-  # not have to be: that one names each entity id, and an id belongs to one
-  # project. A default names none of them — it is "every row of this requirement
-  # the exceptions left over" — so without a project predicate the leftovers are
-  # every project's.
-  #
-  # The vantage column hid it for eight of nine vantages. A `working_copy_id` is
-  # a checkout of one project, so `IS NOT DISTINCT FROM $5` scopes the sweep by
-  # accident wherever the vantage is a real copy. `nil` is the vantage every
-  # project shares — it is what every reader that is not an agent resolves to —
-  # and there the predicate stopped scoping anything.
-  #
-  # Measured on dev, 2026-09-17: the unscoped project row for this project read
-  # `qa_journey_wallaby` satisfied, "4 file(s) at test/journeys/", against a tree
-  # that has no such directory. The four files are in another project's checkout,
-  # and its drain wrote this project's answer.
+  # Must carry the project predicate: a default names no entity, and the nil
+  # vantage is shared by every project, so without it a drain writes other
+  # projects' rows. See knowledge/requirements_graph, "Lessons".
   defp settle_default(scope, entity_type, name, spec, ids, now) do
     {table, _schema} = event_target()
     owner = owner_column(entity_type)
 
-    # `$2::text::jsonb`, never `$2::jsonb`. Postgres infers a parameter's type
-    # from its cast and tells Postgrex, so `::jsonb` makes Postgrex encode the
-    # already-encoded binary *again* — the column ends up holding the jsonb
-    # string `"{\"status\":…}"` rather than an object, and the next read fails
-    # with `cannot load ... as type :map`. Declaring it text hands the bytes over
-    # untouched and lets Postgres parse them, which is what `put_verdicts/5`
-    # does with its `text[]`.
+    # `$2::text::jsonb`, never `$2::jsonb`: with `::jsonb` Postgrex re-encodes the
+    # already-encoded JSON and the column stores a jsonb string, not an object.
     sql = """
     UPDATE #{table} AS n
        SET satisfied = $1,
@@ -484,13 +353,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
     {:ok, rows}
   end
 
-  # Which of these rows are this project's.
-  #
-  # Three shapes because the column that answers it differs. A project row
-  # carries `project_id` and says so directly; a component or story row carries
-  # only its owner's id — `project_id` is null on all 14,975 of them — so the
-  # owner table is what knows. `EXISTS` against a primary key, once per swept
-  # requirement.
+  # Which of these rows are this project's. Only project rows carry
+  # `project_id`; other rows are asked of their owner's table.
   defp project_predicate("project"), do: "n.project_id = $7"
 
   defp project_predicate("component"),
@@ -505,14 +369,11 @@ defmodule CodeMySpec.Requirements.GraphStore do
   @doc """
   Correct many entities' verdicts for one requirement, in one statement.
 
-  The batch form of `put_verdict/2`. Same rows, same values; what changes is
-  that the entity ids, verdicts and details travel as three arrays and Postgres
-  joins them against the table itself, instead of the client issuing one
-  `UPDATE` per entity.
+  The batch form of `put_verdict/2`: ids, verdicts and details travel as three
+  arrays joined against the table (`unnest`), not one `UPDATE` per entity.
 
-  Answers how many rows matched, which is not the same as how many were asked
-  for: settling writes rows and never creates them, so an entity this vantage
-  has never projected is a miss, and a miss is information the caller counts.
+  Answers how many rows changed. Settling never creates rows, so an entity this
+  vantage has never projected is a miss the caller counts.
   """
   @spec put_verdicts(Scope.t(), String.t(), String.t(), [map()], NaiveDateTime.t()) ::
           {:ok, non_neg_integer()}
@@ -524,10 +385,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
     now = now || NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
     {table, _schema} = event_target()
 
-    # `IS NOT DISTINCT FROM` rather than `=`, because the vantage is nullable and
-    # the null means something: the unscoped row is the project-wide answer, and
-    # the unique indexes use `NULLS NOT DISTINCT` to keep exactly one of it.
-    # `=` against null matches nothing, which would silently settle none of them.
+    # `IS NOT DISTINCT FROM`, not `=`: a nil vantage is the project-wide row, and
+    # `=` against null matches nothing.
     sql = """
     UPDATE #{table} AS n
        SET satisfied = v.satisfied,
@@ -571,20 +430,15 @@ defmodule CodeMySpec.Requirements.GraphStore do
   defp cast_vantage(vantage), do: Ecto.UUID.dump!(vantage)
 
   @doc """
-  Replace this vantage's whole topology.
+  Replace this vantage's whole topology with `edges`.
 
-  A full replace rather than a delta, because a transitive reduction is global:
-  adding one node can remove an edge between two others, so there is no subset
-  of edges a change is confined to. `RequirementGraph.compute_topology/3` says
-  the same thing from the other side.
+  The wanted set is whole because a transitive reduction is global; the write
+  is a difference — stale edges deleted, new ones inserted, unchanged ones
+  untouched. Only a drain that wrote or reaped nodes needs to call this.
 
-  That is affordable because it is rare. Edges are a function of the node set
-  and a sweep cannot change the node set — only a drain that wrote or reaped
-  nodes has to call this, which is the same small set of events that already
-  falls back to a recompute.
-
-  Stored as the pair of node keys the edge actually is, not as row ids, so a
-  diff compares what the edge means rather than which rows happen to carry it.
+  `ids` is the vantage's `node_ids/1`, when the caller already loaded it.
+  An edge endpoint with no row is dropped. See knowledge/requirements_graph,
+  "Edges".
   """
   @spec write_edges(Scope.t(), [%{from: tuple(), to: tuple()}], map() | nil) ::
           {:ok, non_neg_integer()}
@@ -592,20 +446,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
     working_copy_id = Projection.vantage(scope)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    # An edge references rows in its own node table, and the two projections
-    # number their rows differently, so the ids are only meaningful beside the
-    # nodes this same drain just wrote — which is why they are resolved here
-    # rather than carried in by the caller, unless the caller holds the map
-    # this drain already resolved (`node_ids/1`) for the same vantage.
+    # Resolved after this drain's node writes, so the ids are current.
     ids = ids || ids_by_owner_key(project_id, working_copy_id)
 
     # An endpoint with no row is not an edge.
-    #
-    # These used to be written with a null id beside the entity key, which is
-    # how a table full of edges pointing at nothing looked like a table full of
-    # edges. `edge_keys/6` has always dropped them on the read side; dropping
-    # them on the write side is the same rule applied where it can be enforced,
-    # and the column is `null: false` now.
     rows =
       edges
       |> Enum.uniq()
@@ -622,19 +466,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
         end
       end)
 
-    # The difference, not the whole set.
-    #
-    # This deleted every edge at this vantage and inserted them all back, on any
-    # observation that moved topology at all. Measured on this project: 124,760
-    # edges, so ~249,500 row writes to express one component appearing — and
-    # components move about fifty times an hour while agents work, which made
-    # this 79% of all write volume.
-    #
-    # `NodeRepository.replace_edges/3` has always done it properly for the real
-    # table: delete only what is no longer wanted, insert with
-    # `on_conflict: :nothing` so an unchanged edge costs nothing. After the swap
-    # the event path inherits this writer, so the naive version would not have
-    # fixed itself by flipping the flag.
+    # The difference, not the whole set: a full rewrite was ~250k row writes per
+    # topology change. See knowledge/requirements_graph, "Edges".
     {:ok, count} =
       Repo.transaction(fn ->
         held = held_edges(Map.values(ids))
@@ -667,16 +500,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
   def present?(ids),
     do: fn {type, id, name} -> Map.has_key?(ids, {type, to_string(id), name}) end
 
-  # What this vantage already holds, by identity. Compared in memory rather than
-  # as a `NOT IN`, because the set runs to tens of thousands and the bind limit
-  # that broke the insert would break that the same way.
-  #
-  # Scoped through the vantage's node ids rather than through a `working_copy_id`
-  # column, which this table no longer has and the real one never did. The ids
-  # are the ones `write_edges/2` has already resolved, so the narrowing costs
-  # nothing: no join, no second query. Checking the `from` end is enough —
-  # `compute_topology/3` builds edges within one vantage, and a node id belongs
-  # to exactly one.
+  # What this vantage already holds, by identity, compared in memory (a `NOT IN`
+  # over tens of thousands would hit the bind limit). Edges carry no vantage
+  # column; checking the `from` end against this vantage's node ids is enough,
+  # since edges never cross vantages.
   defp held_edges([]), do: %{}
 
   defp held_edges(node_ids) do
@@ -698,32 +525,16 @@ defmodule CodeMySpec.Requirements.GraphStore do
     end)
   end
 
-  # What makes two edges the same edge: the rows it joins.
-  #
-  # This was the entity/name pair on both ends, and the ids were not in it. An
-  # edge whose endpoints had been deleted and reinserted — which `write/3` did
-  # to every covered row until it learned to upsert — matched by identity, was
-  # neither deleted nor reinserted, and kept pointing at rows that no longer
-  # existed. `edge_keys/6` resolves an edge through its own nodes, so it dropped
-  # out of every comparison: in the table and gone from the graph, permanently,
-  # because the only writer that could have fixed it believed it was correct.
-  #
-  # Measured 2026-09-17, once `log/1` started printing the numbers: every
-  # project reported its whole topology missing — 27,045 edges live and zero
-  # resolvable at this project's unscoped vantage alone.
-  #
-  # The keys are gone now and the ids are the whole identity, which is the same
-  # thing `requirement_edges` has always meant by an edge.
+  # What makes two edges the same edge: the row ids it joins, not the entity
+  # keys — a key match kept edges pointing at rows that no longer existed.
   defp edge_identity(row), do: {row.from_requirement_id, row.to_requirement_id}
 
   @doc """
   Whether this vantage has been projected at all.
 
-  Asked of the project's own rows, because every seed writes them and nothing
-  narrower does. A vantage with none has nothing to be partial against — the
-  pass's `no_stored_rows` — and it is the one question a settle has to ask
-  before it trusts the marks: a checkout somebody just read, with no mark
-  naming it, is otherwise never written. One indexed query.
+  Asked of the project's own rows, which every seed writes. A settle asks this
+  before trusting the marks: a checkout someone just read, with no mark naming
+  it, would otherwise never be written. One indexed query.
   """
   @spec projected?(Scope.t()) :: boolean()
   def projected?(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
@@ -739,14 +550,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
   Whether the rows at this vantage carry every requirement the templates
   define for the entities they cover, and nothing the templates no longer do.
 
-  A projector meeting a vantage with rows trusts them. That is right for what
-  observations move and wrong for what a release moves: `questions_answered`
-  shipped in v2.0.147 and on dev the next morning not one of the big
-  project's 138 stories had the row at any of its eleven vantages, because a
-  handler settles rows and never creates them, and nothing seeds a vantage
-  that has rows. So arrival compares names as well as presence, per entity
-  type, and a vantage whose rows predate a definition is seeded like one that
-  has none. One query per vantage per process.
+  A vantage whose rows predate a definition (a release added or dropped a
+  requirement) is seeded like one with no rows: handlers settle rows and never
+  create them. Compared per entity type; no rows of a type is not a mismatch.
+  See knowledge/requirements_graph, "Seeding".
 
   `defined` is `RequirementGraph.defined_names/2`. Component names are
   compared per owning type over parent- and self-scoped rows only, for the
@@ -866,9 +673,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
   def clear(%Scope{}), do: :ok
 
-  # The project's entities, for scoping both sides of a comparison the way
-  # `Projection.project_rows/3` scopes its own read. Ids rather than a context
-  # because neither caller has one.
+  # The project's entities, scoping reads the way `Projection.project_rows/3` does.
   defp entity_ids(project_id) do
     {Repo.all(from(c in Component, where: c.project_id == ^project_id, select: c.id)),
      Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))}
@@ -888,16 +693,14 @@ defmodule CodeMySpec.Requirements.GraphStore do
     )
   end
 
-  # Every row owned by an entity of this type, whichever entity. The sweep's
-  # first half — "this requirement is satisfied unless something said otherwise".
+  # The rows owned by one entity.
   defp owner_filter("component", id), do: dynamic([n], n.component_id == ^id)
   defp owner_filter("issue", id), do: dynamic([n], n.issue_id == ^id)
   defp owner_filter("story", id), do: dynamic([n], n.story_id == ^id)
   defp owner_filter("project", id), do: dynamic([n], n.project_id == ^id)
 
-  # `is_nil` rather than `== nil`, for the reason `Projection.copy_filter/1`
-  # gives: `= NULL` is never true, so the unscoped vantage would match no row
-  # and every comparison would report the whole projection missing.
+  # `is_nil` rather than `== nil`: `= NULL` is never true, so the unscoped
+  # vantage would match no row.
   defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
   defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 
@@ -927,27 +730,12 @@ defmodule CodeMySpec.Requirements.GraphStore do
   defp scope_string(scope) when is_atom(scope), do: Atom.to_string(scope)
   defp scope_string(scope) when is_binary(scope), do: scope
 
-  # Postgres binds one parameter per column per row and counts them in a 16-bit
-  # field — 65,535 for the whole statement, whatever its size — so the write has
-  # to be chunked exactly as `NodeRepository.insert_every/3` chunks the node
-  # insert.
-  #
-  # Measured from the row rather than written down. This was `div(60_000, 9)`
-  # until the rows learned their row ids and became eleven columns wide, and
-  # nothing recomputed the constant: 6,666 rows times eleven is 73,326, which is
-  # exactly what Postgres refused. Every edge write raised, the marks were left
-  # pending, and the projector retried the same failing write every three
-  # seconds. A budget that has to be edited in step with a map literal three
-  # hundred lines away is a budget that will be wrong again.
+  # Chunked by the bind budget divided by the row's own width, measured rather
+  # than hard-coded: a constant went stale when a column was added.
   defp insert_edges([]), do: 0
 
-  # `on_conflict: :nothing` on the pair of ends, which this table has a unique
-  # index for now and did not before — the reason the difference above had to
-  # decide what was new rather than letting the database tell it. It still does,
-  # because it also has to know what is *stale*; this is what makes a concurrent
-  # drain harmless rather than a duplicate. Same options
-  # `NodeRepository.replace_edges/3` passes for the real table, which is the
-  # writer this one becomes at the swap.
+  # `on_conflict: :nothing` on the pair of ends makes a concurrent drain's
+  # duplicate harmless.
   defp insert_edges([row | _] = rows) do
     rows
     |> Enum.chunk_every(div(@bind_budget, map_size(row)))
@@ -962,9 +750,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
     end)
   end
 
-  # Every node this projection holds at this vantage, by the same key the edges
-  # name their ends with. `owner_key/4` already renders every owner as
-  # `{type, id-as-text, name}`, which is exactly the shape an edge end carries.
+  # Every node at this vantage, by the `{type, id-as-text, name}` key edge ends use.
   defp ids_by_owner_key(project_id, working_copy_id) do
     {component_ids, story_ids} = entity_ids(project_id)
 
@@ -978,8 +764,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
     end)
   end
 
-  # `entity_id` as text on both sides: a component's is a uuid and a story's is
-  # a bigint, and the rows store the pair rather than pointing at a row.
+  # `entity_id` as text: a component's is a uuid and a story's a bigint.
   defp owner_key(component_id, _story, _project, _issue, name) when not is_nil(component_id),
     do: {"component", component_id, name}
 

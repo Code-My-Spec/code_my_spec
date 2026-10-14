@@ -7,27 +7,18 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   1. Enrich CodeMySpec MCP tool inputs with `session_id` so tools resolve the
      session without the agent passing it explicitly.
   2. Refuse git from a sub-agent. Commits stay with the engineer.
-  3. Route a whole, simple `mix test`/`spex`/`compile`/`credo` through the
-     analysis service.
+  3. Route `mix test`/`spex`/`compile`/`credo` through the analysis service.
 
-  Lives here rather than in a controller because this rule has already been
-  duplicated once — the Antigravity hooks controller kept its own copy of the
-  matcher, the pipe-swallowing bug had to be found twice, and only got fixed
-  once. A third harness would have been a third copy.
-
-  The analysis endpoint the rewrite points at is local by nature, so the port
-  is a parameter rather than something this module assumes.
+  Lives here, not in a controller, so every harness decides identically. The
+  analysis endpoint is local by nature, so the port is a parameter.
   """
 
   require Logger
 
   alias CodeMySpec.Hooks.CommandShape
 
-  # Every MCP server this plugin ships, not just the local one. The tools are
-  # named `mcp__plugin_codemyspec_<server>__*`, and the cloud server
-  # (`cms_cloud`) takes the same `session_id` the local one does — matching
-  # only `local` meant its task tools got none, and dead-ended on a hook that
-  # had the id in hand and was declining to pass it on.
+  # Every MCP server this plugin ships (`mcp__plugin_codemyspec_<server>__*`):
+  # the cloud server takes the same `session_id` the local one does.
   @mcp_prefix "mcp__plugin_codemyspec_"
 
   # Claude Code's Bash tool kills commands at ~2 minutes by default — far
@@ -35,10 +26,8 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # run, so raise the tool timeout alongside the command.
   @rewrite_timeout_ms 600_000
 
-  # git subcommands a subagent may run. Every one of these only reads: none can
-  # write a ref, an object, the index, or the working tree. That is the whole
-  # criterion — see `classify_bash/1` for why the line is drawn at mutation
-  # rather than at git.
+  # git subcommands a subagent may run: none can write a ref, an object, the
+  # index, or the working tree.
   @read_only_git ~w(log show diff status blame rev-parse describe shortlog whatchanged)
 
   @doc """
@@ -52,19 +41,7 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   to state rather than this module's to infer. `:local` is the packaged
   `cms server`, which takes a bare `/api/analysis/run` and an `X-Harness-Id`
   header; `:harness` is `cms_harness`, where every route is addressed
-  `/api/harnesses/<id>/…`.
-
-  It used to be guessed from whether the scope carried a `cwd`, and the guess was
-  wrong for every proxied working copy: a decision made on the cloud server and
-  returned down the channel carries a `cwd` (it describes the agent's disk) and
-  is destined for a harness (which has no bare route). So `mix test` and
-  `mix spex` rewrote to a URL that 404s, and the agent's command never ran at
-  all — the failure it saw was the hook's, in the hook's voice, for a command it
-  had asked to run itself. Reported live by another session and reproduced here
-  against :4004: bare route 404, id-addressed route serves. Issue `60b50e40`.
-
-  The two callers each know the answer with certainty and neither has to look at
-  a scope to find it.
+  `/api/harnesses/<id>/…`. See knowledge/analysis, "Routing analysis commands".
   """
   @spec decide(CodeMySpec.Users.Scope.t() | nil, map(), pos_integer(), :local | :harness) :: map()
   def decide(scope, params, port, served_by) do
@@ -125,23 +102,9 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     end
   end
 
-  # Subagents may read git history but not change it. Issue b5e305fc: a
-  # wandering QA subagent ran `git revert` under the engineer's git identity,
-  # silently destroying a fix, and the response was "no git for subagents at
-  # all" — the tightest safe default at the time.
-  #
-  # Too tight, as it turned out. `66f3b098`: the stop hook, when it cannot
-  # attribute findings, tells the agent to "check `git log -1 -- <path>` before
-  # repairing anything you do not recognise" — and this denied it. So the
-  # harness named the one diagnostic that would clear the block and refused it
-  # in the same breath, leaving subagents in a loop with no honest exit:
-  # `clear_problems` would record a falsehood, and fixing another area's spex
-  # was out of scope. An agent that had finished its assignment could not stop.
-  #
-  # b5e305fc's danger is mutation, and `log`/`show`/`diff`/`blame` cannot
-  # mutate. So the allowlist is by subcommand rather than by tool.
-  #
-  # Main agent (no agent_id) still gets everything.
+  # Subagents may read git history but not change it; the main agent (no
+  # agent_id) gets everything.
+  # See knowledge/analysis, "Subagent git".
   defp classify_bash(params) do
     command = get_in(params, ["tool_input", "command"]) || ""
     agent_id = Map.get(params, "agent_id")
@@ -224,33 +187,16 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     }
   end
 
-  # Only rewrite a whole, simple invocation — optional env-var prefixes, then
-  # one of the four analyzers, then plain args to end-of-command. Compound
-  # shell (cd &&, pipes, subshells) passes through: replacing part of a
-  # compound command with a curl would silently change the rest's semantics.
-  #
-  # All four rather than just test/spex — `compiler` and `credo` get the same
-  # single-flight ledger, the same machine-wide slot, and the same duplicate
-  # coalescing as the other two. The analysis service already treated all
-  # four as equally valid sources (`@valid_sources` on both controllers); this
-  # was the one place that still only asked for two of them. John: "Same
-  # treatment to all analyzers."
+  # A whole, simple invocation: optional env-var prefixes, one of the four
+  # analyzers, plain args to end-of-command.
   @test_command ~r/^\s*((?:[A-Z_]+=\S+\s+)*)mix\s+(test|spex|compile|credo)(?:\s+(.*))?$/s
 
-  # `(.*)` with `/s` swallows everything to end of command, including shell
-  # that follows the mix invocation — so the "compound shell passes through"
-  # promise above was never enforced. `mix spex foo.exs > out.txt 2>&1; tail
-  # out.txt` matched, and the rewrite dropped the redirect and the tail while
-  # storing `[">", "out.txt", "2>&1;", "tail", ...]` as the run's args. Two
-  # harms, both silent: the agent's requested output never materialised, and
-  # the junk tokens were persisted as if they were paths. Issue 0b54e827.
+  # `(.*)` with `/s` swallows any shell after the mix invocation; a match on
+  # these refuses the rewrite rather than dropping a redirect or a pipe.
   @shell_metachars ~r/[;&|<>`$\n(){}]/
 
-  # The curl carries no environment, so any env-var prefix the agent wrote is
-  # dropped by the rewrite. `MIX_ENV=test` is the default for both tasks and
-  # so means nothing; anything else (`MIX_ENV=cli_dev`, a feature flag) changes
-  # what runs, and dropping it silently is the same class of bug as swallowing
-  # a redirect.
+  # The curl carries no environment. `MIX_ENV=test` is the default and means
+  # nothing; any other prefix changes what runs, so it refuses the rewrite.
   @harmless_env_prefix ~r/^(?:MIX_ENV=test\s+)*$/
 
   @doc """
@@ -260,11 +206,6 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   `{:ok, task, source, args}` when it is; `:skip` when the command carries
   shell the rewrite would swallow, an env-var prefix the curl would drop, or
   quoting that cannot be split unambiguously.
-
-  Public because the Antigravity hooks controller makes the same decision
-  against a different tool payload. It used to make it with its own copy of the
-  regex and its own `parse_args`, and when this rule was fixed here that copy
-  kept the bug — so the rule lives in one place now.
   """
   @spec classify_test_command(String.t()) ::
           {:ok, String.t(), String.t(), [String.t()]} | :skip
@@ -307,8 +248,7 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   end
 
   # A subagent's worktree is another tree; the copy's harness would run the test
-  # in the copy. Not routed (Harness, 2026-10-05: in-app agents rarely spawn
-  # subagents, so not worth the plumbing).
+  # in the copy, so it is not routed.
   defp nested_checkout(%{"nested_checkout" => dir}, command) when is_binary(dir) do
     if CommandShape.test?(command), do: log_decision("not routed", [:nested_checkout], [])
     :nested
@@ -350,9 +290,8 @@ defmodule CodeMySpec.Hooks.PreToolUse do
       else: :pass
   end
 
-  # The shell expands `$f` and backticks; the curl's JSON carries them as
-  # written. `f=…; mix spex $f` was routed as a run of the file `$f`, which
-  # found nothing and answered green (2026-10-12).
+  # The shell expands `$f` and backticks; the curl's JSON would carry them as
+  # written, and a run of the file `$f` finds nothing and answers green.
   defp expands?(args), do: Enum.any?(args, &String.contains?(&1, ["$", "`"]))
 
   # Paths only: the server deciding for a proxied copy cannot see its disk. A
@@ -400,21 +339,9 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     }
   end
 
-  # `%{}` means "no opinion", and it was the answer to two different questions:
-  # this is not a test command, and this *is* one but the scope could not carry
-  # the rewrite. The second is a feature being off, and it looked exactly like
-  # the feature being irrelevant.
-  #
-  # It used to be off on the light harness, and this is where that was found.
-  # The rewrite required `cwd`, which that scope has no business setting, so
-  # every `mix test` an agent ran went straight to the shell unrecorded and the
-  # stop hook re-ran the whole suite afterwards. It now addresses the harness by
-  # id instead — see `analysis_endpoint/1`.
-  #
-  # What remains here is a scope carrying neither: no project, or a project with
-  # no way to say which working copy. That is still a feature being off, and it
-  # still says so by name rather than by returning the same `%{}` that means
-  # "not a test command".
+  # A test command the scope cannot route (no project, or no working copy id)
+  # warns by name: the same `%{}` as "not a test command" would hide a feature
+  # being off.
   defp no_rewrite(scope, command) do
     case classify_test_command(command) do
       {:ok, task, _source, _args} ->
@@ -432,12 +359,8 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     %{}
   end
 
-  # True when the arg tail carries shell that the rewrite would swallow.
-  # Redirections, separators, substitutions, subshells — anything whose
-  # meaning is the shell's rather than mix's. A legitimate `mix test` arg is a
-  # path, a `--flag`, or a flag value; none of them need these characters, so
-  # rejecting is cheap and the cost of a false negative is a silently altered
-  # command.
+  # True when the arg tail carries shell the rewrite would swallow. A real
+  # `mix test` arg never needs these characters.
   defp compound_shell?([]), do: false
   defp compound_shell?([nil]), do: false
   defp compound_shell?([args_string]), do: Regex.match?(@shell_metachars, args_string)
@@ -448,53 +371,33 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   defp parse_args([args_string]) do
     {:ok, OptionParser.split(args_string)}
   rescue
-    # Unbalanced quotes make the split ambiguous, and the shell would resolve
-    # it differently than we would. Returning `[]` here would read as "no
-    # args" and silently widen a targeted run to the whole suite, so refuse
-    # the rewrite and let the original command run.
+    # Unbalanced quotes: `[]` would silently widen a targeted run to the whole
+    # suite, so refuse the rewrite and let the original command run.
     _ -> :error
   end
 
-  # Which working copy the run is about, and how that is said.
-  #
-  # **`cwd` is checked first and the order is the whole correctness argument.**
-  # A heavy harness carries *both*: `HarnessScope` resolves the id and then
-  # builds a scope with a `cwd` on it. Matching the id first would have pointed
-  # it at the light harness's id-addressed route, which the heavy harness's own
-  # router does not serve — a 404 on every `mix test` an agent runs against it.
-  #
-  # The real question is "can whoever answers this reach the disk", and `cwd` is
-  # what answers it. A light harness has none and must not be given one: `cwd`
-  # means a directory *this* process can read, and `Knowledge`, `ProjectSync` and
-  # the hex-doc projector all take it at its word. On a diskless server that is a
-  # path to another machine; on a developer box where both are the same machine
-  # it would read a real tree, the wrong one, convincingly.
-  #
-  # So `cwd` picks the endpoint and the id is what identifies the working copy to
-  # it. Those used to be the same answer — the heavy route took an
-  # `X-Working-Dir` header — and separating them is the point: a path on the wire
-  # is a filesystem location supplied by the caller, which the server then writes
-  # to, and a wrong one succeeds against the wrong disk rather than failing.
+  # The router comes from the caller (`served_by`); the working copy id
+  # identifies the copy to it. No path goes on the wire.
   defp analysis_endpoint(%{active_working_copy_id: id}, served_by)
        when is_binary(id) and served_by in [:local, :harness],
        do: {:ok, {served_by, id}}
 
   defp analysis_endpoint(_scope, _served_by), do: :error
 
-  # One plain `curl`, no `sh -c`. The server answers a failing run 422 with the
-  # tool's output, and `--fail-with-body` prints that body and exits nonzero,
-  # so the run reads as `mix test` would: output, then pass or fail.
-  #
-  # It used to be a `sh -c` script that split an appended status line off the
-  # body to exit with the tool's own code. Claude Code's removal guard cannot
-  # read inside a `-c` script, so it refused every routed run in auto mode
-  # unless a person approved it (2026-10-11).
+  # One plain `curl`, no `sh -c` (Claude Code's guard cannot read inside a `-c`
+  # script, so auto mode refuses it). A failing run answers 422 with the tool's
+  # output; `--fail-with-body` prints it and exits nonzero, like `mix test`.
+  # Curl's exit 22 covers failing suites and transport failures alike, so the
+  # footer reports HTTP status apart from the analyzer's own exit status; a
+  # missing analyzer header stays unavailable, never zero.
   defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
     url = "http://localhost:#{port}#{path(endpoint)}"
 
     "curl -sS --fail-with-body -X POST '#{url}' -H 'Content-Type: application/json' " <>
-      header(endpoint) <> "--data #{shell_quote(payload)}"
+      header(endpoint) <>
+      "--data #{shell_quote(payload)} " <>
+      "--write-out '\nAnalysis HTTP status: %{http_code}\nAnalyzer exit status (blank if unavailable): %header{x-exit-status}\n'"
   end
 
   defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"

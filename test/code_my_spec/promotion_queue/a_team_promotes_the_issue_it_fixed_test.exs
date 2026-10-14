@@ -9,8 +9,7 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
   the issue that is waiting to be promoted.
   """
 
-  # Sync: failed under concurrency in the 2026-10-14 async sweep.
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import Ecto.Query
 
@@ -22,6 +21,7 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AgentTasks.IssuePromote
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Issues
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Qa
@@ -54,7 +54,7 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
     scope =
       put_fixture_environment(
         %{scope | active_working_copy_id: copy.id},
-        CodeMySpec.Environments.Environment.new(:local, root)
+        Environment.new(:local, root)
       )
 
     on_exit(fn -> stop_worker(scope.active_project_id) end)

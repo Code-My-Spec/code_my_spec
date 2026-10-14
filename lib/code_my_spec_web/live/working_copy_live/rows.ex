@@ -1,40 +1,20 @@
 defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   @moduledoc """
-  The shape three pages agree on: a working copy, the agents on it, and the
-  transcript they share.
+  The one reading of "what is this working copy": the copy, the agents on it,
+  and each agent's conversation. Used by the working copy Index, Show and
+  Status pages and the agent conversation's team panel, so they cannot
+  disagree.
 
-  Index, Show and Form all have to answer "what is this copy" the same way, and
-  a page that composes it for itself drifts from the other two on the first
-  change — the Index saying Running while the Show says Idle is worse than
-  either being wrong, because the reader has no way to pick.
+  A working copy is one checkout (`WorkingCopies.issue/3` mints its id). It runs
+  one or more agents, each with its own conversation, so `chats` has one entry
+  per agent that has one.
 
-  ## The hierarchy this exists to make visible
+  Read-only: conversations are looked up, never created. This runs on mount
+  and on every broadcast.
 
-  A **harness is a working copy** — `WorkingCopies.issue/3` mints one id per
-  checkout. A copy runs **one or more agents**, told apart by the lane's role.
-  Each agent has **its own conversation**, so a copy running two of them has two
-  threads and `chats` has two entries.
-
-  That is a change. The turns used to land in one conversation keyed
-  `pi:<root>`, because a copy ran one lane and the transcript was the copy's
-  story. With several, their turns interleaved into a single thread, following
-  either was impossible, and a reply could not say who it was for.
-
-  Reading, not writing. The conversation is looked up and never created here:
-  these run on mount and on every broadcast, and a read that writes makes the
-  list of copies grow a row every time somebody opens it.
-
-  ## `label` and `heading` are not the same string
-
-  `label` is the copy's stored name, falling back to the whole root — what a
-  list row needs, because the path is the only thing distinguishing two unnamed
-  copies and a row can truncate it.
-
-  `heading` is `WorkingCopies.display_name/1`: the shortest string that still
-  identifies the copy. A harness that names itself gets "the harness at <root>
-  on <host>", which reads as a name and identifies like a path, and set as a
-  3xl page title it renders four lines and pushes the page off the screen. The
-  full root is on the page either way; this only decides which part is shouted.
+  `label` is the stored name or the whole root (a list row can truncate it).
+  `heading` is `WorkingCopies.display_name/1`, the shortest identifying string,
+  for page titles.
   """
 
   alias CodeMySpec.Agents
@@ -63,19 +43,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   @doc """
   Every working copy on the project, newest first.
 
-  `opts[:include_stopped?]` (default `false`) widens the agent source from
-  `list_running/1` to `list_for_team_status/1` — a role's slot holds its most
-  recently stopped agent when nothing has replaced it, rather than dropping
-  the row (and its transcript link) the instant it stops. Off by default
-  because two of this module's three consumers have their own, deliberate
-  behaviour built on a stopped agent being absent here: `WorkingCopyLive.Show`
-  offers "Staff it" once a role has nothing *live*, and withholds "open chat"
-  from an agent that was told to stop rather than one merely unconfirmed — a
-  box that would accept a message and drop it. Only
-  `AgentConversationLive.Show`'s own team-status panel opts in, since that is
-  the one place John hit stopping an agent from its own conversation page
-  making the row (and the way back to it) vanish, with nothing about the
-  first two behaviours in play.
+  Agents come from `Agents.list_on_duty/1`. `opts[:include_stopped?]` (default
+  `false`) uses `Agents.list_for_team_status/1` instead, so a role's slot keeps
+  its most recently stopped agent. Only the agent conversation's team panel
+  opts in; `WorkingCopyLive.Show` relies on stopped agents being absent ("Staff
+  it", no chat box for a stopped agent).
   """
   @spec list(map(), struct(), DateTime.t(), keyword()) :: [row()]
   def list(scope, project, now, opts \\ []) do
@@ -96,28 +68,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     |> group_by_root()
   end
 
-  # A restarted harness mints a fresh id for a root it already has a row for
-  # rather than reusing one, so the list's own recency order scatters what are,
-  # to a reader, the same checkout — a dozen identical-looking rows spread
-  # through the page instead of sitting together (8c9bc2b1). Nothing is hidden;
-  # every row keeps its own id, still individually offboardable and renameable,
-  # because a list that infers which duplicate to drop is exactly the mistake
-  # story 892 made about a *quieter* signal than this one.
-  #
-  # Keyed on root and device *name*, not root alone: two different machines can
-  # share a root string (the same default clone path on two laptops), and that
-  # is not the duplication this groups — criteria 2843/2847 exist to keep those
-  # apart.
-  #
-  # Not device *id* either. `(project, device, root)` is unique at the database
-  # level, so two rows sharing all three cannot exist — the case this issue
-  # measured is a device re-announcing under a new id on the same hostname
-  # across a harness restart, which the unique constraint does not see as a
-  # repeat at all. The name is the part a reader actually compares ("Johns-Mac-mini"
-  # printed twelve times), so it is the part this groups on.
-  #
-  # First-occurrence order, not sorted-by-root: the list is already newest
-  # group first via `last_seen_at`, and re-sorting by root would undo that.
+  # Groups rows for the same checkout seen under several ids (a device
+  # re-announcing under a new id), keyed on root and device name. Nothing is
+  # hidden: every row stays, individually offboardable. First-occurrence order
+  # keeps the recency sort.
+  # See knowledge/web, "Working copy rows".
   defp group_by_root(rows) do
     order = rows |> Enum.map(&group_key/1) |> Enum.uniq()
     groups = Enum.group_by(rows, &group_key/1)
@@ -150,7 +105,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     |> Enum.find(&(&1.harness.id == working_copy_id))
   end
 
-  # Keyed by the agent, which is what a conversation belongs to now.
+  # Keyed by agent: a conversation belongs to an agent.
   defp transcripts(scope, project) do
     scope
     |> Conversations.list_agent_conversations(project.id)
@@ -172,29 +127,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       heading: WorkingCopies.display_name(harness),
       agents: on_this_copy,
       chats: chats,
-      # The copy's totals, summed across its agents. A list row has space for
-      # one number and the question it answers — has anything been said here
-      # lately — is about the copy, not about which thread it was said in.
+      # The copy's totals, summed across its agents.
       message_count: Enum.sum(Enum.map(chats, & &1.message_count)),
       last_message_at: latest,
       last_message: latest && Liveness.since(latest, now),
       liveness: Liveness.working_copy(on_this_copy, now),
-      # Whether anything is holding this checkout, read from the registry rather
-      # than from a column — the entry is live by construction, since Registry
-      # drops it when the channel dies.
-      #
-      # Distinct from liveness, which reports what the agents last said. A copy
-      # nothing is serving has no agent that can say anything, and until this
-      # existed the page showed no difference between that and a quiet one.
+      # Whether a harness holds this checkout, from the registry (live by
+      # construction). Distinct from liveness, which is what agents last said.
       served: match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(harness.id)),
       missing: missing(harness, now)
     }
   end
 
-  # An agent with no conversation yet contributes nothing rather than an empty
-  # one: a link to a transcript that does not exist is a page that 404s, and
-  # this runs on every broadcast, so creating one here would mint a row every
-  # time somebody opens the list.
+  # An agent with no conversation yet contributes nothing; never create one here.
   defp chat(agent, transcripts) do
     case Map.get(transcripts, agent.id) do
       nil ->
@@ -221,26 +166,14 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     |> Enum.max(DateTime, fn -> nil end)
   end
 
-  # Whether the checkout is still at its root, as its own machine last reported.
-  #
-  # Deliberately separate from `liveness`, which is about agents. A copy can be
-  # missing and have an agent that still looks alive — a lane whose process
-  # outlived the directory it was working in — and collapsing the two into one
-  # verdict would hide exactly the case worth showing.
-  #
-  # `nil` means nothing to say: either the path is there, or no harness has
-  # looked. Those are one state on purpose, because neither is a reason to warn
-  # anybody, and distinguishing them would put "we have not checked" on every
-  # row of a page that is mostly fine.
+  # Whether the checkout is gone from its root, as its machine last reported.
+  # Separate from `liveness`: an agent can outlive its directory. nil covers both
+  # "present" and "never checked"; neither warrants a warning.
   defp missing(%{path_missing_since: nil}, _now), do: nil
   defp missing(%{path_missing_since: at}, now), do: %{since: Liveness.since(at, now)}
 
-  # The machine this copy is on, when we have been told.
-  #
-  # `nil` is a real answer with two histories behind it — never reported, or the
-  # machine was destroyed and `device_id` nullified — and they are
-  # indistinguishable from here. Neither is claimed: the row says it has no
-  # machine and stops there.
+  # The machine this copy is on, or nil (never reported, or the device was
+  # destroyed; indistinguishable here).
   defp device(%{device: %Device{} = device}), do: device
   defp device(_working_copy), do: nil
 

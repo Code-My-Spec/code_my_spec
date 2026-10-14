@@ -1551,6 +1551,10 @@ defmodule CodeMySpecSpex.Fixtures do
   def watch_graph(%Scope{active_project_id: project_id} = scope) do
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
 
+    # Each project belongs to this test's teardown, including secondary projects.
+    # A named callback also handles repeated starts without accumulating callbacks.
+    ExUnit.Callbacks.on_exit({:stop_graph_watcher, project_id}, fn -> stop_watching(scope) end)
+
     # `GraphInputs.subscribe/1` is a plain `Phoenix.PubSub.subscribe/2`, which is
     # not idempotent per process: a second subscription from the same pid to the
     # same topic is a second registry entry, and `Phoenix.PubSub.broadcast/3`
@@ -1785,18 +1789,15 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Stop every graph watcher, so nothing new starts during teardown.
+  Stop every project's graph projector, so nothing new starts during teardown.
 
-  Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
-  project-scoped GenServer under a dynamic supervisor and outlives the scenario
-  that started it, so its debounce timer can fire *after* the drain and spawn
-  another wake into a sandbox that is about to go away. Stopping the watchers
-  first closes that window.
+  A projector outlives the scenario that started it and drains the moment a
+  mark lands, so it can start work into a sandbox that is about to go away.
 
   Every one rather than this scope's, because teardown runs before the scope is
-  in hand and because a spex run gives each scenario its own project — so the
-  watchers alive at the end of one are that one's, and a watcher belonging to
-  nothing is what a straggler is.
+  in hand — which is only right when nothing runs beside the caller. From an
+  async test this stops every concurrent test's projector; use
+  `stop_watching/1` there.
   """
   @spec stop_graph_watchers() :: :ok
   def stop_graph_watchers do
@@ -4688,18 +4689,26 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec spec_file_path(map(), map()) :: String.t()
   #
-  # `criterion_id` is either a real criterion's own database id (a struct
-  # from `story.criteria`) or the number `GetStory` shows the agent under
-  # the same key — matching on both is what lets either caller through.
-  def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
+  # The criterion is either a real one (it carries `:number`, and `:id` is its
+  # database id) or the map `GetStory` parses, whose `:id` is the number the
+  # agent sees. Each is matched on its own key: matching either key against
+  # both took a criterion whose *id* equalled another's *number* — which only
+  # happens on a fresh database, where ids are small (892 in a gate shard).
+  def spec_file_path(%{id: story_id}, %{id: _} = wanted) do
     story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
 
     criterion =
-      Enum.find(story.criteria, &(&1.id == criterion_id or &1.number == criterion_id))
+      case wanted do
+        %{number: number} when is_integer(number) ->
+          Enum.find(story.criteria, &(&1.id == wanted.id))
+
+        %{id: number} ->
+          Enum.find(story.criteria, &(&1.number == number))
+      end
 
     unless criterion do
       raise ArgumentError,
-            "criterion #{inspect(criterion_id)} does not belong to story #{inspect(story_id)}"
+            "criterion #{inspect(wanted.id)} does not belong to story #{inspect(story_id)}"
     end
 
     BddSpecs.spec_file_path(story, criterion)
