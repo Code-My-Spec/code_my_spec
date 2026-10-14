@@ -1055,6 +1055,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
            project_brief: Keyword.get(opts, :project_brief),
            provider_brief: Keyword.get(opts, :provider_brief),
            app_url: Keyword.get(opts, :app_url),
+           scratch_dir: scratch_dir(Keyword.fetch!(opts, :agent_id)),
            tool_index: Keyword.get(opts, :tool_index),
            role_brief: Keyword.get(opts, :role_brief)
          )
@@ -1082,7 +1083,11 @@ defmodule CmsHarness.Agents.Engine.Impl do
        |> Keyword.put(:tool_result_spill, dir: spill_dir(Keyword.fetch!(opts, :agent_id)))
        |> Keyword.put(:context, %{
          working_directory: working_copy,
-         allowed_paths: [working_copy, spill_dir(Keyword.fetch!(opts, :agent_id))],
+         allowed_paths: [
+           working_copy,
+           spill_dir(Keyword.fetch!(opts, :agent_id)),
+           scratch_dir(Keyword.fetch!(opts, :agent_id))
+         ],
          bash_restricted: true,
          # Which agent this is, and it has to be here rather than only in
          # `Agents.tool_context/1` — that function had no production caller at
@@ -1119,6 +1124,21 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @spec spill_dir(String.t()) :: String.t()
   def spill_dir(agent_id),
     do: Path.join([CmsHarness.Config.local_state_dir(), "agent_output", agent_id])
+
+  @doc """
+  Where an agent's own disposable fixtures -- a mock server, its log, anything
+  a QA run builds through `bash` to test against -- may be written and read
+  back.
+
+  f72b7ba3: QA builds fixtures like this under an ad hoc `mktemp` path, which
+  `bash` (a guardrail, not a sandbox) can always write to, but the read tool
+  refused -- outside `working_copy` and `spill_dir`, the only paths `Alloy`'s
+  own tools allow. This path is advertised instead (`RoleBrief`'s QA entry),
+  so a fixture built here is one the same agent can read back.
+  """
+  @spec scratch_dir(String.t()) :: String.t()
+  def scratch_dir(agent_id),
+    do: Path.join([CmsHarness.Config.local_state_dir(), "agent_scratch", agent_id])
 
   defp prune_spilled(dir) do
     cutoff = System.os_time(:second) - @spill_max_age_seconds
