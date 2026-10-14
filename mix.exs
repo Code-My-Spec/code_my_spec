@@ -354,13 +354,45 @@ defmodule CodeMySpec.MixProject do
     if Mix.env() == :harness do
       [
         cms_harness: [
-          steps: [:assemble, &copy_bcrypt_nif_dll/1, &copy_mcp_relay/1, :tar]
+          steps: [
+            :assemble,
+            &copy_bcrypt_nif_dll/1,
+            &copy_onnxruntime_dll/1,
+            &copy_mcp_relay/1,
+            :tar
+          ]
         ]
       ]
     else
       []
     end
   end
+
+  # Put the bundled runtime beside erl.exe so Windows finds it before the
+  # incompatible Windows ML runtime in System32. Run before tar/MSI packaging.
+  defp copy_onnxruntime_dll(release), do: copy_onnxruntime_dll(release, :os.type())
+
+  @doc false
+  def copy_onnxruntime_dll(release, {:win32, _}) do
+    bin =
+      case Path.wildcard(Path.join(release.path, "erts-*/bin")) do
+        [bin] -> bin
+        _ -> Mix.raise("Expected one bundled ERTS bin directory for Windows ONNX Runtime")
+      end
+
+    dlls = Path.wildcard(Path.join(release.path, "lib/ortex-*/priv/native/onnxruntime*.dll"))
+
+    unless Enum.any?(dlls, &(Path.basename(&1) == "onnxruntime.dll")) do
+      Mix.raise(
+        "Missing bundled onnxruntime.dll beside the ortex NIF; refusing Windows harness release"
+      )
+    end
+
+    Enum.each(dlls, &File.cp!(&1, Path.join(bin, Path.basename(&1))))
+    release
+  end
+
+  def copy_onnxruntime_dll(release, _os), do: release
 
   # bcrypt_elixir's Makefile names its NIF `bcrypt_nif.so` on every OS, but the
   # Windows BEAM appends `.dll` when loading a NIF — so on Windows it never finds

@@ -87,6 +87,21 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
+      # Avoid ort-sys's unavailable Windows download from parcel.pyke.io.
+      # Link against Microsoft's matching runtime and bundle its DLLs below.
+      - name: Download ONNX Runtime (Windows)
+        if: runner.os == 'Windows'
+        env:
+          ORT_VERSION: '1.19.2'
+        run: |
+          curl -fsSL -o ort.zip \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-win-x64-${ORT_VERSION}.zip"
+          unzip -q ort.zip -d "$RUNNER_TEMP"
+          ort_lib="$RUNNER_TEMP/onnxruntime-win-x64-${ORT_VERSION}/lib"
+          test -f "$ort_lib/onnxruntime.lib"
+          test -f "$ort_lib/onnxruntime.dll"
+          echo "ORT_LIB_LOCATION=$ort_lib" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -110,6 +125,12 @@ jobs:
         run: |
           rm -rf _build/harness release/
           mix compile --warnings-as-errors
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            native="_build/harness/lib/ortex/priv/native"
+            test -d "$native"
+            cp "$ORT_LIB_LOCATION"/onnxruntime*.dll "$native/"
+            test -f "$native/onnxruntime.dll"
+          fi
           mix release cms_harness
           cp _build/harness/cms_harness-*.tar.gz "${{ matrix.asset }}"
           ls -la "${{ matrix.asset }}"
