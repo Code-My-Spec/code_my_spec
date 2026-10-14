@@ -21,6 +21,7 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
   `Assignment.advance/4`, which an explicit assignment still reaches.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents

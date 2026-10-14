@@ -16,7 +16,7 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
   `inbound_probe_default_test.exs` is: the claim is about *our* decision
   before any provider write happens, not about what a real account holds.
 
-  `async: false`: `fake_providers/1` puts `Req.Test` in shared mode, global
+  `async: true`: `fake_providers/1` puts `Req.Test` in shared mode, global
   to the VM.
   """
   use CodeMySpecTest.DataCase, async: false

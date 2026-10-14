@@ -10,7 +10,7 @@ defmodule CodeMySpec.AgentsEditRecordingTest do
   These assert the path that actually runs in production: envelope in, row out.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

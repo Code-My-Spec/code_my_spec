@@ -24,14 +24,14 @@ defmodule CodeMySpecWeb.DevGraphLive do
   thing to watch is the set emptying as the recompute consumes what was
   announced.
 
-  While the event path serves (`Shadow.inverted?/0`), the fingerprint cannot
+  While the event path serves (`GraphStore.inverted?/0`), the fingerprint cannot
   judge it: handlers settle a row from the observation and stamp no
   fingerprint, so every row the pass wrote before the flip reads as "moved
   past" the moment any input moves, whether or not the verdict did — 447 of
   1,134 components on dev the first time this panel was read after the flip,
   every one of them right. So the panel then recomputes every entity from its
   inputs, in memory, and compares that with what is served, row for row and
-  edge for edge. Nothing here reads the shadow.
+  edge for edge. Nothing here reads the rows.
 
   A set that does not empty is the finding. It means an input moved and nothing
   said so, and it names the entities rather than leaving it to be inferred.

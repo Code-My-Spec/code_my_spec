@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Cms.GraphVerifyTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import ExUnit.CaptureIO
   import CodeMySpec.UsersFixtures

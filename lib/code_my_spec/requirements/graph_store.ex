@@ -1,8 +1,8 @@
-defmodule CodeMySpec.Requirements.Shadow do
+defmodule CodeMySpec.Requirements.GraphStore do
   @moduledoc """
   Reads and writes the requirement graph's rows, for the event projection.
 
-  `ShadowProjector` decides what each entity's requirements are; this is where
+  `IncrementalGraph` decides what each entity's requirements are; this is where
   those answers land in `requirements` and `requirement_edges`. Writes are per
   entity and per event: `write/3` replaces what one computation covered,
   `put_verdict/2` and `put_verdicts/5` move a verdict a handler already knew,
@@ -10,9 +10,6 @@ defmodule CodeMySpec.Requirements.Shadow do
   `write_edges/3` writes an edge set as a difference. The projection checks —
   `projected?/1`, `definitions_covered?/2`, `incomplete_entities/2` — tell the
   projector when a vantage's rows cannot be trusted and must be seeded.
-
-  The name is historical: this was the shadow projection, compared against the
-  batched pass until the event path took over and the pass was removed.
   """
 
   import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2, select: 3]
@@ -47,7 +44,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   @type entity :: {String.t(), term()}
 
   @doc """
-  Replace the shadow rows for everything this computation covered.
+  Replace the graph rows for everything this computation covered.
 
   `covered` and the nodes' own owners are deliberately separate inputs.
   `RequirementGraph.compute_entity/4` answers for a component's whole family —
@@ -67,7 +64,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   resolve it. The edge was still in the table and gone from the graph.
 
   Measured 2026-09-17, on a project with 27 edges: creating a component through
-  the real surface dropped the shadow's resolvable topology to 12 while the pass
+  the real surface dropped the rows' resolvable topology to 12 while the pass
   went to 33. It was invisible for as long as it existed because `log/1`
   reported node counts only, and only reprojecting topology in the same drain
   put the ids back — so a verdict-only drain orphaned edges permanently.
@@ -321,7 +318,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   @doc """
   Set one requirement's verdict, without recomputing anything around it.
 
-  What an event handler writes. `Shadow.write/3` replaces everything an entity
+  What an event handler writes. `GraphStore.write/3` replaces everything an entity
   owns and is what a recompute needs; this touches the single row the event
   settled and leaves its siblings alone — which is the whole difference between
   applying an event and re-deriving from one.
@@ -329,8 +326,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   Answers `{:ok, 0}` when no row matched, and that is information rather than a
   failure: the projection only holds rows the seed created, so a miss means the
   event named an entity this vantage has never projected. The caller counts
-  those — a handler quietly writing nothing is exactly the silent failure the
-  shadow exists to catch.
+  those — a handler quietly writing nothing is a silent failure otherwise.
   """
   @spec put_verdict(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def put_verdict(%Scope{} = scope, change) do
@@ -587,10 +583,8 @@ defmodule CodeMySpec.Requirements.Shadow do
   nodes has to call this, which is the same small set of events that already
   falls back to a recompute.
 
-  Stored as the pair of node keys the edge actually is, not as row ids. The
-  shadow's ids come from their own sequence, so an id-keyed edge would point at
-  a different requirement in each table — not missing, *wrong*, and a diff
-  comparing ids would be comparing noise.
+  Stored as the pair of node keys the edge actually is, not as row ids, so a
+  diff compares what the edge means rather than which rows happen to carry it.
   """
   @spec write_edges(Scope.t(), [%{from: tuple(), to: tuple()}], map() | nil) ::
           {:ok, non_neg_integer()}
@@ -857,7 +851,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   defp covered?(held, expected),
     do: MapSet.size(held) == 0 or MapSet.equal?(held, expected)
 
-  @doc "Forget the shadow projection for this vantage, so it rebuilds from scratch."
+  @doc "Forget the rows projection for this vantage, so it rebuilds from scratch."
   @spec clear(Scope.t()) :: :ok
   def clear(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     {component_ids, story_ids} = entity_ids(project_id)
@@ -985,7 +979,7 @@ defmodule CodeMySpec.Requirements.Shadow do
   end
 
   # `entity_id` as text on both sides: a component's is a uuid and a story's is
-  # a bigint, and the shadow stores the pair rather than pointing at a row.
+  # a bigint, and the rows store the pair rather than pointing at a row.
   defp owner_key(component_id, _story, _project, _issue, name) when not is_nil(component_id),
     do: {"component", component_id, name}
 

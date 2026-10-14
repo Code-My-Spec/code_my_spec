@@ -165,7 +165,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # `promoted_version`, and `stories_exist` and `work_dispatched` are about the
   # set rather than about any row.
   #
-  # Every story, not only the released ones. `Shadow.sweep/2` matches on name
+  # Every story, not only the released ones. `GraphStore.sweep/2` matches on name
   # and entity type and can only touch rows that exist, so the parked stories
   # this carries are swept over harmlessly — and filtering here would mean
   # keeping `Preloader`'s `ready_for_dev` gate in a second place, where it would

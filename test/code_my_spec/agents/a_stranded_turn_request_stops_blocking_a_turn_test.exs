@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.AStrandedTurnRequestStopsBlockingATurnTest do
   Sibling of [`AReapedAgentCanBeAdmittedAgainTest`] — there the agent comes back
   from a reap, here it never appears to have left.
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   import Ecto.Query

@@ -25,6 +25,7 @@ defmodule CodeMySpecTest.GraphHelpersTest do
   pass, and `personas_complete` was always there. Green either way, which is the
   property that makes a helper test worthless.
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   import CodeMySpecTest.GraphHelpers

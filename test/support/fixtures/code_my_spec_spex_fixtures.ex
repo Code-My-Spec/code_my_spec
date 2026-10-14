@@ -169,11 +169,11 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphReport
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.AcceptanceCriteria
@@ -1755,7 +1755,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def forget_projection(%Scope{} = scope) do
     scope
     |> Projection.vantages()
-    |> Enum.each(&Shadow.clear(%{scope | active_working_copy_id: &1}))
+    |> Enum.each(&GraphStore.clear(%{scope | active_working_copy_id: &1}))
   end
 
   @doc """
@@ -1830,7 +1830,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stop_watching(Scope.t()) :: :ok
   def stop_watching(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :shadow}) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
         :ok

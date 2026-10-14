@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Requirements.OrchestrationParentRehydrationTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures

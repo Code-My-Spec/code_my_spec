@@ -19,7 +19,7 @@ defmodule CodeMySpec.Agents.TransportReachesAConnectedHarnessTest do
   that it finds a connected copy and does not find an absent one. What happens
   on the far side is the round-trip test's subject.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

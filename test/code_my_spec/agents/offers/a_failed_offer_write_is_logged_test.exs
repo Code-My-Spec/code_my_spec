@@ -3,7 +3,7 @@ defmodule CodeMySpec.Agents.Offers.AFailedOfferWriteIsLoggedTest do
   f5699eb9: an offer that could not be written answered nil and said nothing,
   so an empty offers table could not be told from one nobody wrote to.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import ExUnit.CaptureLog
 

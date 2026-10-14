@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   for UAT, and the node says which (a86c85dd).
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -13,11 +13,11 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   alias CodeMySpec.Provisioning
   alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
 
   setup do
     scope = full_scope_fixture()
@@ -133,7 +133,7 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   end
 
   defp stored_deploy(story) do
-    Shadow.event_target()
+    GraphStore.event_target()
     |> where([n], n.story_id == ^story.id and n.name == "deploy")
     |> select([n], n.details)
     |> Repo.one()

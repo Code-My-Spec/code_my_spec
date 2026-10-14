@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Knowledge.ProjectKnowledgeSelectedCopyTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import CodeMySpec.UsersFixtures,
     only: [fixture_environment: 1, full_scope_fixture: 0, put_fixture_environment: 2]

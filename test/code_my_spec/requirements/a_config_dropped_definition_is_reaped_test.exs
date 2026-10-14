@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
   writer. `deploy` under a legacy nil `devops` is the case (v2.0.177).
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -13,9 +13,9 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
 
   setup do
     scope = full_scope_fixture()
@@ -26,28 +26,28 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
 
   test "a story recompute on the event path reaps deploy once devops is nil", ctx do
     event_write(ctx.scope, ctx.story)
-    assert "deploy" in names(Shadow.event_target(), ctx.story.id)
+    assert "deploy" in names(GraphStore.event_target(), ctx.story.id)
 
     set_devops(ctx.scope, nil)
     {:ok, %{reaped: reaped}} = event_write(ctx.scope, ctx.story)
 
-    refute "deploy" in names(Shadow.event_target(), ctx.story.id)
+    refute "deploy" in names(GraphStore.event_target(), ctx.story.id)
     assert reaped >= 1
   end
 
   test "a vantage holding deploy under nil devops is not established, so it reseeds", ctx do
     event_write(ctx.scope, ctx.story)
-    assert Shadow.definitions_covered?(ctx.scope, defined(ctx.scope))
+    assert GraphStore.definitions_covered?(ctx.scope, defined(ctx.scope))
 
     set_devops(ctx.scope, nil)
-    refute Shadow.definitions_covered?(ctx.scope, defined(ctx.scope))
+    refute GraphStore.definitions_covered?(ctx.scope, defined(ctx.scope))
   end
 
   defp event_write(scope, story) do
     {:ok, loaded} = Preloader.load(scope)
     config = Configurations.get_or_create(scope)
     {covered, nodes} = RequirementGraph.compute_entity(scope, loaded, config, {"story", story.id})
-    Shadow.write(scope, covered, nodes)
+    GraphStore.write(scope, covered, nodes)
   end
 
   defp defined(scope),

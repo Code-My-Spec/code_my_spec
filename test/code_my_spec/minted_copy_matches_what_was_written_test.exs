@@ -23,7 +23,7 @@ defmodule CodeMySpec.MintedCopyMatchesWhatWasWrittenTest do
   never joins, which is the one thing the key is carried for.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.Main.SearchAnswersMatchesWordsNotAPhraseTest do
   escalated (2026-10-13).
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.QuestionRoutingHelpers
 

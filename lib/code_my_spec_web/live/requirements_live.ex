@@ -219,7 +219,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
   def handle_info({:watcher_synced, _info}, socket), do: {:noreply, socket}
 
-  # The event writer finished a pass. Only `ShadowProjector` announces this,
+  # The event writer finished a pass. Only `IncrementalGraph` announces this,
   # and only when it is the graph's writer: a sync it consumed can rewire edges
   # without changing any node, and the page has to show that too.
   def handle_info({:graph_updated, project_id}, %{assigns: %{scope: scope}} = socket)

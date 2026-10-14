@@ -21,13 +21,13 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   below — and a row nothing observes stays as it is, which is the same trust
   the pass places in its stored rows.
   """
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case
-
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.StoriesFixtures
   alias CodeMySpec.Users.Scope
   alias CodeMySpecSpex.Fixtures
@@ -44,8 +44,8 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
       scope = %{project_scope | active_working_copy_id: nil}
       StoriesFixtures.story_fixture(scope)
       CodeMySpec.Requirements.recompute(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       # A row standing at the wrong answer, with nothing coming to correct it.
       name = flip_one_verdict(scope)
@@ -70,8 +70,8 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
       StoriesFixtures.story_fixture(mine)
       CodeMySpec.Requirements.recompute(mine)
       CodeMySpec.Requirements.recompute(other)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(mine)
-      :ok = ShadowProjector.settle(mine.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(mine)
+      :ok = IncrementalGraph.settle(mine.active_project_id)
 
       assert disagreements(other) == [],
              """
@@ -90,8 +90,8 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
       scope = %{project_scope | active_working_copy_id: nil}
       story = StoriesFixtures.story_fixture(scope)
       CodeMySpec.Requirements.recompute(scope)
-      {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       name = flip_one_verdict(scope)
       restart_projector(scope)
@@ -100,7 +100,7 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
       # handler settles every requirement its profiles move from what is true
       # now, which is what puts the flipped row back.
       {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{description: "moved"})
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       refute Enum.any?(disagreements(scope), &match?({^name, _live, _shadow}, &1)),
              """
@@ -123,14 +123,14 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   # registered name, which is a start_child call that can block rather than a
   # projector arriving. Terminating is how a projector goes away for good.
   defp restart_projector(%Scope{} = scope) do
-    pid = GenServer.whereis(ShadowProjector.via(scope.active_project_id))
+    pid = GenServer.whereis(IncrementalGraph.via(scope.active_project_id))
     ref = Process.monitor(pid)
     :ok = DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
     assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
 
-    {:ok, fresh} = ShadowProjector.ensure_projecting(scope)
+    {:ok, fresh} = IncrementalGraph.ensure_projecting(scope)
     refute fresh == pid, "the projector did not go away, so nothing arrived"
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   # Store the opposite of what the graph says, for one row at this scope's

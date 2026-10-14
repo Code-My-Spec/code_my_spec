@@ -35,17 +35,17 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
 
   ## Why a unit test rather than a spex
 
-  It exercises the shadow projector directly, and the shadow is development
+  It exercises the incremental graph directly, and the rows are development
   scaffolding — no rule or criterion on story 1020 asserts on it, deliberately.
   Testing the scaffolding is worth doing; claiming it in the story is not.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.{Projection, ShadowProjector}
+  alias CodeMySpec.Requirements.{IncrementalGraph, Projection}
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -58,12 +58,12 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
   @impl_path "lib/example_context.ex"
 
   defp settle(scope) do
-    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   # What the event path says about this component's implementation file at this
-  # checkout. Read from the shadow rows because the endpoint serves the pass's
+  # checkout. Read from the graph rows because the endpoint serves the pass's
   # answer, and the pass is not what is under test.
   defp served_verdict(scope, component_id) do
     base =

@@ -1,24 +1,24 @@
-defmodule CodeMySpec.Requirements.ShadowTest do
+defmodule CodeMySpec.Requirements.GraphStoreTest do
   @moduledoc """
   The event-based projection against the one it is replacing.
 
   The diff *is* the test. Every assertion here is a statement about the two
   projections agreeing — not about the mechanism that got them there — because
   agreement is the whole claim and any test of the mechanism would pass just as
-  happily on a shadow that is confidently wrong.
+  happily on rows that are confidently wrong.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case
-
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias CodeMySpec.ComponentsFixtures
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphStore
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Stories.AcceptanceCriteria
 
   setup :register_log_in_setup_account
@@ -34,7 +34,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     # concurrent test flips, so a watcher waking in the window where it reads
     # false consumes marks this file's projector needed.
     #
-    # It presents as the projector keeping the verdict it had and `Shadow.diff/1`
+    # It presents as the projector keeping the verdict it had and `GraphStore.diff/1`
     # reporting a disagreement that is really a missed delivery. Measured at
     # roughly one run in nine, and caught by the analyzer after nine clean local
     # runs had already called it settled.
@@ -60,17 +60,17 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     :ok
   end
 
-  defp project_shadow(scope) do
-    {:ok, pid} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+  defp project_graph(scope) do
+    {:ok, pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
     pid
   end
 
   test "equal satisfaction cannot hide changed stored details", ctx do
     import Ecto.Query
     project_live(ctx.scope)
-    project_shadow(ctx.scope)
-    source = Shadow.event_target()
+    project_graph(ctx.scope)
+    source = GraphStore.event_target()
 
     {changed, _} =
       CodeMySpec.Repo.update_all(
@@ -86,45 +86,45 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     assert Enum.any?(report.sample, &String.contains?(&1, "details"))
   end
 
-  describe "a seeded shadow" do
+  describe "seeded rows" do
     test "agrees with the live projection on a project it has never seen", ctx do
       scope = ctx.scope
       ComponentsFixtures.component_fixture(scope)
       create_story(scope, title: "A story", description: "one")
 
       project_live(scope)
-      project_shadow(scope)
+      project_graph(scope)
 
       report = RequirementGraph.served_vs_recomputed(scope)
 
       assert report.served > 0,
              "the live projection wrote nothing, so there is nothing to compare"
 
-      assert report.missing == 0, "shadow is missing rows: #{inspect(report.sample)}"
-      assert report.disagree == 0, "shadow disagrees: #{inspect(report.sample)}"
+      assert report.missing == 0, "rows are missing: #{inspect(report.sample)}"
+      assert report.disagree == 0, "rows disagree: #{inspect(report.sample)}"
 
       assert report.served_edges > 0,
              "the live projection wrote no edges, so the topology comparison proves nothing"
 
       assert report.edges_missing == 0,
-             "a seeded shadow is missing #{report.edges_missing} of #{report.served_edges} " <>
+             "seeded rows are missing #{report.edges_missing} of #{report.served_edges} " <>
                "edge(s): #{inspect(report.sample)}"
 
       assert report.edges_extra == 0,
-             "a seeded shadow holds #{report.edges_extra} edge(s) the pass does not: " <>
+             "seeded rows hold #{report.edges_extra} edge(s) the pass does not: " <>
                "#{inspect(report.sample)}"
     end
   end
 
-  describe "a maintained shadow" do
+  describe "maintained rows" do
     test "picks up an entity that appeared after it was seeded", ctx do
       scope = ctx.scope
       create_story(scope, title: "A story", description: "one")
 
       project_live(scope)
-      project_shadow(scope)
+      project_graph(scope)
 
-      # An entity the shadow's seed could not have seen, created through the
+      # An entity the rows' seed could not have seen, created through the
       # real surface rather than by poking the projector. This is the
       # assertion the rename it replaced could not make: a rename moves a
       # story's fingerprint without moving any verdict, so the diff read zero
@@ -136,12 +136,12 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       create_story(scope, title: "A second story", description: "two")
 
       project_live(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       report = RequirementGraph.served_vs_recomputed(scope)
 
-      assert report.missing == 0, "shadow is missing rows: #{inspect(report.sample)}"
-      assert report.disagree == 0, "shadow disagrees: #{inspect(report.sample)}"
+      assert report.missing == 0, "rows are missing: #{inspect(report.sample)}"
+      assert report.disagree == 0, "rows disagree: #{inspect(report.sample)}"
     end
 
     test "a handled event still settles every requirement it can move", ctx do
@@ -149,7 +149,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       story = create_story(scope, title: "To be sealed", description: "three amigos")
 
       project_live(scope)
-      project_shadow(scope)
+      project_graph(scope)
 
       # Sealing moves `three_amigos_complete`. It goes through
       # `Stories.update_story/3`, so if that emits an event the projector
@@ -168,14 +168,14 @@ defmodule CodeMySpec.Requirements.ShadowTest do
         )
 
       project_live(scope)
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       report = RequirementGraph.served_vs_recomputed(scope)
 
       assert report.disagree == 0,
              "a handled story event left a requirement stale: #{inspect(report.sample)}"
 
-      assert report.missing == 0, "shadow is missing rows: #{inspect(report.sample)}"
+      assert report.missing == 0, "rows are missing: #{inspect(report.sample)}"
     end
 
     test "consumes the marks it acted on", ctx do
@@ -183,12 +183,12 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       create_story(scope, title: "A story", description: "one")
 
       project_live(scope)
-      project_shadow(scope)
+      project_graph(scope)
 
       GraphInputs.announce(scope, "Test", [], :project_wide)
       assert Invalidations.pending(scope.active_project_id) != []
 
-      :ok = ShadowProjector.settle(scope.active_project_id)
+      :ok = IncrementalGraph.settle(scope.active_project_id)
 
       assert Invalidations.pending(scope.active_project_id) == [],
              "a mark the projector acted on must not be handled twice"
@@ -211,7 +211,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       component = ComponentsFixtures.component_fixture(ctx.scope)
 
       project_live(ctx.scope)
-      project_shadow(ctx.scope)
+      project_graph(ctx.scope)
 
       {:ok, story: story, component: component}
     end
@@ -220,11 +220,11 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       {:ok, _} =
         CodeMySpec.Issues.create_issue(ctx.scope, %{
           title: "something is wrong",
-          description: "filed during the shadow diff",
+          description: "filed during the rows-vs-recompute diff",
           severity: :medium
         })
 
-      assert_shadow_agrees(ctx.scope, "Issues")
+      assert_graph_agrees(ctx.scope, "Issues")
     end
 
     test "AcceptanceCriteria reaches the event path", ctx do
@@ -235,7 +235,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
           %{description: "a criterion that moves the graph"}
         )
 
-      assert_shadow_agrees(ctx.scope, "AcceptanceCriteria")
+      assert_graph_agrees(ctx.scope, "AcceptanceCriteria")
     end
 
     test "Questions reaches the event path", ctx do
@@ -244,7 +244,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
           text: "does this reach the event path?"
         })
 
-      assert_shadow_agrees(ctx.scope, "Questions")
+      assert_graph_agrees(ctx.scope, "Questions")
     end
 
     test "Components reaches the event path", ctx do
@@ -253,16 +253,16 @@ defmodule CodeMySpec.Requirements.ShadowTest do
           name: "Appeared",
           type: "context",
           module_name: "Appeared",
-          description: "a component created after the shadow was seeded"
+          description: "a component created after the rows were seeded"
         })
 
-      assert_shadow_agrees(ctx.scope, "Components")
+      assert_graph_agrees(ctx.scope, "Components")
     end
 
     test "Stories reaches the event path", ctx do
       create_story(ctx.scope, title: "Appeared", description: "after seeding")
 
-      assert_shadow_agrees(ctx.scope, "Stories")
+      assert_graph_agrees(ctx.scope, "Stories")
     end
 
     test "accepting an issue on a story moves that story's verdict", ctx do
@@ -280,11 +280,11 @@ defmodule CodeMySpec.Requirements.ShadowTest do
       # a writer naming nothing but `:project` would still agree.
       #
       # Accepting one flips `story_issues_resolved` from true to false for that
-      # story alone. If `Issues` named only the project, the shadow would keep
+      # story alone. If `Issues` named only the project, the rows would keep
       # the old verdict and this reads as `disagree`.
       {:ok, _} = CodeMySpec.Issues.accept_issue(ctx.scope, issue)
 
-      assert_shadow_agrees(ctx.scope, "Issues (accepted)")
+      assert_graph_agrees(ctx.scope, "Issues (accepted)")
     end
   end
 
@@ -503,33 +503,33 @@ defmodule CodeMySpec.Requirements.ShadowTest do
     |> Enum.uniq()
   end
 
-  defp assert_shadow_agrees(scope, writer) do
+  defp assert_graph_agrees(scope, writer) do
     assert_mark_recorded(scope, writer)
 
     project_live(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
 
     report = RequirementGraph.served_vs_recomputed(scope)
 
     assert report.missing == 0,
-           "#{writer} left the shadow missing rows: #{inspect(report.sample)}"
+           "#{writer} left the rows missing rows: #{inspect(report.sample)}"
 
     assert report.disagree == 0,
-           "#{writer} left the shadow disagreeing: #{inspect(report.sample)}"
+           "#{writer} left the rows disagreeing: #{inspect(report.sample)}"
 
-    # Edges too, for the reason `Shadow.log/1` now gates on them: an edge is a
+    # Edges too, for the reason `GraphStore.log/1` now gates on them: an edge is a
     # prerequisite, so a missing one lets work start before the thing it waits
     # on and an extra one blocks work that is ready. Both change the answer to
     # "what should I do next", and this asserted neither — a writer that got
     # every verdict right and the whole topology wrong passed here.
     assert report.edges_missing == 0,
-           "#{writer} left the shadow missing #{report.edges_missing} edge(s) " <>
-             "(live #{report.served_edges}, shadow #{report.computed_edges}): " <>
+           "#{writer} left the rows missing #{report.edges_missing} edge(s) " <>
+             "(live #{report.served_edges}, rows #{report.computed_edges}): " <>
              inspect(report.sample)
 
     assert report.edges_extra == 0,
-           "#{writer} left the shadow holding #{report.edges_extra} edge(s) the pass does not " <>
-             "(live #{report.served_edges}, shadow #{report.computed_edges}): " <>
+           "#{writer} left the rows holding #{report.edges_extra} edge(s) the pass does not " <>
+             "(live #{report.served_edges}, rows #{report.computed_edges}): " <>
              inspect(report.sample)
   end
 
@@ -557,7 +557,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
            #{writer} recorded no invalidation.
 
            Every writer whose table the fingerprint hashes records one, so a
-           silent writer means the shadow will never hear about this change —
+           silent writer means the rows will never hear about this change —
            a coverage failure in the writer rather than a timing one.
            """
   end
@@ -575,7 +575,7 @@ defmodule CodeMySpec.Requirements.ShadowTest do
 
       # The claim `reduce_to/2` rests on: an entity hashes and answers
       # identically whether the pass that computed it was narrowed or whole. If
-      # that ever stops holding, the shadow diff becomes a report on
+      # that ever stops holding, the rows-vs-recompute diff becomes a report on
       # `compute_entity/4` rather than on the staleness decision.
       assert Enum.all?(alone, &(&1.entity_id == component.id))
 

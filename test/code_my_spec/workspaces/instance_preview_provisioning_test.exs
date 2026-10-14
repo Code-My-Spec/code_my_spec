@@ -13,7 +13,7 @@ defmodule CodeMySpec.Workspaces.InstancePreviewProvisioningTest do
   Measured live, 2026-09-21: an agent told to "deploy" a project had no tool
   that could ever make this true.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures

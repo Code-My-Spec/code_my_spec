@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
@@ -11,10 +11,10 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
   alias CodeMySpec.Requirements.{
     Edge,
     GraphInputs,
+    GraphStore,
+    IncrementalGraph,
     Preloader,
-    Projection,
-    Shadow,
-    ShadowProjector
+    Projection
   }
 
   alias CodeMySpec.Stories
@@ -116,10 +116,10 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
   end
 
   defp settle_both(first, second) do
-    {:ok, _pid} = ShadowProjector.ensure_projecting(first)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(first)
 
     :ok =
-      ShadowProjector.settle(first.active_project_id, [
+      IncrementalGraph.settle(first.active_project_id, [
         first.active_working_copy_id,
         second.active_working_copy_id
       ])
@@ -127,7 +127,7 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
 
   defp child_edge?(scope, component_id) do
     ctx = Preloader.topology_context(scope)
-    source = {Shadow.event_target(), {Shadow.event_edges(), Edge}}
+    source = {GraphStore.event_target(), {GraphStore.event_edges(), Edge}}
     {_nodes, edges} = Projection.load(scope, ctx, source: source)
 
     Enum.any?(edges, fn edge ->

@@ -25,13 +25,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Requirements.StoryIssueGraph
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Requirements.Verification
@@ -105,7 +105,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # A read calls this before it answers, and it used to name `GraphWatcher`
   # outright. That is right while the pass writes `requirements` and wrong the
   # moment `graph_event_is_source` flips: the projector then owns the table
-  # being read, and a read would settle the pass — now writing the shadow — and
+  # being read, and a read would settle the pass — now writing the rows — and
   # be served from rows nothing had settled. It also reaches the projector with
   # the vantage the reader named, which `GraphWatcher` has always folded into
   # its next pass as `requested_vantages` and the projector never heard about.
@@ -118,7 +118,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # seed on a sandbox whose owner was gone. So a read starts the writers in
     # one case only: a project with no rows at all (`start_writers/1`).
     if never_projected?(project_id), do: start_writers(scope)
-    ShadowProjector.settle(project_id, [scope.active_working_copy_id])
+    IncrementalGraph.settle(project_id, [scope.active_working_copy_id])
   end
 
   # A project nothing has ever projected has no writer to settle, and a read
@@ -363,7 +363,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   `reduce_to/2` is what makes this the same computation the partial recompute
   already does — it narrows the two lists and leaves the by-id maps whole, so an
   entity computed alone is hashed and answered identically to the same entity
-  computed inside a larger stale set. That has to hold or the shadow diff would
+  computed inside a larger stale set. That has to hold or the rows-vs-recompute diff would
   be reporting on this function rather than on the decision it exists to test.
 
   Project nodes take the whole context deliberately: their checkers read counts
@@ -406,7 +406,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   # Answers with the project's real id whatever the caller asked with. A mark
   # naming the project carries no id — there is only one — so callers pass
-  # `{"project", nil}`, and handing that back would reach `Shadow.write/3` as
+  # `{"project", nil}`, and handing that back would reach `GraphStore.write/3` as
   # `n.project_id == nil`, which Ecto refuses. The nodes below already carry
   # `project.id`; the covered set has to agree with them.
   def compute_entity(scope, ctx, config, {"project", _id}) do
@@ -775,7 +775,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   entity type — for stories and the project the whole filtered template, for
   each top-level component type its parent- and self-scoped definitions.
 
-  What `Shadow.definitions_covered?/2` compares a vantage's rows against: a
+  What `GraphStore.definitions_covered?/2` compares a vantage's rows against: a
   release that adds or removes a definition leaves rows that no handler can
   bring in line, since handlers settle rows and never create them. Child-scoped
   definitions are left out because whether a child carries one depends on the

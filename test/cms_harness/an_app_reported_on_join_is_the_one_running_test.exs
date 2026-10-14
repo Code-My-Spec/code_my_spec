@@ -21,6 +21,7 @@ defmodule CmsHarness.AnAppReportedOnJoinIsTheOneRunningTest do
   the convergence the issue asks for, not a replacement for them.
   """
 
+  # Sync: `app_instance_rig` sets application env.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.AppInstanceHelpers

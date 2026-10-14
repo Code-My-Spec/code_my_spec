@@ -246,7 +246,7 @@ defmodule CodeMySpec.Requirements.Directives do
   end
 
   # A story's entity_id is an integer from the projection and text from the
-  # shadow, so it is compared as text.
+  # stored rows, so it is compared as text.
   defp number_node(%{entity_type: "story", entity_id: id} = node, numbers),
     do: Map.put(node, :entity_number, Map.get(numbers, to_string(id)))
 

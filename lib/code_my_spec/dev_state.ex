@@ -58,7 +58,7 @@ defmodule CodeMySpec.DevState do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -350,7 +350,7 @@ defmodule CodeMySpec.DevState do
   defp project_report(%Project{} = project) do
     copies = Repo.all(from(w in WorkingCopy, where: w.project_id == ^project.id))
     agents = AgentsRepository.list_every_agent(project_id: project.id)
-    projector = ShadowProjector.status(project.id)
+    projector = IncrementalGraph.status(project.id)
     copy_reports = Enum.map(copies, &copy_report(&1, agents))
 
     %{

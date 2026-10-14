@@ -14,13 +14,13 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
 
   `NodeRepository.replace_edges/3` has always done this properly for the real
   table. This is the same claim for the writer the event path uses — which
-  matters beyond the shadow, because after the swap that writer owns the real
+  matters beyond the rows, because after the swap that writer owns the real
   edges.
   """
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.GraphStore
+  alias CodeMySpec.Requirements.IncrementalGraph
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -41,8 +41,8 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
   # edges pointing at nothing.
   defp project_nodes(scope) do
     CodeMySpec.Requirements.recompute(scope)
-    {:ok, _pid} = ShadowProjector.ensure_projecting(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
   describe "writing a topology that has not moved" do
@@ -60,10 +60,10 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
         )
       ]
 
-      {:ok, first} = Shadow.write_edges(scope, edges)
+      {:ok, first} = GraphStore.write_edges(scope, edges)
       assert first > 0, "the first write should have inserted the edges"
 
-      {:ok, second} = Shadow.write_edges(scope, edges)
+      {:ok, second} = GraphStore.write_edges(scope, edges)
 
       assert second == 0,
              """
@@ -90,7 +90,7 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
           {"project", scope.active_project_id, "architecture_designed"}
         )
 
-      {:ok, _} = Shadow.write_edges(scope, [a, b])
+      {:ok, _} = GraphStore.write_edges(scope, [a, b])
 
       # One edge goes, one arrives, one stays.
       c =
@@ -99,7 +99,7 @@ defmodule CodeMySpec.Requirements.EdgesAreWrittenAsADifferenceTest do
           {"project", scope.active_project_id, "code_generation"}
         )
 
-      {:ok, moved} = Shadow.write_edges(scope, [b, c])
+      {:ok, moved} = GraphStore.write_edges(scope, [b, c])
 
       assert moved == 2,
              """

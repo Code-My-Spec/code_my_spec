@@ -38,6 +38,7 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
   answer worth reading.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Agents

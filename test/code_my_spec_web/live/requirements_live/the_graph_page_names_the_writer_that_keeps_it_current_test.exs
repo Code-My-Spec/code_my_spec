@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.RequirementsLive.TheGraphPageNamesTheWriterThatKeepsItCu
   The graph page's provenance strip names whichever writer keeps the rows
   current, as the graph API does.
 
-  Dev runs the event path (`graph_event_is_source`), where `ShadowProjector`
+  Dev runs the event path (`graph_event_is_source`), where `IncrementalGraph`
   writes and `GraphWatcher` is never started. The page asked only
   `GraphWatcher`, so on 2026-10-12 it read "no watcher — this graph only moves
   when somebody reads it" over a graph the projector had rewired eleven minutes
@@ -11,19 +11,20 @@ defmodule CodeMySpecWeb.RequirementsLive.TheGraphPageNamesTheWriterThatKeepsItCu
   dependency change rewires edges without re-checking any node.
   """
 
+  # Sync: failed under concurrency in the 2026-10-14 async sweep.
   use CodeMySpecSpex.Case, async: false
 
   alias CodeMySpec.Requirements.GraphReport
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup ctx do
-    {:ok, _pid} = ShadowProjector.ensure_projecting(ctx.scope)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(ctx.scope)
 
     :ok =
-      ShadowProjector.settle(ctx.scope.active_project_id, [nil, ctx.scope.active_working_copy_id])
+      IncrementalGraph.settle(ctx.scope.active_project_id, [nil, ctx.scope.active_working_copy_id])
 
     :ok
   end

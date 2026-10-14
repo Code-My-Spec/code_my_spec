@@ -161,7 +161,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
   # renders the same "**Requirements:** 0/0 satisfied" a story with a genuinely
   # missing subgraph would produce. `e13b8ccc` is two agents (1086, 1087)
   # reading that as a framework bug: they linked components, re-ran the call
-  # minutes apart, traced `settle_owner/1` and `Shadow.inverted?/0`, and
+  # minutes apart, traced `settle_owner/1` and `GraphStore.inverted?/0`, and
   # concluded the new per-story projector was broken. The answer was that the
   # stories had never been released, and nothing in the response said so.
   #

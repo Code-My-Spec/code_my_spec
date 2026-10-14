@@ -29,8 +29,8 @@ defmodule CodeMySpec.Requirements.GraphReport do
 
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.ShadowProjector
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -85,7 +85,7 @@ defmodule CodeMySpec.Requirements.GraphReport do
   cannot disagree about whether the graph is being kept current.
   """
   @spec writer_status(Ecto.UUID.t()) :: map() | nil
-  def writer_status(project_id), do: ShadowProjector.status(project_id)
+  def writer_status(project_id), do: IncrementalGraph.status(project_id)
 
   @doc "What to call that writer."
   @spec writer_name() :: String.t()

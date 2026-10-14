@@ -1,8 +1,8 @@
 defmodule CodeMySpec.Requirements.VerificationMeasurementsTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   import ExUnit.CaptureLog
   alias CodeMySpec.Requirements.DrainCost
-  alias CodeMySpec.Requirements.Shadow
+  alias CodeMySpec.Requirements.GraphStore
 
   test "failed drains retain failure and unknown counts in the published report" do
     id = Ecto.UUID.generate()

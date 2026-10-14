@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Cms.GraphObservations do
       mix cms.graph_observations --logs ~/.codemyspec/web.log
       mix cms.graph_observations --since 14:00 --logs ~/.codemyspec/web.log
 
-  Accepts completion records from GraphWatcher and ShadowProjector. A raw
+  Accepts completion records from GraphWatcher and IncrementalGraph. A raw
   recompute log is not proof of completion: a later checkout or queue write
   can still fail. Overlapping log files are deduplicated.
 
@@ -117,7 +117,7 @@ defmodule Mix.Tasks.Cms.GraphObservations do
 
   defp naming_line?(line) do
     String.contains?(line, "[GraphWatcher] accounted for") or
-      String.contains?(line, "[ShadowProjector] accounted for")
+      String.contains?(line, "[IncrementalGraph] accounted for")
   end
 
   # `obs=none` is a recompute that named nothing, which is a real answer rather
