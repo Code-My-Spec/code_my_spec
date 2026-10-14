@@ -146,6 +146,13 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
                 do: "Project connected",
                 else: "Waiting for the local harness connection"}
             </p>
+            <.link
+              :if={@project_connected}
+              navigate={~p"/app/projects/#{@setup_project.id}/agent-conversation"}
+              class="link"
+            >
+              Open project
+            </.link>
             <.button
               phx-click="finish_setup"
               data-test="finish-setup"

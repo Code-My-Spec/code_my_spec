@@ -52,6 +52,9 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
       end
     end)
 
+    git = System.find_executable("git") || raise "Desktop setup specs require git"
+    File.ln_s!(git, Path.join(bin, "git"))
+
     previous_env = Application.fetch_env(:code_my_spec, :env)
     previous_path = System.get_env("PATH")
     previous_project = System.get_env("CMS_PROJECT_DIR")
