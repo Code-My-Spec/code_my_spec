@@ -357,6 +357,7 @@ defmodule CodeMySpec.Agents do
       # the same conversation every time".
       with {:ok, agent} <-
              launch(scope, LaunchRequest.hydrate(scope, %{agent | credential: credential})) do
+        :ok = hand_off_off_agent_questions(scope, agent)
         watch_over(scope, agent)
         broadcast(scope, {:agent_started, agent})
         {:ok, agent}
@@ -683,6 +684,27 @@ defmodule CodeMySpec.Agents do
 
         :ok
     end
+  end
+
+  # An off agent (stopped, not retired) keeps its pending questions until
+  # something else can answer them. A same-role successor starting anywhere
+  # on the project is that something else -- the same handoff retiring does,
+  # run the other way round, since nothing else ever revisits an off agent's
+  # row to notice it is never coming back for this question.
+  defp hand_off_off_agent_questions(scope, %Agent{id: to, role: role}) do
+    import Ecto.Query, only: [from: 2]
+
+    scope
+    |> AgentsRepository.list_agents()
+    |> Enum.filter(&(&1.id != to and Agent.off?(&1) and &1.role == role))
+    |> Enum.each(fn %Agent{id: from_id} ->
+      from(q in "question_requests",
+        where: q.agent_id == type(^from_id, :binary_id) and q.status == "pending"
+      )
+      |> Repo.update_all(set: [agent_id: Ecto.UUID.dump!(to)])
+    end)
+
+    :ok
   end
 
   defp successor(scope, %Agent{id: id, role: role}) do
