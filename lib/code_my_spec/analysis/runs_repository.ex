@@ -443,6 +443,23 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Repo.one()
   end
 
+  @doc "Find a retained run by id or latest source within the selected working copy."
+  @spec output_run(Scope.t(), {:id, integer()} | {:source, String.t()}) :: Run.t() | nil
+  def output_run(%Scope{active_working_copy_id: nil}, _selector), do: nil
+
+  def output_run(%Scope{} = scope, selector) do
+    Run
+    |> where([r], r.project_id == ^scope.active_project_id)
+    |> where([r], r.working_copy_id == ^scope.active_working_copy_id)
+    |> select_output_run(selector)
+    |> order_by([r], desc: r.started_at, desc: r.id)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp select_output_run(query, {:id, id}), do: where(query, [r], r.id == ^id)
+  defp select_output_run(query, {:source, source}), do: where(query, [r], r.source == ^source)
+
   @doc """
   Any run of this project by id, whatever its status or owner.
 
