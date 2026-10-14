@@ -115,6 +115,10 @@ If it is not, you get told — but the attempt still lands and
 attention, not the database.** Commit the evidence; nothing will stop you
 if you don't, and the next person to look will find nothing.
 
+If this copy cannot commit at all — a read-only checkout — there is no
+workaround that pretends otherwise. Hand the reviewed artifact to a
+writable owner through a completion handoff; see `process/main_agent.md`.
+
 ## Re-testing
 
 Never resubmit without re-testing. A resubmission is a claim that you ran
