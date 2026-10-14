@@ -19,7 +19,9 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
   escalation record is what the page exposes for the agent to pick up.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: false
+
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -28,9 +30,22 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
   setup :devops_on
   setup :fake_providers
 
+  setup context do
+    Fixtures.install_recording_agent_transport(context.scope)
+    {:ok, context}
+  end
+
   spex "The provider's own error reaches the agent session", criterion: 568 do
     scenario "the escalation carries what the provider actually said" do
       given_ "a step failed with the provider's own message", context do
+        {:ok, _} =
+          CodeMySpec.WorkingCopies.designate_main(
+            context.scope,
+            context.scope.active_working_copy_id
+          )
+
+        main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
+        context = Map.put(context, :setup_agent, main)
         # The claim is about plumbing: whatever the provider said arrives
         # intact in the session, rather than being replaced by a message of
         # ours. A scripted message tests that better than a real one — it is
@@ -50,12 +65,14 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
       end
 
       when_ "the setup agent session opens for that failure", context do
-        html =
-          context.view
-          |> element("[data-test='resource-step'][data-step='domain'] [data-test='escalation']")
-          |> render()
+        agent_id = context.setup_agent.id
+        assert_receive {:agent_dispatch, ^agent_id, _, _}, 5_000
 
-        {:ok, Map.put(context, :escalation, html)}
+        messages = Fixtures.messages_to_agent(context.scope, agent_id)
+        escalation = Enum.find(messages, &String.contains?(&1, "Provider error:"))
+        assert escalation, "the provider refusal never reached the agent conversation"
+
+        {:ok, Map.put(context, :escalation, escalation)}
       end
 
       then_ "it names which step failed and what it attempted", context do

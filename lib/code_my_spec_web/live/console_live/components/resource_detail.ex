@@ -189,13 +189,24 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
                 data-name={ResourceFields.resource_name(resource)}
                 data-owner={ResourceFields.resource_owner(resource)}
                 data-disposition={ResourceFields.resource_disposition(resource)}
-                data-verified={to_string(step.state == :done)}
+                data-historical={to_string(Map.get(resource, :observed_in_latest_run, true) == false)}
+                data-verified={
+                  to_string(step.state == :done && Map.get(resource, :observed_in_latest_run, true))
+                }
                 class={[
                   "badge badge-outline",
-                  step.state != :done && "badge-warning opacity-70"
+                  (step.state != :done || Map.get(resource, :observed_in_latest_run, true) == false) &&
+                    "badge-warning opacity-70"
                 ]}
               >
                 {resource.kind} — {resource.location}
+                <span
+                  :if={Map.get(resource, :observed_in_latest_run, true) == false}
+                  data-test="historical-resource"
+                  class="ml-1"
+                >
+                  (earlier record; not confirmed by the latest run)
+                </span>
                 <span
                   :if={step.state != :done}
                   data-test="unverified-resource"
@@ -279,5 +290,4 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.ResourceDetail do
 
   defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
   defp step_verified_at(_step), do: nil
-
 end

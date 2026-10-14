@@ -363,6 +363,7 @@ defmodule CodeMySpec.Provisioning do
   @spec run_step(Scope.t(), atom(), String.t() | nil, keyword()) ::
           {:ok, Step.t()} | {:halt, Step.t(), String.t()}
   def run_step(%Scope{} = scope, key, environment, opts) do
+    opts = CodeMySpec.Provisioning.QaFixture.options(scope, opts, environment)
     execute = Keyword.get(opts, :execute, &execute_step/3)
     scope = reread_project(scope)
     previous = StepRepository.get(scope, key, environment)
@@ -372,7 +373,8 @@ defmodule CodeMySpec.Provisioning do
       {:ok, :satisfied, resources} ->
         {:ok,
          mark(scope, key, environment, :done, %{
-           resources: still_ours(scope, key, environment, resources)
+           resources: still_ours(scope, key, environment, resources),
+           verified_at: DateTime.utc_now()
          })}
 
       {:ok, :absent} ->
@@ -568,7 +570,8 @@ defmodule CodeMySpec.Provisioning do
             ((started_at && " (started #{started_at})") || "")
         )
 
-      _result ->
+      result ->
+        announce(scope, {:provisioning, :finished, result})
         :ok
     end
   end
@@ -690,6 +693,8 @@ defmodule CodeMySpec.Provisioning do
   @spec verify(Scope.t(), atom(), keyword()) ::
           {:ok, :satisfied, [map()]} | {:ok, :absent} | {:error, term()}
   def verify(%Scope{} = scope, key, opts \\ []) do
+    opts = CodeMySpec.Provisioning.QaFixture.options(scope, opts)
+
     case Keyword.get(opts, :verify) do
       nil -> Steps.verify(key, scope, opts)
       verifier -> verifier.(scope, key)
@@ -817,7 +822,13 @@ defmodule CodeMySpec.Provisioning do
 
       case safe_verify(scope, step.key, verify_opts) do
         {:ok, :satisfied, resources} ->
-          mark(scope, step.key, environment, :done, %{resources: resources, verified_at: now})
+          mark(scope, step.key, environment, :done, %{
+            resources:
+              Enum.map(resources, fn resource ->
+                resource |> resource_attrs() |> Map.put(:observed_in_latest_run, true)
+              end),
+            verified_at: now
+          })
 
         {:ok, :absent} ->
           # State only — the recorded resources stay. `:absent` can mean a
@@ -1069,8 +1080,10 @@ defmodule CodeMySpec.Provisioning do
 
     earlier
     |> Enum.reject(&MapSet.member?(made_this_run, {&1.kind, &1.location}))
-    |> Enum.map(&Map.from_struct/1)
-    |> Enum.concat(refreshed)
+    |> Enum.map(fn resource ->
+      resource |> Map.from_struct() |> Map.put(:observed_in_latest_run, false)
+    end)
+    |> Enum.concat(Enum.map(refreshed, &Map.put(&1, :observed_in_latest_run, true)))
   end
 
   # Verify's list is the provider's answer about what exists, and it overrules —
@@ -1115,6 +1128,8 @@ defmodule CodeMySpec.Provisioning do
       end
 
     Enum.map(resources, fn resource ->
+      resource = resource |> resource_attrs() |> Map.put(:observed_in_latest_run, true)
+
       case Map.fetch(ours, {field(resource, :kind), field(resource, :location)}) do
         {:ok, origin} -> Map.put(resource, :origin, origin)
         :error -> resource
@@ -1130,6 +1145,9 @@ defmodule CodeMySpec.Provisioning do
   # answer and took the whole walk down with it.
   defp field(resource, key), do: Map.get(resource, key)
 
+  defp resource_attrs(%_{} = resource), do: Map.from_struct(resource)
+  defp resource_attrs(resource) when is_map(resource), do: resource
+
   defp mark(scope, key, environment, state, attrs) do
     previous = StepRepository.get(scope, key, environment)
 
@@ -1141,14 +1159,16 @@ defmodule CodeMySpec.Provisioning do
         Map.merge(attrs, %{state: state, position: Sequence.position(key)})
       )
 
-    # A reverify that reconfirms an already-done step writes a fresh
-    # `verified_at` without changing `state` — announcing that anyway is the
-    # "still done" confirmation that flooded every open tab's `load/2` once
-    # per already-done step on every single mount (a69525bd). Mount no
-    # longer reverifies at all, but a manual re-check still shouldn't repeat
-    # that flood.
-    if is_nil(previous) or previous.state != row.state do
+    # Manual verification updates the displayed check time even when the
+    # state stays done. Mount performs no checks. Graph invalidation remains
+    # state-based in StepRepository; this notification refreshes open views.
+    if is_nil(previous) or previous.state != row.state or
+         previous.verified_at != row.verified_at do
       announce(scope, {:provisioning, :step, row})
+    end
+
+    if row.state == :errored do
+      :telemetry.execute([:code_my_spec, :provisioning, :failed], %{}, %{scope: scope, step: row})
     end
 
     row

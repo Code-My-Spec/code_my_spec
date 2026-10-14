@@ -342,7 +342,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
         :findings,
         :cadence,
         :teammate_stalled,
-        :teammate_died
+        :teammate_died,
+        :provisioning_failed
       ],
       # Its own question holds the turn-end nudge: it has nothing else to do.
       # Another role's question blocks only the task it was asked about
