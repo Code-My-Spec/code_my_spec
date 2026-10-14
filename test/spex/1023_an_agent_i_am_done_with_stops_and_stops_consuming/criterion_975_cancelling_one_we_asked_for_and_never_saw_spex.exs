@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.StopAgent
+  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
           |> Regex.run(response_text(listing))
           |> agent_id_match(listing)
 
-        {:reply, reply, _frame} = StopAgent.execute(%{"agent_id" => agent_id}, frame)
+        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => agent_id}, frame)
 
         {:ok, context |> Map.put(:reply, reply) |> Map.put(:agent_id, agent_id)}
       end
