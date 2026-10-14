@@ -651,7 +651,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     # Certified means at a commit: a branch that moved past its stamp is not
     # ready for QA, and the graph says so as soon as the copy reports it.
     if scope.active_working_copy_id,
-      do: PromotionQueue.release_moved_certifications(scope, scope.active_working_copy_id, sha)
+      do: release_moved_certifications(scope, scope.active_working_copy_id, sha)
 
     if project && project.head_commit != sha do
       case Projects.update_project(socket.assigns.scope, project, %{head_commit: sha}) do
@@ -2775,4 +2775,27 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp settle_draft(_socket, _agent_id, _event), do: :ok
+
+  # A live code reload can land this module's recompile before PromotionQueue's,
+  # or the reverse -- either way there is a window where the function it calls
+  # does not exist yet in the running code. 68d37919: that raised straight out
+  # of `handle_in/3` and crashed this whole channel process -- one per project,
+  # carrying every working copy's events, not just this one's -- which took an
+  # unrelated `create_working_copy` down with it, still waiting on this same
+  # process to reply, and left a worktree on disk with no record of it.
+  # Releasing a stale certification is housekeeping prompted by a routine
+  # commit report, not something that report should ever be refused over, so a
+  # miss here is logged and dropped rather than left to crash the channel.
+  defp release_moved_certifications(scope, working_copy_id, sha) do
+    PromotionQueue.release_moved_certifications(scope, working_copy_id, sha)
+  rescue
+    UndefinedFunctionError ->
+      Logger.warning(
+        "[HarnessProject] PromotionQueue.release_moved_certifications/3 was undefined for " <>
+          "#{working_copy_id} at #{sha} -- likely a code reload race. Certifications stay " <>
+          "as they are until the next head_commit report."
+      )
+
+      []
+  end
 end
