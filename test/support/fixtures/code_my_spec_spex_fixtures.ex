@@ -3869,10 +3869,16 @@ defmodule CodeMySpecSpex.Fixtures do
     # which names a child spec and a pid and reads as a supervision bug in the
     # code under test. It took a stacktrace read to find that the second
     # installer was the caller's own fixture call.
-    case Process.whereis(FakeWorkspaceRunner) do
-      nil -> start_runner_with_ordered_teardown(opts)
-      _already_running -> FakeWorkspaceRunner.configure(opts)
-    end
+    #
+    # Checking `Process.whereis/1` and branching on it used to be how this
+    # decided which of those two cases it was in, and it is a check-then-act
+    # race: two async tests whose setup runs at the same moment can both see
+    # `nil`, both call `start_link`, and whichever loses crashes its own setup
+    # with `{:error, {:already_started, pid}}` instead of reading as a second
+    # install. Attempting the start and handling that outcome is the atomic
+    # form of the same idea — the name registration itself is the only lock
+    # that actually holds across processes.
+    start_runner_with_ordered_teardown(opts)
 
     :ok
   end
@@ -3917,8 +3923,19 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defp start_runner_with_ordered_teardown(opts) do
     started_before = WorkspaceWatchers.running()
-    {:ok, runner} = FakeWorkspaceRunner.start_link(opts)
 
+    case FakeWorkspaceRunner.start_link(opts) do
+      {:ok, runner} -> register_runner_teardown(started_before, runner)
+      # Lost the race to start it: somebody else's setup registered the name
+      # first, a moment too early for our own `Process.whereis/1` (if we still
+      # had one) to have seen it. Reconfiguring it is exactly what the other
+      # branch of the old check did, and leaving its teardown in place is
+      # correct — only the test that actually started it should tear it down.
+      {:error, {:already_started, _pid}} -> FakeWorkspaceRunner.configure(opts)
+    end
+  end
+
+  defp register_runner_teardown(started_before, runner) do
     ExUnit.Callbacks.on_exit(fn ->
       WorkspaceWatchers.kill_since(started_before)
       if Process.alive?(runner), do: GenServer.stop(runner)

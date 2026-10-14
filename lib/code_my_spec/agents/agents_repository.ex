@@ -302,7 +302,10 @@ defmodule CodeMySpec.Agents.AgentsRepository do
         end
 
       :error ->
-        {:error, :not_found}
+        case resolve_short_id(project_id, id) do
+          %Agent{} = agent -> {:ok, agent}
+          nil -> {:error, :not_found}
+        end
     end
   end
 
@@ -312,6 +315,31 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     Agent
     |> where([a], a.project_id == ^project_id and a.id == ^id)
     |> Repo.one()
+  end
+
+  # A team assignment names a teammate by the same short id this project uses
+  # everywhere else (issues, commits) -- never the full UUID, which whoever
+  # reads the assignment has no reason to have memorized. Ecto.UUID.cast/1
+  # always refuses that, so without this every short id read as "no agent or
+  # conversation with that id exists here" even when it names exactly one
+  # (98d45f5c).
+  #
+  # Hex-only and length-bounded on purpose: a sub-agent label (`aqa-1013-...`)
+  # is meant to fall through unmatched here, per this module's own moduledoc,
+  # not get coerced into a prefix search it could spuriously match.
+  @short_id ~r/^[0-9a-f]{4,35}$/i
+
+  defp resolve_short_id(project_id, id) do
+    if Regex.match?(@short_id, id) do
+      Agent
+      |> where([a], a.project_id == ^project_id)
+      |> where([a], fragment("?::text LIKE ?", a.id, ^(id <> "%")))
+      |> Repo.all()
+      |> case do
+        [agent] -> agent
+        _ -> nil
+      end
+    end
   end
 
   defp agent_of_conversation(scope, conversation_id) do

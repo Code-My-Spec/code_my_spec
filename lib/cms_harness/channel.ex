@@ -27,6 +27,13 @@ defmodule CmsHarness.Channel do
   def promotion_timeout,
     do: Application.get_env(:code_my_spec, :harness_promotion_await_timeout, :timer.minutes(20))
 
+  @doc """
+  How long a create_working_copy_result may wait for the server's ack before
+  the harness rolls back what it made (68d37919).
+  """
+  def create_ack_timeout,
+    do: Application.get_env(:code_my_spec, :harness_create_ack_timeout, 30_000)
+
   def via(root), do: {:via, Registry, {CmsHarness.Registry, {:channel, root}}}
 
   @doc """

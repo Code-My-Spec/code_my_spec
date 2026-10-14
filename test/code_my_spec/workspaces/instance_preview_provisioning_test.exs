@@ -13,7 +13,9 @@ defmodule CodeMySpec.Workspaces.InstancePreviewProvisioningTest do
   Measured live, 2026-09-21: an agent told to "deploy" a project had no tool
   that could ever make this true.
   """
-  use CodeMySpecTest.DataCase, async: true
+  # Not async: see instance_copy_reuse_test.exs -- this file shares the same
+  # FakeWorkspaceRunner singleton, with no isolation between concurrent users.
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures

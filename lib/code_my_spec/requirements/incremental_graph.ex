@@ -255,9 +255,17 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       owner_gone(state, Exception.message(error))
 
     error ->
+      # 09fd73a4: this swallows any recompute failure other than a sandbox
+      # owner going away, leaving the cached graph exactly as stale as before
+      # the attempt -- a satisfied requirement (ready_for_qa, qa_complete)
+      # can then be re-offered forever if the recompute that would clear it
+      # keeps hitting the same bug. Logging the stacktrace alongside the
+      # message (nothing else changes) is what finds that bug's call site;
+      # without it, only the exception's name and message survive.
       Logger.warning(
         "[IncrementalGraph] #{state.project_id} left #{inspect(error.__struct__)} pending: " <>
-          Exception.message(error)
+          Exception.message(error) <>
+          "\n" <> Exception.format(:error, error, __STACKTRACE__)
       )
 
       %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}

@@ -62,11 +62,16 @@ defmodule CodeMySpec.Projects.Project do
     field :image_bucket, :string
     field :images_host, :string
     field :content_bucket, :string
-    field :aws_access_key_id, CodeMySpec.Encrypted.Binary
-    field :aws_secret_access_key, CodeMySpec.Encrypted.Binary
+    field :aws_access_key_id, CodeMySpec.Encrypted.Binary, redact: true
+    field :aws_secret_access_key, CodeMySpec.Encrypted.Binary, redact: true
     field :aws_region, :string
     field :s3_endpoint, :string
-    field :deploy_key, CodeMySpec.Encrypted.Binary
+    # Encrypted at rest, but decrypted into plain text the moment this struct
+    # is loaded -- a crash report or log line that inspects the struct (or a
+    # Scope carrying it as `active_project`) must not print it. `redact: true`
+    # makes Ecto derive `Inspect` to hide the value everywhere this struct is
+    # inspected, not only at the one call site a specific incident found.
+    field :deploy_key, CodeMySpec.Encrypted.Binary, redact: true
     # Deterministic SHA-256 of the deploy key (the encrypted column can't be
     # searched), letting the widget authenticate with only the key — no
     # project id. Deploy keys are 64 bytes of random, so an unsalted hash is

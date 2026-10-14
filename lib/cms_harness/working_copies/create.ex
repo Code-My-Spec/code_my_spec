@@ -40,11 +40,12 @@ defmodule CmsHarness.WorkingCopies.Create do
 
     with :ok <- refuse_existing(target),
          {:ok, setup} <- add_worktree(root, target, name),
+         base_head = git_head(target),
          {:ok, id} <- write_identity(target, request) do
       onboard(root, target, id, request)
       prepare_later(target, request["prepare"] == true)
       Logger.info("[CmsHarness] made a working copy at #{target}")
-      {:ok, %{root: target, working_copy_id: id, setup: setup}}
+      {:ok, %{root: target, working_copy_id: id, setup: setup, base_head: base_head}}
     end
   end
 
@@ -144,8 +145,95 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   # A directory that is already there is not ours to take. It may hold somebody's
   # work, and adopting it would give two copies one path.
+  #
+  # 68d37919: one holding `.cms_harness.json` is not just "somebody's work" in
+  # the ordinary sense -- it is our own identity marker, left by an earlier
+  # create this machine made. Naming that possibility is the difference
+  # between "already exists" (true of any stray directory) and "this looks
+  # like an orphan from a create the server never acknowledged", which tells
+  # whoever reads the refusal what actually happened instead of leaving them
+  # to work it out from a bare path.
   defp refuse_existing(target) do
-    if File.exists?(target), do: {:error, {:already_exists, target}}, else: :ok
+    cond do
+      not File.exists?(target) ->
+        :ok
+
+      File.exists?(Path.join(target, ".cms_harness.json")) ->
+        {:error, {:orphaned_from_failed_create, target}}
+
+      true ->
+        {:error, {:already_exists, target}}
+    end
+  end
+
+  @doc """
+  Undo a create this same call made, but only if nothing has touched it since.
+
+  Called when the server never acknowledges the create's result: its reply
+  never arrived, and whatever was waiting on it already timed out on its own
+  and moved on without ever learning this copy exists. Leaving the checkout
+  behind is worse than removing it, provided removing it loses nothing -- a
+  commit beyond `base_head` (captured right after the worktree was made,
+  before anything else could run in it) or a change to a tracked file is
+  somebody's work, made in the gap between this call finishing and the ack
+  never arriving, and this backs off rather than guess that away. An
+  untracked file this same call wrote (the identity, onboarding's own files)
+  does not count -- `git diff` against `HEAD` does not see it, which is
+  exactly the distinction wanted here.
+  """
+  @spec rollback_if_untouched(String.t(), String.t(), String.t() | nil) ::
+          :ok | {:error, :not_untouched}
+  def rollback_if_untouched(root, target, base_head) when is_binary(base_head) do
+    if git_head(target) == base_head and git_clean?(target) do
+      remove_worktree(root, target)
+    else
+      Logger.warning(
+        "[CmsHarness] #{target} was never acknowledged by the server and no longer " <>
+          "matches what this create made; leaving it for a person to decide rather " <>
+          "than guessing."
+      )
+
+      {:error, :not_untouched}
+    end
+  end
+
+  def rollback_if_untouched(_root, target, nil) do
+    Logger.warning(
+      "[CmsHarness] #{target} was never acknowledged by the server and its base commit " <>
+        "was never captured; leaving it for a person to decide rather than guessing."
+    )
+
+    {:error, :not_untouched}
+  end
+
+  defp git_head(target) do
+    case System.cmd("git", ["-C", target, "rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  end
+
+  defp git_clean?(target) do
+    match?(
+      {"", 0},
+      System.cmd("git", ["-C", target, "diff", "--name-only", "HEAD"], stderr_to_stdout: true)
+    )
+  end
+
+  defp remove_worktree(root, target) do
+    case System.cmd("git", ["worktree", "remove", "--force", target], cd: root, stderr_to_stdout: true) do
+      {_out, 0} ->
+        Logger.info("[CmsHarness] removed the unacknowledged working copy at #{target}")
+        :ok
+
+      {out, status} ->
+        Logger.warning(
+          "[CmsHarness] could not remove unacknowledged #{target} (exit #{status}): " <>
+            String.trim(out)
+        )
+
+        {:error, :not_untouched}
+    end
   end
 
   # Answers `{:ok, setup}` so the caller can tell a fallback bare worktree

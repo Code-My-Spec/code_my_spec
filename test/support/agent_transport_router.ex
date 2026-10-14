@@ -66,25 +66,14 @@ defmodule CodeMySpecTest.AgentTransportRouter do
   `before` (a snapshot from `Task.Supervisor.children/1`) has finished, or
   half a second has passed.
 
-  Exported for the test that proves this waits rather than racing;
-  `route/2` is the only other caller.
+  2aa4c832: this is now also done, unconditionally, by every sandboxed test
+  through `CodeMySpecTest.DataCase.setup_sandbox/1` -- delegating here keeps
+  this module's own documented wait (and the test proving it) unchanged
+  rather than duplicating the loop.
   """
   @spec await_background_work(MapSet.t(), integer()) :: :ok
-  def await_background_work(before, deadline \\ System.monotonic_time(:millisecond) + 500) do
-    still_running =
-      CodeMySpec.TaskSupervisor
-      |> Task.Supervisor.children()
-      |> MapSet.new()
-      |> MapSet.difference(before)
-
-    cond do
-      Enum.empty?(still_running) -> :ok
-      System.monotonic_time(:millisecond) >= deadline -> :ok
-      true ->
-        Process.sleep(10)
-        await_background_work(before, deadline)
-    end
-  end
+  def await_background_work(before, deadline \\ System.monotonic_time(:millisecond) + 500),
+    do: CodeMySpecTest.DataCase.await_background_work(before, deadline)
 
   @doc "The process that routed `project_id`, or nil."
   @spec owner(String.t() | nil) :: pid() | nil

@@ -71,6 +71,7 @@ defmodule CmsHarness.Agents.SystemPrompt do
       # §2 — situational
       project_brief(parts[:project_brief]),
       running_app(parts[:app_url]),
+      scratch_dir(parts[:scratch_dir]),
       parts[:tool_index],
       # Beside the index, because it is about that list: where it arrives and
       # what to conclude when a name seems absent from it.
@@ -136,4 +137,22 @@ defmodule CmsHarness.Agents.SystemPrompt do
   end
 
   defp running_app(_url), do: nil
+
+  # f72b7ba3: a fixture built through bash (a guardrail, not a sandbox -- it
+  # can write anywhere) was then refused by the read tool, which only allows
+  # the working copy and a couple of fixed, per-agent directories. QA builds
+  # disposable fixtures -- a mock server, its log -- to test against, and had
+  # no way to know in advance which path, if any, it could read one back from.
+  defp scratch_dir(path) when is_binary(path) and path != "" do
+    """
+    A disposable fixture you build through `bash` to test against -- a mock
+    server, its log, anything you need to inspect afterward -- is only
+    readable back if you put it under #{path}. Anywhere else, including an
+    ad hoc `mktemp` path, your read tool will refuse it once bash is done
+    writing it.
+    """
+    |> String.trim()
+  end
+
+  defp scratch_dir(_), do: nil
 end
