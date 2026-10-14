@@ -379,12 +379,9 @@ defmodule CodeMySpecSpex.Case do
       on_exit(&Fixtures.drain_background_work/0)
     end
 
-    # After the drain, so it runs before it. Draining alone leaves a window: a
-    # `GraphWatcher` outlives the scenario that started it, and its debounce
-    # timer can fire after the supervisor is empty and start another wake into
-    # a sandbox that is on its way out. Stopping the watcher first means
-    # nothing new is started while the drain is clearing what is left.
-    on_exit(&Fixtures.stop_graph_watchers/0)
+    # watch_graph/1 registers project-specific cleanup after the drain callback,
+    # so watchers stop before draining and releasing the sandbox. A global sweep
+    # here would stop watchers still in use by concurrent specs.
 
     # DNS resolution cannot live in a cassette — the authoritative lookup is a
     # syscall, and it has to stay authoritative because a recursive resolver
@@ -6440,11 +6437,6 @@ defmodule CodeMySpecSpex.Case do
     # the watcher computes once on arrival; started before it would compute
     # against the wrong shape and then have to redo it.
     Fixtures.watch_graph(updated_scope)
-
-    # And stopped when the test ends. A watcher outliving its sandbox
-    # transaction takes its next pass against a connection that has gone and
-    # logs at `:error`, which fails whichever spex is running when it lands.
-    Callbacks.on_exit(fn -> Fixtures.stop_watching(updated_scope) end)
 
     Map.merge(context, %{project: project, scope: updated_scope, environment: env})
   end

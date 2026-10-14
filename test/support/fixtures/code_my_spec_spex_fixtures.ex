@@ -1525,6 +1525,10 @@ defmodule CodeMySpecSpex.Fixtures do
   def watch_graph(%Scope{active_project_id: project_id} = scope) do
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
 
+    # Each project belongs to this test's teardown, including secondary projects.
+    # A named callback also handles repeated starts without accumulating callbacks.
+    ExUnit.Callbacks.on_exit({:stop_graph_watcher, project_id}, fn -> stop_watching(scope) end)
+
     # `GraphInputs.subscribe/1` is a plain `Phoenix.PubSub.subscribe/2`, which is
     # not idempotent per process: a second subscription from the same pid to the
     # same topic is a second registry entry, and `Phoenix.PubSub.broadcast/3`
