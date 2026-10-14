@@ -795,10 +795,10 @@ defmodule CodeMySpec.Agents.Offers do
     |> String.slice(0, 500)
   end
 
-  defp tasks_on(%Agent{tasks: tasks}, key) when is_binary(key) do
+  defp tasks_on(%Agent{tasks: tasks} = agent, key) when is_binary(key) do
     case String.split(key, ":", parts: 3) do
       [type, id, name] ->
-        node = %{entity_type: type, entity_id: id, name: name}
+        node = %{entity_type: type, entity_id: resolve_entity_id(agent, type, id), name: name}
         Enum.filter(tasks || [], &Work.task_on_node?(&1, node))
 
       _ ->
@@ -807,6 +807,20 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp tasks_on(_agent, _key), do: []
+
+  # A work offer's `subject_key` names a story by the number everyone reads it
+  # by (issue 56a2d806), but `Work.task_on_node?/2` matches a task against its
+  # own `story_id`, which is the database id -- the two were the same string
+  # until the key started carrying the number, and `tasks_on/2` is the one
+  # place that still needs the id to match a task by.
+  defp resolve_entity_id(%Agent{project_id: project_id}, "story", number) do
+    case CodeMySpec.Stories.get_story_by_number(%Scope{active_project_id: project_id}, number) do
+      nil -> number
+      story -> to_string(story.id)
+    end
+  end
+
+  defp resolve_entity_id(_agent, _type, id), do: id
 
   # Resuming clears the task's blocker and keeps its `started_at`, so a resumed
   # task is one no longer blocked by this blocker, with the agent back on a task.
