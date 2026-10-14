@@ -10,10 +10,9 @@ read this.
 
 ## Reaching main
 
-`message_agent` only works between teammates sharing a working copy — a
-coding agent and its QA agent, say. It is not how you reach main: that role
-does not carry the tool at all, and a different spelling will not change
-that. Use `ask_user_question` instead.
+Messaging a teammate directly only works between a coding agent and its own
+QA agent, sharing a working copy. Product carries no such tool for reaching
+main — use `ask_user_question` instead.
 
 ## The shape
 
