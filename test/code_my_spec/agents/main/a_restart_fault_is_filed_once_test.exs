@@ -1,17 +1,19 @@
 defmodule CodeMySpec.Agents.Main.ARestartFaultIsFiledOnceTest do
   @moduledoc """
-  Issue b2752ae3 â "A restart changed nothing: <reason>" was filed repeatedly
+  Issue b2752ae3 -- "A restart changed nothing: <reason>" was filed repeatedly
   for the same agent and reason. The check guarding it, `Issues.open_issue_titled?/2`
   followed by `Issues.create_issue/2`, is two steps rather than one, and nothing
-  made the second step refuse a duplicate on its own: the existing unique index
-  on `issues` is `(title, story_id, project_id)`, these fault issues all carry a
-  `nil` story_id, and Postgres treats NULL as distinct from NULL in a unique
-  index â so any number of rows with the same title, the same project, and a
-  null story_id could already coexist, race or no race.
+  made the second step refuse a duplicate on its own.
 
-  A second, partial unique index closes that gap specifically for storyless
-  issues, and `Agents.Main.file_fault/5` now treats losing that race as
-  "already raised" rather than a bare changeset error.
+  The first fix keyed a new unique index on `title` directly, which turned out
+  to be the wrong key: `title` is free text any caller chooses, and two
+  unrelated issues from two unrelated callers can share one by coincidence
+  (criteria 1749 and 2060 both do, legitimately, with no fault involved).
+
+  `fault_key` is the real fix: a column set only by `Agents.Main.file_fault/5`,
+  so nothing else in the system can collide with it, with the unique index on
+  `(fault_key, project_id)` rather than on `title`. Losing the race against it
+  is treated as "already raised", not a changeset error.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -52,7 +54,7 @@ defmodule CodeMySpec.Agents.Main.ARestartFaultIsFiledOnceTest do
 
     AgentPresence.present(agent)
 
-    # Never having spoken since the restart is what makes it unresolved â
+    # Never having spoken since the restart is what makes it unresolved --
     # `RestartRepository.outstanding/1`'s own `worked?/2` only clears a restart
     # once the agent speaks afterward, so a silent agent stays unresolved
     # without any timestamp fiddling.
@@ -87,27 +89,47 @@ defmodule CodeMySpec.Agents.Main.ARestartFaultIsFiledOnceTest do
   end
 
   describe "the database-level guard" do
-    test "a second storyless issue with the same title and project is refused", ctx do
-      title = "A restart changed nothing: the same fault, raced"
+    test "a second issue with the same fault_key and project is refused", ctx do
+      fault_key = "A restart changed nothing: the same fault, raced"
+
+      assert {:ok, _first} =
+               Issues.create_issue(ctx.scope, %{
+                 title: fault_key,
+                 severity: :high,
+                 scope: :framework,
+                 description: "first writer",
+                 fault_key: fault_key
+               })
+
+      assert {:error, changeset} =
+               Issues.create_issue(ctx.scope, %{
+                 title: fault_key,
+                 severity: :high,
+                 scope: :framework,
+                 description: "second writer, racing the first",
+                 fault_key: fault_key
+               })
+
+      assert {_message, opts} = changeset.errors[:fault_key]
+      assert Keyword.get(opts, :constraint) == :unique
+    end
+
+    test "two unrelated issues sharing a title, neither a fault, do not collide", ctx do
+      title = "Broken thing"
 
       assert {:ok, _first} =
                Issues.create_issue(ctx.scope, %{
                  title: title,
                  severity: :high,
-                 scope: :framework,
-                 description: "first writer"
+                 description: "an ordinary bug report"
                })
 
-      assert {:error, changeset} =
+      assert {:ok, _second} =
                Issues.create_issue(ctx.scope, %{
                  title: title,
                  severity: :high,
-                 scope: :framework,
-                 description: "second writer, racing the first"
+                 description: "a different, unrelated bug that happens to share the title"
                })
-
-      assert {_message, opts} = changeset.errors[:title]
-      assert Keyword.get(opts, :constraint) == :unique
     end
   end
 end

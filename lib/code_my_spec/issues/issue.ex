@@ -88,6 +88,10 @@ defmodule CodeMySpec.Issues.Issue do
     field(:source_path, :string)
     field(:project_id, :binary_id)
     field(:account_id, :binary_id)
+    # Set only by `Agents.Main.file_fault/5` -- nothing else writes it, so the
+    # uniqueness guard below can key on it instead of on free-text `title`,
+    # which two unrelated callers can share by coincidence (issue b2752ae3).
+    field(:fault_key, :string)
 
     # The working copy this was raised from. `nil` for issues raised before this
     # existed, and for anything filed through the web UI, which has no checkout.
@@ -134,7 +138,8 @@ defmodule CodeMySpec.Issues.Issue do
     :story_id,
     :source_path,
     :synced_from_server,
-    :attachments
+    :attachments,
+    :fault_key
   ]
 
   @doc "Casts and validates the castable fields; does not touch status transitions."
@@ -143,7 +148,7 @@ defmodule CodeMySpec.Issues.Issue do
     |> cast(attrs, @castable_fields)
     |> validate_required([:title, :severity, :description])
     |> unique_constraint([:title, :story_id, :project_id])
-    |> unique_constraint([:title, :project_id], name: :issues_title_project_id_no_story_index)
+    |> unique_constraint([:fault_key, :project_id], name: :issues_fault_key_project_id_index)
   end
 
   @doc "Changeset for setting or clearing which copy's team this issue is assigned to."
