@@ -32,7 +32,7 @@ defmodule CodeMySpec.Analysis.FailureOutputSurvivesTruncationTest do
   test "harness and server retain the failure tail through both caps" do
     output =
       "Running ExUnit with seed: 42\n" <>
-        String.duplicate("chatter\n", 20000) <> @failure <> @summary
+        String.duplicate("chatter\n", 20_000) <> @failure <> @summary
 
     harness_output = Analysis.cap(output)
 
@@ -57,12 +57,12 @@ defmodule CodeMySpec.Analysis.FailureOutputSurvivesTruncationTest do
   end
 
   test "both retained boundaries stay valid and repeated caps preserve the result" do
-    output = String.duplicate("a", 19999) <> String.duplicate("🙂│", 20000) <> @summary
+    output = String.duplicate("a", 19_999) <> String.duplicate("🙂│", 20_000) <> @summary
     capped = Runners.cap(output)
 
     assert String.valid?(capped)
     assert byte_size(capped) <= 100_000
-    assert String.starts_with?(capped, String.duplicate("a", 19999))
+    assert String.starts_with?(capped, String.duplicate("a", 19_999))
     assert capped =~ @summary
     assert capped =~ "middle omitted"
     assert Runners.cap(capped) == capped
