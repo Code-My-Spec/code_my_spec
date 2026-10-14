@@ -257,7 +257,10 @@ defmodule CodeMySpec.PromotionQueue do
   """
   @spec ensure_worker(Scope.t()) :: :ok
   def ensure_worker(%Scope{active_project_id: project_id} = scope) do
-    case DynamicSupervisor.start_child(@supervisor, {Worker, {project_id, scope, self()}}) do
+    case DynamicSupervisor.start_child(
+           @supervisor,
+           {Worker, {project_id, scope, SandboxAllowance.owners()}}
+         ) do
       {:ok, _pid} ->
         :ok
 
