@@ -927,6 +927,32 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec mark_present(map()) :: map()
   def mark_present(agent), do: AgentPresence.present(agent)
 
+  @doc """
+  Untrack an agent's presence without ending its process: the lane leaves the
+  harness channel, the thing actually running it does not.
+  """
+  @spec mark_absent(map()) :: :ok
+  def mark_absent(agent), do: AgentPresence.absent(agent)
+
+  @doc """
+  Record the machine's own pid for an agent, the way a harness report does.
+
+  `os_pid` arrives on this project from the machine actually running the
+  agent, not from a decision made here — so a criterion whose premise is
+  "the machine already reported a pid for it" sets it directly rather than
+  standing up the full report round trip to produce the same row.
+  """
+  @spec record_os_pid(CodeMySpec.Agents.Agent.t(), integer()) :: CodeMySpec.Agents.Agent.t()
+  def record_os_pid(%CodeMySpec.Agents.Agent{} = agent, pid) when is_integer(pid) do
+    scope = %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id
+    }
+
+    {:ok, updated} = AgentsRepository.update_agent(scope, agent, %{os_pid: pid})
+    updated
+  end
+
   defp tool_set(role) when is_binary(role),
     do: role |> String.to_existing_atom() |> tool_set()
 

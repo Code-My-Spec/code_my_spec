@@ -1,22 +1,15 @@
-defmodule CodeMySpecSpex.Story1023.Criterion2890Spex do
+defmodule CodeMySpecSpex.Story1023.Criterion983Spex do
   @moduledoc """
   Story 1023 — An agent I am done with stops, and stops consuming.
-  Criterion 2890 — An agent still working comes back to finish.
+  Criterion 983 — An agent still working comes back to finish.
 
-  Rule: Running and stopped are states we set, and the machine is brought to
-  match them.
+  Rule: An agent whose process goes without anyone deciding to stop it is
+  running again after the harness restarts, with the conversation it had.
 
-  The other half of 2891, and the reason that one is not simply "never restart
-  anything". An agent dies with its harness — that is what a supervised process
-  is, and `just refresh-harness` runs several times a day — so a restart that
-  abandoned every agent mid-story would make the harness unrestartable in
-  practice, which is how the previous design ended up with detached OS
-  processes, process groups and boot ids.
-
-  What makes coming back cheap here is that the transcript is the state.
-  Resurrecting an OS process meant a group id, the boot it belonged to, and a
-  reaper for when that went wrong. Restoring a supervised one is starting a
-  process with the history it had.
+  The companion to criterion 984 from the other side of the same
+  reconciliation: bringing a mid-story agent back is obviously right, and the
+  two sit on either side of the one question reconciliation actually asks —
+  not "was this alive before" but "does the record still intend it running".
   """
 
   use CodeMySpecSpex.Case
@@ -25,55 +18,87 @@ defmodule CodeMySpecSpex.Story1023.Criterion2890Spex do
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
+
+  cloud_endpoint()
+  @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "A restart is not a reason to abandon work in progress", criterion: 983 do
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
+  spex "Work in progress survives a restart it did not ask for", criterion: 983 do
     scenario "An agent still working comes back to finish" do
-      given_ "an agent part-way through a story on a working copy", context do
-        copy = CodeMySpec.TempFile.dir("spex_2890")
+      given_ "an agent part-way through a story in its working copy", context do
+        copy = CodeMySpec.TempFile.dir("spex_2890_resume")
         RealDisk.mkdir_p!(copy)
 
-        agent = Fixtures.running_agent(context.scope, working_copy: copy)
-        start_agent(agent.id, working_copy: copy)
+        {:ok, _integration} = Fixtures.connect_provider(context.scope, :zai)
+        agent = Fixtures.running_agent(context.scope, role: "coding", working_copy: copy)
 
-        {:ok, context |> Map.put(:agent, agent) |> Map.put(:copy, copy)}
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_2890", %{scope: context.scope})
+          |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
+            "contract_version" => @contract_version,
+            "harness_id" => context.scope.active_working_copy_id,
+            "root" => copy,
+            "label" => "the machine running this agent"
+          })
+
+        agent_id = start_agent_with_provider(agent.id, working_copy: copy, report_to: socket)
+
+        begin_turn(agent_id)
+        finish_turn(agent_id)
+
+        assert agent_knows?(agent_id, "work on something"),
+               "the premise is an agent partway through something, with that in its " <>
+                 "conversation; without it this cannot tell a resume carrying its history " <>
+                 "from one starting fresh"
+
+        # What a harness restart does to a process it never decided to stop:
+        # the process goes, the record's intent does not.
+        stop_agent_process(agent_id)
+
+        refute running?(agent_id),
+               "the premise is a process that actually went away; without that a " <>
+                 "restart proves nothing about bringing it back"
+
+        {:ok, context |> Map.put(:agent, agent) |> Map.put(:agent_id, agent_id)}
       end
 
-      when_ "its harness goes down and comes back", context do
-        # Going down is the agent going with it: a supervised process does not
-        # outlive its supervisor, which is the whole trade the placement
-        # decision made.
-        :ok = stop_agent_process(context.agent.id)
+      when_ "its harness restarts", context do
+        requests = Fixtures.agents_to_restore(context.scope)
+        request = Enum.find(requests, &(&1["agent_id"] == context.agent_id))
 
-        refute running?(context.agent.id),
-               "the premise is an agent that went down with its harness. Still " <>
-                 "running, this asserts nothing about coming back."
+        assert request,
+               "the server did not tell the restarting harness to bring this agent back " <>
+                 "at all, so there is nothing for the rest of this scenario to launch"
 
-        {:ok, Map.put(context, :to_restore, Fixtures.agents_to_restore(context.scope))}
-      end
-
-      then_ "it is in what the harness is told to run", context do
-        ids = Enum.map(context.to_restore, & &1["agent_id"])
-
-        assert context.agent.id in ids,
-               "an agent that was working when its harness restarted was not " <>
-                 "brought back. Whatever it was part-way through is abandoned, and " <>
-                 "a harness that costs you every agent is one nobody can afford to " <>
-                 "restart — which is how the last design ended up detaching " <>
-                 "processes from it."
+        assert {:ok, _} = Fixtures.launch_agent(request),
+               "the harness could not relaunch the agent from what the server sent, so " <>
+                 "what follows is about a launch that never happened rather than a resume"
 
         {:ok, context}
       end
 
-      then_ "and starting it again puts it back on its own checkout", context do
-        entry = Enum.find(context.to_restore, &(&1["agent_id"] == context.agent.id))
+      then_ "the agent is running again with its conversation", context do
+        assert running?(context.agent_id),
+               "an agent that was working when the harness went down is not running " <>
+                 "again after it comes back"
 
-        assert entry["working_copy"] == context.copy,
-               "it would come back on the wrong checkout, which is worse than not " <>
-                 "coming back: it resumes a story against a tree that is not the " <>
-                 "one it was working in"
+        {:ok, context}
+      end
+
+      then_ "and it carries on from where it was", context do
+        assert agent_knows?(context.agent_id, "work on something"),
+               "the agent came back with no memory of what it was doing — it is " <>
+                 "running again, but not carrying on from where it was"
 
         {:ok, context}
       end
