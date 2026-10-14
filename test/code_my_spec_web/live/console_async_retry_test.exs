@@ -18,18 +18,8 @@ defmodule CodeMySpecWeb.ConsoleAsyncRetryTest do
       :telemetry.attach(
         handler,
         [:code_my_spec, :provisioning, :failed],
-        fn _, _, metadata, _ ->
-          if metadata.scope.active_project_id == scope.active_project_id do
-            send(parent, {:failure_persisted, self()})
-
-            receive do
-              :finish_failure -> :ok
-            after
-              5_000 -> raise "test did not release the failed run"
-            end
-          end
-        end,
-        nil
+        &hold_project_failure/4,
+        {scope.active_project_id, parent}
       )
 
     Application.put_env(:code_my_spec, :provisioning_run_async, true)
@@ -107,11 +97,32 @@ defmodule CodeMySpecWeb.ConsoleAsyncRetryTest do
   defp await_element(view, selector, 0), do: assert(has_element?(view, selector))
 
   defp await_element(view, selector, attempts) do
-    unless has_element?(view, selector) do
-      Process.sleep(10)
-      await_element(view, selector, attempts - 1)
+    await_element_result(has_element?(view, selector), view, selector, attempts)
+  end
+
+  defp await_element_result(true, _view, _selector, _attempts), do: :ok
+
+  defp await_element_result(false, view, selector, attempts) do
+    Process.sleep(10)
+    await_element(view, selector, attempts - 1)
+  end
+
+  defp hold_project_failure(
+         _event,
+         _measurements,
+         %{scope: %{active_project_id: project_id}},
+         {project_id, parent}
+       ) do
+    send(parent, {:failure_persisted, self()})
+
+    receive do
+      :finish_failure -> :ok
+    after
+      5_000 -> raise "test did not release the failed run"
     end
   end
+
+  defp hold_project_failure(_event, _measurements, _metadata, _config), do: :ok
 
   defp restore_env(key, {:ok, value}), do: Application.put_env(:code_my_spec, key, value)
   defp restore_env(key, :error), do: Application.delete_env(:code_my_spec, key)
