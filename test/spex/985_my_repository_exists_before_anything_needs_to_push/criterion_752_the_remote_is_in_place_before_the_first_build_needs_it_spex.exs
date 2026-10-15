@@ -42,6 +42,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
         # deleted, so setup would pause asking whose it is — halting the run
         # before the deploy step this criterion is about. It is this project's.
         # (8185 is the criterion that *wants* that prompt; it must not get this.)
+        repository_exists(context, context.project)
         own_repository(context.project)
 
         # Saving a credential proves it with a live call, which is why this

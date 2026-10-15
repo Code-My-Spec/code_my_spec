@@ -53,7 +53,7 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
     test "every excluded name is a tool that really exists" do
       # Otherwise a rename silently un-excludes something: the name stops
       # matching, the tool comes back, and nothing says so.
-      registered = MapSet.new(LocalServer.__components__(), & &1.name)
+      registered = MapSet.new(LocalServer.registrations(), & &1.name)
 
       missing = Enum.reject(Catalog.excluded(), &MapSet.member?(registered, &1))
 

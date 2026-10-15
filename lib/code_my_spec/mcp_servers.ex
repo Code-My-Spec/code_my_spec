@@ -19,6 +19,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.PromotionQueue,
       CodeMySpec.Provisioning.EnvironmentRepository,
       CodeMySpec.Stories,
+      CodeMySpec.ToolLibrary,
       CodeMySpec.Activity,
       CodeMySpec.Agents,
       CodeMySpec.Agents.RoleProfile,

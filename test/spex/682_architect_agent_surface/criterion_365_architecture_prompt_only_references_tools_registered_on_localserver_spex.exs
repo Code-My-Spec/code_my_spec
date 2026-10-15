@@ -216,7 +216,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
   # agent can *reach* — its own scenario says so — and reachability is now the
   # union rather than one registration.
   defp registered_tool_names do
-    (LocalServer.__components__(:tool) ++ ScriptableTools.__components__(:tool))
+    (LocalServer.registrations() ++ ScriptableTools.registrations())
     |> Enum.map(& &1.name)
     |> MapSet.new()
   end

@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.NoToolTakesABareIdTest do
     assert LocalServer in servers()
     assert ScriptableTools in servers()
 
-    get_issue = Enum.find(ScriptableTools.__components__(:tool), &(&1.name == "get_issue"))
+    get_issue = Enum.find(ScriptableTools.registrations(), &(&1.name == "get_issue"))
 
     assert "issue_id" in fields(get_issue)
   end

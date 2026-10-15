@@ -63,6 +63,13 @@ defmodule CodeMySpec.Provisioning.Repository do
     * `:org` — create inside this organisation instead of the personal account
     * `:adopt` — `true` when the user has chosen the existing repository
     * `:private` — defaults to `true`
+
+  When the guessed `(owner, name)` is not found, every repository the grant
+  can see is searched by name before creating one — an organisation's
+  repository, or one named with underscores instead of `default_name/1`'s
+  hyphens, is a collision to resolve (`resolve_existing/3` decides from
+  `opts[:adopt]` exactly as it would at the guessed location), not grounds to
+  duplicate it.
   """
   @spec ensure(Scope.t(), map(), keyword()) ::
           {:ok, disposition(), map()}
@@ -75,7 +82,7 @@ defmodule CodeMySpec.Provisioning.Repository do
 
     case existing(scope, owner, name) do
       {:ok, repo} -> resolve_existing(repo, name, opts)
-      {:error, :not_found} -> create(scope, name, opts)
+      {:error, :not_found} -> ensure_missing(scope, name, owner, opts)
       {:error, _} = error -> error
     end
   end
@@ -94,6 +101,78 @@ defmodule CodeMySpec.Provisioning.Repository do
   defp existing(_scope, nil, _name), do: {:error, :not_found}
   defp existing(scope, owner, name), do: GitHub.get_repository(scope, owner, name)
 
+  # The (owner, name) just missed is not where a pre-existing repository is
+  # bound to live: an organisation's, or underscored to match its own
+  # `mix.exs` :app atom — Code-My-Spec/metric_flow, found live, while setup
+  # checked johns10/metric-flow and found nothing. `ours?/2` in `Steps` only
+  # recognises a repository once a first successful run has recorded it on
+  # the project, so this search is what the first encounter itself needs.
+  defp ensure_missing(scope, name, owner, opts) do
+    if Keyword.get(opts, :adopt, false) and Keyword.has_key?(opts, :name) and
+         Keyword.has_key?(opts, :owner) do
+      {:error, {:adoption_not_found, owner, name}}
+    else
+      case find_elsewhere(scope, name, owner) do
+        {:ok, repo} ->
+          resolve_existing(repo, name, opts)
+
+        {:multiple, repos} ->
+          matching_repositories(repos)
+
+        :error ->
+          if Keyword.get(opts, :adopt, false),
+            do: {:error, {:adoption_not_found, owner, name}},
+            else: create(scope, name, owner, opts)
+
+        {:error, _} = error ->
+          error
+      end
+    end
+  end
+
+  defp matching_repositories(repos) do
+    names = Enum.map_join(repos, ", ", &repo_label(repo_owner_login(&1), &1["name"]))
+
+    {:name_taken,
+     %{
+       repository: nil,
+       choices: [:adopt, :rename],
+       message:
+         "Matching repositories already exist: #{names}. " <>
+           "Use Adopt existing repository and enter the owner and name of your choice, " <>
+           "or choose another name."
+     }}
+  end
+
+  # `list_repositories/2`'s own default (`affiliation: "owner"`) is the
+  # personal account only, which is exactly what misses an organisation's
+  # repository. Widened here rather than in the default, since every other
+  # caller wants the narrower, faster list.
+  defp find_elsewhere(scope, name, owner) do
+    case GitHub.list_repositories(scope, affiliation: "owner,organization_member") do
+      {:ok, repos} -> find_by_name(repos, name, owner)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp find_by_name(repos, name, owner) do
+    normalized = normalize_repo_name(name)
+
+    repos
+    |> Enum.reject(&same_repo?(&1, owner, name))
+    |> Enum.filter(&(normalize_repo_name(&1["name"] || "") == normalized))
+    |> case do
+      [] -> :error
+      [repo] -> {:ok, repo}
+      repos -> {:multiple, repos}
+    end
+  end
+
+  defp same_repo?(repo, owner, name),
+    do: repo["name"] == name and get_in(repo, ["owner", "login"]) == owner
+
+  defp normalize_repo_name(name), do: String.replace(name, "_", "-")
+
   defp resolve_existing(repo, _name, opts) do
     if Keyword.get(opts, :adopt, false) do
       {:ok, :adopted, repo}
@@ -103,7 +182,7 @@ defmodule CodeMySpec.Provisioning.Repository do
          repository: repo,
          choices: [:adopt, :rename],
          message:
-           "A repository named #{repo["name"]} already exists on this account. " <>
+           "Repository #{repo_label(repo_owner_login(repo), repo["name"])} already exists. " <>
              "Adopt it as this project's remote, or choose another name."
        }}
     end
@@ -111,20 +190,24 @@ defmodule CodeMySpec.Provisioning.Repository do
 
   # No `auto_init`: GitHub's README commit and our first commit would be
   # unrelated histories, and the push would be rejected as non-fast-forward.
-  defp create(scope, name, opts) do
+  defp create(scope, name, owner, opts) do
     attrs = %{
       name: name,
       private: Keyword.get(opts, :private, true)
     }
 
-    created =
-      case Keyword.get(opts, :org) do
-        nil -> GitHub.create_repository(scope, attrs)
-        org -> GitHub.create_org_repository(scope, org, attrs)
-      end
-
-    with {:ok, repo} <- created, do: {:ok, :created, repo}
+    case Keyword.get(opts, :org) do
+      nil -> GitHub.create_repository(scope, attrs)
+      org -> GitHub.create_org_repository(scope, org, attrs)
+    end
+    |> label_create_error(Keyword.get(opts, :org) || owner, name)
   end
+
+  defp label_create_error({:ok, repo}, _owner, _name), do: {:ok, :created, repo}
+  defp label_create_error({:error, :github_not_connected} = error, _owner, _name), do: error
+
+  defp label_create_error({:error, reason}, owner, name),
+    do: {:error, {:create_failed, owner, name, reason}}
 
   @doc """
   Push the working tree to the remote and return the commit that landed.
@@ -342,10 +425,32 @@ defmodule CodeMySpec.Provisioning.Repository do
             "any other account."
         )
 
+      {:error, {:create_failed, owner, name, reason}} ->
+        failure(
+          :create_failed,
+          "Tried to create a new repository #{repo_label(owner, name)}, but GitHub rejected " <>
+            "the request: #{inspect(reason)}. If your repository already exists, use " <>
+            "Adopt existing repository and enter its GitHub owner and repository name."
+        )
+
+      {:error, {:adoption_not_found, owner, name}} ->
+        failure(
+          :create_failed,
+          "Could not find existing repository #{repo_label(owner, name)}. " <>
+            "Check its owner, name and GitHub access. No new repository was created."
+        )
+
       {:error, reason} ->
-        failure(:create_failed, "Could not create the repository: #{inspect(reason)}")
+        failure(
+          :create_failed,
+          "Could not check existing GitHub repositories: #{inspect(reason)}. " <>
+            "No new repository was created. Check GitHub access and retry."
+        )
     end
   end
+
+  defp repo_label(nil, name), do: name
+  defp repo_label(owner, name), do: "#{owner}/#{name}"
 
   defp prove(repo, disposition, env, push_fun, now, opts) do
     # The repository's own owner: under `opts[:org]` that is the org, not the

@@ -51,8 +51,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
@@ -110,14 +109,15 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
       when_ "the agent calls create_persona for ops_lead", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, create_response, _frame} =
-          CreatePersona.execute(
+        {:ok, create_response} =
+          ToolLibrary.run(
+            "create_persona",
             %{
               slug: "ops_lead",
               name: "Ops Lead",
               headline: "Operations lead managing fleet driver issues"
             },
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok, Map.put(context, :persona_id, extract_persona_id(create_response))}
@@ -126,10 +126,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
       when_ "the agent links ops_lead to the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _link_response, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, _link_response} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: context.story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok, context}

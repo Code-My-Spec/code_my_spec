@@ -39,13 +39,9 @@ defmodule CodeMySpecSpex.Story985.Criterion8184Spex do
       # what makes the push a non-fast-forward, which is the failure under
       # test rather than a missing repo.
       given_ "the project's repository already exists and its remote has diverged", context do
-        url = "https://github.com/johns10/spex-story985-criterion8184.git"
-        CodeMySpecSpex.Fixtures.set_code_repo(context.project, url)
-
-        # The repository is already there — that is the premise. It used to be
-        # there because an earlier run left it, which made this pass on a dirty
-        # account and fail on a clean one.
-        existing_repository(context.project, commits: true)
+        # Establish the existing repository in the fake provider used by this
+        # scenario. The shell premise below models its divergent history.
+        repository_exists(context, context.project)
 
         # And its remote has moved on, so the push is a non-fast-forward.
         # Stated rather than arranged: nothing on the shell side knows what a

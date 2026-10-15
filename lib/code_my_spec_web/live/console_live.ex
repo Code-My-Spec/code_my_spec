@@ -1485,6 +1485,19 @@ defmodule CodeMySpecWeb.ConsoleLive do
      run_step_and_log(socket, :inbound, step_opts() ++ [confirm_inbound_mx_repoint: true])}
   end
 
+  def handle_event("adopt_repository", %{"owner" => owner, "name" => name}, socket) do
+    owner = String.trim(owner)
+    name = String.trim(name)
+
+    if Regex.match?(~r/\A[A-Za-z0-9-]+\z/, owner) and
+         Regex.match?(~r/\A[A-Za-z0-9_.-]+\z/, name) and name not in [".", ".."] do
+      opts = Keyword.merge(step_opts(), owner: owner, name: name, adopt: true)
+      {:noreply, run_step_and_log(socket, :repository, opts)}
+    else
+      {:noreply, put_flash(socket, :error, "Enter a GitHub owner and repository name.")}
+    end
+  end
+
   def handle_event("adopt_repository", _params, socket) do
     {:noreply, run_step_and_log(socket, :repository, step_opts() ++ [adopt: true])}
   end

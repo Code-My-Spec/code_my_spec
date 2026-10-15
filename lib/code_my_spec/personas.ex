@@ -14,6 +14,7 @@ defmodule CodeMySpec.Personas do
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Stories,
+      CodeMySpec.Tools,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
     ],

@@ -41,12 +41,9 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.GetPersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
-  alias CodeMySpecSpex.TaskResponseHelpers
 
   @all_setup_steps [
     Setup.ApplicationInWeb,
@@ -338,12 +335,12 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     name = Keyword.get(opts, :name, "Founder")
     headline = Keyword.get(opts, :headline, "Solo founder shipping a product")
 
-    frame = %Frame{assigns: %{current_scope: context.scope}}
+    created =
+      ToolLibrary.run("create_persona", %{slug: slug, name: name, headline: headline}, %{
+        scope: context.scope
+      })
 
-    {:reply, response, _frame} =
-      CreatePersona.execute(%{slug: slug, name: name, headline: headline}, frame)
-
-    persona_id = created_or_existing_persona_id(context.scope, slug, response)
+    persona_id = created_or_existing_persona_id(context.scope, slug, created)
 
     :ok =
       Environments.write_file(
@@ -364,7 +361,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
 
   # Idempotent, because the chains call it twice.
   #
-  # `CreatePersona` answers with the id in prose, and this read it out with a
+  # `create_persona` answers with the id in prose, and this read it out with a
   # regex — which works exactly once. `apply_project_kickoff/2` applies a
   # persona, and `FullSatisfactionFixtures.apply_without_qa_story/1` applies one
   # again; the second call finds the slug taken, answers something the regex
@@ -378,29 +375,25 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   # So the id is read back from the project when the reply does not carry one.
   # A persona that already exists is the same persona; the fixture's job is to
   # guarantee one is there, not to be the one that made it.
-  defp created_or_existing_persona_id(scope, slug, response) do
-    case Regex.run(~r/\bid: `([^`]+)`/, TaskResponseHelpers.response_text(response)) do
-      [_, id] -> id
+  defp created_or_existing_persona_id(scope, slug, created) do
+    with {:ok, text} <- created,
+         [_, id] <- Regex.run(~r/\bid: `([^`]+)`/, text) do
+      id
+    else
       _ -> existing_persona_id(scope, slug)
     end
   end
 
-  # Through the MCP tool, not `CodeMySpec.Personas` directly. This module's own
-  # rule is bridge fixtures and MCP tools only, and `CodeMySpecSpex` has no
+  # Through the tool, not `CodeMySpec.Personas` directly. This module's own
+  # rule is bridge fixtures and tools only, and `CodeMySpecSpex` has no
   # boundary dependency on `Personas` — reaching it raises a forbidden
   # reference, which is the boundary doing its job rather than an obstacle.
   defp existing_persona_id(scope, slug) do
-    frame = %Frame{assigns: %{current_scope: scope}}
-
-    case GetPersona.execute(%{slug: slug}, frame) do
-      {:reply, response, _frame} ->
-        case Regex.run(~r/\bid: `([^`]+)`/, TaskResponseHelpers.response_text(response)) do
-          [_, id] -> id
-          _ -> nil
-        end
-
-      _ ->
-        nil
+    with {:ok, text} <- ToolLibrary.run("get_persona", %{slug: slug}, %{scope: scope}),
+         [_, id] <- Regex.run(~r/\bid: `([^`]+)`/, text) do
+      id
+    else
+      _ -> nil
     end
   end
 
@@ -445,8 +438,12 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
 
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, _response, _frame} =
-      LinkPersonaToStory.execute(%{persona_id: persona_id, story_number: story.number}, frame)
+    {:ok, _response} =
+      ToolLibrary.run(
+        "link_persona_to_story",
+        %{persona_id: persona_id, story_number: story.number},
+        %{scope: frame.assigns.current_scope}
+      )
 
     {:reply, _response, _frame} =
       AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)

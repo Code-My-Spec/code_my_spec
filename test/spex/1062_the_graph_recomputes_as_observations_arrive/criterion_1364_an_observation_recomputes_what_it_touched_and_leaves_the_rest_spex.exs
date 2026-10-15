@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.{AddRule, AddScenario}
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.{Fixtures, ProjectStateFixtures}
 
   setup :register_log_in_setup_account
@@ -85,13 +85,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
         # refuses it. Persona first, then rules, then scenarios.
         context = ProjectStateFixtures.apply_persona(context)
 
-        {:reply, link, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, _} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: touched.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
-
-        refute link.isError, inspect(link)
 
         {:reply, rule, _frame} =
           AddRule.execute(

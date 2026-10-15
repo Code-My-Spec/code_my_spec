@@ -28,7 +28,7 @@ defmodule CodeMySpec.CreateWorkingCopyIsReachableTest do
     # would not prove the tool is callable under the name everything else refers
     # to it by — `ToolSets`, the prompts and the docs all say
     # `create_working_copy`.
-    names = ScriptableTools.__components__() |> Enum.map(& &1.name)
+    names = ScriptableTools.registrations() |> Enum.map(& &1.name)
 
     assert "create_working_copy" in names,
            "the tool is written and tested and no agent can call it, because it " <>
@@ -37,7 +37,7 @@ defmodule CodeMySpec.CreateWorkingCopyIsReachableTest do
   end
 
   test "discarding one is reachable too" do
-    names = ScriptableTools.__components__() |> Enum.map(& &1.name)
+    names = ScriptableTools.registrations() |> Enum.map(& &1.name)
 
     assert "offboard_working_copy" in names,
            "an agent can make a working copy and never let go of one. A boundary " <>
