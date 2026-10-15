@@ -28,9 +28,11 @@ defmodule CodeMySpec.Knowledge do
     deps: [
       CodeMySpec.Environments,
       CodeMySpec.LocalScope,
+      CodeMySpec.Tools,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
-    ]
+    ],
+    exports: [Tools]
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
