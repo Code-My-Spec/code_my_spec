@@ -134,16 +134,20 @@ defmodule CmsHarness.WorkingCopyReporter do
 
       _pid ->
         for {id, root} <- from_server, is_binary(root), ServedRoots.matches?(root, id) do
-          case Projects.ensure_started(root) do
-            {:ok, _project} ->
-              :ok
-
-            {:error, reason} ->
-              Logger.debug("[CmsHarness] could not pick up #{root}: #{inspect(reason)}")
-          end
+          pick_up(root)
         end
 
         :ok
+    end
+  end
+
+  defp pick_up(root) do
+    case Projects.ensure_started(root) do
+      {:ok, _project} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.debug("[CmsHarness] could not pick up #{root}: #{inspect(reason)}")
     end
   end
 

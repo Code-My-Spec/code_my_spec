@@ -214,12 +214,16 @@ defmodule CmsHarness.AppInstance do
         # Under its copy (`Copy.Supervisor`), beside the channel chain rather
         # than in it: an app must survive a reconnect.
         with {:ok, _copy} <- Copy.ensure(root) do
-          case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, {:already_started, pid}} -> {:ok, pid}
-            {:error, reason} -> {:error, reason}
-          end
+          start_under_copy(root)
         end
+    end
+  end
+
+  defp start_under_copy(root) do
+    case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -353,8 +357,11 @@ defmodule CmsHarness.AppInstance do
       Process.send_after(self(), :timeout, idle_check_interval())
       {:noreply, refresh_status(state), :infinity}
     else
+      # Stops the app, not this process: one exiting here stays registered until
+      # it is gone, so a request landing in between got no reply. The next
+      # `ensure_running` starts the app again.
       new_state = if running?(state), do: stop_process(state), else: state
-      {:stop, :normal, new_state}
+      {:noreply, new_state, :hibernate}
     end
   end
 

@@ -90,19 +90,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
               params
             )
 
-          response =
-            case result do
-              {:ok, handoff} ->
-                Anubis.Server.Response.tool()
-                |> Anubis.Server.Response.text(
-                  CodeMySpec.Agents.CompletionHandoffs.message(handoff)
-                )
-
-              {:error, reason} ->
-                TasksMapper.error(reason)
-            end
-
-          {:reply, response, frame}
+          {:reply, completion_response(result), frame}
       end
     else
       {:error, :session_not_found} ->
@@ -115,6 +103,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
         {:reply, TasksMapper.error(reason), frame}
     end
   end
+
+  defp completion_response({:ok, handoff}) do
+    Anubis.Server.Response.tool()
+    |> Anubis.Server.Response.text(CodeMySpec.Agents.CompletionHandoffs.message(handoff))
+  end
+
+  defp completion_response({:error, reason}), do: TasksMapper.error(reason)
 
   # An agent we run owns its tasks directly, so it is the owner and there is no
   # session in the picture. Ahead of the session clause for the same reason as

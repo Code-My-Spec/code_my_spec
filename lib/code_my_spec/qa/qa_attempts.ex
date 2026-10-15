@@ -41,30 +41,32 @@ defmodule CodeMySpec.Qa.QaAttempts do
     task_id = MapAccess.get(params, :task_id)
 
     with :ok <- validate_findings_path(params) do
-      Repo.transaction(fn ->
-        with {:ok, {story_id, agent_id, task}} <- resolve_task_info(scope, task_id),
-             {:ok, review, current?} <- StoryReviews.fetch(scope, task, story_id),
-             parent_attempt_id <- find_latest_attempt_id(story_id),
-             attrs <- build_attrs(params, story_id, agent_id, task_id, parent_attempt_id),
-             attrs <-
-               Map.merge(attrs, %{
-                 reviewed_commit: review.commit,
-                 reviewed_submissions: review.submissions,
-                 review_started_at: review.started_at,
-                 review_certified_at: review.certified_at,
-                 stale: not current?
-               }),
-             {:ok, attempt} <- insert_attempt(attrs) do
-          apply_review_findings(scope, attempt, review, current?)
-
-          complete_review_task(scope, task_id, agent_id)
-          attempt
-        else
-          {:error, reason} -> Repo.rollback(reason)
-        end
-      end)
+      Repo.transaction(fn -> record_attempt(scope, params, task_id) end)
       |> tap(&announce_graph_change(scope, &1))
       |> tap(&announce_story_passed(scope, &1))
+    end
+  end
+
+  defp record_attempt(scope, params, task_id) do
+    with {:ok, {story_id, agent_id, task}} <- resolve_task_info(scope, task_id),
+         {:ok, review, current?} <- StoryReviews.fetch(scope, task, story_id),
+         parent_attempt_id <- find_latest_attempt_id(story_id),
+         attrs <- build_attrs(params, story_id, agent_id, task_id, parent_attempt_id),
+         attrs <-
+           Map.merge(attrs, %{
+             reviewed_commit: review.commit,
+             reviewed_submissions: review.submissions,
+             review_started_at: review.started_at,
+             review_certified_at: review.certified_at,
+             stale: not current?
+           }),
+         {:ok, attempt} <- insert_attempt(attrs) do
+      apply_review_findings(scope, attempt, review, current?)
+
+      complete_review_task(scope, task_id, agent_id)
+      attempt
+    else
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 

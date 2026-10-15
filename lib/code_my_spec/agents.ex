@@ -1155,15 +1155,15 @@ defmodule CodeMySpec.Agents do
         with {:ok, conversation} <- open_conversation(agent_scope(agent), agent),
              {:ok, {message, offered, admission}} <-
                record_admission(agent, conversation, text, ref, event, opts[:offer]) do
-          result = dispatch_admitted(agent, admission, timeout, message, offered, opts)
-
-          case result do
-            {:ok, disposition, _message} -> {:ok, disposition}
-            error -> error
-          end
+          agent
+          |> dispatch_admitted(admission, timeout, message, offered, opts)
+          |> dispatch_disposition()
         end
     end
   end
+
+  defp dispatch_disposition({:ok, disposition, _message}), do: {:ok, disposition}
+  defp dispatch_disposition(error), do: error
 
   defp dispatch_admitted(agent, :ok, timeout, message, offered, async: true) do
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
@@ -2141,10 +2141,7 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          true <- agent.working_copy_id == scope.active_working_copy_id,
          {:ok, _} <- Mailbox.ready(scope, agent_id, generation, event["ref"]) do
-      if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do
-        with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent_id),
-             do: broadcast(scope, {:agent_turn, current})
-      end
+      broadcast_unreferenced_ready(scope, agent_id, agent, event)
 
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Mailbox.pump(scope, agent_id)
@@ -2241,6 +2238,13 @@ defmodule CodeMySpec.Agents do
       # Not ours, or not found: dropped. A transcript under the wrong agent
       # reads as that agent's work.
       _ -> :ok
+    end
+  end
+
+  defp broadcast_unreferenced_ready(scope, agent_id, agent, event) do
+    if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do
+      with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent_id),
+           do: broadcast(scope, {:agent_turn, current})
     end
   end
 

@@ -93,16 +93,20 @@ defmodule CmsHarness.Mcp.Http do
         reply(response, id)
 
       {:ok, %{status: 404}} when not retried? ->
-        with {:ok, fresh} <- initialize(client) do
-          Agent.update(client.session, fn _ -> fresh end)
-          request(client, method, params, timeout, true)
-        end
+        retry_with_fresh_session(client, method, params, timeout)
 
       {:ok, %{status: status, body: body}} ->
         {:error, "the server answered #{status}: #{String.slice(to_string(body), 0, 500)}"}
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  defp retry_with_fresh_session(client, method, params, timeout) do
+    with {:ok, fresh} <- initialize(client) do
+      Agent.update(client.session, fn _ -> fresh end)
+      request(client, method, params, timeout, true)
     end
   end
 
