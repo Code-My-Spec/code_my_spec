@@ -20,8 +20,7 @@ defmodule CmsHarness.Application do
       CmsHarness.Agents,
       # Installs the harness's log handler.
       CodeMySpec.Logging
-    ],
-    exports: :all
+    ]
 
   use Application
 

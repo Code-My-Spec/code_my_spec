@@ -20,7 +20,7 @@ defmodule CodeMySpec.Events do
       # => false
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec.Repo], exports: :all
+  use Boundary, top_level?: true, deps: [CodeMySpec.Repo]
 
   import Ecto.Query
 

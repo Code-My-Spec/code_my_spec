@@ -19,7 +19,7 @@ defmodule CodeMySpec.Users.Scope do
   every context takes a scope.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   defstruct user: nil,
             user_id: nil,

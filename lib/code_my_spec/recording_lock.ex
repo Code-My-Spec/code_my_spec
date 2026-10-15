@@ -44,7 +44,7 @@ defmodule CodeMySpec.RecordingLock do
   fixtures bridge.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   @lock ".cms_recording.lock"
 

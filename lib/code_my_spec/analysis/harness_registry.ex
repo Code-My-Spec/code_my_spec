@@ -13,7 +13,7 @@ defmodule CodeMySpec.Analysis.HarnessRegistry do
   `Analysis`.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   require Logger
 

@@ -14,8 +14,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query
 

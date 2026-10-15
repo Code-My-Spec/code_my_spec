@@ -35,8 +35,7 @@ defmodule CodeMySpec.ScreenState do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Utils],
-    exports: :all
+    deps: [CodeMySpec.Projects, CodeMySpec.Repo, CodeMySpec.Utils]
 
   import Ecto.Query
 

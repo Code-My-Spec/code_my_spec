@@ -36,7 +36,7 @@ defmodule CodeMySpec.Provisioning.Environment do
   """
   # A leaf: Deploys, Servers and Telemetry read environments without
   # depending on Provisioning (John, 2026-10-04).
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
   use Ecto.Schema
   import Ecto.Changeset
 
