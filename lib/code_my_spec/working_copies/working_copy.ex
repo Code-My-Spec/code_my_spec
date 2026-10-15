@@ -143,6 +143,12 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
+    # Without this, an unknown device_id (a typo, a stale device.json
+    # restored onto a new machine, a reaped device row) raised
+    # Ecto.ConstraintError on insert instead of returning a changeset error -
+    # a 500 on the public onboarding endpoint instead of a recoverable 4xx
+    # (71d28513).
+    |> foreign_key_constraint(:device_id, message: "does not name a known device")
     |> unique_constraint(:main,
       name: :working_copies_one_main_per_project_index,
       message: "this project already has a main working copy"
