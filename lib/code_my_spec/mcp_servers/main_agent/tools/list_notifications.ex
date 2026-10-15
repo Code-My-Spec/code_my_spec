@@ -42,6 +42,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListNotifications do
   @behaviour CodeMySpec.McpServers.ScriptResult
 
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.OpenQuestion
   alias CodeMySpec.McpServers.MainAgent.MainAgentMapper
   alias CodeMySpec.McpServers.Validators
 
@@ -78,6 +79,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListNotifications do
       "id" => question.id,
       "kind" => to_string(question.kind),
       "title" => question.title,
+      # The title can be generic; without these a scripted caller cannot answer.
+      "questions" => OpenQuestion.texts(question),
       "holder" => question.holder,
       "story_id" => question.story_id,
       "agent_id" => question.agent_id,
