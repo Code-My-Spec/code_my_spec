@@ -113,19 +113,20 @@ defmodule CmsHarness.Application do
 
           config :code_my_spec, harness_token: "…"       # config file
           config :code_my_spec, harness_deploy_key: "…"  # sprite or container
-          CMS_TOKEN=…  /  CMS_DEPLOY_KEY=…  / --deploy-key …
+          cms --deploy-key …
 
-        Note that a value in `envs/.env` is NOT enough on its own: Dotenvy loads
-        it for `env!/2`, not into the OS environment, so it has to be exported or
-        put in config for `System.get_env/1` to see it.
+        The harness does not read CMS_TOKEN or CMS_DEPLOY_KEY from the
+        environment; `mix cms.harness.onboard` does, and records the key in the
+        working copy's .cms_harness.json.
         """)
 
         :ok
     end
   end
 
-  # --deploy-key/--server-url/--node-name are exported as their env vars
-  # (CMS_DEPLOY_KEY, CMS_SERVER_URL, CMS_NODE_NAME) for the existing readers.
+  # --deploy-key sets `:harness_deploy_key`, the config `Config.deploy_key/0`
+  # reads. --server-url/--node-name are exported as their env vars
+  # (CMS_SERVER_URL, CMS_NODE_NAME) for the existing readers.
   # --port sets endpoint config directly: runtime.exs has already read
   # CMS_HARNESS_PORT. Returns the leftover argv for `handle_cli_args/1`.
   defp apply_harness_flags(argv) do
@@ -134,7 +135,7 @@ defmodule CmsHarness.Application do
         strict: [deploy_key: :string, server_url: :string, port: :string, node_name: :string]
       )
 
-    if key = opts[:deploy_key], do: System.put_env("CMS_DEPLOY_KEY", key)
+    if key = opts[:deploy_key], do: Application.put_env(:code_my_spec, :harness_deploy_key, key)
     if url = opts[:server_url], do: System.put_env("CMS_SERVER_URL", url)
     if node = opts[:node_name], do: System.put_env("CMS_NODE_NAME", node)
 

@@ -145,34 +145,25 @@ defmodule CodeMySpec.CodeMode.Bindings do
     end)
   end
 
-  # Registered tools that are neither scriptable nor this caller's, bound to a
-  # sentence rather than left to the misspelling diagnostic.
-  #
-  # NOTE: `Catalog.direct_only/1` is called with the server's names and no
-  # allowed list, and `direct_only(_, nil)` answers `[]`, so as written this
-  # binds nothing. See knowledge/tools, "Refusals".
+  # Registered tools that are neither scriptable nor this caller's
+  # (`Catalog.direct_only/2`, computed by the caller), bound to a sentence
+  # rather than left to the misspelling diagnostic. See knowledge/tools,
+  # "Refusals".
   defp explain_direct_names(lua, :all), do: lua
 
-  defp explain_direct_names(lua, carried) when is_list(carried) do
-    Enum.reduce(Catalog.direct_only(carried), lua, fn name, acc ->
+  defp explain_direct_names(lua, direct) when is_list(direct) do
+    Enum.reduce(direct, lua, fn name, acc ->
       Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
         raise Lua.RuntimeException, not_direct(name)
       end)
     end)
   end
 
-  # `tap_out` and `reject_offer` are excluded from scripts but are the caller's
-  # own to call directly; anything else here belongs to another role.
   defp not_direct(name) do
-    if name in ["tap_out", "reject_offer"] do
-      "#{name} is yours to do, made once about the turn you are in â it is not " <>
-        "something a script does. Call it directly as a tool."
-    else
-      "#{name} is a tool on this server, but not one this kind of agent carries: it " <>
-        "belongs to another role, so calling it directly will be refused too. It is " <>
-        "not a misspelling and it is not on this project's machine. If you need what " <>
-        "it does, say so rather than working around it."
-    end
+    "#{name} is a tool on this server, but not one this kind of agent carries: it " <>
+      "belongs to another role, so calling it directly will be refused too. It is " <>
+      "not a misspelling and it is not on this project's machine. If you need what " <>
+      "it does, say so rather than working around it."
   end
 
   defp describe(nil), do: "this agent"

@@ -3,12 +3,12 @@ defmodule CodeMySpec.Environments.Environment do
   Embedded schema representing an execution context.
 
   This struct encapsulates implementation-specific details for different execution
-  environments (CLI with tmux, server-side, VS Code client).
+  environments (CLI with tmux, server-side, container).
 
   ## Fields
 
-  - `type` - Environment type identifier (`:cli`, `:local`, `:vscode`,
-    `:container`, `:memory`)
+  - `type` - Environment type identifier (`:cli`, `:local`, `:container`,
+    `:memory`)
   - `ref` - Implementation-specific reference data (map)
   - `cwd` - Current working directory for the environment
   - `metadata` - Optional context information
@@ -30,21 +30,13 @@ defmodule CodeMySpec.Environments.Environment do
         ref: %{},
         metadata: %{}
       }
-
-      # VSCode environment with connection ID
-      %Environment{
-        type: :vscode,
-        cwd: "/path/to/workspace",
-        ref: %{connection_id: "conn-abc123"},
-        metadata: %{workspace: "/path/to/workspace"}
-      }
   """
 
   use Ecto.Schema
   import Ecto.Changeset
 
   @type t :: %__MODULE__{
-          type: :cli | :local | :vscode | :container | :memory | :harness | nil,
+          type: :cli | :local | :container | :memory | :harness | nil,
           ref: map(),
           cwd: String.t() | nil,
           metadata: map()
@@ -52,7 +44,7 @@ defmodule CodeMySpec.Environments.Environment do
 
   @primary_key false
   embedded_schema do
-    field :type, Ecto.Enum, values: [:cli, :local, :vscode]
+    field :type, Ecto.Enum, values: [:cli, :local]
     field :cwd, :string
     field :ref, :map, default: %{}
     field :metadata, :map, default: %{}

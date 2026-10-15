@@ -182,8 +182,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     internal? = Keyword.get(opts, :internal_agent?, false)
     header = "Fix these problems before stopping:\n\n"
 
-    advisory_section =
-      render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
+    advisory_section = render_advisory_section(advisory)
 
     runs = %{
       answers: Keyword.get(opts, :answers, %{}),
@@ -574,31 +573,30 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp unedited_marker(_problem, _session_paths), do: ""
 
-  # An empty path set: every finding was demoted, and a gate that stops blocking
-  # says so. "No file this project tracks" because a QA agent writes only
-  # gitignored files and did record edits.
+  # An empty path set: none of these came from this session's edits, and they
+  # block anyway — a stop judges the whole copy. "No file this project tracks"
+  # because a QA agent writes only gitignored files and did record edits.
   defp attribution_note(%MapSet{} = session_paths, _internal?) do
     if MapSet.size(session_paths) == 0 do
-      "\n\nThis session changed no file this project tracks, so every finding was " <>
-        "demoted to advisory — an agent that made no edits is blocked by nothing. " <>
-        "They are still real and still someone's: if one names a file you were " <>
-        "about to work in, `git log -1 -- <path>` says whose, and telling its " <>
-        "owner beats editing an in-flight file you do not own. The next session " <>
-        "that does edit gets them."
+      "\n\nThis session changed no file this project tracks, so none of these " <>
+        "came from its edits. They block anyway: a stop judges the whole working " <>
+        "copy. If one names a file you were about to work in, `git log -1 -- <path>` " <>
+        "says whose, and telling its owner beats editing an in-flight file you do " <>
+        "not own."
     else
       ""
     end
   end
 
-  # `nil`: files changed but nothing recorded names a tracked file, so nothing
-  # is demoted and all block. The usual cause is a file too new to have a `File`
-  # row (`verify_against_ledger/3` joins on them); a framework issue only for
-  # paths that could never name a file here.
+  # `nil`: files changed but nothing recorded names a tracked file, so no finding
+  # can be marked as this session's or not. The usual cause is a file too new to
+  # have a `File` row (`verify_against_ledger/3` joins on them); a framework
+  # issue only for paths that could never name a file here.
   defp attribution_note(_session_paths, _internal?) do
     "\n\nFiles in this project changed while this task ran, and nothing this " <>
       "session recorded names a file the project has a record of — so no finding " <>
-      "could be attributed, none were demoted, and all of them block, including " <>
-      "any that arrived with a rebase.\n\n" <>
+      "can be marked as this session's or someone else's. All of them block, " <>
+      "including any that arrived with a rebase.\n\n" <>
       "The usual reason is a file created this turn: a file the scanner has not " <>
       "reached yet has no record to match against, and the next sync gives it " <>
       "one. If that is what happened, stopping again once the scan has run " <>
@@ -619,9 +617,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp truncate_message(message, _max), do: message
 
-  defp render_advisory_section([], _unattributed), do: ""
+  defp render_advisory_section([]), do: ""
 
-  defp render_advisory_section(advisory, unattributed) do
+  defp render_advisory_section(advisory) do
     lines =
       advisory
       |> Enum.group_by(& &1.source)
@@ -630,18 +628,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         "  - #{source}: #{length(items)} #{dominant_severity_label(items)} (advisory)"
       end)
 
-    "\n\nAdditional problems (not blocking):\n" <> lines <> demoted_note(unattributed)
-  end
-
-  # Said out loud, so "the gate declined to block" never reads as "nothing to
-  # block on".
-  defp demoted_note(0), do: ""
-
-  defp demoted_note(count) do
-    "\n\n#{count} finding#{if count == 1, do: " is", else: "s are"} in files this " <>
-      "session did not edit, so #{if count == 1, do: "it is", else: "they are"} " <>
-      "advisory rather than blocking. If #{if count == 1, do: "it", else: "one"} " <>
-      "is genuinely yours, the attribution is wrong — say so rather than working around it."
+    "\n\nAdditional problems (not blocking):\n" <> lines
   end
 
   defp dominant_severity_label(items) do

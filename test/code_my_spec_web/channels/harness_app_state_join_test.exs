@@ -4,7 +4,7 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
   harness's own `state.json` says after any restart.
 
   A restart's result reaches the server as a channel reply or push, and a
-  harness that restarted mid-reply â or whose socket dropped and reconnected â
+  harness that restarted mid-reply — or whose socket dropped and reconnected —
   leaves the last write naming a commit the app is not serving. metric_flow's
   main copy reported `app_commit` c3eb20b while the harness's own `state.json`
   and git HEAD were 59dc451. Promotion now keys on commits, so a stale row is
@@ -61,7 +61,11 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
   test "a join records the app the harness says it is running", ctx do
     {:ok, _, _} =
       join_reporting(ctx.scope, ctx.topic, %{
-        "app" => %{"status" => "serving", "commit" => "aaaa1111", "url" => "http://127.0.0.1:4000"}
+        "app" => %{
+          "status" => "serving",
+          "commit" => "aaaa1111",
+          "url" => "http://127.0.0.1:4000"
+        }
       })
 
     recorded = copy(ctx.scope)
@@ -109,13 +113,19 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
   test "a harness reporting a down app clears its address", ctx do
     {:ok, _, first} =
       join_reporting(ctx.scope, ctx.topic, %{
-        "app" => %{"status" => "serving", "commit" => "aaaa1111", "url" => "http://127.0.0.1:4000"}
+        "app" => %{
+          "status" => "serving",
+          "commit" => "aaaa1111",
+          "url" => "http://127.0.0.1:4000"
+        }
       })
 
     leave_and_wait(first)
 
     {:ok, _, _} =
-      join_reporting(ctx.scope, ctx.topic, %{"app" => %{"status" => "down", "commit" => "aaaa1111"}})
+      join_reporting(ctx.scope, ctx.topic, %{
+        "app" => %{"status" => "down", "commit" => "aaaa1111"}
+      })
 
     assert copy(ctx.scope).app_status == "down"
     assert copy(ctx.scope).app_url == nil
