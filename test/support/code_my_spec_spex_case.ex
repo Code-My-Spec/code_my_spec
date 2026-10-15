@@ -5969,6 +5969,26 @@ defmodule CodeMySpecSpex.Case do
         )
       end
 
+      # `after` alone does not run when this test's process is killed by an
+      # exit signal rather than an exception -- a LiveView crashing inside
+      # this block takes the linked test process down without unwinding
+      # anything, and every provider's plug then stays installed for the
+      # rest of the VM. Every later spex that reaches a provider *outside* a
+      # cassette gets this one instead of its own -- the same failure shape
+      # `connect_providers_for_real/2`'s own `on_exit` guards against, but
+      # that guard only exists for a spex that declares `setup
+      # :connect_providers`. `with_provider_cassette/3` has callers that
+      # reach here directly (lines above: `safe_teardown`, the mail-domain
+      # `given_` helpers, the generated per-criterion wrapper) without going
+      # through that setup, so this is the one place every path through
+      # actually installing a plug passes -- registering it here closes the
+      # gap regardless of which caller reached it (c1b2d03a's sibling issue,
+      # 471ad1ea: "ReqCassette shared session Agent is not alive" in a
+      # later, unrelated test).
+      on_exit(fn ->
+        for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
+      end)
+
       try do
         fun.()
       after
