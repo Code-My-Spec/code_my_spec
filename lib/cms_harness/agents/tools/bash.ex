@@ -33,7 +33,9 @@ defmodule CmsHarness.Agents.Tools.Bash do
           {:error, "Command timed out" <> _ = message} ->
             {:error,
              message <>
-               "\nServer-side analysis outcome is unknown; stopping the HTTP client does not cancel the analyzer. Do not retry until its execution state is confirmed."}
+               "\nServer-side analysis outcome is unknown; stopping the HTTP client does not cancel the analyzer. " <>
+               "Do not retry until its execution state is confirmed -- GET /dashboard-status on this harness " <>
+               "reports whether it is still queued, running, or waiting on a machine-wide slot."}
 
           result ->
             result
