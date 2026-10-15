@@ -2,32 +2,22 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   @moduledoc """
   Run a Lua script that calls this harness's tools.
 
-  Use this to do several steps in one turn instead of one tool call per step —
-  read a list, look at each item, and return only what you needed. Every tool
-  is a function taking one table:
+  Use this to do several steps in one turn instead of one tool call per step.
+  Every tool is a function taking one table:
 
       local story = get_story({ story_number = 970 })
       print("checking", story.title)
       return story.title
 
-  A tool that ran and could not answer returns nil and an error table rather
-  than stopping the script, so a loop can report what it could not find:
+  A tool that ran and could not answer returns nil and an error table:
 
       local story, err = get_story({ story_number = 12345 })
       if story == nil then return "missing: " .. err.message end
 
-  A call the sandbox *rejects* — wrong argument type, missing required
-  argument — is different: the tool never ran, and the script stops there. You
-  do not have to check for it, and you cannot carry on past it. That is
-  deliberate. A malformed call used to come back as `nil` and an error table
-  too, which is indistinguishable at a glance from a tool that found nothing,
-  and a script that discarded the second value would go on to answer from a
-  call that never happened.
+  A malformed call (wrong type, missing required argument) is different: the
+  tool never ran, and the script stops there rather than returning nil.
 
-  Call `tool_docs` to see what tools there are and what each one takes.
-
-  Most tools answer with text rather than data, so treat a result as a string
-  unless its documentation says otherwise. Scripts are sandboxed: no
+  Call `tool_docs` for what each tool takes. Scripts are sandboxed: no
   filesystem, no network, no OS, and there are limits on run time, recursion
   and result size.
   """
