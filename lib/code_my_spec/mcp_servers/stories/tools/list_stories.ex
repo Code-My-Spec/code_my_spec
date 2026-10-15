@@ -8,7 +8,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
 
   use Anubis.Server.Component, type: :tool
 
-  require Logger
+  @behaviour CodeMySpec.McpServers.ScriptResult
 
   alias CodeMySpec.McpServers.Stories.StoriesMapper
   alias CodeMySpec.McpServers.Validators
@@ -47,28 +47,46 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
 
   @impl true
   def execute(params, frame) do
-    Logger.debug(
-      "[ListStories] execute called, scope project: #{inspect(frame.assigns[:current_scope] && frame.assigns[:current_scope].active_project_id)}"
-    )
-
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        limit = (params[:limit] || @default_limit) |> max(0) |> min(@max_limit)
-        offset = max(params[:offset] || 0, 0)
-        opts = build_opts(params, limit, offset)
-
-        Logger.debug(
-          "[ListStories] calling list_project_stories_paginated with project_id: #{scope.active_project_id}"
-        )
-
-        {stories, total} = Stories.list_project_stories_paginated(scope, opts)
-        Logger.debug("[ListStories] got #{total} stories, page size: #{length(stories)}")
+    case stories(params, frame) do
+      {:ok, {stories, total, limit, offset}} ->
         {:reply, StoriesMapper.stories_list_response(stories, total, limit, offset), frame}
 
       {:error, atom} ->
-        Logger.warning("[ListStories] validation failed: #{inspect(atom)}")
         {:reply, StoriesMapper.error(atom), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    with {:ok, {stories, total, limit, offset}} <- stories(params, frame) do
+      {:ok, %{"stories" => Enum.map(stories, &row/1), "total" => total, "limit" => limit, "offset" => offset}}
+    end
+  end
+
+  # Lifted out of `execute/2` so both paths run the same query.
+  defp stories(params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+      limit = (params[:limit] || @default_limit) |> max(0) |> min(@max_limit)
+      offset = max(params[:offset] || 0, 0)
+      opts = build_opts(params, limit, offset)
+      {stories, total} = Stories.list_project_stories_paginated(scope, opts)
+      {:ok, {stories, total, limit, offset}}
+    end
+  end
+
+  # String keys and plain values: these cross into a Lua VM, where an atom key
+  # and a struct are not things that exist.
+  defp row(story) do
+    %{
+      "number" => story.number,
+      "title" => story.title,
+      "story" => story.story || story.description,
+      "description" => story.description,
+      "ready_for_dev" => story.ready_for_dev == true,
+      "epic_id" => story.epic_id,
+      "component_id" => story.component_id,
+      "priority" => story.priority
+    }
   end
 
   defp build_opts(params, limit, offset) do

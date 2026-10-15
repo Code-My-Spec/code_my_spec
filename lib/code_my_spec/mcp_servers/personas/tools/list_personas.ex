@@ -9,6 +9,8 @@ defmodule CodeMySpec.McpServers.Personas.Tools.ListPersonas do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias CodeMySpec.McpServers.Personas.PersonasMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Personas
@@ -18,13 +20,32 @@ defmodule CodeMySpec.McpServers.Personas.Tools.ListPersonas do
 
   @impl true
   def execute(_params, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        personas = Personas.list_personas(scope)
-        {:reply, PersonasMapper.personas_list_response(personas), frame}
-
-      {:error, reason} ->
-        {:reply, PersonasMapper.error(reason), frame}
+    case personas(frame) do
+      {:ok, personas} -> {:reply, PersonasMapper.personas_list_response(personas), frame}
+      {:error, reason} -> {:reply, PersonasMapper.error(reason), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(_params, frame) do
+    with {:ok, personas} <- personas(frame) do
+      {:ok, Enum.map(personas, &row/1)}
+    end
+  end
+
+  defp personas(frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+      {:ok, Personas.list_personas(scope)}
+    end
+  end
+
+  defp row(persona) do
+    %{
+      "id" => persona.id,
+      "slug" => persona.slug,
+      "name" => persona.name,
+      "headline" => persona.headline,
+      "persona_type" => to_string(persona.persona_type)
+    }
   end
 end
