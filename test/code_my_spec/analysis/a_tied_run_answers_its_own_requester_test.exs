@@ -67,6 +67,12 @@ defmodule CodeMySpec.Analysis.ATiedRunAnswersItsOwnRequesterTest do
     Analysis.record_remote_result(ctx.scope, clean(ctx.primary.id))
     Analysis.record_remote_result(ctx.scope, clean(unasked.id, ctx.primary.id))
 
-    refute_receive {@reported, _ref, _measurements, %{requester: nil, waiters: []}}, 200
+    # Telemetry is global: other tests' runs report on this handler too, so
+    # only this project's reports count (a stray one ejected 0da051c827).
+    project_id = ctx.scope.active_project_id
+
+    refute_receive {@reported, _ref, _measurements,
+                    %{scope: %{active_project_id: ^project_id}, requester: nil, waiters: []}},
+                   200
   end
 end
