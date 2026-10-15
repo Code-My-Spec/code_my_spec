@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.CodeMode, as: Layer
-  alias CodeMySpec.McpServers.CodeMode.Tools.{RunScript, ToolDocs}
+  alias CodeMySpec.McpServers.CodeMode.Tools.{RunBrowserScript, RunScript, ToolDocs}
   alias CodeMySpec.McpServers.LocalServer
 
   defp text(response) do
@@ -272,6 +272,30 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
       body = text(response)
       assert body =~ "# browser_navigate"
       assert body =~ "run_browser_script"
+    end
+  end
+
+  # ff1de314: a session hit "attempt to call a nil value (global 'browser_get_title')"
+  # for every one of seven browser tools, read the runtime's own advice (go
+  # read tool_docs), and abandoned browser tooling -- the machine's MCP
+  # connection was actually down, which the error gave no way to tell apart
+  # from a typo'd tool name.
+  describe "a browser tool call when the machine reports none" do
+    test "says the machine is unreachable, not that the tool does not exist" do
+      scope = full_scope_fixture()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               RunBrowserScript.execute(%{script: ~S[return browser_navigate({})]}, frame)
+
+      assert response.isError == true
+      body = text(response)
+
+      assert body =~ "reports no browser tools",
+             "a machine with nothing bound must say so, not leave the bare Lua " <>
+               "'attempt to call a nil value' for the agent to misread as a typo"
+
+      assert body =~ "Check the harness is connected"
     end
   end
 
