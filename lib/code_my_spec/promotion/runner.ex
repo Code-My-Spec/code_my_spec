@@ -318,8 +318,9 @@ defmodule CodeMySpec.Promotion.Runner do
   defp decode({:error, %{} = reason}), do: {:error, atomize(reason)}
 
   # Unreachable is marked, not only worded: a harness restarting after a
-  # landing is a passing state a caller can wait out, not a fault of the work.
-  defp decode({:error, {:harness_not_registered, _} = reason}),
+  # landing, or its channel down for a code reload, is a passing state a caller
+  # can wait out, not a fault of the work.
+  defp decode({:error, {gone, _} = reason}) when gone in [:harness_not_registered, :harness_gone],
     do:
       {:error,
        %{
