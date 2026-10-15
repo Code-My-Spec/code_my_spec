@@ -61,6 +61,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
   alias CmsHarness.WorkingCopies.Create
+  alias CmsHarness.WorkingCopies.SyncToMain
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Promotion.Steps
@@ -1118,6 +1119,12 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_fs(env, "ensure_dir", %{"path" => p}), do: CodeMySpec.Environments.ensure_dir(env, p)
   defp apply_fs(env, "stat", %{"path" => p}), do: CodeMySpec.Environments.stat(env, p)
   defp apply_fs(env, "glob", %{"pattern" => p}), do: {:ok, CodeMySpec.Environments.glob(env, p)}
+
+  # 8f5ebfb2: the fs_request round trip already reaches a specific working
+  # copy's own harness by id, which is exactly what bringing a stale copy
+  # up to date before staffing it needs -- so this travels as another fs op
+  # rather than a second message/ack/encode/decode set of its own.
+  defp apply_fs(env, "sync_to_main", payload), do: SyncToMain.run(env.cwd, payload)
 
   # An unknown op is an error, not silence: the server is waiting on a reply.
   defp apply_fs(_env, op, _payload), do: {:error, :"unsupported_fs_op_#{op}"}
