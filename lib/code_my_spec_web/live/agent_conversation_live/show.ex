@@ -927,7 +927,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         answers = Notifications.collect_answers(request.questions, params)
 
         {kind, message} =
-          ChatComponents.answer_flash(Notifications.answer_question_request(request.id, answers))
+          ChatComponents.answer_flash(
+            Notifications.answer_question_request(request.id, answers,
+              answered_by_user_id: socket.assigns.current_scope.user.id
+            )
+          )
 
         # Re-fold too: the run was split for the form, which is now gone.
         {:noreply,
@@ -1054,7 +1058,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         {:noreply, socket}
 
       _request ->
-        _ = Notifications.resolve_permission_request(id, decision)
+        _ =
+          Notifications.resolve_permission_request(id, decision, nil,
+            answered_by_user_id: socket.assigns.current_scope.user.id
+          )
 
         {:noreply, assign(socket, :permissions, permissions_for(socket.assigns.conversation))}
     end

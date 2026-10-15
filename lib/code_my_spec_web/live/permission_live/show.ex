@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
          |> assign(page_title: "Not Found", request: nil)}
 
       request ->
-        if request.user_id != socket.assigns.current_scope.user.id do
+        if not Notifications.recipient?(request, socket.assigns.current_scope.user.id) do
           {:ok,
            socket
            |> put_flash(:error, "Not authorized")
@@ -36,10 +36,15 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
     resolve(socket, "deny")
   end
 
+  defp resolve(%{assigns: %{request: nil}} = socket, _decision),
+    do: {:noreply, put_flash(socket, :error, "Not authorized")}
+
   defp resolve(socket, decision) do
     request = socket.assigns.request
 
-    case Notifications.resolve_permission_request(request.id, decision) do
+    case Notifications.resolve_permission_request(request.id, decision, nil,
+           answered_by_user_id: socket.assigns.current_scope.user.id
+         ) do
       {:ok, updated} ->
         {:noreply,
          socket

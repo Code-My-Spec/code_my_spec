@@ -110,6 +110,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     belongs_to :conversation_message, CodeMySpec.Conversations.Message, type: :binary_id
 
     belongs_to :user, CodeMySpec.Users.User, type: :id
+    belongs_to :answered_by_user, CodeMySpec.Users.User, type: :id
 
     timestamps(type: :utc_datetime)
   end
@@ -128,6 +129,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
       :answers,
       :holder,
       :answered_by,
+      :answered_by_user_id,
       :overruled,
       :answer_history,
       :escalation_reason,

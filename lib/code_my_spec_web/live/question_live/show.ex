@@ -23,7 +23,7 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
   end
 
   defp mount_request(socket, id, request) do
-    if request.user_id != socket.assigns.current_scope.user.id do
+    if not Notifications.recipient?(request, socket.assigns.current_scope.user.id) do
       {:ok, socket |> put_flash(:error, "Not authorized") |> assign(request: nil)}
     else
       if connected?(socket) do
@@ -35,11 +35,18 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
   end
 
   @impl true
+  def handle_event("submit", _params, %{assigns: %{request: nil}} = socket),
+    do: {:noreply, put_flash(socket, :error, "Not authorized")}
+
   def handle_event("submit", params, socket) do
     request = socket.assigns.request
     answers = Notifications.collect_answers(request.questions, params)
 
-    outcome = Notifications.answer_question_request(request.id, answers)
+    outcome =
+      Notifications.answer_question_request(request.id, answers,
+        answered_by_user_id: socket.assigns.current_scope.user.id
+      )
+
     {kind, message} = ChatComponents.answer_flash(outcome)
 
     {:noreply,

@@ -176,6 +176,14 @@ defmodule CodeMySpec.Notifications.InboxTest do
     # Stopped is intent now: an agent turned off. One merely down is on duty and
     # comes back, and answering its question resumes it.
     defp agent!(scope, state) do
+      # These tests exercise asker lifecycle for an authorized inbox recipient.
+      CodeMySpec.Repo.get_by!(CodeMySpec.Accounts.Member,
+        user_id: scope.user.id,
+        account_id: scope.active_account_id
+      )
+      |> CodeMySpec.Accounts.Member.update_role_changeset(%{role: :owner})
+      |> CodeMySpec.Repo.update!()
+
       {:ok, agent} =
         AgentsRepository.create_agent(
           scope,

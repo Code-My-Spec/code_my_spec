@@ -110,7 +110,12 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     case find(socket, id) do
       %QuestionRequest{} = request ->
         answers = Notifications.collect_answers(request.questions, params)
-        outcome = Notifications.answer_question_request(request.id, answers)
+
+        outcome =
+          Notifications.answer_question_request(request.id, answers,
+            answered_by_user_id: socket.assigns.current_scope.user.id
+          )
+
         {kind, message} = ChatComponents.answer_flash(outcome)
         {:noreply, socket |> flash(kind, message) |> close_unless_refused(outcome) |> load()}
 
@@ -127,8 +132,13 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
   defp resolve(socket, id, decision, message) do
     case find(socket, id) do
       %PermissionRequest{} ->
-        _ = Notifications.resolve_permission_request(id, decision)
-        {:noreply, socket |> flash(:info, message) |> collapse() |> load()}
+        outcome =
+          Notifications.resolve_permission_request(id, decision, nil,
+            answered_by_user_id: socket.assigns.current_scope.user.id
+          )
+
+        {kind, feedback} = permission_feedback(outcome, message)
+        {:noreply, socket |> flash(kind, feedback) |> collapse() |> load()}
 
       _ ->
         {:noreply, socket}
@@ -143,6 +153,14 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
     send(self(), {:notification_flash, kind, message})
     socket
   end
+
+  defp permission_feedback({:ok, _}, message), do: {:info, message}
+
+  defp permission_feedback({:error, {:already_resolved, _}}, _message),
+    do: {:info, "Already resolved. Your decision was not applied."}
+
+  defp permission_feedback({:error, _}, _message),
+    do: {:error, "Could not apply your decision."}
 
   defp collapse(socket), do: assign(socket, :expanded, nil)
 
