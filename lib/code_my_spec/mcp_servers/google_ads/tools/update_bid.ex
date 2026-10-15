@@ -7,12 +7,12 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.UpdateBid do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, doc: "Customer ID (e.g. \"123-456-7890\")"
+    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
     field :criterion_resource_name, :string,
       required: true,
-      doc: "Full resource name, e.g. customers/123/adGroupCriteria/456~789"
-    field :cpc_bid_micros, :integer, required: true, doc: "Max CPC bid in micros"
-    field :login_customer_id, :string, doc: "Manager (MCC) account ID, when acting on a linked account"
+      description: "Full resource name, e.g. customers/123/adGroupCriteria/456~789"
+    field :cpc_bid_micros, :integer, required: true, description: "Max CPC bid in micros"
+    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true

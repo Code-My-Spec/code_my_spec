@@ -112,8 +112,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_requirements show_requirement list_personas get_persona
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue update_issue
     list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
-    withdraw_question
-    call_mcp_server
+    withdraw_question ask_user_question
+    call_mcp_server get_local_app_token
     ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
@@ -142,7 +142,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_dependency remove_dependency
     list_requirements show_requirement
     list_working_copies
-    list_rules list_questions withdraw_question
+    list_rules list_questions withdraw_question ask_user_question
     check_answer list_user_questions
     list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
     list_knowledge read_knowledge semantic_search

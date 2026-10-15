@@ -15,9 +15,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AddCriterion do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
 
-    field :description, :string, required: true, doc: "The acceptance criterion text"
+    field :description, :string, required: true, description: "The acceptance criterion text"
   end
 
   @impl true

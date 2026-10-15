@@ -6,8 +6,8 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.InspectUrlEnhanced do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :page_url, :string, required: true, doc: "The specific URL to inspect"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :page_url, :string, required: true, description: "The specific URL to inspect"
   end
 
   @impl true

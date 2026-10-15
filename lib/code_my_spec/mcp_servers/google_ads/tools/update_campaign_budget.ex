@@ -7,10 +7,10 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.UpdateCampaignBudget do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, doc: "Customer ID (e.g. \"123-456-7890\")"
-    field :budget_id, :string, required: true, doc: "Campaign budget ID"
-    field :amount_micros, :integer, required: true, doc: "Daily amount in micros (1_000_000 = 1 currency unit)"
-    field :login_customer_id, :string, doc: "Manager (MCC) account ID, when acting on a linked account"
+    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
+    field :budget_id, :string, required: true, description: "Campaign budget ID"
+    field :amount_micros, :integer, required: true, description: "Daily amount in micros (1_000_000 = 1 currency unit)"
+    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true

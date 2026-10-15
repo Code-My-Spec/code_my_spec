@@ -115,7 +115,11 @@ defmodule CodeMySpec.Agents.Assignment do
       Repo.transaction(fn ->
         lock_project(scope)
         team = lock_team(scope, copy_id)
-        if team == [], do: Repo.rollback(:no_team)
+        # 3f824f74: the guard belongs to *assigning* a story -- there is
+        # nobody to give it to -- not to clearing or releasing one, which a
+        # teamless copy must still be able to do or its reservations can
+        # never come free again.
+        if team == [] and not is_nil(story_id), do: Repo.rollback(:no_team)
 
         story = reserve(scope, copy_id, story_id)
         clear_issue_bag(scope, copy_id, story)
@@ -126,7 +130,12 @@ defmodule CodeMySpec.Agents.Assignment do
         |> Repo.update_all(set: team_attrs(story))
 
         still_held = held_on_copy(scope, copy_id)
-        Stories.release_stories(scope, copy_id, (before -- [new_id]) -- still_held)
+        # Release what the copy actually reserves (`stories.working_copy_id`),
+        # not `before` -- the team's own `story_id` drifts from the
+        # reservation whenever an agent holding one is retired or replaced,
+        # and `before` read only the drifted copy, orphaning the reservation.
+        reserved = Stories.reserved_story_ids(scope, copy_id)
+        Stories.release_stories(scope, copy_id, (reserved -- [new_id]) -- still_held)
 
         {before, new_id}
       end)
@@ -525,7 +534,7 @@ defmodule CodeMySpec.Agents.Assignment do
 
   The one-story counterpart of `EpicDispatch.place/3`.
   `Stories.reserve_story/3` only claims an unassigned story, and
-  `WorkingCopies.offboard/2` releases every story a copy holds.
+  `unassign_story/3` releases one without taking it anywhere.
 
   Refuses onto a target with no checkout on disk, and refuses to take a
   story out from under the copy whose team has it as the active story
@@ -556,6 +565,42 @@ defmodule CodeMySpec.Agents.Assignment do
 
         true ->
           Stories.update_story(scope, story, %{working_copy_id: target.id})
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Release a story from whatever working copy holds it, with nothing new to
+  take its place -- the free half of `move_story/4`'s move. 3f824f74: this
+  is the explicit reassign path a refusal from `set_active_story` names
+  ("Reassign it explicitly first") but nothing offered -- freed here, the
+  story can be selected again on any copy with `set_active_story`.
+
+  Same guard as `move_story/4`: refuses to take it out from under the copy
+  whose team has it as the active story (`WorkingCopies.team_story_id/1`)
+  unless `force: true` is given.
+  """
+  @spec unassign_story(Scope.t(), term(), keyword()) ::
+          {:ok, Stories.Story.t()}
+          | {:error, :not_found | :not_assigned | :story_active_elsewhere}
+  def unassign_story(%Scope{active_project_id: project_id} = scope, story_id, opts \\ [])
+      when is_binary(project_id) do
+    force? = Keyword.get(opts, :force, false)
+
+    with {:ok, id} <- Ecto.Type.cast(:id, story_id),
+         %{project_id: ^project_id} = story <- Stories.get_story(scope, id) do
+      cond do
+        is_nil(story.working_copy_id) ->
+          {:error, :not_assigned}
+
+        not force? and WorkingCopies.team_story_id(story.working_copy_id) == story.id ->
+          {:error, :story_active_elsewhere}
+
+        true ->
+          Stories.release_stories(scope, story.working_copy_id, [story.id])
+          {:ok, %{story | working_copy_id: nil}}
       end
     else
       _ -> {:error, :not_found}

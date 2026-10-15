@@ -13,11 +13,11 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AcceptIssue do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID to accept"
-    field :story_number, :integer, doc: "Optional number of the story to link this issue to"
+    field :issue_id, :string, required: true, description: "Issue ID to accept"
+    field :story_number, :integer, description: "Optional number of the story to link this issue to"
 
     field :category, :string,
-      doc:
+      description:
         "Disposition category: 'bug' (default) or 'requirements_change' (requires story_number)"
   end
 

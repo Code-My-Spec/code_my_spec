@@ -40,34 +40,34 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   schema do
     field(:requirement_name, :string,
       required: true,
-      doc: "Name of the requirement (e.g., implementation_file, ready_for_qa)"
+      description: "Name of the requirement (e.g., implementation_file, ready_for_qa)"
     )
 
     field(:entity_type, :string,
       required: true,
-      doc: "Entity type: component, story, or project"
+      description: "Entity type: component, story, or project"
     )
 
     field(:story_number, :integer,
-      doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+      description: "A story's number — the same as entity_type `story` with entity_id set to it"
     )
 
     field(:entity_id, :string,
-      doc:
+      description:
         "The entity that owns this requirement: a story's number, or a component's or project's id"
     )
 
     field(:module_name, :string,
-      doc: "Component module name (alternative to entity_id for component requirements)"
+      description: "Component module name (alternative to entity_id for component requirements)"
     )
 
-    field(:session_id, :string, doc: "Injected by hook — do not set manually")
+    field(:session_id, :string, description: "Injected by hook — do not set manually")
 
-    field(:agent_id, :string, doc: "Your agent identifier — claims ownership of the task")
+    field(:agent_id, :string, description: "Your agent identifier — claims ownership of the task")
 
     # Legacy — kept for backwards compatibility
     field(:requirement_id, :string,
-      doc: "Deprecated: use requirement_name + entity_type + entity_id"
+      description: "Deprecated: use requirement_name + entity_type + entity_id"
     )
   end
 
@@ -311,6 +311,26 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
          TasksMapper.error(
            "Cannot resume task #{task.id} beside your active task. Finish that one first; " <>
              "this one is offered back to you once it is done."
+         ), frame}
+
+      # f7a4b81e: a tap-out denial (or a withdrawn blocker) can tell an agent
+      # to resume a task whose requirement has since stopped being eligible
+      # -- something else claimed the work, or the project state moved on, in
+      # the window between that notice and this call. A bare error here left
+      # the task stuck blocked forever: nothing auto-clears it, and the agent
+      # had no path forward except guessing to call cancel_task itself.
+      # Cancelling it here, the moment resume turns out to be impossible, and
+      # pointing at get_next_requirement is the consistent disposition this
+      # issue's correction asked for, instead of instructing an impossible
+      # resume and leaving the attempt stranded.
+      {:error, :requirement_not_eligible} ->
+        {:ok, _updated} = TaskOwner.complete_task(scope, owner, task.id, :cancelled)
+
+        {:reply,
+         TasksMapper.error(
+           "Task #{task.id} named #{req.name} for #{req.entity_type} #{req.entity_id}, which " <>
+             "is no longer eligible work -- cancelled rather than left stuck blocked. " <>
+             "Call get_next_requirement for what is actionable now."
          ), frame}
 
       {:error, reason} ->

@@ -24,26 +24,26 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddScenario do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
 
     field :rule_statement, :string,
       required: true,
-      doc:
+      description:
         "The exact statement of the Rule this scenario illustrates. The Rule must already exist on the story."
 
     field :title, :string,
       required: true,
-      doc:
+      description:
         "Scenario title (one-line, in domain language; names the persona with relevant context)."
 
     field :kind, :string,
       required: true,
-      doc:
+      description:
         "`happy_path` or `failure_path`. Use `happy_path` for the normal flow; add `failure_path` only when a genuine failure surface exists for this rule."
 
     field :body, :string,
       required: true,
-      doc: "Plain-text Gherkin Given/When/Then body for the scenario."
+      description: "Plain-text Gherkin Given/When/Then body for the scenario."
   end
 
   @impl true

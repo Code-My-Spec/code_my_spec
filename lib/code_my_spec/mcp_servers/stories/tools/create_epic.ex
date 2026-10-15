@@ -15,8 +15,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateEpic do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :name, :string, required: true, doc: "Epic name (e.g., 'Gods and Religion')"
-    field :description, :string, doc: "What this epic covers (optional)"
+    field :name, :string, required: true, description: "Epic name (e.g., 'Gods and Religion')"
+    field :description, :string, description: "What this epic covers (optional)"
   end
 
   @impl true

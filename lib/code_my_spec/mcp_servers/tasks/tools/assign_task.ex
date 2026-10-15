@@ -19,13 +19,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignTask do
   schema do
     field :task_id, :string,
       required: true,
-      doc: "ID of the task to assign"
+      description: "ID of the task to assign"
 
     field :agent_id, :string,
       required: true,
-      doc: "Subagent identifier to assign to the task"
+      description: "Subagent identifier to assign to the task"
 
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :session_id, :string, description: "Injected by hook — do not set manually"
   end
 
   @impl true

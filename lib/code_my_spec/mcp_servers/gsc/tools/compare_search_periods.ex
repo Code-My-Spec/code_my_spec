@@ -6,13 +6,13 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.CompareSearchPeriods do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :period1_start, :string, required: true, doc: "Period 1 start (YYYY-MM-DD)"
-    field :period1_end, :string, required: true, doc: "Period 1 end (YYYY-MM-DD)"
-    field :period2_start, :string, required: true, doc: "Period 2 start (YYYY-MM-DD)"
-    field :period2_end, :string, required: true, doc: "Period 2 end (YYYY-MM-DD)"
-    field :dimensions, :string, doc: "Dimensions to group by (default query)"
-    field :limit, :integer, doc: "Top results to compare (default 10)"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :period1_start, :string, required: true, description: "Period 1 start (YYYY-MM-DD)"
+    field :period1_end, :string, required: true, description: "Period 1 end (YYYY-MM-DD)"
+    field :period2_start, :string, required: true, description: "Period 2 start (YYYY-MM-DD)"
+    field :period2_end, :string, required: true, description: "Period 2 end (YYYY-MM-DD)"
+    field :dimensions, :string, description: "Dimensions to group by (default query)"
+    field :limit, :integer, description: "Top results to compare (default 10)"
   end
 
   @impl true

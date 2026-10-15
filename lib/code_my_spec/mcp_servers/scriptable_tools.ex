@@ -122,11 +122,13 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies)
   component(CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.SyncWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop)
   component(CodeMySpec.McpServers.Stories.Tools.SetActiveStory)
   component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.UnassignStoryFromWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.ReleaseStoryFromWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.UnassignEpicFromWorkingCopy)
 
   # Story 1108: an agent on a copy can start, restart and stop its own copy's
@@ -163,6 +165,10 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Components.Tools.AddDependency)
   component(CodeMySpec.McpServers.Components.Tools.RemoveDependency)
   component(CodeMySpec.McpServers.Components.Tools.GetComponent)
+  # 8f26f7ba: present on `ComponentsServer` but missing here, so `list_components`
+  # was unreachable from a script even though every sibling Components tool
+  # above is registered and no exclusion applies.
+  component(CodeMySpec.McpServers.Components.Tools.ListComponents)
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
@@ -218,6 +224,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Research.Tools.WebSearch)
   component(CodeMySpec.McpServers.Research.Tools.WebFetch)
   component(CodeMySpec.McpServers.Qa.Tools.CallMcpServer)
+  component(CodeMySpec.McpServers.Qa.Tools.GetLocalAppToken)
   # Story 1116 ("1082"): every agent role reads its own project's deployed
   # logs and traces. Granted to every role in `RoleProfile`, not main-only.
   component(CodeMySpec.McpServers.Observability.Tools.QueryLogs)

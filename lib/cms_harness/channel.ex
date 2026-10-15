@@ -34,6 +34,10 @@ defmodule CmsHarness.Channel do
   def create_ack_timeout,
     do: Application.get_env(:code_my_spec, :harness_create_ack_timeout, 30_000)
 
+  @doc "How long a mailbox transition may wait for the database authority's acknowledgement."
+  def mailbox_timeout,
+    do: Application.get_env(:code_my_spec, :harness_mailbox_timeout, 17_000)
+
   def via(root), do: {:via, Registry, {CmsHarness.Registry, {:channel, root}}}
 
   @doc """
@@ -138,7 +142,7 @@ defmodule CmsHarness.Channel do
   @doc "Authenticated mailbox transition, acknowledged by the database authority."
   def mailbox(root, params) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
-      [{pid, _}] -> GenServer.call(pid, {:mailbox, params}, 17_000)
+      [{pid, _}] -> GenServer.call(pid, {:mailbox, params}, mailbox_timeout())
       [] -> {:error, :not_connected}
     end
   catch

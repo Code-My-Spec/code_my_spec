@@ -23,11 +23,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.WriteProjectFile do
   alias CodeMySpec.WorkingCopies
 
   schema do
-    field(:path, :string, required: true, doc: "Path relative to the project root.")
+    field(:path, :string, required: true, description: "Path relative to the project root.")
 
     field(:content, :string,
       required: true,
-      doc: "Full file content — this replaces whatever is there."
+      description: "Full file content — this replaces whatever is there."
     )
   end
 

@@ -18,9 +18,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   alias CodeMySpec.Sessions
 
   schema do
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
-    field :task_id, :string, doc: "Task to block; omit for whole-agent continuous stop approval."
-    field :reason, :string, doc: "Why this work should stop."
+    field :session_id, :string, description: "Injected by hook — do not set manually"
+    field :task_id, :string, description: "Task to block; omit for whole-agent continuous stop approval."
+    field :reason, :string, description: "Why this work should stop."
   end
 
   @impl true

@@ -8,7 +8,7 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.GetPropertyDetails do
   schema do
     field :property_id, :string,
       required: true,
-      doc: "Property ID — a number, or a string like \"properties/123456789\""
+      description: "Property ID — a number, or a string like \"properties/123456789\""
   end
 
   @impl true

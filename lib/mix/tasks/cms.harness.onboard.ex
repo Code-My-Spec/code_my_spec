@@ -551,7 +551,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # file the spec wrote through the same surface — not a fixture reaching past it.
   defp identity(env, root, project_id) do
     case Environments.read_file(env, @harness_config_file) do
-      {:ok, contents} -> existing_id(contents, env, root)
+      {:ok, contents} -> existing_id(contents, env, root, project_id)
       _ -> mint(root, project_id)
     end
   end
@@ -559,23 +559,111 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Both key names, new one first — the compatibility window `HarnessConfig`
   # implements. Reading only one name re-minted a fresh identity on a second
   # onboard and orphaned everything recorded against the first.
-  defp existing_id(contents, env, root) do
+  defp existing_id(contents, env, root, project_id) do
     case Jason.decode(contents) do
-      {:ok, map} -> recorded_id(map, env, root)
-      _ -> mint_and_record(env, root)
+      {:ok, map} -> recorded_id(map, env, root, project_id)
+      _ -> mint_and_record(env, root, project_id)
     end
   end
 
-  defp recorded_id(%{"working_copy_id" => id}, _env, _root) when is_binary(id) and id != "",
-    do: {:ok, id}
+  defp recorded_id(%{"working_copy_id" => id}, env, root, project_id) when is_binary(id) and id != "",
+    do: confirm_or_remint(id, env, root, project_id)
 
-  defp recorded_id(%{"harness_id" => id}, _env, _root) when is_binary(id) and id != "",
-    do: {:ok, id}
+  defp recorded_id(%{"harness_id" => id}, env, root, project_id) when is_binary(id) and id != "",
+    do: confirm_or_remint(id, env, root, project_id)
 
-  defp recorded_id(_map, env, root), do: mint_and_record(env, root)
+  defp recorded_id(_map, env, root, project_id), do: mint_and_record(env, root, project_id)
 
-  defp mint_and_record(env, root) do
-    with {:ok, id} <- mint(root, nil) do
+  # A recorded id is confirmed against the server rather than trusted on
+  # faith: `Staffing.offboard/2` deletes the server's row but never touches
+  # the checkout's own files (its own moduledoc says so), so the original
+  # unconditional trust here left a checkout re-onboarded after an explicit
+  # offboard invisible to the server forever, with nothing anywhere saying
+  # so (45cb6b07). Confirmed gone, this follows the rule story 1014's
+  # criterion 965 already establishes for a checkout that vanished and came
+  # back: never repaired into the old identity, onboarded as a new one --
+  # the same path `mint_and_record/2` already takes for a checkout with no
+  # recorded id at all.
+  #
+  # A check that itself fails (network, credential) is read as "could not
+  # tell", not "gone": that would trade a silent loss of registration for a
+  # forced re-mint on every transient network hiccup, which is worse.
+  #
+  # `project_for(root, project_id)`, not `project_for(root, nil)`: an
+  # explicit `--project` must confirm against THAT project, not whatever
+  # `ProjectIdentity.resolve(root)` finds on real disk at `root` -- with no
+  # `--root` given, `root` is `File.cwd!()`, which for a spec driving this
+  # through an in-memory `Environments` fixture is this very checkout's own
+  # real directory, unrelated to the fixture's project. Resolving the wrong
+  # project meant confirming a fixture-minted id against a real server using
+  # a real, unrelated project's credentials -- a mismatched 404 that
+  # re-minted a fresh id for a copy that was never actually gone (c1b2d03a's
+  # sibling: story 1030's onboarding criteria failed this way whenever a
+  # full-suite run reached this spec after any other real-root onboard call).
+  defp confirm_or_remint(id, env, root, project_id) do
+    case project_for(root, project_id) do
+      {:ok, project} -> confirm_with_project(id, env, root, project, project_id)
+      _ -> {:ok, id}
+    end
+  end
+
+  # The raw deploy key, not an exchanged access token: `GET /api/harnesses/:id`
+  # sits behind `DeployKeyOrOAuth`, which accepts a project's deploy key
+  # directly, same as the exchange endpoint would have taken it to trade for
+  # a token. Confirming a recorded id has no business trading a key for a
+  # token it then uses once -- that trip went through `CmsHarness.Token`'s
+  # own exchange, which is deliberately exempt from the suite's stub
+  # convention (it dials whatever `Config.server_url()` names, by design) and
+  # always logs at `:error` on anything but a clean 200, win or lose. Every
+  # confirmation this code performs reached that log, real server or not.
+  defp confirm_with_project(id, env, root, project, project_id) do
+    case ensure_local_credential(project.id) do
+      {:ok, key} -> handle_confirmation(confirm(id, key), id, env, root, project_id)
+      _ -> {:ok, id}
+    end
+  end
+
+  @doc """
+  What a recorded id's confirmation answer decides, given the response
+  `confirm/2` would have returned.
+
+  Public so the decision is testable without the network call `confirm/2`
+  makes -- only the 200 and fallback branches, which touch nothing else, are
+  covered directly; the 404 branch's re-mint is covered by `recorded_id/4`'s
+  own moduledoc note and by manual verification, same as `mint/2` itself.
+  """
+  def handle_confirmation({:ok, %{status: 200}}, id, _env, _root, _project_id), do: {:ok, id}
+
+  def handle_confirmation({:ok, %{status: 404}}, _id, env, root, project_id),
+    do: mint_and_record(env, root, project_id)
+
+  def handle_confirmation(_other, id, _env, _root, _project_id), do: {:ok, id}
+
+  # Pinned like every other Req client in this app (`CodeMySpec.HttpClientsAreStubbableTest`):
+  # `config :code_my_spec, __MODULE__, plug: {Req.Test, __MODULE__}` in test,
+  # stubbed per test with `Req.Test.stub/2`. With no stub installed -- true
+  # for every existing onboarding spec, which never deliberately exercises
+  # this confirmation -- `Req.Test`'s own plug raises rather than reaching the
+  # internet; rescued here into the same "could not tell" outcome a real
+  # network failure already gets, so an ordinary spec's onboard call is
+  # unaffected by a confirmation it never asked to exercise (c1b2d03a).
+  defp confirm(id, key) do
+    Req.get(
+      url:
+        Config.server_url()
+        |> String.trim_trailing("/")
+        |> Kernel.<>("/api/harnesses/#{id}"),
+      headers: [{"authorization", "Bearer " <> key}],
+      retry: false,
+      receive_timeout: to_timeout(second: 15),
+      plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
+    )
+  rescue
+    exception -> {:error, exception}
+  end
+
+  defp mint_and_record(env, root, project_id) do
+    with {:ok, id} <- mint(root, project_id) do
       # Both names, matching `HarnessConfig.write/2`. This writes through
       # `Environments` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.

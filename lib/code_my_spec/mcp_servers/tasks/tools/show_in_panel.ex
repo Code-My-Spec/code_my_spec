@@ -1,34 +1,12 @@
 defmodule CodeMySpec.McpServers.Tasks.Tools.ShowInPanel do
   @moduledoc """
-  Put something in front of the person watching, on the screen they already
-  have open.
+  Put something in front of the person watching, beside the conversation —
+  never the page, so it never costs them the transcript or composer.
 
-  The agent knows which story it is talking about. Making the person go and
-  find it is the errand story 967 exists to remove — so instead of describing
-  where to look, point the panel at it.
-
-  ## This asks rather than commands, and the screen decides
-
-  Whether the change lands immediately is a property of the screen, not of the
-  change. A wide one holds every panel at once, so swapping the dynamic tab
-  costs nothing and it simply appears. A phone holds one panel, so applying it
-  would evict whatever the person was watching — possibly while they are
-  part-way through typing — and it waits behind a mark until they tap it.
-
-  Nothing here needs to know which. `ScreenState.show/2` records the intent and
-  the view resolves it, which is why this tool takes no screen argument and
-  cannot be made to interrupt somebody.
-
-  ## Why it is not "navigate"
-
-  It changes one panel beside the conversation, never the page. An agent that
-  could navigate the person somewhere would take the transcript and the
-  composer with it, and the whole design of that screen is that watching and
-  asking do not cost each other.
-
-  Silent about whether anybody is looking, on purpose. A screen nobody has open
-  still records the intent and shows it when they arrive, and reporting
-  "delivered" versus "stored" would be a distinction the agent cannot act on.
+  Call it when you start on a story, instead of describing where to look. It
+  never interrupts: it applies at once on a screen with room, or waits
+  behind a tap on a narrow one. There is no screen argument and no "was this
+  seen" answer — the view resolves that, and neither is something you act on.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -40,11 +18,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ShowInPanel do
   schema do
     field :view, :string,
       required: true,
-      doc:
+      description:
         ~s(What the panel should show. "stories" for the project's list, "story" for one, ) <>
           ~s("epics" for the project's epics.)
 
-    field :story_number, :integer, doc: "Which story, when view is \"story\". Ignored otherwise."
+    field :story_number, :integer, description: "Which story, when view is \"story\". Ignored otherwise."
   end
 
   @views ~w(stories story epics)

@@ -38,6 +38,9 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CodeMySpec.Workspaces.Runner.Docker => :loopback,
     # QA's probe of an MCP server it was pointed at; its tests start that server.
     CodeMySpec.McpServers.Qa.Tools.CallMcpServer => :loopback,
+    # Same shape, one call: trades a deploy key for a token at whatever copy
+    # url the caller named; its tests start that server too.
+    CodeMySpec.McpServers.Qa.Tools.GetLocalAppToken => :loopback,
 
     # Stubbable through a differently-named knob rather than `{Req.Test, Mod}`.
     # Fine, but it means this file cannot check them — if one of these grows a
@@ -59,7 +62,12 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CodeMySpec.Research.Search.Tavily => :shared_client,
 
     # Mix tasks. Not run by the suite.
-    Mix.Tasks.Cms.Harness.Onboard => :mix_task,
+    #
+    # `Mix.Tasks.Cms.Harness.Onboard` is NOT in this list: hundreds of
+    # onboarding specs call it through `Mix.Task.run/2`, so it is pinned
+    # like any other Req client (c1b2d03a) -- the stale claim here that mix
+    # tasks aren't run by the suite was true of this one once and stopped
+    # being true without anyone updating this file.
     Mix.Tasks.Google.Token => :mix_task,
     Mix.Tasks.ProdIssues.Pull => :mix_task,
 

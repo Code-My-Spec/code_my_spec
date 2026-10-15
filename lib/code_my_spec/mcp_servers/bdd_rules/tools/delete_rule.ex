@@ -13,7 +13,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.DeleteRule do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :rule_id, :string, required: true, doc: "UUID of the rule to delete."
+    field :rule_id, :string, required: true, description: "UUID of the rule to delete."
   end
 
   @impl true

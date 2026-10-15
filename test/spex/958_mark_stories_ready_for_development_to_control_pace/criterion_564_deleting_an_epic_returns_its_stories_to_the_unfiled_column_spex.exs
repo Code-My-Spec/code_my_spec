@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
+  alias CodeMySpec.McpServers.Stories.Tools.ListEpics
   alias CodeMySpec.McpServers.Stories.Tools.ListStories
   alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
@@ -62,6 +63,19 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
 
         refute html =~ "Stone Age",
                "expected the epic to be gone from the board, got: #{html}"
+
+        # The board re-render agreeing is not enough: e7b8d597 found a case
+        # where a LiveView's own render said the epic was gone (flash shown,
+        # card removed) while the row survived on disk. `list_epics` reads
+        # the same table through an entirely separate process (the MCP tool,
+        # not the board's LiveView), so this independently confirms the
+        # delete reached the database rather than trusting the same view
+        # that reported success to also report absence correctly.
+        {:reply, epics_response, _frame} = ListEpics.execute(%{}, context.frame)
+        remaining = response_text(epics_response)
+
+        refute remaining =~ context.epic_id,
+               "expected the epic gone from list_epics (reads the table directly), got: #{remaining}"
 
         unfiled = unfiled_section(html)
 

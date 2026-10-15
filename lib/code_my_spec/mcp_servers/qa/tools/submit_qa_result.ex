@@ -44,24 +44,24 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   schema do
     field(:task_id, :string,
       required: true,
-      doc: "Active QA task id (from the start_task response on a qa_complete requirement)"
+      description: "Active QA task id (from the start_task response on a qa_complete requirement)"
     )
 
     field(:status, :string,
       required: true,
-      doc:
+      description:
         "Outcome: 'pass' (satisfies qa_complete), 'partial' (audit only), or 'fail' (audit only)"
     )
 
     field(:scenarios, {:list, :map},
       required: true,
-      doc:
+      description:
         "Structured list of scenarios probed during this pass. Each entry: " <>
           "%{name: string, status: 'pass'|'partial'|'fail', observation: string}."
     )
 
     field(:issue_ids, {:list, :string},
-      doc:
+      description:
         "List of issue ids filed via `create_issue` during this QA pass. " <>
           "REQUIRED when `status` is `partial` or `fail` — submissions with a non-pass " <>
           "status and an empty `issue_ids` list are rejected at the tool boundary. " <>
@@ -69,7 +69,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
     )
 
     field(:tools_used, {:list, :string},
-      doc:
+      description:
         "Which tools you actually called while gathering this evidence — e.g. " <>
           "['browser_navigate', 'browser_click', 'browser_get_text']. Self-reported " <>
           "and not independently checked, same as the scenario observations beside " <>

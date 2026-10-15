@@ -688,6 +688,25 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   @doc """
+  Every story this copy actually reserves right now (`stories.working_copy_id`).
+
+  3f824f74: a team's `story_id` and the copy's reservations drift apart the
+  moment an agent holding one is retired or replaced -- the reservation
+  outlives the only row that used to name it. This reads the reservation
+  itself, so a caller computing what to release is not working from a stale
+  proxy.
+  """
+  @spec reserved_story_ids(Scope.t(), Ecto.UUID.t()) :: [integer()]
+  def reserved_story_ids(%Scope{} = scope, copy_id) do
+    Story
+    |> where([s], s.working_copy_id == ^copy_id)
+    |> where([s], s.project_id == ^scope.active_project_id)
+    |> where([s], s.account_id == ^scope.active_account_id)
+    |> select([s], s.id)
+    |> Repo.all()
+  end
+
+  @doc """
   Reserve a story for a checkout so work on it can be selected there: ready for
   development, and unassigned or already this checkout's. An unassigned story
   is assigned here. Locks the story row, so call it inside the transaction

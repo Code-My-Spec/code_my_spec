@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStoryTitles do
   alias CodeMySpec.Stories
 
   schema do
-    field :search, :string, doc: "Filter by title (case-insensitive)"
+    field :search, :string, description: "Filter by title (case-insensitive)"
   end
 
   @impl true

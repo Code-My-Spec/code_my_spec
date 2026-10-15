@@ -57,7 +57,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
            Stories.get_story_by_number(scope, number),
          {:ok, copy} <- WorkingCopies.fetch(copy_id) do
       "Story #{number} is assigned to working copy #{copy.label || copy_id} (#{copy_id}). " <>
-        "Free it with unassign_story_from_working_copy, then select it again."
+        "Free it with release_story_from_working_copy, then select it again."
     else
       _ -> error_message(:story_assigned_elsewhere)
     end

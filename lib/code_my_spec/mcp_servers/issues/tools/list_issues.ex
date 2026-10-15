@@ -24,20 +24,20 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
   schema do
     field :status, :string,
-      doc:
+      description:
         "open (default: incoming and accepted), all, or one of incoming, accepted, dismissed, resolved"
 
     field :severity, :string,
-      doc: "medium or higher by default; all, or one of critical, high, medium, low, info"
+      description: "medium or higher by default; all, or one of critical, high, medium, low, info"
 
-    field :scope, :string, doc: "Filter by scope: app, qa, docs, framework"
-    field :story_number, :integer, doc: "Filter by the related story's number"
+    field :scope, :string, description: "Filter by scope: app, qa, docs, framework"
+    field :story_number, :integer, description: "Filter by the related story's number"
 
     field :working_copy_id, :string,
-      doc: "Filter by assigned working copy (use severity all to include the entire bag)"
+      description: "Filter by assigned working copy (use severity all to include the entire bag)"
 
-    field :query, :string, doc: "Text that the title or description contains (case-insensitive)"
-    field :limit, :integer, doc: "Most issues to return, newest first (default 50)"
+    field :query, :string, description: "Text that the title or description contains (case-insensitive)"
+    field :limit, :integer, description: "Most issues to return, newest first (default 50)"
   end
 
   # 6da8e0e5: the default was every issue, by severity, and the reply is cut at

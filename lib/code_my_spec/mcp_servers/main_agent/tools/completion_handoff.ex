@@ -7,7 +7,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.CompletionHandoff do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field(:action, :string, required: true, doc: "list, assign, acknowledge or redeliver")
+    field(:action, :string, required: true, description: "list, assign, acknowledge or redeliver")
     field(:handoff_id, :string)
     field(:owner_agent_id, :string)
     field(:working_copy_id, :string)

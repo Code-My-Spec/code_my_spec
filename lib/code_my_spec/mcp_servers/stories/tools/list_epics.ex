@@ -8,6 +8,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListEpics do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias Anubis.Server.Response
   alias CodeMySpec.Epics
   alias CodeMySpec.McpServers.Stories.StoriesMapper
@@ -18,13 +20,36 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListEpics do
 
   @impl true
   def execute(_params, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        {:reply, render(Epics.list_epics(scope)), frame}
-
-      {:error, atom} ->
-        {:reply, StoriesMapper.error(atom), frame}
+    case epics(frame) do
+      {:ok, epics} -> {:reply, render(epics), frame}
+      {:error, atom} -> {:reply, StoriesMapper.error(atom), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(_params, frame) do
+    with {:ok, epics} <- epics(frame) do
+      {:ok, Enum.map(epics, &row/1)}
+    end
+  end
+
+  defp epics(frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+      {:ok, Epics.list_epics(scope)}
+    end
+  end
+
+  defp row(epic) do
+    stories = if Ecto.assoc_loaded?(epic.stories), do: epic.stories, else: []
+
+    %{
+      "id" => epic.id,
+      "name" => epic.name,
+      "slug" => epic.slug,
+      "status" => to_string(epic.status),
+      "story_count" => length(stories),
+      "ready_count" => Enum.count(stories, &(&1.ready_for_dev == true))
+    }
   end
 
   defp render([]) do

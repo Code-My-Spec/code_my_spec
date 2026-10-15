@@ -33,19 +33,19 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ProviderRequest do
   schema do
     field :provider, :string,
       required: true,
-      doc: "\"hetzner\", \"cloudflare\", or \"resend\"."
+      description: "\"hetzner\", \"cloudflare\", or \"resend\"."
 
-    field :method, :string, required: true, doc: "HTTP method: GET, POST, PUT, PATCH, DELETE."
+    field :method, :string, required: true, description: "HTTP method: GET, POST, PUT, PATCH, DELETE."
 
     field :path, :string,
       required: true,
-      doc: "Path relative to the provider's API base, e.g. \"/servers\" or \"/zones\"."
+      description: "Path relative to the provider's API base, e.g. \"/servers\" or \"/zones\"."
 
-    field :body, :map, doc: "JSON body for a mutating request."
-    field :params, :map, doc: "Query parameters for a GET request."
+    field :body, :map, description: "JSON body for a mutating request."
+    field :params, :map, description: "Query parameters for a GET request."
 
     field :confirm, :boolean,
-      doc: "Required (true) for POST/PUT/PATCH/DELETE. Ignored for GET."
+      description: "Required (true) for POST/PUT/PATCH/DELETE. Ignored for GET."
   end
 
   @impl true

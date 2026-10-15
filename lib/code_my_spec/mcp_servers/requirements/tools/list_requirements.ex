@@ -38,39 +38,39 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
   schema do
     field :status, :string,
-      doc:
+      description:
         "Filter by satisfaction status — `satisfied` or `unsatisfied`. Default: no filter (returns both)."
 
     field :entity_type, :string,
-      doc: "Filter to one entity type — `project`, `story`, or `component`."
+      description: "Filter to one entity type — `project`, `story`, or `component`."
 
     field :story_number, :integer,
-      doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+      description: "A story's number — the same as entity_type `story` with entity_id set to it"
 
     field :entity_id, :string,
-      doc:
+      description:
         "Filter to one entity: a story's number or a component's id, as printed elsewhere. " <>
           "Combine with `entity_type` to disambiguate."
 
     field :requirement_name, :string,
-      doc:
+      description:
         "Exact match on the requirement name (e.g., `bdd_specs_exist`, `ready_for_qa`, " <>
           "`implementation_file`)."
 
     field :module_filter, :string,
-      doc:
+      description:
         "Substring match on the component module name (e.g., `Users.` to scope into a namespace)."
 
     field :summary, :boolean,
-      doc:
+      description:
         "Return aggregate counts by requirement name instead of per-entity rows. Default: `false` (per-entity view, matches the historical tool shape). Pass `true` for a friction breakdown that won't blow the token budget on big projects."
 
     field :limit, :integer,
-      doc:
+      description:
         "Cap number of per-entity rows when `summary` is false. Default: 100. Bounds the response so a 500-component project doesn't return 180k+ chars."
 
     field :diagnostic, :boolean,
-      doc:
+      description:
         "When `summary: true`, break out counts into `locally failing` vs `blocked by prereqs` (clamped). Useful for triage — distinguishes real friction from cascade effects. Default: false."
   end
 
@@ -121,11 +121,31 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   # than a second copy of it.
   defp filtered_nodes(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      {nodes, _computed_at} = Requirements.cached_all(scope)
       opts = parse_opts(params)
+      {nodes, _computed_at} = Requirements.cached_all(at_story_copy(scope, opts))
       {:ok, apply_filters(StoryRefs.number_nodes(scope, nodes), opts), opts}
     end
   end
+
+  # Read where the queried story is assigned, not where the caller is. A
+  # story's requirements are computed at its own copy, so a caller filtering
+  # by one story must not read it through its own, possibly different,
+  # active copy's graph -- the same gap `ShowStoryRequirements.at_story_copy/2`
+  # was fixed for (d4d04dd04); this tool was its unfixed sibling (f66cc07a).
+  # `StoryRefs.normalize_args/2` already collapses a caller's `story_number`
+  # into `entity_type: "story"` + `entity_id` before this ever runs, so that
+  # pair is the one signal to gate on.
+  defp at_story_copy(scope, %{entity_type: "story", entity_id: id}) when not is_nil(id) do
+    case StoryRefs.fetch_story(scope, id) do
+      {:ok, %{working_copy_id: copy_id}} when is_binary(copy_id) ->
+        %{scope | active_working_copy_id: copy_id}
+
+      _ ->
+        scope
+    end
+  end
+
+  defp at_story_copy(scope, _opts), do: scope
 
   defp summary_groups(nodes), do: Enum.group_by(nodes, & &1.name)
 

@@ -18,9 +18,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents do
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Users.Scope
 
   schema do
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :session_id, :string, description: "Injected by hook — do not set manually"
   end
 
   @impl true
@@ -47,15 +48,29 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents do
     end
   end
 
-  defp resolve_session(_scope, _),
+  # An agent we run supplies no session_id -- its identity travels on the
+  # connection as the working copy's own harness, not a Claude-assigned
+  # session id (issue 69808362). `Sessions.external_id_for_harness/1` is the
+  # same newest-session-wins join already used by list_user_questions,
+  # ask_user_question and check_answer to answer exactly this: which
+  # conversation is running in the working copy already on scope.
+  defp resolve_session(%Scope{active_working_copy_id: working_copy_id} = scope, _)
+       when is_binary(working_copy_id) do
+    case Sessions.external_id_for_harness(working_copy_id) do
+      nil -> no_session_error()
+      external_id -> resolve_session(scope, external_id)
+    end
+  end
+
+  defp resolve_session(_scope, _), do: no_session_error()
+
+  defp no_session_error,
     do:
       {:error,
-       "No session_id and no agent id on this call, so there is nothing to act on.\n\n" <>
+       "No session is registered for this working copy, so there are no sub-agents to " <>
+         "list.\n\n" <>
          "If you are Claude Code: `register_session` with this conversation's id " <>
-         "(CLAUDE_SESSION_ID) creates it on this server.\n\n" <>
-         "If you are an agent we run: your id travels on the connection and you " <>
-         "cannot supply it — this is a harness fault, not something to retry or " <>
-         "ask a person about. Report it with `create_issue` and carry on."}
+         "(CLAUDE_SESSION_ID) creates it on this server."}
 
   defp format([], _session), do: "No registered sub-agents on this session."
 

@@ -14,8 +14,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   require Logger
 
   alias CodeMySpec.{Components, Environments, Files, Issues, Paths, Stories}
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.AppTransport
@@ -87,7 +89,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         subagent_owns?(task) ->
           # Owned by a sub-agent: the parent's stop must neither demand a
           # submit nor complete the sub-agent's live task, so `:skip`.
-          {:ok, :skip, "owned by sub-agent #{task.agent_id}, which has not submitted yet"}
+          {:ok, :skip, subagent_owns_feedback(scope, task)}
 
         attempts != [] ->
           # A failed or invalidated attempt: the obligation is to re-run and
@@ -96,7 +98,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
             "[QaStory] evaluate(#{story_id}): prior attempt exists but does not satisfy; demanding a fresh submit"
           )
 
-          {:ok, :invalid, resubmit_required_feedback(story_number(scope, story_id), attempts)}
+          {:ok, :invalid,
+           resubmit_required_feedback(scope, story_id, story_number(scope, story_id), attempts)}
 
         true ->
           do_evaluate(scope, env, story_id, story_number(scope, story_id))
@@ -104,9 +107,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp resubmit_required_feedback(story_number, attempts) do
+  defp resubmit_required_feedback(scope, story_id, story_number, attempts) do
     """
-    QA for story #{story_number} is not complete. #{describe_latest(List.first(attempts))}
+    QA for story #{story_number} is not complete. #{describe_latest(scope, story_id, List.first(attempts))}
 
     QA completion is recorded in the database, not on disk — no file will
     satisfy this requirement. Re-run the QA scenarios against the real surface,
@@ -117,9 +120,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp describe_latest(nil), do: "No attempt has been recorded."
+  defp describe_latest(_scope, _story_id, nil), do: "No attempt has been recorded."
 
-  defp describe_latest(%{invalidations: [_ | _] = invalidations}) do
+  defp describe_latest(_scope, _story_id, %{invalidations: [_ | _] = invalidations}) do
     reason =
       invalidations
       |> List.last()
@@ -128,13 +131,48 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     "The most recent attempt was invalidated: #{reason}"
   end
 
-  defp describe_latest(%{status: status}),
+  # b4fe8c48: a recorded, uninvalidated pass can still fail `qa_complete?` on
+  # `review_current?/3` alone — the story was re-certified since the review
+  # ran. The fallback clause below said only "recorded as pass", explaining
+  # nothing; this names the gap `qa_complete?` actually found.
+  defp describe_latest(scope, story_id, %{status: :pass} = attempt) do
+    case CodeMySpec.Qa.story_review_currency_gap(scope, story_id, attempt) do
+      nil -> "The most recent attempt is recorded as pass."
+      gap -> "The most recent attempt passed, but no longer counts: #{gap}."
+    end
+  end
+
+  defp describe_latest(_scope, _story_id, %{status: status}),
     do: "The most recent attempt is recorded as #{status}."
 
   defp subagent_owns?(%{agent_id: agent_id}) when is_binary(agent_id) and byte_size(agent_id) > 0,
     do: true
 
   defp subagent_owns?(_), do: false
+
+  defp subagent_owns_feedback(scope, %{agent_id: agent_id}) do
+    base = "owned by sub-agent #{agent_id}, which has not submitted yet"
+
+    case Sessions.subagent_heartbeat(scope, agent_id) do
+      :not_registered ->
+        base <> ", and no active session has a registration for it"
+
+      {:ok, nil} ->
+        base <> ", and it has never sent a heartbeat"
+
+      {:ok, at} ->
+        minutes = DateTime.diff(DateTime.utc_now(), at, :second) |> div(60)
+        ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
+
+        if minutes >= ttl do
+          base <>
+            ", and has not been heard from in #{minutes} minute(s) -- past its " <>
+            "#{ttl}-minute TTL"
+        else
+          base <> " (last heard from #{minutes} minute(s) ago)"
+        end
+    end
+  end
 
   defp do_evaluate(scope, env, story_id, story_number) do
     with :ok <- check_plan(scope, env),
@@ -291,10 +329,26 @@ defmodule CodeMySpec.AgentTasks.QaStory do
              "Brief at `#{path}` is invalid: #{reason}. Fix the brief and stop the session again."}
         end
 
-      _ ->
+      {:error, :enoent} ->
+        brief_not_found(path)
+
+      # Anything else is the read itself failing -- a harness unreachable, a
+      # timeout, a transport tag -- not the file being absent. Collapsing
+      # this into "not found" told an agent to write a brief that already
+      # existed, and let a transient failure satisfy a caller checking for
+      # "brief not found" in the text (a83cb226).
+      {:error, reason} ->
         {:ok, :invalid,
-         "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
+         "Could not read the brief at `#{path}`: #{inspect(reason)}. Stop the session again once this clears."}
+
+      _ ->
+        brief_not_found(path)
     end
+  end
+
+  defp brief_not_found(path) do
+    {:ok, :invalid,
+     "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
   end
 
   defp check_result(env, story_number) do

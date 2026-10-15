@@ -39,6 +39,18 @@ defmodule CodeMySpec.Qa.StoryReviews do
     end
   end
 
+  @doc """
+  Why `attempt`, a recorded pass with no invalidations, does not satisfy
+  `qa_complete` for `story_id` anyway — or `nil` if it does (or does not
+  apply). See `Verdict.currency_gap/3`.
+  """
+  def currency_gap(scope, story_id, attempt) do
+    case read_story(scope, story_id, false) do
+      %{} = story -> Verdict.currency_gap(attempt, story, snapshot(scope, story_id))
+      _ -> nil
+    end
+  end
+
   defp certified_at?(_story, :any), do: true
   defp certified_at?(story, commit), do: story.qa_ready_commit == commit
 

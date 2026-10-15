@@ -25,17 +25,17 @@ defmodule CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID to assign"
+    field :issue_id, :string, required: true, description: "Issue ID to assign"
 
     field :working_copy_id, :string,
       required: true,
-      doc: "Working copy whose coding and QA team takes the issue"
+      description: "Working copy whose coding and QA team takes the issue"
 
     field :reason, :string,
-      doc: "Why the issue is moving, or the required correction instructions when rework is true"
+      description: "Why the issue is moving, or the required correction instructions when rework is true"
 
     field :rework, :boolean,
-      doc:
+      description:
         "Main or the operator requests corrections to a submitted fix on the same copy. " <>
           "Requires a reason and no open issue task; preserves completed task history."
   end

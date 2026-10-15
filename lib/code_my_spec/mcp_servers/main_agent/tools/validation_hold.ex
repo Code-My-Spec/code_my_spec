@@ -10,19 +10,19 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ValidationHold do
   schema do
     field(:action, :string,
       required: true,
-      doc: "list, create, authorize, release or confirm_termination"
+      description: "list, create, authorize, release or confirm_termination"
     )
 
     field(:hold_id, :string)
 
     field(:run_id, :integer,
-      doc: "On create, adopt this project's existing active run rather than start another."
+      description: "On create, adopt this project's existing active run rather than start another."
     )
 
     field(:reason, :string)
 
     field(:termination_evidence, :string,
-      doc: "Verified terminal evidence for confirm_termination; never a guess or timeout alone."
+      description: "Verified terminal evidence for confirm_termination; never a guess or timeout alone."
     )
 
     field(:affected_copy_ids, {:list, :string})
