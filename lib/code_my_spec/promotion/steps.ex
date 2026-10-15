@@ -776,7 +776,10 @@ defmodule CodeMySpec.Promotion.Steps do
             _ -> []
           end
 
-        git(env, root, ["merge", "--abort"])
+        # Not `merge --abort`: under `submodule.recurse` it fails on a
+        # conflicting docs pointer and leaves the markers for the next step to
+        # compile (8733d80d8, 2026-10-15). HEAD is still the pre-merge commit.
+        git(env, root, @leave_submodules ++ ["reset", "--quiet", "--hard", "HEAD"])
         {:conflict, files}
     end
   end
