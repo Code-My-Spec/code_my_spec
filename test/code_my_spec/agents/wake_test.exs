@@ -225,6 +225,22 @@ defmodule CodeMySpec.Agents.WakeTest do
     end
   end
 
+  test "a team-free notice is kept for a main that is restarting, not for one stopped", ctx do
+    restarting =
+      put_state(ctx.agents.main, %{on: :on, continuous: true, waiting: false, in_turn: false})
+
+    AgentPresence.absent(restarting)
+
+    assert {:hold, :not_running} = Wake.allow?(ctx.scope, restarting, :team_free)
+    assert :ok = Wake.allow_admission?(ctx.scope, restarting, :team_free)
+    assert {:hold, :not_running} = Wake.allow_admission?(ctx.scope, restarting, :nudge)
+
+    stopped =
+      put_state(restarting, %{on: :stopped, continuous: true, waiting: false, in_turn: false})
+
+    assert {:hold, :not_running} = Wake.allow_admission?(ctx.scope, stopped, :team_free)
+  end
+
   test "a hold answers as the delivery paths always have" do
     agent = %Agent{}
     assert {:error, {:off, ^agent}} = Wake.to_error({:hold, {:off, agent}})
