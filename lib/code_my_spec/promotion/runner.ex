@@ -317,6 +317,16 @@ defmodule CodeMySpec.Promotion.Runner do
   defp decode({:ok, %{} = result}), do: {:ok, atomize(result)}
   defp decode({:error, %{} = reason}), do: {:error, atomize(reason)}
 
+  # Unreachable is marked, not only worded: a harness restarting after a
+  # landing is a passing state a caller can wait out, not a fault of the work.
+  defp decode({:error, {:harness_not_registered, _} = reason}),
+    do:
+      {:error,
+       %{
+         reason: "could not reach the machine holding this checkout: #{inspect(reason)}",
+         unreachable: true
+       }}
+
   defp decode({:error, reason}),
     do:
       {:error, %{reason: "could not reach the machine holding this checkout: #{inspect(reason)}"}}
