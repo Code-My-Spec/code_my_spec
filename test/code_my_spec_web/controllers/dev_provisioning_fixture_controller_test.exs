@@ -58,7 +58,10 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
     token = ExOauth2Provider.AccessTokens.get_by_token(runtime["token"], otp_app: :code_my_spec)
     assert token
     assert ExOauth2Provider.AccessTokens.is_accessible?(token)
-    assert token.expires_in == 3600
+    # 12h (c79fb8f9): this token bypasses CmsHarness.Token's own refresh (it
+    # is read straight as :harness_token), so it is the only credential the
+    # fixture's dedicated harness gets for the whole QA session.
+    assert token.expires_in == 12 * 60 * 60
     assert Bitwise.band(File.stat!(prepared["runtime_path"]).mode, 0o777) == 0o600
     assert {:ok, copy} = CodeMySpec.WorkingCopies.fetch(prepared["working_copy_id"])
     assert copy.project_id == created["project_id"]
