@@ -26,9 +26,12 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionIsNeverMovedByAStartTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.Notifications
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
@@ -159,5 +162,42 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionIsNeverMovedByAStartTest do
 
     assert answered.agent_id == old.id
     assert answered.status == "answered"
+  end
+
+  test "offboarding an agent holding a question leaves no other running agent blocked on it",
+       ctx do
+    # `off_agent/3` simulates the offboard the same way the rest of this file
+    # does, rather than driving the real `turn_off_agent/3` -- that path ends
+    # a real process through a transport, which these fixture agents (never
+    # launched through `start_agent`) have none to answer. The invariant this
+    # proves does not depend on how the agent went off, only on what happens
+    # (nothing) to its question once a *different* agent is on duty.
+    asker = off_agent(ctx.scope, :product, ctx.feature.id)
+    request = ask(ctx.scope, asker)
+
+    {:ok, bystander} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        status: :running,
+        continuous: true,
+        working_copy: "/tmp/off-handoff-#{System.unique_integer([:positive])}",
+        working_copy_id: ctx.other.id
+      })
+
+    CodeMySpecTest.AgentPresence.present(bystander)
+
+    frame = %Frame{assigns: %{current_scope: ctx.scope}}
+    {:reply, reply, _frame} = ListAgentWork.execute(%{}, frame)
+    listing = response_text(reply)
+
+    refute owner(request).agent_id == bystander.id,
+           "an unrelated running agent inherited the offboarded asker's question"
+
+    assert owner(request).agent_id == asker.id
+
+    refute listing =~ ~r/#{bystander.id}[^\n]*blocked/i,
+           "the bystander agent is reported blocked on a question it never asked. listing:\n#{listing}"
   end
 end
