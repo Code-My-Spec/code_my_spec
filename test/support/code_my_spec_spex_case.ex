@@ -6074,7 +6074,12 @@ defmodule CodeMySpecSpex.Case do
       # every other presigned-upload caller, done here instead since the
       # harness has no browser. Added before any spex could find the
       # omission for us.
-      CodeMySpec.Uploads
+      CodeMySpec.Uploads,
+      # c1b2d03a: confirming a recorded working copy id reads its own `:plug`
+      # the same way every provider above does. Added here directly rather
+      # than waiting for `provider_modules_complete_test.exs` to name it,
+      # since that check is exactly what caught it.
+      Mix.Tasks.Cms.Harness.Onboard
     ]
   end
 
