@@ -338,7 +338,22 @@ defmodule CmsHarness.Project.AnalysisServer do
     case pop_pending_cleanup(state, &(&1.cleanup.ref == ref)) do
       {:ok, pending, state} ->
         cancel_cleanup_deadline(pending)
-        deliver(state, pending, {:error, "analyzer timeout cleanup crashed: #{inspect(reason)}"})
+        Execution.release(pending.cleanup_ownership)
+
+        cleanup_result =
+          Execution.stop_owned(
+            pending.cleanup_ownership,
+            min(pending.cleanup_deadline, System.monotonic_time(:millisecond) + 5_000)
+          )
+
+        deliver(
+          state,
+          pending,
+          {:error,
+           "analyzer timeout cleanup crashed: #{inspect(reason)}. " <>
+             cleanup_status(cleanup_result)}
+        )
+
         {:noreply, state}
 
       :error ->

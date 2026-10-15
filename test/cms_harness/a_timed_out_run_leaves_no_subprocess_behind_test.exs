@@ -205,6 +205,55 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     refute Process.alive?(stuck_cleanup.pid)
   end
 
+  test "a crashed cleanup worker still releases the analyzer and kills both descendants" do
+    root = "/tmp/a-crashed-cleanup-test-#{Ecto.UUID.generate()}"
+    {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+    {task, child_pids} = spawn_hanging_task()
+    {:ok, task_sup} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
+    cleanup = Task.Supervisor.async_nolink(task_sup, fn -> Process.sleep(:infinity) end)
+    ownership = CmsHarness.Agents.Engine.Execution.capture(task.pid)
+    on_exit(fn -> CmsHarness.Agents.Engine.Execution.stop_owned(ownership) end)
+    cleanup_timer = Process.send_after(self(), {:cleanup_overdue, 1, task.pid}, 20_000)
+
+    pending = %{
+      run_id: 1,
+      source: "exunit",
+      args: [],
+      tied_run_ids: [],
+      cleanup: cleanup,
+      cleanup_timer: cleanup_timer,
+      cleanup_ownership: ownership,
+      cleanup_deadline: System.monotonic_time(:millisecond) + 5_000
+    }
+
+    state = %{
+      project: %{root: root},
+      running: nil,
+      queue: [],
+      pending_cleanups: [pending],
+      timer: nil
+    }
+
+    ref = cleanup.ref
+    pid = cleanup.pid
+    Process.exit(pid, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :killed} = down
+    assert {:noreply, next_state} = AnalysisServer.handle_info(down, state)
+
+    assert System.monotonic_time(:millisecond) <= pending.cleanup_deadline
+    assert_receive {:"$gen_cast", {:analysis_result, payload}}
+    assert payload["run_id"] == 1
+    assert payload["status"] == "error"
+    assert payload["error"] =~ "cleanup crashed: :killed"
+    assert payload["error"] =~ "Subprocess termination confirmed"
+    refute_alive(child_pids)
+    refute Process.alive?(task.pid)
+    refute Process.alive?(cleanup.pid)
+    assert next_state.pending_cleanups == []
+    assert next_state.running == nil
+    assert Process.read_timer(cleanup_timer) == false
+  end
+
   test "unconfirmed group cleanup names the surviving child and detached grandchild" do
     {task, child_pids} = spawn_hanging_task()
     ownership = CmsHarness.Agents.Engine.Execution.capture(task.pid)
