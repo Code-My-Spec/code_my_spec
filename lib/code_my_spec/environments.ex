@@ -228,7 +228,7 @@ defmodule CodeMySpec.Environments do
 
   ## Parameters
 
-  - `type` - Environment type (`:cli`, `:local`, `:vscode`)
+  - `type` - Environment type (`:cli`, `:local`, `:container`)
   - `opts` - Options passed to the implementation's `create/1` function
 
   ## Returns
@@ -344,9 +344,6 @@ defmodule CodeMySpec.Environments do
 
   defp impl(:cli),
     do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.Cli)
-
-  defp impl(:vscode),
-    do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.VSCode)
 
   defp impl(:local),
     do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.Local)

@@ -46,7 +46,7 @@ defmodule CmsHarness.WatcherResyncTest do
                  Watcher.handle_info({:file_event, stranger, {"/tmp/x/a.ex", [:modified]}}, state)
       end)
 
-    assert log =~ "not delivering",
+    assert log =~ "until the watcher delivers again",
            "dropping it silently is indistinguishable from a project where " <>
              "nothing changed, which is exactly how this went unnoticed — and " <>
              "with the floor removed, this is the only thing that would show it"

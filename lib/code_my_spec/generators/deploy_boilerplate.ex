@@ -78,8 +78,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       key: :deploy_script,
       path: "bin/deploy",
       description: "deploy script",
-      why:
-        "the only supported deploy entry point; enforces migrate-before-swap and refuses to run on a dirty tree"
+      why: "the only supported deploy entry point; enforces migrate-before-swap"
     },
     %{
       key: :backup_script,

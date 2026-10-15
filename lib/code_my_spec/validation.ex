@@ -587,8 +587,6 @@ defmodule CodeMySpec.Validation do
       },
       # Which files this session actually wrote; labels what blocks.
       session_paths: session_paths,
-      # How many moved to advisory by attribution (always 0 now).
-      unattributed_count: length(unattributed),
       # Whose story each spex finding belongs to. Orientation only: nothing
       # here demotes anything.
       story_assignment: story_assignments(scope, blocking ++ advisory, scope_context),
