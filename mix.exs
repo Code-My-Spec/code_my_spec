@@ -243,7 +243,7 @@ defmodule CodeMySpec.MixProject do
       # takes the running server down until someone restarts it.
       {:benchee, "~> 1.4", only: :test},
       {:paper_trail, "~> 1.1"},
-      {:anubis_mcp, "~> 1.6.2"},
+      {:anubis_mcp, "~> 1.14"},
       {:oban, "~> 2.19.4"},
       {:briefly, "~> 0.5.1"},
       {:nimble_csv, "~> 1.2"},

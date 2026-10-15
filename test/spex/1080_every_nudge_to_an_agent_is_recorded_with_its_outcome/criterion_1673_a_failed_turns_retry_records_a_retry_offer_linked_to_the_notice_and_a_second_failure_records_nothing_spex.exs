@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1673Spex do
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
-  cloud_endpoint()
-
   @failure "Claude Code returned tool_use without any tool calls"
 
   setup :register_log_in_setup_account

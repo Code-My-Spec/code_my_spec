@@ -11,8 +11,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion1654Spex do
 
   alias CodeMySpecSpex.Fixtures
 
-  cloud_endpoint()
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

@@ -80,7 +80,9 @@ defmodule CodeMySpecWeb.CoreComponents do
       <.button phx-click="go" variant="primary">Send!</.button>
       <.button navigate={~p"/"}>Home</.button>
   """
-  attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
+  attr :rest, :global,
+    include: ~w(href navigate patch method download name value disabled type form)
+
   attr :class, :string, default: "btn btn-primary"
   slot :inner_block, required: true
 
@@ -666,8 +668,8 @@ defmodule CodeMySpecWeb.CoreComponents do
           {render_slot(@button)}
         </button>
       </div>
-      
-    <!-- Confirmation State -->
+
+      <!-- Confirmation State -->
       <div x-show="confirming" x-transition class="inline-flex items-center gap-2">
         <!-- Yes Button with Tooltip -->
         <div class={["tooltip", @tooltip_position]} data-tip={render_slot(@message)}>
@@ -675,8 +677,8 @@ defmodule CodeMySpecWeb.CoreComponents do
             {@yes_text}
           </button>
         </div>
-        
-    <!-- No Button -->
+
+        <!-- No Button -->
         <button class="btn btn-sm btn-ghost" x-on:click="confirming = false" type="button">
           {@no_text}
         </button>

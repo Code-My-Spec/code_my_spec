@@ -61,6 +61,7 @@ defmodule CodeMySpecWeb.IntakeLive.Procedural do
 
         <.form
           :if={@step == :details}
+          id="intake-details-form"
           for={@form}
           phx-submit="submit"
           phx-change="validate"

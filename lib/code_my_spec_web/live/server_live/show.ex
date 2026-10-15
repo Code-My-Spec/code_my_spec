@@ -107,7 +107,8 @@ defmodule CodeMySpecWeb.ServerLive.Show do
      push_patch(socket, to: ~p"/app/servers/#{socket.assigns.server.name}?#{[app: app]}")}
   end
 
-  def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+  def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("retire", _params, socket) do
     case Servers.retire(socket.assigns.current_scope, socket.assigns.server.name) do
@@ -121,7 +122,10 @@ defmodule CodeMySpecWeb.ServerLive.Show do
         {:noreply, assign(socket, :retire_error, in_use_message(projects))}
 
       {:error, :not_found} ->
-        {:noreply, socket |> put_flash(:error, "That server is not linked to this account.") |> push_navigate(to: ~p"/app/servers")}
+        {:noreply,
+         socket
+         |> put_flash(:error, "That server is not linked to this account.")
+         |> push_navigate(to: ~p"/app/servers")}
     end
   end
 
@@ -136,8 +140,12 @@ defmodule CodeMySpecWeb.ServerLive.Show do
     {:noreply, socket |> assign(:link_project_id, nil) |> assign(:link_environments, [])}
   end
 
-  def handle_event("pick-link-project", %{"project_id" => _}, %{assigns: %{can_manage: false}} = socket),
-    do: {:noreply, socket}
+  def handle_event(
+        "pick-link-project",
+        %{"project_id" => _},
+        %{assigns: %{can_manage: false}} = socket
+      ),
+      do: {:noreply, socket}
 
   def handle_event("pick-link-project", %{"project_id" => project_id}, socket) do
     environments =
@@ -166,10 +174,19 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   end
 
   def handle_event("link-environment", %{"project_id" => _, "environment" => ""}, socket) do
-    {:noreply, assign(socket, :link_error, "Name the environment — \"prod\", \"uat\", whatever this project calls it.")}
+    {:noreply,
+     assign(
+       socket,
+       :link_error,
+       "Name the environment — \"prod\", \"uat\", whatever this project calls it."
+     )}
   end
 
-  def handle_event("link-environment", %{"project_id" => project_id, "environment" => environment}, socket) do
+  def handle_event(
+        "link-environment",
+        %{"project_id" => project_id, "environment" => environment},
+        socket
+      ) do
     # `socket.assigns.server` is the merged, provider-reported struct
     # `Servers.list/1` builds — its `id` is Hetzner's own numeric id, not
     # `linked_servers.id`. `EnvironmentRepository`'s `server_id` is a foreign
@@ -180,14 +197,18 @@ defmodule CodeMySpecWeb.ServerLive.Show do
     # success path alone.
     with {:ok, project} <- Projects.get_project(socket.assigns.current_scope, project_id),
          scope = project_scope(socket.assigns.current_scope, project),
-         %{} = linked <- Servers.get_linked(socket.assigns.current_scope, socket.assigns.server.name),
+         %{} = linked <-
+           Servers.get_linked(socket.assigns.current_scope, socket.assigns.server.name),
          {:ok, _env} <- EnvironmentRepository.put(scope, environment, %{server_id: linked.id}) do
       {:noreply,
        socket
        |> assign(:link_project_id, nil)
        |> assign(:link_environments, [])
        |> assign(:link_error, nil)
-       |> assign(:entries, ServerView.for_server(socket.assigns.current_scope, socket.assigns.server.name))}
+       |> assign(
+         :entries,
+         ServerView.for_server(socket.assigns.current_scope, socket.assigns.server.name)
+       )}
     else
       {:error, :not_found} ->
         {:noreply, assign(socket, :link_error, "That project could not be found.")}
@@ -420,8 +441,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
                 <span class={[
                   "inline-block size-2.5 rounded-full shrink-0",
                   container_class(container.state)
-                ]}>
-                </span>
+                ]}></span>
                 <span class="font-mono">{container.name}</span>
                 <.link
                   :if={container.project_id}
@@ -449,6 +469,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
 
           <form
             :if={@can_manage}
+            id="link-environment-form"
             data-test="link-environment-form"
             phx-change="pick-link-project"
             phx-submit="link-environment"
@@ -456,8 +477,14 @@ defmodule CodeMySpecWeb.ServerLive.Show do
           >
             <label class="form-control">
               <span class="label-text">Project</span>
-              <select name="project_id" data-test="link-project" class="select select-bordered select-sm">
-                <option value="" selected={is_nil(@link_project_id)}>Point a project at this server…</option>
+              <select
+                name="project_id"
+                data-test="link-project"
+                class="select select-bordered select-sm"
+              >
+                <option value="" selected={is_nil(@link_project_id)}>
+                  Point a project at this server…
+                </option>
                 <option
                   :for={project <- @projects}
                   value={project.id}
@@ -552,5 +579,4 @@ defmodule CodeMySpecWeb.ServerLive.Show do
     </Layouts.app>
     """
   end
-
 end
