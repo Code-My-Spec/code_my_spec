@@ -173,6 +173,45 @@ defmodule CodeMySpec.Qa.Verdict do
       )
 
   @doc """
+  Why `attempt` — a pass with no invalidations — does not satisfy
+  `qa_complete` anyway, or `nil` if it does (or does not apply).
+
+  b4fe8c48: `passed?/1` only ever reports what the row itself says (status,
+  invalidations, the `stale` flag); it says nothing about `review_current?/3`,
+  the other half of what `qa_complete` actually requires. A caller that only
+  checked `passed?/1` and the invalidations list — as `describe_latest/1` in
+  `AgentTasks.QaStory` did — reported "recorded as pass" with nothing wrong
+  named, for an attempt that in fact no longer counts: the story was
+  re-certified since the review ran.
+  """
+  @spec currency_gap(QaAttempt.t(), map(), map()) :: String.t() | nil
+  def currency_gap(%QaAttempt{} = attempt, story, snapshot) do
+    if passed?(attempt) and not review_current?(story, review_of(attempt), snapshot) do
+      gap_reason(attempt, story, snapshot)
+    end
+  end
+
+  def currency_gap(_attempt, _story, _snapshot), do: nil
+
+  defp gap_reason(_attempt, %{qa_ready_commit: nil}, _snapshot) do
+    "the story is not currently certified for QA at all, so no review can be current for it"
+  end
+
+  defp gap_reason(attempt, story, snapshot) do
+    review = review_of(attempt)
+
+    if reviewed?(review, story.qa_ready_commit, story.qa_ready_at) or
+         reviewed?(review, Map.get(story, :qa_reviewed_commit), Map.get(story, :qa_reviewed_at)) do
+      "it reviewed the story's own certification, but the submitted issue fixes it saw " <>
+        "no longer match what is currently submitted — re-run so the pass covers what " <>
+        "is there now (reviewed: #{inspect(review.submissions)}; now: #{inspect(snapshot)})"
+    else
+      "it reviewed commit #{review.commit || "(none)"}, but the story is now certified " <>
+        "at #{story.qa_ready_commit} — re-run against the current commit"
+    end
+  end
+
+  @doc """
   Whether an attempt counts as a QA pass.
 
   A pass that was later invalidated is not one — re-QA is required, which is why

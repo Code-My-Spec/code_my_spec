@@ -17,11 +17,13 @@ defmodule CodeMySpec.PromotionQueueTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
@@ -247,6 +249,34 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert result["reason"] =~ "app.ex"
     assert {:ok, %{status: :landed}} = settle(entry_a)
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
+  end
+
+  # a0ad4e06: a 2026-10-14 promotion (2664c442b) conflicted with main itself --
+  # not with another queued candidate -- and the queue retried "could not
+  # build a batch" forever instead of ejecting it. The test above only ever
+  # conflicts a candidate against a SIBLING already merged into the batch
+  # (`merged` is non-empty, so the `{[], unaccounted}` branch in
+  # `build_in_gate_copy/3` is never exercised); this drives the single, lone
+  # candidate shape where `merged` stays empty and the `Enum.reject(...,
+  # conflicted)` fallback is what has to clear it.
+  test "a lone candidate that conflicts with main itself is ejected, not retried forever", ctx do
+    a = candidate(ctx, "a", "main", "app.ex", "a's App\n")
+
+    # Someone else's promotion lands on main directly, after `a` branched,
+    # touching the same line `a` touches -- so when the queue builds `a`'s
+    # batch, it conflicts with main's own HEAD, not with a sibling entry.
+    File.write!(Path.join(ctx.main_root, "app.ex"), "someone else's App\n")
+    git!(ctx.main_root, ["add", "-A"])
+    git!(ctx.main_root, ["commit", "-q", "-m", "landed first"])
+
+    clean_runs_at(ctx, a.commit)
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry),
+           "a lone candidate conflicting with main was retried instead of ejected"
+
+    assert result["reason"] =~ "app.ex"
   end
 
   test "a red candidate is ejected with its findings, and nothing lands", ctx do
@@ -483,6 +513,93 @@ defmodule CodeMySpec.PromotionQueueTest do
     agent_id = agent.id
     assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 10_000
     assert told =~ "was taken out of the queue"
+  end
+
+  # 1d65a84e: the landed notice used the same fire-and-forget, wake-gated
+  # dispatch as every other agent message -- Wake is asked, and can hold,
+  # BEFORE anything is ever recorded (Agents.dispatch_message/4,5,6's own
+  # `with {:ok, agent} <- ..., :ok <- wake(...), ... <- record_admission(...)`
+  # chain), so an agent unreachable at the instant do_land/1 ran lost the one
+  # message its open promote_issue/story_promoted task depended on, with
+  # nothing left to retry it.
+  #
+  # Reproduced deterministically here, not via the original report's
+  # two-sender timing race (confirmed real -- 5 of 8 repeated runs against
+  # the pre-fix code lost the landed dispatch to a second, independently-timed
+  # sender -- but inherently nondeterministic, and not something to leave as
+  # a standing flake in a suite every team's promotions run through): an
+  # agent genuinely unreachable, not a timing window, at the moment its
+  # promotion lands.
+  test "a landed promotion reaches its agent even if it was unreachable at that instant", ctx do
+    RecordingAgentTransport.listen(ctx)
+
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: a.copy.root,
+        working_copy_id: a.copy.id
+      })
+
+    # Deliberately no AgentPresence.present(agent) -- unlike an_agent/2's own
+    # agents, this one is not reachable right now, the exact condition the
+    # old path silently dropped the landed notice on.
+
+    clean_runs_at(ctx, a.commit)
+
+    {:ok, entry} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
+        restart: false,
+        requested_by_agent_id: agent.id
+      })
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+
+    # `settle/1` returns on the entry's own :landed status, broadcast BEFORE
+    # `tell_landed/3` runs -- its own admission (a separate DB write) is not
+    # guaranteed to have landed yet. Poll rather than assert immediately.
+    mailbox_entry = eventually_mailbox_entry(agent.id)
+
+    assert mailbox_entry.state == :queued,
+           "the landed notice was not durably queued for an unreachable agent"
+
+    message = Repo.get!(Message, mailbox_entry.message_id)
+    assert Message.text(message) =~ "landed on main"
+
+    assert message.delivery == :pending,
+           "the landed notice's own record disagrees with having been durably queued"
+
+    # The agent reconnects; its next pump delivers what was waiting for it.
+    AgentPresence.present(agent)
+    assert {:ok, :started} = Mailbox.pump(ctx.scope, agent.id)
+
+    agent_id = agent.id
+    assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 5_000
+    assert told =~ "landed on main"
+  end
+
+  defp eventually_mailbox_entry(agent_id, attempts \\ 50)
+
+  defp eventually_mailbox_entry(agent_id, 0) do
+    Repo.get_by(Mailbox.Entry, agent_id: agent_id) ||
+      raise "no mailbox entry ever appeared for agent #{agent_id}"
+  end
+
+  defp eventually_mailbox_entry(agent_id, attempts) do
+    Repo.get_by(Mailbox.Entry, agent_id: agent_id) || retry_mailbox_entry(agent_id, attempts)
+  end
+
+  defp retry_mailbox_entry(agent_id, attempts) do
+    Process.sleep(10)
+    eventually_mailbox_entry(agent_id, attempts - 1)
   end
 
   defp an_agent(ctx, copy) do

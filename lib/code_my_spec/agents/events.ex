@@ -143,6 +143,16 @@ defmodule CodeMySpec.Agents.Events do
     end)
   end
 
+  # 1d65a84e: the landed outcome is what an agent's open promote_issue/
+  # story_promoted task depends on to ever close, so it alone is admitted
+  # to the durable mailbox unconditionally -- not held, and not lost,
+  # if the agent cannot be woken for it this instant.
+  def handle_event(@promotion_report, _measurements, %{what: "promotion landed"} = meta, _config) do
+    Agents.notify_landed(meta.scope, meta.agent_id, meta.text)
+  catch
+    kind, reason -> log(:promotion_report, kind, reason)
+  end
+
   # Logged rather than retried: the agent may already be acting on the first
   # message, and a delivery loop does not fix that.
   def handle_event(@promotion_report, _measurements, meta, _config) do

@@ -629,7 +629,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
             {:promotion_queue_landed, entry.id, result}
           )
 
-          tell(state.scope, entry, landed_text(entry, batch, result))
+          tell_landed(state.scope, entry, landed_text(entry, batch, result))
         end
 
         next(idle(state))
@@ -727,6 +727,25 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       agent_id: agent_id,
       text: text,
       what: "promotion queue outcome"
+    })
+  end
+
+  # 1d65a84e: the landed outcome is the one message an agent's open
+  # promote_issue/story_promoted task depends on to ever close -- tagged
+  # distinctly from the shared "promotion queue outcome" `what` so
+  # Agents.Events can route it through a durable admission instead of the
+  # fire-and-forget dispatch every other promotion-report text still uses.
+  # PromotionQueue may not call Agents directly (Boundary), so this stays a
+  # telemetry event like the rest of `tell/2`, only with its own `what`.
+  defp tell_landed(_scope, %Entry{requested_by_agent_id: nil}, text),
+    do: Logger.info("[PromotionQueue] #{text}")
+
+  defp tell_landed(scope, %Entry{requested_by_agent_id: agent_id}, text) do
+    :telemetry.execute([:code_my_spec, :promotion, :report], %{}, %{
+      scope: scope,
+      agent_id: agent_id,
+      text: text,
+      what: "promotion landed"
     })
   end
 
