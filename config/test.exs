@@ -245,10 +245,11 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
 # tenth of that, and the suite would otherwise spend most of its time waiting
 # for timers it already knows the shape of.
 #
-# `remote_await_timeout` is 31 minutes in production — a whole suite on a cold
-# `_build`. At that length a test that dispatches a run and ends leaves the
-# waiting task alive for half an hour, and the harness-never-answered path
-# cannot be asserted at all.
+# `remote_await_timeout` is 61 minutes in production — long enough to outlast
+# a run queued for a machine-wide slot and then the harness's own analyzer
+# kill timeout on top. At that length a test that dispatches a run and ends
+# leaves the waiting task alive for most of an hour, and the
+# harness-never-answered path cannot be asserted at all.
 config :code_my_spec,
   harness_decision_timeout: 1_000,
   harness_watch_debounce_ms: 200,
