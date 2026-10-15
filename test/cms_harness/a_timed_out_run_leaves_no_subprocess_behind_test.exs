@@ -1,38 +1,11 @@
 defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
   @moduledoc """
-  55379e16: the timeout handler used to kill only the supervised Elixir task
-  (`Task.Supervisor.terminate_child/2`) and release the slot regardless --
-  the shell command it ran stayed alive underneath, once measured at ~296%
-  CPU, free to overlap whatever the queue admitted next. SIGTERM alone did
-  not stop the one observed live; only SIGKILL did.
-
-  The kill now runs in its own supervised task rather than inline in
-  `AnalysisServer`'s own callback, so a confirmation that shells out to `ps`
-  and `kill` does not block every other call this project's analyzer queue
-  answers. That confirmation is tracked in `pending_cleanups`, independent
-  of `running` -- the project's own queue advances to the next entry
-  immediately on timeout (only the machine-wide slot, held by the analyzer
-  task's own process until it actually dies, needs to wait for the kill;
-  `AnalysisSlots` already serializes on that by itself).
-
-  A later test covers the follow-up: `Execution.stop/1`'s own confirmation is
-  bounded, but the `ps` call ahead of it is not. If the cleanup task never
-  reports back at all, `AnalysisServer` now forces the analyzer task's own
-  process dead directly once its own, independent deadline passes -- that is
-  what actually frees the machine-wide slot, since a slot is released only
-  by the death of the process that acquired it.
-
-  Most tests are driven the same way the sibling `AnalysisServer` tests drive
-  `handle_cast/2` (see `a_running_sweep_answers_for_the_next_request_test.exs`):
-  a hand-built state and direct calls to the `@impl` callbacks, no real
-  channel needed since `project.root` here names none (`Channel.deliver_analysis_result/2`
-  logs and returns when `Registry.lookup` finds none). The responsiveness
-  test needs a real, running server, since "answers promptly while busy" is
-  a property of a live mailbox, not of a function call.
-
-  The task's own shell command writes its child's pid to a file rather than
-  returning it as output -- `System.cmd/3` without `:into` only answers once
-  it returns, and the whole point here is that it never does.
+  Timeout cleanup retains the OS groups created at spawn, sends TERM then
+  KILL, and confirms termination without delaying queue or slot release.
+  The real fixture ignores TERM and includes a reparented grandchild.
+  Both normal cleanup and overdue recovery must kill both descendants.
+  Overdue recovery reports its outcome on the run within the original
+  deadline; unsuccessful confirmation identifies observed surviving PIDs.
   """
   use ExUnit.Case, async: true
 
@@ -64,6 +37,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     assert [%{run_id: 1, cleanup: %Task{ref: cleanup_ref}}] = mid_state.pending_cleanups
 
     assert_receive {^cleanup_ref, cleanup_result}, 6_000
+    assert cleanup_result == :ok
 
     assert {:noreply, next_state} =
              AnalysisServer.handle_info({cleanup_ref, cleanup_result}, mid_state)
@@ -190,17 +164,11 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
   defp eventually(false, _check, _attempts), do: flunk("condition never became true")
 
-  test "if the cleanup confirmation never reports back, the analyzer task is killed directly and its bookkeeping clears" do
+  test "overdue cleanup kills the TERM-refusing child and detached grandchild" do
     root = "/tmp/a-stuck-cleanup-test-#{System.unique_integer([:positive])}"
-    {task, _child_pid} = spawn_hanging_task()
-
-    # Registered under this project's own name, the same supervisor
-    # `AnalysisServer` itself looks up by root to terminate a stuck cleanup.
+    {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+    {task, child_pids} = spawn_hanging_task()
     {:ok, task_sup} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
-
-    # Never returns and never crashes -- standing in for `Execution.stop/1`
-    # itself hanging inside its own unbounded `ps` call, which this deadline
-    # exists to recover from regardless of why the cleanup never reports.
     stuck_cleanup = Task.Supervisor.async_nolink(task_sup, fn -> Process.sleep(:infinity) end)
 
     pending = %{
@@ -209,7 +177,9 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
       args: [],
       tied_run_ids: [],
       cleanup: stuck_cleanup,
-      cleanup_timer: nil
+      cleanup_timer: nil,
+      cleanup_ownership: CmsHarness.Agents.Engine.Execution.capture(task.pid),
+      cleanup_deadline: System.monotonic_time(:millisecond) + 5_000
     }
 
     state = %{
@@ -223,18 +193,36 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     assert {:noreply, next_state} =
              AnalysisServer.handle_info({:cleanup_overdue, 1, task.pid}, state)
 
-    # What this path actually guarantees: the analyzer task's own Elixir
-    # process dies (which is what frees its `AnalysisSlots` slot -- a slot
-    # is released by that process's death, nothing else), and its entry is
-    # dropped from `pending_cleanups`. It does NOT re-walk the OS process
-    # tree -- that walk is exactly what `Execution.stop/1` was stuck inside,
-    # so trusting another one here would risk the same hang. A detached
-    # grandchild (like this test's backgrounded `sleep`, reparented once its
-    # own shell dies) can outlive it; the delivered diagnostic says so
-    # rather than claiming confirmed cleanup it cannot back up.
+    assert System.monotonic_time(:millisecond) <= pending.cleanup_deadline
+    assert_receive {:"$gen_cast", {:analysis_result, payload}}
+    assert payload["run_id"] == 1
+    assert payload["status"] == "error"
+    assert payload["error"] =~ "Cleanup worker overdue"
+    assert payload["error"] =~ "Subprocess termination confirmed"
+    refute_alive(child_pids)
     assert next_state.pending_cleanups == []
     refute Process.alive?(task.pid)
     refute Process.alive?(stuck_cleanup.pid)
+  end
+
+  test "unconfirmed group cleanup names the surviving child and detached grandchild" do
+    {task, child_pids} = spawn_hanging_task()
+    ownership = CmsHarness.Agents.Engine.Execution.capture(task.pid)
+
+    try do
+      deadline = System.monotonic_time(:millisecond) + 500
+
+      assert {:error, {:subprocess_shutdown_unconfirmed, survivors, _details}} =
+               CmsHarness.Agents.Engine.ProcessGroups.confirm(ownership.groups, deadline)
+
+      for pid <- child_pids do
+        assert String.to_integer(pid) in survivors
+      end
+    after
+      CmsHarness.Agents.Engine.Execution.stop_owned(ownership)
+    end
+
+    refute_alive(child_pids)
   end
 
   test "a stray overdue message for a run already resolved is ignored" do
@@ -262,13 +250,53 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
     task =
       Task.Supervisor.async_nolink(supervisor, fn ->
-        System.cmd("bash", ["-c", "sleep 30 & echo $! > #{pid_file}; wait"])
+        System.cmd(System.find_executable("python3"), [
+          "-c",
+          """
+          import os, signal, sys, time
+          signal.signal(signal.SIGTERM, signal.SIG_IGN)
+          child = os.fork()
+          if child == 0:
+              time.sleep(30)
+              os._exit(0)
+          read_fd, write_fd = os.pipe()
+          middle = os.fork()
+          if middle == 0:
+              os.close(read_fd)
+              grandchild = os.fork()
+              if grandchild == 0:
+                  os.close(write_fd)
+                  time.sleep(30)
+                  os._exit(0)
+              os.write(write_fd, str(grandchild).encode())
+              os.close(write_fd)
+              os._exit(0)
+          os.close(write_fd)
+          grandchild = int(os.read(read_fd, 64))
+          os.close(read_fd)
+          os.waitpid(middle, 0)
+          with open(sys.argv[1], "w") as output:
+              output.write(str(child) + " " + str(grandchild))
+          time.sleep(30)
+          """,
+          pid_file
+        ])
       end)
 
-    {task, wait_for_pid_file(pid_file)}
+    pids = pid_file |> wait_for_pid_file() |> String.split()
+
+    on_exit(fn ->
+      Enum.each(pids, fn pid ->
+        System.cmd("/bin/kill", ["-KILL", pid], stderr_to_stdout: true)
+      end)
+
+      File.rm(pid_file)
+    end)
+
+    {task, pids}
   end
 
-  defp refute_alive(child_pid), do: assert_eventually_dead(child_pid)
+  defp refute_alive(child_pids), do: Enum.each(child_pids, &assert_eventually_dead/1)
 
   defp assert_eventually_dead(pid, attempts \\ 300),
     do: assert_eventually_dead(dead?(pid), pid, attempts)

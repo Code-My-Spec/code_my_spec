@@ -33,15 +33,9 @@ defmodule CmsHarness.Project.AnalysisServer do
   # which would otherwise hold every later analyzer behind it.
   @default_timeout :timer.minutes(30)
 
-  # 55379e16 follow-up: `Execution.stop/1`'s own confirmation is bounded (5s
-  # each for `await_owners`/`await_subprocesses`), but its very first step,
-  # discovering the live OS process tree via a shelled-out `ps`, carries no
-  # timeout of its own. If that ever hangs, `Execution.stop/1` never reaches
-  # the `Process.exit(pid, :kill)` that actually kills the analyzer task --
-  # which is also what releases its `AnalysisSlots` slot, since a slot is
-  # freed only by the death of the process that acquired it, not by anything
-  # this server does. An outer deadline, independent of Execution.stop/1's
-  # own internals, guarantees that process dies regardless.
+  # Cleanup retains the process groups established by OTP at spawn.
+  # Reserve five seconds inside this outer deadline for overdue recovery;
+  # neither queue advancement nor slot release waits for confirmation.
   @cleanup_confirm_deadline :timer.seconds(20)
 
   # 55379e16 follow-up, per main's direction: `Analysis.tree_state/1` (two
@@ -275,46 +269,39 @@ defmodule CmsHarness.Project.AnalysisServer do
       "[CmsHarness] #{running.source} for #{state.project.root} exceeded #{timeout()}ms — killing it"
     )
 
-    # 55379e16: `Task.Supervisor.terminate_child/2` alone only exits the Elixir
-    # task -- it never confirms the OS process tree `Environments.Local.cmd/4`
-    # shelled out to is actually dead, and SIGTERM did not stop one observed
-    # live (it kept running at ~296% CPU, free to overlap the next admitted
-    # run). `Execution.stop/1` is the same confirmed, process-tree-aware kill
-    # the agent bash tool already uses for exactly this failure mode: SIGKILL
-    # every OS descendant it can find via the port and the live process tree,
-    # then poll until none answer before returning -- but that confirmation
-    # is bounded at 5s of its own shelled-out `ps`/`kill` calls.
-    #
-    # 55379e16 follow-up, per main's direction: only the machine-wide slot
-    # needs to wait for the kill to be confirmed -- `AnalysisSlots` already
-    # serializes on that independently, since a slot is released only when
-    # the process that acquired it dies. This project's own queue does not
-    # also need to wait: holding `running` non-nil until the cleanup
-    # confirmed meant a run queued right behind a hang could wait up to
-    # this deadline plus `Execution.stop/1`'s own bound before even
-    # starting, with no slot contention actually requiring it -- that is
-    # what kept criterion_1386's own deliberately-blocking scenario from
-    # starting within its fixture's wait budget when an earlier timed-out
-    # run's confirmation was still in flight. The timed-out run's own
-    # bookkeeping moves to `pending_cleanups`, tracked independently of
-    # `running`, so `maybe_start_next/1` is free to admit the next entry
-    # immediately.
+    # Capture group ownership before terminating BEAM owners. Reparented OS
+    # descendants remain addressable through the retained group identities.
+    # Queue advancement and slot release precede termination confirmation.
     Process.demonitor(running.task.ref, [:flush])
     task_pid = running.task.pid
+    cleanup_deadline = System.monotonic_time(:millisecond) + @cleanup_confirm_deadline
+    ownership = Execution.capture(task_pid)
 
     cleanup =
       Task.Supervisor.async_nolink(Sync.task_supervisor(state.project.root), fn ->
-        Execution.stop(task_pid)
+        Execution.stop_owned(ownership)
       end)
 
+    # Reserve the final five seconds of the existing outer deadline for
+    # recovery if the first cleanup worker fails to report.
     overdue_timer =
-      Process.send_after(self(), {:cleanup_overdue, run_id, task_pid}, @cleanup_confirm_deadline)
+      Process.send_after(
+        self(),
+        {:cleanup_overdue, run_id, task_pid},
+        @cleanup_confirm_deadline - 5_000
+      )
 
-    pending = Map.merge(running, %{cleanup: cleanup, cleanup_timer: overdue_timer})
+    pending =
+      Map.merge(running, %{
+        cleanup: cleanup,
+        cleanup_timer: overdue_timer,
+        cleanup_ownership: ownership,
+        cleanup_deadline: cleanup_deadline
+      })
 
     Logger.info(
       "[CmsHarness] #{running.source} run #{run_id} for #{state.project.root} handed off to " <>
-        "cleanup; the queue is free to advance while its slot waits on confirmation"
+        "cleanup; the queue advances and slot release does not wait for confirmation"
     )
 
     state = %{state | pending_cleanups: [pending | state.pending_cleanups], timer: nil}
@@ -359,24 +346,14 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
-  # 55379e16 follow-up: the cleanup task above has not reported back within
-  # its own bounded deadline, independent of whatever `Execution.stop/1` is
-  # doing internally (its confirmation loops are each bounded, but the `ps`
-  # call ahead of them is not). Force the analyzer task's own Elixir process
-  # dead directly -- that is what actually frees the `AnalysisSlots` slot it
-  # holds, regardless of whether the OS-process-tree walk ever completes.
-  # Found in `pending_cleanups`, not `running` -- the queue already moved on
-  # when the timeout fired, so there is nothing left to advance here, only
-  # this run's own bookkeeping to resolve. `pop_pending_cleanup`'s lookup
-  # doubles as the guard a plain `run_id` pattern match used to be: a message
-  # for a run already resolved (the cleanup reported back in the race
-  # between it and this timer) finds nothing and is ignored.
+  # Recover using retained groups if the first worker has not reported.
+  # The original absolute deadline also bounds this recovery attempt.
   def handle_info({:cleanup_overdue, run_id, task_pid}, state) do
     case pop_pending_cleanup(state, &(&1.run_id == run_id)) do
       {:ok, pending, state} ->
         Logger.error(
           "[CmsHarness] #{pending.source} for #{state.project.root} timeout cleanup did not " <>
-            "confirm within #{@cleanup_confirm_deadline}ms of its own -- forcing the analyzer " <>
+            "report before the recovery window -- forcing the analyzer " <>
             "task's process dead directly so its machine-wide slot is not leaked"
         )
 
@@ -385,16 +362,18 @@ defmodule CmsHarness.Project.AnalysisServer do
           Process.demonitor(cleanup.ref, [:flush])
         end
 
+        ownership = pending.cleanup_ownership
+        Execution.release(ownership)
         Process.exit(task_pid, :kill)
+        cleanup_result = Execution.stop_owned(ownership, pending.cleanup_deadline)
 
         deliver(
           state,
           pending,
           {:error,
-           "analyzer timed out after #{timeout()}ms. Subprocess termination unconfirmed after " <>
-             "#{@cleanup_confirm_deadline}ms of its own cleanup attempt -- forced the analyzer " <>
-             "task's own process dead directly so its machine-wide slot is not leaked. An " <>
-             "orphaned OS subprocess may remain."}
+           "analyzer timed out after #{timeout()}ms. Cleanup worker overdue; " <>
+             "attempted owned-group recovery under the original cleanup deadline. " <>
+             cleanup_status(cleanup_result)}
         )
 
         {:noreply, state}
