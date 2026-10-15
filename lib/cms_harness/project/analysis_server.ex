@@ -22,6 +22,7 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   require Logger
 
+  alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Analysis
   alias CmsHarness.AnalysisSlots
   alias CmsHarness.Channel
@@ -236,9 +237,23 @@ defmodule CmsHarness.Project.AnalysisServer do
       "[CmsHarness] #{running.source} for #{state.project.root} exceeded #{timeout()}ms — killing it"
     )
 
-    Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), running.task.pid)
+    # 55379e16: `Task.Supervisor.terminate_child/2` alone only exits the Elixir
+    # task -- it never confirms the OS process tree `Environments.Local.cmd/4`
+    # shelled out to is actually dead, and SIGTERM did not stop one observed
+    # live (it kept running at ~296% CPU, free to overlap the next admitted
+    # run). `Execution.stop/1` is the same confirmed, process-tree-aware kill
+    # the agent bash tool already uses for exactly this failure mode: SIGKILL
+    # every OS descendant it can find via the port and the live process tree,
+    # then poll until none answer before returning.
+    cleanup = Execution.stop(running.task.pid)
     Process.demonitor(running.task.ref, [:flush])
-    deliver(state, running, {:error, "analyzer timed out after #{timeout()}ms"})
+
+    deliver(
+      state,
+      running,
+      {:error, "analyzer timed out after #{timeout()}ms. #{cleanup_status(cleanup)}"}
+    )
+
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
@@ -445,6 +460,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     if state.timer, do: Process.cancel_timer(state.timer)
     %{state | running: nil, timer: nil}
   end
+
+  defp cleanup_status(:ok), do: "Subprocess termination confirmed."
+
+  defp cleanup_status({:error, reason}),
+    do: "Subprocess termination unconfirmed: #{inspect(reason)}."
 
   # Every tied run_id gets the same real result as the primary. `tied_to` is
   # `nil` for the primary and the primary's run_id for tied ones: only the
