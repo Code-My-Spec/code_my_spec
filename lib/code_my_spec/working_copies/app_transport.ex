@@ -30,6 +30,23 @@ defmodule CodeMySpec.WorkingCopies.AppTransport do
     dispatch(working_copy_id, :ensure_app_running, %{}, timeout, :start_timed_out)
   end
 
+  @doc "Require the app's served revision to match its checkout before QA uses it."
+  @spec qa_revision_check(map()) :: :ok | {:error, String.t()}
+  def qa_revision_check(info) do
+    serving = Map.get(info, :serving_commit) || Map.get(info, :commit)
+    head = Map.get(info, :head)
+
+    if is_binary(serving) and serving != "" and serving == head do
+      :ok
+    else
+      {:error,
+       "Do not test against this app yet. Served revision: #{serving || "unknown"}; " <>
+         "checkout HEAD: #{head || "unknown"}. QA requires matching revisions. " <>
+         "Use restart_app for this copy, then call ensure_app_running to verify the revision " <>
+         "before testing. Do not start another restart while one is running."}
+    end
+  end
+
   @doc "Ask the copy's machine to restart its app — HEAD moved, or a promote."
   @spec restart_app(String.t(), timeout()) :: {:ok, map()} | {:error, term()}
   def restart_app(working_copy_id, timeout) do

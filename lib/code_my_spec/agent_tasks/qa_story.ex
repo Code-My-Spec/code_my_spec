@@ -525,9 +525,17 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp own_copy_app_url_line(copy) do
     case AppTransport.ensure_app_running(copy.id, app_start_timeout()) do
-      {:ok, %{status: "serving", url: url, commit: commit}} ->
-        "**App URL:** #{url} — this working copy's own instance" <>
-          commit_suffix(commit) <> ", not main's. Test against this address."
+      {:ok, %{status: "serving", url: url, commit: commit} = info} ->
+        case AppTransport.qa_revision_check(info) do
+          :ok ->
+            serving = Map.get(info, :serving_commit) || commit
+
+            "**App URL:** #{url} — this working copy's own instance" <>
+              commit_suffix(serving) <> ", not main's. Test against this address."
+
+          {:error, reason} ->
+            "**App verification blocked:** " <> reason
+        end
 
       {:ok, %{status: "starting", commit: commit}} ->
         "**App URL:** this copy's app is still building" <>
