@@ -22,7 +22,7 @@ defmodule CodeMySpec.TaskOwner.ATapOutReachesAnAlreadyBlockedTaskTest do
   refuse: the request is "a person should decide this", and the task is
   demonstrably not active precisely because nobody has decided the old one yet.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

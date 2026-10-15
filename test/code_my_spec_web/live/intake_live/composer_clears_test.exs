@@ -15,7 +15,7 @@ defmodule CodeMySpecWeb.IntakeLive.ComposerClearsTest do
   a patch: with an empty literal, the "Thinking…" bubble alone would wipe a
   half-written answer.
   """
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 

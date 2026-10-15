@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.FailedRecordingRejectedTest do
   reimplementation of the rename.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureIO
 

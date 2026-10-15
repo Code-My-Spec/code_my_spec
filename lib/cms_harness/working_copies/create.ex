@@ -2,36 +2,15 @@ defmodule CmsHarness.WorkingCopies.Create do
   @moduledoc """
   Making a checkout on this machine, because this is the machine with the disk.
 
-  The server owns the record and cannot run `git worktree add` — it is not on
-  this filesystem, and `fs_request` is scoped to one project root so it could
-  not make a *sibling* even if it were. So the file half happens here and the
-  record half happens there, and the caller made one call (story 891, rule "The
-  harness does the work on disk and the server does the work on the record").
+  The server owns the record and cannot reach this filesystem, so the disk half
+  happens here and the record half there. Separate from
+  `CmsHarness.WorkingCopies`, which is a lookup; this is an act.
 
-  Beside `CmsHarness.WorkingCopies` rather than inside it: that module answers
-  *which copy an id names*, from configs already on disk, and needs no network
-  and no repository. This runs git and writes into a new directory. One is a
-  lookup and the other is an act.
-
-  ## A worktree, not a clone
-
-  A worktree shares the repository's object store, so making one costs a
-  checkout of the tree rather than a copy of the history. That is the difference
-  between a second and a minute here, and the whole point of the copy is that an
-  agent can have one whenever there is work for it.
-
-  It also keeps the copies on one filesystem, which is what lets the server key
-  them on `(device_id, root)`. Two machines share a path constantly — every
-  container at `/workspace/app` — and a clone somewhere else would need its own
-  device before it meant anything.
-
-  ## Identity is written here
-
-  `.cms_harness.json` is what makes the directory a working copy rather than a
-  directory. The id travels *in* with the request rather than back out with the
-  reply, so what the server records and what the disk says are the same value
-  rather than two derivations of it — which is the failure story 891 exists to
-  end, and its notes list four of them by name.
+  A worktree, not a clone: it shares the object store (seconds, not minutes)
+  and keeps copies on one filesystem, keyed on `(device_id, root)`. The id
+  arrives with the request and is written into `.cms_harness.json` here, so the
+  server's record and the disk hold the same value.
+  See knowledge/harness, "Creating working copies".
   """
 
   require Logger
@@ -39,46 +18,34 @@ defmodule CmsHarness.WorkingCopies.Create do
   alias ClientUtils.Harness.Onboarding
   alias CmsHarness.Config
 
-  # The recipe a project owns for making a copy of itself.
-  #
-  # Called rather than reimplemented, because what a fresh copy needs is the
-  # project's business and not ours. `code_my_spec` needs its `.code_my_spec`
-  # submodule populated; the next project will need something else. A harness
-  # that serves every project cannot know, and every time it guessed it guessed
-  # for one of them.
+  # The project's own recipe for making a copy of itself: what a fresh copy
+  # needs is the project's business.
   @recipe "init-worktree"
 
   @doc """
   Make a working copy beside `root` and give it an identity.
 
-  Answers `{:ok, %{root:, working_copy_id:}}`, or `{:error, reason}` with
-  nothing left behind that claims to be a working copy.
+  Answers `{:ok, %{root:, working_copy_id:, setup:}}` (`setup` is
+  `:project_recipe` or `:bare_worktree`), or `{:error, reason}` with nothing
+  left behind that claims to be a working copy.
   """
   @spec run(String.t(), map()) ::
           {:ok, %{root: String.t(), working_copy_id: String.t()}} | {:error, term()}
   def run(root, request) when is_binary(root) and root != "" do
     name = slug(request["label"])
 
-    # Adjacent to the checkout, not under `.claude/worktrees`. A working copy is
-    # a peer of the checkout it came from, and putting real work inside a folder
-    # people reasonably treat as disposable editor state invites losing it.
-    #
-    # Prefixed with the checkout's own name, because "adjacent" alone collides.
-    # A parent directory holds many repositories — `~/Documents/github` here —
-    # so a copy called `refactor` from one project takes the name for every
-    # other, and for any unrelated directory that already has it. Caught by
-    # story 1013's spex the first time this ran: six criteria each asked for
-    # "the war epic's copy" beside their own temp root, the second one got
-    # `{:already_exists, …}`, and `refuse_existing/1` was right to refuse.
+    # Beside the checkout (not under disposable `.claude/worktrees`), prefixed
+    # with its name so siblings from other repositories do not collide.
     target = request["root"] || Path.join(Path.dirname(root), "#{Path.basename(root)}-#{name}")
 
     with :ok <- refuse_existing(target),
          {:ok, setup} <- add_worktree(root, target, name),
+         base_head = git_head(target),
          {:ok, id} <- write_identity(target, request) do
       onboard(root, target, id, request)
       prepare_later(target, request["prepare"] == true)
       Logger.info("[CmsHarness] made a working copy at #{target}")
-      {:ok, %{root: target, working_copy_id: id, setup: setup}}
+      {:ok, %{root: target, working_copy_id: id, setup: setup, base_head: base_head}}
     end
   end
 
@@ -94,12 +61,9 @@ defmodule CmsHarness.WorkingCopies.Create do
   @spec preparing?(String.t()) :: boolean()
   def preparing?(root), do: File.exists?(Path.join(root, @preparing))
 
-  # A copy that has to build and test before anything uses it — the promotion
-  # gate — gets the project's `gate-setup` recipe (deps, secrets, a test
-  # database: whatever the project needs), and is not served until it
-  # succeeds. Its harness joining is what tells the queue it is ready.
-  # In the background: it can take minutes, and the reply the server waits on
-  # cannot.
+  # A copy that must build and test before use (the promotion gate) runs the
+  # project's `gate-setup` recipe in the background and is not served until it
+  # succeeds; its join tells the queue it is ready.
   defp prepare_later(_target, false), do: :ok
 
   defp prepare_later(target, true) do
@@ -153,27 +117,9 @@ defmodule CmsHarness.WorkingCopies.Create do
     :ok
   end
 
-  # The other half of making a working copy.
-  #
-  # Without this the directory is servable and not buildable: a worktree with an
-  # identity file, no `.claude/settings.local.json`, and therefore no recorded
-  # test partition. `copy-11394` sat that way from 2026-09-05 until the coding
-  # agent working in it needed to run spex and found it could not.
-  #
-  # What makes it worth doing here rather than leaving to whoever notices: an
-  # un-onboarded copy does not fail where it is broken. `Validation`'s own notes
-  # record the precedent — credo crashed before it ran, 104 times across two
-  # checkouts, and what the agent saw was the *previous* run's findings marked
-  # stale, on a file it had already fixed. Nothing it edited was ever measured.
-  #
-  # After `write_identity/2`, not instead of it. `onboard/2` merges into
-  # `.cms_harness.json` rather than replacing it, and the fields story 891 cares
-  # about — `project_id` and `working_copy_id` — are ours to write and not in
-  # its shape. Writing ours first and letting the merge land on top keeps both.
-  #
-  # Failure does not fail the creation. The worktree exists, the identity is
-  # written, and the remedy is one documented command — whereas refusing here
-  # would leave a directory behind that the caller was told does not exist.
+  # Onboarding records the test partition; without it the copy is servable but
+  # every analyzer run fails. After `write_identity/2`, whose fields the merge
+  # keeps. Never fails the creation: the remedy is one documented command.
   defp onboard(root, target, id, request) do
     result =
       Onboarding.onboard(target,
@@ -186,12 +132,8 @@ defmodule CmsHarness.WorkingCopies.Create do
     Logger.info("[CmsHarness] onboarded #{target} on partition #{result.partition}")
   end
 
-  # The app the new copy builds, for the database names onboarding reports.
-  #
-  # Read from the parent's `mix.exs` because a worktree is the same application
-  # as the checkout it came from. Falls back to the directory name, which is
-  # what it usually is anyway — this names databases in a report, so a wrong
-  # guess misinforms and nothing more.
+  # The app name from the parent's `mix.exs`, else the directory name; it only
+  # names databases in onboarding's report.
   defp app_name(root) do
     with {:ok, mix} <- File.read(Path.join(root, "mix.exs")),
          [_, app] <- Regex.run(~r/app:\s*:([a-z_][a-z0-9_]*)/, mix) do
@@ -203,35 +145,100 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   # A directory that is already there is not ours to take. It may hold somebody's
   # work, and adopting it would give two copies one path.
+  #
+  # 68d37919: one holding `.cms_harness.json` is not just "somebody's work" in
+  # the ordinary sense -- it is our own identity marker, left by an earlier
+  # create this machine made. Naming that possibility is the difference
+  # between "already exists" (true of any stray directory) and "this looks
+  # like an orphan from a create the server never acknowledged", which tells
+  # whoever reads the refusal what actually happened instead of leaving them
+  # to work it out from a bare path.
   defp refuse_existing(target) do
-    if File.exists?(target), do: {:error, {:already_exists, target}}, else: :ok
+    cond do
+      not File.exists?(target) ->
+        :ok
+
+      File.exists?(Path.join(target, ".cms_harness.json")) ->
+        {:error, {:orphaned_from_failed_create, target}}
+
+      true ->
+        {:error, {:already_exists, target}}
+    end
   end
 
-  # `-b` so the copy gets its own branch. Two worktrees cannot check out the same
-  # branch, and an epic's copy sharing one with the main checkout would mean every
-  # commit on either appears on both — the opposite of the boundary the copy
-  # exists to draw.
-  # An error tuple, never a raise. `File.mkdir_p!/1` threw `File.Error` on a
-  # read-only path and it travelled all the way out as an exception — so the
-  # caller got a crash where it had asked a question, and the reply the agent
-  # was waiting for never came. Somewhere it cannot write is an ordinary answer
-  # here, not an exceptional one.
-  # Answers `{:ok, setup}` where `setup` says how the copy was made, because a
-  # copy made by the fallback is a different thing from one the project set up
-  # and the caller has to be able to tell.
-  #
-  # It used to answer a bare `:ok` for both. `:no_recipe` then fell through to
-  # `plain_worktree/3` mutely, and the copy was handed to agents with a worktree
-  # and submodules and nothing else. On 2026-09-24 that cost a night on
-  # metric_flow: no deps, so the compiler leg said "cannot satisfy its own
-  # mix.lock" and prescribed a `mix deps.get` that fails in a fresh worktree on
-  # shallow git deps; no `_build`, so `mix format` died on `Phoenix.CodeReloader`,
-  # a Mix listener in the project's own mix.exs; no dotenv files, so a clean test
-  # file read as five broken tests when its own guard clauses flunked. Two agents
-  # filed those as framework defects and both were dismissed as environment.
-  #
-  # `cms_new` generates the recipe, so this only ever bites a brownfield project
-  # — which is exactly the project nobody thinks to check.
+  @doc """
+  Undo a create this same call made, but only if nothing has touched it since.
+
+  Called when the server never acknowledges the create's result: its reply
+  never arrived, and whatever was waiting on it already timed out on its own
+  and moved on without ever learning this copy exists. Leaving the checkout
+  behind is worse than removing it, provided removing it loses nothing -- a
+  commit beyond `base_head` (captured right after the worktree was made,
+  before anything else could run in it) or a change to a tracked file is
+  somebody's work, made in the gap between this call finishing and the ack
+  never arriving, and this backs off rather than guess that away. An
+  untracked file this same call wrote (the identity, onboarding's own files)
+  does not count -- `git diff` against `HEAD` does not see it, which is
+  exactly the distinction wanted here.
+  """
+  @spec rollback_if_untouched(String.t(), String.t(), String.t() | nil) ::
+          :ok | {:error, :not_untouched}
+  def rollback_if_untouched(root, target, base_head) when is_binary(base_head) do
+    if git_head(target) == base_head and git_clean?(target) do
+      remove_worktree(root, target)
+    else
+      Logger.warning(
+        "[CmsHarness] #{target} was never acknowledged by the server and no longer " <>
+          "matches what this create made; leaving it for a person to decide rather " <>
+          "than guessing."
+      )
+
+      {:error, :not_untouched}
+    end
+  end
+
+  def rollback_if_untouched(_root, target, nil) do
+    Logger.warning(
+      "[CmsHarness] #{target} was never acknowledged by the server and its base commit " <>
+        "was never captured; leaving it for a person to decide rather than guessing."
+    )
+
+    {:error, :not_untouched}
+  end
+
+  defp git_head(target) do
+    case System.cmd("git", ["-C", target, "rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  end
+
+  defp git_clean?(target) do
+    match?(
+      {"", 0},
+      System.cmd("git", ["-C", target, "diff", "--name-only", "HEAD"], stderr_to_stdout: true)
+    )
+  end
+
+  defp remove_worktree(root, target) do
+    case System.cmd("git", ["worktree", "remove", "--force", target], cd: root, stderr_to_stdout: true) do
+      {_out, 0} ->
+        Logger.info("[CmsHarness] removed the unacknowledged working copy at #{target}")
+        :ok
+
+      {out, status} ->
+        Logger.warning(
+          "[CmsHarness] could not remove unacknowledged #{target} (exit #{status}): " <>
+            String.trim(out)
+        )
+
+        {:error, :not_untouched}
+    end
+  end
+
+  # Answers `{:ok, setup}` so the caller can tell a fallback bare worktree
+  # from a project-recipe copy; the fallback is logged. Errors are tuples, never
+  # raises: an unwritable path is an ordinary answer.
   defp add_worktree(root, target, name) do
     with :ok <- make_parent(target) do
       case recipe(root, name, target) do
@@ -255,10 +262,7 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   # `just init-worktree <name> <target>`, when the project has one.
   #
-  # A project that wants anything on a fresh copy — submodules populated, a
-  # fixture linked, a file written — says so there, and we do not have to know
-  # what it is. `cms_new` generates the recipe, so a project made by it has one
-  # from the start.
+  # `cms_new` generates the recipe.
   defp recipe(root, name, target) do
     case run_recipe([@recipe, name, target], root) do
       {_out, 0} ->
@@ -274,10 +278,8 @@ defmodule CmsHarness.WorkingCopies.Create do
     ErlangError -> :no_recipe
   end
 
-  # A project's recipes choose their own Mix environment. Inheriting the
-  # daemon's MIX_ENV=harness made Metric Flow import config/harness.exs and
-  # left its promotion gate half-created. Use the same boundary as agent
-  # commands, including removal of the daemon's CMS_* identity variables.
+  # With the daemon's `MIX_ENV` and `CMS_*` variables removed: a project's
+  # recipes choose their own environment.
   defp run_recipe(args, root) do
     System.cmd("just", args,
       cd: root,
@@ -286,9 +288,7 @@ defmodule CmsHarness.WorkingCopies.Create do
     )
   end
 
-  # Told apart from a recipe that ran and failed, because they deserve opposite
-  # answers: the first falls back silently, the second is this project saying
-  # its own copy cannot be made and must not be papered over.
+  # A missing recipe falls back; a recipe that ran and failed is an error.
   defp missing_recipe?(out) do
     out = String.downcase(out)
 
@@ -297,16 +297,8 @@ defmodule CmsHarness.WorkingCopies.Create do
       String.contains?(out, "could not find justfile")
   end
 
-  # What every project gets when it says nothing: a worktree, and its submodules.
-  #
-  # Submodules by default because the alternative is silent and expensive.
-  # `git worktree add` does not populate them, and the harness then scans a copy
-  # whose `.code_my_spec` is empty and computes a requirement graph from what it
-  # finds — which does not read as a missing checkout, it reads as a project
-  # with no personas, no architecture and no specs, and the agent is told to redo
-  # work that already exists. Worktree `963-main-agent-nontechnical` sat that way
-  # with all 26 stories routed to it blocked behind one absent file, while every
-  # surface reported a healthy idle agent (`fde40b27`).
+  # The fallback: a worktree on its own branch (`-b`), its submodules (an
+  # empty `.code_my_spec` reads as a project with no work done), and `seed/2`.
   defp plain_worktree(root, target, name) do
     case System.cmd("git", ["worktree", "add", "-b", name, target],
            cd: root,
@@ -321,10 +313,7 @@ defmodule CmsHarness.WorkingCopies.Create do
     end
   end
 
-  # Failure does not fail the creation, for the reason `onboard/4` gives: the
-  # worktree exists and refusing here would leave a directory behind that the
-  # caller was told does not exist. Logged loudly instead, because the one thing
-  # this must never be is silent — that silence is the whole defect.
+  # Never fails the creation (as for `onboard/4`), but logged loudly.
   defp init_submodules(target) do
     if File.exists?(Path.join(target, ".gitmodules")) do
       case System.cmd("git", ["submodule", "update", "--init", "--recursive"],
@@ -389,8 +378,7 @@ defmodule CmsHarness.WorkingCopies.Create do
     end
   end
 
-  # Linked, not copied, so secrets are not duplicated per copy — the call
-  # `just worktree-setup` makes for `envs/`. Committed ones are already there.
+  # Linked, not copied, so secrets are not duplicated per copy.
   defp link_dotenvs(source, target) do
     for from <- Path.wildcard(Path.join(source, ".env*"), match_dot: true),
         File.regular?(from),
@@ -433,9 +421,7 @@ defmodule CmsHarness.WorkingCopies.Create do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  # A directory name a person can read, from the label they gave. Falls back to
-  # something unique rather than refusing — a copy with an awkward name is worth
-  # more than no copy.
+  # A readable directory name from the label, else a unique one.
   defp slug(label) when is_binary(label) and label != "" do
     label
     |> String.downcase()

@@ -2,15 +2,8 @@ defmodule CodeMySpec.Requirements.Edges do
   @moduledoc """
   The edge set, derived one entity at a time.
 
-  `RequirementGraph.compute_edges/3` draws every edge of a vantage and reduces
-  the whole set at once, on the grounds that a transitive reduction is global:
-  a node instantiated for one entity can make an edge between two others
-  redundant. True — and it made a component appearing cost a reduction over
-  twenty-five thousand edges at every vantage: 355ms of a 430ms edge phase,
-  ten vantages, for one event (measured 2026-09-21).
-
-  It is also more general than this graph. Three facts about the templates
-  bound where a path can go:
+  A transitive reduction is global, but three facts about the templates bound
+  where a path can go:
 
     * the project enters a story at one end and the story leaves to the
       project at the other, and nothing comes back — `qa_setup →
@@ -29,15 +22,13 @@ defmodule CodeMySpec.Requirements.Edges do
   kickoff to exit is redundant exactly when the components connect the two.
   The project's chain reduces against the stories the same way.
 
-  `over/4` is the whole set, and it is the set `compute_edges/3` draws.
-  `edges_derived_per_entity_match_the_pass_test` holds the two together on a
-  fixture and `Shadow.diff/1` does on a live project; the three facts above
-  are what that rests on, and a template edge that broke one of them would
-  show up there first.
+  `over/4` is the same set the whole-set reduction
+  (`RequirementGraph.edges_over/4`) draws;
+  `edges_derived_per_entity_match_the_pass_test` holds the two together, and a
+  template edge that broke one of the three facts would fail there first.
+  See knowledge/requirements_graph/checkers, "Edge derivation".
 
-  Requirement names appear here only as data read off the edges the
-  generators produce: a kickoff leaves from wherever the generator says it
-  does, and an exit lands wherever it says.
+  Requirement names appear here only as data read off the generated edges.
   """
 
   alias CodeMySpec.Requirements.RequirementGraph
@@ -48,24 +39,20 @@ defmodule CodeMySpec.Requirements.Edges do
 
   @typedoc """
   Whether a node exists at the vantage being drawn. An endpoint with no row is
-  not an edge, and — the same rule `compute_edges/3` applies before it reduces
-  — a node with no row cannot carry a path.
+  not an edge, and a node with no row cannot carry a path.
   """
   @type present? :: (Topology.node_key() -> boolean())
 
   @typep side :: %{edges: [edge()], reach: Topology.reach()}
 
   @typedoc """
-  Generated edges for one topology and discovered-file membership: the component side as generated with reachability over it, every
-  ready story's edges by kind, and the project's chain. `over/3` admits and
-  reduces it for one vantage.
+  Generated edges for one topology and discovered-file membership: the
+  component side with reachability over it, every story's edges by kind, and
+  the project's chain. `over/3` admits and reduces it for one vantage.
 
-  Generating is most of a redraw — measured on dev, 2026-09-21, at the
-  unscoped vantage: 205ms to generate 138 stories' 26,942 kickoff edges and
-  86ms for reachability over the component side, in a 452ms redraw — and
-  checkouts with the same discovered-file membership can reuse that work.
-  Different membership needs a separate plan because story dependencies
-  exclude discovered components with no files in that checkout.
+  Generating is most of a redraw, so checkouts with the same discovered-file
+  membership reuse a plan; different membership needs its own, because story
+  dependencies exclude discovered components with no files on that checkout.
   """
   @type plan :: %{
           component_side: [edge()],
@@ -221,13 +208,8 @@ defmodule CodeMySpec.Requirements.Edges do
   end
 
   # Whether `node` is one of `sources` or reaches one. Membership is asked of
-  # the list, not of the reachability's bits: a node no component-side edge
-  # touches has no bit, and a leaf whose first requirement is its last is
-  # exactly that node — the kickoff lands on it and the exit leaves from it,
-  # which is a path of length two the pass drops the story's own edge for.
-  # Measured on dev the first time this was asked of the bits: 34 stories at
-  # the unscoped vantage carried `bdd_specs_exist → ready_for_qa` that
-  # the pass did not.
+  # the list, not the reachability bits: a leaf whose first requirement is its
+  # last has no bit, yet the kickoff lands on it and the exit leaves from it.
   defp touches?(reach, node, sources),
     do: node in sources or Topology.reaches?(reach, node, Topology.mask(reach, sources))
 

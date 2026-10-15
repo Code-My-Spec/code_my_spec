@@ -123,7 +123,11 @@ defmodule CmsHarness.Supervisor do
       # because a light harness never starts that, and a light harness is the
       # sprite — the machine whose checkouts actually get thrown away.
       {CmsHarness.WorkingCopyReporter,
-       Application.get_env(:code_my_spec, :working_copy_reporter, [])}
+       Application.get_env(:code_my_spec, :working_copy_reporter, [])},
+
+      # Keeps every app instance's log bounded, on its own clock.
+      {CmsHarness.AppInstance.LogTrimmer,
+       Application.get_env(:code_my_spec, :app_log_trimmer, [])}
 
       # Last, because it needs both the registry and the dynamic supervisor.
       # `:temporary`, which is what `{Task, fun}` means, so a failure here does

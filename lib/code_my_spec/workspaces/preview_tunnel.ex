@@ -3,59 +3,28 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   A named Cloudflare tunnel per working copy, so a preview reaches an app we
   are not running.
 
-  `PreviewAddress` is the other half of this and covers the case where *we*
-  host the app: it points `preview-{id}` at our own listener, which proxies to
-  a container on our machine. That only works while the app is somewhere our
-  proxy can dial. A checkout on a developer's laptop, behind a router, on a
-  network we have never heard of, is not.
+  `PreviewAddress` covers an app *we* host; a tunnel covers one we cannot
+  dial (a laptop behind a router). `cloudflared` runs beside the app and dials
+  out, so nothing has to reach in.
 
-  A tunnel inverts the connection. `cloudflared` runs inside the app's own
-  process tree and dials *out* to Cloudflare, so the address resolves to an
-  edge that already holds an open connection back to the app. Nothing has to
-  reach in, and nothing about where the app runs has to be known here.
+  The address stays on our zone and prefix: the frame-src policy
+  (`PreviewAddress.csp_origin/0`) and the same-site session cookie both
+  depend on it.
 
-  ## Why the address is still ours
+  **One tunnel per machine.** Cloudflare hands a request to whichever connector
+  answers, so every connector must reach every route — true on one machine,
+  false across two. The tunnel belongs to the device (`Devices.tunnel/1`);
+  each copy on it gets a route. A copy with no device keeps a per-copy tunnel.
 
-  It would be simpler to let each app pick its own hostname, and every part of
-  the surrounding system would break. `PreviewAddress.csp_origin/0` derives the
-  frame-src policy from our base domain, so an address outside it is refused by
-  the browser and the pane renders blank; and the same-site property that keeps
-  a browser sending the framed app's session cookie holds only while the preview
-  shares a registrable domain with the page framing it — which is not a Safari
-  quirk, and cost an afternoon on Broken Oaths when dev previews sat on another
-  domain.
+  **The secret is returned once**, at creation, so it is generated here and
+  stored encrypted. A stored credential wins over anything Cloudflare reports:
+  a tunnel we can name but not speak for is worth less than none.
 
-  So: our zone, our record, our prefix — and a tunnel underneath instead of a
-  proxy.
-
-  ## The secret is returned once
-
-  Cloudflare generates the tunnel and hands back its secret at creation and
-  never again. There is no endpoint that re-reads it. That makes it unlike
-  every other credential here: it cannot be re-fetched on demand, so it is
-  stored on the working copy, encrypted, and a copy that has one is never asked
-  to make a second.
-
-  Losing it does not corrupt anything — it strands a tunnel that can only be
-  deleted and replaced. `ensure/1` is therefore idempotent on the *stored*
-  credential rather than on what Cloudflare reports, because "a tunnel with
-  this name exists" is not the same as "we can still speak for it".
-
-  ## One tunnel per machine (story 1117)
-
-  Every connector attached to a tunnel has to be able to satisfy every one of
-  its routes, because Cloudflare hands a request to whichever connector
-  answers. That is sound for every copy on *one* machine — the machine's
-  connector can dial any local port — and unsound across two. So the tunnel
-  belongs to the device: each copy on a machine gets a route on that machine's
-  tunnel, and a copy on another machine gets one on its own machine's tunnel.
-
-  Routes live in Cloudflare (`config_src: "cloudflare"`) and are edited through
-  the API (`add_ingress/4`, `remove_ingress/3`), under `TunnelIngressLock`, so
-  giving one copy an address or taking it away never restarts the connector
-  carrying the others. A machine's existing tunnel — the dev tunnel carrying
-  dev.codemyspec.com and *.astralbi.com — is adopted as its machine tunnel
-  rather than replaced, so those hostnames' DNS never moves.
+  Routes live in Cloudflare (`config_src: "cloudflare"`), edited through the
+  API under `TunnelIngressLock`, so one copy's address changing never restarts
+  the connector carrying the others. A machine's existing tunnel can be
+  recorded as its machine tunnel rather than replaced, so its hostnames' DNS
+  never moves. See knowledge/promotion, "Previews".
   """
 
   require Logger
@@ -69,10 +38,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   @api "https://api.cloudflare.com/client/v4"
 
   @typedoc """
-  What `ClientUtils.CloudflareTunnel` needs to run in named mode. The key names
-  match its options deliberately: this is handed to a checkout to put in its
-  config, and a translation step between here and there is somewhere for the
-  two to drift apart.
+  What `ClientUtils.CloudflareTunnel` needs to run in named mode. Key names
+  match its options so no translation step can drift.
   """
   @type credentials :: %{
           hostname: String.t(),
@@ -85,19 +52,9 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   @doc """
   The origin allowed to frame a preview — this deployment's own.
 
-  Returned with the credentials so no application has to be told it. An app that
-  carries a hardcoded embedder can carry the wrong one, and being wrong here is
-  silent: the browser refuses the frame, the iframe looks healthy and renders
-  nothing, and it reads as the framed app being broken. Broken Oaths lost an
-  afternoon to a variant of exactly that.
-
-  The server knows the answer — it is the site doing the framing — so it says
-  it rather than every app guessing.
-
-  Several origins are allowed and often needed: dev is reachable both as
-  `localhost:4000` and as `dev.codemyspec.com`, and a preview opened from either
-  has to be framed by both. `frame-ancestors` takes a space-separated list, so
-  this is passed through as written.
+  Returned with the credentials so no app hardcodes it: a wrong embedder fails
+  silently (the frame renders blank). May be a space-separated list
+  (`frame-ancestors` syntax), e.g. both `localhost:4000` and the dev domain.
   """
   @spec embedder() :: String.t()
   def embedder do
@@ -125,16 +82,9 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   This copy's own tunnel credentials, exactly as already stored — never
   provisions, never reaches Cloudflare.
 
-  For the harness-holds-the-tunnel design: a working copy's app is (re)started
-  far more often than its tunnel should ever change, so whatever tells the
-  harness to run one has to ask this on every restart without risking
-  creating one, or reaching Cloudflare, each time. `ensure/1` does both and is
-  the wrong call for that; this is read-only on purpose.
-
-  Answers for any copy holding a tunnel id and secret — main's own or a
-  sibling's shared one alike (criterion 1586 records the same pair onto both
-  rows). Whether *running a connector* for what this returns is main's job
-  alone is a decision for the caller, not this function.
+  Safe to ask on every app restart, unlike `ensure/1`. Answers for any copy
+  holding a tunnel id and secret; whether to run a connector for it is the
+  caller's decision.
   """
   @spec stored_credentials(WorkingCopy.t()) :: {:ok, credentials()} | :error
   def stored_credentials(
@@ -158,8 +108,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
 
   @doc """
   The tunnel a copy's harness should run: its machine's, once the machine
-  holds one (story 1117), else a main copy's own per-project tunnel, which it
-  keeps running until it moves. Read-only, like `stored_credentials/1`.
+  holds one, else a main copy's own stored tunnel. Read-only, like
+  `stored_credentials/1`.
 
   Every copy on a machine is handed the same tunnel, and the harness keeps one
   connector per tunnel, so a machine runs one however many copies it carries.
@@ -184,20 +134,15 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
 
   @doc """
   Give a working copy its address on its machine's tunnel, making the tunnel
-  exist if the machine has none (story 1117).
+  exist if the machine has none.
 
-  One tunnel per machine, whatever the project: every copy on a device gets a
-  route on that device's tunnel to its own app, and a DNS record pointing its
-  address at the tunnel. The harness on the machine runs one connector for it.
-  A copy on another machine is routed through that machine's tunnel, never
-  this one's — a connector cannot reach a port on a different box.
+  Adds the copy's route (when it has an `app_url`) and a DNS record pointing
+  its address at the tunnel, records both on the working copy, and returns
+  what the checkout needs to run it. Main is eligible before its app serves;
+  any other copy once it has an `app_url`.
 
-  Returns everything the checkout needs to run it, and records the address on
-  the working copy so the panel has something to frame.
-
-  Idempotent: the route and the DNS record are re-asserted rather than assumed.
-  A copy moving off a tunnel of its own (the per-project model this replaces)
-  retires that tunnel once nothing references it.
+  Idempotent: route and record are re-asserted, not assumed. A tunnel the copy
+  held before is deleted once no copy names it.
   """
   @spec ensure(WorkingCopy.t()) :: {:ok, credentials()} | {:error, term()}
   def ensure(%WorkingCopy{} = copy) do
@@ -245,10 +190,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
 
   defp machine_tunnel(%WorkingCopy{} = copy, account), do: tunnel_for(copy, account)
 
-  # The per-project tunnel a copy held before it moved, deleted once no copy
-  # still names it. Best-effort: a tunnel Cloudflare will not delete yet (a
-  # connector still attached) costs nothing but an idle record, and must not
-  # take the copy's new address down with it.
+  # The tunnel a copy held before, deleted once no copy names it. Best-effort:
+  # a failed delete must not take the copy's new address down.
   defp retire_replaced(nil, _current, _account), do: :ok
   defp retire_replaced(same, same, _account), do: :ok
 
@@ -280,9 +223,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
-  # A stored credential wins over anything Cloudflare would say. See the
-  # moduledoc: the API can confirm a tunnel exists and cannot give us back the
-  # secret, so a tunnel we can name but not speak for is worth less than none.
+  # A stored credential wins over anything Cloudflare would say (see moduledoc).
   defp tunnel_for(%WorkingCopy{preview_tunnel_id: id, preview_tunnel_secret: secret}, _account)
        when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
     {:ok, %{tunnel_id: id, tunnel_secret: secret}}
@@ -314,10 +255,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
-  # The CNAME every named tunnel is reached through. `proxied: true` is not
-  # optional here the way it is for an ordinary record: an unproxied CNAME to
-  # `cfargotunnel.com` does not resolve at all, because the target only exists
-  # inside Cloudflare's edge.
+  # `proxied: true` is required: an unproxied CNAME to `cfargotunnel.com` does
+  # not resolve.
   defp point(host, tunnel_id) do
     with {:ok, token} <- token(),
          {:ok, zone} <- zone_id() do
@@ -334,18 +273,12 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   Drop this copy's own ingress rule from the tunnel it was sharing, and clear
   its recorded address.
 
-  Offboarding, not an ordinary stop: an app that is merely idle keeps its
-  hostname, its ingress rule and its DNS record, serving a 502 until it
-  restarts, because a copy meant to come back should not have to be
-  re-shared. This is for a copy that is going away — its hostname should
-  stop resolving to anything at all, not sit forwarding to a port nothing
-  will ever listen on again, or answering NXDOMAIN through a CNAME that
-  outlives the row it named.
+  For offboarding, not an ordinary stop: an idle app keeps its route and
+  record (serving a 502) so it need not be re-shared; a copy going away
+  should stop resolving. Deletes the route and the DNS record; the tunnel
+  itself stays.
 
-  A no-op on main, whose tunnel is the project's, not this call's to remove;
-  and on a copy that never had one, which offboarding cannot tell apart from
-  one whose sharing already failed without doing something destructive to
-  find out.
+  A no-op on a copy holding no tunnel credential.
   """
   @spec release(WorkingCopy.t()) :: :ok | {:error, term()}
   def release(%WorkingCopy{preview_tunnel_id: id, preview_tunnel_secret: secret} = copy)
@@ -366,9 +299,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
 
   def release(%WorkingCopy{}), do: :ok
 
-  # The CNAME `point/2` wrote. Looked up by name because that is all a
-  # sharing copy was ever given back — nothing here holds the record's own
-  # id from when it was created.
+  # The CNAME `point/2` wrote, looked up by name (its id is not stored).
   defp delete_dns_record(host) do
     with {:ok, token} <- token(),
          {:ok, zone} <- zone_id() do
@@ -386,19 +317,15 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
-  # Nothing to delete is not a failure — a copy released twice, or one whose
-  # record was already removed by hand, should not block on Cloudflare
-  # agreeing there was ever anything there.
+  # Nothing to delete is not a failure (released twice, or removed by hand).
   defp delete_found_record({:ok, %{"result" => []}}, _zone, _token), do: :ok
   defp delete_found_record({:ok, body}, _zone, _token), do: {:error, {:cloudflare, body}}
   defp delete_found_record({:error, reason}, _zone, _token), do: {:error, reason}
 
-  # ── Remote ingress (criteria 1586/1587) ──
+  # ── Remote ingress ──
   #
-  # Locked on `tunnel_id`: more than one copy on the same device can add or
-  # drop its own rule around the same time, and a GET-modify-PUT with no lock
-  # would let a second write silently discard the first's addition. See
-  # `TunnelIngressLock`.
+  # Locked on `tunnel_id`: copies on one device edit the same rule list, and an
+  # unlocked GET-modify-PUT would silently discard a concurrent addition.
 
   defp add_ingress(account, tunnel_id, host, service) do
     TunnelIngressLock.with_lock(tunnel_id, fn ->
@@ -434,10 +361,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
-  # Every named rule, then exactly one catch-all last — `cloudflared` refuses
-  # a config whose final rule names a host. `get_ingress/2` already strips
-  # whatever catch-all Cloudflare held, so every write re-asserts a fresh one
-  # rather than trusting an old one stayed put.
+  # Every named rule, then exactly one catch-all last (`cloudflared` refuses a
+  # final rule naming a host). `get_ingress/2` strips the old catch-all.
   defp put_ingress(named, account, tunnel_id) do
     case put_configuration(account, tunnel_id, named ++ [%{"service" => "http_status:404"}]) do
       {:ok, %{"success" => true}} -> :ok
@@ -497,32 +422,12 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     |> body_of()
   end
 
-  # Success first, and this clause is why. Cloudflare puts `"errors": []` on a
-  # *successful* response, so matching the errors key before checking `success`
-  # read every successful DNS write as a failure — `{:cloudflare, []}`, an error
-  # tuple carrying no errors, which is a shape that should have looked wrong on
-  # sight.
-  #
-  # The unit tests missed it because the stub returned `%{"success" => true,
-  # "result" => …}` with no errors key at all, so it fell through to the
-  # catch-all below. Real Cloudflare always sends the key. A stub that is
-  # tidier than the API it stands in for tests a service that does not exist.
+  # Success first: Cloudflare sends `"errors": []` on a successful response.
   defp interpret_record({:ok, %{"success" => true}}, _host), do: :ok
 
-  # An existing record is NOT success on its own — it has to point at this
-  # tunnel. 81053 and 81057 are Cloudflare saying "that name is taken", which is
-  # the ordinary case from the second call onward *and* the case where a
-  # previous attempt left a record aimed somewhere else.
-  #
-  # Treating "taken" as done cost an afternoon. A first attempt created a tunnel
-  # and wrote its record, then failed for an unrelated reason; the tunnel was
-  # cleaned up and the record was not. Every retry then created a fresh tunnel,
-  # got 81053 for the record, reported success — and the address resolved to a
-  # tunnel that no longer existed. Cloudflare answers 530, which reads as the
-  # origin being down, so the whole diagnosis points at the app.
-  #
-  # So: taken means go and look, and repoint it if it is aimed at anything but
-  # this tunnel.
+  # "Name taken" (81053/81057) is not success on its own: the record may aim
+  # at a tunnel that no longer exists (Cloudflare 530). Look, and repoint it
+  # unless it already targets this tunnel.
   defp interpret_record({:ok, %{"errors" => errors}}, ctx) when is_list(errors) do
     if Enum.any?(errors, &(&1["code"] in [81_053, 81_057])) do
       repoint(ctx)
@@ -591,9 +496,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   defp body_of({:ok, %Req.Response{status: status, body: body}}), do: {:error, {status, body}}
   defp body_of({:error, reason}), do: {:error, reason}
 
-  # Our own credential, not the customer's — same reasoning as
-  # `PreviewAddress.put_record/1`. This zone is ours, and a visitor who has
-  # never connected Cloudflare still gets a preview.
+  # Our own credential, not the customer's, as in `PreviewAddress`.
   defp token do
     present(config()[:token] || app_cloudflare()[:api_token], :no_cloudflare_token)
   end
@@ -602,8 +505,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     present(config()[:zone_id] || preview_address_config()[:zone_id], :no_zone_id)
   end
 
-  # The one value `PreviewAddress` never needed: a DNS record is written against
-  # a zone, a tunnel is created against an account.
+  # A tunnel is created against an account (a DNS record against a zone).
   defp account_id do
     present(config()[:account_id] || app_cloudflare()[:account_id], :no_cloudflare_account_id)
   end
@@ -611,9 +513,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   defp present(value, reason) when value in [nil, ""], do: {:error, reason}
   defp present(value, _reason), do: {:ok, value}
 
-  # Pinned in test config so the suite cannot reach Cloudflare. An unpinned
-  # plug plus a real token in the environment is a live call, which this
-  # project has shipped once already.
+  # Pinned in test config so the suite cannot reach Cloudflare.
   defp req_options, do: config()[:req_options] || []
 
   defp app_cloudflare,

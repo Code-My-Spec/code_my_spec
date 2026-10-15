@@ -77,7 +77,9 @@ defmodule CodeMySpec.AgentPerformance.QaRounds do
       |> Qa.list_project_attempts(include_older: true, include_invalidated: true)
       |> Enum.filter(&(Map.get(agent_copies, &1.agent_id) == working_copy_id))
       |> Enum.group_by(& &1.story_id)
-      |> Enum.map(fn {_story_id, attempts} -> Enum.min_by(attempts, & &1.submitted_at, DateTime) end)
+      |> Enum.map(fn {_story_id, attempts} ->
+        Enum.min_by(attempts, & &1.submitted_at, DateTime)
+      end)
       |> Enum.filter(&since_cutoff(&1, since))
 
     case first_attempts do

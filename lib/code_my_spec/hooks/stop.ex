@@ -6,8 +6,8 @@ defmodule CodeMySpec.Hooks.Stop do
   block/allow **immediately** — never waiting on a subprocess, so the answer
   always beats the hook's timeout.
 
-  A stop never starts, waits on, or reports analysis (John, 2026-10-04): runs
-  come from `start_analysis`, ready_for_qa certification and promotion. Analysis
+  A stop never starts, waits on, or reports analysis: runs come from
+  `start_analysis`, ready_for_qa certification and promotion. Analysis
   in flight changes nothing here; the stop answers from the problems already
   persisted, and may still refuse over blocking ones. Results landing after an
   allowed stop reach the user via push notification and block the next stop.
@@ -42,10 +42,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
 
-    # Stamped for the whole request, so every line this hook emits carries the
-    # session rather than only the first. Analysing where an agent gets stuck
-    # means grouping stops by session, and a prose line that names it once
-    # cannot be grouped without joining on request id first.
+    # Stamped for the whole request so every line can be grouped by session.
     Logger.metadata(cms_session: session_id, cms_hook: "stop")
 
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
@@ -58,40 +55,9 @@ defmodule CodeMySpec.Hooks.Stop do
     do_decide(scope, session_id, session, active_task, [], req_id)
   end
 
-  # The stop hook used to warn about config edits, in two halves, and both are
-  # gone. `note_config_edits/2` appended a footer on allow when the session had
-  # edited `config/*.exs`; `note_stale_config/1` compared the sha this server
-  # booted at against the one on disk, and caught the case the first structurally
-  # could not - a config change arriving by a pull, which nobody's session
-  # edited.
-  #
-  # `note_stale_config/1` went first, for cost: it shelled out to a subprocess
-  # inside every stop - a fork per hook for a question almost always answered
-  # "no" - and it broke twenty-one spex across eight unrelated stories, because
-  # the spex cassettes patch `System.cmd/3` process-globally and a stray call
-  # inside a request dies on a missing recording, taking the criterion with it.
-  #
-  # `note_config_edits/2` went second, and for a different reason: it does not
-  # reach the audience it is written for. The footer rides on the stop hook, so
-  # it is read by a Claude Code session and by nothing else - an agent running
-  # inside our own BEAM fires no stop hook and never sees it. The wedge it warns
-  # about costs *other checkouts*, minutes later, which is precisely who cannot
-  # be told this way. John's call, 2026-09-15.
-  #
-  # If the warning comes back it comes back off the harness's file watcher, which
-  # already knows when a checkout moves, does not have to ask, and can reach
-  # every copy rather than the one whose session happened to make the edit.
-
-  # Allow stays the default — a stop hook that fails closed on its own
-  # plumbing would wedge every agent on this machine. But allowing silently
-  # means a hook that never sends `session_id`, or one pointed at a session
-  # this server has no record of, succeeds forever and looks identical to a
-  # healthy run. Nothing here is per-turn noise: both cases are broken
-  # configuration, and an unattended run is exactly where nobody is watching
-  # the 200s go by.
-  #
-  # A stop before `init_project` is not broken — there is no project to hold
-  # sessions yet — so that one stays quiet.
+  # Allow is the default (failing closed on its own plumbing would wedge every
+  # agent), but a missing or unknown session is broken configuration, so it
+  # warns. A stop before `init_project` has no project yet and stays quiet.
   defp warn_unresolved_session(%{active_project_id: nil}, _session_id, _session, _req_id), do: :ok
 
   defp warn_unresolved_session(_scope, nil, _session, req_id) do
@@ -131,27 +97,6 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  # There was an R5b here: an open main-agent task plus any idle sub-agent
-  # blocked the stop with "assign that sub-agent to that task".
-  #
-  # Its predicate was `not is_nil(active_task) and not is_nil(idle_sub)` and
-  # `idle_subagent_for/2` returned the *first* registered sub-agent not already
-  # holding a task. Neither asked whether the two had anything to do with each
-  # other, because the rule was written when a session had one sub-agent and one
-  # task, where the pairing is true by accident.
-  #
-  # It stopped being true. On 2026-08-22 a session spawned a read-only Explore
-  # agent to grep the repo, and the hook told the main agent — twice, as an
-  # exact tool call to copy — to hand it a `qa_complete` task for an unrelated
-  # story whose own agent had finished hours earlier. Following that directive
-  # files a QA verdict from an agent that never opened a browser. Issue
-  # 958fbfaf.
-  #
-  # The race this was written for (b597bbca: a sub-agent registers, the parent
-  # stops before `start_task` sets `agent_id`, validation runs against a brief
-  # that does not exist yet) is real but wants a fix that knows which task
-  # belongs to which agent. Guessing is worse than the race.
-
   defp run_and_decide(scope, session_id, session, active_task, validation_opts, req_id) do
     agent_id = active_task && active_task.agent_id
 
@@ -167,13 +112,8 @@ defmodule CodeMySpec.Hooks.Stop do
       })
 
     case Validation.validate_stop(scope, active_task, opts) do
-      # Persisted problems already block — no need to wait on anything.
-      #
-      # `key` is what makes R8 reach this path at all. The counter it reads was
-      # only ever bumped by `TaskEvaluator`, so a stop blocked purely on
-      # problems repeated forever with the escape sitting right here, wired up
-      # and never armed. Recorded on the finding set rather than the rendered
-      # text — see `Validation.blocking_key/1`.
+      # Persisted problems block. `key` (`Validation.blocking_key/1`, the
+      # finding set) feeds stuck-detection on this path.
       {:error, reason, key} ->
         maybe_terminate_stuck(scope, session_id, reason, req_id, key)
 
@@ -184,16 +124,9 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  # What an allowed stop says about findings that are not its problem.
-  #
-  # Story 895's rule 3 — a working copy surfaces every finding about it,
-  # regardless of assignment. A red spex on another checkout's story is advisory
-  # here, correctly, and until this the stop that let it through said nothing at
-  # all about it. That is the half of the rule that is easy to lose: assignment
+  # An allowed stop names findings that are not its problem: assignment
   # decides whose stop a finding refuses, never whether anybody hears about it.
-  #
-  # Only on an allow. A block already carries the same sentence inside its
-  # reason, and saying it twice in one response is worse than saying it once.
+  # Only on an allow; a block already carries the note in its reason.
   defp note_assignment(%{"decision" => "block"} = response, _result), do: response
 
   defp note_assignment(response, %{advisory_note: note}) when is_binary(note) do
@@ -215,17 +148,8 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  # R8 — stuck-detection. Two check points share `terminate_stuck/3`:
-  # (a) `decide/7` checks `session.eval_feedback_count` BEFORE the
-  #     manual short-circuit, so manual-task loops bumped by
-  #     `EvaluateTask` MCP calls can still terminate.
-  # (b) `maybe_terminate_stuck/4` checks AFTER evaluate has run inside
-  #     this stop, so auto-task loops bumped by `TaskEvaluator` in the
-  #     same request also terminate. The re-fetch via
-  #     `get_by_external_id` is what makes (b) see the count
-  #     `TaskEvaluator` just incremented during this request.
-  # At threshold: clear continuous, notify, return empty allow.
-  # Below threshold: fall through to block-with-feedback.
+  # Stuck-detection threshold.
+  # See knowledge/analysis, "Stop hook".
   @stuck_threshold 5
 
   defp stuck_threshold_hit?(%Session{eval_feedback_count: count}) when is_integer(count),
@@ -236,10 +160,8 @@ defmodule CodeMySpec.Hooks.Stop do
   defp terminate_stuck(scope, session, req_id) do
     count = session.eval_feedback_count || 0
 
-    # Names what repeated without claiming which check produced it. The counter
-    # is now advanced by two things — a task evaluation returning the same
-    # feedback, and a stop blocked on the same finding set — and a message that
-    # says `evaluate_task` for both sends anyone reading it to the wrong place.
+    # Names what repeated without claiming which check produced it: task
+    # evaluations and problem blocks both advance the counter.
     message =
       "Continuous mode terminated by stuck-detection: the same stop feedback " <>
         "#{count} times in a row. Whatever was blocking has NOT been fixed — " <>
@@ -248,11 +170,8 @@ defmodule CodeMySpec.Hooks.Stop do
 
     Logger.info("[StopHook] [#{req_id}] R8 stuck-detection (count=#{count}) — terminating loop")
 
-    # Stuck-detection state is intentionally NOT cleared here. If the
-    # user later re-enables continuous mode without resolving the
-    # underlying problem, the very next failure will re-trip — the
-    # loop stays stuck until a different feedback or a passing eval
-    # clears the counter via `record_eval_feedback` / `clear_eval_feedback`.
+    # The counter is deliberately not cleared: re-enabling continuous mode
+    # without a fix re-trips on the next failure.
     Sessions.update_session(scope, session, %{continuous: false})
 
     NotificationClient.notify(%{
@@ -261,10 +180,8 @@ defmodule CodeMySpec.Hooks.Stop do
       body: message
     })
 
-    # `systemMessage` lets the agent — and the spex — discriminate
-    # an R8 terminate from an R6 "all work complete" allow. Both
-    # paths return an allow (no `decision: block`), but only R8 names
-    # the stuck-detection reason here.
+    # `systemMessage` tells a stuck terminate apart from the "all work
+    # complete" allow; both are allows.
     Map.merge(%{"systemMessage" => message}, terminus_retrospective())
   end
 
@@ -283,17 +200,8 @@ defmodule CodeMySpec.Hooks.Stop do
           continuous_mode?(session) and stuck_threshold_hit?(session) ->
             terminate_stuck(scope, session, req_id)
 
-          # The same escape for a session that was never continuous. The
-          # threshold used to be gated on continuous mode because
-          # `terminate_stuck/3` ends a *loop*, and a session with no loop had
-          # nothing to end — but the block repeats there just the same, and an
-          # interactive agent hit it five times with no legitimate move left.
-          #
-          # "A block that repeats forever is its own outage" is the reasoning
-          # `HookDecision`'s second pass already runs on, and it does not depend
-          # on who started the run. So this allows the stop and says, loudly,
-          # that nothing was fixed — rather than turning off a loop that is not
-          # running.
+          # A non-continuous session gets the same escape: a block that
+          # repeats forever is its own outage. Allow, saying nothing was fixed.
           stuck_threshold_hit?(session) ->
             allow_stuck(session, req_id)
 
@@ -319,15 +227,9 @@ defmodule CodeMySpec.Hooks.Stop do
     }
   end
 
-  # A block on problems, counted the same way a repeated task-evaluation
-  # failure is. The finding set is the identity: the same problems next stop
-  # advance the streak, a fixed or new one resets it, and waiting for a lagging
-  # analyzer does neither.
-  #
-  # Without this a genuine finding the working agent cannot resolve — one
-  # belonging to another story, or to work that is not implemented — blocked
-  # every stop with nothing legitimate for the agent to do. Eight in a row was
-  # observed; unattended it spends the whole budget.
+  # A block on problems counts like a repeated task-evaluation failure, keyed
+  # on the finding set: the same set advances the streak, a changed one resets
+  # it.
   defp record_block(_scope, session, nil), do: session
 
   defp record_block(scope, session, key) do
@@ -337,9 +239,6 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  # `continuous?` used to be a parameter here and no longer is: the only thing
-  # it decided was whether the menu appended the tap-out offer, and that is now
-  # always off on this path (`227d1595`, and the comment at the menu below).
   defp block_with_reason(scope, reason, req_id, owner \\ nil) do
     Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
       cms_decision: "block",
@@ -347,42 +246,26 @@ defmodule CodeMySpec.Hooks.Stop do
     )
 
     hint = harness_hint_footer()
-    # The tap-out offer is off here, and that is `227d1595` rather than an
-    # oversight. This path *is* a refusal: the agent is being held in the loop
-    # by this very response, and appending "if continuing is not worth the
-    # tokens, `tap_out` asks to leave it" to it offers an exit from the loop it
-    # is in the middle of being kept in. John settled the direction on
-    # 2026-10-05: an empty queue is a stop, not an exit, and `tap_out` exits
-    # continuous mode, so the agent would have to be re-staffed by hand before
-    # any later work could reach it. The offer still goes to an agent with work
-    # in front of it, on the paths where leaving the loop is a real judgement
-    # (`Menu.tap_out_offer/1`).
+    # No tap-out offer on a refusal: it would offer an exit from the loop this
+    # response is holding the agent in.
     menu = Menu.render(scope, false, nil, owner)
 
-    # The menu's bytes come off the budget before the findings, not after, so a
-    # flood of problems cannot truncate away the one part of the response that
-    # says what to do. The findings are what truncation is for — losing the last
-    # three of forty costs nothing, losing the directive costs the whole point.
+    # The menu is budgeted before the findings, so a flood of problems cannot
+    # truncate away the directive.
     reason_budget = @total_response_cap - byte_size(hint) - byte_size(menu)
     capped_reason = Problems.truncate_to_cap(reason, cap: reason_budget)
 
     %{"decision" => "block", "reason" => capped_reason <> menu <> hint}
   end
 
-  # R9 — every block-with-feedback reason carries a one-line affordance
-  # pointing the agent at the framework-issue surface so harness friction
-  # gets reported instead of worked around. The reason is truncated to
-  # leave room for this footer so the whole response stays under the
-  # @total_response_cap.
+  # Every block carries this footer so harness friction gets reported, not
+  # worked around. The reason is truncated to leave room for it.
   defp harness_hint_footer do
     "\n\nIf this looks like harness friction (looping hook, contradictory prompt, tool error), call `create_issue` with `scope: framework`."
   end
 
-  # R7 — terminus payload carried by every loop-terminating allow (R6
-  # graph-empty and R8 stuck-detection). The agent is expected to write
-  # a short retrospective before stopping; the `scope` hint points at the
-  # framework-issue surface for any harness friction observed during the
-  # run.
+  # Carried by every loop-terminating allow (all work complete, stuck): the
+  # agent writes a short retrospective before stopping.
   defp terminus_retrospective do
     %{
       "retrospective" => %{
@@ -404,23 +287,15 @@ defmodule CodeMySpec.Hooks.Stop do
   end
 
   @doc "Which sources blocked, and how many problems each contributed, as `exunit=1,credo=6`."
-  # Read back out of the reason text rather than threaded down from the
-  # validator: the reason is already built from exactly this, and threading it
-  # through six call sites to avoid one regex would be the more fragile of the
-  # two. The shape it parses is `Validation`'s own header — `source (count):` —
-  # so a change there shows up here as an empty summary rather than a wrong one.
-  #
-  # This is the field that answers the question worth asking about an
-  # onboarding agent: not "did it get blocked" but "on what, repeatedly".
+  # Parsed from `Validation`'s `source (count):` header in the reason, so a
+  # change there shows up as an empty summary rather than a wrong one.
   def blocking_summary(reason) do
     reason
     |> blocking_counts()
     |> Enum.map_join(",", fn {source, count} -> "#{source}=#{count}" end)
   end
 
-  # The per-source counts a block's reason was built from. Two readers now: the
-  # log line above, and the count on the transcript entry, which has to be this
-  # decision's own finding rather than the project's standing backlog (QA 985).
+  # The per-source counts a block's reason was built from.
   defp blocking_counts(reason) when is_binary(reason) do
     ~r/^\s*(\w+) \((\d+)\)/m
     |> Regex.scan(reason)
@@ -435,38 +310,10 @@ defmodule CodeMySpec.Hooks.Stop do
     TaskEvaluator.evaluate_sessions(scope, session_id)
   end
 
-  # A task owned by a sub-agent has a non-nil `agent_id` — the claim set
-  # by the sub-agent's `start_task` or by `assign_subagent` (Story 704).
-  # `execution_type: :sub_agent` on the requirement only declares the
-  # intended directive shape ("Spawn a sub-agent…"); the runtime owner is
-  # whoever holds the `agent_id`. When the main agent starts a
-  # :sub_agent-typed requirement directly, the task stays main-agent
-  # owned until an assignment lands.
-  # An open task is not evidence that a subagent is working.
-  #
-  # This exemption exists so the stop hook does not hammer a parent while a
-  # subagent is mid-flight, which is right. It keyed on `task.status == :active
-  # and agent_id != nil`, and a task row outlives the agent that owned it: a
-  # subagent that is killed, crashes, or is stopped by the operator never
-  # completes its task, so the row stays `:active` for ever and the parent is
-  # exempt from every check for the rest of the session.
-  #
-  # Measured 2026-08-20 on this session. Two rows said subagents were working:
-  #
-  #     ● qa_complete — [active] agent=qa-873b
-  #     ● qa_complete — [active] agent=aqa-727-8475683e9d966b73
-  #
-  # Both belonged to QA subagents the operator had stopped hours earlier.
-  # `list_session_subagents` — which filters by `subagent_ttl_minutes` —
-  # answered "No registered sub-agents on this session" at the same moment. The
-  # registrations were right and the task rows were tombstones, and the parent
-  # spent hours unable to be blocked by anything, including a failing spex suite
-  # that was stopping another agent on the same project.
-  #
-  # So the question is asked of the thing that expires. `Session.active_subagents/2`
-  # already filters on `last_heartbeat_at` against the configured TTL, and is
-  # what `list_session_subagents` reports from — one source for "who is working
-  # here", rather than two that can disagree.
+  # A parent is exempt while a subagent holding an active task (non-nil
+  # `agent_id`) is live by heartbeat (`Session.active_subagents/2`, the same
+  # source `list_session_subagents` reports). A task row alone is not evidence:
+  # it outlives a killed subagent.
   defp has_active_subagent_task?(scope, session) do
     subagent_task_live?(session, live_agent_ids(scope, session))
   end
@@ -499,38 +346,9 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  # The loop keeps the agent working; it does not tell it what to work on.
-  #
-  # This used to inline `format_next_requirements/1` — the graph's own pick,
-  # rendered as "the next assignment". John, 2026-09-05: *"I'm dubious our
-  # orchestrator will make better decisions than the model with the upcoming
-  # requirements and some reasoning."*
-  #
-  # That is the right way round. The graph ranks by topology and knows nothing
-  # about what this agent just learned finishing the last task, what is
-  # half-written on disk, or which of four equally actionable requirements is
-  # the one whose context is already loaded. The model has all of that, and
-  # `list_requirements` and `get_next_requirement` are one call away.
-  #
-  # It also ends a contradiction the loop shipped with:
-  # `StartImplementation.command/2` opens continuous mode with "Call
-  # `get_next_requirement` to find your next task", and every stop after that
-  # took the decision back.
-  #
-  # So the refusal is `Menu.render/2` — story 894's main menu, the same one
-  # every other refusal uses. That gets the class ordering right for free
-  # (problems before issues before requirements, criterion 2400) rather than
-  # sending an agent to `get_next_requirement` while findings are outstanding,
-  # which is what a hand-written directive here would have done.
-  #
-  # `Work.actionable/4` rather than `next_actionable/1`, and the difference is
-  # not tidiness. `Menu`'s own comment records why: `next_actionable/1`
-  # recomputes on a cache miss and globs the working copy, and for a
-  # harness-served project the stop decision runs *inside the channel process*
-  # — so the process that would serve the glob is the one waiting on it. The
-  # read model answers the same question without touching the filesystem, and
-  # it is the count `Menu` is about to render, so the decision and the message
-  # can no longer disagree.
+  # The loop keeps the agent working; it does not tell it what to work on. The
+  # refusal is `Menu.render/4`, the same menu every refusal uses.
+  # See knowledge/analysis, "Stop hook".
   defp maybe_continue_with_next_task(scope, session, req_id) do
     cond do
       is_nil(session) ->
@@ -544,11 +362,8 @@ defmodule CodeMySpec.Hooks.Stop do
         %{}
 
       true ->
-        # The same count the menu renders two lines below, and deliberately.
-        #
-        # A separate count could disagree with the menu: this branch would tell
-        # a continuous agent its work was finished while the menu in the same
-        # response listed the work. Criterion 3448 forbids those disagreeing.
+        # The same count the menu renders, so the decision and the menu in one
+        # response cannot disagree.
         case length(Work.actionable(scope, nil, session)) do
           n when n > 0 ->
             Logger.info(

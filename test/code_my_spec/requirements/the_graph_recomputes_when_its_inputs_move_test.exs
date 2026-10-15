@@ -19,8 +19,9 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   So writers announce, one watcher per project debounces and asks the
   fingerprint, and the recompute happens in one place.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
 
@@ -142,11 +143,14 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
     refute_receive {:graph_inputs_changed, _project_id, _obs}, 300
   end
 
-  test "the watcher says when the graph has been recomputed", ctx do
+  # The projector announces a graph that changed, not every drain, so this
+  # changes something.
+  test "the writer says when the graph has changed", ctx do
     {:ok, _pid} = GraphWatcher.ensure_watching(ctx.scope)
+    :ok = GraphWatcher.settle(ctx.scope)
     GraphInputs.subscribe(ctx.scope.active_project_id)
 
-    GraphInputs.changed(ctx.scope)
+    story_fixture(ctx.scope)
     :ok = GraphWatcher.settle(ctx.scope)
 
     assert_receive {:graph_updated, project_id}, 2_000
@@ -241,20 +245,27 @@ defmodule CodeMySpec.Requirements.TheGraphRecomputesWhenItsInputsMoveTest do
   # when agents are mid-run. Without this an agent that went idle after one had
   # nothing watching for the work that would wake it, and the only way back was
   # a human toggling a loop.
-  test "a restart re-establishes a watcher for a project being worked", ctx do
+  test "a restart re-establishes the writer for a project being worked", ctx do
     _product = product_agent(ctx.scope, ctx.copy)
 
     assert :ok = GraphWake.watch_active_projects()
 
     assert [{_pid, _}] =
-             Registry.lookup(CodeMySpec.Requirements.Registry, ctx.scope.active_project_id)
+             Registry.lookup(
+               CodeMySpec.Requirements.Registry,
+               {ctx.scope.active_project_id, :graph}
+             )
   end
 
   test "a project nobody is working is left unwatched", ctx do
     assert :ok = GraphWake.watch_active_projects()
 
-    assert [] = Registry.lookup(CodeMySpec.Requirements.Registry, ctx.scope.active_project_id),
-           "a project with no agent in the loop needs no watcher"
+    assert [] =
+             Registry.lookup(
+               CodeMySpec.Requirements.Registry,
+               {ctx.scope.active_project_id, :graph}
+             ),
+           "a project with no agent in the loop needs no writer"
   end
 
   # `settle/1` is called from the agent-facing read on every stop, so a project

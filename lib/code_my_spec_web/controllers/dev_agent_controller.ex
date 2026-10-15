@@ -1,40 +1,24 @@
 defmodule CodeMySpecWeb.DevAgentController do
   @moduledoc """
-  Talk to any agent on this machine, from a terminal, in development.
+  Reach any agent on this machine, across projects, from a terminal.
 
-  `message_agent` resolves the agent inside the caller's project and refuses
-  anything else, which is right — it is a tenant boundary and an operator's MCP
-  session is bound to one project. It also means the person debugging why an
-  agent is stuck cannot reach it unless they happen to be scoped to its project,
-  and on 2026-09-07 that person was watching a QA agent fail the same way for
-  four hours with no way to ask it anything.
+  Behind `:dev_routes`, so compile-time absent from the release: a
+  cross-project surface must not ship by accident. It does not share code with
+  the `message_agent` MCP tool, which keeps its project scope; loosening one
+  must not loosen the other.
 
-  John: "you should have a dev rest endpoint or something that allows you to
-  message these agents so that you can interact with them and work on getting
-  these agents working."
+      GET  /dev/agents                              list (`?project_id=`, `?all=true`)
+      POST /dev/agents/<agent_id>/message           {"message": "…"} (`?wait=true` to wait)
+      POST /dev/agents/<agent_id>/stop | restart | turn_on
+      GET  /dev/agents/<agent_id>/questions
+      POST /dev/agents/<agent_id>/answer            {"answer": "…", "question_id": "…"}
+      POST /dev/copies/<working_copy_id>/staff      {"roles": ["coding"]}
+      POST /dev/copies/<working_copy_id>/continuous {"continuous": false}
+      POST /dev/copies/<working_copy_id>/machine_tools {"tools": [...]}
 
-  So: a route behind `:dev_routes`, which is compile-time. It does not exist in
-  the release — not disabled, not guarded at runtime, absent — because a
-  cross-project message surface is exactly the thing that must not ship by
-  accident.
-
-  ## What it does not do
-
-  It does not widen `message_agent`. The tool keeps its project scope and its
-  refusal; this is a separate door for a separate caller, and the two do not
-  share code precisely so that loosening one cannot loosen the other.
-
-      POST /dev/agents/<agent_id>/message   {"message": "…"}
-      POST /dev/agents/<agent_id>/answer    {"answer": "…", "question_id": "…"}
-      GET  /dev/agents                      list, so you can find the id
-
-  `question_id` on the answer route is optional and you should pass it whenever
-  you have one: without it the *oldest* pending question is answered, which is
-  how a caller once answered two questions belonging to somebody else.
-
-  Answers what the agent said, or the transport's error. A message to a stopped
-  agent is `{:error, :not_running}` and is reported as such rather than as a
-  failure — an agent halted on purpose is not owed delivery.
+  Pass `question_id` to `answer` whenever you have one: without it the oldest
+  pending question is answered. A message to a stopped agent is a 409
+  `not_running`, not a failure.
   """
 
   use CodeMySpecWeb, :controller
@@ -43,16 +27,9 @@ defmodule CodeMySpecWeb.DevAgentController do
   alias CodeMySpec.Notifications
   alias CodeMySpec.WorkingCopies
 
-  # Only when the caller asked to wait, and short on purpose.
-  #
-  # `message_agent/4` runs the whole turn inside a `GenServer.call` with this
-  # value, so it is not a patience setting — it is the agent's turn limit. A
-  # four-minute wait made four-minute turns and reported the ones that outlived
-  # it as failures, in the agent's own voice, while they carried on working.
-  #
-  # So waiting is opt-in (`?wait=true`) and for short exchanges: ask a question,
-  # get an answer. Anything long — a QA pass, a browser scenario — is dispatched
-  # and watched in the transcript, which is where it is legible anyway.
+  # Used only with `?wait=true`. The turn runs inside a `GenServer.call` with
+  # this value, so it caps the turn rather than the wait.
+  # See knowledge/web, "Dev agent controller".
   @wait_timeout 240_000
 
   def index(conn, params) do
@@ -133,15 +110,9 @@ defmodule CodeMySpecWeb.DevAgentController do
     end
   end
 
-  # `{"roles": ["coding"]}` staffs one role instead of the copy's home roles. A
-  # checkout holds one agent per role, so a fixture wanting two coding agents
-  # wants one role on each of two copies.
-  #
-  # Matched by name against `Agent.roles/0` rather than converted: an atom built
-  # from a request body is a leak, and an unknown role would fail later and
-  # further away. The full set rather than `copy_roles/0`, because `:main` is
-  # not one a feature copy is staffed with by default and a fixture still needs
-  # one — the main-copy guard already stops a second main agent existing.
+  # `{"roles": ["coding"]}` staffs those roles instead of the copy's home roles
+  # (one agent per role per checkout). Matched by name against `Agent.roles/0`,
+  # never converted to atoms from the body; the full set so `:main` is allowed.
   defp roles(nil), do: nil
 
   defp roles(names) when is_list(names) do
@@ -153,9 +124,7 @@ defmodule CodeMySpecWeb.DevAgentController do
 
   defp roles(_), do: nil
 
-  # On and off without restarting anything. Staffing turns it on as a side
-  # effect, which is the wrong grain when the question is "pause this copy" —
-  # that used to mean stopping every agent on it and staffing again.
+  # Toggles a copy's continuous flag without restarting its agents.
   def continuous(conn, %{"working_copy_id" => copy_id} = params) do
     wanted = truthy(params["continuous"])
 
@@ -173,24 +142,10 @@ defmodule CodeMySpecWeb.DevAgentController do
     end
   end
 
-  # What a checkout can drive, set by hand.
-  #
-  # A working copy's `machine_tools` is written only by the harness, on join.
-  # That made "a machine that can drive nothing" — the state `Machinery`
-  # attributes a tool fault from, and the precondition of criteria 3272, 3310,
-  # 3311 and 3312 — reachable only by breaking a real machine's MCP client,
-  # which four other projects' checkouts share. Five QA passes refused on that
-  # ground and left the criteria verified-by-reading (0fb7bf03).
-  #
-  # `[]` and `nil` are different answers and only one is a fault: a copy that
-  # has never said what it can do is most of the fleet, and calling that broken
-  # would report everything as unable to work. So an empty list is written
-  # literally, not as an absence.
-  #
-  # Scoped to one copy, which is the whole point — `tool_fault/1` compares a
-  # project's copies against each other, so a project of your own shows a
-  # machine-wide fault or a single agent's without any other project seeing
-  # either. The next harness join overwrites this; nothing here needs undoing.
+  # Sets one copy's `machine_tools` by hand, so QA can reach "a machine that can
+  # drive nothing" without breaking a shared MCP client. `[]` is written
+  # literally: it is a fault, while nil (never reported) is not. The next
+  # harness join overwrites it.
   def machine_tools(conn, %{"working_copy_id" => copy_id} = params) do
     tools = params["tools"] || []
 
@@ -214,17 +169,8 @@ defmodule CodeMySpecWeb.DevAgentController do
   defp truthy(value) when value in ["false", "0", "no", "off"], do: false
   defp truthy(_value), do: true
 
-  # The other direction, which these tools did not have.
-  #
-  # `/dev/agents` could list an agent and stop it, and nothing here could start
-  # one again — so a stopped agent's only way back was the play control on its
-  # conversation page, and while that control was broken there was no way back
-  # at all. John, looking at exactly that: "I thought I could now start it with
-  # the play button but it's stopped and I can't get it going again."
-  #
-  # Restart, not start: same row, same id, same transcript. Starting would key a
-  # new conversation and lose the thread, which is the outcome a restart exists
-  # to avoid.
+  # Restart, not start: same row, id and transcript. Starting would key a new
+  # conversation and lose the thread.
   def restart(conn, %{"agent_id" => agent_id}) do
     case Agents.restart_any_agent(agent_id) do
       {:ok, agent} ->
@@ -243,17 +189,8 @@ defmodule CodeMySpecWeb.DevAgentController do
     end
   end
 
-  # What an agent is waiting on, and how to unblock it.
-  #
-  # An agent that asks a question stops and waits, and until now the only thing
-  # that could answer was a person on the conversation page. So these tools
-  # could start an agent, stop it and talk to it, and could not clear the one
-  # state that makes it sit still — which meant an unattended run parked on a
-  # question nobody was watching stayed parked.
-  #
-  # `send_message` and `ask_user_question` both land here: the first is a
-  # free-text box, the second carries options. Both are answered the same way,
-  # by text, because an option is just an answer somebody wrote down first.
+  # What an agent is waiting on. Free-text and option questions alike are
+  # answered by text through `answer/2`.
   def questions(conn, %{"agent_id" => agent_id}) do
     requests = Notifications.list_question_requests_for_agent(agent_id)
 
@@ -263,25 +200,10 @@ defmodule CodeMySpecWeb.DevAgentController do
     })
   end
 
-  # `question_id` is optional and it exists because omitting it is dangerous.
-  #
-  # Without it this answers the agent's *oldest* pending question, which is fine
-  # for a person poking at one stuck agent and wrong for anything holding an id.
-  # On 2026-09-13 a caller clearing two questions it had just raised answered two
-  # unrelated ones belonging to another agent instead: the agent had a backlog,
-  # there was nowhere to say which question was meant, and the only feedback was
-  # `request_id` in the response body — after the write. `Notifications` has no
-  # un-answer path by design ("questions never expire"), so those answers are
-  # permanent. Issue `2638fbf5`.
-  #
-  # The trap is aimed squarely at QA, which is the main caller: exercising
-  # escalation *creates* questions, so the agent doing the exercising very often
-  # has others open, and issue `7586cf46` recommends this endpoint for exactly
-  # that cleanup.
-  #
-  # A mismatch lists the pending ids rather than falling back to the oldest.
-  # Falling back is what this is here to stop — a caller that named the wrong
-  # question wants to be told, not to have a different one answered for it.
+  # Without `question_id`, answers the oldest pending question. With one that
+  # does not match, 404s with the pending ids and never falls back: answers are
+  # permanent.
+  # See knowledge/web, "Dev agent controller".
   def answer(conn, %{"agent_id" => agent_id} = params) do
     given = answers_from(params)
     wanted = params["question_id"]
@@ -354,7 +276,7 @@ defmodule CodeMySpecWeb.DevAgentController do
     end)
   end
 
-  # Stopping is turning off (39af5611); `turn_on/2` is the way back.
+  # Stopping is turning off; `turn_on/2` is the way back.
   def stop(conn, %{"agent_id" => agent_id}) do
     case Agents.turn_off_any_agent(agent_id) do
       {:ok, agent} ->
@@ -381,9 +303,7 @@ defmodule CodeMySpecWeb.DevAgentController do
     end
   end
 
-  # Dispatch unless the caller asked to wait. The default matters: waiting is
-  # what caps the turn, and the caller who forgets to think about it is the one
-  # driving a long run.
+  # Dispatch unless the caller asked to wait: waiting caps the turn.
   defp wait_for(%{"wait" => wait}) when wait in ["true", "1"], do: @wait_timeout
   defp wait_for(_params), do: :no_wait
 end

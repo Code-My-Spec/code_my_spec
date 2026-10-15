@@ -2,22 +2,13 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   @moduledoc """
   Makes sure a project's preview address resolves, once, before it is shown.
 
-  Deliberately not part of booting. A workspace that cannot start because
-  Cloudflare is rate-limiting is an infrastructure failure wearing the costume
-  of a broken app, which is exactly the confusion `Workspaces.state/1` exists
-  to prevent. Boot brings the container up; this makes the address point at it,
-  and the two fail independently.
+  Not part of booting (a DNS failure must not read as a broken app) and not
+  part of creating a project (most are never previewed). Written the first
+  time a preview is asked for; keyed to the project, it outlives every
+  container, so a shared link keeps working.
 
-  Also not part of creating a project. Most projects never get previewed, and a
-  record for each of them is zone litter with a lifetime of forever.
-
-  So: the first time a preview is asked for, and never again. The record is
-  keyed to the project and outlives every container, which is what makes a link
-  someone was sent keep working.
-
-  This is our zone, not the customer's. `Provisioning.Steps.run(:dns, …)` writes
-  records on a domain the customer owns, pointing at environments they paid
-  for; this writes one on ours, pointing at us. Same API call, different thing.
+  Our zone, with our credential — not the customer's (`Provisioning` writes
+  records on domains customers own).
   """
 
   require Logger
@@ -43,10 +34,8 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
     ensure_record(manage_dns?(), host)
   end
 
-  # Where the address already resolves without us — dev on `.localhost`, where
-  # every label is 127.0.0.1 — there is no record to write and asking for a zone
-  # named "localhost" would fail once per preview, loudly and pointlessly. The
-  # contract is that the address resolves, and it does.
+  # Where the address already resolves without us (dev on `.localhost`) there
+  # is no record to write; the contract — it resolves — already holds.
   defp ensure_record(false, host), do: {:ok, host}
 
   defp ensure_record(true, host) do
@@ -79,18 +68,10 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   @doc """
   The address to point a browser at, which is not the container's own.
 
-  Framing the container directly does not work and the failure is silent: a
-  generated Phoenix app answers `content-security-policy: frame-ancestors
-  'self'`, so any other origin is refused and the frame renders blank — which
-  reads to the visitor as their app being broken. The app asserts its own
-  `frame-ancestors` now, through `ClientUtils.PreviewFraming` — nothing sits in
-  a tunnel's path to rewrite the header on the way back.
-
-  It is also the whole point of the address being same-site: framed from a
-  genuinely third-party origin a browser drops the app's session cookie and
-  takes its CSRF token and LiveView connect with it. Not a Safari quirk — Chrome
-  does the same, and it cost an afternoon on Broken Oaths when dev previews sat
-  on a different registrable domain from the app framing them.
+  The app asserts its own `frame-ancestors` (`ClientUtils.PreviewFraming`);
+  nothing rewrites the header in the tunnel. The address must be same-site
+  with the page framing it: a third-party frame loses the app's session
+  cookie, and with it CSRF and the LiveView connect, in every browser.
 
   Scheme and port are configurable because dev reaches the preview listener
   directly on its own port, while production has an edge in front of it on 443.
@@ -115,12 +96,9 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   panel) rather than the CSP header itself. See `csp_extra_frame_origins/1`
   for the header value these become.
 
-  Per project (story 886's rule) rather than only per deploy: `nil` on the
-  project — never customized — falls back to the `:extra_frame_origins` config
-  (itself defaulting to the built-in accounts.google.com/github.com pair), so
-  a project that has never touched this setting still gets the two providers
-  a generated app is most likely to offer. A project with its own list
-  (possibly `[]`, explicitly cleared) uses exactly that, config included.
+  Per project: `nil` (never customized) falls back to the
+  `:extra_frame_origins` config, defaulting to accounts.google.com and
+  github.com. A project's own list (possibly `[]`) is used exactly.
   """
   @spec extra_frame_origins(CodeMySpec.Projects.Project.t() | nil) :: [String.t()]
   def extra_frame_origins(project \\ nil)
@@ -137,15 +115,9 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   CSP `frame-src` origins a previewed app is allowed to navigate the iframe
   to, beyond its own preview origin.
 
-  A previewed app's own "Sign in with Google"/"Sign in with GitHub" sends the
-  top frame of the iframe to the provider's own domain for the OAuth
-  redirect — `frame-src` only ever covered the preview's own origin, so the
-  provider's page was refused by CSP and the flow died with no server-side
-  error, reading as a broken app rather than a policy that never expected the
-  frame to leave its own domain.
-
-  Takes the project so the CSP header can reflect what that project's own
-  form configured — see `extra_frame_origins/1`.
+  A previewed app's OAuth sign-in navigates the iframe to the provider's
+  domain; without these, CSP refuses it silently. Per project — see
+  `extra_frame_origins/1`.
   """
   @spec csp_extra_frame_origins(CodeMySpec.Projects.Project.t() | nil) :: [String.t()]
   def csp_extra_frame_origins(project \\ nil) do
@@ -154,8 +126,8 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
     |> Enum.map(&("https://" <> &1))
   end
 
-  # Off unless a real zone is configured. A machine that reaches previews some
-  # other way should not be writing records into a zone it does not own.
+  # On by default; `manage_dns: false` where previews resolve some other way,
+  # so no records are written into a zone this machine does not own.
   defp manage_dns?, do: Keyword.get(config(), :manage_dns, true)
 
   defp scheme, do: config()[:scheme] || "https"
@@ -167,17 +139,9 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
     end
   end
 
-  # Our own credential, not the visitor's. `Provisioning.Cloudflare` speaks for
-  # the customer — it resolves their integration and writes on domains they own.
-  # This record is on *our* zone, pointing at *our* tunnel, and a visitor who
-  # has never connected Cloudflare must still get a preview address. Taking a
-  # scope here was the bug: it authenticated as whoever happened to be looking,
-  # and failed with :cloudflare_not_connected for everyone who had not linked an
-  # account they have no reason to have.
-  #
-  # A CNAME to the tunnel rather than an address record: the thing serving a
-  # preview moves — a laptop today, the shared host later — and a name that
-  # follows it survives that move without a zone edit per project.
+  # Our own credential, never a visitor's scope: a visitor who never connected
+  # Cloudflare must still get a preview address. A CNAME to the tunnel, so the
+  # serving host can move without a zone edit per project.
   defp put_record(host) do
     with {:ok, token} <- token(),
          {:ok, zone_id} <- zone_id() do
@@ -192,17 +156,12 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
     end
   end
 
-  # An existing record is success, not failure: the whole point is that the
-  # address is stable across every container, so the second preview finds what
-  # the first one wrote.
+  # An existing record is success: the address is stable across containers.
   defp interpret({:ok, %Req.Response{status: status}}) when status in 200..299,
     do: {:ok, :written}
 
-  # 81053 is "a record with that host already exists", which is the ordinary
-  # case from the second preview onward and is exactly what we want — the
-  # address is stable across every container, so finding it already written is
-  # success. Guessed 81057 first and watched every repeat call log a warning
-  # for having worked.
+  # 81053 is "a record with that host already exists", the ordinary case from
+  # the second preview on. 81057 is accepted too.
   defp interpret({:ok, %Req.Response{body: %{"errors" => errors}}}) when is_list(errors) do
     if Enum.any?(errors, &(&1["code"] in [81_053, 81_057])) do
       {:ok, :already_there}
@@ -216,12 +175,9 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
 
   defp interpret({:error, reason}), do: {:error, reason}
 
-  # The account credential already exists and is already configured for this
-  # zone — `Content.CloudflareClient` uses it to purge cache on publish. One
-  # Cloudflare account, one token, one place it is read from. Reaching for
-  # `System.get_env` here returned nil and looked like a missing secret: the
-  # envs/ files are Dotenvy, loaded into config, never into the process
-  # environment.
+  # The same Cloudflare token `Content.CloudflareClient` uses, read from
+  # config — never `System.get_env`: envs/ files load into config, not the
+  # process environment.
   defp token do
     present(config()[:token] || app_cloudflare()[:api_token], :no_cloudflare_token)
   end

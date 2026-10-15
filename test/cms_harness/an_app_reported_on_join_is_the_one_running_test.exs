@@ -14,13 +14,14 @@ defmodule CmsHarness.AnAppReportedOnJoinIsTheOneRunningTest do
   The durable answer is written down on the harness's own disk, in the
   `AppInstance` `state.json`, and the server can ask for it at the one moment a
   harness is guaranteed to be talking to it: on join. An older server ignores an
-  unknown join field, so the rollout order does not matter â the same reasoning
+  unknown join field, so the rollout order does not matter — the same reasoning
   `active_runs` is built on.
 
   What this does not change: the reply and push paths stay as they are. This is
   the convergence the issue asks for, not a replacement for them.
   """
 
+  # Sync: `app_instance_rig` sets application env.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.AppInstanceHelpers

@@ -9,25 +9,11 @@ defmodule CodeMySpec.Agents.Phase do
 
   ## Why this is not an agent task
 
-  `CodeMySpec.AgentTasks` asks the same two questions — build a prompt, judge the
-  result — and answers them for work on a checkout. Its evaluations read files
-  through `Environments`, its results land on a `Session`, and the stop hook
-  around it reasons about `git_rewrite_at` and tool attribution to decide whether
-  a session may finish. A conversation with a visitor who has not signed up has
-  no checkout, no session and no working copy, so every one of those would need a
-  null to step over.
-
-  The graph is the sharper version of the same argument. Requirement nodes hang
-  off a project, a component or a story through `node_scope`, and intake runs
-  before any of the three exists. `RequirementDefinitionData` also records what
-  happened the last time a multi-turn human conversation was modelled as a node:
-  `personas_complete`, `stories_exist` and `three_amigos_complete` all carry
-  `validation_type: :manual` so the stop hook would not cut the conversation
-  short, and a session holding a manual task leaves `Hooks.Stop.do_decide/6`
-  before validation runs at all. Measured on 2026-08-28, 44 of 55 main stops
-  skipped spex, credo and exunit entirely because a QA task was open.
-
-  So this borrows the shape and none of the machinery.
+  `CodeMySpec.AgentTasks` asks the same two questions — build a prompt, judge
+  the result — for work on a checkout, through `Environments` and a `Session`.
+  A conversation with a visitor who has not signed up has no checkout, session,
+  working copy or project for a requirement node to hang off. So this borrows
+  the shape and none of the machinery.
 
   ## The loop is driven by turns, not by a `while`
 
@@ -50,10 +36,9 @@ defmodule CodeMySpec.Agents.Phase do
   ## State is the caller's, and nothing here writes
 
   `c:commit/2` folds a tool call into the phase's own state and returns it.
-  Persisting is the caller's, deliberately: `CodeMySpec.Intake` already owns the
-  writes for its plan — `ask/2`, `answer/2`, `record_turn/3` — and a phase that
-  also wrote would double-write a row two tabs are already racing on. It keeps
-  the pure part pure, so a phase can be run in a test without a database.
+  Persisting is the caller's: `CodeMySpec.Intake` owns the writes for its plan
+  (`ask/2`, `answer/2`, `record_turn/3`), and a phase that also wrote would
+  double-write a row two tabs race on. A phase runs in a test without a database.
   """
 
   use Boundary, top_level?: true, deps: [], exports: :all
@@ -100,11 +85,9 @@ defmodule CodeMySpec.Agents.Phase do
   """
   @callback evaluate(state()) :: :complete | {:ask, question()} | {:incomplete, feedback()}
 
-  # Three, because the failures this retries are a model returning prose instead
-  # of a tool call or dropping a required field, and a model that does that twice
-  # running is not about to stop. The budget is per `advance/3` call, so a long
-  # conversation gets three fresh attempts per human turn rather than three for
-  # the whole phase.
+  # Retries a model returning prose instead of a tool call or dropping a field;
+  # one that does it twice running is not about to stop. Per `advance/3` call,
+  # so per human turn.
   @default_attempts 3
 
   @doc """
@@ -119,9 +102,7 @@ defmodule CodeMySpec.Agents.Phase do
       `c:tools/1` returns more than one.
     * `:model_module` — anything exporting `run/3` (default:
       `CodeMySpec.Agents.Phase.Model`). The seam a test uses to drive the loop
-      without a network call: retrying an `{:incomplete, _}` and giving up are
-      this module's own logic, and proving them should not cost a recorded
-      cassette per branch.
+      without a network call.
 
   Every other option goes through to the model module.
   """
@@ -161,10 +142,8 @@ defmodule CodeMySpec.Agents.Phase do
 
   defp prompt(goal, nil), do: goal
 
-  # Appended rather than prepended. The goal carries the instruction to call the
-  # tool, and a model reads the end of a prompt as the thing to do next — putting
-  # the correction first left the original instruction as the last word and the
-  # same mistake came back.
+  # Appended: a model reads the end of a prompt as the thing to do next, and a
+  # correction placed first brought the same mistake back.
   defp prompt(goal, feedback) do
     """
     #{goal}

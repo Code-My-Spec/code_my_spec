@@ -1,16 +1,7 @@
 defmodule CodeMySpecWeb.CoreComponents do
   @moduledoc """
-  Provides core UI components.
-
-  At first glance, this module may seem daunting, but its goal is to provide
-  core building blocks for your application, such as tables, forms, and
-  inputs. The components consist mostly of markup and are well-documented
-  with doc strings and declarative assigns. You may customize and style
-  them in any way you want, based on your application growth and needs.
-
-  The foundation for styling is Tailwind CSS, a utility-first CSS framework,
-  augmented with daisyUI, a Tailwind CSS plugin that provides UI components
-  and themes. Here are useful references:
+  Core UI building blocks: tables, forms, inputs, flash, icons. Styled with
+  Tailwind CSS and daisyUI. References:
 
     * [daisyUI](https://daisyui.com/docs/intro/) - a good place to get
       started and see the available components.
@@ -595,16 +586,8 @@ defmodule CodeMySpecWeb.CoreComponents do
   Translates an error message using gettext.
   """
   def translate_error({msg, opts}) do
-    # When using gettext, we typically pass the strings we want
-    # to translate as a static argument:
-    #
-    #     # Translate the number of files with plural rules
-    #     dngettext("errors", "1 file", "%{count} files", count)
-    #
-    # However the error messages in our forms and APIs are generated
-    # dynamically, so we need to translate them by calling Gettext
-    # with our gettext backend as first argument. Translations are
-    # available in the errors.po file (as we use the "errors" domain).
+    # Error messages are dynamic, so translate through the backend at runtime
+    # (the "errors" domain, errors.po).
     if count = opts[:count] do
       Gettext.dngettext(CodeMySpecWeb.Gettext, "errors", msg, msg, count, opts)
     else

@@ -2,25 +2,17 @@ defmodule CmsHarness.Project.Watcher do
   @moduledoc """
   One project's filesystem watcher.
 
-  Per project, not per harness: a child under each project's own supervisor, so
-  one project's crash does not stop watching for the others. That is the whole
-  reason the tree has a `DynamicSupervisor` in it.
+  A child under each project's own supervisor, so one project's crash does not
+  stop watching for the others.
 
   ## It stops watching when the harness is disconnected
 
-  This is the point of the module, not a detail of it. A watcher that keeps
-  running while the channel is down accumulates events it cannot deliver, and
-  events it cannot deliver are events it will not remember — the backlog is
-  lost silently and the server's picture of the project stays wrong with
-  nothing to indicate it.
+  A disconnect stops the underlying watcher entirely; a rejoin starts a fresh
+  one and a full rescan, which recovers whatever changed meanwhile (the
+  manifest describes the working copy now). It starts paused for the same
+  reason.
 
-  So a disconnect **stops the underlying watcher entirely**, and a rejoin
-  starts a fresh one *and* a full rescan. The rescan is what recovers the gap:
-  the manifest is a statement about the working copy now, so it does not matter
-  which events were missed while it was down.
-
-  It starts paused for the same reason — there is nowhere to send anything
-  until the channel says otherwise.
+  See knowledge/harness/channel, "File watching".
   """
 
   use GenServer
@@ -31,59 +23,24 @@ defmodule CmsHarness.Project.Watcher do
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Paths
 
-  # The scanner's sync roots that are directories. `mix.exs`, `CLAUDE.md` and
-  # `.credo.exs` are sync roots too, but watching the project root to catch
-  # three rarely-edited files means watching `deps/` and `_build/` on every
-  # recompile. They are picked up by the sync that runs on join and by the next
-  # sync any other change triggers.
+  # The scanner's directory sync roots. Root-level sync files (`mix.exs`,
+  # `CLAUDE.md`, `.credo.exs`) are not watched — that would mean watching
+  # `deps/` and `_build/` — and are picked up by the join sync or the next one.
   @watched_subdirs ["lib", "test", Paths.base_dir()]
 
-  # There is deliberately no sync on a timer. Events are the only trigger.
-  #
-  # There used to be a 90s floor, added after drill 8 spent its last forty-five
-  # minutes writing files nobody saw: the process was alive, `watching?` was
-  # true, `inotifywait` was running against the right directories, and no event
-  # arrived, so no sync ran and the graph froze under the agent.
-  #
-  # It was removed once the cost was measured rather than assumed. The floor
-  # scanned and re-uploaded the whole working copy whether or not anything had
-  # changed — with a 60s read-model refresh doing the same, a full sync every
-  # ~30s per copy, ~120 an hour each, and three attached copies had the server
-  # upserting over a million file rows an hour to learn nothing.
-  #
-  # What guards the drill-8 failure now is `handle_info({:file_event, ...})`
-  # logging an event it cannot account for instead of dropping it, so a broken
-  # stream is visible rather than silent. If freezing shows up again, the fix
-  # to reach for is a floor that scans but sends nothing when the manifest
-  # digest is unchanged — the safety without the writes — not this one back.
-  #
-  # ## The liveness check is not that floor
-  #
-  # `issue aac6356e` found a case the guard above cannot catch: a stream that
-  # delivers nothing at all, ever, while `watching?` stays true — traced to
-  # `fseventsd` itself degrading machine-wide, not to anything in this process.
-  # Restarting the subscription does not recover it, so there is nothing to
-  # repair from in here. What was missing was purely that nobody could tell —
-  # `/health` said `watching: true` for the lifetime of a session with zero
-  # events delivered. The liveness timer below only logs; it does not scan or
-  # sync, on purpose, so it cannot reintroduce the cost the floor above was
-  # removed for. A quiet project and a dead stream look identical from a
-  # timer's perspective — the log line is a prompt for a human to check, not a
-  # verdict.
+  # There is deliberately no sync on a timer; events are the only trigger, and
+  # the liveness check only logs.
+  # See knowledge/harness/channel, "File watching".
 
-  # A single edit rarely arrives as a single event, and the only thing the
-  # harness can send is a whole manifest, so events are coalesced into one
-  # scan. Long enough to absorb a multi-file write, short enough that the next
-  # stop hook sees the result.
+  # Events are coalesced into one scan: long enough to absorb a multi-file
+  # write, short enough that the next stop hook sees the result.
   @default_debounce_ms 2_000
 
   defp debounce_ms,
     do: Application.get_env(:code_my_spec, :harness_watch_debounce_ms, @default_debounce_ms)
 
-  # How long a stream can deliver nothing before it is worth a log line. Long
-  # enough that an idle project (nobody editing it right now) does not fire
-  # this every cycle — most working copies are quiet most of the time, and
-  # that is not the failure this guards against.
+  # How long a stream can deliver nothing before it is worth a log line; long
+  # enough that an idle project does not fire it every cycle.
   @default_liveness_check_ms :timer.minutes(5)
 
   defp liveness_check_ms,
@@ -110,14 +67,9 @@ defmodule CmsHarness.Project.Watcher do
 
   @doc "Start watching. Called by the channel client when it joins."
   @spec resume(String.t()) :: :ok
-  # Synchronous, and that is the point. The rescan that follows a join is what
-  # recovers whatever changed while the harness was disconnected, so it has to
-  # read the disk *after* the event stream exists — otherwise a write landing
-  # between the two is caught by neither, and a file missed that way is
-  # indistinguishable from a file that never changed.
-  #
-  # A cast made the ordering a race. `start_watching/1` does not call back into
-  # the channel client, so waiting here cannot deadlock.
+  # Synchronous: the post-join rescan must read the disk *after* the event
+  # stream exists, or a write between the two is caught by neither.
+  # `start_watching/1` does not call the channel client, so this cannot deadlock.
   def resume(root), do: call(root, :resume)
 
   @doc "Stop watching. Called by the channel client when the connection goes."
@@ -155,9 +107,8 @@ defmodule CmsHarness.Project.Watcher do
 
   @impl true
   def init(project) do
-    # Paused. The channel client resumes it on join — and if the channel is
-    # already joined (this process restarted on its own) it asks, rather than
-    # assuming either way.
+    # Paused. The channel client resumes it on join; if the channel is already
+    # joined (this process restarted on its own) it asks.
     {:ok, %__MODULE__{project: project}, {:continue, :check_connection}}
   end
 
@@ -191,9 +142,7 @@ defmodule CmsHarness.Project.Watcher do
 
   @impl true
   def handle_info({:file_event, pid, {path, events}}, %{fs_pid: pid} = state) do
-    # Any event from the stream we're following proves it is alive, whether or
-    # not it is one we act on — that is the liveness signal the check below
-    # reads, kept separate from whether it is worth a sync.
+    # Any event proves the stream is alive, whether or not it is worth a sync.
     state = mark_alive(state)
 
     if relevant?(events) and not ignored?(state.project.root, path) do
@@ -216,8 +165,7 @@ defmodule CmsHarness.Project.Watcher do
     {:noreply, %{state | timer: nil}}
   end
 
-  # A timer that no longer exists, from a harness mid-upgrade. Ignored rather
-  # than crashed on, because the message can outlive the code that sent it.
+  # A timer message from older code, which can outlive a hot upgrade.
   def handle_info(:resync, state) do
     {:noreply, state}
   end
@@ -244,15 +192,13 @@ defmodule CmsHarness.Project.Watcher do
     {:noreply, schedule_liveness_check(state)}
   end
 
-  # A file event from a pid this process is not tracking used to fall into the
-  # catch-all below and vanish, leaving `watching?: true` and nothing arriving —
-  # indistinguishable from a project where nothing changed. If FileSystem is
-  # ever restarted underneath us, this is what it looks like, so say so.
+  # A file event from a pid this process is not tracking: what a FileSystem
+  # restarted underneath us looks like. Logged so a broken stream is visible.
   def handle_info({:file_event, other_pid, _payload}, state) do
     Logger.warning(
       "[CmsHarness] file event from #{inspect(other_pid)}, but this watcher is " <>
-        "following #{inspect(state.fs_pid)} — ignoring it. Sync is running on its " <>
-        "timer alone; the watcher is not delivering."
+        "following #{inspect(state.fs_pid)} — ignoring it. Events are the only sync " <>
+        "trigger, so nothing syncs until the watcher delivers again."
     )
 
     {:noreply, state}
@@ -300,9 +246,8 @@ defmodule CmsHarness.Project.Watcher do
     %{state | fs_pid: nil, timer: nil, liveness_timer: nil, watching?: false}
   end
 
-  # Any real event proves the stream is alive, whatever it is proves the point
-  # of the check below — separate from `quiet_logged?`, which tracks whether
-  # this particular quiet stretch has already been reported.
+  # Resets `quiet_logged?`, which tracks whether this quiet stretch has been
+  # reported.
   defp mark_alive(state) do
     %{state | last_activity_at: System.monotonic_time(:millisecond), quiet_logged?: false}
   end
@@ -320,9 +265,8 @@ defmodule CmsHarness.Project.Watcher do
   defp relevant?(events),
     do: Enum.any?(events, &(&1 in [:modified, :created, :removed, :renamed]))
 
-  # `_build/` under a watched root would be a recompile firehose; so would an
-  # editor's own scratch files. Screened with the same rule the scanner uses,
-  # so what is watched and what is scanned cannot drift apart.
+  # Screened with the scanner's own rule, so what is watched and what is
+  # scanned cannot drift apart.
   defp ignored?(root, abs_path) do
     abs_path
     |> Path.relative_to(root)

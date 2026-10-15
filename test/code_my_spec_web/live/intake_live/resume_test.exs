@@ -14,7 +14,7 @@ defmodule CodeMySpecWeb.IntakeLive.ResumeTest do
   `:answering` — so resuming has to be able to pick the conversation back up.
   This is the state the bug report arrived in.
   """
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 

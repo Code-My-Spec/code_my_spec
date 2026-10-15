@@ -13,17 +13,18 @@ defmodule CodeMySpec.CodeMode.Bindings do
       local story, err = get_story({ story_number = 99999 })
       if story == nil then return "could not read it: " .. err.message end
 
-  Returned rather than raised because a raise ends the script. Half of what
-  code mode is for is a script that reads twenty things and reports on the
-  three that were missing, and it cannot do that if the first miss kills it. A
-  script that would rather stop can still write `assert(get_story{...})`.
+  Returned rather than raised because a raise ends the script, and a script
+  that reads twenty things should be able to report the three that failed. A
+  script that would rather stop can write `assert(get_story{...})`.
+
+  A call the tool rejected before running (`:invalid_call`) does raise: there
+  is no answer for anything after it to stand on.
 
   ## Scope is bound before this module sees anything
 
   Each tool's `invoke` closed over the caller's scope when the catalog was
   built, so a script acts with exactly the authority of the agent that sent it.
-  Nothing reachable from Lua can change that: a script supplies arguments, and
-  arguments are not where authority comes from.
+  A script supplies arguments, and arguments are not where authority comes from.
   """
 
   require Logger
@@ -38,12 +39,12 @@ defmodule CodeMySpec.CodeMode.Bindings do
   def install(lua, catalog), do: install(lua, catalog, [])
 
   @doc """
-  The same, with the tools this agent's type does not carry bound to a stub.
+  The same, with every known tool a script may not call bound to a stub that
+  says why: excluded tools, tools out of this agent's scope, and other
+  registered tools it does not carry.
 
-  Bound rather than absent, for the reason `explain_exclusions/1` gives one line
-  down: absence produces "attempt to call a nil value", which reads as a
-  misspelling. An agent told that about a tool it knows exists tries variations
-  of the name instead of learning it is not for it.
+  Bound rather than absent: absence produces "attempt to call a nil value",
+  which reads as a misspelling. See knowledge/tools, "Refusals".
   """
   @spec install(Lua.t(), Catalog.t(), [String.t()], String.t() | nil, [String.t()] | :all) ::
           Lua.t()
@@ -61,22 +62,15 @@ defmodule CodeMySpec.CodeMode.Bindings do
   @doc """
   What the script printed, in order — up to wherever it got to.
 
-  Process-scoped rather than carried in the Lua state, on purpose
-  (b9f4e5d4). `CodeMode.run/3` rebinds `lua` from `Lua.eval!`'s return, so a
-  script that raises — a rejected tool call, a compile error — leaves `lua`
-  in the `rescue` clause holding the *pre-eval* state, whose captured prints
-  are always empty; the state `eval!` actually produced is discarded with the
-  exception, and the `lua` package exposes no way to get it back. Each
-  `CodeMode.run/3` call already executes in its own `Task`
-  (`Sandbox.with_timeout/2`), so the process dictionary is exactly as
-  privately scoped as the Lua state was meant to be, and survives the one
-  case the state does not: a raise.
+  Kept in the process dictionary, not the Lua state: a script that raises
+  discards the state `Lua.eval!` produced, and its prints with it. Each
+  evaluation runs in its own task (`Sandbox.with_timeout/2`), so the process
+  dictionary is just as private.
   """
   @spec printed() :: [String.t()]
   def printed, do: Process.get(@printed, [])
 
-  # `print` writes to real stdout otherwise, which on a server means a script's
-  # debugging lands in the server log and never reaches the agent that wrote it.
+  # Otherwise `print` goes to the server's stdout, never to the agent.
   defp capture_print(lua) do
     Lua.set!(lua, [:print], fn args, state ->
       line = Enum.map_join(args, "\t", &render/1)
@@ -98,10 +92,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
     end)
   end
 
-  # Bound so that calling one says why rather than failing as an unknown global.
-  # Absence alone produces "attempt to call a nil value", which reads like a
-  # misspelling — and an agent that reads it tries variations instead of
-  # learning that the tool is direct-call only.
+  # Excluded tools: calling one says why rather than failing as an unknown global.
   defp explain_exclusions(lua, carried) do
     Enum.reduce(Catalog.excluded(), lua, fn name, acc ->
       reason = Catalog.exclusion_reason(name)
@@ -112,18 +103,10 @@ defmodule CodeMySpec.CodeMode.Bindings do
     end)
   end
 
-  # Whether "call it directly" is advice this caller can take.
-  #
-  # The exclusion rule is right and the refusal is right; the advice attached to
-  # it was wrong for anyone whose role does not carry the tool (`bd699695`). A
-  # QA agent was told to call `list_user_questions` directly, then told that an
-  # `Unknown tool` from it meant its connection was stale and to reconnect --
-  # but its role withholds the tool on purpose, so both halves sent it looking
-  # for a fault in a system behaving correctly. It had no `/mcp` to give either.
-  #
-  # `carried` is the caller's grant, the same answer `run_script` used to decide
-  # what to bind. `:all` is a caller with no role scoped away -- a person, an
-  # operator session -- and keeps the old wording, which is true for them.
+  # "Call it directly" only for a caller whose role carries the tool; telling
+  # anyone else to call it (or to reconnect) sends them hunting for a fault that
+  # does not exist. `:all` is a caller with no role scoped away (a person, an
+  # operator session).
   defp exclusion_message(name, reason, carried) do
     if carried?(name, carried) do
       "#{name} cannot be called from a script: #{reason}. Call it directly as a tool.\n\n" <>
@@ -139,25 +122,9 @@ defmodule CodeMySpec.CodeMode.Bindings do
   defp carried?(_name, :all), do: true
   defp carried?(name, carried) when is_list(carried), do: name in carried
 
-  # The one case where "call it directly" is false, and the caller has no way to
-  # tell.
-  #
-  # An MCP connection negotiates its tool list once, when it opens, and never
-  # revisits it. So a session that outlives a server change keeps working
-  # against the old surface with nothing reporting the skew — the same shape the
-  # stop hook already detects and names for the harness/server channel, except
-  # nothing detects it here.
-  #
-  # Measured 2026-09-12 (`9b08283d`): `promote` had just been registered, an
-  # agent was told by `start_task` to call it, and got
-  # "attempt to call a nil value" from a script and `Unknown tool` directly —
-  # while `tools/list` over the proxy showed 19 tools including `promote` and
-  # the session's own list carried 17. A `/mcp` reconnect surfaced it at once.
-  #
-  # Without this the refusal asserts the remedy confidently and the remedy does
-  # not work, which is worse than the bare absence it replaced: an agent that
-  # believes it has the tool reaches for spellings rather than for the
-  # connection.
+  # An MCP client negotiates its tool list once, at connect, so a tool
+  # registered since is missing on the caller's side only and nothing reports
+  # the skew. The note names the remedy.
   defp stale_list_note(name) do
     "If calling `#{name}` directly answers `Unknown tool`, you do not have it — " <>
       "your MCP connection negotiated its tool list when it opened and has not " <>
@@ -165,9 +132,8 @@ defmodule CodeMySpec.CodeMode.Bindings do
       "only. Reconnect (`/mcp`) and call it again."
   end
 
-  # Named, and named as a scope decision rather than as an absence. The agent
-  # asked for a tool that exists; what it needs to be told is that this kind of
-  # agent does not carry it, so it stops looking and does something else.
+  # Named as a scope decision rather than an absence, so the agent stops
+  # looking and does something else.
   defp explain_scope(lua, out_of_scope, kind) do
     Enum.reduce(out_of_scope, lua, fn name, acc ->
       Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
@@ -179,69 +145,37 @@ defmodule CodeMySpec.CodeMode.Bindings do
     end)
   end
 
-  # Every other tool on the server, bound to a sentence rather than left absent.
-  #
-  # `explain_scope/3` above covers the scriptable tools this role is not given,
-  # and `explain_exclusions/2` the scriptable ones no script may call. What is
-  # left over is a third group, and until this clause existed it fell through to
-  # the diagnostic for a *typo*.
-  #
-  # A QA agent at the 1015 stop hook was refused on problems, told "block it
-  # with `ask_user_question` or `tap_out`", and tried both from a script
-  # (`27fb2de3`). `ask_user_question` is a scriptable tool without a grant, so
-  # its refusal is right. `tap_out` is excluded from scripts *and* withheld from
-  # the QA role, and what it got was "No tool is bound under that name â it may
-  # be a similar name, or on this project's machine". That sends the search to
-  # spellings and to the machine; the one place the tool actually lives â the
-  # caller's own tool list, or another role's â is the one place neither names.
-  # `tool_docs` had already learned to answer this question for the same tool
-  # (`e809c0db`); this is that answer given by the refusal the agent hits.
-  #
-  # Ordered last on purpose: a stub only fills a name nothing else has claimed,
-  # so a scriptable tool keeps the narrower refusal that says why a script may
-  # not call it.
+  # Registered tools that are neither scriptable nor this caller's
+  # (`Catalog.direct_only/2`, computed by the caller), bound to a sentence
+  # rather than left to the misspelling diagnostic. See knowledge/tools,
+  # "Refusals".
   defp explain_direct_names(lua, :all), do: lua
 
-  defp explain_direct_names(lua, carried) when is_list(carried) do
-    Enum.reduce(Catalog.direct_only(carried), lua, fn name, acc ->
+  defp explain_direct_names(lua, direct) when is_list(direct) do
+    Enum.reduce(direct, lua, fn name, acc ->
       Lua.set!(acc, [String.to_atom(name)], fn _args, _state ->
         raise Lua.RuntimeException, not_direct(name)
       end)
     end)
   end
 
-  # True for an excluded tool the role grants â `tap_out`, `reject_offer` â and
-  # false for everything else the server registers that this caller does not
-  # carry.
   defp not_direct(name) do
-    if name in ["tap_out", "reject_offer"] do
-      "#{name} is yours to do, made once about the turn you are in â it is not " <>
-        "something a script does. Call it directly as a tool."
-    else
-      "#{name} is a tool on this server, but not one this kind of agent carries: it " <>
-        "belongs to another role, so calling it directly will be refused too. It is " <>
-        "not a misspelling and it is not on this project's machine. If you need what " <>
-        "it does, say so rather than working around it."
-    end
+    "#{name} is a tool on this server, but not one this kind of agent carries: it " <>
+      "belongs to another role, so calling it directly will be refused too. It is " <>
+      "not a misspelling and it is not on this project's machine. If you need what " <>
+      "it does, say so rather than working around it."
   end
+
   defp describe(nil), do: "this agent"
   defp describe(kind), do: "a #{kind} agent"
 
-  # b69743db: product correctly declines a question that isn't its call to
-  # make, reaches for `escalate_question`, and the plain refusal above leaves
-  # it with nowhere to go — which is worse than a missing tool, because the
-  # pressure to unblock a story pushes toward answering wrong rather than
-  # leaving it open. `escalate_question` itself is not the fix: it writes to
-  # `MainAgent.OpenQuestion`/`QuestionRequest`, a different table than the
-  # `Questions.Question` rows product's own `add_question`/`resolve_question`
-  # already work with, so granting it would pass this check and then fail
-  # against the wrong schema. `ask_user_question` is the tool that already
-  # reaches a human from here — confirmed live, not assumed.
+  # A refusal with nowhere to go pushes an agent to work around it. Granting
+  # `escalate_question` is not the fix: it writes a different table from the
+  # questions product works with. See knowledge/tools, "Refusals".
   defp substitute_hint("escalate_question"),
     do: " Use `ask_user_question` instead — it reaches a human the same way."
 
-  # 8a186121: a coder that cannot retire a criterion deleted its spec or asked
-  # the user instead.
+  # Without a path, a coder that cannot retire a criterion deletes its spec.
   defp substitute_hint("retire_criterion"),
     do:
       " If a criterion is obsolete or wrong, don't delete its spec; file an app issue " <>
@@ -257,11 +191,9 @@ defmodule CodeMySpec.CodeMode.Bindings do
           {encoded, state} = Lua.encode!(state, value)
           {[encoded], state}
 
-        # Stops the script. The tool never ran, so there is no answer to hand
-        # back and nothing after this point can be standing on one. Returning
-        # `nil, err` here is what let a script discard the second value, carry
-        # on, and report a confident conclusion drawn from a call that did not
-        # happen — which reads exactly like a tool that found nothing.
+        # Stops the script. The tool never ran; `nil, err` here would let a
+        # script carry on and report a conclusion drawn from a call that never
+        # happened, which reads like a tool that found nothing.
         {:invalid_call, message} ->
           raise Lua.RuntimeException, rejected(tool, message)
 
@@ -272,9 +204,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
     end
   end
 
-  # Names the tool, because a script makes several calls and one that fails
-  # without saying which sends the reader through all of them. The rest of the
-  # detail — which argument, what it wanted — is already in `message`.
+  # Names the tool: a script makes several calls.
   defp rejected(tool, message) do
     "#{tool.name} was called wrong and did not run: #{message}.\n\n" <>
       "The script stopped here. This is not an empty answer — nothing was " <>
@@ -287,11 +217,8 @@ defmodule CodeMySpec.CodeMode.Bindings do
   # and Lua spells that `list_stories()` rather than `list_stories({})`.
   defp arguments(_state, []), do: %{}
 
-  # The same conversion the return path uses. Without it only the top-level
-  # keys were normalised, so a tool whose schema expects an array or a nested
-  # object could not be called from a script at all — validation saw
-  # `[{1, [{"name", "..."}]}]` and rejected it. `submit_qa_result` was the one
-  # that found it, which an agent calls exactly once per QA session.
+  # The same conversion the return path uses, applied recursively, so nested
+  # arrays and objects reach validation as JSON shapes rather than Lua tuples.
   defp arguments(state, [table | _rest]) do
     case state |> Lua.decode!(table) |> LuaValue.from_lua() do
       %{} = args -> args
@@ -305,9 +232,8 @@ defmodule CodeMySpec.CodeMode.Bindings do
     tool.invoke.(args)
   rescue
     exception ->
-      # A tool that crashes is a bug in the tool, not in the script, and the
-      # script should be able to carry on and report it. Logged because nothing
-      # else would notice a tool that only ever fails from inside a script.
+      # A tool crash is the tool's bug, so the script can carry on and report
+      # it. Logged because nothing else would notice.
       Logger.error("[CodeMode] #{tool.name} crashed: #{Exception.message(exception)}")
       {:error, "#{tool.name} crashed: #{Exception.message(exception)}"}
   end

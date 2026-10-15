@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
       end
 
       then_ "the chart's detail summarizes the three nudges as one count", context do
-        assert context.html =~ "Nudges: 3",
+        assert context.html =~ "Messages: 3",
                "the chart's detail does not summarize the three nudges as one count"
 
         {:ok, context}

@@ -39,6 +39,14 @@ defmodule CodeMySpecTest.AgentTransportRouter do
 
   `project` is a project id, a scope, or a context carrying a scope.
   Routing again replaces the earlier route.
+
+  A dispatch this test triggers can run on a fire-and-forget Task
+  (`Agents.dispatch_admitted`'s async branch). The registration dying with
+  this process means a straggler can no longer land in a *different* live
+  test's mailbox, but it can still try to use this test's DB sandbox
+  connection after that connection has already been checked back in.
+  Waiting here, at `on_exit`, for whatever such Task started during this
+  route to finish closes that too.
   """
   @spec route(term(), module()) :: :ok
   def route(project, module) do
@@ -46,8 +54,26 @@ defmodule CodeMySpecTest.AgentTransportRouter do
     start()
     Registry.unregister(__MODULE__, id)
     {:ok, _} = Registry.register(__MODULE__, id, module)
+
+    before = CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new()
+    ExUnit.Callbacks.on_exit(fn -> await_background_work(before) end)
+
     :ok
   end
+
+  @doc """
+  Block until every Task started under `CodeMySpec.TaskSupervisor` since
+  `before` (a snapshot from `Task.Supervisor.children/1`) has finished, or
+  half a second has passed.
+
+  2aa4c832: this is now also done, unconditionally, by every sandboxed test
+  through `CodeMySpecTest.DataCase.setup_sandbox/1` -- delegating here keeps
+  this module's own documented wait (and the test proving it) unchanged
+  rather than duplicating the loop.
+  """
+  @spec await_background_work(MapSet.t(), integer()) :: :ok
+  def await_background_work(before, deadline \\ System.monotonic_time(:millisecond) + 500),
+    do: CodeMySpecTest.DataCase.await_background_work(before, deadline)
 
   @doc "The process that routed `project_id`, or nil."
   @spec owner(String.t() | nil) :: pid() | nil

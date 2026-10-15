@@ -7,9 +7,8 @@ defmodule CodeMySpec.AgentPerformance.BlockedTime do
 
   Reads `Agents.Main`'s own open-question listing rather than a second query
   over `question_requests`/`permission_requests`: that listing is already
-  "what is this agent waiting on, and since when", with the same aging and
-  escalation rules `StopDecision.wake/2` itself obeys, so this does not grow
-  a second opinion about it.
+  "what is this agent waiting on, and since when", with its aging and
+  escalation rules, so this does not grow a second opinion about it.
   """
 
   alias CodeMySpec.Agents.Main, as: MainAgent

@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.ATurnEndInsideTheChannelStillAsksForWorkTest do
   Asserted as the property the transport needs: the request comes from some
   process other than the one delivering the decision.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.StopDecision

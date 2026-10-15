@@ -30,7 +30,9 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
       )
 
     on_exit(fn -> Machine.stop_agent(id) end)
-    assert_receive {:agent_liveness, :up, ^id, ^root, nil}, 2_000
+    # The first kill needs Liveness watching too, the same wait `restarted/2`
+    # gives every later one: killed before the watch lands it reports :noproc.
+    ^pid = restarted(id, root)
 
     %{id: id, root: root, pid: pid}
   end

@@ -8,6 +8,15 @@ The playbooks describe testing: `qa_setup/`, `qa_story/`, `qa_journey/`,
 bookkeeping around them, which is unwritten everywhere else and is where
 the surprises are.
 
+## Reaching main or product
+
+`message_agent` only works between teammates sharing a working copy — you
+and the coding agent on your own checkout, say. It is not how you reach
+main, product, or anyone on another copy: that role does not carry the
+tool at all, and a different spelling will not change that. Use
+`ask_user_question` instead — whichever of main or product is running
+receives it, not the user, unless neither is.
+
 ## QA is a browser, not a spex run
 
 Spex prove the surface behaves. QA is a person-shaped agent using the
@@ -115,8 +124,49 @@ If it is not, you get told — but the attempt still lands and
 attention, not the database.** Commit the evidence; nothing will stop you
 if you don't, and the next person to look will find nothing.
 
+If this copy cannot commit at all — a read-only checkout — there is no
+workaround that pretends otherwise. Hand the reviewed artifact to a
+writable owner through a completion handoff; see `process/main_agent.md`.
+
 ## Re-testing
 
 Never resubmit without re-testing. A resubmission is a claim that you ran
 it again, and since the latest attempt is the canonical one, a resubmitted
 stale pass overwrites a real failure with a fiction.
+
+## A harness-served change has a live route too
+
+`run_script` and `tool_docs` are served by the harness on *main's*
+checkout, not this copy's. A change whose deliverable is served by the
+harness itself -- a new MCP tool, a `tool_docs` entry, a knowledge doc, a
+prompt -- exists only on this copy until it is promoted, so calling it
+through your own `run_script`/`tool_docs` before promotion answers with
+main's catalog, which correctly does not have it yet. That is not evidence
+the change does not work; it is evidence you asked the wrong process.
+
+Do not defer the live check to after promotion. Verify it against this
+copy's own running app instead:
+
+1. `ensure_app_running` (through `run_script`) to get this copy's own app
+   URL. It is a real, separate instance compiled from this copy's own
+   code, including the change under test, on its own port and its own
+   database -- a clone of main's dev database made when the copy was
+   created, so the project's deploy key on it is real and usable.
+2. `get_local_app_token({url = <that url>})` to mint a short-lived access
+   token against that same instance. It trades the project's deploy key for
+   the token server-side -- the same exchange `CmsHarness.Token` does for
+   the harness itself, at `POST /api/sprite/token` -- and hands back only
+   the resulting token. The deploy key itself is never returned to you and
+   must never appear in anything you write down (evidence, issues,
+   `update_issue`, anywhere): it is a long-lived secret, not the thing
+   this flow is for.
+3. `call_mcp_server({url = <that url>, path = "/mcp/harness", tool = "...",
+   arguments = {...}, headers = {["Authorization"] = "Bearer " .. token}})`
+   to call the new tool for real, through its actual MCP-facing surface.
+   No `X-Harness-Id` is needed here -- unlike the shared server, this
+   instance's database holds only this one copy's data.
+
+A knowledge doc or a prompt has no tool to call this way; read it back
+through this same instance's own `read_knowledge`/equivalent if one exists,
+or note in the attempt that it was reviewed as a document rather than
+exercised live, and say why.

@@ -9,7 +9,7 @@ defmodule CodeMySpec.Agents.Main.AnAgentIsIdleWhenItsWorkIsHeldTest do
   work was in a neighbour's hands was reported STALLED and the main agent was
   told to nudge it, for a turn that would never be offered.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent

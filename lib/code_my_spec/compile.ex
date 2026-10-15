@@ -87,11 +87,8 @@ defmodule CodeMySpec.Compile do
           {[], true}
 
         {:error, _reason} when exit_code == 0 ->
-          # `mix compile --return-errors` exits 0 even on a compile error — that
-          # is what the flag is for — so a zero exit says nothing about whether
-          # the code compiled. The only thing that distinguishes "compiled
-          # cleanly" from "nobody was recording" is whether the :diagnostics
-          # compiler wrote its file, and here it did not.
+          # `--return-errors` exits 0 on a compile error, so a zero exit with no
+          # diagnostics file means nobody was recording, not a clean compile.
           Logger.warning(
             "[Compile] no diagnostics file was written. The :diagnostics compiler " <>
               "(from client_utils) is what produces it, so this project is almost " <>
@@ -101,14 +98,10 @@ defmodule CodeMySpec.Compile do
           {[], false}
 
         {:error, _reason} ->
-          # Non-zero exit, no diagnostics file. This is NOT automatically a code
-          # error: a config/mix.exs change forcing a rebuild, the "you must
-          # restart after changing configuration files" RuntimeError, build-lock
-          # contention, or a project missing the :diagnostics compiler all exit
-          # non-zero with no diagnostics. Only synthesize a blocking problem when
-          # the raw output actually contains a genuine compiler error marker;
-          # otherwise treat it as transient so the stop hook isn't blocked by a
-          # phantom error parsed out of Mix's progress banner ("==> boundary").
+          # Non-zero exit, no diagnostics file: not necessarily a code error
+          # (config change, "must restart", lock contention, missing
+          # :diagnostics compiler). Only genuine compiler error markers become
+          # problems, so Mix's progress banner never blocks a stop.
           case extract_compiler_errors(output) do
             [] ->
               Logger.warning(
@@ -138,43 +131,16 @@ defmodule CodeMySpec.Compile do
       },
       exit_code: exit_code,
       output_file: output_file,
-      # The tool's own stdout, kept whole rather than only mined for
-      # diagnostics. `output` used to end here: parsed into `compiler_results`
-      # and discarded, so nothing downstream could ever answer a routed
-      # `mix compile` with what the compiler actually printed — only a count
-      # reformatted from the structured diagnostics. See
+      # The tool's own stdout, kept whole. See
       # `.code_my_spec/rules/analysis_output_fidelity.md`.
       output: output
     }
   end
 
-  # A diagnostic's paths have to leave here relative to the root the compiler
-  # ran under, and they do not arrive that way from every environment.
-  #
-  # `CodeMySpec.BddSpecs.Spex.relativize_error_file/2` is this exact fix for the
-  # spex path (`cc643bf3`, `fa76604b`), and the compiler path never got it.
-  # `Analysis.Reconciler.patch_file_path/1` sees the result and says so —
-  # "problem recorded with an absolute file_path … this row will be deleted by
-  # the next file sync" — but only warns, deliberately, since rejecting would
-  # roll back every other problem from the same source.
-  #
-  # What that costs: `clear_problems_for_missing_files/2` deletes any Problem
-  # whose path is not in the current file list, and that list is relative, so
-  # the row is removed on the next sync as though its file had been deleted —
-  # while the stop hook has already blocked on it, and the next compile writes a
-  # fresh one. The finding is real, `list_problems` cannot see it, and it
-  # returns on the next sweep. Seven agents in one evening reported the same
-  # symptom from that loop (b4c34f92 collects them).
-  #
-  # `env.cwd` is the right root for every environment, including the one that
-  # produces the absolute paths: `Container.create/1` sets `cwd` to the
-  # container's own workdir (`/workspace`), which is exactly the prefix its
-  # compiler reports under. A path from some *other* root stays absolute, per
-  # `Path.relative_to/2`, and the reconciler's warning still catches it.
-  #
-  # Covers both ways diagnostics arrive. A caller-supplied `:output_file` — the
-  # stop hook's `test_output_files` — reads a host-local fixture but is parsed
-  # by this same function, so it is relativized here too.
+  # Diagnostic paths leave here relative to `env.cwd` (a container reports
+  # under its workdir). A path from another root stays absolute and the
+  # Reconciler warns on it. Applies to injected `:output_file` fixtures too.
+  # See knowledge/analysis, "Problem file paths are relative".
   @doc false
   # Public so the rule can be asserted without running a compiler, the same
   # reason `parse_jsonl/1` and `extract_compiler_errors/1` are.
@@ -237,9 +203,7 @@ defmodule CodeMySpec.Compile do
   @spec extract_compiler_errors(String.t()) :: [map()]
   def extract_compiler_errors(output) when is_binary(output) do
     cond do
-      # Asked first, because this is the failure that *looks* transient and
-      # never heals. It has to beat the transient markers rather than sit after
-      # them.
+      # First: it looks transient but never heals.
       unsatisfied_deps?(output) ->
         [unsatisfied_deps_problem(output)]
 
@@ -254,25 +218,10 @@ defmodule CodeMySpec.Compile do
     end
   end
 
-  # The failure that looks transient and never heals.
-  #
-  # `mix.lock` is committed, so a dependency added in one worktree reaches every
-  # other the moment it pulls — and `deps/` is per-worktree and does not follow.
-  # The checkout then exits 1 with "Unchecked dependencies" and no diagnostics
-  # file, which is exactly the shape of a config change or lock contention, so
-  # it was classified as transient. It is not: nothing heals it but `deps.get`.
-  #
-  # Measured on 2026-09-08: `ex_slop` and an alloy fork landed on main, and
-  # seven checkouts on one machine began failing every analyzer in about a
-  # second. The run stayed open, the output was discarded, and every stop said
-  # "analysis pending" — for hours, with the one line that names the cause
-  # sitting in a `Logger.warning` nobody was reading.
-  #
-  # Reported as a problem rather than as an error, because the agent is standing
-  # in that checkout and can fix it. John: "shouldn't we send a message to the
-  # model in that case and tell it that it needs to fix that thing? Isn't that a
-  # deliverable message?" It is — the stop menu ranks problems first, so the
-  # agent is told before it is asked to do anything else, and told what to run.
+  # Unsatisfied deps look transient but never heal without `mix deps.get`
+  # (`mix.lock` is committed, `deps/` is per-checkout). Reported as a problem
+  # so the agent in that checkout is told what to run.
+  # See knowledge/analysis, "Compile".
   @unsatisfied_deps_markers [
     "Unchecked dependencies",
     "Can't continue due to errors on dependencies"
@@ -321,34 +270,20 @@ defmodule CodeMySpec.Compile do
       String.starts_with?(trimmed, "error:")
   end
 
-  # Two different files wear the `output_file` name here, and they live on
-  # different machines.
-  #
-  # The generated temp path is handed to the child as `DIAGNOSTICS_OUTPUT`, so
-  # the child writes it wherever it is running — inside the environment. Reading
-  # that with File.read looks on the machine that *launched* the run, misses,
-  # and falls into the "no diagnostics" branch below, which reports a clean
-  # compilation. That is the most dangerous possible wrong answer.
-  #
-  # A caller-provided path is the cassette seam: `Analysis.Execution` only
-  # populates `:output_file` from the stop hook's `test_output_files` param, so
-  # it is a fixture on the harness's own disk, put there by the spex suite and
-  # never by the project under test. That one is genuinely host-local.
+  # The generated path is written by the child inside the environment, so it
+  # is read through the environment (a host `File.read` would miss and read as
+  # clean). An injected `:output_file` is a cassette fixture on the host's disk.
   defp read_output(_env, path, true), do: File.read(path)
   defp read_output(env, path, false), do: Environments.read_file(env, path)
 
   defp output_exists?(_env, path, true), do: File.exists?(path)
   defp output_exists?(env, path, false), do: Environments.file_exists?(env, path)
 
-  # `System.unique_integer/1` alone named this, and it is unique only within one
-  # BEAM while the path is machine-wide — so a concurrent process compiling a
-  # project that *does* have the `:diagnostics` compiler could write the file
-  # this one then read. See `CodeMySpec.TempFile`.
+  # Machine-wide unique, not per-BEAM: see `CodeMySpec.TempFile`.
   defp create_temp_file_path, do: TempFile.path("compile_diagnostics", ".jsonl")
 
-  # `force: true` recompiles everything, so every module's diagnostics are
-  # reported — an incremental compile only reports what it recompiled, and the
-  # gate passed a boundary violation another analyzer had already compiled.
+  # An incremental compile reports only what it recompiled; `force: true`
+  # reports every module's diagnostics.
   defp compile_args(opts) do
     if Keyword.get(opts, :force, false),
       do: ["compile", "--return-errors", "--force"],

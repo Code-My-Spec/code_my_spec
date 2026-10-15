@@ -3,85 +3,21 @@ defmodule CmsHarness.AnalysisSlots do
   How many analyzer runs this machine will execute at once, across every working
   copy it serves.
 
-  ## The gap this closes
+  `Project.AnalysisServer` serializes runs within one copy; this bounds them
+  across copies, because a saturated machine manufactures test failures rather
+  than just running slowly. See knowledge/harness, "Analysis slots".
 
-  `Project.AnalysisServer` serializes runs within one working copy, for a good
-  reason it states: `mix test` and `mix spex` share `_build/test`, and two at
-  once corrupt the build. Nothing serializes *across* copies, and one harness
-  serves every checkout on the machine — eleven of them here.
-
-  So each agent behaves correctly and the machine does not. An agent that wants
-  to promote needs a fresh sweep, so it starts one; six agents wanting to
-  promote start six full `mix test` + `mix spex` runs against one box, plus the
-  dev server, plus the harness, plus their own `_build` compiles.
-
-  Measured 2026-09-12 (`3e9b7568`): load 54 on ten cores, eight concurrent
-  suites, two running over twenty minutes. And again later the same day at load
-  17–21 with three.
-
-  ## The failure is not slowness
-
-  Under that load the analyzer **manufactures failures**. Whichever test is
-  heaviest dies with `** (EXIT from #PID<…>)` and passes in isolation, and the
-  victim moves between sweeps — `exunit reconciled: 1 problem — 1 gone, 1 new`.
-
-  Three separate promotions were refused that way in one session, each naming a
-  different innocent test: `criterion_2848`, an ordering test in
-  `agent_conversation_live`, then `criterion_2833`. Every one green in
-  isolation, twenty consecutive runs apiece.
-
-  A slow sweep costs time. A sweep that invents a different failure each run
-  costs *confidence*, and the natural response to a phantom — retry — is what
-  produces the next one.
-
-  ## Waits rather than refusing, now — the timer moved instead
-
-  A run that cannot get a slot waits for one, up to a generous ceiling
-  (`wait_ceiling/0`, the same order of magnitude as an analyzer's own
-  thirty-minute kill timeout). It used to be answered `:busy` at once, on the
-  reasoning that `AnalysisServer` arms its kill timer at dispatch — before the
-  run reaches here — so a run that waited behind four others would burn its
-  budget waiting and be killed for being slow, misattributed as a hung tool.
-
-  That reasoning was right about the misattribution and wrong about the fix.
-  The kill timer has moved instead: `AnalysisServer` now arms it only once
-  `acquire/0` actually returns `:ok` (story 839, criterion 3440), so waiting
-  here costs nothing from that budget — the clock does not start until the
-  analyzer is actually running. Refusing instantly was curing the symptom;
-  the actual disease was where the timer started.
-
-  Past the ceiling, `acquire/0` still answers `:busy` rather than waiting
-  forever — the same reason `AnalysisServer`'s own moduledoc gives: "every
-  request is answered; silence is the one answer this must never give." A
-  machine still saturated after thirty-odd minutes has a real problem this
-  module cannot solve by waiting longer, and the stop hook re-enqueues what is
-  stale on the next pass regardless.
-
-  ## Two lanes
-
-  A run of named test files waits in its own lane, `:fast`, not behind whole
-  suites in `:full`. A coder's thirty-second `mix test path` waited fifteen
-  minutes behind the promotion gate's full sweeps, past its own shell limit, so
-  it retried and the queue grew (2026-10-12). Each lane has its own limit;
-  within one working copy, `AnalysisServer` still runs one thing at a time.
-
-  ## Released by death, not by discipline
-
-  The caller is monitored and the slot comes back when it exits. There is no
-  `release/0` to forget and none to call twice, and a run killed by the
-  thirty-minute timeout frees its slot on the way out like any other exit. A
-  semaphore that leaks stops analysis on the whole machine, which is worse than
-  the saturation it was added to fix.
+  A run that cannot get a slot waits, up to `wait_ceiling/0`, then answers
+  `:busy`. `AnalysisServer` arms its kill timer only once a slot is granted.
+  Named test files wait in their own `:fast` lane. A slot is released when the
+  holding process exits; there is no `release/0`.
   """
 
   use GenServer
 
   require Logger
 
-  # Same order of magnitude as `AnalysisServer`'s own kill timeout — long
-  # enough that a genuinely busy machine gets a real chance to drain, short
-  # enough that a caller is never left believing this waits forever. Past it,
-  # `acquire/0` still answers, just with `:busy` instead of `:ok`.
+  # Same order as `AnalysisServer`'s kill timeout; past it, `:busy`.
   @wait_ceiling :timer.minutes(30)
 
   @doc """
@@ -105,9 +41,7 @@ defmodule CmsHarness.AnalysisSlots do
 
   @doc """
   How long `acquire/0` waits for a slot before giving up and answering
-  `:busy`. Configurable as `:analysis_slot_wait_ceiling` for the same reason
-  `:analysis_slots` is — a test, or a machine whose analyzers run far longer
-  or shorter than thirty minutes.
+  `:busy`. Configurable as `:analysis_slot_wait_ceiling`.
   """
   @spec wait_ceiling() :: pos_integer()
   def wait_ceiling,
@@ -116,13 +50,9 @@ defmodule CmsHarness.AnalysisSlots do
   @doc """
   How many runs may execute at once on this machine.
 
-  A fraction of the cores rather than a count of projects, because the projects
-  are what is unbounded. Each `mix test` sets `max_cases` to twice the scheduler
-  count on its own, so two suites already oversubscribe a ten-core box — the
-  limit is about how many *suites*, not how many processes.
-
-  Configurable as `:analysis_slots` for a machine that is only running one
-  thing, or a much larger one.
+  A quarter of the cores: each suite already runs `max_cases` at twice the
+  scheduler count, so the limit counts suites. Configurable as
+  `:analysis_slots` (full) and `:analysis_fast_slots` (fast).
   """
   @spec limit(lane()) :: pos_integer()
   def limit(lane \\ :full)

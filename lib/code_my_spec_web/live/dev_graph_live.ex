@@ -1,65 +1,23 @@
 defmodule CodeMySpecWeb.DevGraphLive do
   @moduledoc """
-  Whether the requirement graph is actually keeping up, watched live rather
-  than argued from logs.
+  Whether the requirement graph is keeping up, watched live rather than argued
+  from logs. Dev only.
 
-  Four things have to be true for "incremental sync works", and each of them
-  used to be checked by grepping a file and believing the result.
+  - **Announcements arrive.** The feed is this project's `GraphInputs` topic:
+    each announcement appears as published, with the observation id the
+    consuming pass will carry. A write with no line here is a silent writer.
+  - **They are consumed.** Each `{:graph_updated, _}` closes a pass over the
+    announcements before it; the gap is the debounce window.
+  - **The answer is then right.** "Serving stale" compares the served rows and
+    edges with an in-memory recompute (`Requirements.served_vs_recomputed/1`),
+    on demand and on each pass. A set that does not empty names entities whose
+    input moved with no announcement.
+  - Side by side: per-checkout vantages, the durable mark backlog, writer
+    guarantees, the event vocabulary, the last drain of each kind, the watcher,
+    and which checkouts have a harness joined.
 
-  **Announcements arrive.** A writer that changes a graph input says so. The
-  event feed here is this project's own `GraphInputs` topic, so an announcement
-  appears the instant it is published, with the observation id that the
-  recompute consuming it will carry. A write you can see happen with no line in
-  this feed is a silent writer, which is the defect this whole design removes.
-
-  **They are consumed.** A pass follows, and the feed shows that too. The gap
-  between an announcement and the pass answering it is the debounce window made
-  visible.
-
-  **The answer is then right.** That is the stale panel, and it is the only one
-  that can be trusted on its own. While the batched pass serves, it runs the
-  full per-entity fingerprint diff — every entity's inputs rebuilt and compared
-  against what its rows are stamped with — and reports what is being served
-  stale, changing nothing. It re-runs whenever a pass lands, so the useful
-  thing to watch is the set emptying as the recompute consumes what was
-  announced.
-
-  While the event path serves (`Shadow.inverted?/0`), the fingerprint cannot
-  judge it: handlers settle a row from the observation and stamp no
-  fingerprint, so every row the pass wrote before the flip reads as "moved
-  past" the moment any input moves, whether or not the verdict did — 447 of
-  1,134 components on dev the first time this panel was read after the flip,
-  every one of them right. So the panel then recomputes every entity from its
-  inputs, in memory, and compares that with what is served, row for row and
-  edge for edge. Nothing here reads the shadow.
-
-  A set that does not empty is the finding. It means an input moved and nothing
-  said so, and it names the entities rather than leaving it to be inferred.
-
-  **And somebody is told.** Fresh rows are where this machinery's job ends and
-  where the point of it does not: the observable feature is an idle agent
-  learning that work appeared. "What the last pass caused" is that link —
-  what became actionable that was not before, and when a wake last went out.
-  It is the only panel whose quiet answer is usually the right one, so it says
-  "nothing new" rather than going blank: a pass that woke nobody because
-  nothing appeared and a pass that woke nobody because the wake is broken look
-  identical everywhere else.
-
-  ## Why the stale query is here and not only in the log
-
-  `graph_stale_read_log` makes every read do this diff and write it to the log.
-  That is the right shape for a dev server nobody is looking at, and the wrong
-  one for someone actually investigating: it costs the expensive half of a
-  recompute on every read, and it answers in a file rather than in front of
-  you. Here it is run on demand and on each pass, by one reader, against one
-  project.
-
-  ## Read-only
-
-  Nothing on this page computes the graph. The stale diff is expensive and
-  deliberately so, but it reports and discards — a page that recomputed on
-  being opened would manufacture the freshness it claims to observe, which is
-  exactly the behaviour this change removed from the read path.
+  Read-only: the stale diff reports and discards. A page that recomputed on
+  being opened would manufacture the freshness it claims to observe.
   """
 
   use CodeMySpecWeb, :live_view
@@ -69,7 +27,6 @@ defmodule CodeMySpecWeb.DevGraphLive do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
 
@@ -145,18 +102,10 @@ defmodule CodeMySpecWeb.DevGraphLive do
     update(socket, :feed, &Enum.take([entry | &1], @feed_limit))
   end
 
-  # Which announcements this pass answered.
-  #
-  # Not carried on the message, and deliberately: criterion 3355 pins
-  # `{:graph_updated, project_id}` to saying only that something moved, so a
-  # subscriber cannot be handed the observation ids. The attribution is instead
-  # made the same way the watcher makes it — a pass consumes everything
-  # announced before it and nothing after — which is the actual rule rather than
-  # a second copy of it shipped over PubSub.
-  #
-  # The consequence worth knowing when reading this feed: a pass that lands
-  # against an empty pending set is one whose observations were consumed by a
-  # `settle/1` from somewhere else, not a pass that ran for no reason.
+  # Which announcements this pass answered. Not carried on the message
+  # (`{:graph_updated, id}` says only that something moved), so attributed by the
+  # watcher's rule: a pass consumes everything announced before it. A pass with
+  # nothing pending had its marks consumed by a `settle` elsewhere.
   defp close_pass(socket) do
     {pending, settled} =
       Enum.split_while(socket.assigns.feed, &(&1.kind == :announced and &1.consumed == []))
@@ -194,26 +143,9 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp assign_report(%{assigns: %{selected: project}} = socket),
     do: assign(socket, report: Requirements.incremental_report(scope_of(project)))
 
-  # Whether each of this project's checkouts has a harness joined to this
-  # server.
-  #
-  # The end state this design is aimed at is "scan the filesystem at boot, let
-  # events carry it after" — which is only true while the events are arriving,
-  # and it is the harness that carries them: it watches the checkout, sends the
-  # manifest, and the reconcile announces `files_synced`. A checkout whose
-  # harness has not joined since this server started turns into a project that
-  # stops moving and says nothing, which is the exact failure `GraphWatcher`
-  # exists to end arriving through a different door.
-  #
-  # The harness is the only watcher. `HarnessRegistry` is the same answer
-  # `Analysis.write_file/3` acts on.
-  #
-  # Server-side this can only answer "is a harness joined for the copy".
-  # Whether the OS is still delivering events to it is known to the harness
-  # process and not here — `CmsHarness.Project.Watcher` is what notices a
-  # stream going silent. So this is the cheaper half of the question, and it
-  # is worth having because the expensive half is invisible from this side and
-  # the cheap half is often the answer.
+  # Whether each checkout has a harness joined to this server. The harness is the
+  # only file watcher, so a copy with none stops moving silently. Whether the OS
+  # still delivers events is known only to the harness (`CmsHarness.Project.Watcher`).
   defp assign_watched(%{assigns: %{selected: nil}} = socket), do: assign(socket, watched: [])
 
   defp assign_watched(%{assigns: %{selected: project}} = socket) do
@@ -229,18 +161,9 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp joined?(working_copy_id),
     do: Registry.lookup(HarnessRegistry, to_string(working_copy_id)) != []
 
-  # The two questions that needed `psql` to answer, and that both of the
-  # 2026-09-17 routing bugs hid behind.
-  #
-  # A verdict is a statement about one checkout, so this graph is ten parallel
-  # answers. From any single vantage, "one checkout current and eight frozen for
-  # two hours" looks exactly like a healthy graph — which is why it ran that way
-  # for two hours. Side by side it is obvious at a glance.
-  #
-  # The backlog is the other half. Marks are durable so a crash cannot lose
-  # them, and the cost of that is a queue nobody could see: when the projector
-  # raised on every drain, the only symptom visible from outside was that
-  # nothing changed.
+  # Vantages side by side and the mark backlog: from a single vantage, other
+  # checkouts frozen looks healthy, and a projector failing every drain shows only
+  # as nothing changing.
   defp assign_vantages(%{assigns: %{selected: nil}} = socket),
     do:
       assign(socket,
@@ -263,7 +186,11 @@ defmodule CodeMySpecWeb.DevGraphLive do
       drain: DrainCost.last(project.id),
       drains_by_kind:
         Enum.reject(
-          [DrainCost.last(project.id, :event), DrainCost.last(project.id, :pass)],
+          [
+            DrainCost.last(project.id, :event),
+            DrainCost.last(project.id, :reseed),
+            DrainCost.last(project.id, :pass)
+          ],
           &is_nil/1
         )
     )
@@ -271,18 +198,12 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   defp assign_stale(%{assigns: %{selected: nil}} = socket), do: assign(socket, stale: nil)
 
-  # The instrument follows the writer. The fingerprint diff judges the pass's
-  # rows, which it stamps on every recompute; the event path stamps nothing,
-  # so under it the rows are judged by recomputing them from the domain now —
-  # see the moduledoc.
+  # Judged by recomputing from the domain now; the event path stamps no
+  # fingerprints, so a fingerprint diff cannot judge its rows.
   defp assign_stale(%{assigns: %{selected: project}} = socket) do
     scope = scope_of(project)
 
-    stale =
-      if Shadow.inverted?(),
-        do: {:recomputed, Requirements.served_vs_recomputed(scope)},
-        else: Requirements.stale_entities_report(scope)
-
+    stale = {:recomputed, Requirements.served_vs_recomputed(scope)}
     assign(socket, stale: stale, stale_at: DateTime.utc_now())
   end
 
@@ -598,39 +519,6 @@ defmodule CodeMySpecWeb.DevGraphLive do
               <dd class={if @report.watcher.last_error, do: "text-error", else: ""}>
                 {(@report.watcher.last_error && @report.watcher.last_error.message) || "none"}
               </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section :if={@report.watcher} class="space-y-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
-            What the last pass caused
-          </h2>
-          <p class="text-xs opacity-60">
-            The end of the chain, and the half that a fresh row count cannot show. A pass
-            wakes the roles for work that <em>appeared</em> — the difference between its
-            actionable set and the previous pass's — so "recomputed, appeared nothing,
-            woke nobody" is the correct and common answer, and is not the same as a pass
-            that found work and told no one.
-          </p>
-          <dl class="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <dt class="opacity-60">Actionable now</dt>
-              <dd class="tabular-nums">{@report.watcher.actionable || "no pass yet"}</dd>
-            </div>
-            <div>
-              <dt class="opacity-60">Appeared on that pass</dt>
-              <dd class="font-mono text-xs">
-                {case @report.watcher.appeared do
-                  nil -> "no pass yet"
-                  [] -> "nothing new"
-                  names -> Enum.join(names, ", ")
-                end}
-              </dd>
-            </div>
-            <div>
-              <dt class="opacity-60">Last wake sent</dt>
-              <dd class="tabular-nums">{@report.watcher.last_wake || "never"}</dd>
             </div>
           </dl>
         </section>

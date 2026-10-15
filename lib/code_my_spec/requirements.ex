@@ -49,7 +49,9 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Handlers
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.IncrementalReport
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
@@ -60,6 +62,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution
+  alias CodeMySpec.Requirements.StoryGraph
   alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -109,7 +112,7 @@ defmodule CodeMySpec.Requirements do
   The node `name` on a story placed on another copy, read at that copy, when
   `role` reads every story wherever it is placed and `name` is its own work;
   `nil` otherwise. `start_task`'s lookup for what `story_execution/5` offers
-  across copies (a31f1cd6 step 4d).
+  across copies.
   """
   @spec placed_story_node(Scope.t(), atom() | nil, String.t(), term()) :: Requirement.t() | nil
   def placed_story_node(%Scope{} = scope, role, name, story_id) do
@@ -128,7 +131,7 @@ defmodule CodeMySpec.Requirements do
   @doc """
   Whether `node` is the work of story `story_id` at the scope's checkout —
   `StoryExecution.story_work?/3`, the set an agent bound to that story is
-  offered and may claim (4292518a).
+  offered and may claim.
   """
   @spec story_work?(Scope.t(), term(), map()) :: boolean()
   def story_work?(%Scope{} = scope, story_id, node) do
@@ -144,7 +147,7 @@ defmodule CodeMySpec.Requirements do
   A story's architecture and requirements at the scope's working copy.
 
   Starts at the story's linked component, follows its component subtree and
-  declared dependency closure, then selects the published requirement nodes.
+  declared dependency closure, then selects the requirement nodes for them.
   Requirement edges never expand the component set. Other stories are excluded.
 
   Returns `{:ok, graph}` with `root_component`, selected `components`,
@@ -155,7 +158,7 @@ defmodule CodeMySpec.Requirements do
   An unlinked story has a nil root and no component work; an inaccessible story
   returns `{:error, :not_found}`. Reads the existing projection; no graph edits.
   """
-  defdelegate story_graph(scope, story_id), to: CodeMySpec.Requirements.StoryGraph, as: :read
+  defdelegate story_graph(scope, story_id), to: StoryGraph, as: :read
 
   @doc "Adds live project-issue branches to the requirements graph visualization."
   defdelegate issue_bag_graph(issues), to: CodeMySpec.Requirements.ProjectIssueGraph, as: :bag
@@ -173,18 +176,9 @@ defmodule CodeMySpec.Requirements do
     do: name in RequirementsRegistry.requirement_names_for_role(role)
 
   @doc """
-  Which entities read stale right now — the expensive diff, run deliberately.
-
-  See `RequirementGraph.stale_entities_report/1`. Reports; changes nothing.
-  """
-  @spec stale_entities_report(Scope.t()) ::
-          {:partial, [{String.t(), term()}]} | {:all, String.t()} | {:error, term()}
-  def stale_entities_report(%Scope{} = scope), do: RequirementGraph.stale_entities_report(scope)
-
-  @doc """
-  What is served against every entity recomputed from its inputs now — the
-  instrument for the event path, which stamps no fingerprint. See
-  `RequirementGraph.served_vs_recomputed/1`. Reports; changes nothing.
+  What is served against every entity recomputed from its inputs now — the check
+  that the incremental graph is right. See `RequirementGraph.served_vs_recomputed/1`.
+  Reports; changes nothing.
   """
   @spec served_vs_recomputed(Scope.t()) :: map()
   def served_vs_recomputed(%Scope{} = scope), do: RequirementGraph.served_vs_recomputed(scope)
@@ -207,9 +201,9 @@ defmodule CodeMySpec.Requirements do
   @doc """
   What each checkout's graph looks like right now, side by side.
 
-  A verdict is a statement about one checkout, so the graph is ten parallel
-  answers rather than one — and both routing bugs found on 2026-09-17 were
-  invisible from any single vantage. See `Requirements.VantageReport`.
+  A verdict is a statement about one checkout, so the graph is one answer per
+  checkout, and a routing bug is often invisible from any single one. See
+  `Requirements.VantageReport`.
   """
   @spec vantage_report(Scope.t()) :: [map()]
   def vantage_report(%Scope{} = scope), do: VantageReport.build(scope)
@@ -300,21 +294,23 @@ defmodule CodeMySpec.Requirements do
     do: %{rows: Projection.vantage(scope), files: Preloader.files_copy(scope)}
 
   @doc """
-  Bring this project's rows up to date, and answer from the work just done.
+  Rebuild this checkout's graph from the domain now, and answer what is served.
 
-  The write path's entry point, and the only thing that writes requirement
-  rows. `GraphWatcher` calls it when observations land; everything else reads.
-
-  Public because "recompute now" is a real operation a caller outside the
-  watcher sometimes needs — a test establishing a graph to read, a backfill, an
-  operator on a project whose watcher died. It is not a repair a reader should
-  reach for: a read that recomputes is what made a writer that announces
-  nothing indistinguishable from one that works.
+  For "recompute now": a backfill, `sync_project`, a test establishing a graph.
+  The projector forgets the vantage and seeds it whole; observations keep it
+  current from there.
   """
   @spec recompute(Scope.t()) ::
-          {{[Requirement.t()], [map()]}, [Requirement.t()], NaiveDateTime.t() | nil}
+          {{[Requirement.t()], [map()]}, [Requirement.t()], DateTime.t() | nil}
           | {:error, term()}
-  def recompute(%Scope{} = scope), do: RequirementGraph.recompute(scope)
+  def recompute(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+    :ok = GraphStore.clear(scope)
+    _ = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.reproject(project_id, Projection.vantage(scope))
+    RequirementGraph.cached_graph_with_actionable(scope)
+  end
+
+  def recompute(%Scope{}), do: {:error, :no_project}
 
   @doc """
   Returns the next actionable requirements across the entire project,
@@ -326,43 +322,12 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
-  Returns the full computed requirements graph plus the next actionable
-  requirements, computed in a single pass.
+  The whole graph and its actionable set, read from the rows once the projector
+  has settled, with the metrics the graph page shows about where the answer
+  came from.
 
-  > #### Prefer `cached_graph_with_actionable/1` {: .warning}
-  >
-  > This recomputes every node and edge — 4.4 seconds against 34ms of preload on
-  > a 3200-component project — and no caller needs that. The graph is a read
-  > model now (`requirements`, `requirement_edges`), and the cached form recomputes
-  > on a fingerprint miss, so it is never stale.
-  >
-  > Nothing calls this. It is kept because `project_graph_with_actionable_metrics/1`
-  > exists to *time* a compute, and a timing function that read a cache would
-  > measure nothing.
-  """
-  @spec project_graph_with_actionable(Scope.t()) ::
-          %{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}
-  def project_graph_with_actionable(%Scope{} = scope) do
-    {nodes, edges, actionable} = RequirementGraph.compute_graph_with_actionable(scope)
-    %{nodes: nodes, edges: edges, actionable: actionable}
-  end
-
-  @doc """
-  Same as `project_graph_with_actionable/1`, from the cache, with provenance.
-
-  Serves the published graph when the fingerprint hits and recomputes when it
-  misses, so this is never stale — `metrics.computed_at` says when the answer
-  was made and `metrics.served_from` says which of the two happened.
-
-  It recomputed unconditionally until 2026-09-11, which made the requirements
-  graph page the only reader of the graph that never used the cache: 4.4 seconds
-  against 34ms of preload, on every visit, while stories 1062 and 1063 were
-  being written to make the cached answer trustworthy. The page also had no
-  freshness to show, because it had no cached answer to be fresh or stale.
-
-  `compute_graph_with_actionable_metrics/1` still exists and still recomputes —
-  it is the one honest way to *time* a compute, and a timing function that read
-  a cache would measure nothing.
+  `compute_graph_with_actionable_metrics/1` recomputes instead: it is the way to
+  *time* a compute, and timing a read of the rows would measure nothing.
   """
   @spec project_graph_with_actionable_metrics(Scope.t()) ::
           {%{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}, map()}
@@ -381,23 +346,24 @@ defmodule CodeMySpec.Requirements do
     RequirementGraph.compute_all(scope)
   end
 
-  @doc "How many of a story's requirements are satisfied, at one working copy."
-  @spec story_progress(integer(), Ecto.UUID.t() | nil) :: {non_neg_integer(), non_neg_integer()}
-  defdelegate story_progress(story_id, working_copy_id), to: NodeRepository
+  @doc """
+  How many of a story's requirements are satisfied, at the scope's working copy.
+
+  Counted over the same slice `story_graph/2` returns, so the cockpit's pie and
+  the working copy status page's graph cannot disagree.
+  """
+  @spec story_progress(Scope.t(), integer()) :: {non_neg_integer(), non_neg_integer()}
+  def story_progress(%Scope{} = scope, story_id) do
+    case story_graph(scope, story_id) do
+      {:ok, graph} -> StoryGraph.progress(graph)
+      _ -> {0, 0}
+    end
+  end
 
   @doc """
-  Every requirement node, read from the projection when it is still current.
-
-  The caveat that used to be here — "not for deciding what an agent works on" —
-  was written when the fingerprint watched only files, components and stories,
-  so a hit could not certify what the delegate checkers read. It watches all of
-  them now, one test per input in `graph_cache_test.exs`, and
-  `compute_and_publish/3` says so in as many words. A hit is as good as a
-  recompute.
-
-  What it returns is the read model: `requirements` and `requirement_edges`,
-  through `Requirements.Projection`. A miss recomputes and republishes, so this
-  is never stale — `computed_at` says when, and `nil` means just now.
+  Every requirement node, read from `requirements` and `requirement_edges`
+  (through `Requirements.Projection`) once the projector has applied what is
+  pending, so it is current. `computed_at` says when the rows were written.
   """
   @spec cached_all(Scope.t()) :: {[map()], DateTime.t() | nil}
   def cached_all(%Scope{} = scope, opts \\ []) do
@@ -408,12 +374,8 @@ defmodule CodeMySpec.Requirements do
   @doc """
   Why a named requirement is still open, in the checker's own words.
 
-  For the nudge. Naming the node without the obstacle makes the message
-  unactionable by construction — an agent is told *that* something is open and
-  never *what* is holding it. Watched live on 2026-09-10: a coding agent nudged
-  every 90 seconds about `story_promoted` while the gate was refusing on
-  "uncommitted changes — commit them", a sentence the checker had already
-  written and the nudge threw away.
+  For the nudge: naming the node without the obstacle tells an agent *that*
+  something is open and never *what* is holding it.
 
   `entity_ids` rather than one id because a task names its entity in whichever
   field fits — story, component or project — and the caller knows which of
@@ -423,17 +385,7 @@ defmodule CodeMySpec.Requirements do
   scope cannot see, leaves the caller's message exactly as it was rather than
   appending an empty clause.
 
-  Reads the one row, and computes nothing.
-
-  It used to read `cached_all/1`, whose docstring calls itself cheap — "34ms of
-  preload against 4.4 seconds of recompute". That is the hit. The stop hook,
-  which is this function's only caller, syncs files before it decides, so the
-  graph fingerprint has always just moved and the miss is the normal case: the
-  whole project rebuilt, edges included, to read one string the row already
-  holds. Measured on the running build, four full computes in nine minutes, two
-  of them stop hooks.
-
-  A stop is not a change, so nothing here recomputes.
+  Reads the one row and computes nothing: a stop is not a change.
   """
   @spec open_reason(Scope.t(), String.t() | nil, [String.t()]) :: String.t()
   def open_reason(scope, requirement_name, entity_ids)
@@ -458,12 +410,8 @@ defmodule CodeMySpec.Requirements do
   @doc """
   Nodes, edges and the actionable set, from the read model.
 
-  The cached counterpart to `project_graph_with_actionable/1`, for readers that
-  want the whole graph without paying to recompute it — which on a
-  3200-component project is 4.4 seconds against 34ms of preload.
-
-  Same certification as `cached_all/1`: a miss recomputes and republishes, so
-  this is never stale.
+  For readers that want the whole graph without recomputing it: a settle and a
+  read of the rows, current as `cached_all/1` is.
   """
   @spec cached_graph_with_actionable(Scope.t()) ::
           %{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}
@@ -476,7 +424,7 @@ defmodule CodeMySpec.Requirements do
 
   @doc """
   Whether a story requirement is satisfied *now*, computed from the story as
-  it stands rather than read from the graph (67e6b5cb). The graph can lag a
+  it stands rather than read from the graph. The graph can lag a
   write that did not announce, and then goes on offering work already done;
   `start_task` asks this before taking it. Story requirements only, where the
   stale offers were: anything else answers false, because a satisfied

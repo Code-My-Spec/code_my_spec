@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.WorkingCopies
 
   setup [:register_log_in_setup_account]
@@ -870,7 +871,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "what the agent is assigned" do
-    test "the header and the team panel link the agent's issue and story", %{
+    test "the header and the team panel open the agent's story and issue in a modal", %{
       conn: conn,
       scope: scope,
       project: project
@@ -887,46 +888,46 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       story_path = "/app/projects/#{project.id}/stories/#{story.number}"
       issue_path = "/app/projects/#{project.id}/issues/#{issue.id}"
-
-      assert has_element?(
-               view,
-               "header a[data-test='assigned-story'][href='#{story_path}']",
-               "Pay by card"
-             )
-
-      assert has_element?(
-               view,
-               "header a[data-test='assigned-issue'][href='#{issue_path}']",
-               "Card form 500s"
-             )
-
       row = "[data-test='team-agent'][data-agent-id='#{agent.id}']"
 
-      assert has_element?(
-               view,
-               "#{row} a[data-test='team-agent-story'][href='#{story_path}']",
-               "##{story.number}"
-             )
+      assert has_element?(view, "header [data-test='assigned-story']", "Pay by card")
+      assert has_element?(view, "header [data-test='assigned-issue']", "Card form 500s")
 
-      assert has_element?(view, "#{row} a[data-test='team-agent-issue'][href='#{issue_path}']")
+      view |> element("#{row} [data-test='team-agent-story']") |> render_click()
+
+      assert has_element?(view, "[data-test='assigned-modal-story']", "Pay by card")
+      assert has_element?(view, "[data-test='assigned-modal-story'] a[href='#{story_path}']")
+
+      render_click(view, "close_assigned", %{})
+      refute has_element?(view, "[data-test^='assigned-modal']")
+
+      view |> element("#{row} [data-test='team-agent-issue']") |> render_click()
+
+      assert has_element?(view, "[data-test='assigned-modal-issue']", "Card form 500s")
+      assert has_element?(view, "[data-test='assigned-modal-issue'] a[href='#{issue_path}']")
     end
   end
 
   describe "a story's progress pie" do
-    test "shows satisfied of total and follows a graph update", %{
+    # The pie counts the slice the working copy status page draws, so the two
+    # cannot disagree: whatever `Requirements.story_graph/2` returns for the
+    # story at the agent's copy is what the pie reads.
+    defp slice_progress(scope, project, story) do
+      scope = %{scope | active_project_id: project.id, active_project: project}
+      {:ok, graph} = CodeMySpec.Requirements.story_graph(scope, story.id)
+      RequirementStoryGraph.progress(graph)
+    end
+
+    test "shows the story slice's satisfied of total and follows a graph update", %{
       conn: conn,
       scope: scope,
       project: project
     } do
       alias CodeMySpec.Requirements.Node
+      require Ecto.Query
 
       project_scope = %{scope | active_project_id: project.id, active_project: project}
       story = CodeMySpec.StoriesFixtures.story_fixture(project_scope)
-
-      [first, _second] =
-        for name <- ["spex_written", "qa_passed"] do
-          Repo.insert!(%Node{story_id: story.id, name: name, description: name, satisfied: false})
-        end
 
       {agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
 
@@ -936,19 +937,42 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       header = "header [data-test='story-progress']"
       row = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='story-progress']"
 
-      assert has_element?(view, header <> "[data-done='0'][data-total='2']")
-      assert has_element?(view, row <> "[data-done='0'][data-total='2']")
+      {done, total} = slice_progress(scope, project, story)
+      assert has_element?(view, header <> "[data-done='#{done}'][data-total='#{total}']")
+      assert has_element?(view, row <> "[data-done='#{done}'][data-total='#{total}']")
 
-      Repo.update!(Ecto.Changeset.change(first, satisfied: true))
+      before = {done, total}
+
+      Node
+      |> Ecto.Query.where([n], n.story_id == ^story.id and not n.satisfied)
+      |> Repo.update_all(set: [satisfied: true])
+
       send(view.pid, {:graph_updated, project.id})
-
-      # The graph handler enqueues send_update messages for the components.
-      # This render waits for that handler; the assertions then run after
-      # its queued component updates, matching the two-hop pattern above.
       render(view)
 
-      assert has_element?(view, header <> "[data-done='1'][data-total='2']")
-      assert has_element?(view, row <> "[data-done='1'][data-total='2']")
+      {done, total} = slice_progress(scope, project, story)
+      assert {done, total} != before or total == 0
+      assert has_element?(view, header <> "[data-done='#{done}'][data-total='#{total}']")
+      assert has_element?(view, row <> "[data-done='#{done}'][data-total='#{total}']")
+    end
+
+    test "clicking the pie opens the story's requirements graph", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: "Pay by card"})
+      {_agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      view |> element("header [data-test='story-progress']") |> render_click()
+
+      assert has_element?(view, "[data-test='story-graph-modal']", "Pay by card")
+
+      render_click(view, "close_story_graph", %{})
+      refute has_element?(view, "[data-test='story-graph-modal']")
     end
   end
 

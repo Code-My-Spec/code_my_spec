@@ -70,6 +70,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt)
   component(CodeMySpec.McpServers.Problems.Tools.ClearProblems)
   component(CodeMySpec.McpServers.Problems.Tools.ListProblems)
+  component(CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput)
   component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
   component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
   component(CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles)
@@ -174,6 +175,8 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
   component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
   component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
+  # The performance page as Markdown, for an agent to plan improvements from.
+  component(CodeMySpec.McpServers.AgentPerformance.Tools.AgentPerformanceReport)
 
   # The main agent's view across its working copies, and the one act it can
   # take on what it finds there. Scripted rather than on the spine because the
@@ -215,6 +218,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Research.Tools.WebSearch)
   component(CodeMySpec.McpServers.Research.Tools.WebFetch)
   component(CodeMySpec.McpServers.Qa.Tools.CallMcpServer)
+  component(CodeMySpec.McpServers.Qa.Tools.GetLocalAppToken)
   # Story 1116 ("1082"): every agent role reads its own project's deployed
   # logs and traces. Granted to every role in `RoleProfile`, not main-only.
   component(CodeMySpec.McpServers.Observability.Tools.QueryLogs)

@@ -25,7 +25,7 @@ defmodule CodeMySpecTest.GraphHelpersTest do
   pass, and `personas_complete` was always there. Green either way, which is the
   property that makes a helper test worthless.
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecTest.GraphHelpers
 

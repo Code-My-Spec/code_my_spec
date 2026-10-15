@@ -49,7 +49,11 @@ defmodule CodeMySpecWeb.Endpoint do
   if code_reloading? do
     socket("/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket)
     plug(Phoenix.LiveReloader)
-    plug(Phoenix.CodeReloader)
+    # d8b4226e: a bare Phoenix.CodeReloader crash here (its own
+    # GenServer briefly unavailable mid-restart) was an unhandled 500,
+    # and debug_errors: true's Plug.Debugger dumped the crashing
+    # request's own headers -- including Authorization -- to render it.
+    plug(CodeMySpecWeb.Plugs.SafeCodeReloader)
     plug(Phoenix.Ecto.CheckRepoStatus, otp_app: :code_my_spec)
   end
 

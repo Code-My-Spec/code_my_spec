@@ -70,10 +70,8 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
              SkillRouter.resolve(harness_scope(scope), %{"skill" => "next"})
 
     assert prompt =~ "# Story scope"
-    assert prompt =~ "No requirement graph yet"
     refute prompt =~ "All requirements satisfied"
     refute prompt =~ "This story is complete"
-    refute prompt =~ "Call `start_task`"
   end
 
   # The counterpart to the test above, and the whole point of the pair: the

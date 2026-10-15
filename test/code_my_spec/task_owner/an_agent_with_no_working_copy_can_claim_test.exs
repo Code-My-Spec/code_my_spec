@@ -14,7 +14,7 @@ defmodule CodeMySpec.TaskOwner.AnAgentWithNoWorkingCopyCanClaimTest do
   requirement actionable there crashed all of them, and the story's whole
   task-claim-and-block family was unreachable behind it.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

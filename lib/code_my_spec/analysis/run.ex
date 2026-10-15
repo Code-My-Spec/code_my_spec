@@ -162,13 +162,14 @@ defmodule CodeMySpec.Analysis.Run do
       :args,
       :stats,
       :requested_by,
-      :output,
       :exit_status,
       :started_at,
       :finished_at,
       :project_id,
       :working_copy_id
     ])
+    # Empty stdout is a recorded result; nil means no output was retained.
+    |> cast(attrs, [:output], empty_values: [])
     |> validate_required([:source, :kind, :status, :started_at, :project_id])
     |> validate_inclusion(:source, @sources)
     |> foreign_key_constraint(:project_id)

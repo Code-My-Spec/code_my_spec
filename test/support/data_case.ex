@@ -40,6 +40,41 @@ defmodule CodeMySpecTest.DataCase do
   def setup_sandbox(tags) do
     pid = SQL.Sandbox.start_owner!(CodeMySpec.Repo, shared: not tags[:async])
     on_exit(fn -> SQL.Sandbox.stop_owner(pid) end)
+
+    # 2aa4c832: a fire-and-forget Task started under CodeMySpec.TaskSupervisor
+    # (Agents.dispatch_admitted's async branch, among others) can still be
+    # running after this test's own process exits, and then tries to use the
+    # connection `stop_owner/1` just checked back in. Registered after the
+    # line above: ExUnit runs on_exit callbacks LIFO, so this drain runs
+    # before the checkin, not after it.
+    before = CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new()
+    on_exit(fn -> await_background_work(before) end)
+  end
+
+  @doc """
+  Block until every Task started under `CodeMySpec.TaskSupervisor` since
+  `before` (a snapshot from `Task.Supervisor.children/1`) has finished, or
+  half a second has passed.
+
+  Shared with `CodeMySpecTest.AgentTransportRouter`, which drains the same
+  supervisor for the same reason on a narrower trigger (routing a project);
+  this runs unconditionally for every sandboxed test.
+  """
+  @spec await_background_work(MapSet.t(), integer()) :: :ok
+  def await_background_work(before, deadline \\ System.monotonic_time(:millisecond) + 500) do
+    still_running =
+      CodeMySpec.TaskSupervisor
+      |> Task.Supervisor.children()
+      |> MapSet.new()
+      |> MapSet.difference(before)
+
+    cond do
+      Enum.empty?(still_running) -> :ok
+      System.monotonic_time(:millisecond) >= deadline -> :ok
+      true ->
+        Process.sleep(10)
+        await_background_work(before, deadline)
+    end
   end
 
   @doc """

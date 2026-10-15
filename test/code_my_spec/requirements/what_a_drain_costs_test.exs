@@ -26,11 +26,10 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   duration is a flake that fires hardest exactly when the machine is busiest,
   which is when a real regression is least likely to be what changed.
   """
-  use CodeMySpecSpex.Case
-
+  use CodeMySpecSpex.Case, async: true
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
 
   @event [:code_my_spec, :requirements, :drain]
 
@@ -38,23 +37,28 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   setup :setup_active_project
 
   setup ctx do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
-
     handler = "drain-cost-#{inspect(self())}"
     test = self()
+    project_id = ctx.scope.active_project_id
 
+    # This project's drains only: telemetry is node-wide, and every test
+    # running alongside drains too.
     :telemetry.attach(
       handler,
       @event,
-      fn _e, measurements, meta, _ -> send(test, {:drain, measurements, meta}) end,
+      fn
+        _e, measurements, %{project_id: ^project_id} = meta, _ ->
+          send(test, {:drain, measurements, meta})
+
+        _e, _measurements, _meta, _ ->
+          :ok
+      end,
       nil
     )
 
     on_exit(fn -> :telemetry.detach(handler) end)
 
-    {:ok, _pid} = ShadowProjector.ensure_projecting(ctx.scope)
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(ctx.scope)
     :ok
   end
 
@@ -75,7 +79,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   defp recomputed(meta), do: Map.get(meta, :recomputed, 0)
 
   defp settle(scope) do
-    :ok = ShadowProjector.settle(scope.active_project_id)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
     drains()
   end
 

@@ -47,23 +47,83 @@ export const EChart = {
 }
 
 function toOption(data) {
+  if (data.kind === "bars") return barsOption(data)
+
   const categories = data.categories || []
   const series = data.series || []
-  const markLineData = (data.events || []).map((event) => ({
-    name: event.type,
-    xAxis: nearestCategoryIndex(categories, event.at),
-    label: { formatter: event.title ? `${event.type}: ${event.title}` : event.type },
-  }))
+  // A marker's label is just the story number -- full titles overlapped into
+  // an unreadable band. The title is on hover.
+  const markLineData = (data.events || []).map((event) => {
+    const name = [event.type.replace("_", " "), event.number && `#${event.number}`, event.title]
+      .filter(Boolean)
+      .join(" ")
+
+    return {
+      name,
+      xAxis: nearestCategoryIndex(categories, event.at),
+      label: { formatter: event.number ? `#${event.number}` : "", fontSize: 10 },
+      // Hovering the line spells it out in place, whatever the tooltip does.
+      emphasis: { label: { formatter: name } },
+    }
+  })
+
+  // Only the scales this chart's series use: the rates chart has one, and the
+  // first axis drawn sits on the left.
+  const used = new Set(series.map((one) => one.y_axis))
+  const axes = AXES.filter((axis) => used.has(axis.key)).map((axis, index) =>
+    index === 0 ? { ...axis, position: "left", offset: 0 } : axis
+  )
 
   return {
     tooltip: { trigger: "axis" },
     legend: {},
+    grid: { left: 64, right: 24 + 56 * Math.max(axes.length - 1, 0) },
     xAxis: { type: "category", data: categories },
-    yAxis: [{ type: "value" }],
-    series: series.map((one, index) =>
-      index === 0 ? { ...one, markLine: { symbol: "none", data: markLineData } } : one
-    ),
+    yAxis: axes.map(({ key: _key, ...axis }) => ({ type: "value", ...axis })),
+    series: series.map((one, index) => {
+      const placed = { ...one, yAxisIndex: axisIndex(axes, one.y_axis), ...tooltipFor(one) }
+      const markLine = {
+        symbol: "none",
+        data: markLineData,
+        tooltip: { trigger: "item", formatter: (params) => escapeHtml(params.name) },
+      }
+      return index === 0 ? { ...placed, markLine } : placed
+    }),
   }
+}
+
+// Tokens run to millions, messages and failed turns are single digits and the
+// tool failure rate is a fraction, so each gets its own scale. On one axis
+// everything but tokens sat flat on zero.
+const AXES = [
+  { key: "tokens", name: "Tokens", position: "left", axisLabel: { formatter: compact } },
+  { key: "count", name: "Count", position: "right", minInterval: 1 },
+  {
+    key: "rate",
+    name: "Rate",
+    position: "right",
+    offset: 56,
+    min: 0,
+    max: 1,
+    splitLine: { show: false },
+    axisLabel: { formatter: (value) => `${+(value * 100).toFixed(1)}%` },
+  },
+]
+
+function tooltipFor(series) {
+  if (series.y_axis !== "rate") return {}
+  return { tooltip: { valueFormatter: (v) => (v == null ? "-" : `${(v * 100).toFixed(1)}%`) } }
+}
+
+function axisIndex(axes, key) {
+  const index = axes.findIndex((axis) => axis.key === key)
+  return index < 0 ? 0 : index
+}
+
+function compact(value) {
+  if (value >= 1e6) return `${+(value / 1e6).toFixed(1)}M`
+  if (value >= 1e3) return `${+(value / 1e3).toFixed(1)}k`
+  return `${value}`
 }
 
 function nearestCategoryIndex(categories, iso) {
@@ -80,4 +140,49 @@ function nearestCategoryIndex(categories, iso) {
   })
 
   return bestIndex
+}
+
+// Horizontal stacked bars, one per category: a story's stage times, or the
+// hours spent waiting on each kind of holder. `details` are the category's own
+// lines for the tooltip -- what a card per story used to list.
+function barsOption(data) {
+  const details = data.details || []
+  const unit = data.unit || ""
+
+  return {
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      confine: true,
+      formatter: (params) => {
+        const index = params[0] ? params[0].dataIndex : 0
+        const lines = [`<strong>${escapeHtml(params[0] ? params[0].name : "")}</strong>`]
+        params.forEach((p) => {
+          if (p.value) lines.push(`${p.marker}${escapeHtml(p.seriesName)}: ${p.value}${unit}`)
+        })
+        ;(details[index] || []).forEach((line) => lines.push(escapeHtml(line)))
+        return lines.join("<br>")
+      },
+    },
+    legend: {},
+    grid: { left: 8, right: 24, top: 36, bottom: 8, containLabel: true },
+    xAxis: { type: "value", axisLabel: { formatter: (value) => `${value}${unit}` } },
+    yAxis: {
+      type: "category",
+      inverse: true,
+      data: data.categories || [],
+      axisLabel: { width: 240, overflow: "truncate" },
+    },
+    series: (data.stacks || []).map((stack) => ({
+      name: stack.name,
+      type: "bar",
+      stack: stack.stack || "total",
+      data: stack.data,
+      ...(stack.color ? { itemStyle: { color: stack.color } } : {}),
+    })),
+  }
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 }

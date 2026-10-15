@@ -2,10 +2,8 @@ defmodule CmsHarness.ProjectIdentity do
   @moduledoc """
   Which project a directory is.
 
-  The server used to answer this by looking a filesystem path up in its own
-  database, which is precisely the question a server with no disk cannot
-  answer. So the harness answers it, locally, and the server only ever receives
-  an id.
+  Answered locally by the harness, so the server, which has no disk, only ever
+  receives an id.
 
   Resolution order:
 
@@ -13,77 +11,11 @@ defmodule CmsHarness.ProjectIdentity do
     2. `project_id` in the working copy's own `.cms_harness.json`
     3. refuse
 
-  There is no fourth step; the `CMS_PROJECT_ID` fallback is gone (below). A directory that cannot say which project it is gets
-  an error naming the file it should have said it in, because guessing here
-  means syncing one checkout's files over another project's rows.
+  There is no environment fallback. A directory that cannot say which project
+  it is gets an error naming the file it should have said it in, because
+  guessing here means syncing one checkout's files over another project's rows.
 
-  ## Step 2, and why the env fallback had to be narrowed to reach it
-
-  `.cms_harness.json` is what `mix cms.harness.onboard` writes, and it carries
-  `project_id` as well as `working_copy_id`. Only the second was ever read here, so
-  a working copy that was properly onboarded but never given a
-  `.code_my_spec/config.yml` fell straight past its own answer to the variable.
-
-  Measured 2026-08-21 from `harness.log`, on this machine. One daemon serving
-  three roots:
-
-      serving project 708492f9-… at …/broken_oaths
-      serving project 708492f9-… at …/code_my_spec
-      serving project 708492f9-… at …/code_my_spec/.claude/worktrees/phx-new-generator
-
-  `broken_oaths` is a different repository. Its `.cms_harness.json` says
-  `49760b8b-…`; the daemon carried `CMS_PROJECT_ID=708492f9-…` from the session
-  that started it, and with no `config.yml` to read, the variable won. So its
-  files reconciled into CodeMySpec's project and its spex runs answered
-  CodeMySpec's spex requests. The trail is 96 warnings reading `could not read
-  spec file .code_my_spec/spec/broken_oaths/technology/research.spec.md
-  (:enoent)` — a row written from one checkout, looked for in another.
-
-  This is the same defect the section below describes, at the same call site,
-  one field over: `working_copy_id(:env, root)` was taught to check the file first
-  and `project_id` was not, so the narrower half of the identity was safe while
-  the half that decides *which project's rows get written* was not.
-
-  ## The file wins, and it did not used to
-
-  `CMS_PROJECT_ID` was first and won outright, on the reasoning that a sprite
-  sets it and a sprite is the whole VM. That reasoning is sound about a sprite
-  and wrong about everything else, because this function is called **once per
-  working copy** — `Projects.ensure_started/1` resolves every root the harness
-  serves through it — while the variable is a property of whatever launched the
-  daemon. A harness started from an agent session in a CodeMySpec checkout
-  inherits that session's `CMS_PROJECT_ID`, and then *every* root it serves
-  answers with that one project no matter what its config says.
-
-  Measured 2026-08-20: a scratch working copy whose `config.yml` named
-  `11111111-1111-4111-8111-111111111111` minted a harness against
-  `708492f9-…` — the id exported in the session that ran the command — with
-  nothing in the output naming the substitution.
-
-  This is the same shape as the harness-id collapse that produced the JOIN/CLOSE
-  loop the night before, one layer up and with a worse consequence: identity
-  decides which project's rows a checkout's files are written to. Story 1000's
-  criterion 737 states the rule outright — "an agent learns which project it
-  serves from its identity, not from its environment" — and its own comment
-  names this exact scenario: "a developer working two projects in two terminals
-  has exactly that variable set, and an agent that read it would write one
-  project's files into the other's rows with nothing suspicious in any log."
-  That criterion drives the hook endpoint, where the project comes from the
-  harness record, so it could not see this path.
-
-  A sprite is unaffected: its checkout carries no `.code_my_spec/config.yml` of
-  its own, so step 1 finds nothing and the variable answers — which is what
-  step 2 is for. When both are present and *disagree*, the file wins and the
-  disagreement is logged rather than swallowed; it is a misconfiguration, and a
-  container that refused to start over it would be much harder to diagnose from
-  the inside than one that says which of the two it chose.
-
-  `Projects.resolve_local_project/1` on the server keeps env-first and is
-  **not** the same question. It reads `Application.get_env(:code_my_spec,
-  :project_id)` — an install-level setting, not an inherited shell variable —
-  and every one of its callers passes `nil` or a single boot-time directory,
-  because the packaged CLI serves one project per VM. One-copy-per-VM is the
-  case env-first is right for. This module is the other one.
+  See knowledge/harness/channel, "Project identity".
   """
 
   require Logger
@@ -120,12 +52,9 @@ defmodule CmsHarness.ProjectIdentity do
     end
   end
 
-  # Always out of `.cms_harness.json`, whichever file named the project. It is
-  # the only one onboarding writes it to, and a copy that names its project in
-  # `config.yml` can still be the main checkout.
-  #
-  # Reported from here rather than looked up on the server, so what the server
-  # holds is what this checkout says — the same arrangement as `root`.
+  # Always out of `.cms_harness.json`, whichever file named the project: it is
+  # the only one onboarding writes it to. Reported to the server, not looked up
+  # there, like `root`.
   defp preview_url(root) do
     case HarnessConfig.read_file(root) do
       {:ok, %{preview_url: url}} when is_binary(url) and url != "" -> url
@@ -141,10 +70,8 @@ defmodule CmsHarness.ProjectIdentity do
     end
   end
 
-  # The other file the working copy names itself in, and the one onboarding
-  # actually writes. Read before the variable for the reason the whole module
-  # exists: this runs once per root, and the variable belongs to whatever
-  # started the daemon.
+  # The file onboarding writes; carries `project_id` as well as
+  # `working_copy_id`.
   defp from_harness_file(root) do
     case HarnessConfig.read_file(root) do
       {:ok, %{project_id: id}} when is_binary(id) and id != "" ->
@@ -155,49 +82,16 @@ defmodule CmsHarness.ProjectIdentity do
     end
   end
 
-  # There is no environment fallback, and the sprite does not need one.
-  #
-  # It used to fall through to `CMS_PROJECT_ID` for "one VM, one project, no
-  # config of its own to read". That premise is false: `docker/devbox/entrypoint.sh`
-  # runs `mix harness.onboard --id ... --deploy-key ... --server-url ...` before
-  # the harness starts, which writes `.cms_harness.json`. The environment is
-  # onboarding's *input*; the file is the runtime answer.
-  #
-  # Keeping the fallback meant a variable belonging to whatever launched the
-  # daemon could answer for a copy that never named it — the same shape as the
-  # `CMS_HARNESS_ID` leak that attributed a worktree session's every MCP call to
-  # the main checkout.
-
-  # The file wins, and there is no longer anything for it to win against.
-  #
-  # It used to log here, and this runs once per working copy *per resolution* —
-  # every hook, every operation. A permanent disagreement therefore said itself
-  # forever: 787 identical warnings in two hours on one machine, where the
-  # daemon carried one project's `CMS_PROJECT_ID` and served another project's
-  # checkout. That is the shape that trains a reader past the whole channel,
-  # which is the opposite of what a misconfiguration warning is for.
+  # No longer logs: it runs on every resolution, and a permanent disagreement
+  # repeated forever trains readers to skip the log.
   defp note_disagreement(project, source), do: {:ok, source, project}
 
   # `nil` means "not issued yet", which is ordinary — the first join mints it.
-  # An unreadable config also reads as `nil` here, but `HarnessConfig.write/2`
-  # refuses to overwrite one, so the stranding that would cause is contained to
-  # the one session rather than made permanent.
+  # An unreadable config also reads as `nil`, but `HarnessConfig.write/2`
+  # refuses to overwrite one, so the stranding is contained to the session.
   #
-  # **The file wins for both sources, and only `:env` falls further.** A copy
-  # whose project came from its own `config.yml` takes its harness id from its
-  # own file and nothing else — no working copy with a real config gets to
-  # borrow another one's exported id. A copy with no config to read might still
-  # be a real, already-onboarded working copy rather than a fresh sprite — it
-  # just never got a `.code_my_spec/config.yml` of its own — so `:env` checks
-  # the file first too, via the same `HarnessConfig.read/1` a single-root
-  # resolution always uses, and only falls through to `CMS_HARNESS_ID` when
-  # there is truly no file to read.
-  #
-  # Checking the environment first here, unconditionally, was the bug:
-  # measured 2026-08-20 on a real working copy — onboarded, with its own
-  # correct `.cms_harness.json`, but never given a `config.yml` — every join
-  # presented the *launching session's* harness id instead of its own,
-  # because that was checked before the file that actually named it.
+  # The id always comes from the copy's own file, never the environment.
+  # `resolve_project/1` never yields `:env`; that clause is unreachable.
   defp working_copy_id(:env, root) do
     case HarnessConfig.read(root) do
       {:ok, %{working_copy_id: id}} -> id
@@ -233,8 +127,7 @@ defmodule CmsHarness.ProjectIdentity do
   tracked file, and the copy is where that difference lives — so the committed
   value is the project's default and the copy's record is what actually happened.
 
-  `nil` for a project that names none, which is every project until somebody
-  sets it: the build's own default is the answer then, exactly as before.
+  `nil` for a project that names none; the build's own default applies then.
   """
   @spec server_url(String.t()) :: String.t() | nil
   def server_url(root) do
@@ -280,13 +173,9 @@ defmodule CmsHarness.ProjectIdentity do
   @doc """
   What a failed parse means, given `:init.get_status/0`.
 
-  95baa45e: every parse calls `Application.start(:yamerl)`, a call into the
-  application controller. While the VM is stopping that controller is busy
-  stopping this application, the call exits, and YamlElixir's catch-all
-  reports the exit as `"malformed yaml"`. Measured 2026-10-02: a promote's
-  SIGTERM at 18:28:16, and a call at 18:28:21 against an unchanged, valid
-  config refused as malformed. Said as what it is — the harness is restarting —
-  so nobody goes looking for a YAML error.
+  Every parse calls `Application.start(:yamerl)`; while the VM is stopping,
+  that call exits and YamlElixir reports it as `"malformed yaml"`. A failure
+  while stopping is `{:error, :restarting}`, so nobody looks for a YAML error.
   """
   @spec parse_failure(term(), {atom(), term()}) ::
           {:error, :restarting | {:invalid_config, term()}}

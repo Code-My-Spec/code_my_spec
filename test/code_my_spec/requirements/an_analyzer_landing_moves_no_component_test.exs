@@ -3,17 +3,17 @@ defmodule CodeMySpec.Requirements.AnAnalyzerLandingMovesNoComponentTest do
   An analyzer's findings are not a component input.
 
   No component requirement reads problems (28d72f8a), so a component's
-  fingerprint — and the graph's — must not move when an analyzer lands,
+  fingerprint must not move when an analyzer lands,
   whatever it found. It used to hash `{file_path, line, rule, message}` per
   source, which made every credo, compiler or exunit run that changed a finding
   recompute the components it touched, for verdicts that no longer exist.
   """
 
-  use CodeMySpecSpex.Case
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
-  alias CodeMySpec.Requirements.{Freshness, GraphFingerprint, Preloader}
+  alias CodeMySpec.Requirements.{Freshness, Preloader}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,10 +35,7 @@ defmodule CodeMySpec.Requirements.AnAnalyzerLandingMovesNoComponentTest do
 
   defp fingerprints(scope, component) do
     {:ok, ctx} = Preloader.load(scope)
-    config = CodeMySpec.Configurations.get_or_create(scope)
-
-    {Freshness.component(ctx, Enum.find(ctx.components, &(&1.id == component.id))),
-     GraphFingerprint.compute(ctx, config)}
+    Freshness.component(ctx, Enum.find(ctx.components, &(&1.id == component.id)))
   end
 
   defp replace(scope, component, findings) do
@@ -46,7 +43,7 @@ defmodule CodeMySpec.Requirements.AnAnalyzerLandingMovesNoComponentTest do
     :ok
   end
 
-  test "a finding appearing, moving or clearing moves neither fingerprint", ctx do
+  test "a finding appearing, moving or clearing does not move the fingerprint", ctx do
     component = CodeMySpec.ComponentsFixtures.component_fixture(ctx.scope)
     before = fingerprints(ctx.scope, component)
 

@@ -46,22 +46,15 @@ defmodule CodeMySpec.Tests do
       end)
 
     test_args = ["test", "--formatter", "ClientUtils.TestFormatter" | args]
-    command = "mix " <> Enum.join(test_args, " ")
+    # The project's `test` recipe when it declares one; the arguments are the same.
+    program = if Environments.recipe?(env, "test"), do: "just", else: "mix"
+    command = program <> " " <> Enum.join(test_args, " ")
     file_path = extract_file_path(args)
 
-    # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_* so
-    # the child `mix`/`erl` boots from the user's installed OTP, not our
-    # extracted ERTS ("cannot get bootfile"). Appended last so it wins.
     extra_env = Keyword.get(opts, :extra_env, [])
 
-    # `merge_clean_env/1`, never `++ clean_otp_env()`. The scrub sets MIX_ENV to
-    # nil, so appending it last unsets the "test" set two lines above.
-    #
-    # `mix test` happens to survive that — Mix forces test env for its own task —
-    # which is exactly what made it survivable here for so long. The ecto tasks
-    # that used to run alongside it did not, and migrated `code_my_spec_dev`.
-    # They are gone now, and this stays correct so the next thing added here
-    # inherits a working environment rather than the trap.
+    # `merge_clean_env/1` scrubs the release's OTP variables while keeping these
+    # explicit ones; `++ clean_otp_env()` would unset MIX_ENV.
     cmd_env =
       Environments.merge_clean_env(
         env:
@@ -74,7 +67,7 @@ defmodule CodeMySpec.Tests do
     # Track whether we're using a caller-provided file (cache) vs a generated temp file
     caller_provided_file = Keyword.has_key?(opts, :output_file)
 
-    case run_with_database(env, test_args, cmd_env) do
+    case run_with_database(env, program, test_args, cmd_env) do
       {raw_output, exit_code} ->
         json_content = read_test_results(env, temp_file, caller_provided_file)
 
@@ -92,50 +85,19 @@ defmodule CodeMySpec.Tests do
       {:error, {:execution_error, Exception.message(exception)}}
   end
 
-  # The analyzer gets its own test database, because otherwise it shares the
-  # agent's.
-  #
-  # `config/test.exs` already partitions per working copy, so two worktrees are
-  # separate. What was not separate is the analyzer from the agent *inside* one
-  # worktree: this ran with `cd:` set to the working copy and no
-  # `MIX_TEST_PARTITION`, so it resolved to exactly the database the agent's own
-  # `mix test` uses, and every analyzer pass became a second writer on the same
-  # sandbox.
-  #
-  # The symptom is a set of `MatchError`s on fixture setup, in whatever files
-  # happened to be running — never the ones the agent changed. It blocked five
-  # consecutive stops here. Deleting the rows did not help: a second collided
-  # run replaced them within eight minutes. And it does not need an agent
-  # running tests at all — several sessions' analyzers collide with each other,
-  # which is why timing mitigations cannot work.
-  #
-  # Yield to a caller that already isolated the database.
-  #
-  # The harness path does: `CmsHarness.AnalyzerEnv.extra_env/1` includes
-  # `CmsHarness.TestDatabase.env/1`, which derives a partition from the absolute
-  # path — the `code_my_spec_testh<hash>` databases. It names them and no longer
-  # creates them; a missing one fails the run by name. Setting a second value
-  # here and relying on `System.cmd`'s duplicate-key ordering to pick the right
-  # one would be a coin flip dressed as a fix.
-  #
-  # What is left uncovered is the server-side path, which calls this with no
-  # `extra_env` at all and therefore inherits the working copy's own test
-  # database — the same one the agent's `mix test` uses. That is the collision.
+  # The analyzer gets its own test database, never the agent's. A caller that
+  # already set `MIX_TEST_PARTITION` (the harness) wins; otherwise one is
+  # derived per working copy.
+  # See knowledge/analysis, "Test databases".
   defp partition_env(env, extra_env) do
     if List.keymember?(extra_env, "MIX_TEST_PARTITION", 0),
       do: [],
       else: [{"MIX_TEST_PARTITION", partition(env)}]
   end
 
-  # One database per working copy, created once and reused. A unique name per
-  # run would be perfectly isolated and would also mean creating and migrating
-  # a database on every stop.
-  #
-  # Derived from the working copy, not a bare suffix. `config/test.exs` uses
-  # `MIX_TEST_PARTITION` *instead of* its own per-worktree name when set, so a
-  # constant here would give every worktree's analyzer one shared
-  # `code_my_spec_test_analyzer` — four agents' analyzers colliding with each
-  # other, which is the worse version of the bug being fixed.
+  # One per working copy, reused (not per run: that would mean creating one on
+  # every stop). Never a constant: `config/test.exs` uses the partition instead
+  # of its per-worktree name, so a constant is shared by every worktree.
   @analyzer_partition "_analyzer"
 
   defp partition(%{cwd: cwd}) when is_binary(cwd) and cwd != "",
@@ -148,36 +110,16 @@ defmodule CodeMySpec.Tests do
     end
   end
 
-  # No creating, no migrating. This used to notice "database does not exist",
-  # shell out to `ecto.create` and `ecto.migrate`, and retry.
-  #
-  # `Environments.clean_otp_env/0` scrubbed MIX_ENV out of `cmd_env`, and unlike
-  # `mix test` — which forces test env for itself — the ecto tasks inherit
-  # whatever they are given. So they ran in **dev** and migrated
-  # `code_my_spec_dev`, the database every agent shares. That is how a
-  # DropStatusFromStories migration reached dev at 03:34 on 2026-08-13 with
-  # nobody having run one there.
-  #
-  # Removed rather than repaired. Nothing in this project may migrate a
-  # database from code — `Mix.Tasks.Cms.CheckTestMigrations` already holds that
-  # line, "a refusal rather than an alias that migrates", and this was the
-  # exception. A missing database now surfaces as the child's own "database
-  # does not exist", which names itself and is answered by a human with
-  # `MIX_ENV=test mix ecto.create`.
-  defp run_with_database(env, test_args, cmd_env) do
-    Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env)
+  # Never creates or migrates a database: nothing here migrates from code. A
+  # missing database surfaces as the child's own "database does not exist".
+  # See knowledge/analysis, "Test databases".
+  defp run_with_database(env, program, test_args, cmd_env) do
+    Environments.cmd(env, program, test_args, stderr_to_stdout: true, env: cmd_env)
   end
 
-  # A generated temp path is handed to the child as `EXUNIT_JSON_OUTPUT_FILE`,
-  # so the child writes it wherever it is running — inside the environment.
-  # Reading it back with File.read looked on the machine that *launched* the run,
-  # and the miss is silent: "{}" parses as a run with no tests, which is
-  # indistinguishable from a clean suite. A sprite whose tests all failed
-  # reported green.
-  #
-  # A caller-provided path is the cassette seam (the stop hook's
-  # `test_output_files`), which is a fixture on the harness's own disk — host
-  # local, and not ours to delete.
+  # The generated path is written inside the environment, so it is read (and
+  # deleted) through it; a host-side miss would parse "{}" as a clean suite. A
+  # caller-provided path is a host-local cassette fixture, not ours to delete.
   defp read_test_results(env, temp_file, caller_provided_file) do
     read =
       if caller_provided_file,

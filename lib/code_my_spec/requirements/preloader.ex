@@ -48,66 +48,18 @@ defmodule CodeMySpec.Requirements.Preloader do
         }
 
   @doc """
-  Load all data for the project in ~6 queries.
+  Load all data for the project's whole computation at one vantage.
 
-  ## One checkout, or all of them
+  A scope naming a checkout reads that checkout's files and its own plus
+  unassigned stories. A scope naming none reads the project's reading copy's
+  files (`files_vantage/1`; every checkout's when the project has none) and
+  every ready story: files must be one tree that existed, but a person looking
+  at the project is asking about all of its stories.
+  See knowledge/requirements_graph/checkers, "Preloading".
 
-  Every working copy files its own row per path, so a scope naming a harness
-  gets that checkout's tree and a scope naming none gets all of them blended.
-
-  Both are wanted, by different callers:
-
-    * **an agent** always has a working copy — the hook carries `X-Harness-Id`
-      — and must see only it. Blended, 308 `(component, role)` pairs read as
-      satisfied here by files that exist only in another checkout, 303 of them
-      specs. The agent is told the spec is written, skips the component, and the
-      gap surfaces later as an implementation with nothing behind it.
-
-    * **a person** looking at the project in a browser has no checkout to name.
-      `with_harness/2` already decided what to do about that — "adopting the
-      wrong checkout's identity is worse than reading widely" — and refusing
-      instead took the graph out of the UI entirely.
-
-  So the default is loose and the agent path is strict by construction: it
-  cannot reach here without a harness, because the plug that builds its scope
-  puts one on. An unscoped load says so in the log, which is how a caller that
-  should have named one gets found.
-
-  ## Blending is a stand-in, not the answer
-
-  The tempting fix is for the UI to pick a harness — the most recently seen
-  one. It bounces: five checkouts reporting means the graph flips to whichever
-  synced last, so the same page shows different requirements on consecutive
-  renders with nothing the viewer did to cause it. Wrong-but-stable beats
-  correct-but-flickering for a page someone is reading.
-
-  The direction that resolves it is not picking better. It is that a web view
-  should read the **default branch** over an API rather than any working copy:
-  branch state is shared, stable, and canonical, where a checkout is transient
-  and private. At that point the question "which harness is the UI showing"
-  stops existing, and this clause can go.
+  `opts[:shared]` supplies a `shared/1` already loaded for this drain.
   """
   @spec load(Scope.t()) :: {:ok, context()}
-  # Two axes, and they do not want the same answer.
-  #
-  # **Files** must be one checkout's. Blended, a file present in another
-  # worktree reads as present here — the over-satisfaction this module's own
-  # moduledoc measured at 303 skipped specs. So an unscoped reader is given the
-  # designated checkout's files: a tree that actually existed, which a union is
-  # not.
-  #
-  # **Stories** must not be narrowed. A person looking at the project is asking
-  # about the project, and a story dispatched to a worktree is still its work.
-  # Narrowing both together hid dispatched stories from the browser entirely,
-  # which criterion 2935 caught: the Three Amigos owed on an epic's stories
-  # stopped being visible to anyone not standing in that copy.
-  #
-  # The result is written to the **unscoped** row-space, because that is what it
-  # is — neither checkout's answer. That is what removes the recompute loop:
-  # this reader and an agent no longer overwrite each other, so
-  # `served_graph/3` stops refusing a projection that never matched the count it
-  # published. Measured before: 348 computes in one log, median 2.6s, max
-  # 14.8s, 116 of them from stop hooks.
   def load(scope, opts \\ [])
 
   def load(%Scope{active_working_copy_id: nil} = scope, opts) do
@@ -128,28 +80,8 @@ defmodule CodeMySpec.Requirements.Preloader do
 
     %{components: components} = shared
 
-    # 2. This working copy's files, grouped by component and story
-    #
-    # Scoped to the harness, and it was not. Every checkout reports its own row
-    # per path, so an unscoped load returned five copies of every file on this
-    # project — ~18,650 rows for a tree of ~4,500 — and `has_role?/3` and
-    # `has_valid_role?/2` answered from whichever the database happened to
-    # return first.
-    #
-    # The cost is not the over-count. 308 `(component, role)` pairs were
-    # satisfied here by files that exist only in *another* checkout, 303 of them
-    # specs — so an agent in this working copy was told 303 components had specs
-    # written, and skipped them. Over-satisfaction is the expensive direction:
-    # work gets skipped rather than repeated, and the gap surfaces later as an
-    # implementation with no spec behind it.
-    #
-    # One file currently disagrees across checkouts — a spec valid in two and
-    # invalid in a third — which made `spec_valid` for that component depend on
-    # row order. That is the same defect, just the loud instance of it.
-    #
-    # `acde83fd` scoped runs and problems and its own comment says it "missed
-    # these two". This is a third site it missed, and it feeds every
-    # `file_exists` and `file_valid` check in the graph.
+    # One checkout's files: every checkout files its own row per path, and a
+    # file in another worktree must never satisfy a requirement here.
     {files_us, all_files} =
       :timer.tc(fn ->
         File
@@ -168,32 +100,10 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> Enum.filter(& &1.story_id)
       |> Enum.group_by(& &1.story_id)
 
-    # 4. Stories
-    #
-    # The pace gate. Only stories released for development project into the
-    # requirement graph — a parked story produces no nodes at all, not even
-    # Three Amigos. This is deliberately a filter rather than a requirement
-    # node: a `ready_for_dev` node would surface as actionable work and the
-    # agent would simply satisfy it, gating nothing.
-    #
-    # Parked stories stay reachable through the backlog tools, which query
-    # Stories directly rather than going through the graph.
-    #
-    # The assignment gate, and the reason story 895 exists. A copy is offered
-    # its own stories and every unassigned one, and never another copy's:
-    # *"if a harness is assigned stories, it should get its assigned stories
-    # and all unassigned stories. Unassigned stories should surface to all
-    # working copies."*
-    #
-    # Assignment narrows the backlog and never hides it. A project with no
-    # assignments anywhere behaves exactly as it did before the column existed,
-    # which is what makes the axis shippable empty — and it fails the safe way:
-    # if unassigned work were invisible until claimed, a fresh project would
-    # offer nobody anything.
-    #
-    # `nil` is the UI path, which blends every checkout deliberately (see the
-    # clause above) and must not be narrowed to the unassigned pool — the page
-    # is showing the project, not standing in a checkout.
+    # Stories: only `ready_for_dev` ones project (a filter, not a node — an
+    # agent would just satisfy a node); a checkout gets its own and the
+    # unassigned ones; `nil` gets every ready story.
+    # See knowledge/requirements_graph/checkers, "Preloading".
     {stories_us, stories} = :timer.tc(fn -> project_stories(project_id, working_copy_id) end)
 
     story_ids = Enum.map(stories, & &1.id)
@@ -248,85 +158,20 @@ defmodule CodeMySpec.Requirements.Preloader do
      }}
   end
 
-  # Everything the graph's `:delegate` requirements read that nothing else here
-  # loads: rules, criteria and questions (three_amigos_complete), personas
-  # (personas_complete), and issues (issues_triaged / issues_resolved).
-  #
-  # Loaded for the fingerprint, not for the graph — no node reads them, and the
-  # checkers still query for themselves. They are here so that
-  # `GraphFingerprint` covers them, which is what a published graph needs
-  # before anyone can safely treat it as current.
-  #
-  # `{id, updated_at}` rather than a content digest. The moduledoc on
-  # `GraphFingerprint` rejects timestamps, and is right to for files:
-  # `upsert_files/2` replaces rows on conflict, so a no-op sync bumps every
-  # `updated_at` and the fingerprint would never settle. None of these five are
-  # bulk-upserted — they are written one at a time through their contexts — so
-  # here a timestamp is both stable across no-ops and strictly more sensitive
-  # than hashing chosen columns, which is the failure mode that would matter.
-  # `deploys` is the sixth and it arrived late, because it is the only one the
-  # preloader was already loading — `uat_deploy_by_story` — while the
-  # fingerprint hashed none of it. `deploy` asks `Deploys.uat_check/3`, which
-  # reads that collection, so a deploy landing moved the graph and not the hash
-  # and `cached_graph/1` served the pre-deploy projection as current. That is
-  # the failure `16a24105` names: "a cached graph can tell an agent work is
-  # finished that a deploy has just reopened".
-  #
-  # Loading a collection is not covering it. The other five were found by asking
-  # what the checkers read; this one hid because the preloader's answer looked
-  # like coverage.
-  # `stories` is the seventh, and it is here for a reason worth stating: the
-  # context already carries stories, and that is not the same set. `ctx.stories`
-  # is filtered to `ready_for_dev == true` — only released stories project into
-  # the graph — while `StoriesChecker` asks `Stories.project_has_stories?/1`,
-  # which counts every one. A project whose only story is parked therefore read
-  # as having none, and creating one did not move the hash. Onboarding is
-  # exactly when that bites: the first story exists before anyone marks it
-  # ready, and the graph is what the agent is following.
+  # Stamps (`{id, updated_at}`) of every table the `:delegate` checkers read,
+  # hashed into each fingerprint; the checkers still query for themselves.
+  # Timestamps are safe here because none of these are bulk-upserted. `stories`
+  # is every story, not `ctx.stories` (ready ones only): `StoriesChecker` counts
+  # parked stories too. See knowledge/requirements_graph/checkers, "Fingerprints".
   @delegated_tables ~w(bdd_rules criteria questions personas issues deploys stories)
 
-  # The four collections `BddRulesChecker` reads, batched.
-  #
-  # `compute_story_nodes/3` loops every ready story and `run_delegate/5` hands
-  # the checker a scope and a story and nothing else, so the checker queried per
-  # story: personas, rules, criteria and questions, four round trips each. On a
-  # project with 76 ready stories that is 304 queries inside one graph
-  # computation, and the graph is recomputed on every stop hook.
-  #
-  # Four queries here instead. They are four rather than one repeated because
-  # the linkage genuinely differs: rules and questions carry `project_id`,
-  # criteria carry only `story_id`, and personas hang off a join table.
-  # One clause, and no nil case.
-  #
-  # `ProblemRepository` falls back to the project's default harness when a scope
-  # has none, and that fallback is part of why this took so long to find: it
-  # makes a scope with no working copy look answerable, so nobody notices the
-  # caller that forgot to set one. A requirement graph is a statement about a
-  # checkout, and answering "no checkout" with the default one invents a tree
-  # the caller was not asking about.
-  # A nil harness reads every checkout's rows, which is what this did before and
-  # what the warning above is for. Not an error: `with_harness/2` deliberately
-  # leaves a request that names no harness unscoped — "adopting the wrong
-  # checkout's identity is worse than reading widely" — and the browser has no
-  # working copy to name. Refusing there took the requirement graph out of the
-  # UI entirely and failed 86 spex.
   @doc """
   Whose files a computation reads: the scope's own checkout, or the project's
-  default when it names none.
+  reading copy when it names none.
 
-  `files_vantage/1` below answers the default checkout for *any* scope — it
-  matches on `active_project_id` and never looks at the working copy. `load/1`
-  has always known that and chosen between them in two clauses; the narrow
-  loaders called `files_vantage/1` unconditionally and so computed every
-  checkout's verdicts from main's files.
-
-  Measured on dev, 2026-09-17: at the `devops-q` vantage the projection matched
-  main's file state on six of six components, in both directions — four
-  over-satisfied, which is an agent told the implementation exists because it
-  exists in another worktree.
-
-  Same rule `Profiles.scope_files_to_copy/2` follows, and now the only place it
-  is written down.
+  `files_vantage/1` answers the reading copy for any scope and never looks at
+  the working copy, so narrow loaders must call this, not it.
+  `Profiles.scope_files_to_copy/2` follows the same rule.
   """
   @spec files_copy(Scope.t()) :: Ecto.UUID.t() | nil
   def files_copy(%Scope{active_working_copy_id: copy}) when is_binary(copy), do: copy
@@ -335,17 +180,9 @@ defmodule CodeMySpec.Requirements.Preloader do
   @doc """
   Which checkout's files a reader that named none is shown.
 
-  Public for `Requirements.Profiles`, whose `:files` profile answers the same
-  eight requirements from the same rows and so has to pick the same checkout.
-  It blended instead, and the diff caught it on the unscoped vantage: twenty
-  components read as having an implementation that exists only in another
-  worktree. That is the over-satisfaction direction this function was written
-  to close.
-
-  `WorkingCopies.reading_copy_id/1` is where the rule lives and why. It moved
-  there because `Files` has to follow it too and cannot depend on
-  `Requirements` — and had its own copy, which disagreed: see
-  `Files.component_ids_present/1`.
+  Public so `Requirements.Profiles` picks the same checkout for the same
+  requirements. The rule lives in `WorkingCopies.reading_copy_id/1` (the
+  project's default copy, else its main one), where `Files` can follow it too.
   """
   @spec files_vantage(Scope.t()) :: Ecto.UUID.t() | nil
   def files_vantage(%Scope{} = scope), do: CodeMySpec.WorkingCopies.reading_copy_id(scope)
@@ -354,20 +191,11 @@ defmodule CodeMySpec.Requirements.Preloader do
   The project's vantage-invariant half, loaded once and shared across the
   checkouts a drain settles.
 
-  Every checkout of a project shares these rows exactly — the same components
-  with the same dependencies and children, the same rules, questions, issue
-  stamps and deploys. What differs per vantage is the files, and the files are
-  the reason a vantage exists. `GraphWatcher.recompute_vantage/2` calls `load/2`
-  once per vantage, so without this the shared half is paid once per checkout
-  for a project that has not changed between them.
-
-  Measured on dev before it was shared: 32 queries at one vantage, 64 at two,
-  133-163 at three. Criterion 3620 asserts the count directly — a ratio could
-  not tell the two apart, because only about seven of fifty queries per vantage
-  are this half.
-
-  Built by `load/2` itself when no caller supplies one, so every existing caller
-  keeps working unchanged and only the drain pays once.
+  Every checkout shares these rows exactly (components with dependencies and
+  children, rules, questions, issue stamps, deploys); only files differ per
+  vantage. `load/2` builds it when no caller supplies one. Emits
+  `DrainCost.project_preload/0`, so a drain's count of these loads is
+  checkable.
   """
   @spec shared(Ecto.UUID.t()) :: map()
   def shared(project_id) do
@@ -383,19 +211,8 @@ defmodule CodeMySpec.Requirements.Preloader do
     }
   end
 
-  # The components themselves. Announced through `shared/1` above rather than
-  # here, so the count is of the shared *load* and not of one query inside it.
-  #
-  # Every checkout of a project shares these rows exactly — the same components,
-  # the same dependencies, the same children. What differs per vantage is the
-  # files, which is the whole reason a vantage exists. `recompute_vantage/2`
-  # calls `load/1` once per vantage, so today this runs once per checkout for a
-  # project that has not changed between them.
-  #
-  # Announced rather than counted here, because the interesting number is
-  # per *drain* and a drain spans several loads. `DrainCost.measure/2` tallies
-  # it beside the queries, filtered to the drain's own process, and
-  # `last_drain.project_preloads` is what criterion 3620 asserts on.
+  # Announced through `shared/1`, so the count is of the shared load, not of
+  # this query (which `topology_context/1` also runs).
   defp project_components(project_id) do
     Component
     |> where([c], c.project_id == ^project_id)
@@ -403,16 +220,8 @@ defmodule CodeMySpec.Requirements.Preloader do
     |> Repo.all()
   end
 
-  # What a preload cost, split the way it splits.
-  #
-  # `pass cost` reports the preload as one number, and on this project it is the
-  # largest of them — 65-811ms against an edge rebuild of 0-2ms once the rest of
-  # the pass was narrowed. One number cannot say which half to attack, and two
-  # guesses at it from reading the code were wrong: the shared half turned out
-  # to be ~7 of ~50 queries, and the file load is 5200 rows carrying a jsonb
-  # column per vantage per pass.
-  #
-  # Row count travels with it because the times only mean something beside it.
+  # What a preload cost, split by phase, with the file row count the times only
+  # mean something beside.
   defp log_load_cost(project_id, working_copy_id, file_count, parts) do
     ms = fn us -> div(us, 1000) end
     total = parts |> Map.values() |> Enum.sum() |> ms.()
@@ -430,16 +239,11 @@ defmodule CodeMySpec.Requirements.Preloader do
   The shape inputs and nothing else: components with their dependencies and
   children, and this vantage's stories.
 
-  Enough for `Freshness.topology/2` to say whether the shape moved, and enough
-  for `Projection.rehydrate/2` to place a stored row — it reads
-  `components_by_id` and `stories` — so the event path can rebuild edges over
-  the rows it already holds. Not enough for any verdict, on purpose: nothing
-  here reads file contents, problems or criteria. File membership is needed
-  to exclude discovered components absent from this checkout's story edges.
-
-  Five queries. `ShadowProjector.reproject_topology/2` used to call `load/2`
-  for this on every narrow drain — the whole project, ~50 queries and the
-  largest phase of a pass, to compare one fingerprint that had not moved.
+  Enough for `Freshness.topology/2` and `Edges.plan/3`, and for rehydrating a
+  stored row (`components_by_id`, `stories`), so a narrow drain can redraw
+  edges over the rows it holds without a full `load/2`. Not
+  enough for any verdict. Which components have files here is included, to
+  exclude discovered components absent from this checkout.
   """
   @spec topology_context(Scope.t()) :: map()
   def topology_context(%Scope{active_project_id: project_id} = scope) do
@@ -483,7 +287,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   The ready stories reserved for a checkout other than this scope's.
 
   For a role that reads every story wherever it is placed
-  (`RoleProfile.story_vantage/1` is `:project` — product, a31f1cd6 step 4d).
+  (`RoleProfile.story_vantage/1` is `:project` — product).
   `load/2` leaves these out on purpose: a copy is offered its own stories and
   the unassigned ones. Their verdicts live at their placement copy's vantage,
   which `Projection.placed/2` reads. Empty for a scope naming no checkout, which
@@ -513,42 +317,17 @@ defmodule CodeMySpec.Requirements.Preloader do
   @doc """
   One story's context, for a consumer that is only going to compute that story.
 
-  ## Why this is so much smaller than `load/1`
+  The story, its files, its issue submissions and latest QA attempt. For one
+  story, the delegates' own per-story queries are cheaper than `load/1`'s
+  project-wide batch, so they are left to query for themselves.
+  `files_by_path` is not carried: the story graph has no `:path_exists`.
 
-  `load/1` exists to amortise an N+1 across the whole project: the story
-  delegates take a scope and a story and nothing else, so they queried per story
-  — "on a project with 76 ready stories that is 304 queries inside one graph
-  computation". Batching them into `@delegated_tables` is what made a
-  whole-project pass affordable.
+  `skip_fingerprints` is set and `delegated_inputs` absent: a fingerprint from
+  a narrow context would be plausible but not the one a whole load produces, so
+  the row's `inputs_fingerprint` is `nil`.
 
-  For one story that trade inverts. The N+1 *is* the narrow load: four
-  per-story queries from the delegates, against fifteen project-wide ones to
-  avoid them. So this loads the story and its files and lets the delegates do
-  what they were written to do.
-
-  Nothing else in the story graph needs a context. Its eight requirements are
-  one `:file_exists` (served by the files below), one `:component_exists` and
-  one `:deployed` (both query directly), and delegates that ignore `ctx` or
-  query for themselves — `bdd_specs_passing` asks the run ledger whether spex
-  has run for this one story, rather than every drain asking it for all of
-  them.
-
-  There is no `:path_exists` in the story graph, which is why `files_by_path` is
-  not carried at all — see `narrow_context/2` on why an absent key is safer here
-  than an empty one.
-
-  ## No fingerprints
-
-  `skip_fingerprints` is set, and `delegated_inputs` is absent because nothing
-  but `Freshness` and `GraphFingerprint` read it. A projection that decides from
-  events has no use for a per-entity fingerprint, and computing one from a
-  narrow context would produce a *plausible* hash that is not the one a whole
-  pass would produce — worse than none, because it would look comparable.
-  `nil` is the honest stamp and already means "no basis to skip this row".
-
-  Answers with an empty context when the story is not in this vantage's scope —
-  parked, or assigned to another checkout — which is the same filter `load/1`
-  applies and makes the consumer write no rows for it.
+  Answers with an empty context when the story is not in this vantage's scope
+  (parked, or assigned to another checkout), so the consumer writes no rows.
   """
   @spec load_story(Scope.t(), integer()) :: {:ok, context()}
   def load_story(%Scope{active_project_id: project_id} = scope, story_id)
@@ -586,25 +365,10 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
-  # Only the keys this load actually fills, and that is a safety property rather
-  # than tidiness.
-  #
-  # Several checkers take a fast path when the context carries their collection
-  # and query per story when it does not — `Qa.complete_check/3` is the pattern:
-  # `case ctx[:qa_latest_by_story]`, use it when it is a map, otherwise fall
-  # through to `QaAttempts.complete?/2`. Handing them an *empty* map is not a
-  # missing key, it is an assertion that the story has no QA attempt, and they
-  # believe it.
-  #
-  # That is exactly what happened: filling every declared key with an empty
-  # collection made `qa_complete` read false for all 38 stories on the live
-  # project while the whole-context load read true. The unit fixtures did not
-  # catch it because a freshly created story genuinely has no attempt.
-  #
-  # So an absent key means "ask the database", which for one story is one
-  # indexed query and is what those clauses were written for. A key this load
-  # forgot that something genuinely needs raises `KeyError` — loud, caught by
-  # the drain, marks retained — rather than quietly answering `false`.
+  # Only the keys a narrow load fills. Checkers read `ctx[:key]` and query the
+  # database when it is absent; an empty collection is an answer ("no QA
+  # attempt") they believe. See knowledge/requirements_graph/checkers,
+  # "Preloading".
   defp narrow_context(stories) do
     %{
       stories: stories,
@@ -617,20 +381,10 @@ defmodule CodeMySpec.Requirements.Preloader do
   @doc """
   The project's own requirements need the checkout's files and nothing else.
 
-  Worth stating plainly, because the opposite was assumed: `compute_project_nodes/3`
-  looks project-wide, so a mark naming `:project` was given `load/1` — fifteen
-  queries, 91ms — and that is not what the fourteen project requirements read.
-
-  Six are `:path_exists` and resolve through `ctx[:files_by_path]`.
-  `qa_integration_plan` reads `ctx.files_by_project`. The other seven —
-  `personas_complete`, `stories_exist`, `architecture_designed`,
-  `spex_boundary_ready`, `work_dispatched`, `issues_triaged`, `issues_resolved`
-  — take no context at all and query for themselves.
-
-  So this is one file query. Components, stories, problems and
-  `delegated_inputs` are all absent, and `tracked_files/3` and `prefix_count/3`
-  reach for their keys through `ctx[:key]`, which falls through to the database
-  rather than reading an empty collection as an answer.
+  The `:path_exists` ones resolve through `files_by_path`,
+  `qa_integration_plan` reads `files_by_project`, and the rest query for
+  themselves. One file query; every other key is absent, so a checker reading
+  `ctx[:key]` falls through to the database.
   """
   @spec load_project(Scope.t()) :: {:ok, context()}
   def load_project(%Scope{active_project_id: project_id} = scope)
@@ -659,7 +413,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   the context makes `component_families/1` promote it to top-level and changes
   its definition metadata.
 
-  No problems are loaded: no component requirement reads them (28d72f8a).
+  No problems are loaded: no component requirement reads them.
   """
   @spec load_component_family(Scope.t(), Ecto.UUID.t()) :: {:ok, context()}
   def load_component_family(%Scope{active_project_id: project_id} = scope, id)
@@ -767,18 +521,11 @@ defmodule CodeMySpec.Requirements.Preloader do
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
-  # The newest QA attempt per story, invalidations preloaded — exactly what
-  # `QaAttempts.complete?/2` fetches one story at a time.
-  #
-  # The whole attempt rather than a boolean: deciding pass/fail is the Qa
-  # context's judgement, and duplicating `status == :pass and invalidations == []`
-  # here would be two places to change and one place to forget.
-  #
-  # Ordered by the database on the same keys `complete?/2` uses, then taken
-  # first-per-group: `Enum.group_by/2` preserves encounter order, so the head of
-  # each group is that story's newest attempt. Ordering in Elixir would mean
-  # comparing `{inserted_at, id}` tuples by hand, and a `DISTINCT ON` would not
-  # port to the SQLite side.
+  # The newest QA attempt per story, invalidations preloaded — what
+  # `QaAttempts.complete?/2` fetches one story at a time. The whole attempt, so
+  # pass/fail stays the Qa context's judgement. Ordered by the database on
+  # `complete?/2`'s keys; `group_by` keeps order, so each head is the newest
+  # (`DISTINCT ON` would not port to SQLite).
   defp qa_latest_by_story(story_ids) do
     QaAttempt
     |> where([a], a.story_id in ^story_ids and not a.stale)
@@ -789,13 +536,8 @@ defmodule CodeMySpec.Requirements.Preloader do
     |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
   end
 
-  # The UAT deploy per story. `Deploys.get/3` is a `Repo.one/1` on
-  # `(project_id, story_id, environment)`, so there is at most one and a map
-  # keyed by story is the same shape.
-  #
-  # Environment is pinned to "uat" here because `deploy` is the only node that
-  # reads deploys and it asks about UAT only — prod promotion is the release
-  # process's business.
+  # The UAT deploy per story (at most one per story and environment). Only
+  # `deploy` reads deploys, and only UAT.
   defp uat_deploy_by_story(project_id) do
     Deploy
     |> where([d], d.project_id == ^project_id and d.environment == "uat")
@@ -811,19 +553,9 @@ defmodule CodeMySpec.Requirements.Preloader do
     |> Map.put("working_copies", working_copy_gate_inputs(project_id, working_copy_id))
   end
 
-  # The LINK, not the persona. `personas_by_story/1` reads `persona_stories`,
-  # and `personas` being covered says nothing about it: creating a persona
-  # invalidated the graph while linking one to a story did not, so a story
-  # became eligible for its Three Amigos and the cached graph went on saying it
-  # was not — with nothing to ever change its mind, because no covered input
-  # moves when a link is written.
-  #
-  # Permanent rather than transient, which is what makes a join table the worst
-  # thing to leave out. `personas_complete` and `three_amigos_complete` both
-  # gate on this link.
-  #
-  # Ids rather than stamps: the row carries no `updated_at` worth reading, and
-  # the question is only ever which stories have a persona.
+  # The link, not the persona: `personas_complete` and `three_amigos_complete`
+  # gate on it, and covering `personas` says nothing about it. Ids, since the
+  # question is only which stories have a persona.
   defp persona_story_links(project_id) do
     Repo.all(
       from(ps in "persona_stories",
@@ -836,47 +568,12 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
-  # The columns `Promotion.running_copy_check` reads, rather than the rows —
-  # and from the two copies it reads them from, rather than the table.
-  #
-  # `stamps/2` would be wrong here in both directions. Too coarse, because
-  # `last_seen_at` is written on every heartbeat from every checkout, so the
-  # project's graph cache would be invalid within seconds of being built and a
-  # 4.4-second recompute would run on a loop. And too silent to be caught: this
-  # table was not covered at all, so a harness could report that the work is now
-  # on main and the cached graph would keep refusing the story with the reason
-  # it computed before the merge. The gate answers about state that changes
-  # without a file changing, which is exactly the case a files digest cannot see.
-  #
-  # Reading the whole table was the same mistake one level up. `GraphCache`
-  # keeps one row per project AND working copy — "one checkout's cache row, not
-  # the project's" — but every checkout computed its fingerprint from every
-  # checkout's git state, so one worktree reporting a commit invalidated all of
-  # their rows at once and each recomputed a graph whose own inputs had not
-  # moved. Spex criterion 3240 measures it.
-  #
-  # So: exactly the two copies `running_copy_check/2` names, and from each only
-  # what it reads. It asks `WorkingCopies.main/1` for the running copy and
-  # passes it to `serving/2`, which reads `preview_status` and, in the refusal
-  # it writes, `preview_url`. It fetches the asking checkout only to learn
-  # whether it is on file at all — no column of it decides anything, and none of
-  # any third checkout does either.
-  #
-  # `preview_checked_at` is not hashed, because it is stamped with the current
-  # time on every sync whether or not anything it describes moved. Hashing it
-  # would invalidate the graph on every heartbeat — the coarseness this exists
-  # to avoid, arriving through the back door. `serving/2` reads its companion
-  # the same way: it asks what the status *is*, never when it was taken.
-  #
-  # The asking copy's git state used to be here — `git_state_at`, the two commit
-  # counts and `tree_dirty`. It is gone with the columns. Nothing decided on it,
-  # and `Freshness.story/2` hashes this whole map into every story's
-  # fingerprint, so a keystroke in any checkout reconsidered every story in the
-  # project.
-  #
-  # With no checkout on the scope, `running_copy_check/2` answers "No checkout
-  # on this scope" without reading past whether a copy is designated, so that is
-  # all that is read. This is the UI's vantage, which `load/1` warns is a blend.
+  # Only the columns the running-copy gate reads, from the two copies it reads:
+  # the main copy's `preview_status`/`preview_url` and whether the asking copy
+  # exists. Never `stamps/2` or volatile columns (`last_seen_at`,
+  # `preview_checked_at`): this map is hashed into every story's fingerprint.
+  # With no checkout, only whether a copy is designated.
+  # See knowledge/requirements_graph/checkers, "Fingerprints".
   defp working_copy_gate_inputs(project_id, nil), do: designated_copy(project_id)
 
   defp working_copy_gate_inputs(project_id, working_copy_id),
@@ -900,32 +597,8 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
   end
 
-  # Only what decides a verdict, which is not what this used to select.
-  #
-  # `Freshness.story/2` hashes this into **every** story's fingerprint, so
-  # anything in here that moves takes the whole project's stories with it. It
-  # carried `commits_ahead_of_main`, `commits_behind_main` and `tree_dirty`,
-  # and all three move every time anybody edits a file in any checkout.
-  # Measured on dev over one hour: `working_copies` took 22 distinct values
-  # while every other shared input took between 2 and 6.
-  #
-  # None of the three gates anything. `Promotion.promoted/2` decides
-  # `story_promoted` from the story's own `promoted_version` stamp, and
-  # `not_yet_promoted/1` puts these counts in the `details` of an
-  # already-false verdict — under a comment that says so outright:
-  # "Informational only now — none of this gates."
-  #
-  # So this was the exact shape story 1020's rule forbids: an observation
-  # costing work in proportion to the size of the project rather than to what
-  # it changed. One file edit, every story reconsidered, for a verdict that
-  # could not have moved.
-  #
-  # The cost of dropping them is that those counts can go stale in the
-  # diagnostic text of a requirement that is already unsatisfied — "behind: 3"
-  # read a few minutes late. Worth saying plainly rather than hiding; it is
-  # text on a refusal, against recomputing every story in the project on every
-  # keystroke. `is_nil(c.git_state_at)` stays: it flips once, when a checkout
-  # first reports, and it swaps the diagnostic for a different sentence.
+  # Only whether the asking copy is on file; none of its columns decides a
+  # verdict.
   defp asking_copy_inputs(project_id, working_copy_id) do
     Repo.all(
       from(c in "working_copies",
@@ -940,19 +613,8 @@ defmodule CodeMySpec.Requirements.Preloader do
   # `qa_attempts` hangs off stories, not the project, so it cannot use `stamps/2`.
   # Read by `Qa.complete_check`, which backs `qa_complete`.
   #
-  # Invalidations are hashed beside the attempts, and they have to be. An
-  # invalidation writes its own row in `qa_invalidations` and leaves the
-  # attempt "preserved unchanged" — deliberately, since the attempt is the
-  # audit record — so nothing about `{a.id, a.updated_at}` moves when a pass is
-  # rejected. The fingerprint stays identical, the cached graph is served, and
-  # `qa_complete` goes on reporting a pass that an engineer has explicitly
-  # thrown out.
-  #
-  # Measured 2026-09-20: nine passes across seven stories were invalidated and
-  # every one of their `qa_complete` rows still read satisfied afterwards, with
-  # nothing able to change its mind — the fourth time a gate reading a table
-  # nothing else touches has been invisible to the cache, after deploys,
-  # unready stories and `working_copies`.
+  # Invalidations too: one writes its own row and leaves the attempt unchanged,
+  # so attempt stamps alone do not move when a pass is thrown out.
   defp qa_attempt_stamps(project_id) do
     Repo.all(
       from(a in "qa_attempts",

@@ -10,7 +10,7 @@ defmodule CodeMySpec.Agents.OnlyMainStartsOnTheMainCopyTest do
   `RoleProfile.home_copy`.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures

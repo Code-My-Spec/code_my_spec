@@ -39,13 +39,39 @@ defmodule CodeMySpec.Configurations do
   @spec get_or_create(Scope.t()) :: ProjectConfiguration.t()
   def get_or_create(%Scope{active_project_id: project_id}) when not is_nil(project_id) do
     case Repo.get_by(ProjectConfiguration, project_id: project_id) do
-      nil ->
-        %ProjectConfiguration{}
-        |> ProjectConfiguration.changeset(%{project_id: project_id})
-        |> Repo.insert!()
+      nil -> create_or_refetch(project_id)
+      config -> config
+    end
+  end
 
-      config ->
+  # 09fd73a4: a read-then-insert race between the get_by above and this insert
+  # -- two callers for the same project, neither seeing the other's row yet --
+  # used to raise Ecto.InvalidChangesetError (unique_constraint(:project_id)
+  # turns the DB's own conflict into a changeset error, but get_or_create
+  # still called insert!, which raises on it either way). Reproduced directly
+  # under concurrent load: IncrementalGraph.drain/1's rescue clause swallowed
+  # that raise and left the project's graph however stale it already was,
+  # which is what let a satisfied requirement (ready_for_qa) keep being
+  # offered after its own recompute kept failing this way.
+  #
+  # Losing the race is not an error: the configuration this call wanted now
+  # exists, made by whichever caller won it, so fetching it is correct rather
+  # than raising over a row this call itself asked to have exist. Any other
+  # changeset failure still raises exactly as insert! would have.
+  defp create_or_refetch(project_id) do
+    %ProjectConfiguration{}
+    |> ProjectConfiguration.changeset(%{project_id: project_id})
+    |> Repo.insert()
+    |> case do
+      {:ok, config} ->
         config
+
+      {:error, changeset} ->
+        if Keyword.has_key?(changeset.errors, :project_id) do
+          Repo.get_by!(ProjectConfiguration, project_id: project_id)
+        else
+          raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
+        end
     end
   end
 

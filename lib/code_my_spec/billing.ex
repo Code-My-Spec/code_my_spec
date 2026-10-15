@@ -2,29 +2,23 @@ defmodule CodeMySpec.Billing do
   @moduledoc """
   Buying a plan, and the plan an account is on.
 
-  The shape of this context is one decision: **the webhook is the only writer
-  of `account.plan`.** Starting a subscription hands the browser a client
-  secret and writes nothing about entitlement; the tier flips later, when
-  Stripe tells us the money actually moved — or, for a trial, that a trial
-  started, since a trial has no money to move yet and still has to grant
-  something. A page that granted the plan on its own would mean a closed tab
-  is a free upgrade, and it would have no answer at all for renewals,
-  failures or cancellations — all of which arrive as webhooks and never as
-  page loads.
+  **The webhook is the only writer of `account.plan`.** Starting a
+  subscription hands the browser a client secret and writes nothing about
+  entitlement; the tier flips when Stripe reports the payment — or, for a
+  trial, that the trial started. Renewals, failures and cancellations arrive
+  only as webhooks.
 
-  Lifecycle, as decided:
+  Lifecycle:
 
     * A trial (`start_subscription/3`'s `:trial_days` option) grants the tier
-      the moment Stripe reports the subscription as `trialing`, before any
-      card is even confirmed — the renewal at the end of the trial is billed
-      and granted the same way any other charge is.
-    * Cancelling keeps the tier until the period already paid for ends.
+      when Stripe reports the subscription `trialing`; the renewal after the
+      trial is billed and granted like any other charge.
+    * Cancelling keeps the tier until the paid period ends.
     * A failed renewal keeps the tier while Stripe retries; only Stripe giving
       up returns the account to free.
-    * With no Stripe secret key configured at all, `start_subscription/3`
-      grants the tier directly instead of asking Stripe for anything — see
-      `grant_without_stripe/2`. The only exception to "the webhook is the
-      only writer," and only because there is no Stripe to send one.
+    * With no Stripe secret key configured, `start_subscription/3` grants the
+      tier directly (`grant_without_stripe/2`) — the one exception, because
+      no webhook will ever arrive.
   """
 
   use Boundary,
@@ -56,17 +50,15 @@ defmodule CodeMySpec.Billing do
 
   ## One subscription per account, always
 
-  An account that already has a billing subscription has that one *moved* to the
-  new price rather than a second one created beside it. `27f519dc`: creating
-  unconditionally left both live, Stripe billed the sum, and our own data looked
-  perfect throughout — one `stripe_subscription_id`, the right `plan` — because
-  the older subscription simply stopped being referenced by anything we store.
-  The only place the truth existed was Stripe.
+  An account with a billing subscription has that one *moved* to the new price
+  rather than a second one created beside it: a duplicate bills the sum while
+  our own data looks correct.
 
-  "Already has" means a subscription in a status that bills. A subscription left
-  `incomplete` by an abandoned checkout charges nothing, so it is not what this
-  guards against and a fresh one is created beside it; Stripe expires those on
-  its own.
+  "Billing" means a status in `@billing_statuses`. An `incomplete`
+  subscription from an abandoned checkout charges nothing, so a fresh one is
+  created beside it; Stripe expires those on its own. When the existing
+  subscription cannot be read, this refuses (`:subscription_unreadable`)
+  rather than risk a duplicate.
   """
   @spec start_subscription(Scope.t(), atom(), keyword()) ::
           {:ok, %{client_secret: String.t() | nil, subscription_id: String.t()}}
@@ -83,15 +75,8 @@ defmodule CodeMySpec.Billing do
     trial_days = Keyword.get(opts, :trial_days, 0)
 
     with {:ok, account} <- ensure_customer(scope) do
-      # Reloaded, never taken from the scope. `scope.active_account` is a
-      # snapshot from when the page mounted, and `stripe_subscription_id` is
-      # written by a *webhook* — so between mount and click the struct in hand
-      # is exactly the one that has not heard about the subscription yet.
-      #
-      # The first attempt at this fix read the scope's copy and shipped looking
-      # correct: unit tests passed, because they built the account themselves.
-      # Against real Stripe it created a second subscription every time, in both
-      # directions, because the field it branched on was nil (`5a5708a7`).
+      # Reloaded, never taken from the scope: `stripe_subscription_id` is
+      # written by a webhook after the page mounted.
       account = Accounts.get_account_by_id(account.id) || account
 
       case billing_subscription(account) do
@@ -102,15 +87,9 @@ defmodule CodeMySpec.Billing do
     end
   end
 
-  # No Stripe secret key configured at all — true for a fresh dev box with no
-  # billing test keys set up yet, and never true once real keys exist
-  # (`StripeClient.configured?/0` flips the moment `secret_key` is set, the
-  # same key every other Stripe call already needs or fails outright). Asking
-  # a visitor to configure billing before they can test the rest of the
-  # intake funnel would be gating unrelated work on a missing local config
-  # value, so the tier is granted directly instead — this is the one place
-  # something other than the webhook writes `account.plan` (see moduledoc),
-  # justified only because there is no webhook that will ever arrive to do it.
+  # No Stripe secret key configured (a fresh dev box): grant the tier directly
+  # rather than gate the rest of the funnel on billing config. The one writer
+  # of `account.plan` besides the webhook.
   defp grant_without_stripe(%Scope{active_account: %Account{id: id}}, tier) do
     Logger.info("[Billing] Stripe not configured — granting #{tier} directly for account #{id}")
 
@@ -124,12 +103,9 @@ defmodule CodeMySpec.Billing do
     end
   end
 
-  # `trial_days > 0` puts the subscription straight into `trialing` with
-  # nothing due today — there is no invoice to attach a `confirmation_secret`
-  # to, so Stripe instead attaches a `pending_setup_intent` for collecting a
-  # payment method to charge once the trial ends. `expand`ing both and letting
-  # `client_secret/1` pick whichever is present is what lets the same call
-  # site work for a trial and a real charge.
+  # A trial has no invoice to confirm, so Stripe attaches a
+  # `pending_setup_intent` instead; expanding both lets `client_secret/1` pick
+  # whichever is present.
   defp create_subscription(account, tier, trial_days) do
     params = %{
       "customer" => account.stripe_customer_id,
@@ -155,10 +131,8 @@ defmodule CodeMySpec.Billing do
     end
   end
 
-  # `always_invoice` rather than the default `create_prorations`: the browser is
-  # sitting on a Payment Element waiting for something to confirm, and deferring
-  # the proration to the next cycle would leave it with nothing. This bills the
-  # difference now, which is also what someone clicking "upgrade" expects.
+  # `always_invoice`, not the default `create_prorations`: the Payment Element
+  # needs something to confirm now, and the upgrade is billed now.
   defp change_tier(account, subscription, tier) do
     with {:ok, item_id} <- subscription_item_id(subscription),
          {:ok, updated} <-
@@ -178,18 +152,8 @@ defmodule CodeMySpec.Billing do
     end
   end
 
-  # A tier change does not always need paying for.
-  #
-  # `always_invoice` bills the proration immediately, and on an *upgrade* that
-  # is a charge with a secret for the Payment Element to confirm. On a
-  # downgrade it is a credit — nothing to collect, so Stripe returns no
-  # `confirmation_secret`, and treating that as `:no_client_secret` told the
-  # user "Stripe didn't give us a way to take the payment" about a change that
-  # had already succeeded (`d5befe3c`).
-  #
-  # So the two are distinguished here rather than at the call site: a secret
-  # means confirm it, no secret on a *successful* update means the change is
-  # done and there is nothing to pay.
+  # A downgrade's proration is a credit: Stripe returns no secret, and on a
+  # successful update that means the change is done, not a failure.
   defp settled_or_confirmable(subscription) do
     case confirmable_secret(subscription) do
       {secret, intent_type} ->
@@ -201,9 +165,7 @@ defmodule CodeMySpec.Billing do
     end
   end
 
-  # Statuses that take money. `incomplete` and `incomplete_expired` never
-  # charged, and `canceled` has stopped — none of them can double-bill, so none
-  # of them should block a new subscription.
+  # Statuses that take money; only these block a new subscription.
   @billing_statuses ~w(active trialing past_due unpaid paused)
 
   defp billing_subscription(%Account{stripe_subscription_id: id} = account) when is_binary(id) do
@@ -212,9 +174,8 @@ defmodule CodeMySpec.Billing do
         {:ok, subscription}
 
       {:ok, %{"status" => status}} ->
-        # Not billing — incomplete, canceled, expired. Proceeding is right, and
-        # saying so is what makes the next duplicate diagnosable in one line
-        # instead of by driving real purchases against real Stripe.
+        # Not billing — incomplete, canceled, expired. Logged so a duplicate
+        # is diagnosable in one line.
         Logger.info(
           "[Billing] account #{account.id}: subscription #{id} is #{status}, " <>
             "not billing — creating a new one"
@@ -223,21 +184,9 @@ defmodule CodeMySpec.Billing do
         :none
 
       other ->
-        # Refuse. This used to create, on the reasoning that declining a sale
-        # because Stripe blipped is worse than a duplicate subscription.
-        #
-        # That was wrong, and QA proved it against real Stripe rather than in
-        # argument: a DNS failure reading the subscription hit this branch twice
-        # on one account, and the second time the create succeeded — leaving two
-        # active subscriptions, the old one orphaned and still charging. The
-        # exact defect `27f519dc` describes, arriving through the fallback meant
-        # to be the safe side of the trade (`5a5708a7`).
-        #
-        # The two outcomes are not comparable. A refused checkout is visible
-        # immediately, costs nothing, and the customer retries. A duplicate
-        # subscription is invisible to us — our own data looks correct — and
-        # bills every month until a human reads Stripe. So when we cannot tell
-        # whether an account already pays, we do not sell.
+        # Refuse: a refused checkout is visible and retried; a duplicate
+        # subscription is invisible from our data and bills monthly.
+        # See knowledge/platform, "Billing".
         Logger.warning(
           "[Billing] account #{account.id}: could not read subscription #{id} " <>
             "(#{inspect(other)}) — refusing rather than risk a duplicate"
@@ -252,9 +201,8 @@ defmodule CodeMySpec.Billing do
     :none
   end
 
-  # The item, not the price and not the subscription. Naming the wrong one adds
-  # a second line to the same subscription rather than replacing the first —
-  # the same defect one level down, and just as invisible from our side.
+  # The item, not the price or the subscription — naming the wrong one adds a
+  # second line to the subscription.
   defp subscription_item_id(subscription) do
     case get_in(subscription, ["items", "data"]) do
       [%{"id" => id} | _] -> {:ok, id}
@@ -352,13 +300,8 @@ defmodule CodeMySpec.Billing do
     end
   end
 
-  # A trial has nothing to invoice, so `invoice.payment_succeeded` never fires
-  # at trial start — only when it ends. Waiting for that would mean a visitor
-  # who chose a free trial gets no access for the 7 days it is meant to cover,
-  # which defeats the trial. Stripe puts a subscription with a trial straight
-  # into `trialing` on creation, before any payment method is even collected,
-  # so that status is what grants access here; the eventual renewal charge
-  # still arrives as `invoice.payment_succeeded` above, unchanged.
+  # A trial has nothing to invoice, so `invoice.payment_succeeded` fires only
+  # when it ends. `trialing` on creation is what grants access for the trial.
   defp handle(
          "customer.subscription.created",
          %{"data" => %{"object" => %{"status" => "trialing"}}} = event
@@ -443,11 +386,9 @@ defmodule CodeMySpec.Billing do
 
   defp account_id(event), do: metadata(event)["account_id"]
 
-  # Where the metadata actually is depends on the object. A subscription event
-  # carries it at the top; an invoice does not carry it at all — it mirrors the
-  # subscription's under `parent.subscription_details`. Guessing at that path
-  # cost a real payment: the event arrived, was deduped, and granted nothing,
-  # because the id it needed was two levels deeper than the tests pretended.
+  # A subscription event carries metadata at the top; an invoice carries the
+  # subscription's under `parent.subscription_details`. Both must resolve, or
+  # the event is deduped and grants nothing.
   defp metadata(event) do
     object = get_in(event, ["data", "object"]) || %{}
 

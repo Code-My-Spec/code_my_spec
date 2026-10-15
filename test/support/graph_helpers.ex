@@ -99,8 +99,34 @@ defmodule CodeMySpecTest.GraphHelpers do
   Call this after the thing you are claiming about, and before asserting.
   """
   def settle_graph(context) do
+    before = wake_tasks()
     :ok = GraphWatcher.settle(scope_of(context))
+    await_new_wakes(before)
     context
+  end
+
+  # The writer announces inside the settle, and `Agents.GraphWake` answers the
+  # announcement with a Task, so the wake is in flight when the settle returns.
+  # Waiting for the tasks this settle started makes "was it woken" a question
+  # with an answer, rather than one about how fast the box is.
+  defp wake_tasks,
+    do: CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new()
+
+  defp await_new_wakes(before) do
+    deadline = System.monotonic_time(:millisecond) + @default_timeout
+
+    wake_tasks()
+    |> MapSet.difference(before)
+    |> Enum.map(&Process.monitor/1)
+    |> Enum.each(fn ref ->
+      remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+      receive do
+        {:DOWN, ^ref, :process, _pid, _reason} -> :ok
+      after
+        remaining -> Process.demonitor(ref, [:flush])
+      end
+    end)
   end
 
   @doc "Assert the graph announced a change on this project's topic."

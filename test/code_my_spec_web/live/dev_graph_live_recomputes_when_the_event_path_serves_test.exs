@@ -23,26 +23,13 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
 
   setup %{conn: conn} do
-    previous = %{
-      projection: Application.get_env(:code_my_spec, :graph_shadow_projection, false),
-      source: Application.get_env(:code_my_spec, :graph_event_is_source, false)
-    }
-
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    Application.put_env(:code_my_spec, :graph_event_is_source, true)
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, :graph_shadow_projection, previous.projection)
-      Application.put_env(:code_my_spec, :graph_event_is_source, previous.source)
-    end)
-
     scope = full_scope_fixture()
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
     :ok = GraphWatcher.settle(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
+    :ok = IncrementalGraph.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
     Requirements.recompute(scope)
     Requirements.recompute(%{scope | active_working_copy_id: nil})
 
@@ -81,7 +68,7 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
       CodeMySpec.Questions.create_question(scope, story.id, %{text: "Which account?"})
 
     :ok = GraphWatcher.settle(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
+    :ok = IncrementalGraph.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
 
     {:ok, _view, html} = live(conn, ~p"/dev/graph")
 
@@ -119,7 +106,7 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
   test "an extra served requirement prevents a green audit", %{conn: conn, scope: scope} do
     story = CodeMySpec.StoriesFixtures.story_fixture(scope, %{ready_for_dev: true})
     :ok = GraphWatcher.settle(scope)
-    :ok = ShadowProjector.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
+    :ok = IncrementalGraph.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
     assert Requirements.served_vs_recomputed(scope).extra == 0
 
     for copy_id <- Enum.uniq([nil, scope.active_working_copy_id]) do
@@ -148,10 +135,10 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
     log =
       ExUnit.CaptureLog.capture_log([level: :info, metadata: [:obs]], fn ->
         GraphInputs.announce(scope, "Verification", [], :this_checkout)
-        :ok = ShadowProjector.settle(scope.active_project_id, [scope.active_working_copy_id])
+        :ok = IncrementalGraph.settle(scope.active_project_id, [scope.active_working_copy_id])
       end)
 
-    assert log =~ "[ShadowProjector] accounted for 1 observation(s)"
+    assert log =~ "[IncrementalGraph] accounted for 1 observation(s)"
     assert log =~ "obs="
   end
 

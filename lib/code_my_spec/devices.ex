@@ -7,44 +7,18 @@ defmodule CodeMySpec.Devices do
 
   ## Announcing, not registering
 
-  `announce/2` has the same two shapes `WorkingCopies.issue/3` has: a machine
+  `announce/3` has the same two shapes `WorkingCopies.issue/3` has: a machine
   presenting an id we already know is recognised, and one presenting an id we
-  do not is created *using that id* — the machine minted it, this just takes
-  its word. The daemon writes the id to `~/.codemyspec/device.json` once and
-  presents it forever after; see `CmsHarness.Device`.
+  do not is created *using that id* — the machine minted it. The daemon writes
+  the id to `~/.codemyspec/device.json` once and presents it forever after;
+  see `CmsHarness.Device`.
 
-  A missing or malformed id still mints a fresh one rather than failing —
-  reached only by a client too old to send one, or one that could not
-  determine anything about the machine it is on at all.
+  A missing or malformed id still mints a fresh one rather than failing.
 
-  ## Why the machine mints it, not the server
-
-  This used to be reversed, on the argument that every client-derived
-  identity fails the case that matters — a generated container hostname, a
-  MAC address that does not survive a re-image, a path that is not identity
-  at all. The argument was sound; the conclusion did not follow. What it
-  actually ruled out was *trusting* a client-derived id as globally unique,
-  not minting one client-side at all.
-
-  Server-issued turned out to have its own failure the client-side argument
-  missed: the id lives in one file per machine
-  (`~/.codemyspec/device.json`), and more than one daemon can run on one
-  box — a laptop's own dev harness alongside a separately installed
-  packaged service, each independently re-announcing on its own schedule.
-  Two writers sharing one file with no coordination raced it: each announce
-  asked the server "who am I", each got handed back whatever the *other*
-  daemon had most recently been told, and the file's content changed every
-  few minutes with no daemon ever settling on an identity long enough for a
-  channel join to still be holding it a moment later.
-
-  Asking a machine to assert its own identity instead — once, and only once
-  — removes the question that was being asked repeatedly and racily. The id
-  a fresh machine picks still is not guaranteed globally unique the way a
-  server-minted one was, so a presented id that collides with a *different*
+  The machine mints the id because several daemons can share one box and one
+  file; asking the server "who am I" on every announce raced. A self-picked id
+  is not trusted as globally unique: one that collides with a *different*
   account's device is not handed that device — see `create_or_recognise/3`.
-  What changed is who is trusted to hold the record of "who am I" between
-  asks: the machine's own file, not a question re-asked of the server on
-  every announce.
 
   ## A machine need not belong to anyone
 
@@ -53,16 +27,15 @@ defmodule CodeMySpec.Devices do
   checkout of its own, and requiring an account would attach it to whichever one
   announced first. It is issued an identity like any other machine.
 
-  Scoping is unchanged where an account exists. This widens what may be stored,
-  not who may read it — and a nil account matches only other nil-account
-  devices, so an accountless box recognising itself never becomes a route to
-  somebody else's laptop.
+  Scoping is unchanged where an account exists, and a nil account matches only
+  other nil-account devices, so an accountless box recognising itself never
+  becomes a route to somebody else's laptop.
 
   ## What is deliberately not here
 
-  No `stop_device`, no `delete_device`. A device is somebody's machine; the
-  server observes it and does not reach across to end anything on it. Same
-  decision the working-copies page makes about agents, for the same reason.
+  No `stop_device`. A device is somebody's machine; the server observes it and
+  does not reach across to end anything on it. `destroy/2` removes only the
+  record.
   """
 
   use Boundary,
@@ -85,10 +58,8 @@ defmodule CodeMySpec.Devices do
   The device for this id, or a new one created using it if the caller has none.
 
   `attrs` is what the machine says about itself — `:hostname` and `:kind` — and
-  is applied on every announce, not only at creation. A laptop that is
-  re-provisioned as a sprite, or renamed, says so on its next connection, and a
-  record that only ever took the first answer would describe the machine as it
-  was when it first appeared.
+  is applied on every announce, not only at creation, so a renamed or
+  re-provisioned machine is described as it is now.
 
   A label a person chose is never overwritten from here: the machine does not
   know what somebody decided to call it.
@@ -112,9 +83,8 @@ defmodule CodeMySpec.Devices do
 
   # One machine carries copies from every account its user belongs to, but the
   # row sits in whichever announced first. A token scoped to the user's other
-  # account must still recognise it: minting a fresh device on every heartbeat
-  # left the harness asking for an empty roster, so a restart restored nothing
-  # (ae3b491f). Recognising never moves the row to the caller's account.
+  # account must still recognise it, or each heartbeat mints a fresh device with
+  # an empty roster. Recognising never moves the row to the caller's account.
   defp recognised(%Scope{active_account_id: account_id} = scope, device_id) do
     existing(account_id, device_id) || members_device(scope, device_id)
   end
@@ -137,15 +107,10 @@ defmodule CodeMySpec.Devices do
     device |> Device.changeset(Map.delete(attrs, :account_id)) |> Repo.update()
   end
 
-  # Not found under this account, but the id it presented still matters: a
-  # machine that minted its own id and is announcing for the first time looks
-  # identical, from here, to two daemons on the same box racing to create the
-  # same id at once. Both are handled by trying the insert and, only on a
-  # primary-key collision, re-checking who actually holds it now.
-  #
-  # A well-formed id that fails to cast is not this machine's fault, so it
-  # still gets a device — just one minted here instead, same as the
-  # never-presented-anything case always has.
+  # Not found under this account: a first announce of a self-minted id and two
+  # daemons racing to create the same id look identical, so insert and, only on
+  # a primary-key collision, re-check who holds it. An id that fails to cast
+  # gets a server-minted device.
   defp create_or_recognise(scope, device_id, attrs) do
     case Ecto.UUID.cast(device_id) do
       {:ok, id} -> insert_or_reconcile(scope, id, attrs)
@@ -167,15 +132,9 @@ defmodule CodeMySpec.Devices do
     end
   end
 
-  # The id is already somebody's row by the time we look again. If it is
-  # *this* account's — the ordinary shape of the race, two daemons on one
-  # machine both announcing a brand-new id at once — recognise it: the other
-  # insert won, and losing a race to create your own device is not a reason
-  # to be refused it. If it belongs to a different account, this machine's
-  # self-picked id collided with somebody else's device entirely — vanishingly
-  # unlikely, but not a reason to hand this machine's announce to that
-  # account's row — so a fresh, server-minted id is issued instead, same as
-  # the no-id-presented case.
+  # The other insert won. This account's row → recognise it (the race between
+  # two daemons on one machine). Another account's → its self-picked id
+  # collided; issue a fresh server-minted id rather than hand over that row.
   defp reconcile_after_conflict(scope, id, attrs) do
     case recognised(scope, id) do
       nil -> %Device{} |> Device.changeset(attrs) |> Repo.insert()
@@ -190,13 +149,8 @@ defmodule CodeMySpec.Devices do
     end)
   end
 
-  # Scoped by account as well as id. The id arrives from a machine and is
-  # therefore an input: without the account check, one account's daemon
-  # presenting another's device id would be handed it.
-  #
-  # A nil account matches only devices that are themselves accountless. A shared
-  # box recognises itself across restarts; it does not become a way to reach
-  # somebody's laptop by presenting its id with no credentials attached.
+  # Scoped by account as well as id: the id is an input from a machine. A nil
+  # account matches only accountless devices.
   defp existing(_account_id, nil), do: nil
 
   defp existing(account_id, device_id) when is_binary(device_id) do
@@ -206,10 +160,8 @@ defmodule CodeMySpec.Devices do
     end
   end
 
-  # `is_nil/1` rather than `account_id: nil`, which Ecto refuses outright — and
-  # is right to. `= NULL` is never true in SQL, so a nil account compared that
-  # way would match no row and a shared box would be issued a new identity on
-  # every restart, quietly.
+  # `is_nil/1`: `= NULL` is never true in SQL, so a shared box would get a new
+  # identity on every restart.
   defp scoped(id, nil) do
     from(d in Device, where: d.id == ^id and is_nil(d.account_id))
   end
@@ -281,16 +233,12 @@ defmodule CodeMySpec.Devices do
   @doc """
   Record that this machine is alive, because something on it just proved it.
 
-  Split from `announce/3` for the reason `WorkingCopies.mark_alive/1` is split
-  from `issue/3`: announcing answers "who are you" and happens once when the
-  harness comes up, while this answers "you are still here". Conflating them
-  made `last_seen_at` mean "when did this box last reboot", so every machine
-  read as "Last seen" two minutes after starting — including one whose harness
-  was connected and serving at that moment.
+  Split from `announce/3` as `WorkingCopies.mark_alive/1` is from `issue/3`:
+  announcing happens once when the harness comes up; this answers "you are
+  still here". Conflating them made `last_seen_at` mean "last reboot".
 
-  Best-effort on purpose. This is bookkeeping alongside a request that has real
-  work to do, and a machine that cannot be marked alive is not a reason to
-  refuse a hook.
+  Best-effort: a machine that cannot be marked alive is not a reason to refuse
+  a hook.
   """
   @spec mark_alive(Device.t() | Ecto.UUID.t() | nil) :: :ok
   def mark_alive(%Device{} = device) do
@@ -313,17 +261,12 @@ defmodule CodeMySpec.Devices do
   @doc """
   Record what a machine is carrying, from the working copy that reported it.
 
-  Story 1057, criterion 3324. The figure belongs to the box rather than the
-  checkout — two copies on one machine share its processors, and recording it
-  per copy would report the same saturation twice and let the two disagree.
+  The figure belongs to the box rather than the checkout — two copies on one
+  machine share its processors. Stamped with its arrival time, because a load
+  figure with no age should not be acted on.
 
-  Stamped with the time it arrived, because a load figure with no age is one
-  nobody should act on: a machine that was saturated an hour ago and has been
-  quiet since is not a reason to leave its agents alone now.
-
-  Best-effort, like `mark_alive/1` beside it. A checkout with no device on it is
-  the ordinary case for a harness too old to announce one, and losing a
-  bookkeeping fact is not a reason to refuse the message carrying it.
+  Best-effort, like `mark_alive/1`: a checkout with no device is ordinary for
+  an older harness.
   """
   @spec record_load(Ecto.UUID.t() | nil, map()) :: :ok
   def record_load(nil, load) when is_map(load), do: :ok
@@ -347,18 +290,10 @@ defmodule CodeMySpec.Devices do
   @doc """
   Remove a machine.
 
-  Destroying is a real act for a sprite, and uninstalling CMS from a laptop
-  amounts to the same thing: the machine stops existing as far as this system is
-  concerned.
-
-  Its working copies do not survive it: `working_copies.device_id` has
-  cascaded since migration `20260830120000` (John's call, criterion 2848) — a
-  checkout is "a projection of a directory nobody has any more" once its
-  machine is gone, so the row goes rather than being left to nullify. The
-  record of work done on it does survive — `agents`, `issues`, `problems` and
-  `sessions` are `SET NULL`, not cascaded, on the same migration. A caller
-  destroying a device that still has working copies attached is deleting
-  those copies, not detaching them.
+  Its working copies are deleted with it (`working_copies.device_id` cascades):
+  a checkout is a projection of a directory that no longer exists. Records of
+  work done on it — `agents`, `issues`, `problems` — are `SET NULL` and
+  survive. Destroying a device with copies attached deletes those copies.
   """
   @spec destroy(Scope.t(), Device.t()) :: {:ok, Device.t()} | {:error, :not_yours}
   def destroy(%Scope{active_account_id: account_id}, %Device{account_id: account_id} = device),

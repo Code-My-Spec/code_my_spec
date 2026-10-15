@@ -22,18 +22,9 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
-  # Only tools the agent actually carries directly.
-  #
-  # This named `list_requirements` and, for main, `list_notifications` — both
-  # reachable from `run_script` and neither on an agent's direct surface. A main
-  # agent measured on 2026-09-20 called `list_notifications` first because the
-  # prompt told it to, got `Unknown tool`, and then did exactly what
-  # `OperatingRules` requires of it: reported the failure, refused to work
-  # around it, and stopped. It never reached `start_task`.
-  #
-  # So the prompt talked the agent out of the loop the prompt was sent to start.
-  # `Tools.GetNextRequirement` and `Tools.StartTask` are on the engine's list;
-  # nothing else named here was.
+  # Names only tools on every agent's direct surface: an agent told to call a
+  # tool it does not carry reports the failure and stops.
+  # See knowledge/agents, "Offering work".
   @prompt "Eligible work is available. Call get_next_requirement to see it, " <>
             "then claim it with start_task. No task has been selected or assigned for you."
 
@@ -64,22 +55,10 @@ defmodule CodeMySpec.Agents.Work do
   @doc """
   Offer a turn to agents left holding a task with no turn open.
 
-  `runnable_state?/3` refuses an agent with an active task, which is right while
-  a turn is genuinely running and wrong the moment one is not. A turn discarded
-  mid-flight — a harness restart is the common way — clears `turn_started_at`
-  and leaves the task held, which is the exact combination every recovery path
-  in the system then skips. `consider_copy/4` on reconnect skips it too, for the
-  same reason.
-
-  So the agent is not busy; it is stranded, and only a human message frees it.
-  Measured 2026-09-22: a QA agent mid-way through a browser re-test was
-  discarded by another session's promote at 19:02, was told "you have an open
-  task", and then sat untouched until it was messaged by hand six minutes
-  later. The same shape held a coding agent on another project for eight days.
-
-  Holding a task is not evidence of a live turn — `turn_started_at` is, and
-  this requires it to be nil. A turn already on its way is still respected
-  (`Offers.in_flight?/1`), because that is a dispatch genuinely in flight.
+  An agent holding a task with no turn open (`turn_started_at` nil, nothing in
+  flight) is stranded, not busy: a turn discarded mid-flight — a harness
+  restart is the common way — leaves exactly that, and the ordinary offer
+  path refuses an agent with an active task. Only agents on `copy_id`.
   """
   def resume_held_tasks(scope, copy_id) do
     scope
@@ -110,7 +89,7 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   # Each offer asks `Wake` before it writes the prompt to the transcript, so
-  # an off agent's thread never shows a turn it was not given (39af5611).
+  # an off agent's thread never shows a turn it was not given.
   defp resume(scope, agent) do
     with :ok <- Wake.allow?(scope, agent, :resume),
          {:ok, {waking, offered}} <- request_stranded_turn(scope, agent.id) do
@@ -133,7 +112,7 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # The prompt promises "the task below", so the task has to follow (0d3b800d).
+  # The prompt promises "the task below", so the task has to follow.
   defp resume_prompt(agent) do
     task = Agent.active_task(agent)
 
@@ -169,22 +148,9 @@ defmodule CodeMySpec.Agents.Work do
   @doc """
   Offer one agent a turn whose prompt opens with `preface`.
 
-  The difference between this and recording a message then calling
-  `consider_copy/4` is where the text lands, and that difference is the whole
-  point. A recorded message is history: the agent reads it as something that
-  was said earlier, alongside its own last conclusion, and its own conclusion
-  wins. The turn prompt is the input the agent is answering.
-
-  Measured 2026-09-22, and it is why two shipped fixes changed nothing. A
-  denial notice naming the agent's now-resolved blocker by id was recorded at
-  21:37:20.317; the agent's turn — driven by the generic work prompt — said at
-  21:37:29.079 that the same issue id was unresolved and the tap-out still
-  pending. Nine seconds, same id. Delivering the same words through
-  `message_agent`, which puts them in the turn, worked three times out of three
-  across two agents.
-
-  So the correction has to be what the agent is answering, not something it
-  could answer past.
+  The text is the turn prompt — the input the agent is answering — rather than
+  a recorded message, which the agent reads as history and answers past. A
+  correction has to be what the agent is answering.
 
   `event` is what `Wake` is asked about: `:question_answered` for an answer,
   `:blocker_resolved` for a released block or a denied tap-out. `subject` is
@@ -204,9 +170,8 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # A released or denied task's notice is the whole turn (criterion 1864): the
-  # generic "eligible work is available, no task has been selected" beneath
-  # "resume task X" contradicted it.
+  # A released or denied task's notice is the whole turn: the generic work
+  # prompt beneath "resume task X" would contradict it.
   defp turn_prompt(preface, :blocker_resolved, _agent), do: preface
   defp turn_prompt(preface, _event, agent), do: preface <> "\n\n" <> prompt(agent)
 
@@ -235,9 +200,9 @@ defmodule CodeMySpec.Agents.Work do
 
   @doc """
   Offer an idle agent back the tasks a resolved blocker released — only those
-  its work now includes (criterion 1863). `header` says what resolved, `detail`
-  is the decider's answer when there is one. `:subject` records the offer on
-  something other than the task — a denied tap-out (criterion 1672).
+  its work now includes. `header` says what resolved, `detail` is the
+  decider's answer when there is one. `:subject` records the offer on
+  something other than the task — a denied tap-out.
 
   A released task whose requirement still waits on something is not offered:
   "resume it" would send the agent to `start_task` for a task it is refused.
@@ -310,9 +275,8 @@ defmodule CodeMySpec.Agents.Work do
     |> Enum.join(" on ")
   end
 
-  # The exact call that resumes each task (probe 1867): naming the task by id
-  # alone sent agents looking for which story it was on, and one called
-  # `start_task` with no entity at all.
+  # The exact call that resumes each task: an id alone sends agents looking for
+  # which entity it was on.
   defp resume_instruction(scope, tasks) do
     "resume " <>
       Enum.map_join(tasks, "; ", fn task ->
@@ -364,7 +328,7 @@ defmodule CodeMySpec.Agents.Work do
 
   @doc """
   Tell an agent holding an active task that a blocked one was released, without
-  offering it: resuming would make it a second active task (story 1080).
+  offering it: resuming would make it a second active task.
   `offer/2` offers it back once the agent holds none.
   """
   @spec note_released(Agent.t(), String.t()) :: :ok
@@ -393,17 +357,9 @@ defmodule CodeMySpec.Agents.Work do
          :ok <- still_offered(scope, waking, offered, subject) do
       turn_prompt = offer_prompt(scope, waking, subject)
 
-      # Recorded as well as sent, and recorded first — the same reasoning as
-      # `StopDecision.send_to/3`, which records because it dispatches through
-      # the transport directly rather than through `Agents.send_to_agent/2`.
-      #
-      # Without it a turn arrives out of nowhere: the transcript shows an agent
-      # that suddenly started working with nothing in front of it saying why,
-      # which is precisely what an operator watching an autonomous fleet needs
-      # to be able to read. `wake` recorded its message for the same reason,
-      # and the retirement took the recording with it — story 1050 measures
-      # routing off these rows, and every correctly routed turn read as
-      # silence.
+      # Recorded first, then sent: the transport is called directly, and a turn
+      # with nothing on the transcript saying why reads as an agent starting
+      # out of nowhere. Routing is measured off these rows.
       Offers.link_prompt(offered, Conversations.record_sent_to_agent(waking, turn_prompt))
       hand_turn(waking, offered, turn_prompt)
     else
@@ -414,15 +370,10 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # The offer is decided from a read taken before the turn request, and the
-  # agent can move in between: a898df49 — product started its design task,
-  # asked a question that blocked it, and was offered that same task as work,
-  # because the claimable read predated the block. Its turn was then held by a
-  # stale offer and the triage it should have been offered could not land.
-  #
-  # Held by the turn request, nothing else can offer this agent a turn, so
-  # recomputing here is the answer as of now. A subject no longer offered
-  # withdraws the request; the next observation offers what is there.
+  # The offer was decided from a read taken before the turn request, and the
+  # agent can move in between. Holding the request, nothing else can offer this
+  # agent a turn, so recomputing here is the answer as of now; a subject no
+  # longer offered withdraws the request.
   defp still_offered(scope, waking, offered, subject) do
     case offer(scope, waking) do
       {:work, _offer, ^subject} ->
@@ -481,18 +432,12 @@ defmodule CodeMySpec.Agents.Work do
   @doc """
   Record that this agent ended a turn without taking the work it was offered.
 
-  Called from the turn-ended path, which is the only place that knows a turn
-  finished with nothing claimed. Until this existed the agent was re-offered
-  the same work immediately and forever: ending a turn clears `turn_started_at`
-  and settles its offers, and declining leaves `active_task` nil, so every
-  condition `runnable_state?/3` tests is satisfied again the instant the turn
-  ends. The next observation — and a turn ending is itself enough to produce
-  one — fires `consider_project/2` and hands the agent the offer it just
-  refused.
+  Called from the turn-ended path, the only place that knows a turn finished
+  with nothing claimed. Without it every runnable condition holds again the
+  instant the turn ends, and the next observation re-offers the same work —
+  an agent can spin at a turn a second.
 
-  Measured on the math project 2026-09-22, QA agent 85118c1a: 197 turns in
-  3m29s, each one reading "not re-claiming it; ending the turn", at a steady
-  60 a minute. Nothing in the system damped it and nothing would have.
+  See knowledge/agents, "The decline damper".
 
   An agent that *did* claim something has not declined anything, so its mark is
   cleared — the next offer after a completed task is a genuinely new one.
@@ -516,9 +461,8 @@ defmodule CodeMySpec.Agents.Work do
       declined_offer_count: 1
     }
 
-  # Questions-only offers still go quiet after one decline (b7a705ee). Graph
-  # work no longer does: the ladder in `Offers` escalates it and then holds it
-  # back from this agent alone (criteria 1739–1741).
+  # Only questions-only offers are damped here. Graph work is escalated by the
+  # ladder in `Offers` and then held back from this agent alone.
   defp decline_attrs(scope, agent, turn_started_at) do
     if declined?(scope, agent, turn_started_at) do
       case offer(scope, agent) do
@@ -530,36 +474,21 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # A turn that did nothing, as distinct from one that did something and left
-  # more behind.
-  #
-  # Holding a task is the obvious case. The subtle one is a turn that *closed*
-  # a task: the agent no longer holds anything, so the naive reading is that it
-  # declined — and the offer it would be charged with declining is the next
-  # piece of work, handed to it by `consider_copy(:task_completed)` moments
-  # later. That would damp the pipeline at exactly the point it is supposed to
-  # advance, turning every completed task into a ten-minute wait for the next
-  # one.
-  #
-  # So work done during the turn counts as work, whether or not it is still
-  # open when the turn ends.
-  #
-  # A turn the provider refused declined nothing either: the agent never saw
-  # the offer. A refusal still standing at turn end is this turn's, since
-  # `refusal_outlived/2` clears an older one first.
+  # A turn that did nothing. Holding a task is work; so is a task closed during
+  # the turn (else every completion would damp the next offer); so is a turn
+  # the provider refused (the agent never saw the offer — an older refusal was
+  # already cleared at turn end).
   defp declined?(_scope, agent, turn_started_at) do
     is_nil(Agent.active_task(agent)) and is_nil(agent.provider_refusal) and
       not closed_a_task?(agent, turn_started_at)
   end
 
-  # No start time to compare against — an interrupted turn, or a caller that
-  # does not track one. Treated as having done something, because charging an
-  # agent with a refusal it cannot be shown to have made is the error that
-  # costs work rather than the one that costs a turn.
+  # No start time to compare against: treated as having done something, since
+  # charging an unproven refusal costs work and the other error costs a turn.
   defp closed_a_task?(_agent, nil), do: true
 
   # A cancel stamps `completed_at` too, but claiming and dropping the offer is
-  # declining it, not work (7169d3cf).
+  # declining it, not work.
   defp closed_a_task?(%Agent{tasks: tasks}, %DateTime{} = turn_started_at) do
     Enum.any?(tasks || [], fn task ->
       task.status != :cancelled and not is_nil(task.completed_at) and
@@ -608,7 +537,7 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # The tasks whose open state is the queue's, not the agent's (criterion 2021).
+  # The tasks whose open state is the queue's, not the agent's.
   @promotion_tasks ~w(promote_issue story_promoted)
 
   # Whether a turn could start now — nothing in flight, nothing held that the
@@ -696,9 +625,8 @@ defmodule CodeMySpec.Agents.Work do
 
   defp cleared, do: %{declined_offer: nil, declined_offer_at: nil, declined_offer_count: nil}
 
-  # What this agent is being offered, as a value that can be compared to what it
-  # last refused. `eligible_work?/2` answered only "is there any", which cannot
-  # tell a new offer from a repeat of the one just declined.
+  # What this agent is being offered, as a value comparable to what it last
+  # refused.
   defp offer(scope, agent) do
     questions = held_questions(scope, agent)
     nodes = graph_work(scope, agent)
@@ -712,25 +640,25 @@ defmodule CodeMySpec.Agents.Work do
 
   # What the prompt sends it to claim: a task of its own whose blocker was
   # released, first — resumed only once it holds no active task, so it is never
-  # a second one (story 1080) — then `get_next_requirement`'s head, or main's
-  # questions when there is no graph work.
+  # a second one — then `get_next_requirement`'s head, or main's questions
+  # when there is no graph work.
   defp offer_subject(agent, nodes) do
     case released_tasks(agent, nodes) do
       [task | _] -> released_subject(task)
-      [] -> graph_subject(nodes)
+      [] -> graph_subject(agent, nodes)
     end
   end
 
-  defp graph_subject([{type, id, name} | _nodes]), do: {"requirement", "#{type}:#{id}:#{name}"}
-  defp graph_subject([]), do: {"questions", nil}
+  defp graph_subject(agent, [{type, id, name} | _nodes]),
+    do: {"requirement", node_key(agent, %{entity_type: type, entity_id: id, name: name})}
+
+  defp graph_subject(_agent, []), do: {"questions", nil}
 
   # Released and still claimable: one the graph no longer offers would be
   # refused by `start_task`, and offering it first would hide the rest.
   #
-  # And not held back: a released task offered and ignored three times, or
-  # declined, is not offered again, as requirement work is not. Without that, an
-  # agent that would not resume it was re-offered it after every turn — 570
-  # times in half an hour on 2026-10-06.
+  # And not held back: a released task ignored to the end of its ladder, or
+  # declined, is not offered again, as requirement work is not.
   defp released_tasks(%Agent{tasks: tasks} = agent, nodes) do
     standing = Offers.standing(agent.id)
 
@@ -751,9 +679,8 @@ defmodule CodeMySpec.Agents.Work do
   defp offer_kind({"task", _id}), do: :unblocked
   defp offer_kind(_subject), do: :work
 
-  # A second offer of a released task carries its own rung's text: `:remind`,
-  # the one rung of this kind's ladder (2057). Without it the reminder was the
-  # same sentence said again, which is what the ladder exists to avoid.
+  # A second offer of a released task carries its own rung's text, `:remind`,
+  # rather than the same sentence again.
   defp offer_prompt(scope, agent, {"task", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.id == id))
     base = "Your blocker was released; #{resume_instruction(scope, tasks)}"
@@ -769,10 +696,8 @@ defmodule CodeMySpec.Agents.Work do
     "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
   end
 
-  # The extra text is chosen by the offer's rung on its own ladder (criteria
-  # 1739, 1740, 2057), not by the subject being a requirement: a rung is what a
-  # kind's ladder says it is. `:remind` is the one rung of a released task's
-  # ladder; `:detail` and `:alternatives` are requirement work's.
+  # The extra text is chosen by the offer's rung on its kind's ladder: `:remind`
+  # for a released task; `:detail` and `:alternatives` for requirement work.
   defp offer_prompt(scope, agent, {"requirement", key}) do
     case rung(agent, :work, "requirement", key) do
       :detail -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
@@ -792,7 +717,7 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   # The rung the offer being rendered now carries: the rung the last ignored
-  # offer wrote (1739, 1740). None on a first offer, whose ladder has no text.
+  # offer wrote. None on a first offer.
   defp rung(agent, kind, type, key) do
     case {Offers.ladder({kind, type}), ignored(agent, key)} do
       {nil, _ignored} -> nil
@@ -808,9 +733,9 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # The second offer of the same work says more about it (criterion 1739).
+  # The second offer of the same work says more about it.
   defp detail(scope, agent, key) do
-    case Enum.find(offerable(scope, agent), &(node_key(&1) == key)) do
+    case Enum.find(offerable(scope, agent), &(node_key(agent, &1) == key)) do
       nil ->
         ""
 
@@ -826,12 +751,12 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # The third names what else it could take (criterion 1740).
+  # The third names what else it could take.
   defp alternatives(scope, agent, key) do
     others =
       scope
       |> offerable(agent)
-      |> Enum.reject(&(node_key(&1) == key))
+      |> Enum.reject(&(node_key(agent, &1) == key))
       |> Enum.take(5)
 
     base = detail(scope, agent, key)
@@ -871,59 +796,31 @@ defmodule CodeMySpec.Agents.Work do
   defp questions_only?({"questions", nil}), do: true
   defp questions_only?(_subject), do: false
 
-  # Hashed rather than stored whole: the comparison is equality and nothing
-  # reads the parts, so the column stays a fixed width no matter how much work
-  # a role has. Sorted first — the offer is a set, and an order change would
-  # read as a changed offer every pass and defeat the whole guard.
+  # Hashed: the comparison is equality, so the column stays fixed-width. Sorted
+  # first — the offer is a set, and an order change must not read as new.
   defp fingerprint(questions, nodes) do
     :crypto.hash(:sha256, :erlang.term_to_binary({questions, Enum.sort(nodes)}))
     |> Base.encode16(case: :lower)
     |> binary_part(0, 32)
   end
 
-  # How many times the *same* offer may be re-made before it goes quiet.
-  #
-  # Not zero, which is what this guard first did and what story 1048 refuses:
-  # criterion 3570 — "previously observed eligible work permits a later turn" —
-  # lets a graph-admitted turn end without claiming and then requires the
-  # turn-end event alone to reconsider the unchanged work. Criterion 3572 says
-  # the same from the other side, "without suppressing later turns". An agent
-  # that looks again and takes it the second time is the system working; the
-  # defect is the 197th look, not the 2nd.
-  #
-  # Five, matching `StopDecision.stuck?/3`, which already solved this for the
-  # sibling path — a repeated message goes quiet after the same five repeats.
-  # Two throttles on two paths disagreeing about what "repeated" means is how
-  # an operator ends up unable to predict either.
+  # How many times the *same* offer may be re-made before it goes quiet. Not
+  # zero: an agent may look again and take it. Five, matching `StopDecision`'s
+  # repeat threshold, so the two throttles agree.
   @max_repeats 5
 
-  # The window after which an unchanged offer is made again anyway.
-  #
-  # Without it the fingerprint is a wedge: work whose *set* does not change but
-  # whose claimability does — a blocker cleared, a dependency finished
-  # elsewhere, a tool granted — would leave the agent asleep with no edge left
-  # to wake it, which is the failure this system already knows well from an
-  # agent holding a task nothing can interrupt.
-  #
-  # Ten minutes caps a spin at thirty turns an hour rather than 3,600, while
-  # still guaranteeing the agent gets another look. A human `message_agent`
-  # bypasses this entirely and always did.
+  # The window after which an unchanged offer is made again anyway: work whose
+  # set is unchanged but whose claimability moved must still get another look.
+  # Caps a spin at thirty turns an hour. A human message bypasses it.
   @decline_ttl_seconds 600
 
-  # An offer of questions alone is held after one decline, and for as long as
-  # the set is unchanged (b7a705ee). Neither reason above applies to it: a
-  # question does not become answerable by waiting, and every change that
-  # matters — one raised, answered, escalated — changes the set, so the
-  # fingerprint moves and the offer is made again. Main's cadence check-in
-  # still lists them. Measured 2026-10-02: main was re-offered one question it
-  # believed it had escalated four times in six minutes, and every turn read
-  # "no change".
-  # A refusal the agent gave. A *delivery* failure is a different fact and is
-  # not this: it is recorded as an undelivered offer, not folded in here.
-  # Folding it in damped every reader -- the cadence's `work?` and the
-  # wake that tells an agent about new work -- for an offer that was merely
-  # undeliverable once, which is how devops work stopped reaching main
-  # (criterion 1185) after a first attempt missed.
+  # An offer of questions alone is held after one decline, for as long as the
+  # set is unchanged: waiting does not make a question answerable, and every
+  # change that matters changes the set. Main's check-in still lists them.
+  #
+  # Only refusals count. A delivery failure is recorded as an undelivered
+  # offer, never folded in here, or every reader of the damper would go quiet
+  # over an offer that merely missed once.
   defp already_declined?(%{declined_offer: declined} = agent, offer, questions_only?)
        when not is_nil(declined) and declined == offer do
     repeats_spent?(agent.declined_offer_count, questions_only?) and
@@ -935,9 +832,7 @@ defmodule CodeMySpec.Agents.Work do
   defp repeats_spent?(n, true), do: is_integer(n) and n >= 1
   defp repeats_spent?(n, false), do: is_integer(n) and n >= @max_repeats
 
-  # Recorded by a build that did not stamp the time. Treated as expired rather
-  # than open: the conservative reading is the one that keeps the agent
-  # reachable.
+  # No timestamp: treated as expired, which keeps the agent reachable.
   defp within_window?(nil, _questions_only?), do: false
   defp within_window?(_at, true), do: true
   defp within_window?(at, false), do: DateTime.diff(DateTime.utc_now(), at) < @decline_ttl_seconds
@@ -970,10 +865,9 @@ defmodule CodeMySpec.Agents.Work do
     )
   end
 
-  # Teammates' questions start with whoever `RoleProfile.wakes_on?` names for
-  # `:teammate_question` — the main agent (story 1052), and product for the
-  # criteria questions routed to it (8c91d5bc). Each wakes for its own holder.
-  # Their ids, not whether there are any, so a new question is a new offer.
+  # Teammates' questions held by this role's holder (main, or product for the
+  # criteria questions routed to it), for a role that wakes on
+  # `:teammate_question`. Their ids, so a new question is a new offer.
   defp held_questions(scope, %{role: role}) do
     holder = MainAgent.holder_of(role)
 
@@ -988,9 +882,8 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # `list_notifications` is code mode, like most of the catalogue — a main agent
-  # reaches it from inside a script, and saying so is the difference between a
-  # tool it can use and one it reports as broken.
+  # `list_notifications` is code mode, reached from inside `run_script`; the
+  # prompt says so, or the agent reports it as a broken tool.
   defp prompt(%{role: role}) do
     if RoleProfile.wakes_on?(role, :teammate_question),
       do:
@@ -1011,26 +904,37 @@ defmodule CodeMySpec.Agents.Work do
     |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name})
   end
 
-  # Claimable work less what this agent ignored three times or declined
-  # (criterion 1741): held back from it alone, so a teammate is still offered it.
+  # Claimable work less what is held back from this agent (ignored to the end
+  # of its ladder, or declined): a teammate is still offered it.
   defp offerable(scope, agent) do
     standing = Offers.standing(agent.id)
 
     scope
     |> claimable_work(agent)
-    |> Enum.reject(&match?(%{held?: true}, standing[node_key(&1)]))
+    |> Enum.reject(&match?(%{held?: true}, standing[node_key(agent, &1)]))
   end
 
-  defp node_key(node), do: "#{node.entity_type}:#{node.entity_id}:#{node.name}"
+  # The one place an offer's `subject_key` is built. A story node's
+  # `entity_id` is the database id; the key uses the public number that
+  # `get_next_requirement` and `start_task` show.
+  defp node_key(agent, %{entity_type: "story", entity_id: id, name: name}) do
+    case CodeMySpec.Stories.get_story(%Scope{active_project_id: agent.project_id}, id) do
+      %{number: number} -> "story:#{number}:#{name}"
+      nil -> "story:#{id}:#{name}"
+    end
+  end
+
+  defp node_key(_agent, %{entity_type: type, entity_id: id, name: name}),
+    do: "#{type}:#{id}:#{name}"
 
   @doc """
   The work for one caller: `Requirements.story_execution/4`'s status, its
   ordered `actionable` list, the `wave` cut from it, and why.
 
-  The one answer to "what can this role do next here" (a31f1cd6). The turn
-  offer, the stop menu, `get_next_requirement` and `start_task`'s resume check
-  all read it, so none of them names work another refuses. "First" is the head
-  of `actionable`; "any" is whether it is empty.
+  The one answer to "what can this role do next here". The turn offer, the
+  stop menu, `get_next_requirement` and `start_task`'s resume check all read
+  it, so none of them names work another refuses. "First" is the head of
+  `actionable`; "any" is whether it is empty.
 
     * `role` — whose requirements, through `RoleProfile.requirements`; `nil` is
       every role's.
@@ -1040,10 +944,10 @@ defmodule CodeMySpec.Agents.Work do
 
   Withholding happens before the story's wave is cut.
 
-  An agent with an active story (`bound_story_id/1`) is offered that story's
-  work and nothing else (4292518a): no project-level work and no other story's,
-  and its story is not held back by unsatisfied project-level prerequisites.
-  Without one it is answered as before.
+  An agent with issue work — its copy's assigned issues, its own issue, or
+  just freed of an issue team — is answered from `IssueWork`, outside the
+  graph. An agent with an active story (`bound_story_id/1`) is offered that
+  story's work and nothing else, not held back by project-level prerequisites.
 
   Options: `:story_number` narrows to that story or refuses, as
   `get_next_requirement` takes it; `:owners` is the project's agents, so a
@@ -1052,10 +956,8 @@ defmodule CodeMySpec.Agents.Work do
   @spec work_for(Scope.t(), atom() | nil, term(), keyword()) :: map()
   def work_for(scope, role, owner \\ nil, opts \\ [])
 
-  # An agent bound to an issue, or just freed of one with nothing to fall
-  # back on, bypasses the graph entirely — an issue is not in it
-  # (`Agents.IssueWork`, story 1091). Checked ahead of everything else, the
-  # same standing as `bound_story_id/1`: offered that and nothing else.
+  # Issue work bypasses the graph entirely — an issue is not in it — and is
+  # checked ahead of everything else.
   def work_for(%Scope{} = scope, role, %Agent{} = owner, opts) do
     scope = at_copy(scope, owner)
 
@@ -1106,27 +1008,11 @@ defmodule CodeMySpec.Agents.Work do
     Requirements.story_execution(scope, role, number, withheld?, assignment(scope, owner))
   end
 
-  # The team is no longer moved to its next story on its own (John, 2026-10-07,
-  # retiring the rebinding; issue f0c18598). This used to call
-  # `Assignment.advance/4` whenever a team member's read found the story
-  # `:complete`, taking the epic's next story for the whole team — which meant a
-  # team reading its own story could walk itself off a story that was certified
-  # and awaiting QA, and the main agent's `set_active_story` could not hold it
-  # there.
-  #
-  # What happens instead: a team keeps one story until it lands, and when the
-  # story lands main is told the team is free (the `:team_free` offer, raised by
-  # a landing). Main then assigns the next story with `set_active_story`. So the
-  # move is always an agent's act, never a side effect of somebody reading.
-  #
-  # `Assignment.advance/4` stays: it is where the team's rows are locked so two
-  # teammates arriving at once move the team once, and an explicit assignment
-  # still reaches it.
-
-  # Whose story the answer is about (a31f1cd6). The main agent reads none —
-  # story work happens on feature copies, never on main. Everyone else reads
-  # the team's: a team member (coding, QA) the story it holds, product and a
-  # session the story their copy's team holds.
+  # Whose story the answer is about. A project-scoped role (main) reads none.
+  # A team member (coding, QA) reads the story it holds; product and a session
+  # read the story their copy's team holds. Reading never moves a team to its
+  # next story.
+  # See knowledge/agents, "Story binding".
   #
   # A team member holding a story is bound to it (`bound_story_id/1`).
   defp assignment(scope, %Agent{role: role} = agent) do
@@ -1146,14 +1032,11 @@ defmodule CodeMySpec.Agents.Work do
   defp bind({:team, story_id, epic_id}), do: {:bound, story_id, epic_id}
 
   @doc """
-  The story `agent` is bound to, or nil (4292518a).
+  The story `agent` is bound to, or nil.
 
-  John: an agent on a working copy with an active story is bound by that story,
-  and while it is active is not even offered work outside it. The active story
-  is the agent's own `story_id`, which only a team member — coding or QA — ever
-  holds (`Agent.changeset/2`, `Assignment`). The main agent reads the project
-  and product reads every story from the main copy; neither holds one, so
-  neither is bound, and an agent without a story is answered as before.
+  A team member — coding or QA — holding a `story_id` is bound to it and is
+  not offered work outside it. Main and product never hold one, so neither is
+  bound.
 
   What counts as the story's work is `StoryExecution.story_work?/3`.
   """
@@ -1173,20 +1056,17 @@ defmodule CodeMySpec.Agents.Work do
   The story graph's own actionable list, bypassing `work_for/4`'s issue-binding
   short-circuit.
 
-  `work_for/4`'s "an agent bound to an issue bypasses the graph entirely" rule
-  is a dispatch-priority answer to "what should this agent do next" — right
-  for `get_next_requirement`, wrong for asking whether an EXISTING, already
-  blocked story-type task is still eligible to resume. Applying the full
-  bypass there refused to resume a real, still-eligible story task for an
-  agent who also happened to hold an unrelated issue binding (issue
-  ae97b26c). This still applies `withholding/3` — another agent refusing the
-  same work is still respected — it just never falls through to issue-only
-  mode first.
+  For asking whether an existing, blocked story task may still resume:
+  `work_for/4`'s issue bypass is a dispatch-priority rule and would refuse a
+  still-eligible story task for an agent that also holds an issue.
+  `withholding/3` still applies.
   """
   @spec story_actionable(Scope.t(), atom() | nil, term(), keyword()) :: [map()]
   def story_actionable(scope, role, owner \\ nil, opts \\ [])
   def story_actionable(%Scope{active_project_id: nil}, _role, _owner, _opts), do: []
-  def story_actionable(scope, role, owner, opts), do: story_work_for(scope, role, owner, opts).actionable
+
+  def story_actionable(scope, role, owner, opts),
+    do: story_work_for(scope, role, owner, opts).actionable
 
   defp at_copy(scope, %Agent{working_copy_id: id}) when is_binary(id),
     do: %{scope | active_working_copy_id: id}
@@ -1204,7 +1084,7 @@ defmodule CodeMySpec.Agents.Work do
   `actionable/4` for this agent's role at its own checkout.
 
   Public so the main agent's "this agent has work" is this answer rather than a
-  second one that disagrees (4849f20b). `owners` saves a reader asking for a
+  second one that disagrees. `owners` saves a reader asking for a
   whole fleet from listing the project's agents once per agent.
   """
   @spec claimable_work(Scope.t(), Agent.t(), [Agent.t()] | nil) :: [map()]
@@ -1215,7 +1095,7 @@ defmodule CodeMySpec.Agents.Work do
   Whether a task at `agent`'s checkout withholds `node` from it: another
   agent's live task, or its own blocked on an unresolved blocker.
 
-  Its own active task is not withheld — `start_task` resumes that (467310a7).
+  Its own active task is not withheld — `start_task` resumes that.
   """
   @spec withheld?([Agent.t()], Agent.t(), map()) :: boolean()
   def withheld?(owners, agent, node) do

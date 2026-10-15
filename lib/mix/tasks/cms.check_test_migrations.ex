@@ -6,61 +6,30 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
 
       MIX_ENV=test mix cms.check_test_migrations
 
-  `config/test.exs` gives every worktree its own database
-  (`code_my_spec_test_<worktree>`), deliberately, so agents cannot re-schema each
-  other. The consequence is that each database migrates only when someone runs
-  migrations *in that worktree*, while `git pull` moves the code in all of them.
-  So every rebase that carries a migration leaves a worktree behind, and the
-  failure wears the costume of broken code.
+  `config/test.exs` gives every worktree its own database, deliberately, so
+  agents cannot re-schema each other. Each database migrates only when
+  migrations run *in that worktree*, while pulling moves the code in all of
+  them — and a behind database fails as hundreds of unrelated test failures
+  naming no migration.
 
-  Measured twice on one worktree immediately after `git rebase origin/main`: 374
-  failures, then 166, spread across contexts the agent had never touched, with
-  nothing naming a migration. Both times `MIX_ENV=test mix ecto.migrate` took it
-  straight to 0. (f58acb37) An agent that has just rebased and sees 374 failures
-  has no reason to suspect migrations; the rational move is to bisect its own
-  changes, which is exactly wrong and expensive.
-
-  `mix test` has had this check since `f58acb37`, inline in `test_helper.exs`.
-  `mix spex` never did — it loads no helper at all, so the one command an agent
-  is told to run for BDD work was the one that skipped it, and the symptom
-  arrived as `(Postgrex.Error) ERROR 42703 (undefined_column)` from inside a
-  `given_` step with a full Ecto stacktrace and nothing naming a migration.
-
-  Living here rather than in `test/test_helper.exs` so both callers share one
-  copy: the helper calls `refuse_if_behind!/0`, and the `spex` alias runs this
-  task before booting. That is deliberately cheaper than teaching the `../spex`
-  fork to load a helper — it changes how every spex run boots, in a fork shared
-  by two repos, and the ordering against its `ExUnit.start/1` wants care.
-
-  A refusal rather than an alias that migrates: measured, migrating on every
-  invocation costs ~14s, and this is one query that only ever speaks when
-  something is actually wrong.
+  `test/test_helper.exs` calls `refuse_if_behind!/0`, and the `spex` alias runs
+  this task before booting (the spex runner loads no helper), so both share
+  one copy. Both aliases also run `ecto.migrate` first; this is the check that
+  names the partition when the database is still behind.
 
   ## A database that is *missing* is made, not reported
 
-  Behind and absent are different questions and get different answers. Behind
-  raises — migrating on every run is the ~14s nobody should pay. Absent is the
-  ordinary state of a partition nothing has used yet, and it is created and
-  migrated here, in this VM, before the suite starts.
+  Behind raises. Absent is the ordinary state of a partition nothing has used
+  yet, and it is created and migrated here, in this VM, before the suite
+  starts. Nothing is shelled out: `storage_up/1` and `Ecto.Migrator` act on
+  `CodeMySpec.Repo.config()`, which in `MIX_ENV=test` is this partition's
+  database by construction, and `creatable/1` refuses anything else.
 
-  That is not a return to what `TestDatabase` lost on 2026-08-13. What it lost
-  shelled out to `mix` with an environment that had `MIX_ENV` scrubbed out of it,
-  so "create the test database" acted on **dev** and a sibling truncate emptied
-  the shared development database three times. The hazard was a background
-  process holding DDL rights over a server an absent environment variable could
-  re-aim. There is no child process here and no environment to give one:
-  `storage_up/1` and `Ecto.Migrator` act on `CodeMySpec.Repo.config()`, which in
-  `MIX_ENV=test` is this partition's database by construction. `creatable/1`
-  refuses anything else.
+  ## Naming the right database is load-bearing
 
-  ## Naming the right database is still load-bearing
-
-  The analyzer runs under a partition the interactive session never touches —
-  `h<sha8>a` for exunit, `h<sha8>s` for spex — so "run `MIX_ENV=test mix
-  ecto.migrate`" migrates the wrong database and changes nothing. One agent
-  followed that advice, migrated its own partition, and stayed blocked for three
-  days across 50 rejected runs (6f89b278). Everything printed below names the
-  partition it is about, for that reason.
+  The analyzer runs under its own partitions — `h<sha8>a` for exunit,
+  `h<sha8>s` for spex — so a bare `MIX_ENV=test mix ecto.migrate` migrates the
+  wrong database. Everything printed below names the partition it is about.
   """
 
   use Mix.Task
@@ -78,10 +47,7 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   @doc """
   Raise if the test database is behind, print if the question cannot be answered.
 
-  Cannot-answer is reported, never treated as clean. A first version of this
-  wrapped `Ecto.Migrator` in `try/rescue` with a bare `_ -> :ok`, which
-  swallowed the sandbox ownership error, answered nothing, and read as a clean
-  database. A check that fails silently is worse than no check.
+  Cannot-answer is reported, never treated as clean.
 
   Callers must invoke this **before** `Sandbox.mode(:manual)`: under manual mode
   a process that has not checked out ownership cannot query at all.
@@ -100,25 +66,10 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
     end
   end
 
-  # A database that does not exist is made, not reported.
-  #
-  # It used to print two commands and proceed, and the comment below still says
-  # why that was the ordinary first run rather than an anomaly. Printing them was
-  # the wrong half of a correct instinct: the reason `TestDatabase` stopped
-  # creating databases is that it shelled out to `mix` with an environment that
-  # had `MIX_ENV` scrubbed, so "create the test database" acted on **dev** and a
-  # sibling truncate emptied it three times on 2026-08-13. The hazard was the
-  # child process and its environment, not the act of creating.
-  #
-  # Nothing is shelled out here. `storage_up/1` and `Ecto.Migrator` run in this
-  # VM, against `CodeMySpec.Repo.config()` — which in `MIX_ENV=test` is this
-  # partition's database by construction, and cannot be pointed at dev by an
-  # environment variable a parent forgot to set, because there is no child to
-  # give an environment to. That closes the class rather than avoiding it.
-  #
-  # Any other reason still prints and proceeds. "Cannot answer" is not "cannot
-  # exist", and a check that responded to an ownership error by creating a
-  # database would be the silent-swallow shape this file has fought twice.
+  # A database that does not exist is made, not reported — in this VM, with no
+  # child process whose environment could re-aim it at dev. Any other reason
+  # prints and proceeds: "cannot answer" is not "cannot exist".
+  # See knowledge/platform, "Test databases".
   defp unanswerable(reason) do
     if missing_database?(reason), do: provision(), else: report(reason)
   end
@@ -137,9 +88,7 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   the sentence, which is localised.
 
   Public because it is the discrimination that decides whether anything is
-  created at all. "Cannot answer" is not "cannot exist", and a check that
-  responded to an ownership error by creating a database would be the
-  silent-swallow shape this file has fought twice.
+  created at all: an ownership error must never lead to creating a database.
   """
   @spec missing_database?(term()) :: boolean()
   def missing_database?(%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}), do: true
@@ -169,15 +118,12 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   @doc """
   Whether this VM may create the database `config` names.
 
-  The guard the 2026-08-13 incident needed and did not have: a run that cannot
-  name its own database acts on none. `MIX_ENV=test` is already guaranteed by
-  every caller — `mix test`'s helper and the `spex` alias — so this can only
-  fire if something calls it from somewhere new, which is exactly the case worth
-  refusing rather than trusting.
+  A run that cannot name its own database acts on none. Every caller already
+  guarantees `MIX_ENV=test`, so this fires only for a new caller — exactly the
+  case worth refusing.
 
-  Public so it can be exercised directly. Reached only through `provision/0`, it
-  would be testable solely by arranging a missing database from a VM that is not
-  in the test environment, which is a thing the test suite cannot be.
+  Public so it can be exercised directly: through `provision/0` it would need a
+  missing database from a VM outside the test environment.
   """
   @spec creatable(keyword()) :: :ok | {:error, String.t()}
   def creatable(config) do
@@ -198,12 +144,8 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   defp blank?(""), do: true
   defp blank?(_), do: false
 
-  # `CodeMySpec.Repo.__adapter__()`, not `config[:adapter]` — the adapter is
-  # how `use Ecto.Repo` declared the repo, not a key `Repo.config/0` carries;
-  # nothing in `config/test.exs` sets one, so this read `nil` and crashed the
-  # one time this path was live: `nil.storage_up/1` is undefined. Caught
-  # exercising d86b09cd's sibling fix live against a genuinely-missing
-  # partition, which is exactly the case this branch exists for.
+  # `Repo.__adapter__()`, not `config[:adapter]`: `Repo.config/0` carries no
+  # adapter key, so that read `nil`.
   defp create(config) do
     IO.puts(:stderr, "[check_test_migrations] creating #{config[:database]}")
 
@@ -225,16 +167,10 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
     :ok
   end
 
-  # What is left when "could not check" does not mean "is not there".
-  #
-  # It used to end "If it does not exist: <create>, then <migrate>", which was
-  # the right advice while a missing database was this branch's ordinary case.
-  # It no longer reaches here — `missing_database?/1` sends it to `provision/0` —
-  # so the remaining reasons are ones no `ecto.create` answers: an ownership
-  # error under a manual sandbox, a server that refused the connection, a
-  # credential. Repeating the create advice there would be a confident
-  # instruction about a different defect, which is the costliest kind of wrong
-  # message and one this file has already paid for once (6f89b278).
+  # What is left when "could not check" does not mean "is not there": an
+  # ownership error under a manual sandbox, a refused connection, a credential.
+  # No `ecto.create` advice here — it would be confident advice about a
+  # different defect.
   defp cannot_answer_message(reason) do
     """
     [check_test_migrations] could not check #{database_label()} (#{inspect(reason)}); proceeding.

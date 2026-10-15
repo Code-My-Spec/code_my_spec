@@ -2,34 +2,17 @@ defmodule CodeMySpec.DevState do
   @moduledoc """
   What the database believes, what the runtime is doing, and where they disagree.
 
-  Every hard failure on 2026-09-07 was that gap, and every one was diagnosed by
-  inferring runtime state from log lines:
+  The gaps it names: agents marked running on a copy no harness holds,
+  `analysis_runs` claiming `:running` with no harness to finish them, and a
+  project with agents in the loop but no graph writer. None is visible from a
+  table or from LiveDashboard (processes, not whether *this* copy has an
+  executor).
 
-    * the harness took a `SIGTERM` from a deploy and stayed down for 55 minutes
-      while every agent row still read `continuous: true, status: starting`. The
-      only symptom was one undelivered message in one conversation.
-    * `GraphWatcher`s live in memory, so a deploy took them all, and a project
-      with nothing watching it looks exactly like a project whose graph has not
-      moved.
-    * four `analysis_runs` rows said `:running` for one checkout with a single
-      `mix spex` process behind them.
-    * agents orphaned by a restart: the ledger says running, the machine holds
-      nothing, and the two are only comparable by hand.
-
-  None of that is visible from a table, and LiveDashboard does not answer it
-  either — it shows processes, not whether *this* project has a watcher or
-  *this* checkout has an executor.
-
-  John: "I'm just having to click through this and find every little thing...
-  How can we get you the QA tools so that you can go QA this thing for me?"
-
-  `disagreements` is the point of the whole thing. The rest is evidence for it —
-  a reader who looks only at that list and finds it empty has learned the thing
-  worth knowing.
+  `disagreements` is the point; the rest is evidence for it. An empty list is
+  the answer worth having.
 
   Here rather than in the controller because `CodeMySpecWeb` may not reach
-  `CodeMySpec.Repo`, and because a reconcile between two sources of truth is a
-  domain question that happens to have a JSON view today.
+  `CodeMySpec.Repo`.
   """
 
   use Boundary,
@@ -58,9 +41,7 @@ defmodule CodeMySpec.DevState do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Requirements.Shadow
-  alias CodeMySpec.Requirements.ShadowProjector
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
@@ -81,30 +62,22 @@ defmodule CodeMySpec.DevState do
   @doc """
   Whether the agents on a project are actually working.
 
-  `report/1` answers what the database and the runtime each believe. This
-  answers a different question and it is the one that matters when a fleet looks
-  busy and is not: are they *acting*.
+  `report/1` answers what the database and the runtime each believe; this
+  answers whether a busy-looking fleet is *acting*:
 
-  Six things, because these are the six I reached for by hand every ten minutes
-  for a day and got wrong twice by reading the easy one:
-
-    * `tool_calls` and `files_changed` — the only two numbers that mean work.
-      Message counts do not: on 2026-09-08 a fleet produced 1,847 messages and 4
-      tool calls in six hours, and I reported it as healthy more than once
-      because the transcripts were moving.
+    * `tool_calls` and `files_changed` — the only numbers that mean work;
+      message counts do not.
     * `empty_turns` — turns that finished with nothing. A high ratio against
       `spoke` is an agent talking to itself.
-    * `provider_errors` — the failures that look like an agent choosing not to
-      act: a rejected tool call, an expired credential, an exhausted quota.
-      Every one of those cost hours to find because it read as reticence.
-    * `actionable` per role — what the graph offers *this* agent where it
-      stands. Harness-scoped, because that is the scope an agent computes in and
-      the unscoped answer is a different, more optimistic number.
-    * `gating_issues` — what holds `issues_resolved`, by scope, so "blocked on
-      somebody else's repository" is visible rather than inferred.
+    * `provider_errors` — failures that read as an agent choosing not to act:
+      a rejected tool call, an expired credential, an exhausted quota.
+    * `actionable` per agent — what the graph offers it at its own working
+      copy; the project-wide number is a different, more optimistic one.
+    * `gating_issues` — accepted medium-and-up issues, by scope, so "blocked on
+      somebody else's repository" is visible.
 
-  Windowed, because a cumulative count cannot distinguish an agent that worked
-  this morning from one working now.
+  Windowed, so an agent that worked this morning is told apart from one
+  working now.
   """
   @spec fleet(Ecto.UUID.t(), pos_integer()) :: map()
   def fleet(project_id, minutes \\ 15) when is_binary(project_id) do
@@ -147,8 +120,7 @@ defmodule CodeMySpec.DevState do
     }
   end
 
-  # One pass. Four separate counts was four table scans of the same rows, and
-  # the point of this is to be cheap enough to call every ten minutes.
+  # One pass over the rows, cheap enough to call every few minutes.
   defp message_counts(agent_id, since) do
     query =
       from(m in "conversation_messages",
@@ -156,19 +128,9 @@ defmodule CodeMySpec.DevState do
         on: c.id == m.conversation_id,
         where: c.agent_id == type(^agent_id, Ecto.UUID) and m.inserted_at > ^since,
         select: %{
-          # The `tool_calls` column, not `role == "tool"`.
-          #
-          # `add_tool_call/5` stores a call as `role: :assistant, content: [],
-          # tool_calls: [...]` — `content: []` is right there, because a tool
-          # call has no prose. `role == "tool"` is the tool *result*, and only
-          # a failed one gets a row at all.
-          #
-          # So this counted a working agent's calls as zero and its `content:
-          # []` rows as empty turns. Measured 2026-09-09: 96 tool calls in
-          # twenty minutes reported as `tools=0 empty=96`, and I read the agent
-          # as idle for most of a night on the strength of it. I built this view
-          # so message counts could not mislead me and then wrote two counters
-          # that misled me the same way.
+          # The `tool_calls` column, not `role == "tool"`: a call is stored as
+          # `role: :assistant, content: [], tool_calls: [...]`, and
+          # `role == "tool"` is a result row, written only for failures.
           tools:
             filter(
               count(m.id),
@@ -207,10 +169,8 @@ defmodule CodeMySpec.DevState do
     end
   end
 
-  # In the agent's own scope. An agent computes the graph where it stands, and
-  # the project-wide answer is a different number — 12 against 0 on Broken
-  # Oaths, because the unfinished stories were parked on another working copy.
-  # What it would be offered, so this agrees with the turn offer (a31f1cd6).
+  # In the agent's own scope, and through `Work.actionable/3`, so it agrees
+  # with what the agent's turn would be offered.
   defp actionable_for(%{role: role, working_copy_id: copy_id, project_id: project_id} = agent)
        when is_binary(copy_id) do
     project = Repo.get(Project, project_id)
@@ -271,10 +231,9 @@ defmodule CodeMySpec.DevState do
   @doc """
   Ask for analyzer runs on one checkout, and say what the queue decided.
 
-  `ensure_stale_runs/3` is the same call the stop hook makes, and it answers
-  which sources it enqueued and which were already current. That distinction is
-  the thing worth having: "nothing happened" and "it was already fresh so
-  nothing needed to" are the same silence from outside.
+  Through `Analysis.ensure_stale_runs/3`, which answers which sources it
+  enqueued and which were already current — otherwise the same silence from
+  outside.
   """
   @spec request_run(Ecto.UUID.t() | nil, String.t() | nil) :: {:ok, map()} | {:error, String.t()}
   def request_run(working_copy_id, source) do
@@ -352,23 +311,16 @@ defmodule CodeMySpec.DevState do
   defp project_report(%Project{} = project) do
     copies = Repo.all(from(w in WorkingCopy, where: w.project_id == ^project.id))
     agents = AgentsRepository.list_every_agent(project_id: project.id)
-    watcher = GraphWatcher.status(project.id)
-    projector = ShadowProjector.status(project.id)
-    serving_kind = Shadow.serving_kind()
-    serving_writer = serving_status(serving_kind, watcher, projector)
+    projector = IncrementalGraph.status(project.id)
     copy_reports = Enum.map(copies, &copy_report(&1, agents))
 
     %{
       project_id: project.id,
       name: project.name,
-      graph_source: Atom.to_string(serving_kind),
-      graph_pass_enabled: GraphWatcher.pass_enabled?(),
-      graph_event_enabled: Shadow.enabled?(),
-      graph_writer: writer_report(serving_writer),
-      graph_watcher: watcher_report(watcher),
+      graph_writer: writer_report(projector),
       graph_projector: watcher_report(projector),
       working_copies: copy_reports,
-      disagreements: disagreements(project, serving_writer, agents, copy_reports)
+      disagreements: disagreements(project, projector, agents, copy_reports)
     }
   end
 
@@ -376,9 +328,6 @@ defmodule CodeMySpec.DevState do
 
   defp watcher_report(%{pending: pending, last_recompute: last}),
     do: %{watching: true, recompute_pending: pending, last_recompute: last}
-
-  defp serving_status(:event, _watcher, projector), do: projector
-  defp serving_status(:pass, watcher, _projector), do: watcher
 
   defp writer_report(nil), do: %{active: false}
 
@@ -422,9 +371,8 @@ defmodule CodeMySpec.DevState do
     }
   end
 
-  # Straight off the ledger, because the disagreement worth naming is between
-  # this list and the OS. One `mix spex` behind four `:running` rows reads as
-  # "the analyzers are busy" and is really "three of these will never finish".
+  # Straight off the ledger: the disagreement worth naming is between this list
+  # and what is actually running.
   defp claiming_running(copy_id) do
     Run
     |> where([r], r.working_copy_id == ^copy_id and r.status == :running)
@@ -432,8 +380,7 @@ defmodule CodeMySpec.DevState do
     |> Repo.all()
   end
 
-  # Each of these was a real incident, and each was found by reading logs rather
-  # than by asking.
+  # Each names a gap otherwise found only by reading logs.
   defp disagreements(project, serving_writer, agents, copy_reports) do
     unreachable =
       for copy <- copy_reports,
@@ -459,7 +406,7 @@ defmodule CodeMySpec.DevState do
     unwatched =
       if is_nil(serving_writer) and in_the_loop do
         [
-          "project #{project.name} has agents in the loop and no #{Shadow.serving_kind()} graph writer — work " <>
+          "project #{project.name} has agents in the loop and no graph writer — work " <>
             "appearing will not update the graph. Reading a graph that has rows does not " <>
             "start one; restart the server or toggle an agent's loop to start its graph worker."
         ]

@@ -6,39 +6,22 @@ defmodule CodeMySpec.Promotion.Runner do
   a separate transport address: it selects which harness receives a remote
   request and is never inferred from `Environment.ref`.
 
-  `precheck/3` and `merge/4` split on the environment rather than being
-  configured:
+  Every disk operation splits on the environment:
 
-    * `:local` — the checkout is on this machine, so `Steps` is called directly.
-      That is the suite, and the case where the server and the disk are the same
-      box.
+    * a non-harness environment — the checkout is on this machine, so `Steps`
+      is called directly (the suite, and a server on the same box as the disk);
 
-    * `:harness` — the checkout is on someone else's machine. Each operation is
-      sent down that harness's channel and answered there by the same `Steps`
-      module against a local environment.
+    * `:harness` — each operation is sent down that copy's harness channel
+      (`Analysis.harness_fs_request/4`) and answered there by `Steps`.
 
-  The split exists because the gate cannot move and the commands cannot stay.
-  `Promotion.gate/3` reads the database; `git merge` needs the disk.
-  Sending the whole promotion to the harness would take the database away from
-  the gate, and keeping it all on the server is what shipped and crashed —
-  `Environments.Harness.cmd/4` answers `{:error, :not_supported_on_harness}`,
-  deliberately.
+  The gate reads the database and `git` needs the disk, so the gate stays on
+  the server and the steps travel.
 
-  `restart/3` (story 1108, criterion 4663) no longer follows this split.
-  Bringing an application back up is a per-working-copy concern every copy
-  already has an answer for — `WorkingCopies.AppTransport.restart_app/2`,
-  reached through `Analysis.HarnessRegistry` by working copy id rather than
-  through `Environments` — so a promotion's restart is now the same call
-  `ensure_app_running`/every other app-lifecycle caller already makes, not a
-  second, promotion-only path to the same machine. What `just restart` used to
-  also do on this repo's own checkout — refresh the harness afterward, since
-  here server and harness are one codebase — is now `CmsHarness.AppInstance`'s
-  own optional `after-promote` recipe, run on the far side once the app is
-  confirmed serving, rather than a project-specific branch here that every
-  other project's promotion would also have to answer for.
-
-  `reload/3` is the same path with the `reload_app` verb: a promote's default,
-  which leaves the app running and hot-reloads it (2026-10-02).
+  `restart/3` and `reload/3` do not split: they call
+  `WorkingCopies.AppTransport.restart_app/2` / `reload_app/2` by working copy
+  id, the same app lifecycle every copy uses. Project-specific follow-up (this
+  repo refreshing its harness) is the far side's optional `after-promote`
+  recipe, run by `CmsHarness.AppInstance`.
   """
 
   alias CodeMySpec.Analysis
@@ -48,12 +31,8 @@ defmodule CodeMySpec.Promotion.Runner do
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies.AppTransport
 
-  # `just restart` used to compile, migrate and wait for the app to answer in
-  # one shelled-out call, and the analyzer timeout was the closest precedent
-  # for "long work on the far machine". `AppTransport.restart_app/2` now
-  # carries the same order of magnitude of work (the `serve` recipe it
-  # triggers still fetches deps, migrates and waits for health) over the
-  # channel instead of a shell, so the same ceiling applies.
+  # A restart fetches deps, migrates and waits for health on the far side:
+  # analyzer-scale work, so the analyzer-scale ceiling.
   @restart_timeout 600_000
   @git_timeout 60_000
   # Each drop boots `mix` in the test env, which compiles a candidate the gate
@@ -248,25 +227,12 @@ defmodule CodeMySpec.Promotion.Runner do
     |> decode_app_result()
   end
 
-  # `AppTransport.restart_app/2`'s own shape — `%{status:, url:, commit:}` on
-  # success, one of a few atoms or `{:harness_gone, reason}` on failure —
-  # translated into the `%{revision:}` / `%{reason:}` shape
-  # `Promotion.classify_restart/1` (and `restart_acknowledgement_lost?/1`,
-  # which that caller already consults) expect, so neither needs to know
-  # this call stopped going through `Steps`.
-  #
-  # Worded per shape rather than a blanket `to_string/1`, on purpose:
-  # `:harness_not_connected` — nothing was ever registered for this working
-  # copy, so there was no channel to lose an acknowledgement from — is a
-  # real failure and reads as one ("could not reach…", matching the wording
-  # `Runner.decode/1` already uses for the same idea on `precheck`/`merge`).
-  # `{:harness_gone, reason}` is the opposite: the channel died *answering*
-  # this exact restart, which is what a restart that took its own connection
-  # down while draining looks like from here — worded so
-  # `restart_acknowledgement_lost?/1`'s "draining" check reads it as the
-  # unconfirmed success it is, not a failure to retry.
-  # The revision is what the app serves: after a reload that is the reload's
-  # commit, not the launch commit the app process still carries.
+  # `AppTransport`'s shapes translated to `%{revision:}` / `%{reason:}`. The
+  # wording is load-bearing: `Promotion.restart_acknowledgement_lost?/1` reads
+  # it. `:harness_not_connected` is a real failure ("could not reach…");
+  # `{:harness_gone, _}` is a restart that took its own channel down, worded
+  # with "draining" so it reads as unconfirmed success. The revision is what
+  # the app serves (after a reload, not the launch commit).
   defp decode_app_result({:ok, %{status: "serving"} = info}) do
     {:ok,
      %{
@@ -317,10 +283,8 @@ defmodule CodeMySpec.Promotion.Runner do
   defp commit_suffix(nil), do: ""
   defp commit_suffix(commit), do: ", now on #{commit}"
 
-  # The harness cannot be asked without knowing which working copy to ask, and
-  # that is the id the channel is registered under — not the root, because two
-  # checkouts of one project are two working copies and a path cannot tell them
-  # apart.
+  # The harness is addressed by working copy id, never by root: two checkouts
+  # of one project are two copies.
   defp run(%Environment{type: :harness}, nil, op, _payload, _timeout, _local) do
     {:error,
      %{
@@ -348,11 +312,8 @@ defmodule CodeMySpec.Promotion.Runner do
 
   defp run(%Environment{} = env, _copy_id, _op, _payload, _timeout, local), do: local.(env)
 
-  # The far side answers in JSON, so a map that left as atoms comes back with
-  # string keys. Converted here rather than at each call site, because a caller
-  # that has to remember which side answered is a caller that will forget.
-  # Nested too: a batch's `conflicted` entries left as string keys, the queue
-  # matched none of them, and rebuilt the same batch for hours (2026-10-06).
+  # The far side answers in JSON, so keys come back as strings. Atomized here,
+  # nested too, so no caller has to know which side answered.
   defp decode({:ok, %{} = result}), do: {:ok, atomize(result)}
   defp decode({:error, %{} = reason}), do: {:error, atomize(reason)}
 

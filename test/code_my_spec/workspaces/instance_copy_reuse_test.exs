@@ -18,6 +18,13 @@ defmodule CodeMySpec.Workspaces.InstanceCopyReuseTest do
   `boot/1` short-circuits on a workspace that is still running and never reaches
   the code under test — the workspace has to actually be down.
   """
+  # Not async: FakeWorkspaceRunner is a single named Agent shared by every
+  # test that calls install_workspace_runner/1 (instance_preview_provisioning_test.exs,
+  # fake_workspace_runner_reinstall_test.exs, workspaces_test.exs and others),
+  # with no isolation between concurrent users -- configure/1 overwrites every
+  # field, not just the ones a caller names, and teardown stops the shared
+  # Agent out from under a sibling still using it (7f3a2936). async: false
+  # guarantees ExUnit never runs this alongside anything else that touches it.
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.AccountsFixtures

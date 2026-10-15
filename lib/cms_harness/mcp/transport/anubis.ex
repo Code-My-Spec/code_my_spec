@@ -16,17 +16,11 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   @client_name "cms-harness"
 
-  # What our own server speaks. Overridable per session because a third-party
-  # server speaks whatever it speaks, and one of them answers an unsupported
-  # proposal with silence rather than with a version it does support — see
-  # `CmsHarness.Browser`.
+  # What our own server speaks; overridable per session (see `CmsHarness.Browser`).
   @protocol_version "2025-06-18"
 
-  # The *name*, not the pid `start_link/1` hands back — that is the client's
-  # supervisor, and calling `list_tools` on it reaches `:supervisor.handle_call`
-  # with an operation no supervisor has a clause for. Anubis says as much in its
-  # own docs ("use the client by passing the registered name") and this ignored
-  # it, which cost a second crash loop on top of the first.
+  # Answers the client's *name*: the pid `start_link/1` returns is its
+  # supervisor, which cannot handle client calls.
   @impl true
   def connect(name, opts) do
     case Keyword.get(opts, :command) do
@@ -49,32 +43,16 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   defp connect_client(name, opts) do
     with {:ok, headers} <- headers(opts),
          {:ok, supervisor} <- start_client(name, opts, headers) do
-      # Unlinked, deliberately. `Anubis.Client.start_link/1` links its
-      # supervisor to whoever called it, and callers here are processes that
-      # must outlive a session: an agent whose browser died is an agent that
-      # cannot browse, not one that should stop. Twice tonight a link like this
-      # took down something far more important than the session at the end of
-      # it.
+      # Unlinked: callers must outlive a session (an agent whose browser died
+      # should not stop).
       Process.unlink(supervisor)
       ready(name)
     end
   end
 
-  # Started is not the same as handshaken, and only this transport has a
-  # handshake — which is why waiting for one belongs here rather than in a
-  # caller that also has to work against a session with no wire at all.
-  #
-  # `start_link/1` returns once the process is up, with the MCP `initialize`
-  # round trip still in flight behind it, so a `tools/list` sent straight after
-  # is answered "Server capabilities not set". That reads as a broken server
-  # rather than as a question asked too early, and it is why every agent on this
-  # machine was recorded with no browser tools while vibium sat installed on it.
-  #
-  # Waited for with `tools/list` rather than with `ping`, because a ping is not
-  # a thing every server implements: vibium answers `initialize` and
-  # `tools/list` and errors on `ping`, so pinging for readiness declared a
-  # perfectly healthy server unreachable. The first request the caller was going
-  # to make anyway is the honest thing to wait on.
+  # Started is not handshaken: a request before `initialize` completes is
+  # answered "Server capabilities not set". Waits with `tools/list`, not `ping`,
+  # which not every server implements (vibium does not).
   defp ready(name, attempts \\ 20) do
     case Anubis.Client.list_tools(name) do
       {:ok, _tools} ->
@@ -94,10 +72,8 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
       {:error, {:already_started, pid}} ->
         replace_leaked(pid, name, opts, headers)
 
-      # The shape it actually arrives in. `Anubis.Client.start_link/1` starts a
-      # supervisor, and the name collision happens on its *child*, so the
-      # already-started tuple comes back wrapped twice. Matching only the bare
-      # form looked right and caught nothing.
+      # The shape it actually arrives in: the collision is on the supervisor's
+      # child, so the tuple comes back wrapped.
       {:error, {:shutdown, {:failed_to_start_child, _child, {:already_started, pid}}}} ->
         replace_leaked(pid, name, opts, headers)
 
@@ -106,28 +82,9 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     end
   end
 
-  # A client left behind by a session that is gone.
-  #
-  # `connect/2` unlinks the supervisor on purpose, so it outlives the process
-  # that asked for it — an agent whose browser died should not die with it. The
-  # cost of that, unhandled, is that nothing ever takes the client down: stopping
-  # an agent leaves its client registered under the same name, and the next
-  # launch fails with
-  #
-  #     {:shutdown, {:failed_to_start_child, Anubis.Client, {:already_started, …}}}
-  #
-  # which fails the whole supervision tree. The agent then cannot start again —
-  # not by restarting it, not by stopping and starting it — until the harness
-  # itself is restarted and the leak goes with the VM.
-  #
-  # Watched end to end: a coding agent stopped at 02:24, came back with no tools
-  # at all, and reported "every tool I attempted returned No such tool
-  # available" for four consecutive turns while three restarts each answered
-  # "running" and changed nothing.
-  #
-  # Replaced rather than reused. The leaked client holds the previous session's
-  # transport and headers, and an agent restarted because something was wrong
-  # with it is the last caller that should inherit them.
+  # A client left behind by a gone session (the unlink's cost) still holds the
+  # name. Replaced, never reused: it carries the old session's transport and
+  # headers. See knowledge/harness, "MCP transport".
   defp replace_leaked(pid, name, opts, headers) do
     Logger.info("[CmsHarness] replacing a leaked MCP client for #{inspect(name)}")
 
@@ -151,27 +108,11 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   @doc """
   Take down the process tree holding a leaked client's name.
 
-  `{:already_started, pid}` names the *client*, and stopping that alone does not
-  free the name. `anubis_mcp` starts the client under a supervisor whose
-  strategy is `:one_for_all` and whose children take the default `:permanent`
-  restart, so the supervisor puts a fresh client straight back under the same
-  name — racing the `client_link/3` that follows. `start_client/3` only matches
-  the collision on its first attempt, so the second one surfaced uncaught and
-  `Engine.init/1` read it as a start failure.
+  `{:already_started, pid}` names the client, whose `:one_for_all` supervisor
+  would restart it under the same name; so the supervisor is stopped. It is
+  anonymous (our names are `:via` tuples) and found through the child.
 
-  Measured, on a restart whose relaunch lost that race: the agent was left at
-  `:starting` with `os_pid: nil` and nothing retrying, twelve minutes after
-  `restart_agent/2` had answered `{:ok, agent}` (`dfa1ee9e`). Non-deterministic,
-  and likelier under load, which is what a race between two processes claiming
-  one registered name looks like from outside.
-
-  The supervisor is anonymous here — `derive_supervisor_name/1` only names one
-  for an atom client name, and ours is a `:via` tuple — so it is found through
-  the child rather than by name.
-
-  Public because it is the part worth testing on its own. What fails is an OTP
-  restart strategy, and reproducing that needs a supervisor of the same shape,
-  not a live MCP server.
+  Public so it can be tested against a supervisor of the same shape.
   """
   @spec stop_leaked(pid()) :: :ok
   def stop_leaked(pid) do
@@ -183,15 +124,8 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   # The supervisor holding this client, or the client itself when nothing
   # supervises it.
   #
-  # `:parent` alone is not the answer and getting that wrong is worse than the
-  # bug: `Process.info/2` reports the process that *spawned* it, which is the
-  # supervisor only for a supervised child and is the plain caller for anything
-  # else. A first version of this stopped that caller, and since `stop_client/1`
-  # escalates to `Process.exit(pid, :kill)` when the stop is refused, it killed
-  # the process that had asked for the client.
-  #
-  # So the parent has to say it is a supervisor. `:proc_lib.initial_call/1`
-  # answers `{:supervisor, module, _}` for one and `false` for everything else.
+  # `:parent` is the spawner, which is not always a supervisor; it must prove
+  # it is one (`:proc_lib.initial_call/1`), or the caller would be killed.
   defp owner(pid), do: pid |> Process.info(:parent) |> supervisor_of(pid)
 
   defp supervisor_of({:parent, parent}, pid) when is_pid(parent) do
@@ -203,10 +137,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   defp holder({:supervisor, _module, _args}, parent, _pid), do: parent
   defp holder(_initial_call, _parent, pid), do: pid
 
-  # `:normal` first, because a supervisor that exits normally takes its children
-  # with it in order. Brutal kill only if it will not, and never a bare
-  # `Process.exit/2` first — that leaves the transport's own process alive and
-  # the name free, which is the same leak one layer down.
+  # `:normal` first, so children stop in order; brutal kill only if refused.
   defp stop_client(pid) do
     Supervisor.stop(pid, :normal, 5_000)
   catch
@@ -215,14 +146,8 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
       :ok
   end
 
-  # `Supervisor.stop/3` returns once the processes are gone, but the name is
-  # held in a `Registry`, which drops its entry when it sees the exit — one
-  # message later. Linking against a name that is free everywhere except the
-  # registry's table fails with the collision this just cleared.
-  #
-  # Waits on the condition rather than on a duration, the same way `ready/2`
-  # waits for the handshake. If the name is somehow still held at the end, the
-  # link is attempted anyway and fails as it did before — no worse, and loudly.
+  # The `Registry` drops the name one message after the exit. Waits on the
+  # condition; if still held, the link fails loudly as before.
   defp await_released(name, attempts \\ 50)
 
   defp await_released(_name, 0), do: :ok
@@ -249,33 +174,14 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     )
   end
 
-  # One `client_info["name"]` per session, because Anubis keys an ETS table on
-  # it — `anubis_client_<name>_tool_validators`, created `:private` by whichever
-  # client gets there first (`Anubis.Client.Cache.ensure_table/1`).
-  #
-  # A constant here meant every session in this VM computed the same table name,
-  # so exactly one could ever work. The browser starts at boot and took it;
-  # every agent after that died on
-  #
-  #     :ets.internal_delete_all(:"anubis_client_cms-harness_tool_validators", :undefined)
-  #     ** (ArgumentError) the table identifier refers to an ETS table with
-  #        insufficient access rights
-  #
-  # which surfaced as `:start_timed_out` — the agent's session never came up,
-  # and thirteen restore attempts in a row failed without one succeeding.
-  #
-  # The cost is an atom per distinct session, since Anubis interns the derived
-  # table name. That is the trade the library forces and it is a bounded one: an
-  # atom per agent start against a table of a million, where the alternative is
-  # one working session per machine.
+  # Unique per session: Anubis keys a `:private` ETS table on the name, so a
+  # shared name lets only one session work. Costs an atom per session.
   @doc "Public so the session-tagged client name/version can be asserted directly."
   @spec client_info(term()) :: map()
   def client_info(name),
     do: %{"name" => @client_name <> "-" <> session_tag(name), "version" => "1"}
 
-  # Readable in a log line and unique per session. The agent id already is both;
-  # a copy's browser session is keyed by its root, hashed because this ends up
-  # in an atom Anubis interns and a path is long and full of characters.
+  # The agent id, or a hash of a browser session's root (it becomes an atom).
   defp session_tag({:via, Registry, {_registry, {:mcp, agent_id, _base_url}}}), do: agent_id
 
   defp session_tag({:via, Registry, {_registry, {:browser, root}}}),
@@ -283,34 +189,12 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
 
   defp session_tag({:global, term}) when is_atom(term), do: to_string(term)
 
-  # Anything else: hashed rather than inspected, for the same reason, and never
-  # `to_string/1` on a tuple, which raises. Stable for the same name, which is
-  # all this needs to be.
+  # Anything else: hashed; stable for the same name.
   defp session_tag(other), do: other |> :erlang.phash2() |> Integer.to_string()
 
-  # A client started under a via or global name has to say what to call its
-  # transport: Anubis derives one from an atom name and raises on anything else.
-  #
-  # Neither of our names is an atom, and both are that way on purpose — an agent
-  # id and a base url arrive as input, and `String.to_atom/1` on input grows the
-  # atom table until the VM stops. So the sibling is derived here instead.
-  #
-  # Not doing this took the whole harness down: the client raised on start, the
-  # channel join raised with it, and it retried every eighty milliseconds. The
-  # stop hook read it correctly — the server was answering and this machine
-  # could not hold a socket to it.
-  #
-  # The tag goes around the *key*, inside the pair. A `Registry` via tuple
-  # carries `{registry_name, key}` as its third element, and wrapping that whole
-  # pair names a registry called `:transport` that nobody started — which is
-  # what the first version of this did, and it stopped every agent on every
-  # machine from starting for forty minutes.
-  #
-  # Public because getting it wrong is silent. A malformed via tuple is a
-  # perfectly good term; nothing objects until a supervisor start deep inside
-  # Anubis does, and its `ArgumentError: unknown registry: :transport` reaches a
-  # person as "the agent was not started on its machine", which reads like the
-  # machine's fault. So it is tested directly.
+  # Anubis derives a transport name only from an atom, and our names are not
+  # atoms (never `String.to_atom/1` on input). The tag wraps the Registry *key*,
+  # not the `{registry, key}` pair, which would name a registry nobody started.
   @doc "Public so the registry-name wrapping can be asserted directly rather than found later as an Anubis crash."
   @spec transport_name(term()) :: term()
   def transport_name({:via, Registry, {registry, key}}),
@@ -320,18 +204,13 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
   def transport_name(name) when is_atom(name), do: Module.concat(name, Transport)
   def transport_name(other), do: other
 
-  # Only a third-party server on this machine still comes through Anubis: a
-  # subprocess speaking JSON-RPC over its own stdin and stdout, as `vibium mcp`
-  # does, with no URL and no credential. Ours is HTTP (`connect_http/1`).
+  # Only stdio subprocesses (`vibium mcp`) use Anubis; ours is HTTP.
   defp transport(opts, _headers) do
     {:stdio, command: Keyword.fetch!(opts, :command), args: Keyword.get(opts, :args, [])}
   end
 
-  # The credential is fetched here rather than by the caller, because whether
-  # one is needed is a fact about the wire. Lifted from `McpController`, which
-  # has always sent exactly these two: a bearer token for this checkout, and the
-  # harness id, which names the working copy *and* the project it belongs to and
-  # so cannot contradict itself.
+  # Fetched here: whether a credential is needed is a fact about the wire. The
+  # same two headers `McpController` sends: a bearer token and the harness id.
   defp headers(opts) do
     case Keyword.get(opts, :headers) || stdio_needs_none(opts) do
       %{} = given ->
@@ -349,21 +228,9 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     end
   end
 
-  # Which agent is calling, when one is.
-  #
-  # The connection is the only place this can live. An agent inside our own BEAM
-  # still reaches the server over HTTP — `Config.server_url()` is a real URL, on
-  # Fly in production — so nothing about the caller is ambient, and identity
-  # travels the way the working copy's already does.
-  #
-  # The value is the server's own: it mints the agent row, sends the id over the
-  # channel to start it, and the harness hands it back here. So this is not a
-  # claim the harness invents, and the server can check the agent belongs to a
-  # working copy this caller holds.
-  #
-  # Absent for a connection that is not an agent's — the CLI's, a subprocess's —
-  # and absent is the right answer there rather than a placeholder, because a
-  # tool that needs an agent should refuse rather than act on a guess.
+  # Which agent is calling, as an `x-agent-id` header: the server minted the id
+  # and can check it belongs to this copy. Absent, never a placeholder, for a
+  # non-agent connection.
   defp put_agent(headers, agent_id) when is_binary(agent_id) and agent_id != "",
     do: Map.put(headers, "x-agent-id", agent_id)
 
@@ -408,10 +275,7 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
     end
   end
 
-  # Flattened to a string on purpose. The caller is an `Alloy.Tool`, and Alloy
-  # hands a tool's result to the model as text — so a structured value here
-  # would be inspected into one anyway, at a layer with no idea what it is
-  # looking at.
+  # Flattened to text: Alloy hands a tool result to the model as text anyway.
   defp text(%{result: %{"content" => content}}) when is_list(content) do
     Enum.map_join(content, "\n", fn
       %{"text" => t} -> t

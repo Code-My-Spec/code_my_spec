@@ -60,8 +60,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3521Spex do
   @moduletag timeout: 45_000
 
   defp restore_projector(_context) do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 

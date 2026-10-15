@@ -108,9 +108,12 @@ requested_partition = System.get_env("MIX_TEST_PARTITION")
 # copy. A value inherited from another worktree cannot match, so the inversion
 # that this restores nothing of (issue 63265687, two sessions migrating past each
 # other) stays closed. Anything else the environment says still loses.
+#
+# `_<n>` is a spex shard of any of these (`mix cms.spex`).
 own_sub_partition? =
   is_binary(recorded_partition) and is_binary(requested_partition) and
-    requested_partition in [recorded_partition <> "a", recorded_partition <> "s"]
+    Regex.match?(~r/^#{Regex.escape(recorded_partition)}[as]?(_\d+)?$/, requested_partition) and
+    requested_partition != recorded_partition
 
 # In a linked worktree `.git` is a file pointing at the real git dir rather than
 # a directory. The primary checkout keeps the bare name.
@@ -246,17 +249,9 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
 # `_build`. At that length a test that dispatches a run and ends leaves the
 # waiting task alive for half an hour, and the harness-never-answered path
 # cannot be asserted at all.
-# `graph_debounce_ms` is the requirement graph's own coalescing window, two
-# seconds in production. `GraphWatcher.settle/1` already makes the pass
-# deterministic for a test that calls it, and a test asserting ordering should
-# call it rather than lean on this — this is for the ones asserting what
-# happens *without* settling, which would otherwise pay two real seconds an
-# assertion. Not zero: coalescing needs a window more than one event can land
-# inside, and zero makes every event its own pass.
 config :code_my_spec,
   harness_decision_timeout: 1_000,
   harness_watch_debounce_ms: 200,
-  graph_debounce_ms: 25,
   remote_await_timeout: 500,
   # The floor every `GenServer.call(pid, msg, timeout + call_grace_ms())`
   # site (CodeMySpec.Analysis.harness_fs_request/4,
@@ -316,6 +311,7 @@ config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
 # test runner — and the whole suite down with no summary. Tests that want a
 # report drive it (`WorkingCopyReporter.report/1`) or start their own.
 config :code_my_spec, :working_copy_reporter, first_report: :never, heartbeat: :never
+config :code_my_spec, :app_log_trimmer, interval: :never
 
 # `CmsHarness.Projects.Generator`'s own subprocess calls, pinned for the same
 # reason: the default shells out through several `mix` tasks that take real

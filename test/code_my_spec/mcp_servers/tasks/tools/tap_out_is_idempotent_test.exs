@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOutIsIdempotentTest do
   was mostly the tool asking the same question over and over, not 224 people
   waiting on a decision.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

@@ -17,7 +17,7 @@ defmodule CodeMySpec.Agents.ListForTeamStatusTest do
   bounded to one row per `(working_copy_id, role)` slot rather than
   accumulating every agent that copy has ever run.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

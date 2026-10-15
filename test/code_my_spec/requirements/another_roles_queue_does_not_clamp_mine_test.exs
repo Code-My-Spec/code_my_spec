@@ -38,7 +38,7 @@ defmodule CodeMySpec.Requirements.AnotherRolesQueueDoesNotClampMineTest do
   answer worth reading.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository

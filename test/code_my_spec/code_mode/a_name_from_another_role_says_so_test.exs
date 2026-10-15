@@ -7,11 +7,11 @@ defmodule CodeMySpec.CodeMode.ANameFromAnotherRoleSaysSoTest do
   a script. `tap_out` is excluded from scripts *and* withheld from the QA role
   (`ToolSets`), and what it got back was:
 
-      No tool is bound under that name â it may be a similar name, or on this
+      No tool is bound under that name — it may be a similar name, or on this
       project's machine.
 
   Every clause of that is wrong for `tap_out`. It is not a similar name, it is
-  not on the machine, and the one place it is real â another role's tool list â
+  not on the machine, and the one place it is real — another role's tool list —
   is the one place the sentence does not look. An agent reading it goes looking
   for spellings and for its machine, which is what the issue says it did.
 
@@ -32,14 +32,24 @@ defmodule CodeMySpec.CodeMode.ANameFromAnotherRoleSaysSoTest do
     )
   end
 
-  # The QA case: a grant that does not include `tap_out`, and a server whose
-  # registrations include it. Both lists are what `run_script` passes.
+  defp registered do
+    Enum.map(
+      ["list_stories", "tap_out", "ask_user_question", "create_issue"],
+      &%{name: &1}
+    )
+  end
+
+  # The QA case: a grant that does not include `tap_out` or `create_issue`, and a
+  # server whose registrations include both. The lists are derived the way
+  # `run_script` derives them.
   defp run_as_qa(script) do
+    carried = ["list_stories", "ask_user_question"]
+
     CodeMode.eval(catalog(), script,
       out_of_scope: [],
       agent_kind: :qa,
-      carried: ["list_stories"],
-      direct_names: ["tap_out", "ask_user_question", "create_issue"]
+      carried: carried,
+      direct_names: Catalog.direct_only(registered(), carried)
     )
   end
 
@@ -47,9 +57,20 @@ defmodule CodeMySpec.CodeMode.ANameFromAnotherRoleSaysSoTest do
     result = run_as_qa(~s|return tap_out({ reason = "stuck" })|)
 
     assert result.error.message =~ "tap_out"
+
     assert result.error.message =~ ~r/another role|belongs to/i,
            "the agent must hear that the tool is real and not its to call, or it " <>
              "keeps guessing names"
+  end
+
+  # Not excluded from scripts, just not this role's: only the direct-only stub
+  # can place it.
+  test "another role's direct-only tool is named as another role's tool" do
+    result = run_as_qa(~s|return create_issue({})|)
+
+    assert result.error.message =~ "create_issue is a tool on this server"
+    assert result.error.message =~ "belongs to another role"
+    refute result.error.message =~ "No tool is bound under that name"
   end
 
   test "and is not offered the machine or a near miss" do

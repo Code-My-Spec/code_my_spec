@@ -247,10 +247,8 @@ defmodule CodeMySpec.Invitations do
     end
   end
 
-  # User-limit validation is a no-op for now — billing isn't wired up,
-  # so `MembersRepository.can_add_user_to_account?/1` always returns
-  # true. Kept as a hook so a future billing context plugs in here
-  # without changing call sites.
+  # User-limit hook: `MembersRepository.can_add_user_to_account?/1` always
+  # returns true today; a seat limit plugs in here without changing callers.
   defp validate_user_limit(account_id) do
     case MembersRepository.can_add_user_to_account?(account_id) do
       true -> :ok
@@ -268,11 +266,8 @@ defmodule CodeMySpec.Invitations do
     InvitationRepository.create_invitation(scope, attrs)
   end
 
-  # `url_fun` is supplied by the web layer (LV/controller) so the URL
-  # in the email resolves against the request's actual host, not a
-  # config-pinned endpoint URL. Falls back to `PublicUrl.base()` only
-  # for non-web callers (e.g. background jobs that don't have a
-  # request context).
+  # `url_fun` comes from the web layer so the email's URL resolves against the
+  # request's host; `PublicUrl.base()` is the fallback for non-web callers.
   defp send_invitation_email(invitation, url_fun) do
     url =
       if is_function(url_fun, 1) do

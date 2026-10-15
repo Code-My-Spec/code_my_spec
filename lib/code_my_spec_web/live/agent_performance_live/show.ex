@@ -38,7 +38,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Show do
       <div data-test="model">{@detail.tokens.model}</div>
       <div data-test="input-tokens">Input: {token_label(@detail.tokens.input_tokens)}</div>
       <div data-test="output-tokens">Output: {token_label(@detail.tokens.output_tokens)}</div>
-      <div data-test="cache-read-tokens">Cache read: {token_label(@detail.tokens.cache_read_tokens)}</div>
+      <div data-test="cache-read-tokens">
+        Cache read: {token_label(@detail.tokens.cache_read_tokens)}
+      </div>
       <div data-test="cache-write-tokens">
         Cache write: {token_label(@detail.tokens.cache_write_tokens)}
       </div>

@@ -57,8 +57,7 @@ defmodule CmsHarness.Migrate do
     end
   end
 
-  # `CMS_TOKEN`, the same override `CmsHarness.Config.user_token/0` already
-  # answers to. Without it, `Migration.Client.migrate/2` falls back to
+  # `CMS_TOKEN`, an override for this one migration. Without it, `Migration.Client.migrate/2` falls back to
   # `OAuthClient.get_token()` — the token stored locally from whichever
   # server this CLI last logged into, which does not validate against a
   # *different* server (a dev instance has its own signing key and user

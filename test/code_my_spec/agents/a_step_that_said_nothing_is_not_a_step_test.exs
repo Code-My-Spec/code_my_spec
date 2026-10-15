@@ -18,7 +18,7 @@ defmodule CodeMySpec.Agents.AStepThatSaidNothingIsNotAStepTest do
   own clause for a turn that finished with nothing to say. This is the step
   channel, and a step with no text has nothing to tell anybody.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository

@@ -22,7 +22,7 @@ defmodule CodeMySpec.Agents.ACodingAgentCanSayWhichCheckoutItIsOnTest do
   where it is, it does not make more places to be.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
@@ -89,7 +89,7 @@ defmodule CodeMySpec.Agents.ACodingAgentCanSayWhichCheckoutItIsOnTest do
       assert Enum.any?(rows, & &1["main"]),
              "this project has a checkout on disk, so one row is the one to build on"
 
-      refute Enum.any?(rows, &is_nil(&1["root"]) and &1["main"]),
+      refute Enum.any?(rows, &(is_nil(&1["root"]) and &1["main"])),
              "the row with no disk behind it is never the destination"
     end
 

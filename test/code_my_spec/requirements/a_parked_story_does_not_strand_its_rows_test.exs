@@ -33,7 +33,7 @@ defmodule CodeMySpec.Requirements.AParkedStoryDoesNotStrandItsRowsTest do
   incremental one alike.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures

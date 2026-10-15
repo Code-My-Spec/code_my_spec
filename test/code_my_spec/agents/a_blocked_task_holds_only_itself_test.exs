@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   could claim is stalled.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 

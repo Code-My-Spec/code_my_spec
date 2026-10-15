@@ -48,9 +48,13 @@ defmodule CodeMySpec.AgentPerformance.OfferHealth do
   defp role_of(%Offer{agent: %{role: role}}) when not is_nil(role), do: role
   defp role_of(_offer), do: nil
 
+  @doc "Whether an offer counts toward a claim rate at all: not superseded, not informational."
+  @spec counted?(Offer.t()) :: boolean()
+  def counted?(%Offer{} = offer),
+    do: offer.status != :superseded and offer.kind not in @uncounted_kinds
+
   defp role_health(role, offers) do
-    counted =
-      Enum.reject(offers, &(&1.status == :superseded or &1.kind in @uncounted_kinds))
+    counted = Enum.filter(offers, &counted?/1)
 
     claimed = Enum.filter(counted, &(&1.status == :claimed))
 

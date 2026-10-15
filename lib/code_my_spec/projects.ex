@@ -84,8 +84,7 @@ defmodule CodeMySpec.Projects do
 
   @doc """
   Returns true iff some project has a local_path set AND was linked by
-  this client_user. Used by the local-install ladder to decide whether
-  to surface the linked-project rung as "done."
+  this client_user. Nothing in `lib/` calls this now.
   """
   def any_linked_project_for_client_user?(nil), do: false
 
@@ -171,24 +170,11 @@ defmodule CodeMySpec.Projects do
     * `working_dir` — the desktop CLI serves many projects from one process, so
       "which project is this directory?" is a real question there.
 
-  The directory lookup is a poor identity key on shared data: two checkouts of
-  one project have two paths but one column, and `/workspace/<app>` is a
-  plausible collision across sprites. Configuring the id sidesteps both by not
-  asking the question.
+  Within `working_dir`, `project_id` in `.code_my_spec/config.yml` wins over
+  the `local_path` lookup, a poor identity key (two checkouts of one project
+  have two paths but one column).
   """
   def resolve_local_project(working_dir) do
-    # Identity in precedence order, most specific first:
-    #
-    #   1. `:project_id` app env (CMS_PROJECT_ID) — the whole VM serves one
-    #      project. This is a sprite.
-    #   2. `project_id` in the project's own `.code_my_spec/config.yml` — the
-    #      per-project answer, and the one a laptop needs when a single harness
-    #      serves several checkouts.
-    #   3. `local_path` lookup — the original mechanism, kept so existing
-    #      installs keep working. It is the one that cannot survive the split:
-    #      it is a database lookup keyed by a filesystem path, and the server
-    #      that will own these tools has no filesystem.
-    #
     # `Elixir.Application` explicitly: this module aliases
     # `CodeMySpec.Oauth.Application`, which shadows the OTP module.
     case Elixir.Application.get_env(:code_my_spec, :project_id) do
@@ -238,11 +224,7 @@ defmodule CodeMySpec.Projects do
 
   Returns `{:ok, scope}` or `{:error, reason}`.
 
-  Lives here rather than on `Scope` — resolving-or-creating a project from
-  config is a Projects operation that happens to end in a Scope, not a Users
-  one. `Users` depending on `Projects` was the wrong direction (a project
-  belongs to an account, not to a user directly), and this function was the
-  reason it had to.
+  Lives here rather than on `Scope` so `Users` need not depend on `Projects`.
   """
   @spec scope_from_local_config(String.t()) :: {:ok, Scope.t()} | {:error, atom() | String.t()}
   def scope_from_local_config(project_root) when is_binary(project_root) do
@@ -376,19 +358,12 @@ defmodule CodeMySpec.Projects do
   The project's deploy key, minting one if it has none.
 
   A machine running this project's application authenticates as the project,
-  and a deploy key is the only credential it can hold — a container has no
-  browser to complete an OAuth flow in. So anything that starts one has to be
-  able to get a key rather than find one already there.
+  and a deploy key is the only credential it can hold (a container cannot
+  complete OAuth). `create_project/2` mints one; this covers projects that
+  predate that or were made another way.
 
-  Nothing mints a key at creation. Provisioning mints its own at the secrets
-  step, which is fine for a project that gets deployed and useless for one that
-  is merely run: a cloud workspace came up with no `CMS_DEPLOY_KEY`, so its
-  onboarding could not authenticate and the copy got no preview. Everything
-  reported success — the container ran, the app served — and the only missing
-  piece was the one nobody was watching.
-
-  Existing keys are returned untouched. Rotating here would break an already
-  deployed application that is authenticating with the old one.
+  Existing keys are returned untouched: rotating here would break a deployed
+  application authenticating with the old one.
   """
   @spec ensure_deploy_key(Scope.t(), Project.t()) :: {:ok, Project.t()} | {:error, term()}
   def ensure_deploy_key(%Scope{}, %Project{deploy_key: key} = project)
@@ -402,14 +377,9 @@ defmodule CodeMySpec.Projects do
   @doc """
   The OTP application name `mix cms.new` should generate this project under.
 
-  Derived from the project's own `name` rather than `module_name`: the latter
-  is nil until a generated app exists to report it (see `Project`'s own field
-  comment), which makes it useless for picking the name of the app about to be
-  generated. `Workspaces.boot/1` computes this identically for the same reason
-  before starting a cloud container — kept here too, as a plain function
-  rather than something only the boot path can reach, so a harness asking the
-  server what to generate gets the same answer a cloud boot would have picked,
-  computed once rather than reimplemented by whichever client asks.
+  Derived from `name`, not `module_name`, which is nil until a generated app
+  reports it. `Workspaces` computes it identically for a cloud boot; keep the
+  two in step so a harness and a cloud boot pick the same name.
   """
   @spec app_name(Project.t()) :: String.t()
   def app_name(%Project{name: name}) do
@@ -443,8 +413,7 @@ defmodule CodeMySpec.Projects do
 
   @doc """
   Returns any one project in the given account that has a
-  `local_path` set, or `nil`. Used by the local socket supervisor
-  to bootstrap a scope per local account.
+  `local_path` set, or `nil`. Nothing in `lib/` calls this now.
   """
   @spec first_local_project_for_account(Ecto.UUID.t() | nil) :: Project.t() | nil
   def first_local_project_for_account(nil), do: nil
@@ -500,25 +469,10 @@ defmodule CodeMySpec.Projects do
     end
   end
 
-  # Every project needs one, so it gets one here rather than the first time
-  # something happens to ask.
-  #
-  # A key is what a harness presents to join a project's channel. Without one a
-  # project's first checkout cannot join at all: the daemon falls back to
-  # whatever key it was started with, which belongs to a different project, and
-  # the join is refused. QA 963 walked into that — a project made through the
-  # form, a checkout onboarded onto it, and a first message that could not be
-  # delivered — and nothing on the way named a missing key.
-  #
-  # `ensure_deploy_key/2` existed and had one caller, `Workspaces`, which mints
-  # lazily at the moment an instance needs a credential. Lazy is right there and
-  # wrong here: joining is not an occasion anybody triggers, it is what a
-  # checkout does the moment it exists.
-  #
-  # Minted into the insert rather than by an update afterwards, so a listener
-  # never sees `{:updated, …}` for a project it has not seen created. The
-  # Generate control on the form is a rotate now, which is what it always read
-  # as.
+  # Every project gets a deploy key at creation: it is what a harness presents
+  # to join the project's channel, and a checkout joins the moment it exists.
+  # Minted into the insert, so no listener sees `{:updated, …}` before
+  # `{:created, …}`.
   defp with_deploy_key(attrs) do
     case deploy_key_in(attrs) do
       key when is_binary(key) and key != "" -> attrs

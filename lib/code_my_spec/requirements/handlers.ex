@@ -2,50 +2,25 @@ defmodule CodeMySpec.Requirements.Handlers do
   @moduledoc """
   Domain events applied to the projection, without re-deriving anything.
 
-  ## The shape
-
-  Three tables and a lookup function, which is the whole of it:
+  Three tables and a lookup:
 
     * `@dirties` — which profiles an event kind invalidates.
-    * `@requirement_profiles` — which profiles each requirement is moved by, and
-      which it reads.
+    * `@requirement_profiles` — which profiles move each requirement, and which
+      it reads.
     * `settle/3` — one clause per requirement, reading its profile.
 
-  An event dirties one or more profiles, each profile is loaded once
-  (`Profiles.load/2`), and every requirement those profiles move is settled from
-  it in memory. Adding a requirement is a `settle/3` clause and a row in
-  `@requirement_profiles`. Adding a source is a profile.
+  Each dirtied profile is loaded once (`Profiles.load/2`) and every requirement
+  it moves is settled from it in memory, across every entity at once: a default
+  for the population, plus the exceptions the profile names. Adding a
+  requirement is a `settle/3` clause and a row in `@requirement_profiles`;
+  adding a source is a profile.
 
-  What it is *not* is a query per handler. Five `file_exists` names all read the
-  same thing — which roles a component has files for — and asking five times is
-  how a handler-per-requirement design turns back into the pass it replaced.
+  `:no_handler` means nothing here knows the event, and the caller falls back to
+  invalidating and recomputing. `{:ok, [], []}` is a different answer: the event
+  moved nothing the graph reads. Collapsing the two would let an uninteresting
+  event skip work it owed.
 
-  ## Why this beats re-deriving
-
-  An invalidation says *an entity moved*, and the only way to answer one is to
-  recompute that entity: every requirement it has, every checker. One incoming
-  issue ran 22 checkers to settle the one it could have moved — 238ms.
-
-  An issue at or above the threshold **is** `issues_triaged = false`. The whole
-  issue surface is now three queries and settles in 7ms, whatever the project's
-  size.
-
-  ## Set-based, so population size stops mattering
-
-  A requirement is settled across every entity at once: the default goes on with
-  one write, then the handful the profile named are corrected. Thirty-eight
-  stories or three thousand — same three queries, same two writes.
-
-  ## No handler is a valid answer
-
-  `:no_handler` means nothing here knows about this event, and the caller falls
-  back to invalidating and recomputing — correct, and slow. That is what lets
-  requirements move across one at a time while the shadow diff scores either
-  path identically.
-
-  `{:ok, [], []}` is a different answer: the event happened and moved nothing
-  the graph reads. Collapsing the two would let an uninteresting event silently
-  skip work it owed.
+  See knowledge/requirements_graph, "Verdicts and handlers".
   """
 
   alias CodeMySpec.Deploys
@@ -96,51 +71,36 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_dismissed" => [:issues],
     "issue_resolved" => [:issues],
     "issue_updated" => [:issues],
-    # Safe again: the four project delegates a sync moves —
-    # `spex_boundary_ready`, `qa_integration_plan`, `personas_complete` and
-    # `architecture_designed` — now have `settle/3` clauses, so nothing this
-    # event moves is left to the marks it discards.
+    # Every project delegate a sync moves (`spex_boundary_ready`,
+    # `qa_integration_plan`, `personas_complete`, `architecture_designed`) has a
+    # `settle/3` clause, so nothing it moves is left to the discarded marks.
     "files_synced" => [:files],
     "deploy_changed" => [:links],
     # A setup step, environment or option changing moves what an undeployed
     # story's `deploy` is waiting on.
     "devops_setup_changed" => [:links],
-    # A story row reaches four profiles:
-    #
-    #   * `:stories`  — the seal, `promoted_version`, `qa_ready_commit`,
-    #                   `ready_for_dev`, `epic_id`
-    #   * `:links`    — `component_id`, which `component_linked` resolves
-    #   * `:issues`   — `exclude_other_copies_stories/2` filters issues by the
-    #                   story's `working_copy_id`, so moving a story between
-    #                   checkouts moves which issues gate here
-    #   * `:qa`       — no. A story row says nothing about its QA attempts.
-    #
-    # Creation and deletion are `story_created` / `story_deleted`, which nothing
-    # handles, and so is `story_readiness_changed`: `ready_for_dev` decides
-    # whether a story projects at all, and handlers settle rows rather than
-    # writing them.
+    # A story row moves `:stories` (seal, `promoted_version`, `qa_ready_commit`,
+    # `ready_for_dev`, `epic_id`), `:links` (`component_id`) and `:issues`
+    # (issues are filtered by the story's `working_copy_id`). Not `:qa`.
+    # Creation, deletion and readiness change which rows exist, and handlers
+    # only settle rows, so those kinds are not handled.
     "story_changed" => [:stories, :links, :issues],
     # A reviewed failure can return issue submissions and clear certification.
     # This event is emitted after the outer QA transaction commits.
     "qa_attempt_submitted" => [:qa, :issues, :stories],
-    # A component appearing, going or changing moves `architecture_designed`
-    # — the orphan rule reads the component set — and that is settled here
-    # from the `:architecture` profile. The component's *own* rows are not:
-    # a template can add or remove nodes, and handlers settle rows rather
-    # than create them, so these three are `@partial` and their fallback
-    # marks stay for the narrow recompute of the component itself.
+    # Settles `architecture_designed` (the orphan rule reads the component
+    # set). The component's own rows can change with its template, so these
+    # are `@partial`: their fallback marks stay for a narrow recompute.
     "component_created" => [:architecture],
     "component_changed" => [:architecture],
     "component_deleted" => [:architecture],
-    # A dependency moves edges and no verdict: the cross-context edge between
-    # the two components and every kickoff drawn through them. Handled so its
-    # marks do not send the source's family through a recompute nothing reads,
-    # and `@shape` so the projector redraws the edges for it.
+    # Moves edges, no verdict. Handled so its marks skip a recompute nothing
+    # reads; in `@shape` so the projector redraws the edges.
     "dependency_changed" => []
   }
 
   # Handled kinds whose handler answers only part of what the event moved.
-  # `ShadowProjector.apply_handlers/2` drops an invalidation beside a handled
+  # `IncrementalGraph.apply_handlers/2` drops an invalidation beside a handled
   # event as answered; for these it keeps it, so the entities the event named
   # still go through `compute_entity/4`.
   @partial ~w(component_created component_changed component_deleted issue_created issue_accepted issue_dismissed issue_resolved issue_updated qa_attempt_submitted)
@@ -158,14 +118,10 @@ defmodule CodeMySpec.Requirements.Handlers do
 
   def partial_event?(%{kind: kind}), do: kind in @partial
 
-  # Handled kinds that can move the shape the edges are drawn from — a
-  # dependency declared, a story relinked to another component — without
-  # moving a row a handler creates. Their verdicts are settled here; the
-  # projector asks the shape whether the edges have to be redrawn. Component
-  # kinds are not listed because `@partial` already sends them down the path
-  # that asks.
-  # File presence controls whether discovered components belong to a story's
-  # dependency closure, even when no component or dependency record changed.
+  # Handled kinds that can move the shape the edges are drawn from (a
+  # dependency, a story relinked, file presence deciding a story's discovered
+  # dependency closure). The projector asks the shape whether to redraw edges.
+  # Component kinds go that way already through `@partial`.
   @shape ~w(dependency_changed story_changed files_synced)
 
   @doc "The handled kinds after which the projector checks the shape."
@@ -182,42 +138,21 @@ defmodule CodeMySpec.Requirements.Handlers do
   @spec handled_kinds() :: [String.t()]
   def handled_kinds, do: Map.keys(@dirties)
 
-  # ## What is deliberately not here
-  #
-  # An event kind may only appear in `@dirties` once its handlers settle
-  # **everything that event can move**. Handling it discards the fallback marks
-  # by observation id, so any requirement left unsettled keeps whatever verdict
-  # it already had, with nothing to correct it.
-  #
-  # The shadow diff caught this on `story_changed`: sealing a story moves
-  # `three_amigos_complete`, no handler settles it, and the diff came back
-  # `disagree story:9058/three_amigos_complete`.
-  #
-  #   * `component_changed` — a component's type decides which template applies,
-  #     so it can change which requirements exist, and only a recompute writes
-  #     rows that were not there.
-  #
-  # It falls back to invalidation, which costs a narrow recompute and is
-  # correct. The unit of conversion is an event and its whole requirement set,
-  # never a requirement on its own.
+  # A kind belongs in `@dirties` only once its handlers settle everything that
+  # event can move, or mark it `@partial`: handling discards the fallback marks,
+  # so an unsettled requirement keeps a stale verdict forever.
+  # See knowledge/requirements_graph, "Lessons".
 
-  # What each requirement is moved by, and what its `settle/3` clause reads.
-  #
-  # Some requirements read multiple profiles; bdd_specs_exist uses both files
-  # and story criteria. Each profile is loaded once per event.
-  #
-  # Usually the two are the same list, which is the bare-list shape. They come
-  # apart for the rollups in `@delegate_requirements`, written
-  # `{moved_by, reads}`, for a rollup moved by more than it reads — see
-  # `personas_complete`.
+  # What each requirement is moved by, and what its `settle/3` clause reads:
+  # one list when they agree, `{moved_by, reads}` when a rollup is moved by more
+  # than it reads (`personas_complete`). Each profile loads once per event.
   @requirement_profiles %{
     "issues_triaged" => [:issues],
     "issues_resolved" => [:issues],
     "story_issues_triaged" => [:issues],
     "ready_for_qa" => [:stories],
     "implementation_file" => [:files],
-    # Files for the spec paths, stories for the criteria those paths have to
-    # cover. Not a `@file_requirements` row any more — see its `settle/3`.
+    # Files for the spec paths, stories for the criteria they must cover.
     "bdd_specs_exist" => [:files, :stories],
     "technical_strategy" => [:files],
     "code_generation" => [:files],
@@ -228,54 +163,28 @@ defmodule CodeMySpec.Requirements.Handlers do
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
     "questions_answered" => [:stories],
-    # Issues too: a fix resolved after the last promotion unsatisfies it
-    # (1f8028a1), and resolving is an issue event.
+    # Issues too: a fix resolved after the last promotion unsatisfies it.
     "story_promoted" => [:stories, :issues],
-    # Moved by :stories too, not just :qa: a revision that re-stamps
-    # qa_ready_at without a fresh attempt has to recompute this requirement
-    # even though no QaAttempt changed (2e7ed919).
+    # :stories too: re-stamping qa_ready_at without a new attempt moves it.
     "qa_complete" => [:qa, :stories],
     # The rollups. `qa_integration_plan` is handed the file profile it would
     # otherwise re-read; the rest query for themselves — see
     # `@delegate_requirements`.
     "qa_integration_plan" => [:files],
     "spex_boundary_ready" => [:files],
-    # Moved by files as well: a persona's artifacts — `summary.md`,
-    # `sources.md` in its folder — are files, and the `:personas` profile loads
-    # them by role. Profiled as `[:personas]` alone, a sync that wrote them
-    # settled nothing here, and the story-560 criteria read "personas_complete
-    # is still the blocking requirement" after every artifact existed.
+    # Moved by files too: a persona's `summary.md` and `sources.md` are files.
     "personas_complete" => {[:files, :personas], [:personas]},
-    # Files for proposal.md, components for whether any is authored. Stories
-    # no longer move it: linking is per story (`component_linked`).
+    # Files for proposal.md, components for whether any is authored.
     "architecture_designed" => [:files, :architecture],
     "stories_exist" => [:stories],
     "work_dispatched" => [:stories]
   }
 
-  # Requirements whose verdict is a rollup no event determines.
-  #
-  # `architecture_designed` asks whether a plan exists;
-  # `personas_complete` checks two artifacts per persona; `spex_boundary_ready`
-  # asks five questions about four directories; `qa_integration_plan` validates
-  # an index against the specs it names. None of those is a value an event
-  # carries — a file landing does not *say* whether the architecture is clean.
-  #
-  # So these are settled by calling the requirement's own checker once, which is
-  # honestly a narrowed recompute rather than event application. The win is the
-  # narrowing: one requirement instead of all fourteen project requirements plus
-  # every entity, and correct by construction because it is the same function
-  # the recompute calls.
-  #
-  # `work_dispatched` and `stories_exist` are here for the same reason and are
-  # cheaper about it: two or three reads each, none of them per story.
-  #
-  # `{module, function}`, matching the `config: %{module:, function:}` each
-  # definition already carries. `QaIntegrationPlan` is the exception — it
-  # returns the looser delegate shape that
-  # `RequirementCalculator.normalize_delegate_result/1` maps, which is public
-  # for exactly this reason: a second copy of that mapping is the copy that
-  # drifts.
+  # Rollups no event carries the answer to, settled by calling the
+  # requirement's own checker once: a narrowed recompute, right by construction
+  # because it is the recompute's function. `{module, function}` as in each
+  # definition's config; `QaIntegrationPlanChecker` returns the looser delegate
+  # shape, mapped by `RequirementCalculator.normalize_delegate_result/1`.
   @delegate_requirements %{
     "spex_boundary_ready" => {SpexBoundaryChecker, :complete?},
     "personas_complete" => {PersonasChecker, :complete?},
@@ -286,12 +195,9 @@ defmodule CodeMySpec.Requirements.Handlers do
   }
 
   @doc """
-  Every requirement name this module knows how to settle from an event —
-  `@requirement_profiles` and `@delegate_requirements` both, since a name in
-  either is reachable without the silent-skip gap dfb8ef8f found: a
-  requirement definition added to the graph and to
-  `story_graph()`/`project_graph()` but not to either of these is never
-  settled by any event handled here, for as long as it exists.
+  Every requirement name this module can settle from an event, from
+  `@requirement_profiles` and `@delegate_requirements`. A definition in
+  neither is never settled by a handled event.
   """
   @spec settleable_requirement_names() :: [String.t()]
   def settleable_requirement_names,
@@ -402,20 +308,10 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The eight file requirements, settled from one profile.
-  #
-  # Default satisfied, exceptions unsatisfied, and that direction is forced
-  # rather than chosen: the satisfied details carry no per-entity data
-  # ("spec file exists"), while every failure does — `expected_path` for a
-  # missing file, which `RequirementsFormatter` renders and is the only thing
-  # telling an agent where to write it, and `validation_errors` for an invalid
-  # one. Per-entity data cannot ride on a sweep's default.
-  #
-  # The population selects itself. `Shadow.sweep/2` matches `name` and entity
-  # type, and only entities whose template produces that requirement have a row
-  # — so a `:schema` component with no review requirement is never touched by
-  # `review_file`, without this needing to know the templates or the config
-  # filter at all.
+  # `implementation_file`. Default satisfied, failures as exceptions — forced:
+  # every failure carries per-entity data (`expected_path`, `validation_errors`)
+  # and a sweep's default cannot. Only entities whose template produces the
+  # requirement have a row, so the population selects itself.
   defp settle(name, %{files: profile}, _scope) when is_map_key(@file_requirements, name) do
     {kind, role, entity_type} = Map.fetch!(@file_requirements, name)
 
@@ -447,24 +343,10 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # Per criterion, not per story, and that distinction cost a silent regression.
-  #
-  # This was a `@file_requirements` row — "does this story have any file in the
-  # `:bdd_spec` role" — which is what the requirement meant until `f97e1216d`
-  # made it "does every criterion have one". The table did not follow. The
-  # handler went on passing stories that had a spec file and uncovered
-  # criteria, and no test caught it because the table was still internally
-  # consistent; a diff against `RequirementCalculator` on a merged tree is what
-  # found it, on every vantage at once.
-  #
-  # So the verdict comes from `RequirementCalculator.bdd_specs_covered/3` now,
-  # which is the function the recompute calls. A requirement whose meaning can
-  # change out from under a lookup table does not belong in one.
-  #
-  # Default unsatisfied, because a story with no criteria is unsatisfied and
-  # its reason is the only one that carries nothing per story. Every story that
-  # *has* criteria is an exception — up to the whole population — which costs
-  # one statement now that `Shadow.put_verdicts/5` sends them as arrays.
+  # Per criterion, from `RequirementCalculator.bdd_specs_covered/3` — the
+  # recompute's own function, so the two cannot disagree. Default unsatisfied:
+  # a story with no criteria is unsatisfied with nothing per story to say.
+  # See knowledge/requirements_graph, "Lessons".
   defp settle("bdd_specs_exist", %{files: files, stories: stories}, _scope) do
     %{
       entity_type: "story",
@@ -475,10 +357,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The five project `path_exists` requirements.
-  #
-  # One entity each, so the sweep is one row and `except` is always empty — the
-  # shape is kept anyway so every requirement settles through one path.
+  # The five project `path_exists` requirements: one row each, `except` empty.
   defp settle(name, %{files: profile}, _scope) when is_map_key(@path_requirements, name) do
     {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
     project_sweep(name, satisfied?, detail, detail)
@@ -510,18 +389,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The seal, which is a record rather than a recomputation: once a Three Amigos
-  # session is sealed it stays sealed, and a question raised against a story
-  # that shipped months ago is the next conversation, not evidence that the last
-  # one never happened.
-  #
-  # So the sweep defaults to sealed — the state most released stories are in,
-  # and the only one whose detail carries nothing per story — and names the
-  # unsealed few, whose detail is the gap they have not closed.
-  #
-  # No re-read on the negative path, which `sealed?/2` needs and this does not:
-  # it re-reads because the struct in hand may predate a seal taken mid-request,
-  # and the profile is a fresh read taken after the event that prompted it.
+  # A seal is a record and stays sealed, so the default is sealed and the
+  # unsealed few are named with their gap. No re-read like `sealed?/2`: the
+  # profile is read after the event that prompted it.
   defp settle("three_amigos_complete", %{stories: profile}, scope) do
     %{
       entity_type: "story",
@@ -532,22 +402,8 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # dfb8ef8f / 56cf5697: `"story_changed"` is a handled event kind
-  # (`@dirties`), which discards the fallback safe-recompute for everything
-  # it can move — a requirement with no `settle/3` clause here is not marked
-  # stale by that path, it is silently skipped and keeps whatever verdict it
-  # already had, forever. `questions_answered` shipped with a definition and
-  # a `@requirement_profiles` entry but no clause, so any story whose
-  # questions changed after its initial computation (answering one,
-  # releasing a story that gets fresh Three Amigos) never had this
-  # requirement re-settled again. Measured on Broken Oaths: three stories
-  # stuck `STALE READ` forever, two of them with `questions_answered` as
-  # their only unsatisfied requirement.
-  #
-  # From the same preloaded profile `unsealed_verdicts/2` above reads
-  # (`profile.amigos.questions_by_story`), not a fresh query per story — the
-  # whole reason this profile exists is one read per event instead of one
-  # per story.
+  # From the preloaded `profile.amigos.questions_by_story`: one read per event,
+  # not one per story.
   defp settle("questions_answered", %{stories: profile}, _scope) do
     %{
       entity_type: "story",
@@ -558,14 +414,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # Promotion is a stamp on the story, so the sweep is the two states it has:
-  # the default is every story that has never been promoted, and the exceptions
-  # are the ones carrying a version.
-  #
-  # `Promotion` decides both. The question it answers is mostly about the
-  # project — which copy is running, whether it is serving — and only the stamp
-  # is per story, which is what `running_copy_verdicts/2` exists to say in two
-  # reads rather than two per story.
+  # Default: never promoted. Exceptions: stories carrying a version, with
+  # `RunningCopy`'s verdict (mostly about which copy runs and whether it
+  # serves), in two reads rather than two per story.
   defp settle("story_promoted", %{stories: profile}, scope) do
     {{default?, default_details}, promoted} =
       RunningCopy.running_copy_verdicts(scope, profile.stories)
@@ -579,10 +430,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The newest attempt decides, and `Verdict.passed?/1` decides what counts —
-  # a later `:partial` overrides an earlier pass, and an invalidated pass is not
-  # one. Default unsatisfied, because a story with no attempt at all is the
-  # common state and reads identically to one whose latest attempt failed.
+  # The newest attempt decides, by `Verdict`'s rules (a later `:partial`
+  # overrides a pass; an invalidated pass is not one). Default unsatisfied: no
+  # attempt is the common state and reads like a failed one.
   defp settle("qa_complete", %{qa: profile, stories: stories}, scope),
     do: %{
       entity_type: "story",
@@ -592,9 +442,7 @@ defmodule CodeMySpec.Requirements.Handlers do
       except: qa_passes(profile, stories, scope)
     }
 
-  # The rollups. One call to the requirement's own checker, which is a narrowed
-  # recompute rather than event application — see `@delegate_requirements` for
-  # why that is the honest description and why it is still worth doing.
+  # The rollups: one call to the requirement's own checker (`@delegate_requirements`).
   defp settle(name, profiles, scope) when is_map_key(@delegate_requirements, name) do
     {satisfied?, detail} = delegate_verdict(name, profiles, scope)
     project_sweep(name, satisfied?, detail, detail)
@@ -687,11 +535,8 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
-  # A project requirement has one entity, so its sweep is one row — expressed as
-  # a sweep anyway so every requirement settles through the same path.
-  #
-  # No scope needed: `Shadow.sweep/2` matches on entity type, and there is only
-  # ever one project row per vantage.
+  # One project row per vantage, still a sweep so every requirement settles one
+  # way. No scope needed: `GraphStore.sweep/2` matches on entity type.
   defp project_sweep(name, satisfied?, satisfied_details, unsatisfied_details) do
     %{
       entity_type: "project",
@@ -702,9 +547,8 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The same shape the checkers return, because a row a handler settled has to
-  # read like one a recompute settled — a verdict that agreed while explaining
-  # itself differently is a difference somebody investigates later for nothing.
+  # The checkers' shape: a row a handler settled must read like one a recompute
+  # settled.
   defp details(map), do: Requirement.normalize_details(map)
 
   # Both non-default outcomes: a link that resolves, and one that names a
@@ -801,12 +645,9 @@ defmodule CodeMySpec.Requirements.Handlers do
         do: file.path
   end
 
-  # The unsealed stories, each with the gap it has not closed.
-  #
-  # `BddRulesChecker.unsealed_reason/3` produces the wording, from the context
-  # the profile loaded rather than four queries per story — which is what
-  # `sealed?/2` costs and why a 76-story project spent 304 queries deciding one
-  # requirement.
+  # The unsealed stories, each with its gap. Worded by
+  # `BddRulesChecker.unsealed_reason/3` from the profile's context, not the four
+  # queries per story `sealed?/2` costs.
   defp unsealed_verdicts(profile, scope) do
     for %{three_amigos_sealed: sealed} = story <- profile.stories,
         sealed != true do
@@ -845,13 +686,8 @@ defmodule CodeMySpec.Requirements.Handlers do
         do: change("story", story_id, "story_promoted", satisfied?, detail)
   end
 
-  # One verdict per story that has criteria, from the files that vantage can see.
-  #
-  # Grouped by story rather than filtered to `:bdd_spec` here, because
-  # `bdd_specs_covered/3` takes the entity's files and applies the role itself —
-  # the same shape `RequirementCalculator` hands it.
-  # Every spex on the copy, not grouped by story: a file covers a criterion by
-  # the number it names.
+  # One verdict per story that has criteria. Every spex on the copy, not just
+  # the story's: a file covers a criterion by the number it names.
   defp bdd_spec_verdicts(stories, files) do
     specs = Enum.filter(files.all, &(&1.role == :bdd_spec))
 

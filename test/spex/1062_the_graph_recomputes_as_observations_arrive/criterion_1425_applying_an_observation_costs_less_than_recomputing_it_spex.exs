@@ -13,10 +13,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
   not an argument — and until it is measured the feature is a design somebody
   believes in.
 
-  Both paths run on the same settle here, against the same observation, which is
-  what makes the comparison fair. One is a handler writing the verdict it
-  already knew; the other is a full recompute of every requirement the entity
-  carries. Story 1020 measured the second at 22 checkers and 238ms for a single
+  Both paths answer the same observation here. One is a handler writing the
+  verdict it already knew; the other is the projector rebuilding the checkout's
+  graph from the domain, which is what recomputing is once the batched pass is
+  gone. Story 1020 measured a recompute at 22 checkers and 238ms for a single
   incoming issue.
 
   ## Queries and rows, not milliseconds
@@ -64,9 +64,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
   @moduletag timeout: 60_000
 
   defp project_the_marks(_context) do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    on_exit(fn -> Application.put_env(:code_my_spec, :graph_shadow_projection, previous) end)
     :ok
   end
 
@@ -112,6 +109,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
         refute filed.isError, inspect(filed)
         :ok = Fixtures.settle_graph(context.scope)
 
+        # And the same graph recomputed, the way `sync_project` asks for it.
+        :ok = Fixtures.recompute_graph(context.scope)
+
         {:ok, Map.put(context, :drains, drains(context))}
       end
 
@@ -122,9 +122,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
                is not reported at all and "cheaper" cannot be checked.
                """
 
-        assert context.drains.pass,
+        assert context.drains.reseed,
                """
-               The page publishes no `pass` drain, so there is nothing to
+               The page publishes no `reseed` drain, so there is nothing to
                compare the applied cost against.
                """
 
@@ -132,7 +132,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
       end
 
       then_ "and applying reports fewer queries than recomputing", context do
-        %{event: applied, pass: recomputed} = context.drains
+        %{event: applied, reseed: recomputed} = context.drains
 
         assert applied.queries < recomputed.queries,
                """
@@ -153,7 +153,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
       end
 
       then_ "and it writes no more rows than recomputing", context do
-        %{event: applied, pass: recomputed} = context.drains
+        %{event: applied, reseed: recomputed} = context.drains
 
         assert applied.rows_written <= recomputed.rows_written,
                """
@@ -180,7 +180,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3516Spex do
     {:ok, view, _html} = live(context.conn, "/dev/graph")
     html = render_change(view, "select", %{"project" => context.project.id})
 
-    %{event: row(html, "event"), pass: row(html, "pass")}
+    %{event: row(html, "event"), reseed: row(html, "reseed")}
   end
 
   defp row(html, kind) do

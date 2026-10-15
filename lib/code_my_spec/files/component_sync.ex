@@ -2,7 +2,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   @moduledoc """
   Keeps a project's components in step with its code.
 
-  Components are records (3aeb66cf): their type, description, parent and
+  Components are records: their type, description, parent and
   dependencies are authored through the tools, and no file describes them. A
   sync only reconciles what *exists* against live code:
 
@@ -15,7 +15,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   4. Files are linked to the component they belong to.
 
   "Main's code" is `Files.LiveCopies.speaking_ids/1`: the main copy, or every
-  live checkout when the project has none (14f4f837). A feature copy's new
+  live checkout when the project has none. A feature copy's new
   module is discovered once it is promoted. Spec files play no part.
   """
 
@@ -91,11 +91,10 @@ defmodule CodeMySpec.Files.ComponentSync do
   component is now orphaned.
 
   Called by `FileSync` right after a reconcile removes rows, on the removed
-  records themselves (their old `validation_errors` still carry whatever
-  module name the scanner last stored for them, same as a live file's does).
-  A file with no stored module name — `:test`/doc roles, or a row scanned
-  before this was recorded — contributes nothing, the same way it contributes
-  nothing to `merge_by_module_name/2` for a live file.
+  records themselves (their old `validation_errors` still carry the module
+  name the scanner last stored). A file with no stored module name —
+  `:test`/doc roles, or a row scanned before this was recorded — contributes
+  nothing.
   """
   @spec removed_module_names([File.t()]) :: [String.t()]
   def removed_module_names(removed_records) do
@@ -182,41 +181,18 @@ defmodule CodeMySpec.Files.ComponentSync do
      }}
   end
 
-  # Components are the entities that carry `implementation_file`, so creating
-  # or changing one moves the graph — and this said nothing.
-  #
-  # `FileSync` announcing was not cover for it, and the order is why:
-  # `FilesLive.do_sync/2` runs `FileSync.sync/2` and *then*
-  # `ComponentSync.sync_from_files/2`, and `FileSync` announces at the end of
-  # its own pass. So the announcement goes out while the files exist and the
-  # components they belong to do not. A recompute that lands in that window
-  # answers from a half-applied sync, clears the queue, and nothing tells the
-  # graph the components arrived.
-  #
-  # Reproduced on criterion 3346 at a 25ms debounce: 2 failures in 5 runs, with
-  # `spec_file` false against a spec file that was plainly a row with the right
-  # role and the right component. Invisible before reads stopped recomputing,
-  # because the next reader rebuilt the graph and got it right.
-  #
-  # Nothing changed means nothing to say: a scan that re-reads 5,000 files and
-  # finds every component identical is the common case, and announcing it would
-  # cost a preload per scan to discover that.
+  # Components carry `implementation_file`, so creating or changing one moves
+  # the graph. `FileSync`'s own announcement does not cover it: callers run
+  # `FileSync.sync/2` and *then* this, so that announcement goes out before the
+  # components exist. Nothing changed means nothing to say.
+  # See knowledge/platform, "Component sync".
   defp announce_graph_change(_scope, []), do: :ok
 
-  # The components that actually changed, which this already worked out and was
-  # throwing away — `compute_changed_ids/2` exists to decide whether to announce
-  # at all, and the same list answers *what* moved.
-  #
-  # Not `:project`: `architecture_designed` is settled by the `files_synced`
-  # handler that follows every scan, from the `:architecture` profile. A
-  # `:project` entity sent every vantage through the project's own recompute
-  # instead — the orphan scan over every component, ten times per scan.
-  #
-  # Project-wide, because what this scan changed is the component *rows* —
-  # type, parent, description — and those are read by every checkout's
-  # projection. Marked for this checkout, the event path settled only this
-  # checkout and the others kept the component they knew before; the files
-  # behind the same scan are per checkout and arrive as `files_synced`.
+  # The components that changed, from `compute_changed_ids/2`. Not `:project`:
+  # `architecture_designed` is settled by the `files_synced` handler, and a
+  # `:project` entity sent every vantage through a full project recompute.
+  # Project-wide, because component *rows* are read by every checkout's
+  # projection.
   defp announce_graph_change(scope, announced_component_ids),
     do:
       GraphInputs.announce(
@@ -635,9 +611,9 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # Only a discovered component goes — it existed because code named it — and
   # only once main's code no longer names it, whatever a stale or feature copy
-  # still holds (14f4f837). An authored component is the intended
-  # architecture whether or not code exists yet, and an unmarked one is left
-  # for a person to decide; only `delete_component` removes either.
+  # still holds. An authored component is the intended architecture whether
+  # or not code exists yet, and an unmarked one is left for a person to
+  # decide; only `delete_component` removes either.
   defp cleanup_removed(%Scope{active_project_id: project_id} = scope, existing) do
     claimed = live_claimed_names(project_id)
 
@@ -650,9 +626,7 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   # `cleanup_removed/2`'s incremental counterpart: only the removed files'
   # module names are candidates. A removed file whose module never had a
-  # component maps to nil and is no candidate — `nil and …` raised
-  # BadBooleanError inside a manifest reconcile and took the channel down
-  # (4070a52e).
+  # component maps to nil and is no candidate.
   defp cleanup_orphaned(%Scope{active_project_id: project_id} = scope, module_names, existing_map) do
     claimed = live_claimed_names(project_id)
 
@@ -709,11 +683,8 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   defp backfill_file_owners(%Scope{active_project_id: project_id}, component_map) do
     Enum.each(component_map, fn {module_name, component} ->
-      # One source for these, shared with `Files.read_model/1`, which indexes
-      # components by the same paths so ownership is a lookup rather than a
-      # path → module guess. Two copies drifted once already: this claim set
-      # `component_id` and the guess wrote `nil` back over it on every scan
-      # (`d698ab0e`).
+      # Shared with `Files.read_model/1`, which indexes components by the same
+      # paths; two copies drifted and wrote `nil` over the claim every scan.
       patterns =
         ConventionalPaths.for_component(%{module_name: module_name, type: component.type})
 
@@ -724,16 +695,11 @@ defmodule CodeMySpec.Files.ComponentSync do
       )
       |> Repo.update_all(set: [component_id: component.id])
 
-      # Path patterns only find files where Phoenix puts a module where its name
-      # suggests, and it often does not: `MyAppWeb.CoreComponents` lives under
-      # `components/`, `MyAppWeb.ErrorHTML` under `controllers/`. Those files are
-      # then owned by nothing and their `implementation_file` requirement cannot
-      # be satisfied by any correct work — the QA drill hit four and rightly
-      # refused to relocate framework files to please a checker.
-      #
-      # The scan already recorded the `defmodule` each implementation declares,
-      # so claim by that too. Still `is_nil(component_id)`, so a file already
-      # owned is never stolen.
+      # Path patterns miss files Phoenix puts elsewhere (`MyAppWeb.CoreComponents`
+      # under `components/`, `ErrorHTML` under `controllers/`), whose
+      # `implementation_file` could then never be satisfied. So also claim by
+      # the scanned `defmodule`. Still `is_nil(component_id)`: an owned file is
+      # never stolen.
       File
       |> where(
         [f],

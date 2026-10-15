@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.AcceptanceCriteriaFixtures
   import CodeMySpec.DevicesFixtures
@@ -11,21 +11,11 @@ defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.{Preloader, RequirementGraph, ShadowProjector}
+  alias CodeMySpec.Requirements.{IncrementalGraph, Preloader, RequirementGraph}
   alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.WorkingCopies
 
   setup do
-    previous = Application.get_env(:code_my_spec, :graph_shadow_projection, false)
-    source = Application.get_env(:code_my_spec, :graph_event_is_source, false)
-    Application.put_env(:code_my_spec, :graph_shadow_projection, true)
-    Application.put_env(:code_my_spec, :graph_event_is_source, true)
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, :graph_shadow_projection, previous)
-      Application.put_env(:code_my_spec, :graph_event_is_source, source)
-    end)
-
     :ok
   end
 
@@ -65,10 +55,10 @@ defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
 
     refute Enum.find(nodes, &(&1.name == "bdd_specs_exist")).satisfied
 
-    {:ok, _} = ShadowProjector.ensure_projecting(scope)
+    {:ok, _} = IncrementalGraph.ensure_projecting(scope)
 
     :ok =
-      ShadowProjector.settle(scope.active_project_id, [
+      IncrementalGraph.settle(scope.active_project_id, [
         nil,
         scope.active_working_copy_id,
         other.id
@@ -78,7 +68,7 @@ defmodule CodeMySpec.Requirements.NarrowBddCoverageTest do
       AcceptanceCriteria.update_criterion(scope, criterion, %{description: "Revised criterion"})
 
     :ok =
-      ShadowProjector.settle(scope.active_project_id, [
+      IncrementalGraph.settle(scope.active_project_id, [
         nil,
         scope.active_working_copy_id,
         other.id

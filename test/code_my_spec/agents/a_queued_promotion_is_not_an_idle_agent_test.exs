@@ -1,21 +1,21 @@
 defmodule CodeMySpec.Agents.AQueuedPromotionIsNotAnIdleAgentTest do
   @moduledoc """
   Criterion 2017, story 1046: a promote task stays open until its batch lands or
-  is ejected, and an agent waiting on a queued landing is not treated as idle â
+  is ejected, and an agent waiting on a queued landing is not treated as idle —
   it is not nudged to act on that task, and the outcome reaches it when it
   lands.
 
   `Agents.Waiting` is "why an agent is legitimately waiting, or nil", and an
   agent waiting on something that will reach it when it lands is neither nudged
-  at turn end (`StopDecision`) nor offered a turn (`Work`) â either one only buys
+  at turn end (`StopDecision`) nor offered a turn (`Work`) — either one only buys
   a "still waiting" turn. Its entries cover `provider_refused`, `provisioning`,
   `tap_out`, `analysis_runs` and `question_pending`. There is none for a queued
   promotion, which is the gap issue bf57fc93 reported: at least five model turns
   spent re-evaluating a correctly open task.
 
   The precedent is settled rather than a design question. Issue 8f72b192 was
-  the analyzer queue's version of exactly this â "a queued analyzer run never
-  tells its requester, so the agent hangs" â and `analysis_runs` is the entry it
+  the analyzer queue's version of exactly this — "a queued analyzer run never
+  tells its requester, so the agent hangs" — and `analysis_runs` is the entry it
   produced. `provider_refused` shows the same shape: a wait whose end is a
   message.
 
@@ -67,7 +67,7 @@ defmodule CodeMySpec.Agents.AQueuedPromotionIsNotAnIdleAgentTest do
   end
 
   # The coder is bound to the issue, QA has passed it, and it holds
-  # `promote_issue` â bf57fc93's arrangement.
+  # `promote_issue` — bf57fc93's arrangement.
   defp holding_a_promotion(ctx) do
     issue = issue_fixture(ctx.scope, %{status: :accepted})
     {:ok, bound} = IssueAssignment.assign(ctx.scope, issue.id, ctx.copy.id)

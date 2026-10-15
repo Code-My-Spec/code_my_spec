@@ -1,13 +1,9 @@
 defmodule CodeMySpec.Validation do
   @moduledoc """
-  Orchestrates stop hook validation: file sync, in-process validators, and
-  the blocking decision — with subprocess analyzers (compile, credo, tests,
-  spex) enqueued as background `Analysis` runs instead of executed inline.
-
-  The stop decision is made immediately from persisted Problems; background
-  runs reconcile new problems on their own schedule (surviving the hook's
-  HTTP timeout) and apply to the next stop. `Analysis`'s run ledger skips
-  any analyzer whose inputs haven't changed since its last completed run.
+  Orchestrates stop hook validation: file sync, in-process validators, and the
+  blocking decision. A stop never starts, ingests or waits on a subprocess
+  analyzer (compile, credo, tests, spex); it decides from the Problems that
+  completed `Analysis` runs already persisted.
 
   The blocking decision consults `ProjectConfiguration` modes per source:
 
@@ -17,10 +13,10 @@ defmodule CodeMySpec.Validation do
     task block; others are advisory
   - `:dont_block` — problems are persisted but never block
 
-  Spex is filtered per-story before the mode applies: a spex failure only
-  counts toward blocking when the owning story's `specs_ready` latch is
-  set. Failures on stories still mid-build are advisory regardless of
-  mode, which is what makes enabling spex project-wide survivable.
+  Before the mode applies, `Validation.Blocking.split_by_story_enforcement/3`
+  makes unlocated spex findings advisory; every located red spex is enforced.
+  Advisory-severity findings, and spex for roles that hold no problems, are
+  then moved to advisory.
 
   The blocking check runs even when no files changed this turn — outstanding
   problems from a prior run still apply.
@@ -66,8 +62,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.WorkingCopies
 
   # Analyzer atoms that execute as mix subprocesses → their Analysis source.
-  # Everything else in a resolved analyzer set runs in-process (fast) inside
-  # this request.
+  # A stop runs only the rest (the in-process validators).
   @subprocess_analyzers %{credo: "credo", exunit_stale: "exunit", spex_stale: "spex"}
 
   # Configurable source → {ProjectConfiguration field, scope predicate for
@@ -83,8 +78,8 @@ defmodule CodeMySpec.Validation do
   @doc """
   Run the full validation pipeline for a stop hook.
 
-  Returns `{:ok, %{changed_files: [File.t()]}}` on success, or
-  `{:error, reason}` if compilation fails or the blocking check rejects.
+  Returns `{:ok, %{changed_files:, analysis:, advisory_note:}}` when nothing
+  blocks, or `{:error, reason, blocking_key}` when the blocking check rejects.
 
   ## Options
 
@@ -95,9 +90,9 @@ defmodule CodeMySpec.Validation do
   - `:agent_id` - sub-agent id; nil means the main agent. Combined with
     `:session_id` for the FileEdits attribution lookup.
 
-  A stop never starts, ingests or waits on analysis (John, 2026-10-04); it
-  reads what runs already persisted. A spec that needs findings lands them as
-  an analysis run first, and only then stops.
+  A stop never starts, ingests or waits on analysis; it reads what runs already
+  persisted. A spec that needs findings lands them as an analysis run first, and
+  only then stops.
   """
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()], analysis: map()}}
@@ -119,16 +114,8 @@ defmodule CodeMySpec.Validation do
     {:ok, %{changed_files: [], analysis: %{enqueued: [], memoized: []}}}
   end
 
-  # No working copy on this machine. Until the light harness that is a project
-  # nobody can look at, and this clause answered `{:ok, …}` — no analysis, no
-  # blocking check, an unconditional allow. That was right while the only way to
-  # reach it was a caller with no project on disk anywhere. It stopped being
-  # right the moment a harness started holding the disk on the other end of a
-  # channel, because the stop hook then arrived here on every single agent turn
-  # and got an answer computed from nothing.
-  #
-  # So the question is no longer "is there a working copy here" but "is there
-  # one anywhere I can reach". A harness holding this project is the yes.
+  # No working copy on this machine: ask the harness that holds this project.
+  # Only when none does is there nothing to check against.
   defp do_validate_stop(%Scope{cwd: nil} = scope, task, opts) do
     case Analysis.remote_executor(scope) do
       {:ok, _harness} ->
@@ -146,14 +133,9 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  # `cwd` is not the same claim as "there is a working copy here". It is set for
-  # any resolved scope, so the clause above matches on the
-  # server too, where no local environment can scan the remote checkout —
-  # and the sync it ran deleted every row for the checkout it was named after.
-  #
-  # An environment that cannot scan is the case the `cwd: nil` clause already
-  # answers: ask the harness that holds this project, and if none does, return
-  # the empty result rather than one computed from a walk that never happened.
+  # `cwd` is set for any resolved scope, including on the server where no local
+  # environment can scan the checkout. A sync that cannot scan falls back to the
+  # `cwd: nil` path rather than answering from a walk that never happened.
   defp local_validate_stop(%Scope{} = scope, task, opts, cwd, sync_result) do
     FileComponentSync.sync_from_files(scope,
       base_dir: cwd,
@@ -161,11 +143,9 @@ defmodule CodeMySpec.Validation do
       removed_module_names: sync_result.removed_module_names
     )
 
-    # An agent with no session names its own changed set, exactly as it does on
-    # the remote path. The scan's dirty list cannot stand in for it: by the time
-    # a turn-end decision runs, the file the agent just wrote has usually been
-    # synced already and is no longer dirty — which is how the internal path
-    # came to see an empty set and had to guess around it.
+    # An agent with no session names its own changed set. The scan's dirty list
+    # cannot stand in for it: by turn end the file just written has usually been
+    # synced already and is no longer dirty.
     all_changed =
       case agent_changed_files(scope, opts) do
         [] -> resolve_changed_files(scope, task, sync_result)
@@ -184,19 +164,10 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  # The same pipeline, minus the two steps that need a disk here.
-  #
-  # `FileSync.sync_changed/2` is skipped because the harness has already done
-  # its equivalent: it scanned its own working copy and reconciled the whole
-  # manifest over the channel, so the File rows this reads are current with the
-  # disk by a different route. `StaticAnalysis.run_analyzers/5` — the in-process
-  # validators — is skipped because those read file contents, which never cross
-  # the wire.
-  #
-  # Everything that is left is database work and runs unchanged: the same
-  # changed-file scoping, the same configuration modes and the same blocking
-  # check. The point is that the *decision* is identical; only where the files
-  # were read differs.
+  # The same pipeline minus the two steps that need a disk here: the harness has
+  # already reconciled its manifest (so File rows are current), and in-process
+  # validators read file contents, which never cross the wire. The decision is
+  # identical; only where the files were read differs.
   defp remote_validate_stop(scope, task, opts) do
     {changed_files, consume_ledger} = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
@@ -206,71 +177,38 @@ defmodule CodeMySpec.Validation do
 
     with {:ok, note} <-
            check_blocking_problems(scope, changed_files, project_changed?, config, opts) do
-      # d726cfda: only now, once both reads of the ledger this stop makes —
-      # here, and inside `check_blocking_problems` above — have happened and
-      # been acted on. Consuming any earlier would risk a demotion decision
-      # made against a ledger already cleared for a different purpose; not
-      # consuming at all is the bug this fixes.
+      # Consume the ledger only after both of this stop's reads of it (here and
+      # inside `check_blocking_problems/5`) have been acted on.
       consume_ledger.()
       {:ok, %{changed_files: changed_files, analysis: analysis, advisory_note: note}}
     end
   end
 
-  # Did anything in the project move while this task ran, before attribution has
-  # a say. `changed_files` cannot answer it: both paths narrow that set to the
-  # files this session is credited with, so asking it whether the session edited
-  # is circular — it says no exactly when attribution is broken, which is the
-  # one case that must not be believed.
-  #
-  # Without a task there is no window to ask about and no scan on this side, so
-  # the honest answer is "no independent evidence" and the ledger stands alone.
+  # Did anything in the project move while this task ran, before attribution
+  # narrows anything. `changed_files` cannot answer it: it says no exactly when
+  # attribution is broken. Without a task there is no window, so the answer is
+  # "no independent evidence".
   defp project_changed?(scope, %{started_at: started_at}) when not is_nil(started_at),
     do: Files.changed_since(scope, started_at) != []
 
   defp project_changed?(_scope, _task), do: false
 
-  # With a task, the same answer the local path gives: every File row whose
-  # mtime moved since the task started. mtime comes off the harness's manifest,
-  # so this needs no disk.
+  # With a task: every File row whose mtime (off the harness's manifest) moved
+  # since the task started, narrowed by attribution — mtime cannot tell an agent's
+  # write from a rebase. `cwd` is nil here by construction; the harness sends
+  # edit paths project-relative, so `relativize/2` passes them through.
   #
-  # Narrowed by attribution for the same reason the local path is, and it was
-  # not: mtime cannot tell "the agent wrote this" from "git wrote this", and a
-  # rebase rewrites mtimes on everything it touches. The window is
-  # `started_at`, so the longer a task stays open the more of the repo it
-  # swallows — a task blocked upstream for days collects the lot.
-  #
-  # `cwd` is nil here by construction: this path exists precisely because the
-  # disk is on the other end of a channel. The harness sends its edit paths
-  # project-relative, so `relativize/2` has nothing to strip and passes them
-  # through.
-  # A task has its own window (`started_at`), so nothing here is the ledger's
-  # sole answer for it — `changed_files_for_task/3` intersects it with
-  # `Files.changed_since/2`, and consuming rows out from under that
-  # intersection would starve it for the rest of the task's lifetime rather
-  # than for one stop. No cleanup for this branch, on purpose.
+  # No cleanup thunk: `changed_files_for_task/3` intersects the ledger with the
+  # task window, and consuming rows would starve it for the rest of the task.
   defp remote_changed_files(scope, %{started_at: started_at} = task, opts)
        when not is_nil(started_at) do
     {changed_files_for_task(scope, task, opts), fn -> :ok end}
   end
 
-  # Without a task, the local path uses the paths its own scan found dirty.
-  # There is no scan here, so the equivalent is what this session actually
-  # wrote — PostToolUse records every Write/Edit, and the harness sends those
-  # paths project-relative precisely so they resolve to File rows here.
-  #
-  # Empty means the agent wrote nothing this session, which is a quiet stop and
-  # is treated as one. It does not mean "could not tell": a session that edited
-  # something has those edits recorded, and a project with no harness never
-  # reaches this function at all.
-  #
-  # d726cfda: that was the documented contract and it was never actually true,
-  # because nothing ever forgot a path once `attributed_paths/2` reported it —
-  # a session that wrote once stayed non-empty for as long as it lived, up to
-  # 314 rows over 16 days measured on one session, re-enqueuing analysis on
-  # every stop forever. The second element is how the caller makes the
-  # contract true: call it once the paths this call returned have actually
-  # been used, and the next stop with nothing new sees an empty ledger instead
-  # of this one's leftovers.
+  # Without a task: what this session wrote, as PostToolUse recorded it. Empty
+  # means a quiet stop. The second element consumes the returned paths once they
+  # have been used, so the next stop with nothing new sees an empty ledger
+  # instead of this one's leftovers. See knowledge/analysis, "Changed files and attribution".
   defp remote_changed_files(scope, _task, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
@@ -294,26 +232,12 @@ defmodule CodeMySpec.Validation do
   def remote_changed_files_for_test(scope, task, opts),
     do: remote_changed_files(scope, task, opts)
 
-  # The same answer, for an agent that has no session to record against.
+  # The same answer for an agent with no session: the files it touched, as
+  # `FileEdits.track_agent_edit/2` records them.
   #
-  # This clause used to be `[]`, and that empty list is the whole of why the
-  # internal path has been wrong twice. An empty changed set makes every
-  # `block_changed` source advisory, so an agent was never told about the file
-  # it had just broken; widening it to "owns the whole tree" then told a product
-  # agent about 160 findings it had never seen. Both were guesses standing in
-  # for a fact nobody was recording.
-  #
-  # `FileEdits.track_agent_edit/2` records it now, on every `write` and `edit`
-  # the agent makes, so this path answers exactly what the session path answers:
-  # the files this agent touched, resolved to their rows.
-  #
-  # Not given a cleanup thunk. `get_edited_files_for_agent/1` has the identical
-  # no-window shape `get_edited_files/1` had (d726cfda) and nothing here
-  # consumes it either, so a continuous in-BEAM agent with no session could in
-  # principle hit the same livelock this fix closes for external sessions.
-  # Unmeasured — the issue this fixes was reproduced on a session, not an
-  # agent — so left as a comment rather than a guess at behavior nobody has
-  # watched happen.
+  # No cleanup thunk: `get_edited_files_for_agent/1` is never consumed, so a
+  # continuous in-BEAM agent could accumulate a stale ledger the way sessions did.
+  # Unmeasured.
   defp agent_changed_files(scope, opts) do
     case Keyword.get(opts, :agent_id) do
       agent_id when is_binary(agent_id) ->
@@ -338,19 +262,13 @@ defmodule CodeMySpec.Validation do
   end
 
   # When a session is in play, narrow the changed-file set to files this
-  # session+agent actually wrote (via PostToolUse). The mtime-based
-  # `Files.changed_since` view picks up every dirty file on disk; without
-  # this filter a parallel session's writes leak into the current stop's
-  # block decision. No session → no filter (preserves behaviour for direct
-  # callers that don't run inside the hook lifecycle).
+  # session+agent actually wrote (via PostToolUse); otherwise a parallel
+  # session's writes leak into this stop. No session → no filter.
   defp filter_by_session_attribution(files, scope, cwd, task, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
-        # PostToolUse stores whatever Claude passed — typically absolute
-        # paths like `/Users/.../project/lib/foo.ex`. Files.path is
-        # project-relative (`lib/foo.ex`). Normalize attributed paths to
-        # relative against cwd before comparison or every session with a
-        # tracked edit would land empty.
+        # PostToolUse stores whatever Claude passed, typically absolute;
+        # `Files.path` is project-relative.
         attributed =
           session_id
           |> attributed_paths(Keyword.get(opts, :agent_id))
@@ -367,56 +285,16 @@ defmodule CodeMySpec.Validation do
   defp task_started_at(%{started_at: %DateTime{} = started_at}), do: started_at
   defp task_started_at(_task), do: nil
 
-  # How many mtime-dirty files stop looking like a turn and start looking like
-  # a rebase.
-  #
-  # A number rather than a rule, because the two cases are only distinguishable
-  # by size from here: a session writing through something other than
-  # Write/Edit — a spex, a direct evaluator, the harness — records no
-  # attribution and is indistinguishable from a session whose attribution
-  # broke. What separates them in practice is scale. The reported incident had
-  # 232 dirty files against 6 real edits; a spex writes one or two.
-  #
-  # Deliberately generous. Over this line the set is discarded, and discarding
-  # a real turn's work is the expensive mistake — an agent's own violations
-  # would go unblocked. Under it, whether the mtime set is kept now also
-  # depends on `git_rewrite_at` — see below. Before that field existed, size
-  # was the only signal, and this was wrong for a small rebase with no
-  # attribution: f8af8bf2.
+  # How many mtime-dirty files with zero attribution stop looking like a turn
+  # and start looking like a rebase. Deliberately generous: over it the set is
+  # discarded, and discarding a real turn's work is the expensive mistake.
   @rebase_sized 25
 
-  # A session that recorded no edits wrote nothing, and the honest changed-file
-  # set for that is empty.
-  #
-  # This returned `files` — every mtime-dirty file — on the reasoning that a
-  # direct evaluator bypassing Write/Edit should not have its problems
-  # suppressed. The cost of that reading is what it does when attribution goes
-  # empty for a reason that is not "nothing was written": a session restart, or
-  # a recorded path shape that does not match `Files.path`. Then the one filter
-  # that narrows the set instead removes itself, and a stop blocks on every
-  # dirty file in the tree.
-  #
-  # That happened. `git rebase` rewrites mtimes on everything it touches, so a
-  # session that rebased onto a busy main inherited 232 mtime-dirty files, and
-  # the hook blocked five times running on 49 credo violations in spex belonging
-  # to three other stories. The only compliant response was to edit code the
-  # agent did not own, which is a gate that cannot be satisfied honestly.
-  #
-  # Failing closed inverts the risk into the recoverable direction: a missed
-  # violation is caught by the next analysis run and stays on the Problems page,
-  # while a repo-wide block teaches everyone to route around the gate. Loudly,
-  # because "the agent wrote nothing" and "attribution is broken" are different
-  # and only the log can tell them apart.
-  #
-  # Size alone cannot tell a small rebase from a turn written outside
-  # Write/Edit — both are a handful of dirty files with zero attribution
-  # (f8af8bf2: one commit, already pushed by a different session sharing this
-  # working copy, landed by a routine fetch+rebase and got credited to
-  # whoever stopped next). `git_rewrite_at` is the signal size never could
-  # be: `PostToolUse` stamps it on this session the moment it runs a Bash
-  # command able to move `HEAD` without Write/Edit. A rewrite recorded at or
-  # after the task started means these dirty files may be inherited history,
-  # so the under-threshold set is trusted only when no such command ran.
+  # A session that recorded no edits wrote nothing; fail closed to an empty set
+  # rather than blocking on every mtime-dirty file. Under `@rebase_sized` the
+  # dirty set is kept unless `git_rewrite_at` (stamped by PostToolUse on a Bash
+  # command able to move HEAD) is at or after the task start.
+  # See knowledge/analysis, "Changed files and attribution".
   defp narrow_to_attributed(scope, files, attributed, session_id, started_at) do
     case {MapSet.size(attributed), length(files)} do
       {0, dirty} when dirty > @rebase_sized ->
@@ -471,111 +349,43 @@ defmodule CodeMySpec.Validation do
   @doc """
   Split blocking findings into this session's and everyone else's.
 
-  It no longer does — the second list is always empty. Task evaluation judges
-  the whole copy, the same way promotion does, so every blocker blocks whoever
-  stops. John, 2026-10-04 (issue 48f4eada), retired the attribution excuse.
-
-  What it was: a finding in a file this session never edited did not block.
-  Several agents share this repo and rebase onto main, so a warning one pushes
-  became a hard block on every other's stop — and the obvious repair on someone
-  else's in-flight file can be actively wrong (`7a0fadeb` retargeted a preview
-  spex at the wrong endpoint), which left editing code you do not own or staying
-  blocked as the only two responses.
-
-  Why it went anyway. v2.0.347 made credo's default `block_all`, but this
-  demotion ran after it, so in practice task evaluation stayed
-  changed-files-only for any agent that edited anything; whole-copy applied only
-  when there was no attribution at all. The gate's own moduledoc meanwhile read
-  as though it judged the copy. Measured across one evening: every agent, every
-  stop, `demoted N blocking finding(s) to advisory`, N never zero. A gate with
-  two answers that read as one is the metric_flow failure again, which is why
-  the excuse is removed rather than narrowed.
-
-  The old rule's incidents are answered upstream now, and better:
-
-    * `split_by_story_enforcement/3` asks "is this red mine to fix" from the
-      owning story's `specs_ready` latch, not from which files were written
-      this turn — the question attribution was approximating (`a9e9caca`,
-      26 spex failures in unrelated stories, answered by the latch).
-    * `split_by_role/2` reads the role profile, so a QA or product agent is
-      not handed code work (`d91436b7`).
-
-  Kept as a function with its old shape rather than deleted, so the call site
-  and the property this file asserts stay readable; `attributable_to?/2` is
-  gone with it. The list is still computed, because the caller's log line and
-  `verify_against_ledger/3` still want to know what attribution said — they just
-  no longer decide anything.
+  The second list is always empty: task evaluation judges the whole copy, the
+  same way promotion does, so every blocker blocks whoever stops. Kept with its
+  old shape so the call site stays readable; "is this mine to fix" is answered
+  by `split_by_story_enforcement/3` and `split_by_role/2` instead.
   """
   @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
           {[Problems.Problem.t()], [Problems.Problem.t()]}
   def split_unattributed(blocking, _session_paths), do: {blocking, []}
 
-  # Sources whose mandate is decided before this point, so `split_by_role/2`
-  # must not decide it again. Attribution used to read this too; 48f4eada
-  # removed that half, and the role half is a different question — see the
-  # comment on `split_by_role/2`.
+  # Sources `split_by_role/2` holds back from roles that do not fix code.
   @attribution_exempt_sources ~w(spex)
 
-  # The attribution-exempt sources block only the roles that fix code.
-  #
-  # Exemption means attribution cannot demote them, so without this a QA or
-  # product agent that edited anything held every red spex on a latched story —
-  # metric_flow's QA agent, refused every turn end (d91436b7). `Menu` already
-  # gives those roles no problems; this is the gate reading the same rule.
-  # No role (a Claude Code session) keeps the exemption as it was.
+  # The attribution-exempt sources block only the roles that fix code: a QA or
+  # product agent is not handed red spex. `Menu` gives those roles no problems;
+  # this is the gate reading the same rule. No role (a Claude Code session)
+  # keeps them blocking.
   defp split_by_role(blocking, role) do
     if RoleProfile.holds_problems?(role),
       do: {blocking, []},
       else: Enum.split_with(blocking, &(&1.source not in @attribution_exempt_sources))
   end
 
-  # Attribution demotes nothing (48f4eada), so there is nothing to log. The
-  # loud logs that used to live here named a demotion the gate was making; with
-  # the excuse gone, a reader wanting to know what the gate blocked reads the
-  # response, which is now the only answer.
-
-  # This session's edits, normalized the same way `filter_by_session_attribution`
-  # normalizes them — PostToolUse stores whatever Claude passed, typically
-  # absolute, while `Problem.file_path` is project-relative.
-  #
-  # `nil` rather than an empty set when there is no session or no cwd. Both mean
-  # the comparison cannot be trusted: without a cwd the relativize is a no-op
-  # and nothing would ever match, which would mark every finding as somebody
-  # else's. An empty set from a session that genuinely wrote nothing is
-  # different, and the renderer treats it as "no evidence" rather than "all
-  # foreign" for the same reason.
+  # This session's edits, normalized like `filter_by_session_attribution/5`.
+  # `nil` means attribution cannot be trusted; an empty set means the session
+  # genuinely wrote nothing. The renderer treats the two differently.
   @doc """
-  Public so the cwd-less case can be asserted directly, the same reason
-  `HookDecision.channel_age_note/1` and `HealthController.degraded?/1` are.
-  The bug this guards against was a `nil` that reads as "attribution
-  unavailable", and the only way to catch that regressing is to look at the
-  value rather than at the sentence built from it.
+  Public so the cwd-less case can be asserted directly: the bug it guards was a
+  `nil` that reads as "attribution unavailable", visible only in the value.
   """
   @spec session_paths_for_test(Scope.t(), keyword(), boolean()) :: MapSet.t() | nil
   def session_paths_for_test(scope, opts, project_changed? \\ false),
     do: session_paths(scope, opts, project_changed?)
 
-  # No `when is_binary(cwd)`. A scope without one is the *normal* shape on the
-  # light harness — the server holds no working copy — and requiring it threw
-  # away attribution the session had.
-  #
-  # Measured on this session: 595 recorded edits, 363 of them already
-  # project-relative, 269 joining File rows for this harness. Every one of those
-  # was discarded, and every finding blocked, under the message "Attribution is
-  # unavailable for this session" — which is a statement about `cwd` wearing the
-  # costume of a statement about the session's work (9a623a13).
-  #
-  # Safe because the cwd was only ever needed to relativize *absolute* paths,
-  # and `relativize/2` already returns the path unchanged when there is no cwd
-  # to relativize against — as it does for a path that is relative already,
-  # which is the shape the harness sends.
-  #
-  # And because the check that actually protects this is downstream:
-  # `verify_against_ledger/3` still requires the recorded paths to join real
-  # File rows, and still answers `nil` on zero. A set that means nothing cannot
-  # demote anything whether or not a cwd was present, so dropping the guard
-  # cannot manufacture a bogus demotion — it can only stop discarding a good
-  # one.
+  # No `when is_binary(cwd)`: a scope without one is normal on the light harness,
+  # and the harness sends paths project-relative, which `relativize/2` passes
+  # through. `verify_against_ledger/3` still requires the paths to join real
+  # File rows. See knowledge/analysis, "Changed files and attribution".
   defp session_paths(%Scope{cwd: cwd} = scope, opts, project_changed?) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
@@ -586,18 +396,9 @@ defmodule CodeMySpec.Validation do
 
         case split_by_working_copy(recorded, cwd) do
           {[], [_ | _]} ->
-            # Every edit this session recorded landed outside this working copy.
-            # That is a session working in another repo, not a session whose
-            # recording failed, and it owns nothing here however much the
-            # project moved meanwhile.
-            #
-            # 042e343b is the shape: a task scoped to the `cms_new` and
-            # `devops_drill` repos, finished and reported, refused a stop over
-            # 26 spex last touched days earlier — while a *concurrent* agent's
-            # uncommitted edit to `lib/code_my_spec/compile.ex` sat in the same
-            # shared worktree, which is what kept answering "the project
-            # changed". It had also been refused `git commit`, so it could not
-            # have acted on the findings even had they been its own.
+            # Every recorded edit landed outside this working copy: a session
+            # working in another repo owns nothing here, however much the project
+            # moved meanwhile.
             MapSet.new()
 
           {inside, _outside} ->
@@ -614,19 +415,8 @@ defmodule CodeMySpec.Validation do
 
   defp session_paths(_scope, _opts, _project_changed?), do: nil
 
-  # What an agent with no session wrote.
-  #
-  # `session_paths/3` answers `nil` for a caller with no session, and `nil`
-  # means "attribution is unknown, do not demote anything" — which for an agent
-  # under Alloy meant it owned every finding on the tree. That was the only
-  # answer available while nothing recorded its edits. `FileEdits` records them
-  # now, on every `write` and `edit` it makes, so the honest answer is the same
-  # one an external session gets: these files, and no others.
-  #
-  # An empty set is a real answer here and not a missing one. An agent that has
-  # edited nothing this session owns nothing — and it is `split_unattributed/2`
-  # that turns that into "demoted to advisory", which is right: findings it did
-  # not make are still real and still somebody's.
+  # What an agent with no session wrote, recorded by `FileEdits`. An empty set is
+  # a real answer: an agent that edited nothing this session owns nothing.
   defp agent_paths(%Scope{cwd: cwd}, opts, project_changed?) do
     case Keyword.get(opts, :agent_id) do
       agent_id when is_binary(agent_id) ->
@@ -642,49 +432,19 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  # Which recorded edits are edits to *this* working copy.
-  #
-  # `relativize/2` leaves a path it cannot make relative absolute, so after it
-  # runs, "still absolute" means "not under this cwd" — a different repo, a
-  # scratchpad, another worktree.
-  #
-  # Only asked when there is a cwd to ask about. Without one, `relativize/2` is
-  # a no-op and an absolute path is exactly the ambiguity 9a623a13 is about: it
-  # could be a project file the recording failed to normalize. Everything counts
-  # as inside there, so that case keeps falling through to the ledger join and
-  # the corroboration, unchanged.
+  # Which recorded edits are edits to *this* working copy. After `relativize/2`,
+  # "still absolute" means "not under this cwd". Without a cwd everything counts
+  # as inside, so an unnormalized project path still reaches the ledger join.
   defp split_by_working_copy(paths, cwd) when is_binary(cwd),
     do: Enum.split_with(paths, &(Path.type(&1) == :relative))
 
   defp split_by_working_copy(paths, _cwd), do: {paths, []}
 
-  # An empty hook ledger means "no edits were recorded", which is not the same
-  # fact as "no edits were made", and story 894's rule turns on the second one.
-  #
-  # `PostToolUse` records a path from `tool_input.file_path`. A `Bash` call
-  # carries no such field, so an agent editing through a heredoc, `sed -i`, or
-  # a script it writes and runs records nothing at all while its work sits
-  # plainly on disk. Left alone, the rule would hand that agent a blanket
-  # exemption from every finding in the project — the precise failure the rule
-  # was written to end, pointed the other way.
-  #
-  # Disk is what separates the agent that made no edits from the one whose
-  # edits the ledger could not see — `project_changed?/2`, read before
-  # attribution narrows anything, because the narrowed set answers "no" exactly
-  # when attribution is broken.
-  #
-  # It answers only whether the session edited, never what it edited: `nil` —
-  # the value that already means "attribution is unusable, so nothing is
-  # demoted" — and never a set of paths. Widening attribution from disk would
-  # credit this session with whatever else changed in the working copy during
-  # its task, which is what attribution exists to prevent.
-  #
-  # It carries a second case that used to be decided upstream and could not be:
-  # a ledger whose paths name no file in this project. That is a QA session
-  # writing under gitignored `.code_my_spec/qa/` (owns no project file, demote)
-  # or a recording that mangled its paths (the project files behind them did
-  # change, so they are here, and it blocks). One question separates them, and
-  # it is this one — see the `true ->` branch of `verify_against_ledger/3`.
+  # An empty ledger means "no edits were recorded", not "no edits were made":
+  # Bash edits (heredoc, `sed -i`) record nothing. When disk says the project
+  # changed, an empty set becomes `nil` (attribution unusable, nothing demoted) —
+  # never a set of paths, which would credit this session with others' changes.
+  # See knowledge/analysis, "Changed files and attribution".
   defp corroborate_with_disk(nil, _project_changed?), do: nil
 
   defp corroborate_with_disk(paths, true) do
@@ -696,63 +456,24 @@ defmodule CodeMySpec.Validation do
 
   defp corroborate_with_disk(paths, _project_changed?), do: paths
 
-  # Does the attribution actually correspond to this project's files?
-  #
-  # The demotion turns on comparing recorded paths to `Problem.file_path`, and
-  # a set that matches nothing looks exactly like a set that matches nothing
-  # *because the session touched none of it* — one of which is a broken
-  # recording and the other is a fact. Measured on this project: a healthy
-  # session's 368 recorded paths join 988 File rows, and both shapes reach here
-  # (the harness sends repo paths project-relative; only paths outside the
-  # working copy, like a scratchpad, stay absolute). So a nonzero join is
-  # evidence the comparison works, and zero is evidence of nothing.
-  #
-  # `nil` on zero, which disables demotion and blocks on everything — the same
-  # direction every other guard here fails, because a gate that quietly stops
-  # blocking is invisible and one that blocks too much is not.
-  #
-  # `get_by_paths/2` rather than listing the ledger: this runs on every stop,
-  # and the full list is 4,544 rows here against an indexed lookup of the
-  # session's own.
+  # Does the attribution actually correspond to this project's files? A nonzero
+  # join is evidence the comparison works. `get_by_paths/2` rather than listing
+  # the ledger: this runs on every stop.
   defp verify_against_ledger(paths, scope, session_id) do
     cond do
-      # An empty ledger is a fact about the session, not a broken recording, and
-      # `f89429e4` is the commit that says so — "A session that edited nothing
-      # does not block on anyone's findings". Story 894's rule states it
-      # outright: an agent that made no edits is blocked by nothing.
-      #
-      # This answered `nil` for a few hours on 2026-08-20 because I read the
-      # branch as an unexplained carve-out. It is not: `nil` means attribution
-      # is *unusable*, which is a different claim from "this session touched
-      # nothing", and conflating them blocks every zero-edit session on the
-      # whole project's findings. QA sessions hit that constantly — their
-      # artifacts live under `.code_my_spec/qa/`, which git ignores, so a
-      # session doing real work records no edits by design.
+      # An empty ledger is a fact about the session, not a broken recording:
+      # an agent that made no edits is blocked by nothing. QA sessions write
+      # under gitignored `.code_my_spec/qa/` and record no project edits.
       MapSet.size(paths) == 0 ->
         paths
 
       Files.get_by_paths(scope, MapSet.to_list(paths)) != [] ->
         paths
 
-      # Recorded paths that name no file in this project used to answer `nil`
-      # here, on the reasoning that "a broken recording looks identical to a
-      # session that touched none of the project". The two are only identical
-      # from inside this function; disk tells them apart, so the decision moves
-      # to `corroborate_with_disk/2` and this answers what it actually knows —
-      # no *project* file is attributable to this session.
-      #
-      # Both cases are real and they want opposite answers:
-      #
-      #   * a QA session whose only writes went to `.code_my_spec/qa/`, which
-      #     git ignores and `Files` therefore never rows. Real work, no project
-      #     file, owns none of the project's red (a9e9caca).
-      #   * a recording that mangles its paths — the 595 absolute paths of
-      #     9a623a13. The project files behind them did change, so they are in
-      #     `changed_files`, and disk answers `nil` for exactly that reason.
-      #
-      # Logged at info: on the common path this is a QA session doing its job,
-      # and a warning that fires every time one stops is noise that trains
-      # people past the case where it means something.
+      # Recorded paths that name no project file: a QA session's gitignored
+      # writes, or a recording that mangled its paths. Only disk tells them
+      # apart, so `corroborate_with_disk/2` decides. Info, not warning: the
+      # common case is a QA session doing its job.
       true ->
         Logger.info(
           "[Validation] session #{session_id} recorded #{MapSet.size(paths)} edited " <>
@@ -771,13 +492,10 @@ defmodule CodeMySpec.Validation do
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
     do: FileEdits.get_edited_files_by_agent(session_id, agent_id)
 
-  # A stop never starts, ingests or waits on an analyzer (John, 2026-10-04;
-  # `.code_my_spec/rules/analysis_is_explicit.md`): runs come from
-  # `start_analysis`, ready_for_qa certification and promotion. Starting runs
-  # here once queued compiler and credo on every stop, which is how one
-  # project's 25-minute spex sweep held the machine's only analyzer slot in a
-  # loop (`38d87eb5`). What is left is the in-process validators, which read
-  # the changed files and start nothing.
+  # A stop never starts, ingests or waits on an analyzer
+  # (`.code_my_spec/rules/analysis_is_explicit.md`): runs come from
+  # `start_analysis`, ready_for_qa certification and promotion. Only the
+  # in-process validators run here.
   @nothing_enqueued %{enqueued: [], memoized: []}
 
   defp run_pipeline(scope, task, changed_files, config, opts) do
@@ -811,7 +529,7 @@ defmodule CodeMySpec.Validation do
     sources = active_blocking_sources(config)
 
     # Problems are an eventually consistent projection: block on what is
-    # recorded, say which run recorded it, let the run this kicks off replace it.
+    # recorded, and say which run recorded it.
     problems_by_source =
       scope
       |> Problems.list_project_problems(sources: sources)
@@ -830,14 +548,10 @@ defmodule CodeMySpec.Validation do
       story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
-    # Each finding is labelled with the run that recorded it — its commit and
-    # its age — and always blocks (28d72f8a). There is no "stale": whether a
-    # run saw the current code is the promote gate's question, keyed on the
-    # commit, and a label saying so changed what an agent did without changing
-    # what was true.
-    #
-    # Restricted to `Run.sources/0`: `qa_validation` is an in-process document
-    # validator re-run in this request, with no ledger row to describe.
+    # Each finding is labelled with the run that recorded it — its commit and its
+    # age — and always blocks. Whether a run saw the current code is the promote
+    # gate's question. Restricted to `Run.sources/0`: `qa_validation` is an
+    # in-process validator with no ledger row.
     sources_with_problems = Map.keys(problems_by_source)
     ledger_sources = Enum.filter(sources_with_problems, &(&1 in Run.sources()))
 
@@ -851,20 +565,12 @@ defmodule CodeMySpec.Validation do
     advisory = advisory ++ unattributed ++ not_this_role
 
     decide(blocking, advisory,
-      # Computed here, from the opts that actually carry the identity.
-      #
-      # `decide/4` is handed this freshly built list rather than the caller's,
-      # so asking it about `agent_id` inside `decide/4` answers nil for every
-      # caller — the flag was always false and both renderings it governs were
-      # dead on arrival. They passed their unit test because that test hands the
-      # option straight to the renderer, which is exactly the instrument error
-      # of checking a probe only where it cannot fail.
+      # Computed here, from the opts that carry the identity; `decide/3` is
+      # handed a freshly built list.
       internal_agent?: internal_agent?(opts),
       # The run each source's findings came from: commit, age and duration.
       answers: answers(scope, ledger_sources),
-      # Why a source that has never answered could not run. The analyzer's own
-      # words are in `Run.output` and nothing read them back — `6f89b278` is
-      # three days of blocked stops with the fix sitting in that column.
+      # Why a source that has never answered could not run.
       run_failures: run_failures(scope, ledger_sources),
       # Whether the build that decided a source's findings was older than the
       # tree it decided about. Stamped on the run by the harness, because only
@@ -879,33 +585,14 @@ defmodule CodeMySpec.Validation do
       reproduce_commands: %{
         "credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}
       },
-      # Which files this session actually wrote. Blocking findings outside that
-      # set have already been demoted above, so this only labels what survives
-      # — it is the safety net for the case where the set is unknown and
-      # nothing was demoted.
+      # Which files this session actually wrote; labels what blocks.
       session_paths: session_paths,
-      # How many moved to advisory, and why, so the advisory pile does not
-      # absorb them silently. A gate that stops blocking has to say so.
-      unattributed_count: length(unattributed),
-      # Whose story each spex finding belongs to.
-      #
-      # Rule 3 of story 895: a working copy surfaces every finding about it,
-      # regardless of assignment — loud everywhere, and the response says who
-      # owns it rather than hiding it. Nothing here demotes anything; the latch
-      # still decides what blocks. This only supplies the sentence that tells an
-      # agent whether the red spex it is holding is its own work, the shared
-      # backlog's, or another checkout's.
+      # Whose story each spex finding belongs to. Orientation only: nothing
+      # here demotes anything.
       story_assignment: story_assignments(scope, blocking ++ advisory, scope_context),
       # When and on what commit each blocking spex finding's specs_ready latch
-      # was earned (`51e319db`) — orientation, the same as story_assignment
-      # above, never a blocking decision. A red spex on a latched story is
-      # still a real regression by design (story 895's rule 4); this only
-      # gives a reader on a checkout that never made the fix a fact to check
-      # ("does my HEAD have this commit yet?") before assuming they broke it.
+      # was earned — a fact to check against HEAD before assuming you broke it.
       specs_ready_stamp: specs_ready_stamps_by_path(scope, blocking, scope_context)
-      # Which harness to wait on, so "a rerun is in flight" can name a way to
-      # wait for it rather than only telling the agent to stop again.
-      #
     )
   end
 
@@ -934,27 +621,13 @@ defmodule CodeMySpec.Validation do
   @doc """
   Why a source that has never produced an answer could not run.
 
-  Only for sources with no completed run at all. A source with an older answer
-  is labelled with that run; this one has
-  nothing, and the footer said so as "has never completed" — true, and
-  silent about the cause.
+  Only for sources with no completed run at all. `Reconciler.fail/2` writes
+  the analyzer's own words to `Run.output` (or the reason to `stats["error"]`);
+  surfacing them tells the agent the precondition that failed (a pending
+  migration, an un-onboarded copy) instead of leaving it to chase findings.
 
-  The cause is already in the ledger. `Reconciler.fail/2` writes the analyzer's
-  own words to `Run.output`, and nothing read them back. `6f89b278` is three
-  days of blocked stops where the answer sat in that column the whole time:
-
-      This working copy's test database is 2 migration(s) behind.
-      Pending: 20260811120000_conversation_messages_record_origin, …
-      Run `MIX_TEST_PARTITION=had8804a9s MIX_ENV=test mix ecto.migrate`
-
-  The agent instead saw 22 stale spex findings from stories it had never
-  touched, and advice to stop again — which re-entered the same block. It read
-  another team's provisioning specs looking for a defect that was a missing
-  database.
-
-  Truncated because an analyzer that dies mid-suite can write a great deal, and
-  this rides in a stop response with a byte cap. The first lines are where these
-  tools put the sentence that matters.
+  Truncated because the stop response has a byte cap; the first lines are
+  where these tools put the sentence that matters.
   """
   @spec run_failures(Scope.t(), [String.t()]) :: %{String.t() => String.t()}
   def run_failures(_scope, []), do: %{}
@@ -975,32 +648,9 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  # A run that never produced output at all.
-  #
-  # `Reconciler.fail/2` writes the reason to `stats["error"]`, not to `output` —
-  # `output` is what the *tool* printed, and an analyzer that crashed before
-  # starting printed nothing. So the two failure shapes land in different
-  # columns and only one was ever read back.
-  #
-  # `639d0fc1` is the cost. An un-onboarded working copy made credo crash
-  # before it ran, 104 times across two checkouts, with the reason recorded
-  # every time:
-  #
-  #     credo crashed: /Users/…/intake-on-home has no recorded test partition,
-  #     so it has not been onboarded. Run: mix harness.onboard
-  #
-  # What the agent got instead was the previous run's findings, correctly
-  # labelled stale, on a file it had already fixed and verified clean — the
-  # same finding three times, still citing a line number from before the edit
-  # that shifted it. The remedy offered was "stop again and let a rerun replace
-  # these", and the rerun crashed identically. Nothing it could edit was ever
-  # measured.
-  #
-  # The information was one process away the whole time and the agent had no
-  # reason to look for it. It is the second analyzer that week to fail an unmet
-  # precondition and surface it as stale findings — spex did the same through
-  # the migration guard (`6f89b278`) — which is why this reads the column
-  # rather than the instance.
+  # A run that never produced output: `Reconciler.fail/2` writes the reason to
+  # `stats["error"]`, while `output` is what the tool printed. Both columns are
+  # read. See knowledge/analysis, "Stop response".
   defp failure_reason(%Run{status: :failed, stats: stats}), do: stats_error(stats)
 
   defp failure_reason(_run), do: nil
@@ -1019,11 +669,9 @@ defmodule CodeMySpec.Validation do
   Per source, the harness's note about its own build being behind the tree.
 
   Read off the run rather than recomputed, because the question is about the
-  moment that result was produced and the answer would drift if asked later.
-  `d9f0846c`: a fix to the analyzer is not in force until the harness is
-  rebuilt, and from inside the stop loop that is indistinguishable from an
-  ordinary stale finding — three loops were spent on findings already fixed
-  while the compiled pipeline sat eleven commits behind.
+  moment that result was produced. A fix to the analyzer is not in force until
+  the harness is rebuilt, which from inside the stop loop looks like an
+  ordinary stale finding.
   """
   @spec analyzer_staleness(Scope.t(), [String.t()]) :: %{String.t() => String.t()}
   def analyzer_staleness(_scope, []), do: %{}
@@ -1040,8 +688,8 @@ defmodule CodeMySpec.Validation do
   @doc """
   Per source, the newest full run when it failed after the latest answer.
 
-  The findings still come from that older answer (`Analysis.latest_answer/2` keeps it
-  good), so the reader must be told the rerun failed and why.
+  The findings still come from that older answer (`Analysis.latest_answer/2`
+  keeps it good), so the reader must be told the rerun failed and why.
   """
   @spec failed_reruns(Scope.t(), [String.t()]) :: %{String.t() => map()}
   def failed_reruns(_scope, []), do: %{}
@@ -1124,17 +772,10 @@ defmodule CodeMySpec.Validation do
   defdelegate enforceable(scope, problems), to: Blocking
 
   # `%{file_path => :mine | :unassigned | {:elsewhere, label}}` for spex
-  # findings whose story can be identified.
-  #
-  # Spex only, because it is the only source with a story behind it — a credo
-  # finding is about a file and has no owner in this sense. Paths that resolve
-  # to no story are absent rather than `:unassigned`: "nobody has claimed this
-  # story" and "this path is not a story's spex at all" are different facts, and
-  # reporting the second as the first would tell an agent a directory is
-  # unassigned work.
-  #
-  # The label is the destination checkout's, so the sentence can name where the
-  # work is rather than printing a uuid at somebody.
+  # findings whose story can be identified. Spex only: no other source has a
+  # story behind it. Paths that resolve to no story are absent rather than
+  # `:unassigned` — "unclaimed story" and "not a story's spex" are different
+  # facts. The label is the destination checkout's.
   defp story_assignments(scope, problems, ctx) do
     %{criterion_story_ids: by_path, story_ids_by_number: by_number} = ctx
 
@@ -1154,9 +795,8 @@ defmodule CodeMySpec.Validation do
   end
 
   # `%{file_path => %{at:, commit:}}` for blocking spex findings whose story
-  # is enforced via the specs_ready latch. Only queries `Stories` when there
-  # is at least one such path, and only for the specific story ids involved —
-  # the same narrowing `story_assignments/3` uses.
+  # holds the specs_ready latch. Queries `Stories` only for the story ids
+  # involved.
   defp specs_ready_stamps_by_path(scope, blocking, ctx) do
     %{
       criterion_story_ids: by_path,
@@ -1186,13 +826,8 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  # A project nobody has assigned anything on gets no note at all.
-  #
-  # "This story is unassigned" is only worth saying where assignment is in
-  # use — everywhere else it is true of every story in the project and
-  # tells the reader nothing, while adding a paragraph to every stop. The
-  # axis lands empty and changes nothing, and that has to include the
-  # wording.
+  # A project nobody has assigned anything on gets no note at all: "unassigned"
+  # would be true of every story and tell the reader nothing.
   defp story_assignments_for(_paths, assigned, _mine, _labels, _by_path, _by_number)
        when assigned == %{},
        do: %{}
@@ -1244,19 +879,10 @@ defmodule CodeMySpec.Validation do
 
   defp decide([], [], _opts), do: {:ok, nil}
 
-  # Nothing blocks, and something is still worth saying.
-  #
-  # Story 895's rule 3: a working copy surfaces every finding about it,
-  # regardless of assignment. An allowed stop used to say nothing at all, so a
-  # finding on another checkout's story — advisory, correctly, because its specs
-  # have never gone green — was invisible to the agent standing in the checkout
-  # where it failed. Invisible is the one thing the rule rules out; the point of
-  # assignment is that the finding is *reported* here and *refused* elsewhere.
-  #
-  # Only the assignment sentence, and only when there is one. A list of advisory
-  # findings on every allowed stop is the wallpaper failure `Analysis.Alert`
-  # already argues against — an agent that reads a paragraph it cannot act on
-  # learns to skip the paragraph.
+  # Nothing blocks, and something may still be worth saying: a working copy
+  # surfaces every finding about it, regardless of assignment. Only the
+  # assignment sentence, and only when there is one — a list of advisory
+  # findings on every allowed stop is wallpaper.
   defp decide([], advisory, opts) do
     Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
 
@@ -1268,30 +894,18 @@ defmodule CodeMySpec.Validation do
       Problems.render_stop_response(
         blocking,
         advisory,
-        # `:internal_agent?` is already here, set by `check_blocking_problems/5`
-        # from the opts that carry the identity. It decides two things the
-        # renderer cannot work out for itself: that this agent is not the one
-        # waiting on the rerun (story 988; the hook's "curl analysis/wait, then
-        # stop again" has no counterpart here, and QA watched an agent obey it
-        # and spend a whole turn re-curling — issue `778ab035`), and that its
-        # edits are not unattributed but simply its own.
+        # `:internal_agent?` tells the renderer this agent is not the one
+        # waiting on a rerun (no "curl analysis/wait"), and its edits are its own.
         opts
       )
 
     {:error, reason, blocking_key(blocking)}
   end
 
-  # What is blocking, as something that can be compared across stops.
-  #
-  # Deliberately not the rendered reason. R8's repeat detection hashes the text
-  # it is given, and this text carries relative ages — "finished 3
-  # minutes ago" — which change on every stop. Hashing it would produce a new
-  # value each time and the streak would never build, so the escape would be
-  # silently inert in exactly the case that needs it most: an analyzer lagging
-  # while the same findings block turn after turn.
-  #
-  # The findings themselves are stable. A fixed problem, a new one, or a moved
-  # line all change this; waiting does not.
+  # What is blocking, comparable across stops. Not the rendered reason: that
+  # carries relative ages and changes every stop, so repeat detection hashing it
+  # would never build a streak. A fixed, new or moved finding changes this;
+  # waiting does not.
   @doc """
   Public only so the property that matters can be asserted directly: stable
   while a source ages, different the moment a finding changes.

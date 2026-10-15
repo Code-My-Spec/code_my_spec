@@ -6,7 +6,7 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
   project-level work.
   """
 
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.OfferHelpers, only: [coding_work_waiting: 1, next_task: 2, agent_frame: 2]
   import CodeMySpecSpex.StoryBoundHelpers, only: [issue_accepted: 1]

@@ -172,11 +172,12 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.GraphReport
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Requirements.Shadow
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.AcceptanceCriteria
@@ -930,6 +931,32 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec mark_present(map()) :: map()
   def mark_present(agent), do: AgentPresence.present(agent)
 
+  @doc """
+  Untrack an agent's presence without ending its process: the lane leaves the
+  harness channel, the thing actually running it does not.
+  """
+  @spec mark_absent(map()) :: :ok
+  def mark_absent(agent), do: AgentPresence.absent(agent)
+
+  @doc """
+  Record the machine's own pid for an agent, the way a harness report does.
+
+  `os_pid` arrives on this project from the machine actually running the
+  agent, not from a decision made here — so a criterion whose premise is
+  "the machine already reported a pid for it" sets it directly rather than
+  standing up the full report round trip to produce the same row.
+  """
+  @spec record_os_pid(CodeMySpec.Agents.Agent.t(), integer()) :: CodeMySpec.Agents.Agent.t()
+  def record_os_pid(%CodeMySpec.Agents.Agent{} = agent, pid) when is_integer(pid) do
+    scope = %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id
+    }
+
+    {:ok, updated} = AgentsRepository.update_agent(scope, agent, %{os_pid: pid})
+    updated
+  end
+
   defp tool_set(role) when is_binary(role),
     do: role |> String.to_existing_atom() |> tool_set()
 
@@ -1607,6 +1634,10 @@ defmodule CodeMySpecSpex.Fixtures do
   def watch_graph(%Scope{active_project_id: project_id} = scope) do
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
 
+    # Each project belongs to this test's teardown, including secondary projects.
+    # A named callback also handles repeated starts without accumulating callbacks.
+    ExUnit.Callbacks.on_exit({:stop_graph_watcher, project_id}, fn -> stop_watching(scope) end)
+
     # `GraphInputs.subscribe/1` is a plain `Phoenix.PubSub.subscribe/2`, which is
     # not idempotent per process: a second subscription from the same pid to the
     # same topic is a second registry entry, and `Phoenix.PubSub.broadcast/3`
@@ -1837,22 +1868,19 @@ defmodule CodeMySpecSpex.Fixtures do
   def forget_projection(%Scope{} = scope) do
     scope
     |> Projection.vantages()
-    |> Enum.each(&Shadow.clear(%{scope | active_working_copy_id: &1}))
+    |> Enum.each(&GraphStore.clear(%{scope | active_working_copy_id: &1}))
   end
 
   @doc """
-  Stop every graph watcher, so nothing new starts during teardown.
+  Stop every project's graph projector, so nothing new starts during teardown.
 
-  Draining the task supervisor is not enough on its own. A `GraphWatcher` is a
-  project-scoped GenServer under a dynamic supervisor and outlives the scenario
-  that started it, so its debounce timer can fire *after* the drain and spawn
-  another wake into a sandbox that is about to go away. Stopping the watchers
-  first closes that window.
+  A projector outlives the scenario that started it and drains the moment a
+  mark lands, so it can start work into a sandbox that is about to go away.
 
   Every one rather than this scope's, because teardown runs before the scope is
-  in hand and because a spex run gives each scenario its own project — so the
-  watchers alive at the end of one are that one's, and a watcher belonging to
-  nothing is what a straggler is.
+  in hand — which is only right when nothing runs beside the caller. From an
+  async test this stops every concurrent test's projector; use
+  `stop_watching/1` there.
   """
   @spec stop_graph_watchers() :: :ok
   def stop_graph_watchers do
@@ -1912,7 +1940,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stop_watching(Scope.t()) :: :ok
   def stop_watching(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    case Registry.lookup(CodeMySpec.Requirements.Registry, project_id) do
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)
         :ok
@@ -3841,10 +3869,16 @@ defmodule CodeMySpecSpex.Fixtures do
     # which names a child spec and a pid and reads as a supervision bug in the
     # code under test. It took a stacktrace read to find that the second
     # installer was the caller's own fixture call.
-    case Process.whereis(FakeWorkspaceRunner) do
-      nil -> start_runner_with_ordered_teardown(opts)
-      _already_running -> FakeWorkspaceRunner.configure(opts)
-    end
+    #
+    # Checking `Process.whereis/1` and branching on it used to be how this
+    # decided which of those two cases it was in, and it is a check-then-act
+    # race: two async tests whose setup runs at the same moment can both see
+    # `nil`, both call `start_link`, and whichever loses crashes its own setup
+    # with `{:error, {:already_started, pid}}` instead of reading as a second
+    # install. Attempting the start and handling that outcome is the atomic
+    # form of the same idea — the name registration itself is the only lock
+    # that actually holds across processes.
+    start_runner_with_ordered_teardown(opts)
 
     :ok
   end
@@ -3889,8 +3923,19 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defp start_runner_with_ordered_teardown(opts) do
     started_before = WorkspaceWatchers.running()
-    {:ok, runner} = FakeWorkspaceRunner.start_link(opts)
 
+    case FakeWorkspaceRunner.start_link(opts) do
+      {:ok, runner} -> register_runner_teardown(started_before, runner)
+      # Lost the race to start it: somebody else's setup registered the name
+      # first, a moment too early for our own `Process.whereis/1` (if we still
+      # had one) to have seen it. Reconfiguring it is exactly what the other
+      # branch of the old check did, and leaving its teardown in place is
+      # correct — only the test that actually started it should tear it down.
+      {:error, {:already_started, _pid}} -> FakeWorkspaceRunner.configure(opts)
+    end
+  end
+
+  defp register_runner_teardown(started_before, runner) do
     ExUnit.Callbacks.on_exit(fn ->
       WorkspaceWatchers.kill_since(started_before)
       if Process.alive?(runner), do: GenServer.stop(runner)
@@ -4423,8 +4468,22 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc "Recompute this checkout's graph now, as `sync_project` does."
+  def recompute_graph(%Scope{} = scope) do
+    _ = Requirements.recompute(scope)
+    :ok
+  end
+
+  @doc "Why the writer serving this project's reads last failed, or nil."
+  def graph_last_error(%Scope{active_project_id: project_id}) do
+    case GraphReport.writer_status(project_id) do
+      %{last_error: %{message: message}} -> message
+      _ -> nil
+    end
+  end
+
   @doc """
-  Make this project's graph watcher raise instead of recomputing.
+  Make this project's graph writer raise instead of recomputing.
 
   A different fault from `break_digest_source/1`: that one leaves the graph
   itself fine and breaks only what the main agent's digest reads. This is the
@@ -4730,18 +4789,26 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec spec_file_path(map(), map()) :: String.t()
   #
-  # `criterion_id` is either a real criterion's own database id (a struct
-  # from `story.criteria`) or the number `GetStory` shows the agent under
-  # the same key — matching on both is what lets either caller through.
-  def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
+  # The criterion is either a real one (it carries `:number`, and `:id` is its
+  # database id) or the map `GetStory` parses, whose `:id` is the number the
+  # agent sees. Each is matched on its own key: matching either key against
+  # both took a criterion whose *id* equalled another's *number* — which only
+  # happens on a fresh database, where ids are small (892 in a gate shard).
+  def spec_file_path(%{id: story_id}, %{id: _} = wanted) do
     story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
 
     criterion =
-      Enum.find(story.criteria, &(&1.id == criterion_id or &1.number == criterion_id))
+      case wanted do
+        %{number: number} when is_integer(number) ->
+          Enum.find(story.criteria, &(&1.id == wanted.id))
+
+        %{id: number} ->
+          Enum.find(story.criteria, &(&1.number == number))
+      end
 
     unless criterion do
       raise ArgumentError,
-            "criterion #{inspect(criterion_id)} does not belong to story #{inspect(story_id)}"
+            "criterion #{inspect(wanted.id)} does not belong to story #{inspect(story_id)}"
     end
 
     BddSpecs.spec_file_path(story, criterion)

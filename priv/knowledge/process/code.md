@@ -80,6 +80,58 @@ Calling `evaluate_task` on an automatic task is harmless. *Not* calling it
 on a manual one leaves the task open with the work sitting there finished,
 which looks from outside exactly like an agent that stalled.
 
+## Reaching main or product
+
+`message_agent` only works between teammates sharing a working copy — you
+and the QA agent on your own checkout, say. It is not how you reach main,
+product, or anyone on another copy: that role does not carry the tool at
+all, and a different spelling will not change that. Use
+`ask_user_question` instead — whichever of main or product is running
+receives it, not the user, unless neither is.
+
+## When an analysis run is stuck
+
+Normal analysis finishes asynchronously — you get a "Your X run finished"
+message when it lands, and you do not poll for it. `start_analysis` also
+takes `paths` to scope a run to specific files, for a targeted recheck
+rather than the full sweep.
+
+You do not carry a tool to inspect or cancel an admitted run —
+`check_machinery` and the harness's own run inventory belong to main under
+`process/main_agent.md`. That is deliberate: a fault in the analysis
+machinery is a single shared thing underneath every agent, and letting
+every role poll for it separately multiplies the confusion rather than
+fixing it.
+
+So when a run is genuinely stuck — not merely slow — report it to main with
+`ask_user_question`, naming the working copy, the commit, and what you were
+trying to validate, and wait. Main inspects and recovers the machinery; you
+resume by calling `start_task`/`evaluate_task` again once it tells you to,
+not by guessing at a tool name that does not exist.
+
+`await_analysis` is retired. If your tool list still shows it — fetched at
+session start, before it was removed — calling it explains this and names
+the two HTTP endpoints (`/analysis/run`, `/analysis/wait`, documented in
+AGENTS.md) that replaced it; reconnecting through `/mcp` refreshes the list.
+
+## Scoping a manual `mix credo` run
+
+Prefer `start_analysis({ source = "credo", paths = [...] })` over invoking
+`mix credo` by hand -- it does not go near the problem below.
+
+If you do run `mix credo --strict` directly for a quick check, scope it
+with a bare positional path (`mix credo --strict lib/foo.ex test/bar_test.exs`),
+not `--files-included`. Credo documents `--files-included` as repeatable
+and it accumulates correctly at the CLI-parsing layer, but a project with
+its own `.credo.exs` (every project here has one) silently discards it
+again one step later and the run falls back to scanning everything --
+confirmed directly on the installed version (93d1e6f3: a run that should
+have checked one file reported "running 111 checks on 4345 files"). A bare
+positional path does not go through that code path and reliably checks
+only what you named ("Checking 1 source file", confirmed the same way).
+This is Credo's own CLI option handling, not anything in this repository,
+so there is nothing here to patch -- only the invocation to get right.
+
 ## When specs are red
 
 `bdd_specs_passing` has its own task, and its instruction is worth

@@ -14,6 +14,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   - `:field_true`    — Boolean field on entity struct is exactly `true`
   - `:bdd_specs_covered` — File of configured role exists for every acceptance
     criterion on the story, not merely for the story as a whole
+  - `:deployed` / `:all_deployed` — the story (or every released story) is live
+    on the configured environment
+  - `:delegate` — the configured checker module answers
+  - `:always` — satisfied
   """
 
   import Ecto.Query
@@ -73,11 +77,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     has_valid_role?(files, role)
   end
 
-  # Per-criterion, not per-story: a story with any one file of `role` used to
-  # read satisfied regardless of how many criteria it had. A criterion added
-  # or reworded after the first spex pass then has no spec and nothing asks
-  # for one, because the other criteria's files keep the story looking done
-  # (issue 644279a9).
+  # Per criterion, not per story: otherwise a criterion added after the first
+  # spex pass has no spec and nothing asks for one.
   defp check(%{check_type: :bdd_specs_covered, config: config}, scope, entity, _files, ctx) do
     role = config_role(config)
     check_bdd_specs_covered(scope, entity, copy_files(scope, ctx), role)
@@ -96,17 +97,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # The story's component is linked when it resolves to a component that exists,
-  # not when the field is merely set.
-  #
-  # A component's id is a pure function of its project and module name, so the
-  # migration computes it rather than looking it up — which lets a story name the
-  # component it belongs to before the working copy has synced it. The id is
-  # right; the row is not there yet, and `:field_present` would call that linked.
-  #
-  # The two reasons are different work: nothing to point at is an architecture
-  # question, and pointing at something absent resolves itself when the sync
-  # runs. Saying which is the difference between "map this story" and "wait".
+  # Linked when the component exists, not when the field is set: a component id
+  # is derived from project and module name, so a story can name one before the
+  # working copy syncs it. The two reasons are different work ("map this story"
+  # vs "wait for the sync").
   defp check(%{check_type: :component_exists}, scope, entity, _files, _ctx) do
     case Map.get(entity, :component_id) do
       nil ->
@@ -128,20 +122,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # Distinct from :field_present because `false` is a legitimate value that
-  # must read as unsatisfied — :field_present only rejects nil, so a latch
-  # sitting at `false` would report satisfied.
-  #
-  # The reason names what sets the latch, because a latch is the one check type
-  # where doing the work is not enough and nothing else says so. `specs_ready`
-  # is set only by `FixBddSpecs.evaluate/2` reaching its empty-problems branch;
-  # a completed spex sweep does not touch it. So three full sweeps went green —
-  # 213s, one killed at twelve minutes, 393s — and each re-check of the
-  # requirement still said "specs_ready is not set", which reads as a broken
-  # gate rather than a pending step. Three wrong theories came out of that, one
-  # of them filed as an issue that had to be withdrawn. `evaluate_task` was
-  # called once afterwards and it flipped immediately, on evidence that had
-  # been in the database the whole time.
+  # Distinct from :field_present, which only rejects nil: a latch at `false`
+  # must read unsatisfied. The reason names what sets the latch, because doing
+  # the work does not. See knowledge/requirements_graph/checkers, "Check types".
   defp check(%{check_type: :field_true, config: config} = definition, _scope, entity, _, _ctx) do
     field = config_field(config)
 
@@ -163,22 +146,14 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # Is this story live on the environment the definition names?
-  #
-  # The environment comes from config rather than being baked into a function
-  # name, because environments are rows: a project has whatever set it has, and
-  # `uat_check/2` could only ever answer for one of them.
-  #
-  # `Predicates.satisfied(:deployed, …)` is the query form of this and must
-  # agree with it — same table, same `health_verified_at` rule.
+  # Is this story live on the environment the definition names? From config,
+  # because environments are rows.
   defp check(%{check_type: :deployed, config: config}, scope, entity, _files, ctx) do
     deployed_verdict(scope, entity, environment_from(config), ctx)
   end
 
-  # Is every released story live on that environment?
-  #
-  # Project-scoped, and the release gate the prod half of story 841 needs:
-  # production goes out when the graph is green, not when one story is.
+  # Is every released story live on that environment? The project-level release
+  # gate: production goes out when the graph is green, not when one story is.
   defp check(%{check_type: :all_deployed, config: config}, scope, _entity, _files, _ctx) do
     environment = environment_from(config)
 
@@ -217,26 +192,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   end
 
   # Checkers that export an arity-3 clause are handed the preloaded context;
-  # the rest keep the two-argument contract and query for themselves.
+  # the rest take `(scope, entity)` and query for themselves.
   #
-  # Opt-in per checker rather than a flag day: `compute_story_nodes/3` calls
-  # this once per story per definition, so a checker that queries four tables
-  # does it 4×N times in one graph computation. Converting them one at a time
-  # needs both shapes to work, and a checker that has not been converted is
-  # exactly as correct as before.
-  #
-  # A raising checker is not caught. It used to become
-  # `{false, "delegate check failed: …"}`, which reads as protection and is not:
-  # every delegate module is ours — nine of them, all in this application — so a
-  # raise is a bug in our code rather than a condition to degrade around, and
-  # `false` is the verdict most nodes carry most of the time. A broken checker
-  # was therefore indistinguishable from an unsatisfied requirement in every
-  # view that counts nodes, and nothing logged. The reason string only surfaced
-  # if someone opened that one node's details.
-  #
-  # A checker with a condition it genuinely cannot evaluate says so in the
-  # result — `{false, %{reason: …}}` or `{:ok, :invalid, reason}` — which is the
-  # difference between an answer and a crash, and is what the shape is for.
+  # A raising checker is not caught: every delegate is ours, and a raise turned
+  # into `false` is indistinguishable from an unsatisfied requirement. A
+  # condition a checker cannot evaluate is a `{false, %{reason: …}}` answer.
   defp run_delegate(module, function, scope, entity, ctx) do
     module
     |> apply(function, delegate_args(module, function, scope, entity, ctx))
@@ -253,9 +213,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   A delegate's answer in the `{satisfied?, details}` shape the graph stores.
 
   Public because `Requirements.Handlers` settles some delegate-backed
-  requirements from events and has to land on the same shape a recompute would.
-  Reimplementing this mapping there would be a second copy of the contract, and
-  the copy that drifts is the one that decides what an agent is asked to do.
+  requirements from events and must land on the same shape a recompute would.
   """
   @spec normalize_delegate_result(term()) :: {boolean(), map()}
   def normalize_delegate_result(result)
@@ -306,44 +264,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   # -- Path checks (project-level) --
 
-  # Rows only. These used to fall back to statting the disk, on the stated
-  # grounds that "many project-level paths aren't classified by FileSync, so
-  # the DB won't have them — filesystem is authoritative". That is no longer
-  # true: every path these six requirements gate on now classifies to a role
-  # (`ClassifiableArtifactsTest` holds the list), so the row is there whenever
-  # the file is.
-  #
-  # The fallback was also the thing that made two harnesses disagree about one
-  # project. It only ever fires when the file is on disk and not yet a row, and
-  # in that window the heavy harness — which has a working copy — answers
-  # satisfied while the server, which has no local execution environment,
-  # answers
-  # unsatisfied. Same project, same instant, two answers, and the one an agent
-  # gets depends on which process it asked.
-  #
-  # Reading rows costs a scan of lag on a freshly written file and gives one
-  # answer to everyone. That is the trade this whole projection is built on:
-  # everything else here already reads rows, and a file the scanner has not
-  # seen is a file the graph does not know about.
-  # Existence is necessary, not sufficient. Every path these six gate on is
-  # classified, and classification runs the artifact's validator — so the row
-  # already carries a verdict. Reading only `exists?` threw that verdict away
-  # and let a QA plan missing every required section satisfy `qa_setup`, whose
-  # own description is "QA plan exists with App Overview, Tools Registry, and
-  # Seed Strategy". Two of the six say "and valid" outright.
-  #
-  # `valid: nil` means no validator applies to that role, which is a pass —
-  # only an explicit `false` is a failure. The errors are carried into the
-  # reason because the agent's next move depends on which section is missing,
-  # and "File invalid" alone does not say.
-  # A path can match more than one row: `scope_to_harness/2` does not filter
-  # when the scope carries no harness, which is every read the web UI makes.
-  # So this asks the list a question rather than demanding a single row —
-  # `Repo.one` would raise there, and refusing on a harness mismatch is what
-  # took the graph out of the web view once already.
-  #
-  # One valid copy is enough. Reporting invalid because some other working
-  # copy has a stale row would block an agent on a file it cannot see.
   defp environment_from(config), do: MapAccess.get(config, :environment)
 
   defp deployed_verdict(_scope, _entity, nil, _ctx),
@@ -370,6 +290,12 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  # Rows only, never the disk: every gated path classifies to a role, and a
+  # disk fallback gave the harness and the server different answers. Existence
+  # is not enough — the row's validator verdict counts (`valid: nil` means no
+  # validator, a pass), and its errors go in the reason. A path can match one
+  # row per checkout when the scope names none; one valid copy is enough.
+  # See knowledge/requirements_graph/checkers, "Check types".
   defp check_path_exists(scope, ctx, path) do
     case tracked_files(scope, ctx, path) do
       [] ->
@@ -394,12 +320,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   read failures, and a key per missing section for setup files. Join the values
   rather than guessing at a shape.
 
-  Public for `Requirements.Handlers`, which settles the five project
-  `path_exists` requirements from a profile and has to produce the same
-  sentence. It had its own rendering and the diff caught the drift: the keys
-  were interpolated too, so `qa_journey_plan` explained itself as
-  `data: %{}; errors: %{"plan" => …}` where a recompute wrote the messages
-  alone.
+  Public for `Requirements.Handlers`, which settles the project `path_exists`
+  requirements from a profile and must produce the same sentence.
   """
   @spec describe_validation_errors(map()) :: String.t()
   def describe_validation_errors(%{validation_errors: errors})
@@ -411,9 +333,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   def describe_validation_errors(_file), do: "no detail recorded"
 
-  # Values are usually the validator's message, but not always — some roles
-  # write a nested map, and `to_string/1` raises on those rather than saying
-  # anything useful.
+  # Some roles write a nested map, which `to_string/1` raises on.
   defp format_validation_error(value) when is_binary(value), do: value
   defp format_validation_error(value) when is_atom(value), do: to_string(value)
   defp format_validation_error(value), do: inspect(value)
@@ -425,14 +345,8 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # Preloaded when there is a context, queried when there is not — the same
-  # two-clause shape `get_files/3` and `get_problem_count/4` already use, and
-  # the reason this conversion is not just "delete the fallback".
-  #
-  # `Evaluator` calls `compute_one/4` without a context, so on the stop-hook
-  # path — the one that runs on every agent turn — `ctx` is nil and there are
-  # no preloaded files to consult. Dropping to `{false, "File missing"}` there
-  # blocks the stop on a file the agent had just written and synced.
+  # Preloaded when there is a context, queried when there is not:
+  # `Evaluator` calls `compute_one/4` without one.
   defp tracked_files(_scope, ctx, path) when is_map(ctx) do
     case ctx[:files_by_path] && Map.get(ctx.files_by_path, path) do
       nil -> []
@@ -454,10 +368,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  # Matched in Elixir rather than with a `LIKE`: the prefix is a config value
-  # and `_` is a single-character wildcard in both Postgres and SQLite, so a
-  # future prefix containing one would quietly over-match. One indexed column
-  # for one project is a cheap enough read to not need the wildcard.
+  # Matched in Elixir, not `LIKE`: `_` in a prefix would be a wildcard.
   defp prefix_count(%Scope{active_project_id: project_id} = scope, _ctx, prefix) do
     File
     |> where([f], f.project_id == ^project_id)
@@ -467,28 +378,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     |> Enum.count(&String.starts_with?(&1, prefix))
   end
 
-  # The same rule `Preloader.load/1` applies, for the same reason and with the
-  # same asymmetry.
-  #
-  # These two fallbacks run when there is no preloaded context — which is the
-  # stop-hook path, because `Evaluator` calls `compute_one/4` without one. So
-  # every `path_exists` requirement on every agent turn was asking "does any
-  # checkout have this file", and answering yes.
-  #
-  # The six that use it are all `.code_my_spec/` project paths — a technical
-  # strategy, a QA plan, a journey — which is exactly the category that differs
-  # between working copies, because one checkout writing it is the work the
-  # requirement is asking for. A second checkout that already had it made the
-  # first one's requirement read as done.
-  #
-  # Over-satisfaction is the dangerous direction: an unsatisfied requirement
-  # reported satisfied is work skipped and never noticed, where the reverse is
-  # work done twice and immediately obvious.
-  #
-  # Loose on a nil harness, matching the preloader: a scope with no working copy
-  # is the UI asking, and refusing there took the graph out of the web view and
-  # failed 86 spex. An agent's scope always carries a harness because the plug
-  # that builds it does.
+  # The no-context fallbacks read the scope's checkout: another checkout having
+  # a `.code_my_spec/` file must not satisfy this one's requirement. A scope
+  # with no checkout reads every checkout's rows rather than refusing.
   defp scope_to_harness(query, %Scope{active_working_copy_id: nil}), do: query
 
   defp scope_to_harness(query, %Scope{active_working_copy_id: working_copy_id}),
@@ -531,24 +423,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   "Naming it" is the file's `criterion_number` — the number its `spex` call
   names — matched against the criterion's number, not a path and not a stored
   binding. `files` are every file on the working copy, not the story's: a file
-  covers a criterion by the number it names, whichever story that is on. The evaluator for `write_bdd_specs` calls this
-  too, so the task and the requirement cannot disagree (94327fe2).
+  covers a criterion by the number it names, whichever story that is on. The
+  evaluator for `write_bdd_specs` and `Requirements.Handlers` call this too, so
+  the task, the handler and the recompute cannot disagree.
 
-  The verdict on its own, separated from the query that feeds it, so
-  `Requirements.Handlers` can settle this requirement across every story from
-  one read instead of one query per story — and, more to the point, so it
-  cannot answer a different question.
-
-  It did exactly that. `bdd_specs_exist` was a row in the handler's file table
-  meaning "this story has any file in this role", which was the rule until
-  `f97e1216d` made it per criterion. The table did not follow, the handler went
-  on passing stories with a spec file and uncovered criteria, and nothing said
-  so until a diff against this module on a merged tree.
-
-  `[]` is unsatisfied rather than a pass. `168335ecf` briefly made a story with
-  no criteria fall back to any-file semantics and `89bf9bf0b` took it back out:
-  a story nobody has run Three Amigos on has not covered its criteria, it has
-  no criteria to cover.
+  `[]` is unsatisfied: a story with no criteria has nothing covered.
   """
   @spec bdd_specs_covered([map()], [map()], atom()) :: {boolean(), map()}
   def bdd_specs_covered(criteria, files, role)

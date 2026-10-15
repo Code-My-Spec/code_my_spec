@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Qa.AFailedStoryReviewClosesItsTaskTest do
   @moduledoc "Story QA results finish their review task; story issue submission nodes gate the next attempt."
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures

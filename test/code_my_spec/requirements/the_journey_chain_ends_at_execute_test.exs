@@ -7,7 +7,7 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
 
   The release still waits on `qa_journey_execute`'s artifact (criteria 540, 759).
   """
-  use CodeMySpecSpex.Case, async: false
+  use CodeMySpecSpex.Case, async: true
 
   import CodeMySpec.UsersFixtures, only: [fixture_environment: 1, put_fixture_environment: 2]
 

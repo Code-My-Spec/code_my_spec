@@ -25,7 +25,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsNamesTheRunTest do
   is the machine-wide semaphore `3e9b7568` actually asks for.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.AnalysisFixtures
   import CodeMySpec.ProblemsFixtures

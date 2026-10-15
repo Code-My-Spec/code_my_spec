@@ -2,12 +2,9 @@ defmodule CodeMySpec.Deploys do
   @moduledoc """
   What has actually been deployed, per story and environment.
 
-  The `deploy` requirement used to read a markdown file the agent wrote and
-  check it for the substring "verified", which meant the gated party could
-  satisfy the gate by asserting it. That is why it came out of the graph
-  (d207ad38). This is the read model that lets it come back: a deploy is
-  recorded when one happens, and only a passing health check sets the field the
-  requirement reads.
+  A deploy is recorded when one happens, and only a passing health check sets
+  the field the `deploy` requirement reads.
+  See knowledge/infrastructure, "Deploy records".
 
   Scoped to a project throughout — a deploy belongs to the project whose story
   it shipped, and nothing here answers across projects.
@@ -68,7 +65,7 @@ defmodule CodeMySpec.Deploys do
 
   Separate from `record/4` because the two happen at different moments: the
   deploy goes out, then something checks it. Collapsing them would let a deploy
-  that never answered read as done — criterion 1964.
+  that never answered read as done.
   """
   @spec verify(Scope.t(), integer(), String.t(), DateTime.t()) ::
           {:ok, Deploy.t()} | {:error, :not_found | Ecto.Changeset.t()}
@@ -85,20 +82,10 @@ defmodule CodeMySpec.Deploys do
     end
   end
 
-  # `16a24105`: "a cached graph can tell an agent work is finished that a deploy
-  # has just reopened". A deploy landing moves the `deploy` requirement, and
-  # until the fingerprint covered deploys it moved nothing the cache could see.
-  #
-  # The event settles that requirement directly — `Requirements.Handlers` reads
-  # the deploy rows and `Deploys.healthy?/1` decides — and the story rides along
-  # as the fallback for a consumer with no handler for this kind.
-  #
-  # Per row rather than once per `record_environment_deploy/3`, because
-  # `record/4` has callers of its own that would otherwise be silent.
-  #
-  # A deploy with no story names nothing, which records `:unknown` and
-  # recomputes everything. Conservative and correct: this cannot say what such a
-  # row moved.
+  # Per row, not once per `record_environment_deploy/3`: `record/4` has callers
+  # of its own that would otherwise be silent. A deploy with no story names
+  # nothing, which recomputes everything.
+  # See knowledge/infrastructure, "Deploy records".
   defp announce({:ok, deploy} = result, scope) do
     GraphInputs.event(
       scope,
@@ -129,10 +116,9 @@ defmodule CodeMySpec.Deploys do
   `health_verified_at` mean something rather than restating that a command
   exited zero.
 
-  Stories still in QA are deliberately not recorded. Their code may well be in
-  the image, but "this story is on UAT" is a claim about work that was finished
-  and checked, and criterion 1963 puts the deploy *after* `qa_complete` for
-  that reason.
+  Stories still in QA are deliberately not recorded: "this story is on UAT" is
+  a claim about work that was finished and checked, so the deploy comes after
+  `qa_complete`.
   """
   @spec record_environment_deploy(Scope.t(), String.t(), keyword()) :: {:ok, [Deploy.t()]}
   def record_environment_deploy(%Scope{} = scope, environment, opts \\ []) do
@@ -188,10 +174,9 @@ defmodule CodeMySpec.Deploys do
   The environment-level question, which the story-level `deployed?/3` cannot
   answer: "is UAT up to date" is about the set, not about any one story.
 
-  Only stories released for development count. A parked story produces no
-  requirement nodes either (`Preloader` filters on `ready_for_dev`), so
-  counting it here would make an environment permanently behind for work that
-  was deliberately not started.
+  Only stories released for development count, matching `Preloader`'s
+  `ready_for_dev` filter; a parked story would otherwise keep an environment
+  permanently behind.
 
   An environment with no released stories is **not** deployed. Shipping nothing
   is not shipping.
@@ -254,9 +239,8 @@ defmodule CodeMySpec.Deploys do
   @doc """
   Requirement checker for `deploy`: is this story live on UAT and healthy.
 
-  Criterion 1963 — the loop's next work after `qa_complete` is the UAT deploy.
-  Prod promotion is the release process's business, not this node's, so this
-  asks about UAT only.
+  The loop's next work after `qa_complete` is the UAT deploy. Prod promotion
+  is the release process's business, so this asks about UAT only.
   """
   @spec uat_check(Scope.t(), map()) :: {boolean(), map()}
   def uat_check(%Scope{} = scope, %{id: story_id}) do
@@ -268,11 +252,8 @@ defmodule CodeMySpec.Deploys do
   @doc """
   The same check, reading the graph context instead of one query per story.
 
-  `RequirementGraph` walks every ready story on every stop hook, so the
-  two-argument form above ran a `Repo.one/1` per story. The context carries the
-  UAT deploy for each, keyed by story id.
-
-  `healthy?/1` decides in both paths, so a preloaded run and a querying run
+  The context carries the UAT deploy for each story, keyed by story id, so a
+  graph walk does not run a query per story. `healthy?/1` decides in both paths, so a preloaded run and a querying run
   cannot disagree about what counts as deployed.
   """
   def uat_check(%Scope{} = scope, %{id: story_id} = story, ctx) when is_map(ctx) do
