@@ -22,6 +22,7 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   require Logger
 
+  alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Analysis
   alias CmsHarness.AnalysisSlots
   alias CmsHarness.Channel
@@ -236,9 +237,62 @@ defmodule CmsHarness.Project.AnalysisServer do
       "[CmsHarness] #{running.source} for #{state.project.root} exceeded #{timeout()}ms — killing it"
     )
 
-    Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), running.task.pid)
+    # 55379e16: `Task.Supervisor.terminate_child/2` alone only exits the Elixir
+    # task -- it never confirms the OS process tree `Environments.Local.cmd/4`
+    # shelled out to is actually dead, and SIGTERM did not stop one observed
+    # live (it kept running at ~296% CPU, free to overlap the next admitted
+    # run). `Execution.stop/1` is the same confirmed, process-tree-aware kill
+    # the agent bash tool already uses for exactly this failure mode: SIGKILL
+    # every OS descendant it can find via the port and the live process tree,
+    # then poll until none answer before returning -- but that confirmation
+    # is bounded at 5s of its own shelled-out `ps`/`kill` calls, and this
+    # server is the single queue every call for this project's analyzers goes
+    # through. Run it in its own supervised, monitored task rather than this
+    # callback, so `status/1`, `enqueue/2` and everything else answer
+    # immediately regardless of how long confirmation takes.
+    #
+    # `running` stays non-nil (now carrying the cleanup task instead of the
+    # live one) until that task reports back, so `maybe_start_next/1`'s own
+    # guard keeps the next queued run from starting until the kill is
+    # confirmed -- not merely until the old task's own (immediate) death,
+    # which is what let an orphan overlap the next run in the first place.
     Process.demonitor(running.task.ref, [:flush])
-    deliver(state, running, {:error, "analyzer timed out after #{timeout()}ms"})
+    task_pid = running.task.pid
+
+    cleanup =
+      Task.Supervisor.async_nolink(Sync.task_supervisor(state.project.root), fn ->
+        Execution.stop(task_pid)
+      end)
+
+    {:noreply, %{state | running: Map.put(running, :cleanup, cleanup), timer: nil}}
+  end
+
+  # The confirmed-dead report from the cleanup task above -- only now does
+  # this run actually finish, and the next queued one is free to start.
+  def handle_info(
+        {ref, cleanup_result},
+        %{running: %{cleanup: %Task{ref: ref}} = running} = state
+      ) do
+    Process.demonitor(ref, [:flush])
+
+    deliver(
+      state,
+      running,
+      {:error, "analyzer timed out after #{timeout()}ms. #{cleanup_status(cleanup_result)}"}
+    )
+
+    {:noreply, state |> clear_running() |> maybe_start_next()}
+  end
+
+  # The cleanup task itself crashed rather than returning -- still answered,
+  # the same as the analyzer task's own unexpected death above, rather than
+  # leaving this run (and the queue behind it) stuck on a message that will
+  # never arrive.
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %{running: %{cleanup: %Task{ref: ref}} = running} = state
+      ) do
+    deliver(state, running, {:error, "analyzer timeout cleanup crashed: #{inspect(reason)}"})
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
@@ -445,6 +499,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     if state.timer, do: Process.cancel_timer(state.timer)
     %{state | running: nil, timer: nil}
   end
+
+  defp cleanup_status(:ok), do: "Subprocess termination confirmed."
+
+  defp cleanup_status({:error, reason}),
+    do: "Subprocess termination unconfirmed: #{inspect(reason)}."
 
   # Every tied run_id gets the same real result as the primary. `tied_to` is
   # `nil` for the primary and the primary's run_id for tied ones: only the
