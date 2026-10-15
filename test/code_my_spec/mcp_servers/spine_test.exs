@@ -32,17 +32,25 @@ defmodule CodeMySpec.McpServers.SpineTest do
       # The spine came out at 15,615 bytes, not the ~2,000 the index-only
       # estimate suggested, and the reason is worth knowing: the tools that had
       # to stay are the expensive ones. `ask_user` alone is 2,398 bytes, and
-      # `show_in_panel` and `assign_subagent` are not far behind. The saving is
-      # 81%, not 90%.
+      # `show_in_panel` and `assign_subagent` are not far behind. The saving
+      # was 81%, not 90%.
+      #
+      # It rose to 22,917 (73%, not 81%) once 6cb860e7 fixed several of these
+      # same spine tools (ask_user_question, assign_subagent, cancel_task,
+      # evaluate_task, start_task, tap_out, reject_offer, start_analysis) to
+      # use `description:` instead of `doc:` -- the key the vendored field
+      # macro actually reads. Their own argument documentation was always
+      # meant to be here; 15,615 was this test passing while that
+      # documentation was silently missing, not a lower true cost.
       payload =
         LocalServer.__components__()
         |> Enum.map(&%{name: &1.name, description: &1.description, inputSchema: &1.input_schema})
         |> Jason.encode!()
 
-      assert byte_size(payload) < 20_000,
+      assert byte_size(payload) < 25_000,
              "the advertised list is #{byte_size(payload)} bytes, against 82,591 before " <>
-               "this story and 15,615 when it landed. Something large came back onto " <>
-               "the spine."
+               "this story and 22,917 once every spine tool's own documentation reached " <>
+               "it (6cb860e7). Something large came back onto the spine."
     end
   end
 
