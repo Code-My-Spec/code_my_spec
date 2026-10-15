@@ -94,7 +94,14 @@ defmodule CodeMySpec.WorkingCopies.AppTransport do
 
   # Same floor as `Agents.Transport.Harness.call/4` — "the machine is there
   # and did not finish" has to be distinguished from "no harness."
-  defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
+  #
+  # Public: a caller deriving its own timeout from a wall-clock budget (an
+  # MCP tool run under `Sandbox`, say) must subtract this too, not just its
+  # own margin — `call/4` adds it on top of whatever timeout it is given,
+  # so a caller's margin smaller than this grace lets the actual
+  # `GenServer.call` deadline land past the caller's own deadline.
+  @spec call_grace_ms() :: pos_integer()
+  def call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
 
   defp unreachable(working_copy_id, verb) do
     Logger.warning(
