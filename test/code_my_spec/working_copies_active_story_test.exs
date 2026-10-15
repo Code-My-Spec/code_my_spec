@@ -7,6 +7,7 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.IssuesFixtures
   import CodeMySpec.StoriesFixtures
   import Ecto.Query
   import CodeMySpec.UsersFixtures
@@ -14,7 +15,6 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Repo
-  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
 
@@ -109,6 +109,25 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
 
     assert {:error, :story_done} = choose(scope, done.id)
     assert WorkingCopies.team_story_id(scope.active_working_copy_id) == held.id
+  end
+
+  # Metric Flow's coder fixed five issues on promoted stories; each needed its
+  # story held to go to QA, and the refusal above left them stranded (2026-10-15).
+  test "a promoted, satisfied story with an accepted issue can still be taken", %{scope: scope} do
+    {:ok, done} =
+      story_fixture(scope) |> Story.changeset(%{promoted_version: "2.0.1"}) |> Repo.update()
+
+    Repo.update_all(
+      from(n in CodeMySpec.Requirements.Node,
+        where: n.story_id == ^done.id and n.working_copy_id == ^scope.active_working_copy_id
+      ),
+      set: [satisfied: true]
+    )
+
+    issue_fixture(scope, %{story_id: done.id, status: :accepted})
+
+    assert {:ok, _} = choose(scope, done.id)
+    assert WorkingCopies.team_story_id(scope.active_working_copy_id) == done.id
   end
 
   test "rejects parked, foreign, and differently assigned stories without replacing selection", %{
