@@ -291,10 +291,26 @@ defmodule CodeMySpec.AgentTasks.QaStory do
              "Brief at `#{path}` is invalid: #{reason}. Fix the brief and stop the session again."}
         end
 
-      _ ->
+      {:error, :enoent} ->
+        brief_not_found(path)
+
+      # Anything else is the read itself failing -- a harness unreachable, a
+      # timeout, a transport tag -- not the file being absent. Collapsing
+      # this into "not found" told an agent to write a brief that already
+      # existed, and let a transient failure satisfy a caller checking for
+      # "brief not found" in the text (a83cb226).
+      {:error, reason} ->
         {:ok, :invalid,
-         "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
+         "Could not read the brief at `#{path}`: #{inspect(reason)}. Stop the session again once this clears."}
+
+      _ ->
+        brief_not_found(path)
     end
+  end
+
+  defp brief_not_found(path) do
+    {:ok, :invalid,
+     "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
   end
 
   defp check_result(env, story_number) do
