@@ -1,6 +1,6 @@
 defmodule CodeMySpec.ClientUsers.ClientUser do
   @moduledoc false
-  use Boundary, top_level?: true, deps: [CodeMySpec.Encrypted.Binary], exports: :all
+  use Boundary, top_level?: true, deps: [CodeMySpec.Encrypted.Binary]
 
   use Ecto.Schema
   import Ecto.Changeset

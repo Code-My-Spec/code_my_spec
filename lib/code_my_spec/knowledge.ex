@@ -30,8 +30,7 @@ defmodule CodeMySpec.Knowledge do
       CodeMySpec.LocalScope,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment

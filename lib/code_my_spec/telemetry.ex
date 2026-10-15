@@ -5,8 +5,7 @@ defmodule CodeMySpec.Telemetry do
       CodeMySpec.Observability,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope
-    ],
-    exports: :all
+    ]
 
   @moduledoc """
   Collects a deployed project's logs and traces into the owner's own

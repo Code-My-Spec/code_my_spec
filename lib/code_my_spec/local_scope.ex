@@ -6,8 +6,7 @@ defmodule CodeMySpec.LocalScope do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Users.Scope, CodeMySpec.Environments],
-    exports: :all
+    deps: [CodeMySpec.Users.Scope, CodeMySpec.Environments]
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment

@@ -22,7 +22,7 @@ defmodule CodeMySpec.Agents.Agent do
 
   # A schema leaf: contexts below Agents (TaskOwner, Notifications, Qa) read
   # and match agent rows without depending on Agents.
-  use Boundary, top_level?: true, deps: [CodeMySpec.Agents.RoleProfile], exports: :all
+  use Boundary, top_level?: true, deps: [CodeMySpec.Agents.RoleProfile]
   use Ecto.Schema
 
   import Ecto.Changeset

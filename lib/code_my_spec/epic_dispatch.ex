@@ -38,8 +38,7 @@ defmodule CodeMySpec.EpicDispatch do
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query, warn: false
 

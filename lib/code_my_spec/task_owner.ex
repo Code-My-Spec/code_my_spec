@@ -8,8 +8,7 @@ defmodule CodeMySpec.TaskOwner do
       CodeMySpec.Repo,
       CodeMySpec.Sessions,
       CodeMySpec.Users.Scope
-    ],
-    exports: :all
+    ]
 
   # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @moduledoc """

@@ -37,7 +37,7 @@ defmodule CodeMySpec.FileEdits do
   a read would lose edits a failed stop never got to use.
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec.Repo], exports: :all
+  use Boundary, top_level?: true, deps: [CodeMySpec.Repo]
 
   import Ecto.Query
   alias CodeMySpec.FileEdits.FileEdit

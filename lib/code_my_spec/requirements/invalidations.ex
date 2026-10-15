@@ -39,8 +39,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
   # `GraphInputs.announce/4`, and the graph consumes it.
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Repo, CodeMySpec.Requirements.Invalidation],
-    exports: :all
+    deps: [CodeMySpec.Repo, CodeMySpec.Requirements.Invalidation]
 
   import Ecto.Query, only: [from: 2]
 
