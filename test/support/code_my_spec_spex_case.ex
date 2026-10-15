@@ -6079,7 +6079,9 @@ defmodule CodeMySpecSpex.Case do
       # the same way every provider above does. Added here directly rather
       # than waiting for `provider_modules_complete_test.exs` to name it,
       # since that check is exactly what caught it.
-      Mix.Tasks.Cms.Harness.Onboard
+      Mix.Tasks.Cms.Harness.Onboard,
+      # Remote onboarding's token exchange now reads the same HTTP plug.
+      CmsHarness.Token
     ]
   end
 
