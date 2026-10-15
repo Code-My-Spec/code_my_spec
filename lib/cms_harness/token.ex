@@ -135,7 +135,8 @@ defmodule CmsHarness.Token do
           headers: [{"authorization", "Bearer " <> key}],
           # No retry: a bad key stays bad; an unreachable server is reported.
           retry: false,
-          receive_timeout: @exchange_timeout
+          receive_timeout: @exchange_timeout,
+          plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
         )
 
       case Req.request(request) do
