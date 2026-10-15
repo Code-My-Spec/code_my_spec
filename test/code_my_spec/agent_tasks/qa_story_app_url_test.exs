@@ -37,40 +37,39 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
     plan_path |> Path.dirname() |> File.mkdir_p!()
     File.write!(plan_path, "# QA plan\n\nNothing to see.\n")
 
-    # No active working copy on the scope: the fallback branch, and the only
-    # state that renders main's app URL. `nil` and not a deleted key — the
-    # embedding and file paths read this field and need it present.
-    scope =
-      if is_nil(info) do
-        %{scope | active_working_copy_id: nil}
-      else
-        caller = self()
-
-        pid =
-          spawn_link(fn ->
-            :ok =
-              CodeMySpec.Analysis.HarnessRegistry.register_executor(
-                scope.active_working_copy_id,
-                "qa-revision-test",
-                tmp_dir
-              )
-
-            send(caller, {:registered, self()})
-
-            receive do
-              {:"$gen_call", from, {:ensure_app_running, %{}}} ->
-                GenServer.reply(from, {:ok, info})
-            end
-          end)
-
-        assert_receive {:registered, ^pid}, 2_000
-        scope
-      end
+    scope = configure_app(scope, tmp_dir, info)
 
     {_, id, session} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
     {:ok, prompt} = QaStory.command(scope, CodeMySpec.TaskOwner.find_task(session, id))
 
     prompt
+  end
+
+  # Keep the field present for the fallback's embedding and file paths.
+  defp configure_app(scope, _tmp_dir, nil), do: %{scope | active_working_copy_id: nil}
+
+  defp configure_app(scope, tmp_dir, info) do
+    caller = self()
+
+    pid =
+      spawn_link(fn ->
+        :ok =
+          CodeMySpec.Analysis.HarnessRegistry.register_executor(
+            scope.active_working_copy_id,
+            "qa-revision-test",
+            tmp_dir
+          )
+
+        send(caller, {:registered, self()})
+
+        receive do
+          {:"$gen_call", from, {:ensure_app_running, %{}}} ->
+            GenServer.reply(from, {:ok, info})
+        end
+      end)
+
+    assert_receive {:registered, ^pid}, 2_000
+    scope
   end
 
   test "QA refuses a healthy app serving an older checkout revision" do
