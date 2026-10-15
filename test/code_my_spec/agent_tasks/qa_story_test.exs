@@ -777,5 +777,45 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
     end
+
+    # b4fe8c48: a pass with no invalidations and `stale: false` can still fail
+    # `qa_complete?` on review currency alone — the story was re-certified
+    # after the review ran. The feedback said only "recorded as pass",
+    # explaining nothing; it must name the actual gap `qa_complete?` found.
+    test "a pass that no longer reviews the story's current certification explains why", %{
+      scope: scope,
+      story: story,
+      task: task
+    } do
+      {:ok, _attempt} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
+
+      # Re-certify the story at a new commit, as if a fresh promotion had run
+      # and found something QA exercises had changed -- both `qa_ready_*` and
+      # `qa_reviewed_*` move to the new commit, so there is no carried-forward
+      # certification (`review_current?/3`'s second `reviewed?/3` clause,
+      # Verdict's own documented 2145 behaviour) for the old attempt to ride
+      # on. The attempt itself is untouched: still `status: :pass`, still
+      # `stale: false`, still no invalidations.
+      new_commit = "re-certified-revision-#{Ecto.UUID.generate()}"
+      new_at = DateTime.utc_now()
+
+      scope
+      |> CodeMySpec.Stories.get_story!(story.id)
+      |> Ecto.Changeset.change(
+        qa_ready_at: new_at,
+        qa_ready_commit: new_commit,
+        qa_reviewed_at: new_at,
+        qa_reviewed_commit: new_commit
+      )
+      |> CodeMySpec.Repo.update!()
+
+      {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+
+      refute feedback =~ "recorded as pass.\n",
+             "the fallback gave no reason for an attempt that in fact no longer counts"
+
+      assert feedback =~ "no longer counts"
+      assert feedback =~ "re-run"
+    end
   end
 end

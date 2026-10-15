@@ -96,7 +96,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
             "[QaStory] evaluate(#{story_id}): prior attempt exists but does not satisfy; demanding a fresh submit"
           )
 
-          {:ok, :invalid, resubmit_required_feedback(story_number(scope, story_id), attempts)}
+          {:ok, :invalid,
+           resubmit_required_feedback(scope, story_id, story_number(scope, story_id), attempts)}
 
         true ->
           do_evaluate(scope, env, story_id, story_number(scope, story_id))
@@ -104,9 +105,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp resubmit_required_feedback(story_number, attempts) do
+  defp resubmit_required_feedback(scope, story_id, story_number, attempts) do
     """
-    QA for story #{story_number} is not complete. #{describe_latest(List.first(attempts))}
+    QA for story #{story_number} is not complete. #{describe_latest(scope, story_id, List.first(attempts))}
 
     QA completion is recorded in the database, not on disk — no file will
     satisfy this requirement. Re-run the QA scenarios against the real surface,
@@ -117,9 +118,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp describe_latest(nil), do: "No attempt has been recorded."
+  defp describe_latest(_scope, _story_id, nil), do: "No attempt has been recorded."
 
-  defp describe_latest(%{invalidations: [_ | _] = invalidations}) do
+  defp describe_latest(_scope, _story_id, %{invalidations: [_ | _] = invalidations}) do
     reason =
       invalidations
       |> List.last()
@@ -128,7 +129,18 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     "The most recent attempt was invalidated: #{reason}"
   end
 
-  defp describe_latest(%{status: status}),
+  # b4fe8c48: a recorded, uninvalidated pass can still fail `qa_complete?` on
+  # `review_current?/3` alone — the story was re-certified since the review
+  # ran. The fallback clause below said only "recorded as pass", explaining
+  # nothing; this names the gap `qa_complete?` actually found.
+  defp describe_latest(scope, story_id, %{status: :pass} = attempt) do
+    case CodeMySpec.Qa.story_review_currency_gap(scope, story_id, attempt) do
+      nil -> "The most recent attempt is recorded as pass."
+      gap -> "The most recent attempt passed, but no longer counts: #{gap}."
+    end
+  end
+
+  defp describe_latest(_scope, _story_id, %{status: status}),
     do: "The most recent attempt is recorded as #{status}."
 
   defp subagent_owns?(%{agent_id: agent_id}) when is_binary(agent_id) and byte_size(agent_id) > 0,
