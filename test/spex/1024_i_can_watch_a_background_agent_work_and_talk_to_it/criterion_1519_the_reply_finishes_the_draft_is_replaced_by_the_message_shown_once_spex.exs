@@ -22,7 +22,6 @@ defmodule CodeMySpecSpex.Story1024.Criterion4640Spex do
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
-  cloud_endpoint()
   @contract_version CodeMySpecWeb.HarnessProjectChannel.contract_version()
 
   setup :register_log_in_setup_account

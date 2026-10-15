@@ -88,7 +88,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   end
 
   @impl true
-  def handle_event("link", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+  def handle_event("link", _params, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("link", %{"name" => name}, socket) do
     case Servers.link(socket.assigns.current_scope, name) do
@@ -97,7 +98,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
     end
   end
 
-  def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+  def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("retire", %{"name" => name}, socket) do
     case Servers.retire(socket.assigns.current_scope, name) do
@@ -106,14 +108,21 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         # that the action completed without leaving `/app/servers` — the
         # same trip the edit modal's own close button already makes.
         {:noreply,
-         socket |> assign(:retire_error, nil) |> load_servers() |> push_patch(to: ~p"/app/servers")}
+         socket
+         |> assign(:retire_error, nil)
+         |> load_servers()
+         |> push_patch(to: ~p"/app/servers")}
 
       {:error, {:in_use, projects}} ->
-        {:noreply, assign(socket, :retire_error, %{name: name, message: in_use_message(projects)})}
+        {:noreply,
+         assign(socket, :retire_error, %{name: name, message: in_use_message(projects)})}
 
       {:error, :not_found} ->
         {:noreply,
-         socket |> assign(:retire_error, nil) |> load_servers() |> push_patch(to: ~p"/app/servers")}
+         socket
+         |> assign(:retire_error, nil)
+         |> load_servers()
+         |> push_patch(to: ~p"/app/servers")}
     end
   end
 
@@ -128,7 +137,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
     {:noreply, socket |> assign(:location, location) |> assign(:pending, nil)}
   end
 
-  def handle_event("stage", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+  def handle_event("stage", _params, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
 
   # Choosing is free. This only stages what was chosen and shows the cost —
   # criterion 8267 is that nothing exists at the provider until Sam confirms.
@@ -148,7 +158,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
     end
   end
 
-  def handle_event("provision", _params, %{assigns: %{can_manage: false}} = socket), do: {:noreply, socket}
+  def handle_event("provision", _params, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("provision", _params, %{assigns: %{pending: nil}} = socket) do
     {:noreply, socket}
@@ -205,8 +216,11 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
   defp load_options(socket) do
     case Servers.available_options(socket.assigns.current_scope) do
-      {:ok, options} -> socket |> assign(:options, options) |> assign(:location, first_location(options))
-      {:error, _reason} -> socket |> assign(:options, []) |> assign(:location, nil)
+      {:ok, options} ->
+        socket |> assign(:options, options) |> assign(:location, first_location(options))
+
+      {:error, _reason} ->
+        socket |> assign(:options, []) |> assign(:location, nil)
     end
   end
 
@@ -319,7 +333,11 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           error={@provision_error}
         />
 
-        <dialog :if={@live_action == :edit and @server} id="server-form-modal" class="modal modal-open">
+        <dialog
+          :if={@live_action == :edit and @server}
+          id="server-form-modal"
+          class="modal modal-open"
+        >
           <div class="modal-box max-w-lg">
             <.live_component
               module={FormComponent}
@@ -373,8 +391,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
             data-test="server-status"
             title={@server.status || "state unknown"}
             class={["inline-block size-2.5 rounded-full shrink-0", status_colour(@server)]}
-          >
-          </span>
+          ></span>
 
           <.link
             navigate={~p"/app/servers/#{@server.name}"}
@@ -456,7 +473,10 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   defp status_colour(%{missing: true}), do: "bg-error"
   defp status_colour(%{unverified: true}), do: "bg-base-content/30"
   defp status_colour(%{status: "running"}), do: "bg-success"
-  defp status_colour(%{status: status}) when status in ~w(initializing starting migrating), do: "bg-warning"
+
+  defp status_colour(%{status: status}) when status in ~w(initializing starting migrating),
+    do: "bg-warning"
+
   defp status_colour(%{status: nil}), do: "bg-base-content/30"
   defp status_colour(_server), do: "bg-error"
 
@@ -475,6 +495,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
       </p>
 
       <form
+        id="provision-form"
         data-test="provision-form"
         phx-submit="stage"
         phx-change="choose"
@@ -483,7 +504,11 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         <label class="form-control">
           <span class="label-text">Location</span>
           <select name="server[location]" class="select select-bordered">
-            <option :for={option <- @options} value={option.location} selected={option.location == @location}>
+            <option
+              :for={option <- @options}
+              value={option.location}
+              selected={option.location == @location}
+            >
               {option.city} ({option.location})
             </option>
           </select>
@@ -507,12 +532,22 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           {@pending.size} in {@pending.location} — €{@pending.hourly}/hour
         </span>
 
-        <button type="button" data-test="provision-confirm" phx-click="provision" class="btn btn-primary btn-sm">
+        <button
+          type="button"
+          data-test="provision-confirm"
+          phx-click="provision"
+          class="btn btn-primary btn-sm"
+        >
           Create it
         </button>
       </div>
 
-      <div :if={@error} data-test="provision-error" role="alert" class="alert alert-error alert-soft mt-4">
+      <div
+        :if={@error}
+        data-test="provision-error"
+        role="alert"
+        class="alert alert-error alert-soft mt-4"
+      >
         <span>{@error}</span>
       </div>
     </section>

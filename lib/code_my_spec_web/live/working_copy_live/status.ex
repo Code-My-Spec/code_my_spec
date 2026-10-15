@@ -285,7 +285,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
           <:subtitle>Working copy status</:subtitle>
           <:actions><button phx-click="refresh" class="btn btn-sm">Refresh</button></:actions>
         </.header>
-        <form phx-change="filter" class="mt-4">
+        <form id="working-copy-filter" phx-change="filter" class="mt-4">
           <label class="flex items-center gap-2 cursor-pointer">
             <input type="hidden" name="show_retired" value="false" />
             <input

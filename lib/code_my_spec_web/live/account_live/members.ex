@@ -51,6 +51,7 @@ defmodule CodeMySpecWeb.AccountLive.Members do
                           member.user.id != @current_scope.user.id
                       }>
                         <.form
+                          id={"member-role-#{member.id}"}
                           for={%{}}
                           phx-change="update-member-role"
                           phx-value-member-id={member.id}
