@@ -371,8 +371,24 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp could_not_build(state, reason) do
     requeue(state.reserved_entries)
-    Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
-    {:noreply, retry_later(%{state | phase: :idle, batch: nil, reserved_entries: []})}
+    idle_state = %{state | phase: :idle, batch: nil, reserved_entries: []}
+
+    if main_registering?(reason) do
+      # a3b34f83: main's harness not being registered yet is a reconnect
+      # window (seen right after a promote restarts it), not a build
+      # failure -- it clears on its own on a later tick. Logged at :info
+      # and rechecked soon, rather than :error and the full backoff a
+      # genuine build failure gets.
+      Logger.info(
+        "[PromotionQueue] main's harness is not registered yet (likely still " <>
+          "reconnecting after a restart); waiting rather than failing this tick"
+      )
+
+      {:noreply, retry_later(idle_state, @recheck_ms)}
+    else
+      Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
+      {:noreply, retry_later(idle_state)}
+    end
   end
 
   defp unaccounted_reason(entries, built) do
@@ -790,6 +806,18 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
+  # a3b34f83: `Runner.decode/1` flattens `{:harness_not_registered, _}` into a
+  # string reason before it ever reaches here, the same way `decode_app_result/1`
+  # flattens a lost restart acknowledgement -- `Promotion.restart_acknowledgement_lost?/1`
+  # already recovers meaning from that flattened text the same way, by
+  # substring-matching the inspected tuple inside it rather than pattern-matching
+  # a shape decode/1 never actually produces.
+  defp main_registering?(%{reason: reason}) when is_binary(reason) do
+    String.contains?(reason, "harness_not_registered")
+  end
+
+  defp main_registering?(_), do: false
+
   # Database calls keep their project scope. Disk operations resolve the
   # environment from this exact copy id; Scope carries identity, not runtime.
   defp scope_for(%Scope{} = scope, copy),
@@ -800,9 +828,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     %{state | timer: Process.send_after(self(), message, @recheck_ms)}
   end
 
-  defp retry_later(state) do
+  defp retry_later(state, ms \\ @retry_ms) do
     state = cancel_timer(state)
-    %{state | timer: Process.send_after(self(), :next, @retry_ms)}
+    %{state | timer: Process.send_after(self(), :next, ms)}
   end
 
   defp cancel_timer(%{timer: nil} = state), do: state

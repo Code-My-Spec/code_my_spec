@@ -418,6 +418,30 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert feedback =~ "Brief not found"
     end
 
+    # a83cb226: Environments.read_file failing for any reason other than
+    # :enoent (a harness unreachable, a timeout) used to collapse into the
+    # same "Brief not found" text as a genuinely absent file -- so a caller
+    # checking for "brief not found" in the feedback could not tell a
+    # transient read failure from the brief never having been written.
+    # A directory at the brief's path forces File.read to fail with
+    # :eisdir, not :enoent, deterministically exercising that other branch.
+    test "a read failure that is not :enoent names the error, not \"not found\"", %{
+      scope: scope,
+      task: task,
+      story: story
+    } do
+      env = fixture_environment(scope)
+      brief_dir = Path.join(env.cwd, ".code_my_spec/qa/#{story.number}/brief.md")
+      File.mkdir_p!(brief_dir)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+      refute feedback =~ "Brief not found",
+             "a read failure read as the file never having been written: #{feedback}"
+
+      assert feedback =~ "Could not read the brief"
+      assert feedback =~ "eisdir"
+    end
+
     test "returns invalid when brief is missing required sections", %{
       scope: scope,
       task: task,
