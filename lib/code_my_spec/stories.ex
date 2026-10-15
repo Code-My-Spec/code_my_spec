@@ -96,6 +96,11 @@ defmodule CodeMySpec.Stories do
   def release_stories(scope, copy_id, story_ids),
     do: StoriesRepository.release_stories(scope, copy_id, story_ids)
 
+  @doc "Every story this copy reserves right now. See `StoriesRepository.reserved_story_ids/2`."
+  @spec reserved_story_ids(Scope.t(), Ecto.UUID.t()) :: [integer()]
+  def reserved_story_ids(scope, copy_id),
+    do: StoriesRepository.reserved_story_ids(scope, copy_id)
+
   @doc "Reserve a story for a checkout. See `StoriesRepository.reserve_story/3`."
   @spec reserve_story(Scope.t(), Ecto.UUID.t(), term()) ::
           {:ok, Story.t()} | {:error, :not_found | :story_not_ready | :story_assigned_elsewhere}

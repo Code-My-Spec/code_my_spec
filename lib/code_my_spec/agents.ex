@@ -144,6 +144,7 @@ defmodule CodeMySpec.Agents do
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
   defdelegate assign_team(scope, copy_id, story_id), to: Assignment
+  defdelegate unassign_story(scope, story_id, opts \\ []), to: Assignment
   defdelegate assign_epic(scope, epic_id, copy_id), to: Assignment
   defdelegate notify_story_team_free(scope, copy_id, story), to: Assignment, as: :notify_team_free
   defdelegate claim_story(scope, agent, story_id), to: Assignment, as: :claim

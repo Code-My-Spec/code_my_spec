@@ -49,6 +49,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AStoryHeldElsewhereNamesItsCopyTes
     text = hd(protocol["content"])["text"]
     assert text =~ "devops-q"
     assert text =~ holder.id
-    assert text =~ "unassign_story_from_working_copy"
+    assert text =~ "release_story_from_working_copy"
   end
 end
