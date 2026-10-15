@@ -24,7 +24,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
   # either the scope names none, or the id it names does not exist. Both are real
   # states, and the first is the one exercised here.
 
-  defp prompt_without_a_working_copy do
+  defp prompt_without_a_working_copy, do: prompt_with_app(nil)
+
+  defp prompt_with_app(info) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("qa_story_app_url")
     scope = working_copy_scope_fixture()
     scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
@@ -35,15 +37,71 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
     plan_path |> Path.dirname() |> File.mkdir_p!()
     File.write!(plan_path, "# QA plan\n\nNothing to see.\n")
 
-    # No active working copy on the scope: the fallback branch, and the only
-    # state that renders main's app URL. `nil` and not a deleted key — the
-    # embedding and file paths read this field and need it present.
-    scope = %{scope | active_working_copy_id: nil}
+    scope = configure_app(scope, tmp_dir, info)
 
     {_, id, session} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
     {:ok, prompt} = QaStory.command(scope, CodeMySpec.TaskOwner.find_task(session, id))
 
     prompt
+  end
+
+  # Keep the field present for the fallback's embedding and file paths.
+  defp configure_app(scope, _tmp_dir, nil), do: %{scope | active_working_copy_id: nil}
+
+  defp configure_app(scope, tmp_dir, info) do
+    caller = self()
+
+    pid =
+      spawn_link(fn ->
+        :ok =
+          CodeMySpec.Analysis.HarnessRegistry.register_executor(
+            scope.active_working_copy_id,
+            "qa-revision-test",
+            tmp_dir
+          )
+
+        send(caller, {:registered, self()})
+
+        receive do
+          {:"$gen_call", from, {:ensure_app_running, %{}}} ->
+            GenServer.reply(from, {:ok, info})
+        end
+      end)
+
+    assert_receive {:registered, ^pid}, 2_000
+    scope
+  end
+
+  test "QA refuses a healthy app serving an older checkout revision" do
+    prompt =
+      prompt_with_app(%{
+        status: "serving",
+        url: "http://127.0.0.1:12345",
+        commit: "old",
+        serving_commit: "old",
+        head: "new"
+      })
+
+    assert prompt =~ "App verification blocked"
+    assert prompt =~ "Served revision: old"
+    assert prompt =~ "checkout HEAD: new"
+    refute prompt =~ "Test against this address"
+    refute prompt =~ "http://127.0.0.1:12345"
+  end
+
+  test "QA uses the reloaded revision rather than the launch revision" do
+    prompt =
+      prompt_with_app(%{
+        status: "serving",
+        url: "http://127.0.0.1:12345",
+        commit: "old",
+        serving_commit: "new",
+        head: "new"
+      })
+
+    assert prompt =~ "http://127.0.0.1:12345"
+    assert prompt =~ "Test against this address"
+    refute prompt =~ "App verification blocked"
   end
 
   test "the App URL line does not tell the agent to boot a BEAM" do
