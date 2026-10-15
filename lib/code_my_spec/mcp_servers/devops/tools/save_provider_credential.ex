@@ -21,9 +21,9 @@ defmodule CodeMySpec.McpServers.Devops.Tools.SaveProviderCredential do
   schema do
     field :key, :string,
       required: true,
-      doc: "Catalogue key, e.g. \"hetzner_api_token\", \"cloudflare_api_token\", \"resend_api_key\"."
+      description: "Catalogue key, e.g. \"hetzner_api_token\", \"cloudflare_api_token\", \"resend_api_key\"."
 
-    field :value, :string, required: true, doc: "The credential's value."
+    field :value, :string, required: true, description: "The credential's value."
   end
 
   @impl true

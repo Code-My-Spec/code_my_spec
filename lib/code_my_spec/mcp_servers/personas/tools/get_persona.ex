@@ -16,10 +16,10 @@ defmodule CodeMySpec.McpServers.Personas.Tools.GetPersona do
 
   schema do
     field :slug, :string,
-      doc: "Persona slug (e.g., 'founder'). Provide either slug or persona_id."
+      description: "Persona slug (e.g., 'founder'). Provide either slug or persona_id."
 
     field :persona_id, :string,
-      doc: "Persona UUID. Provide either slug or persona_id. Slug wins if both are given."
+      description: "Persona UUID. Provide either slug or persona_id. Slug wins if both are given."
   end
 
   @impl true

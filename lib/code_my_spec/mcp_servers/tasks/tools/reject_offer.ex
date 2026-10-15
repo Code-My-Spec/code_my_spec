@@ -15,8 +15,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.RejectOffer do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :offer_id, :string, doc: "The offer to decline; omit for your newest open offer."
-    field :reason, :string, required: true, doc: "Why you are not taking it."
+    field :offer_id, :string, description: "The offer to decline; omit for your newest open offer."
+    field :reason, :string, required: true, description: "Why you are not taking it."
   end
 
   @impl true

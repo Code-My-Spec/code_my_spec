@@ -8,8 +8,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UnassignEpicFromWorkingCopy do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :epic_id, :string, required: true, doc: "Epic to remove"
-    field :working_copy_id, :string, required: true, doc: "Working copy whose queue to edit"
+    field :epic_id, :string, required: true, description: "Epic to remove"
+    field :working_copy_id, :string, required: true, description: "Working copy whose queue to edit"
   end
 
   @impl true

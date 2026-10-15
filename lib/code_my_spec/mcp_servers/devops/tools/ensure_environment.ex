@@ -25,7 +25,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.EnsureEnvironment do
   alias CodeMySpec.Resources
 
   schema do
-    field :name, :string, required: true, doc: "Environment name, e.g. \"uat\" or \"prod\"."
+    field :name, :string, required: true, description: "Environment name, e.g. \"uat\" or \"prod\"."
   end
 
   @impl true

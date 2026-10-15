@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Agents.Tools.TurnOnAgent do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "Id of the agent to turn on"
+    field :agent_id, :string, required: true, description: "Id of the agent to turn on"
   end
 
   @impl true

@@ -30,7 +30,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblems do
 
   schema do
     field :file_paths, {:list, :string},
-      doc:
+      description:
         "Project-relative file paths whose stale problems should be cleared. " <>
           "Omit to clear ALL persisted problems for the project."
   end

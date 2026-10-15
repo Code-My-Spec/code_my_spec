@@ -21,15 +21,15 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult do
   alias CodeMySpec.Qa
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID being tested"
+    field :issue_id, :string, required: true, description: "Issue ID being tested"
 
     field :task_id, :string,
       required: true,
-      doc: "Your active qa_complete task id (from the start_task response on this issue)"
+      description: "Your active qa_complete task id (from the start_task response on this issue)"
 
     field :status, :string,
       required: true,
-      doc: "Outcome: 'pass' (resolves the issue and frees your team), 'partial', or 'fail'"
+      description: "Outcome: 'pass' (resolves the issue and frees your team), 'partial', or 'fail'"
 
     field :scenarios, {:list, :map},
       required: true,
@@ -38,7 +38,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult do
           "%{name: string, status: 'pass'|'partial'|'fail', observation: string}."
 
     field :issue_ids, {:list, :string},
-      doc:
+      description:
         "Issue ids filed via `create_issue` during this pass. REQUIRED when `status` " <>
           "is `partial` or `fail`. May be empty when `status` is `pass`."
   end

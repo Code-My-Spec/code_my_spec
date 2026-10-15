@@ -164,3 +164,4 @@ browser_wait(selector: "[data-phx-session]", state: "attached")
 | Login submits but nothing happens | Targeting wrong form (`#login_form_magic`) | Use `#login_form_password` selectors |
 | Password login returns "invalid" | User not confirmed | Confirm via magic link token in seeds |
 | Stale refs after navigation | Refs invalidated on page change | Call `browser_map` again |
+| Calling `browser_wait_for_timeout` (Playwright's `page.waitForTimeout`) | That name doesn't exist here | Use `browser_sleep`, `browser_wait`, `browser_wait_for_text`, `browser_wait_for_url`, `browser_wait_for_load` or `browser_wait_for_fn` |

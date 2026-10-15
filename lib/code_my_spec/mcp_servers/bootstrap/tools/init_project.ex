@@ -18,7 +18,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
   schema do
     field :project_id, :string,
       required: true,
-      doc: "UUID of the project to link (from list_projects)"
+      description: "UUID of the project to link (from list_projects)"
   end
 
   @impl true

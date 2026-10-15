@@ -27,23 +27,23 @@ defmodule CodeMySpec.McpServers.Stories.Tools.CreateStory do
   alias CodeMySpec.Stories
 
   schema do
-    field :title, :string, required: true, doc: "Story title (e.g., 'User Login Feature')"
+    field :title, :string, required: true, description: "Story title (e.g., 'User Login Feature')"
 
     field :story, :string,
-      doc:
+      description:
         "User story in 'As a [role], I want [goal] so that [value]' format. " <>
           "The role MUST be a real human (user, admin, manager) - never a system, API, or service. " <>
           "Keep it to the sentence — mechanism, dependencies and caveats belong in `notes`. " <>
           "Either `story` or `description` must be given; they are kept in sync."
 
     field :notes, :string,
-      doc: "Working notes for the agent — mechanism, dependencies, caveats (optional)"
+      description: "Working notes for the agent — mechanism, dependencies, caveats (optional)"
 
     field :description, :string,
-      doc: "Legacy alias for `story`. Prefer `story`; the two are kept in sync."
+      description: "Legacy alias for `story`. Prefer `story`; the two are kept in sync."
 
     field :priority, :integer,
-      doc: "Priority order (1 = highest). Lower numbers are higher priority."
+      description: "Priority order (1 = highest). Lower numbers are higher priority."
   end
 
   @impl true

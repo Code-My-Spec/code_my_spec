@@ -168,7 +168,9 @@ defmodule CodeMySpec.McpServers.Qa.Tools.CallMcpServer do
   end
 
   defp request(name, %{tool: tool} = params) when is_binary(tool) and tool != "" do
-    call = fn -> Anubis.Client.call_tool(name, tool, arguments(params), timeout: timeout(params)) end
+    call = fn ->
+      Anubis.Client.call_tool(name, tool, arguments(params), timeout: timeout(params))
+    end
 
     case safely(call) do
       {:ok, %{is_error: true} = response} -> {:called_error, text(response)}
@@ -314,5 +316,5 @@ defmodule CodeMySpec.McpServers.Qa.Tools.CallMcpServer do
   # multi-byte character handed back a binary that was no longer valid UTF-8 —
   # and a page of prose is full of them. That travels as far as the JSON
   # encoder and fails there, turning a large answer into no answer at all.
-  defp truncate(text), do: CodeMySpec.CodeMode.cap(text)
+  defp truncate(text), do: CodeMySpec.CodeMode.cap(text, spill_label: "call_mcp_server")
 end

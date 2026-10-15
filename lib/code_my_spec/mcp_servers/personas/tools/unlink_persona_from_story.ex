@@ -12,11 +12,11 @@ defmodule CodeMySpec.McpServers.Personas.Tools.UnlinkPersonaFromStory do
   alias CodeMySpec.Personas
 
   schema do
-    field :persona_id, :string, required: true, doc: "UUID of the persona on the active project."
+    field :persona_id, :string, required: true, description: "UUID of the persona on the active project."
 
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
   end
 
   @impl true

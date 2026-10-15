@@ -25,21 +25,21 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :role, :string, doc: "Agent type: main, product, coding or qa. Defaults to main."
+    field :role, :string, description: "Agent type: main, product, coding or qa. Defaults to main."
 
     field :provider, :string,
-      doc:
+      description:
         "Override the provider this type would use, e.g. openai-codex, anthropic, zai, " <>
           "claude-code (hyphenated - an Alloy agent using the local claude CLI as its " <>
           "completion backend; not the same as engine=claude_code below)"
 
-    field :engine, :string, doc: "Agent engine: pi (default) or claude_code"
+    field :engine, :string, description: "Agent engine: pi (default) or claude_code"
 
     field :working_copy, :string,
-      doc: "Root of the working copy to run in. Defaults to the caller's own."
+      description: "Root of the working copy to run in. Defaults to the caller's own."
 
     field :working_copy_id, :string,
-      doc:
+      description:
         "Id of the working copy to run in, from list_working_copies. Takes priority over working_copy when both are given."
   end
 

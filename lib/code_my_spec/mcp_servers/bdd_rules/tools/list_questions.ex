@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ListQuestions do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
   end
 
   @impl true

@@ -16,8 +16,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion do
   alias CodeMySpec.Notifications
 
   schema do
-    field :question_id, :string, required: true, doc: "The id `ask_user_question` returned."
-    field :reason, :string, required: true, doc: "Why it no longer needs an answer."
+    field :question_id, :string, required: true, description: "The id `ask_user_question` returned."
+    field :reason, :string, required: true, description: "Why it no longer needs an answer."
   end
 
   @impl true

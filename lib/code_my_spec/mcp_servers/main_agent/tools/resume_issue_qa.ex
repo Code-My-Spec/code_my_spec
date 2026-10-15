@@ -11,26 +11,26 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ResumeIssueQa do
 
     field(:attempt_id, :string,
       required: true,
-      doc: "Latest immutable partial QA attempt being resumed"
+      description: "Latest immutable partial QA attempt being resumed"
     )
 
     field(:working_copy_id, :string, required: true)
     field(:coding_agent_id, :string, required: true)
-    field(:coding_task_id, :string, required: true, doc: "Existing completed fix_issue task")
+    field(:coding_task_id, :string, required: true, description: "Existing completed fix_issue task")
 
     field(:candidate_sha, :string,
       required: true,
-      doc: "Full preserved candidate SHA independently verified by main"
+      description: "Full preserved candidate SHA independently verified by main"
     )
 
     field(:reason, :string,
       required: true,
-      doc: "Operational prerequisite and evidence that it is now cleared"
+      description: "Operational prerequisite and evidence that it is now cleared"
     )
 
     field(:operational_only, :boolean,
       required: true,
-      doc:
+      description:
         "Explicit main attestation of operational interruption rather than implementation failure"
     )
   end

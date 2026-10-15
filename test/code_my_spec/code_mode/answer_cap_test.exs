@@ -89,6 +89,49 @@ defmodule CodeMySpec.CodeMode.AnswerCapTest do
     end
   end
 
+  # 6880b4ab: a result that merely *contains* an invalid byte -- not from any
+  # cut here, but already corrupt in stored content a tool rendered
+  # verbatim, or produced by a caller's own byte-offset string slice -- took
+  # the whole MCP session down at the JSON encoder, after whatever tool
+  # calls ran before it had already committed. The short-circuit clause
+  # (text already under the cap) returned such a result completely
+  # unexamined; only the truncation clause ever checked validity at all.
+  describe "an answer within the cap that is not valid UTF-8" do
+    test "comes back valid instead of taking the session down" do
+      text = "before" <> <<0xFF>> <> "after"
+
+      capped = CodeMode.cap(text)
+
+      assert String.valid?(capped)
+    end
+
+    test "keeps what surrounds the bad byte, not just a prefix" do
+      # The old alternative -- trimming from the end until valid, the same
+      # rule the truncation path uses -- would have thrown away "after"
+      # entirely for a bad byte anywhere before it, which is wrong for text
+      # that was never too long in the first place.
+      capped = CodeMode.cap("before" <> <<0xFF>> <> "after")
+
+      assert capped =~ "before"
+      assert capped =~ "after"
+    end
+
+    test "an incomplete multi-byte sequence at the end is still handled" do
+      # 0xE2 opens a 3-byte sequence (the em dash in this very file is
+      # E2 80 94) and nothing follows it here.
+      capped = CodeMode.cap("before" <> <<0xE2>>)
+
+      assert String.valid?(capped)
+      assert capped =~ "before"
+    end
+
+    test "valid UTF-8 within the cap is returned untouched" do
+      text = "plain text with no bad bytes"
+
+      assert CodeMode.cap(text) == text
+    end
+  end
+
   describe "both tools use this number" do
     test "the harness tool reports the same cap" do
       assert RunScript.max_result_chars() ==
@@ -126,6 +169,79 @@ defmodule CodeMySpec.CodeMode.AnswerCapTest do
              "a second module builds the note, which means it also does its own " <>
                "cutting: #{inspect(authors)}. Call `CodeMode.cap/1` instead — it is " <>
                "the one that trims back to a valid UTF-8 boundary."
+    end
+  end
+
+  # 41bdee7d: a cut answer's full content was simply gone, with no way back
+  # to it. `cap/2`'s `spill_label` option writes it to disk instead and
+  # points the note at the path, so an agent that needs the whole thing can
+  # go read it.
+  describe "a cut answer with a spill_label" do
+    @describetag :tmp_dir
+
+    setup %{tmp_dir: tmp_dir} do
+      previous = Application.get_env(:code_my_spec, :code_mode_spill_dir)
+      Application.put_env(:code_my_spec, :code_mode_spill_dir, tmp_dir)
+      on_exit(fn -> Application.put_env(:code_my_spec, :code_mode_spill_dir, previous) end)
+      %{dir: tmp_dir}
+    end
+
+    test "writes the full answer to a file and names it in the note", %{dir: dir} do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      capped = CodeMode.cap(text, spill_label: "run_script")
+
+      assert capped =~ dir
+
+      [path] =
+        capped
+        |> String.split("written to ")
+        |> Enum.drop(1)
+        |> Enum.map(&String.trim_trailing(&1, "]"))
+
+      assert File.read!(path) == text
+    end
+
+    test "names the full size, not just the cut one", %{dir: _dir} do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      capped = CodeMode.cap(text, spill_label: "run_script")
+
+      assert capped =~ "(#{byte_size(text)} bytes)"
+    end
+
+    test "a second cut answer gets its own file, not an overwrite", %{dir: dir} do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      first = CodeMode.cap(text, spill_label: "run_script")
+      second = CodeMode.cap(text, spill_label: "run_script")
+
+      assert length(File.ls!(dir)) == 2
+      refute first == second
+    end
+
+    test "an answer within the cap is never spilled", %{dir: dir} do
+      CodeMode.cap("short", spill_label: "run_script")
+
+      assert File.ls!(dir) == []
+    end
+
+    test "a spill that cannot write falls back to the plain note" do
+      Application.put_env(:code_my_spec, :code_mode_spill_dir, "/nonexistent/not/writable")
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      capped = CodeMode.cap(text, spill_label: "run_script")
+
+      assert capped =~ "the answer was longer than"
+      refute capped =~ "written to"
+    end
+  end
+
+  describe "a cut answer with no spill_label" do
+    test "gets today's plain note, unchanged" do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      assert CodeMode.cap(text) =~ "the answer was longer than"
     end
   end
 end

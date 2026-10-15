@@ -45,7 +45,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.GetLocalAppToken do
   schema do
     field :url, :string,
       required: true,
-      doc: "Base URL of the copy's own running app instance, from ensure_app_running."
+      description: "Base URL of the copy's own running app instance, from ensure_app_running."
   end
 
   @impl true

@@ -13,16 +13,16 @@ defmodule CodeMySpec.McpServers.Personas.Tools.CreatePersona do
   schema do
     field :slug, :string,
       required: true,
-      doc:
+      description:
         "URL-safe identifier, lowercase alphanumeric with hyphens or underscores (e.g., 'founder', 'agency_pm'). Unique per project."
 
-    field :name, :string, required: true, doc: "Display name (e.g., 'Founder', 'Agency PM')."
+    field :name, :string, required: true, description: "Display name (e.g., 'Founder', 'Agency PM')."
 
     field :headline, :string,
-      doc: "One-line summary for UI cards (e.g., 'Solo founder shipping a product without hiring')."
+      description: "One-line summary for UI cards (e.g., 'Solo founder shipping a product without hiring')."
 
     field :persona_type, :string,
-      doc:
+      description:
         "Evidence tier: 'proto' (hypothesis from desk research), 'qualitative' (5–30 user interviews), " <>
           "or 'statistical' (large survey + cluster analysis). Default: 'proto'. " <>
           "Agent-produced personas from desk research should stay 'proto' until validated with real users."

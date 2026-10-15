@@ -6,10 +6,10 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetSearchByPageQuery do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :page_url, :string, required: true, doc: "The specific page URL to analyze"
-    field :days, :integer, doc: "Days to look back (default 28)"
-    field :row_limit, :integer, doc: "Rows to return (default 20, max 500)"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :page_url, :string, required: true, description: "The specific page URL to analyze"
+    field :days, :integer, description: "Days to look back (default 28)"
+    field :row_limit, :integer, description: "Rows to return (default 20, max 500)"
   end
 
   @impl true

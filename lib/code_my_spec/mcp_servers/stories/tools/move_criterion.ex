@@ -18,11 +18,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.MoveCriterion do
   schema do
     field :criterion_number, :integer,
       required: true,
-      doc: "Criterion number to move (from get_story)"
+      description: "Criterion number to move (from get_story)"
 
     field :target_story_number, :integer,
       required: true,
-      doc: "Number of the story to move the criterion to"
+      description: "Number of the story to move the criterion to"
   end
 
   @impl true

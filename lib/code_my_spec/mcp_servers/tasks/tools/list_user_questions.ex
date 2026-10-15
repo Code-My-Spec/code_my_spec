@@ -2,40 +2,12 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
   @moduledoc """
   Your unanswered questions, oldest first, with their linked task IDs.
 
-  The agent's own view of what it is waiting on. `ask_user` returns an id and
-  `check_answer` collects one reply, which works while the agent remembers what
-  it asked — and across a compaction it does not. Without a listing the only
-  record is in the user's inbox, where the agent cannot see it, so a question
-  raised before the context was summarised is simply lost: never collected,
-  never re-asked, and the work that prompted it quietly proceeds without the
-  answer.
-
-  ## Scope
-
-  Internal callers see questions belonging to their authenticated durable
-  agent, including across restarts. External callers retain session isolation,
-  resolved from their working copy. Neither path lists another owner's questions.
-
-  ## Open means unanswered, and nothing else
-
-  There is no expiry. `expired` was a status with two readers and no writer, and
-  896 chose to delete it rather than build the sweeper that would justify it: a
-  question the user never answered is still a question, and one that vanishes on
-  a timer is a decision they never made disappearing from the one place they
-  would have seen it.
-
-  Answered questions are **not** listed. A first draft included them with their
-  replies, on the reasoning that "you asked this, here is what came back" is
-  cheap context recovery. It is, and it belongs to `check_answer`, which exists
-  to hand back exactly that. Listing them here contradicts both the criterion
-  and the name: this answers "what am I still waiting on", and an answer that
-  has landed is not something to wait on. A list that keeps returning answered
-  questions reproduces `e39b4eba`'s harm — the agent chasing a reply it already
-  has — at a new surface.
-
-  Named `list_user_questions` because `list_questions` is taken by Three Amigos
-  red cards, and an agent sees both in one tool list. `user` is what separates a
-  question asked *of the user* from one parked against a story.
+  Recovers what you asked before a compaction, or lets you check whether a
+  question is still open before asking another. Internal callers see their
+  own durable agent's questions across restarts; external callers see their
+  session's. Answered questions are not listed -- `check_answer` hands back
+  a reply once it lands, and there is no expiry: an unanswered question
+  stays listed until it is.
   """
 
   use Anubis.Server.Component, type: :tool

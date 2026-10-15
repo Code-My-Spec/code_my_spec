@@ -7,14 +7,14 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.AddKeywords do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, doc: "Customer ID (e.g. \"123-456-7890\")"
+    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
     field :ad_group_resource_name, :string,
       required: true,
-      doc: "Full ad group resource name, e.g. customers/123/adGroups/456"
+      description: "Full ad group resource name, e.g. customers/123/adGroups/456"
     field :keywords, {:list, :map},
       required: true,
-      doc: "List of {text, match_type} where match_type is EXACT, PHRASE, or BROAD"
-    field :login_customer_id, :string, doc: "Manager (MCC) account ID, when acting on a linked account"
+      description: "List of {text, match_type} where match_type is EXACT, PHRASE, or BROAD"
+    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true

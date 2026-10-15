@@ -14,9 +14,9 @@ defmodule CodeMySpec.McpServers.AgentPerformance.Tools.AgentPerformanceReport do
   alias CodeMySpec.Stories
 
   schema do
-    field :working_copy_id, :string, doc: "Narrow to one working copy (team)."
-    field :story_number, :integer, doc: "Narrow to one story."
-    field :agent_id, :string, doc: "Narrow to one agent."
+    field :working_copy_id, :string, description: "Narrow to one working copy (team)."
+    field :story_number, :integer, description: "Narrow to one story."
+    field :agent_id, :string, description: "Narrow to one agent."
   end
 
   @impl true

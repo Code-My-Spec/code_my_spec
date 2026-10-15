@@ -755,6 +755,13 @@ config :code_my_spec, :agent_eval_settle_timeout, 300_000
 # the artifacts to the shipped prompt, and `:ignore` to say nothing at all.
 config :code_my_spec, :eval_artifact_staleness, :warn
 
+# A test that exercises a result large enough to trip CodeMode.cap/2's spill
+# (41bdee7d) must not write real files under the developer's actual home
+# directory -- a disposable path under the test build's own tmp dir instead.
+config :code_my_spec,
+       :code_mode_spill_dir,
+       Path.join(System.tmp_dir!(), "code_my_spec_test_spill")
+
 # A test that runs a desktop OAuth connect must not open the machine's browser.
 config :code_my_spec, CodeMySpec.Utils.Browser, launch: false
 

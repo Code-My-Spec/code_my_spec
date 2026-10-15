@@ -14,17 +14,17 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunReport do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :property_id, :string, required: true, doc: "Property ID (number or \"properties/123\")"
-    field :date_ranges, {:list, :map}, required: true, doc: "List of {startDate, endDate} objects"
-    field :dimensions, {:list, :string}, required: true, doc: "Dimension field names"
-    field :metrics, {:list, :string}, required: true, doc: "Metric field names"
-    field :dimension_filter, :map, doc: "Data API FilterExpression for dimensions"
-    field :metric_filter, :map, doc: "Data API FilterExpression for metrics"
-    field :order_bys, {:list, :map}, doc: "List of Data API OrderBy objects"
-    field :limit, :integer, doc: "Max rows per response (<= 250000)"
-    field :offset, :integer, doc: "Start row (0-based)"
-    field :currency_code, :string, doc: "ISO 4217 currency code"
-    field :return_property_quota, :boolean, doc: "Include property quota in the response"
+    field :property_id, :string, required: true, description: "Property ID (number or \"properties/123\")"
+    field :date_ranges, {:list, :map}, required: true, description: "List of {startDate, endDate} objects"
+    field :dimensions, {:list, :string}, required: true, description: "Dimension field names"
+    field :metrics, {:list, :string}, required: true, description: "Metric field names"
+    field :dimension_filter, :map, description: "Data API FilterExpression for dimensions"
+    field :metric_filter, :map, description: "Data API FilterExpression for metrics"
+    field :order_bys, {:list, :map}, description: "List of Data API OrderBy objects"
+    field :limit, :integer, description: "Max rows per response (<= 250000)"
+    field :offset, :integer, description: "Start row (0-based)"
+    field :currency_code, :string, description: "ISO 4217 currency code"
+    field :return_property_quota, :boolean, description: "Include property quota in the response"
   end
 
   @impl true

@@ -21,7 +21,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents do
   alias CodeMySpec.Users.Scope
 
   schema do
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :session_id, :string, description: "Injected by hook — do not set manually"
   end
 
   @impl true

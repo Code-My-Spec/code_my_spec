@@ -20,7 +20,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ReadProjectFile do
   alias CodeMySpec.WorkingCopies
 
   schema do
-    field(:path, :string, required: true, doc: "Path relative to the project root.")
+    field(:path, :string, required: true, description: "Path relative to the project root.")
   end
 
   @impl true

@@ -30,11 +30,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   schema do
     field(:task_id, :string,
       required: true,
-      doc: "Task ID to evaluate"
+      description: "Task ID to evaluate"
     )
 
     field(:handoff_id, :string,
-      doc:
+      description:
         "Report assigned artifact completion instead of evaluating; does not close the task or launch validation."
     )
 
@@ -43,13 +43,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
     field(:parent_gitlink, :string)
 
     field(:verification, :string,
-      doc: "Observed artifact and parent-gitlink verification; never a QA verdict."
+      description: "Observed artifact and parent-gitlink verification; never a QA verdict."
     )
 
-    field(:session_id, :string, doc: "Injected by hook — do not set manually")
+    field(:session_id, :string, description: "Injected by hook — do not set manually")
 
     field(:agent_id, :string,
-      doc: "Whose task to close. An agent we run carries it on the connection and omits this."
+      description: "Whose task to close. An agent we run carries it on the connection and omits this."
     )
   end
 

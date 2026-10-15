@@ -27,11 +27,11 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.PromoteSync do
 
   schema do
     field :story_number, :integer,
-      doc:
+      description:
         "The story being promoted. Latched and stamped only if its spex pass. " <>
           "Omit for work that is not a story's, such as a fix from an issue."
 
-    field :restart, :boolean, doc: "Restart the app instead of reloading it."
+    field :restart, :boolean, description: "Restart the app instead of reloading it."
   end
 
   @impl true

@@ -18,11 +18,11 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddQuestion do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
 
     field :text, :string,
       required: true,
-      doc:
+      description:
         "The open question in plain language (e.g., 'Does suspension affect mid-transaction cards or only new transactions?'). 1–2000 characters."
   end
 

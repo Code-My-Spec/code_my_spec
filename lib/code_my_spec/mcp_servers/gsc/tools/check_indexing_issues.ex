@@ -6,8 +6,8 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.CheckIndexingIssues do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :urls, :string, required: true, doc: "URLs to check, one per line (max 10)"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :urls, :string, required: true, description: "URLs to check, one per line (max 10)"
   end
 
   @impl true

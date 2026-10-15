@@ -13,8 +13,8 @@ defmodule CodeMySpec.McpServers.Personas.Tools.DeletePersona do
   alias CodeMySpec.Personas
 
   schema do
-    field :persona_id, :string, doc: "UUID of the persona to delete. Provide persona_id or slug."
-    field :slug, :string, doc: "Slug of the persona to delete. Provide persona_id or slug."
+    field :persona_id, :string, description: "UUID of the persona to delete. Provide persona_id or slug."
+    field :slug, :string, description: "Slug of the persona to delete. Provide persona_id or slug."
   end
 
   @impl true
