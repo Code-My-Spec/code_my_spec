@@ -64,13 +64,16 @@ defmodule CodeMySpec.CodeMode do
   fragment as if it were the whole answer.
   """
   @spec cap(String.t()) :: String.t()
-  def cap(text) when is_binary(text) and byte_size(text) <= @max_answer_bytes, do: text
+  def cap(text) when is_binary(text) and byte_size(text) <= @max_answer_bytes,
+    do: sanitize_utf8(text)
 
   def cap(text) when is_binary(text) do
     note = "\n\n[truncated — the answer was longer than #{@max_answer_bytes} characters]"
 
     # A byte cut can split a multi-byte character; invalid UTF-8 then fails in
-    # the JSON encoder and the answer is lost entirely.
+    # the JSON encoder and the answer is lost entirely. Trimming back (never
+    # growing) is what keeps this within the byte budget the note's own size
+    # was computed against (6880b4ab).
     text
     |> binary_part(0, @max_answer_bytes - byte_size(note))
     |> trim_to_valid_utf8()
@@ -85,6 +88,42 @@ defmodule CodeMySpec.CodeMode do
         <<>> -> <<>>
         _ -> binary |> binary_part(0, byte_size(binary) - 1) |> trim_to_valid_utf8()
       end
+    end
+  end
+
+  # Invalid UTF-8 crashes the MCP session outright, not the single call: the
+  # vendored session's own JSON.encode! has no rescue around it, so a result
+  # that merely contains a bad byte -- already in stored content a tool simply
+  # rendered (get_issue, get_story), not from any cut here -- takes the whole
+  # session down with it (6880b4ab). No byte budget is at stake on this path
+  # (the text already fit before this call), so replacing just the offending
+  # byte with the standard replacement character is the right trade: every
+  # valid stretch survives verbatim, instead of mass-trimming everything from
+  # the bad byte to the end of the string the way `trim_to_valid_utf8/1`
+  # above would.
+  defp sanitize_utf8(binary) do
+    if String.valid?(binary) do
+      binary
+    else
+      replace_invalid_utf8(binary, [])
+    end
+  end
+
+  @replacement_char <<0xEF, 0xBF, 0xBD>>
+
+  defp replace_invalid_utf8(binary, acc) do
+    case :unicode.characters_to_binary(binary, :utf8, :utf8) do
+      valid when is_binary(valid) ->
+        IO.iodata_to_binary(Enum.reverse([valid | acc]))
+
+      {:error, good, <<_bad_byte, rest::binary>>} ->
+        replace_invalid_utf8(rest, [@replacement_char, good | acc])
+
+      {:error, good, <<>>} ->
+        IO.iodata_to_binary(Enum.reverse([good | acc]))
+
+      {:incomplete, good, _rest} ->
+        IO.iodata_to_binary(Enum.reverse([@replacement_char, good | acc]))
     end
   end
 

@@ -89,6 +89,49 @@ defmodule CodeMySpec.CodeMode.AnswerCapTest do
     end
   end
 
+  # 6880b4ab: a result that merely *contains* an invalid byte -- not from any
+  # cut here, but already corrupt in stored content a tool rendered
+  # verbatim, or produced by a caller's own byte-offset string slice -- took
+  # the whole MCP session down at the JSON encoder, after whatever tool
+  # calls ran before it had already committed. The short-circuit clause
+  # (text already under the cap) returned such a result completely
+  # unexamined; only the truncation clause ever checked validity at all.
+  describe "an answer within the cap that is not valid UTF-8" do
+    test "comes back valid instead of taking the session down" do
+      text = "before" <> <<0xFF>> <> "after"
+
+      capped = CodeMode.cap(text)
+
+      assert String.valid?(capped)
+    end
+
+    test "keeps what surrounds the bad byte, not just a prefix" do
+      # The old alternative -- trimming from the end until valid, the same
+      # rule the truncation path uses -- would have thrown away "after"
+      # entirely for a bad byte anywhere before it, which is wrong for text
+      # that was never too long in the first place.
+      capped = CodeMode.cap("before" <> <<0xFF>> <> "after")
+
+      assert capped =~ "before"
+      assert capped =~ "after"
+    end
+
+    test "an incomplete multi-byte sequence at the end is still handled" do
+      # 0xE2 opens a 3-byte sequence (the em dash in this very file is
+      # E2 80 94) and nothing follows it here.
+      capped = CodeMode.cap("before" <> <<0xE2>>)
+
+      assert String.valid?(capped)
+      assert capped =~ "before"
+    end
+
+    test "valid UTF-8 within the cap is returned untouched" do
+      text = "plain text with no bad bytes"
+
+      assert CodeMode.cap(text) == text
+    end
+  end
+
   describe "both tools use this number" do
     test "the harness tool reports the same cap" do
       assert RunScript.max_result_chars() ==
