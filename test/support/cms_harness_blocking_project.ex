@@ -19,6 +19,8 @@ defmodule CmsHarnessTest.BlockingProject do
 
   import CmsHarnessTest.Projects, only: [write: 3]
 
+  require Logger
+
   @doc """
   Write a blocking `compiler` analyzer into `root`. Returns the marker path
   `unblock/1` takes.
@@ -28,15 +30,19 @@ defmodule CmsHarnessTest.BlockingProject do
     marker = Path.join(root, ".blocking_marker")
     started = Path.join(root, ".blocking_started")
     executions = Path.join(root, ".blocking_executions")
+    armed = Path.join(root, ".blocking_armed")
 
     File.write!(Path.join(root, "mix.exs"), """
     defmodule Mix.Tasks.Compile.Blocking do
       use Mix.Task.Compiler
 
       def run(_args) do
-        File.write!(#{inspect(started)}, "started")
-        File.write!(#{inspect(executions)}, "x", [:append])
-        wait_for_unblock(2_000)
+        if File.exists?(#{inspect(armed)}) do
+          File.write!(#{inspect(started)}, "started")
+          File.write!(#{inspect(executions)}, "x", [:append])
+          wait_for_unblock(2_000)
+        end
+
         {:ok, []}
       end
 
@@ -70,7 +76,52 @@ defmodule CmsHarnessTest.BlockingProject do
 
     write(root, "lib/thing.ex", "defmodule Demo.Thing do\n  def go, do: :ok\nend\n")
 
+    # 55379e16: a cold `_build/analyzer` (Mix booting, the custom compiler
+    # module, protocol consolidation, deps resolution) could itself take
+    # longer than a scenario's own short `harness_analysis_timeout` under
+    # load -- indistinguishable, from inside that budget, from the hang the
+    # scenario means to create. Before this fixed it, 55379e16's own bug
+    # masked it: a timed-out run's orphaned subprocess kept running after
+    # the "kill", so the cold compile finished and wrote its marker anyway.
+    # Now that a timeout really kills the process tree, the cold compile has
+    # to fit inside the short budget on its own merit, which it cannot.
+    #
+    # Compiled here, unarmed (`run/1` above is a no-op without the marker),
+    # with the default long timeout and no server dispatch involved at all --
+    # same `MIX_BUILD_PATH`/`MIX_ENV` the real dispatched run will use, so
+    # this is the exact cache that run reuses, not a separate one.
+    env = [{"MIX_ENV", "test"}, {"MIX_BUILD_PATH", CmsHarness.AnalyzerEnv.build_path(root)}]
+    warm_started_at = System.monotonic_time(:millisecond)
+
+    {output, 0} =
+      System.cmd("mix", ["compile", "--return-errors"],
+        cd: root,
+        env: env,
+        stderr_to_stdout: true
+      )
+
+    boot_ms = System.monotonic_time(:millisecond) - warm_started_at
+    File.write!(Path.join(root, ".blocking_boot_ms"), Integer.to_string(boot_ms))
+
+    unless output == "" do
+      Logger.debug("[CmsHarnessTest.BlockingProject] warm compile output: #{output}")
+    end
+
+    File.write!(armed, "armed")
+
     marker
+  end
+
+  @doc """
+  How long `make_blocking/1`'s own unarmed warm compile took on this
+  machine, right now, for this exact project (same `MIX_BUILD_PATH`, same
+  `mix.exs`) -- the real per-invocation cost of spawning `mix` as a
+  subprocess here, not a guessed constant. 55379e16: a fixed millisecond
+  budget races this cost on a busier day; this reads it instead.
+  """
+  @spec warm_boot_ms(String.t()) :: non_neg_integer()
+  def warm_boot_ms(root) do
+    root |> Path.join(".blocking_boot_ms") |> File.read!() |> String.to_integer()
   end
 
   @doc """
