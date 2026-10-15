@@ -138,7 +138,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # script" calls it. `LocalServer.moved?/1` already answers the mirror-image
   # question — a scriptable tool called directly — and this is that answer
   # pointing the other way.
-  defp direct?(name), do: Enum.any?(LocalServer.__components__(), &(&1.name == name))
+  defp direct?(name), do: Enum.any?(LocalServer.registrations(), &(&1.name == name))
 
   # Whether the caller has it is a fact about the role, and it was assumed
   # rather than checked: the page told every reader the tool was in its list.

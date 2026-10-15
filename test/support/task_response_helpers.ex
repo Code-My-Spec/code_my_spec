@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
   end
 
   def response_text(%{text: text}), do: text
+  def response_text(text) when is_binary(text), do: text
   def response_text(other), do: inspect(other)
 
   @doc """

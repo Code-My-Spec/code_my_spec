@@ -28,7 +28,7 @@ defmodule CodeMySpec.Validation.TheMenuOnlyNamesToolsTheReaderHasTest do
   @roles [:product, :coding, :qa]
 
   defp scoped_tool_names do
-    (LocalServer.__components__() ++ ScriptableTools.__components__())
+    (LocalServer.registrations() ++ ScriptableTools.registrations())
     |> MapSet.new(& &1.name)
     |> MapSet.difference(MapSet.new(Catalog.excluded()))
   end

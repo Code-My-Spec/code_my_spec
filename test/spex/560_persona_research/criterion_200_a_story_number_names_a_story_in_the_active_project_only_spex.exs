@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -65,10 +65,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
       when_ "the PM links the persona to that story number", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, response} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: context.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok, Map.put(context, :response, response)}
@@ -77,7 +78,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5158Spex do
       then_ "the link names this project's story, not the other project's", context do
         body = response_text(context.response)
 
-        refute context.response.isError, body
         assert body =~ ~s[story #{context.number} ("Local story")], body
         refute body =~ "Foreign story", body
 

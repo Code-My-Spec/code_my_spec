@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3345Spex do
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.ProjectStateFixtures
 
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
@@ -47,14 +47,12 @@ defmodule CodeMySpecSpex.Story1063.Criterion3345Spex do
       when_ "the persona is linked to the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, _} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: context.new_story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
-
-        refute response.isError,
-               "the link must really be made for this to mean anything:\n" <> inspect(response)
 
         {:ok, context}
       end

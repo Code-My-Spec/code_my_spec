@@ -13,8 +13,8 @@ defmodule CodeMySpec.McpServers.StoryNumberNamesAStoryTest do
   alias CodeMySpec.McpServers.{ComponentsServer, LocalServer, ScriptableTools, StoryRefs}
 
   defp tools do
-    (LocalServer.__components__() ++
-       ScriptableTools.__components__() ++ ComponentsServer.__components__())
+    (LocalServer.registrations() ++
+       ScriptableTools.registrations() ++ ComponentsServer.__components__())
     |> Enum.uniq_by(& &1.name)
   end
 
@@ -110,6 +110,6 @@ defmodule CodeMySpec.McpServers.StoryNumberNamesAStoryTest do
     }
 
     assert %{"params" => %{"arguments" => %{"story_number" => 7}}} =
-             StoryRefs.normalize_request(request, LocalServer.__components__())
+             StoryRefs.normalize_request(request, LocalServer.registrations())
   end
 end

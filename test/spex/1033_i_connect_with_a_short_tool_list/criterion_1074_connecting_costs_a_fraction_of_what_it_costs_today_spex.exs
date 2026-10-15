@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion2999Spex do
         # declarations on the two server modules, so there is nothing to drive.
         # Asserted rather than assumed because the saving below is only
         # meaningful against the whole surface.
-        total = length(LocalServer.__components__()) + length(ScriptableTools.__components__())
+        total = length(LocalServer.registrations()) + length(ScriptableTools.registrations())
 
         assert total > 100, "expected the whole tool surface, found #{total}"
 
@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion2999Spex do
 
       when_ "an agent connects and reads the tool list", context do
         payload =
-          LocalServer.__components__()
+          LocalServer.registrations()
           |> Enum.map(
             &%{name: &1.name, description: &1.description, inputSchema: &1.input_schema}
           )
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion2999Spex do
       end
 
       then_ "it receives the workflow spine and code mode", context do
-        names = MapSet.new(LocalServer.__components__(), & &1.name)
+        names = MapSet.new(LocalServer.registrations(), & &1.name)
 
         assert "get_next_requirement" in names
         assert "start_task" in names

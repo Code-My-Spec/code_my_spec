@@ -16,7 +16,7 @@ defmodule CodeMySpec.Agents.Offers.AStoryOffersReceiptNamesItsPublicNumberTest d
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Tasks.Tools.RejectOffer
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Stories.Story
@@ -69,7 +69,9 @@ defmodule CodeMySpec.Agents.Offers.AStoryOffersReceiptNamesItsPublicNumberTest d
     assert {:ok, _ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
 
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: agent.id}}
-    {:reply, reply, _frame} = RejectOffer.execute(%{reason: "already handled elsewhere"}, frame)
+
+    {:reply, reply, _frame} =
+      LocalServer.handle_tool_call("reject_offer", %{reason: "already handled elsewhere"}, frame)
 
     refute reply.isError, inspect(reply)
     text = reply.content |> List.first() |> Map.get("text", "")

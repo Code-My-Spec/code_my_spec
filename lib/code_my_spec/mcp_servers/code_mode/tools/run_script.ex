@@ -141,7 +141,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   defp direct_names(nil), do: :all
 
   defp direct_names(allowed),
-    do: Catalog.direct_only(LocalServer.__components__(), allowed)
+    do: Catalog.direct_only(LocalServer.registrations(), allowed)
 
   # `nil` for a call nobody attributed to an agent — a person at an MCP client,
   # or an agent started before scoping existed. Both could already call
