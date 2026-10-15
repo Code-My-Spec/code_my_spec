@@ -55,6 +55,12 @@ defmodule CodeMySpecWeb.AReconnectedHarnessLooksForWorkTest do
 
   setup ctx do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+
+    # Presence below models a live agent without launching an engine. Accept
+    # its work delivery so a missing engine cannot turn the offer undelivered
+    # and make a later reconnect sweep legitimately retry it.
+    CodeMySpecTest.RecordingAgentTransport.listen(ctx)
+
     ctx = FullSatisfactionFixtures.apply_up_to_analysis(ctx)
     :ok = GraphWatcher.settle(ctx.scope)
 
