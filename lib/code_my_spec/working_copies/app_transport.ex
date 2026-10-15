@@ -103,6 +103,23 @@ defmodule CodeMySpec.WorkingCopies.AppTransport do
   @spec call_grace_ms() :: pos_integer()
   def call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
 
+  @doc """
+  How long a first start's inline window lasts before the harness gives up
+  waiting and replies `"starting"` instead of blocking further.
+
+  Mirrors `CmsHarness.AppInstance`'s own private calculation by reading the
+  same two config keys directly, rather than calling that module -- Boundary
+  forbids `CmsHarness` references from most of `CodeMySpec`, including every
+  caller of `ensure_app_running/2` that wants to derive "just above this
+  window" instead of guessing a constant (cf006764). The keys are the only
+  coupling; as long as both sides read the same two, they cannot drift.
+  """
+  @spec first_start_inline_window_ms() :: pos_integer()
+  def first_start_inline_window_ms do
+    Application.get_env(:code_my_spec, :app_instance_first_start_probe_attempts, 30) *
+      Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms, 1_000)
+  end
+
   defp unreachable(working_copy_id, verb) do
     Logger.warning(
       "[WorkingCopies] cannot #{verb} the app on working copy #{working_copy_id}: " <>

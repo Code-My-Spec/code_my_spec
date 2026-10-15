@@ -11,6 +11,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa
   alias CodeMySpec.QaFixtures
+  alias CodeMySpec.WorkingCopies.AppTransport
 
   # ============================================================================
   # Test Helpers
@@ -800,6 +801,24 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
+    end
+  end
+
+  describe "app_start_timeout/0" do
+    # cf006764: a hardcoded 35s once meant to sit "just above" the harness's
+    # 30s first-start window, but nothing enforced that relationship, and
+    # `AppTransport.call/4` adds its own grace on top -- so the effective
+    # slack was thinner than it looked and would silently vanish if either
+    # value ever changed. This checks the real invariant, derived from both,
+    # instead of a number that happened to work under today's defaults.
+    test "the effective deadline clears the harness's own first-start window by the safety margin" do
+      effective_deadline = QaStory.app_start_timeout() + AppTransport.call_grace_ms()
+      window = AppTransport.first_start_inline_window_ms()
+
+      assert effective_deadline >= window + to_timeout(second: 10),
+             "the effective deadline (#{effective_deadline}ms) does not clear the harness's " <>
+               "own first-start window (#{window}ms) by the intended safety margin -- a slow " <>
+               "first boot could time out before the harness's own 'starting' reply ever arrives"
     end
   end
 end
