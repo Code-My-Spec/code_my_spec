@@ -17,6 +17,7 @@ defmodule CodeMySpecWeb.DevAgentAnswerTest do
   use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.UsersFixtures
+  import Ecto.Query
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
@@ -112,6 +113,13 @@ defmodule CodeMySpecWeb.DevAgentAnswerTest do
     } do
       oldest = ask(scope, agent, "first")
       _newer = ask(scope, agent, "second")
+
+      # inserted_at is to the second, so two asks in one second tie and either
+      # can come back first (ejected ff9a042a6). Make "oldest" true.
+      CodeMySpec.Repo.update_all(
+        from(q in CodeMySpec.Notifications.QuestionRequest, where: q.id == ^oldest.id),
+        set: [inserted_at: DateTime.add(DateTime.utc_now(:second), -60)]
+      )
 
       body =
         conn

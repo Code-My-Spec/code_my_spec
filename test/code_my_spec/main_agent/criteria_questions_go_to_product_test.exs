@@ -132,6 +132,18 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
       assert released?(ctx)
     end
 
+    # Metric Flow's product saw only "A question for you" through run_script and
+    # could not answer QA's story 56 question (2026-10-15).
+    test "the scripted listing carries the question itself", ctx do
+      product = agent(ctx.scope, ctx.copy, :product)
+      request = ask(ctx, %{about: "criteria"})
+
+      {:ok, rows} = ListNotifications.script_result(%{}, frame(ctx, product))
+      row = Enum.find(rows, &(&1["id"] == request.id))
+
+      assert row["questions"] == ["Revert the fix or rewrite criterion 944?"]
+    end
+
     test "product with nothing routed to it is told so", ctx do
       product = agent(ctx.scope, ctx.copy, :product)
 
