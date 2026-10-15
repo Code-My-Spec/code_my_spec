@@ -286,13 +286,21 @@ defmodule CodeMySpec.Agents.Assignment do
   # takes the most recently retired team member's story instead of starting
   # unbound -- the shape that left `submit_story_issue` answering
   # `story_not_assigned_to_agent` for work the predecessor had already queued.
+  #
+  # Only a story still to land: the newest retired member *holding a story* can
+  # be weeks back when the one just retired held none, and a promoted story is
+  # history. Team 2's replacement coder took story 1092, promoted at v2.0.440,
+  # and the team then read as busy -- no work offered, no team-free notice --
+  # for as long as the row held it (2026-10-15).
   defp retired_team_story_id(copy_id) do
     roles = team_roles() |> Enum.map(&to_string/1)
 
     from(a in "agents",
+      join: s in "stories",
+      on: s.id == a.story_id,
       where:
         a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role in ^roles and
-          not is_nil(a.retired_at) and not is_nil(a.story_id),
+          not is_nil(a.retired_at) and is_nil(s.promoted_version),
       order_by: [desc: a.retired_at],
       select: a.story_id,
       limit: 1
