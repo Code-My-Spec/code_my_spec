@@ -214,7 +214,7 @@ defmodule CodeMySpec.MixProject do
       # two means a window where the harness runs a suite against a database
       # nothing told anyone to create.
       {:client_utils, git: "https://github.com/Code-My-Spec/client_utils.git", branch: "main"},
-      {:credo, "~> 1.7.13"},
+      {:credo, "== 1.7.15"},
       {:ex_slop, "~> 0.4.4", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
       {:boundary, "~> 0.10.4"},
