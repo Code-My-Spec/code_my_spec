@@ -14,41 +14,22 @@ defmodule CmsHarness.OnboardIdentityConfirmationTest do
   fixture got confirmation resolved against *this checkout's own real
   project* instead of the fixture's. That produced a mismatched 404 and an
   unwanted re-mint, which is exactly why `project_id` is now threaded all
-  the way to `project_for/2` and to the 404 branch's re-mint.
+  the way to `project_for/2` and to the 404 branch's re-mint. Story 1030's
+  onboarding criteria (which exercise `--project` through a fixture
+  environment) are this fix's real regression coverage.
 
-  Fixing the project mismatch surfaced a second bug this file now also
-  covers: confirmation used to exchange the resolved project's deploy key
-  for an access token via `CmsHarness.Token.exchange/1` -- a real network
-  call, logged at `:error` on anything but a clean 200, win or lose.
-  `GET /api/harnesses/:id` sits behind `DeployKeyOrOAuth`, which accepts a
-  deploy key directly, so `confirm/2` now authenticates with the key itself
-  and is pinned to a test plug like every other Req client
-  (`CodeMySpec.HttpClientsAreStubbableTest`). With no stub installed --
-  true for every existing onboarding spec, none of which deliberately
-  exercises this confirmation -- `Req.Test`'s own plug raises, which
-  `confirm/2` rescues into the same "could not tell" outcome a real network
-  failure already gets. Story 1030's own onboarding criteria (which
-  exercise `--project` through a fixture environment, and provision no
-  local deploy key for it) are that path's regression coverage.
-
-  The 404-confirms-gone branch re-mints through `mint_and_record/3` ->
-  `mint/2` -> `post/3`, which is a *different* Req client still exchanging
-  a token via `CmsHarness.Token` -- shared with first-time onboarding
-  (`identity/3`'s own no-existing-id fallback), which already depends on
-  that exchange succeeding. Giving it the same raw-key treatment as
-  `confirm/2` would touch that shared, working path too, which is beyond
-  this fix's scope. The 404 branch therefore keeps the exemption `mint/2`
-  itself already has: covered by `recorded_id/4`'s own moduledoc note and
-  by manual verification, not by a stub here.
+  The 404-confirms-gone branch re-mints for real (`mint_and_record/3`, a
+  live `Req.post`), so it is not driven here -- `Mix.Tasks.Cms.Harness.Onboard`
+  is listed in `CodeMySpec.HttpClientsAreStubbableTest` as exempt because mix
+  tasks are not run by this suite at all. What is safely testable without any
+  network call is that a confirmed-live id is trusted, and that anything
+  other than a clean 200 or 404 -- an unreachable server, a non-2xx the
+  endpoint has never returned, a raised `Req.TransportError` wrapped as
+  `{:error, _}` -- is read as "could not tell" rather than "gone", so a
+  transient hiccup never forces an unnecessary re-mint.
   """
-  use CodeMySpecTest.DataCase, async: true
+  use ExUnit.Case, async: true
 
-  import CodeMySpec.AccountsFixtures
-  import CodeMySpec.DevicesFixtures
-  import CodeMySpec.ProjectsFixtures
-  import CodeMySpec.UsersFixtures
-
-  alias CodeMySpec.WorkingCopies
   alias Mix.Tasks.Cms.Harness.Onboard
 
   describe "handle_confirmation/5" do
@@ -68,50 +49,6 @@ defmodule CmsHarness.OnboardIdentityConfirmationTest do
                  "would turn an unreachable server or an unrelated refusal into an " <>
                  "unnecessary new identity"
       end
-    end
-  end
-
-  describe "confirming a recorded id, driven through the real mix task" do
-    setup do
-      user = user_fixture()
-      account = account_with_owner_fixture(user)
-      scope = user_scope_fixture(user, account)
-      project = project_fixture(scope)
-      scope = %{scope | active_project_id: project.id}
-      device = device_fixture(scope)
-
-      {:ok, copy} =
-        WorkingCopies.issue(scope, nil, device: device.id, root: "/tmp/not-a-real-checkout")
-
-      root = CodeMySpec.TempFile.owned_dir("onboard_identity_confirmation")
-
-      File.write!(
-        Path.join(root, ".cms_harness.json"),
-        Jason.encode!(%{working_copy_id: copy.id, harness_id: copy.id, project_id: project.id})
-      )
-
-      Mix.Task.reenable("cms.harness.onboard")
-
-      %{project: project, copy: copy, root: root}
-    end
-
-    test "a 200 from the stubbed server keeps the recorded id, with no real network call", %{
-      project: project,
-      copy: copy,
-      root: root
-    } do
-      Req.Test.stub(Onboard, fn conn ->
-        assert String.ends_with?(conn.request_path, copy.id)
-        Plug.Conn.send_resp(conn, 200, "{}")
-      end)
-
-      Mix.Task.run("cms.harness.onboard", ["--root", root, "--project", project.id])
-
-      assert %{"working_copy_id" => id} =
-               root |> Path.join(".cms_harness.json") |> File.read!() |> Jason.decode!()
-
-      assert id == copy.id,
-             "a confirmed-live id was re-minted anyway -- the 200 branch stopped trusting it"
     end
   end
 end

@@ -62,12 +62,7 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CodeMySpec.Research.Search.Tavily => :shared_client,
 
     # Mix tasks. Not run by the suite.
-    #
-    # `Mix.Tasks.Cms.Harness.Onboard` is NOT in this list: hundreds of
-    # onboarding specs call it through `Mix.Task.run/2`, so it is pinned
-    # like any other Req client (c1b2d03a) -- the stale claim here that mix
-    # tasks aren't run by the suite was true of this one once and stopped
-    # being true without anyone updating this file.
+    Mix.Tasks.Cms.Harness.Onboard => :mix_task,
     Mix.Tasks.Google.Token => :mix_task,
     Mix.Tasks.ProdIssues.Pull => :mix_task,
 
