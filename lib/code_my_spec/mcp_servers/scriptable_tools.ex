@@ -216,6 +216,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Research.Tools.WebSearch)
   component(CodeMySpec.McpServers.Research.Tools.WebFetch)
   component(CodeMySpec.McpServers.Qa.Tools.CallMcpServer)
+  component(CodeMySpec.McpServers.Qa.Tools.GetLocalAppToken)
   # Story 1116 ("1082"): every agent role reads its own project's deployed
   # logs and traces. Granted to every role in `RoleProfile`, not main-only.
   component(CodeMySpec.McpServers.Observability.Tools.QueryLogs)

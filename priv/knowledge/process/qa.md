@@ -133,3 +133,40 @@ writable owner through a completion handoff; see `process/main_agent.md`.
 Never resubmit without re-testing. A resubmission is a claim that you ran
 it again, and since the latest attempt is the canonical one, a resubmitted
 stale pass overwrites a real failure with a fiction.
+
+## A harness-served change has a live route too
+
+`run_script` and `tool_docs` are served by the harness on *main's*
+checkout, not this copy's. A change whose deliverable is served by the
+harness itself -- a new MCP tool, a `tool_docs` entry, a knowledge doc, a
+prompt -- exists only on this copy until it is promoted, so calling it
+through your own `run_script`/`tool_docs` before promotion answers with
+main's catalog, which correctly does not have it yet. That is not evidence
+the change does not work; it is evidence you asked the wrong process.
+
+Do not defer the live check to after promotion. Verify it against this
+copy's own running app instead:
+
+1. `ensure_app_running` (through `run_script`) to get this copy's own app
+   URL. It is a real, separate instance compiled from this copy's own
+   code, including the change under test, on its own port and its own
+   database -- a clone of main's dev database made when the copy was
+   created, so the project's deploy key on it is real and usable.
+2. `get_local_app_token({url = <that url>})` to mint a short-lived access
+   token against that same instance. It trades the project's deploy key for
+   the token server-side -- the same exchange `CmsHarness.Token` does for
+   the harness itself, at `POST /api/sprite/token` -- and hands back only
+   the resulting token. The deploy key itself is never returned to you and
+   must never appear in anything you write down (evidence, issues,
+   `update_issue`, anywhere): it is a long-lived secret, not the thing
+   this flow is for.
+3. `call_mcp_server({url = <that url>, path = "/mcp/harness", tool = "...",
+   arguments = {...}, headers = {["Authorization"] = "Bearer " .. token}})`
+   to call the new tool for real, through its actual MCP-facing surface.
+   No `X-Harness-Id` is needed here -- unlike the shared server, this
+   instance's database holds only this one copy's data.
+
+A knowledge doc or a prompt has no tool to call this way; read it back
+through this same instance's own `read_knowledge`/equivalent if one exists,
+or note in the attempt that it was reviewed as a document rather than
+exercised live, and say why.
