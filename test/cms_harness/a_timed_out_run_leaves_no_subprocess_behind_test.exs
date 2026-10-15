@@ -209,19 +209,17 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     {task, child_pids} = spawn_hanging_task()
     ownership = CmsHarness.Agents.Engine.Execution.capture(task.pid)
 
-    try do
-      deadline = System.monotonic_time(:millisecond) + 500
+    on_exit(fn -> CmsHarness.Agents.Engine.Execution.stop_owned(ownership) end)
+    deadline = System.monotonic_time(:millisecond) + 500
 
-      assert {:error, {:subprocess_shutdown_unconfirmed, survivors, _details}} =
-               CmsHarness.Agents.Engine.ProcessGroups.confirm(ownership.groups, deadline)
+    assert {:error, {:subprocess_shutdown_unconfirmed, survivors, _details}} =
+             CmsHarness.Agents.Engine.ProcessGroups.confirm(ownership.groups, deadline)
 
-      for pid <- child_pids do
-        assert String.to_integer(pid) in survivors
-      end
-    after
-      CmsHarness.Agents.Engine.Execution.stop_owned(ownership)
+    for pid <- child_pids do
+      assert String.to_integer(pid) in survivors
     end
 
+    assert :ok = CmsHarness.Agents.Engine.Execution.stop_owned(ownership)
     refute_alive(child_pids)
   end
 
@@ -240,7 +238,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
   defp spawn_hanging_task do
     pid_file =
-      Path.join(System.tmp_dir!(), "analysis_kill_test_#{System.unique_integer([:positive])}")
+      Path.join(System.tmp_dir!(), "analysis_kill_test_#{Ecto.UUID.generate()}")
 
     # `async_nolink`, like production's own `run_with_slot/2` spawn -- a plain
     # `Task.async/1` links the caller, and `Execution.stop/1`'s unconditional
@@ -275,8 +273,9 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
           grandchild = int(os.read(read_fd, 64))
           os.close(read_fd)
           os.waitpid(middle, 0)
-          with open(sys.argv[1], "w") as output:
+          with open(sys.argv[1] + ".pending", "w") as output:
               output.write(str(child) + " " + str(grandchild))
+          os.replace(sys.argv[1] + ".pending", sys.argv[1])
           time.sleep(30)
           """,
           pid_file
