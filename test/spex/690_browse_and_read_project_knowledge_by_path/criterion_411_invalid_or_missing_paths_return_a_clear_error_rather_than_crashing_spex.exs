@@ -10,9 +10,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5966Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge
-  alias CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -21,16 +19,14 @@ defmodule CodeMySpecSpex.Story690.Criterion5966Spex do
     scenario "read_knowledge on a missing file returns a not-found error" do
       when_ ~s(the agent calls read_knowledge with a missing path "does_not_exist.md"),
             context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ReadKnowledge.execute(%{path: "does_not_exist.md"}, frame)
+        response =
+          ToolLibrary.run("read_knowledge", %{path: "does_not_exist.md"}, %{scope: context.scope})
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the response is an error naming the missing path", context do
-        assert context.response.isError == true,
+        assert {:error, _text} = context.response,
                "expected an error response, got: #{inspect(context.response)}"
 
         body = response_text(context.response)
@@ -47,16 +43,14 @@ defmodule CodeMySpecSpex.Story690.Criterion5966Spex do
 
     scenario "list_knowledge rejects a path-traversal attempt as invalid" do
       when_ "the agent calls list_knowledge with a path-traversal attempt", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ListKnowledge.execute(%{path: "../../etc/passwd"}, frame)
+        response =
+          ToolLibrary.run("list_knowledge", %{path: "../../etc/passwd"}, %{scope: context.scope})
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the response is an error referring to the invalid path", context do
-        assert context.response.isError == true,
+        assert {:error, _text} = context.response,
                "expected an error response, got: #{inspect(context.response)}"
 
         body = response_text(context.response)

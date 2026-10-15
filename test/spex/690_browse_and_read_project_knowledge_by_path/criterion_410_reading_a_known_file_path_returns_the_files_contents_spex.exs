@@ -11,9 +11,8 @@ defmodule CodeMySpecSpex.Story690.Criterion5965Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -39,19 +38,16 @@ defmodule CodeMySpecSpex.Story690.Criterion5965Spex do
       end
 
       when_ ~s(the agent calls read_knowledge with path "README.md"), context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ReadKnowledge.execute(
-            %{path: "README.md", library: "project_knowledge"},
-            frame
-          )
+        response =
+          ToolLibrary.run("read_knowledge", %{path: "README.md", library: "project_knowledge"}, %{
+            scope: context.scope
+          })
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the response is not an error", context do
-        refute context.response.isError == true,
+        assert {:ok, _text} = context.response,
                "expected read_knowledge to succeed, got: #{inspect(context.response)}"
 
         {:ok, context}

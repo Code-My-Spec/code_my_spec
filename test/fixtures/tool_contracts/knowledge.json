@@ -1,0 +1,39 @@
+[
+  {
+    "name": "list_knowledge",
+    "description": "Browse the knowledge base directory tree.\n\nLists entries in a knowledge library directory. Returns directories and files\nat the given path level.\n\nLibraries:\n- `knowledge` — Framework reference (LiveView, DaisyUI, Boundary, etc.)\n- `project_knowledge` — Project-specific research and decisions\n",
+    "input_schema": {
+      "properties": {
+        "library": {
+          "description": "Which knowledge library: 'knowledge' (framework) or 'project_knowledge' (project-specific). Default: 'knowledge'",
+          "type": "string"
+        },
+        "path": {
+          "description": "Subdirectory path to list (e.g. 'liveview' or 'decisions/2026'). Default: root",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_knowledge",
+    "description": "Read a specific knowledge entry by path.\n\nReturns the full markdown content of a knowledge file.\n\nLibraries:\n- `knowledge` — Framework reference (LiveView, DaisyUI, Boundary, etc.)\n- `project_knowledge` — Project-specific research and decisions\n",
+    "input_schema": {
+      "properties": {
+        "library": {
+          "description": "Which knowledge library: 'knowledge' (framework) or 'project_knowledge' (project-specific). Default: 'knowledge'",
+          "type": "string"
+        },
+        "path": {
+          "description": "Path to the knowledge file (e.g. 'liveview/forms.md' or 'decisions/adr-001.md')",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  }
+]

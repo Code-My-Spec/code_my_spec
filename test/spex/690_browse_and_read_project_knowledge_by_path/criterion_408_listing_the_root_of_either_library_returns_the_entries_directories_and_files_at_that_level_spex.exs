@@ -10,8 +10,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5963Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -19,15 +18,13 @@ defmodule CodeMySpecSpex.Story690.Criterion5963Spex do
   spex "list_knowledge returns the library root listing", criterion: 408 do
     scenario "Calling list_knowledge with no path returns root entries" do
       when_ "the agent calls list_knowledge with no path", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} = ListKnowledge.execute(%{}, frame)
+        response = ToolLibrary.run("list_knowledge", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the response is not an error", context do
-        refute context.response.isError == true,
+        assert {:ok, _text} = context.response,
                "expected list_knowledge to succeed, got: #{inspect(context.response)}"
 
         {:ok, context}

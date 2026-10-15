@@ -41,7 +41,6 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Generators,
       CodeMySpec.Google,
       CodeMySpec.Issues,
-      CodeMySpec.Knowledge,
       CodeMySpec.Notifications,
       CodeMySpec.Observability,
       CodeMySpec.Paths,

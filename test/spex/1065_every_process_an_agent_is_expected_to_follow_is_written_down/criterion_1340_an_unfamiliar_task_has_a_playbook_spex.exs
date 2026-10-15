@@ -33,8 +33,7 @@ defmodule CodeMySpecSpex.Story1065.Criterion3392Spex do
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -56,12 +55,10 @@ defmodule CodeMySpecSpex.Story1065.Criterion3392Spex do
       end
 
       when_ "it looks for how that task is done", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
         # The index, not a guessed path: an agent that does not know whether a
         # playbook exists cannot open one, so the first move is to look at what
         # is there.
-        {:reply, response, _frame} = ListKnowledge.execute(%{}, frame)
+        response = ToolLibrary.run("list_knowledge", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :index, response_text(response))}
       end

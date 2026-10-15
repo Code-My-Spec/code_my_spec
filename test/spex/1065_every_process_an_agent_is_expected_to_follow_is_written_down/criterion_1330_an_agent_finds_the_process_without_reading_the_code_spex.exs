@@ -38,8 +38,7 @@ defmodule CodeMySpecSpex.Story1065.Criterion3379Spex do
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -60,15 +59,13 @@ defmodule CodeMySpecSpex.Story1065.Criterion3379Spex do
       end
 
       when_ "it looks for how a story travels from written down to worked on", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} = ReadKnowledge.execute(%{path: @path}, frame)
+        response = ToolLibrary.run("read_knowledge", %{path: @path}, %{scope: context.scope})
 
         {:ok, context |> Map.put(:response, response) |> Map.put(:text, response_text(response))}
       end
 
       then_ "the knowledge base answers it", context do
-        refute context.response.isError,
+        assert {:ok, _text} = context.response,
                "there is nothing at #{@path}, so an agent asking how product work flows " <>
                  "here is told nothing and goes to read the code — which is the whole " <>
                  "complaint this story exists for. Got:\n#{context.text}"
