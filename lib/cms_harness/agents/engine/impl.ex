@@ -409,10 +409,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # can consume another mailbox message.
   def abort_turn(state, reason) do
     Process.unlink(state.alloy)
+    Task.shutdown(state.turn.task, :brutal_kill)
 
     case Execution.stop(state.alloy) do
       :ok ->
-        Task.shutdown(state.turn.task, :brutal_kill)
         recover_turn(state, reason)
 
       {:error, failure} ->
@@ -430,10 +430,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   """
   def interrupt_turn(state) do
     Process.unlink(state.alloy)
+    Task.shutdown(state.turn.task, :brutal_kill)
 
     case Execution.stop(state.alloy) do
       :ok ->
-        Task.shutdown(state.turn.task, :brutal_kill)
         resume_interrupted(state)
 
       {:error, failure} ->
