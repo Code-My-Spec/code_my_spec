@@ -144,6 +144,7 @@ defmodule CodeMySpec.Agents do
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
   defdelegate assign_team(scope, copy_id, story_id), to: Assignment
+  defdelegate unassign_story(scope, story_id, opts \\ []), to: Assignment
   defdelegate assign_epic(scope, epic_id, copy_id), to: Assignment
   defdelegate notify_story_team_free(scope, copy_id, story), to: Assignment, as: :notify_team_free
   defdelegate claim_story(scope, agent, story_id), to: Assignment, as: :claim
@@ -1232,6 +1233,34 @@ defmodule CodeMySpec.Agents do
     end)
   end
 
+  # 43cdc022: an instruction's delivery failing settles its offer
+  # `:undelivered`, same as a decline settles `:declined` -- but a decline is
+  # already named to main (above) and a failed delivery was not, so an agent
+  # that never saw the instruction and one that saw and ignored it read the
+  # same from main's side. Named with the agent, the text and the failure
+  # time; `mark_reported` makes this idempotent across the two call sites.
+  defp tell_main_undelivered_instructions(scope, agent) do
+    agent.id
+    |> Offers.unreported_undelivered_instructions()
+    |> Enum.sort_by(& &1.id)
+    |> Enum.each(fn offer ->
+      notify_main(
+        scope,
+        :teammate_stalled,
+        "An operator instruction to the #{agent.role} agent #{agent.id} was never delivered " <>
+          "(failed at #{offer.outcome_at}): #{instruction_offer_text(offer)}",
+        offer: {:stalled, {"agent", agent.id}}
+      )
+
+      :ok = Offers.mark_reported(offer)
+    end)
+  end
+
+  defp instruction_offer_text(%{messages: [%{message: %Conversations.Message{} = message} | _]}),
+    do: Conversations.Message.text(message)
+
+  defp instruction_offer_text(_offer), do: "(message text unavailable)"
+
   # A released task is named as this agent's task, so main can cancel or
   # reassign it rather than only reading its id.
   defp held_back_subject(_agent, %CodeMySpec.Agents.Offer{kind: :unblocked, subject_key: id}),
@@ -1451,7 +1480,8 @@ defmodule CodeMySpec.Agents do
 
   def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
-    on_copy = scope |> AgentsRepository.list_agents() |> Enum.filter(&(&1.working_copy_id == copy_id))
+    on_copy =
+      scope |> AgentsRepository.list_agents() |> Enum.filter(&(&1.working_copy_id == copy_id))
 
     agents = Enum.reject(on_copy, &Agent.retired?/1)
 
@@ -2147,6 +2177,7 @@ defmodule CodeMySpec.Agents do
          _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
       :ok = Offers.observe_instruction_turn(agent)
+      tell_main_undelivered_instructions(scope, agent)
       write_turn_event(conversation, agent, event)
     else
       _ -> :ok
@@ -2453,6 +2484,7 @@ defmodule CodeMySpec.Agents do
         # Settled before the stop menu, which may make new offers of its own.
         :ok = Offers.settle_turn(agent)
         tell_main_held_back(scope, agent)
+        tell_main_undelivered_instructions(scope, agent)
 
         if Mailbox.pending?(agent.id) do
           pump_mailbox(scope, agent.id)
