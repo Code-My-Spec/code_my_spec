@@ -42,6 +42,7 @@ defmodule CodeMySpec.Agents.Assignment do
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
@@ -69,8 +70,24 @@ defmodule CodeMySpec.Agents.Assignment do
   def assign_team(%Scope{}, nil, _story_id), do: {:error, :no_working_copy}
 
   def assign_team(%Scope{} = scope, copy_id, story_id) do
-    with :ok <- feature_copy(scope, copy_id) do
+    with :ok <- feature_copy(scope, copy_id),
+         :ok <- work_left(scope, copy_id, story_id) do
       fan_out(scope, copy_id, story_id)
+    end
+  end
+
+  # A story whose every requirement is already satisfied at this copy has
+  # nothing left for a team to do, and nothing will land for it, so the
+  # team-free notice main waits on never comes: team 3 sat idle on story 811
+  # (2026-10-15). A shipped story with a new criterion or open issues has
+  # unsatisfied requirements again, and is work. Read before the transaction:
+  # the graph can wait on its projector, which must not happen under locks.
+  defp work_left(_scope, _copy_id, nil), do: :ok
+
+  defp work_left(scope, copy_id, story_id) do
+    case Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id) do
+      {done, done} when done > 0 -> {:error, :story_done}
+      _ -> :ok
     end
   end
 
@@ -232,7 +249,10 @@ defmodule CodeMySpec.Agents.Assignment do
   def inherit(%{working_copy_id: copy_id, role: role} = attrs) when is_binary(copy_id) do
     if team_member?(role) do
       attrs
-      |> maybe_put(:story_id, WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id))
+      |> maybe_put(
+        :story_id,
+        WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id)
+      )
       |> maybe_put(:epic_id, team_epic_id(copy_id))
     else
       attrs

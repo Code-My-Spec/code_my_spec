@@ -8,6 +8,7 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
+  import Ecto.Query
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents
@@ -82,6 +83,30 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
     assert {:error, :story_not_ready} = choose(scope, parked.id)
 
     assert Repo.get!(Story, held.id).working_copy_id == scope.active_working_copy_id
+    assert WorkingCopies.team_story_id(scope.active_working_copy_id) == held.id
+  end
+
+  # Story 811 was handed to team 3 with every requirement already satisfied;
+  # nothing could land for it, so no team-free notice reached main and the team
+  # sat idle (2026-10-15).
+  test "a story with every requirement satisfied at the copy is refused", %{scope: scope} do
+    held = story_fixture(scope)
+    {:ok, _} = choose(scope, held.id)
+    done = story_fixture(scope)
+
+    {_done, total} = CodeMySpec.Requirements.story_progress(scope, done.id)
+
+    Repo.update_all(
+      from(n in CodeMySpec.Requirements.Node,
+        where: n.story_id == ^done.id and n.working_copy_id == ^scope.active_working_copy_id
+      ),
+      set: [satisfied: true]
+    )
+
+    assert {^total, ^total} = CodeMySpec.Requirements.story_progress(scope, done.id),
+           "the fixture did not make a fully satisfied story"
+
+    assert {:error, :story_done} = choose(scope, done.id)
     assert WorkingCopies.team_story_id(scope.active_working_copy_id) == held.id
   end
 
