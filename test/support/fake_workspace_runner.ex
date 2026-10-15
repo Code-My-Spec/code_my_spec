@@ -177,7 +177,16 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   @impl true
   def stop(_container_name), do: :ok
 
-  defp owner, do: owner([self() | Process.get(:"$callers", [])])
+  # `ensure_registry/0` here, not only in `start_link/1`: a process that
+  # calls any read/write with zero fakes installed anywhere in the run yet
+  # (eaaa45ad) would otherwise reach `Registry.lookup/2` before anyone has
+  # started `@registry`, raising a raw `ArgumentError` instead of the clear
+  # `RuntimeError` below. Idempotent and cheap -- `ensure_registry/0` is a
+  # no-op once something else already started it.
+  defp owner do
+    ensure_registry()
+    owner([self() | Process.get(:"$callers", [])])
+  end
 
   defp owner([]) do
     raise "No #{inspect(__MODULE__)} installed for this process, or anything in its " <>
