@@ -10,8 +10,14 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
   in `AnalysisServer`'s own callback, so a 5s-bounded `ps`/`kill` confirmation
   does not block every other call this project's analyzer queue answers.
   `running` carries that cleanup task until it reports back, so the queue
-  does not advance until the kill is actually confirmed -- the two tests
-  below check each half of that separately.
+  does not advance until the kill is actually confirmed.
+
+  A third test covers the follow-up: `Execution.stop/1`'s own confirmation is
+  bounded, but the `ps` call ahead of it is not. If the cleanup task never
+  reports back at all, `AnalysisServer` now forces the analyzer task's own
+  process dead directly once its own, independent deadline passes -- that is
+  what actually frees the machine-wide slot, since a slot is released only
+  by the death of the process that acquired it.
 
   The first test is driven the same way the sibling `AnalysisServer` tests
   drive `handle_cast/2` (see `a_running_sweep_answers_for_the_next_request_test.exs`):
@@ -91,6 +97,59 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
              "confirmation (bounded at 5s), not answering independently of it"
 
     refute_alive(child_pid)
+  end
+
+  test "if the cleanup confirmation never reports back, the analyzer task is killed directly and the queue still advances" do
+    root = "/tmp/a-stuck-cleanup-test-#{System.unique_integer([:positive])}"
+    {task, _child_pid} = spawn_hanging_task()
+
+    # Registered under this project's own name, the same supervisor
+    # `AnalysisServer` itself looks up by root to terminate a stuck cleanup.
+    {:ok, task_sup} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
+
+    # Never returns and never crashes -- standing in for `Execution.stop/1`
+    # itself hanging inside its own unbounded `ps` call, which this deadline
+    # exists to recover from regardless of why the cleanup never reports.
+    stuck_cleanup = Task.Supervisor.async_nolink(task_sup, fn -> Process.sleep(:infinity) end)
+
+    running = %{
+      run_id: 1,
+      source: "exunit",
+      args: [],
+      tied_run_ids: [],
+      cleanup: stuck_cleanup,
+      cleanup_timer: nil
+    }
+
+    state = %{project: %{root: root}, running: running, queue: [], timer: nil}
+
+    assert {:noreply, next_state} =
+             AnalysisServer.handle_info({:cleanup_overdue, 1, task.pid}, state)
+
+    # What this path actually guarantees: the analyzer task's own Elixir
+    # process dies (which is what frees its `AnalysisSlots` slot -- a slot
+    # is released by that process's death, nothing else), and the queue is
+    # free to advance. It does NOT re-walk the OS process tree -- that walk
+    # is exactly what `Execution.stop/1` was stuck inside, so trusting
+    # another one here would risk the same hang. A detached grandchild (like
+    # this test's backgrounded `sleep`, reparented once its own shell dies)
+    # can outlive it; the delivered diagnostic says so rather than claiming
+    # confirmed cleanup it cannot back up.
+    assert next_state.running == nil
+    refute Process.alive?(task.pid)
+    refute Process.alive?(stuck_cleanup.pid)
+  end
+
+  test "a stray overdue message for a run already moved past is ignored" do
+    state = %{
+      project: %{root: "/tmp/not-used"},
+      running: %{run_id: 2, source: "exunit", args: [], tied_run_ids: []},
+      queue: [],
+      timer: nil
+    }
+
+    assert {:noreply, ^state} =
+             AnalysisServer.handle_info({:cleanup_overdue, 1, self()}, state)
   end
 
   defp spawn_hanging_task do

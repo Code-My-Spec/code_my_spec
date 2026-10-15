@@ -33,6 +33,17 @@ defmodule CmsHarness.Project.AnalysisServer do
   # which would otherwise hold every later analyzer behind it.
   @default_timeout :timer.minutes(30)
 
+  # 55379e16 follow-up: `Execution.stop/1`'s own confirmation is bounded (5s
+  # each for `await_owners`/`await_subprocesses`), but its very first step,
+  # discovering the live OS process tree via a shelled-out `ps`, carries no
+  # timeout of its own. If that ever hangs, `Execution.stop/1` never reaches
+  # the `Process.exit(pid, :kill)` that actually kills the analyzer task --
+  # which is also what releases its `AnalysisSlots` slot, since a slot is
+  # freed only by the death of the process that acquired it, not by anything
+  # this server does. An outer deadline, independent of Execution.stop/1's
+  # own internals, guarantees that process dies regardless.
+  @cleanup_confirm_deadline :timer.seconds(20)
+
   # --- Client ---
 
   def start_link(opts) do
@@ -264,7 +275,11 @@ defmodule CmsHarness.Project.AnalysisServer do
         Execution.stop(task_pid)
       end)
 
-    {:noreply, %{state | running: Map.put(running, :cleanup, cleanup), timer: nil}}
+    overdue_timer =
+      Process.send_after(self(), {:cleanup_overdue, run_id, task_pid}, @cleanup_confirm_deadline)
+
+    running = Map.merge(running, %{cleanup: cleanup, cleanup_timer: overdue_timer})
+    {:noreply, %{state | running: running, timer: nil}}
   end
 
   # The confirmed-dead report from the cleanup task above -- only now does
@@ -274,6 +289,7 @@ defmodule CmsHarness.Project.AnalysisServer do
         %{running: %{cleanup: %Task{ref: ref}} = running} = state
       ) do
     Process.demonitor(ref, [:flush])
+    cancel_cleanup_deadline(running)
 
     deliver(
       state,
@@ -292,7 +308,48 @@ defmodule CmsHarness.Project.AnalysisServer do
         {:DOWN, ref, :process, _pid, reason},
         %{running: %{cleanup: %Task{ref: ref}} = running} = state
       ) do
+    cancel_cleanup_deadline(running)
     deliver(state, running, {:error, "analyzer timeout cleanup crashed: #{inspect(reason)}"})
+    {:noreply, state |> clear_running() |> maybe_start_next()}
+  end
+
+  # 55379e16 follow-up: the cleanup task above has not reported back within
+  # its own bounded deadline, independent of whatever `Execution.stop/1` is
+  # doing internally (its confirmation loops are each bounded, but the `ps`
+  # call ahead of them is not). Force the analyzer task's own Elixir process
+  # dead directly -- that is what actually frees the `AnalysisSlots` slot it
+  # holds, regardless of whether the OS-process-tree walk ever completes --
+  # and move the queue on rather than leaving both wedged. Guarded on
+  # `run_id`: a message for a run this server has already moved past (the
+  # cleanup reported back in the race between it and this timer) is ignored
+  # by the generic `handle_info(_message, state)` clause below.
+  def handle_info(
+        {:cleanup_overdue, run_id, task_pid},
+        %{running: %{run_id: run_id} = running} = state
+      ) do
+    Logger.error(
+      "[CmsHarness] #{running.source} for #{state.project.root} timeout cleanup did not " <>
+        "confirm within #{@cleanup_confirm_deadline}ms of its own -- forcing the analyzer " <>
+        "task's process dead directly so its machine-wide slot is not leaked"
+    )
+
+    if cleanup = running[:cleanup] do
+      Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), cleanup.pid)
+      Process.demonitor(cleanup.ref, [:flush])
+    end
+
+    Process.exit(task_pid, :kill)
+
+    deliver(
+      state,
+      running,
+      {:error,
+       "analyzer timed out after #{timeout()}ms. Subprocess termination unconfirmed after " <>
+         "#{@cleanup_confirm_deadline}ms of its own cleanup attempt -- forced the analyzer " <>
+         "task's own process dead directly so its machine-wide slot is not leaked. An orphaned " <>
+         "OS subprocess may remain."}
+    )
+
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
@@ -499,6 +556,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     if state.timer, do: Process.cancel_timer(state.timer)
     %{state | running: nil, timer: nil}
   end
+
+  defp cancel_cleanup_deadline(%{cleanup_timer: timer}) when is_reference(timer),
+    do: Process.cancel_timer(timer)
+
+  defp cancel_cleanup_deadline(_running), do: :ok
 
   defp cleanup_status(:ok), do: "Subprocess termination confirmed."
 
