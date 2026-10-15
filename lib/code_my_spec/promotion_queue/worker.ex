@@ -297,8 +297,20 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       end
     else
       {:error, :gate_busy} -> wait_for_gate(state)
+      {:error, %{unreachable: true} = reason} -> wait_for_gate_harness(state, entries, reason)
       {:error, reason} -> could_not_gate(state, entries, reason)
     end
+  end
+
+  # The gate copy's harness restarts after every landing that changes harness
+  # code, and a batch built in that second found no machine and ejected a sound
+  # candidate (d759ce130, 2026-10-15). Waited out like a busy gate -- the copy
+  # rejoining wakes it -- and bounded the same way, so a harness that never
+  # comes back still lets the queue move.
+  defp wait_for_gate_harness(state, entries, reason) do
+    if waited_out?(gate_wait_since(state)),
+      do: could_not_gate(state, entries, reason),
+      else: wait_for_gate(state)
   end
 
   # The tree and test databases are not swapped under a run still going in the
