@@ -28,6 +28,18 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.RepositoryConfig do
       pushed {String.slice(commit.location, 0, 12)}
     </div>
 
+    <form
+      :if={@step.state != :running}
+      id="adopt-repository-form"
+      phx-submit="adopt_repository"
+      data-test="adopt-repository-form"
+      class="mt-3 flex flex-wrap items-end gap-2"
+    >
+      <.input name="owner" value="" label="GitHub owner or organization" required />
+      <.input name="name" value="" label="Existing repository name" required />
+      <.button type="submit">Adopt existing repository</.button>
+    </form>
+
     <div
       :if={@step.state == :paused}
       data-test="repository-collision"
