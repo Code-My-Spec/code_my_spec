@@ -23,14 +23,14 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
   end
 
   defp mount_request(socket, id, request) do
-    if not Notifications.recipient?(request, socket.assigns.current_scope.user.id) do
-      {:ok, socket |> put_flash(:error, "Not authorized") |> assign(request: nil)}
-    else
+    if Notifications.recipient?(request, socket.assigns.current_scope.user.id) do
       if connected?(socket) do
         Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "question_request:#{id}")
       end
 
       {:ok, assign(socket, page_title: "Answer", request: request)}
+    else
+      {:ok, socket |> put_flash(:error, "Not authorized") |> assign(request: nil)}
     end
   end
 
