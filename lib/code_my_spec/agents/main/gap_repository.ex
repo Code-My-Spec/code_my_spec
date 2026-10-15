@@ -27,21 +27,30 @@ defmodule CodeMySpec.Agents.Main.GapRepository do
   @doc """
   Note that the main agent covered for this role's missing capability.
 
+  `capability` is the dedupe key and should be a short, stable identifier (a
+  tool name, normalized) -- not the sentence describing what happened. That
+  sentence is `detail`: carried on the row and refreshed to the latest wording
+  on every recurrence, but never part of what decides two occurrences are the
+  same gap. Keying on prose that varies every time is how one gap got filed as
+  three issues (bb784152, 1a41b25f, 2f67ccdf) -- three different wordings of
+  the same missing tool, each believed to be the first occurrence.
+
   Returns the gap as it now stands, so the caller can see whether this was the
   first time and how many times it has happened.
   """
-  @spec record(Ecto.UUID.t(), String.t(), String.t()) ::
+  @spec record(Ecto.UUID.t(), String.t(), String.t(), String.t() | nil) ::
           {:ok, CapabilityGap.t()} | {:error, Ecto.Changeset.t()}
-  def record(project_id, role, capability) do
+  def record(project_id, role, capability, detail \\ nil) do
     %CapabilityGap{}
     |> CapabilityGap.changeset(%{
       project_id: project_id,
       role: to_string(role),
       capability: capability,
+      detail: detail,
       occurrences: 1
     })
     |> Repo.insert(
-      on_conflict: [inc: [occurrences: 1]],
+      on_conflict: [inc: [occurrences: 1], set: [detail: detail]],
       conflict_target: [:project_id, :role, :capability],
       returning: true
     )

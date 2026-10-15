@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2875Spex do
 
         # The machine cannot be reached to check, which is the case that forces
         # the question: with no answer available, is absence enough?
-        machine_out_of_reach(context)
+        machine_out_of_reach(context.scope)
 
         {:ok, _reply, socket} =
           UserSocket

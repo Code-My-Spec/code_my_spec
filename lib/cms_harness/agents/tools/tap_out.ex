@@ -6,7 +6,7 @@ defmodule CmsHarness.Agents.Tools.TapOut do
   and not a script's" — an argument about scripts, and the engine did not carry
   it either, so the exit was reachable by no route at all.
 
-  `Validation.Menu.tap_out_offer/1` prints it on every refusal an agent gets
+  `Agents.Menu.tap_out_offer/1` prints it on every refusal an agent gets
   inside the loop: "if continuing is not worth the tokens, `tap_out` asks to
   leave it". That offer was made to agents that could not take it.
 

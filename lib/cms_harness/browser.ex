@@ -8,52 +8,24 @@ defmodule CmsHarness.Browser do
 
   ## One session per copy
 
-  `vibium mcp` is one process per stdio client, and each launches a Chrome of
-  its own. Three concurrent `vibium mcp --headless` processes on this machine,
-  navigated to three different pages at once, each reported its own title back
-  — so two copies, two QA agents, can each hold a browser without seeing the
-  other's page. Calls are routed per copy already: the server pushes
-  `tool_call` on that copy's channel.
+  Each `vibium mcp` process launches its own Chrome, so each copy holds its own
+  session and never sees another's page. The session is owned by
+  `CmsHarness.Browser.Owner` (in the copy's `Project.Supervisor`), which
+  serialises connects and closes the session when the copy stops being served.
 
-  The machine-wide `{:global, {CmsHarness.Browser, :session}}` this replaces is
-  what every harness boot tripped on. Every copy probes at join, all at once,
-  and all but one collided on that single name. `Anubis.Client.start_link/1`
-  links its supervisor to the caller, so each loser's probe process was killed
-  by the failed start — `{:shutdown, {:failed_to_start_child, Anubis.Client,
-  {:already_started, pid}}}` — rather than handed an error it could recover
-  from, and the empty answer was then memoised for the whole VM.
+  Its tools are not carried by the agent: they go into the catalog a script can
+  call, with names discovered from this machine's vibium, never declared here.
 
-  The session is owned by the copy (`CmsHarness.Browser.Owner`, a child of the
-  copy's project supervisor): connects for one copy are serialised there, and
-  the session is closed when the copy stops being served.
-
-  ## Why it is not twenty-nine tools on the agent
-
-  `vibium mcp` answers `tools/list` with eighty-five tools, and every one of them
-  would be a schema the model reads on every turn. So a third-party server is
-  mounted the way ours is: its tools go into the catalog a script can call, and
-  the agent carries nothing extra for them. The names are discovered rather than
-  declared — this machine's vibium answers, not a list written here that would
-  drift the first time vibium ships a tool.
-
-  ## Absent is a state, and a quiet one
-
-  A machine with no vibium reports no browser tools, and an agent there is
-  computed without them. That is the honest answer and it is nearly invisible: a
-  QA agent that cannot look at anything does not fail, it just never looks.
+  A machine with no vibium reports no browser tools — a quiet state, so it is
+  logged. See knowledge/harness, "Browser".
   """
 
   require Logger
 
   alias CmsHarness.Mcp.Transport
 
-  # What vibium speaks, and it will not negotiate.
-  #
-  # Proposing `2025-06-18` — our own server's version, and this client's default
-  # — gets **no reply at all** rather than a counter-offer, so `initialize` never
-  # completes and every later request is answered "Server capabilities not set".
-  # The same request with `2024-11-05` comes back with serverInfo and a tools
-  # capability.
+  # What vibium speaks. Proposing a newer version gets no reply at all, not a
+  # counter-offer, so `initialize` never completes.
   @protocol_version "2024-11-05"
 
   @typedoc """
@@ -62,11 +34,10 @@ defmodule CmsHarness.Browser do
   `names` is the scoping list: which tools an agent may call is read off names.
   `docs` is what each takes, keyed by name — reported with the manifest rather
   than fetched when asked, because the path an agent uses to decide what to call
-  is the one that queues behind sibling agents (35e5eb59). `status` says why the
-  list is what it is: `:absent` for a machine with no vibium,
-  `{:unreachable, reason}` for one that has it and could not be reached,
-  `:ready` otherwise. Both of the first two report no tools, and only the second
-  is a fault (02b03d04).
+  is the one that queues behind sibling agents. `status` says why the list is
+  what it is: `:absent` for a machine with no vibium, `{:unreachable, reason}`
+  for one that has it and could not be reached, `:ready` otherwise. Both of the
+  first two report no tools, and only the second is a fault.
   """
   @type probe :: %{
           names: [String.t()],
@@ -118,15 +89,12 @@ defmodule CmsHarness.Browser do
   @doc """
   Ask this copy's browser what it offers.
 
-  In a process of its own, and bounded. This is called from the channel join —
-  the most important thing this harness does — and `Anubis.Client.start_link/1`
-  links its supervisor to whoever called it, so a crash in there takes the
-  caller down whatever the caller has wrapped itself in. `spawn_monitor`,
-  unlinked, with a deadline, is what isolates it.
+  In an unlinked, monitored process with a 5s deadline: it is called from the
+  channel join, and `Anubis.Client.start_link/1` links to its caller, so a
+  crash there would take the join down.
 
-  Not memoised. The session it opens is kept for the copy's tool calls, so a
-  later join asks a session that is already up; and a machine-wide memo is what
-  turned one probe that lost into every copy on the machine reporting none.
+  Not memoised: the session it opens is kept, so a later join asks a session
+  that is already up.
   """
   @spec probe(String.t()) :: probe()
   def probe(root) do
@@ -150,9 +118,7 @@ defmodule CmsHarness.Browser do
          {:ok, tools} <- Transport.impl().list_tools(client) do
       %{names: Enum.map(tools, & &1["name"]), docs: docs(tools), status: :ready}
     else
-      # The one empty answer that is not a failure — and still worth saying,
-      # because it is the quiet one. vibium ships on npm, so there is no formula
-      # to depend on and this is where a person finds out instead (ebc5586d).
+      # Not a failure, but the quiet one, so say it: vibium ships on npm.
       {:error, :no_browser} ->
         Logger.info(
           "[CmsHarness] no browser on this machine, so agents started here cannot " <>
@@ -182,8 +148,7 @@ defmodule CmsHarness.Browser do
     end)
   end
 
-  # Said once in the log and once in the answer, so the reason travels with the
-  # empty list and stays a different answer from a machine with no vibium.
+  # In the log and in the answer, so it stays distinct from `:absent`.
   defp unreachable(root, reason) do
     Logger.warning(
       "[CmsHarness] #{reason} for #{root}; agents started there will have no browser tools"
@@ -220,14 +185,8 @@ defmodule CmsHarness.Browser do
   defp opts(timeout) when is_integer(timeout) and timeout > 0, do: [timeout: timeout]
   defp opts(_other), do: []
 
-  # Configurable so a machine that keeps it somewhere unusual is not stuck, and
-  # so a test can point at something that is not a browser.
-  # `false` means "there is no browser here", which is different from unset.
-  # Unset looks on PATH; `false` is a machine that has one and should not use it
-  # — a server, a box where agents must not drive a browser — and it is the only
-  # way to reach the `:absent` branch on a machine where vibium is installed,
-  # which is every machine a test runs on here. Unset launches the binary behind
-  # the npm shim, not the shim (`CmsHarness.Browser.Executable`).
+  # `:vibium_executable`: a path; unset finds the binary behind the npm shim
+  # (`CmsHarness.Browser.Executable`); `false` means "use no browser here".
   defp executable do
     case Application.get_env(:code_my_spec, :vibium_executable, nil) do
       false -> nil

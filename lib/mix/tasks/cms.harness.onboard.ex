@@ -13,64 +13,38 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   packaged release ends up with an id its own daemon has never heard of.
 
   Reads the id the server issued this working copy and writes it to
-  `.cms_harness.json` and `.claude/settings.local.json`. **Neither `--plugin-dir`
-  nor the generated `.claude/plugin-dev` copy is required for this to work.**
-  The tracked, installed plugin (`codemyspec@codemyspec`, already enabled by
-  default) resolves the working copy on its own:
+  `.cms_harness.json` and `.claude/settings.local.json`. No `--plugin-dir` is
+  needed: the installed plugin (`codemyspec@codemyspec`) resolves the working
+  copy on its own.
 
-    * Hooks are a plain `curl` that posts the payload and nothing else. Every
-      Claude Code hook payload carries `cwd`, and the harness walks up from it
-      to `.cms_harness.json` — see `CmsHarness.Web.ResolveWorkingCopy`. No id in
-      the command, no interpolated variable, no per-platform shell: `bin/hook`,
-      `hook.cmd` and `hook.ps1` were three implementations of one walk and are
-      gone.
+    * Hooks are a plain `curl` that posts the payload. Every Claude Code hook
+      payload carries `cwd`, and the harness walks up from it to
+      `.cms_harness.json` — see `CmsHarness.Web.ResolveWorkingCopy`. An
+      un-onboarded directory is refused by name rather than adopting a parent
+      checkout's identity.
 
-    * MCP is declared as `{"type": "http", "url": "http://localhost:4004/mcp",
-      "headers": {"X-Harness-Id": "${CMS_HARNESS_ID}"}}` in the tracked
-      `plugin.json`. An `mcpServers` entry interpolates environment variables
-      and cannot read a file, so this is the one surface that needs the
-      variable — and the `env` block this task writes is what sets it. The
-      cloud mount takes the same header and nothing else: a harness belongs to
-      exactly one project, so it answers both questions and cannot contradict
-      itself.
+    * MCP is declared in the tracked `plugin.json` with the header
+      `X-Harness-Id: ${CMS_HARNESS_ID}`. An `mcpServers` entry interpolates
+      environment variables and cannot read a file, so this is the one surface
+      that needs the variable — and the `env` block this task writes sets it.
 
-  Verified live on 2026-08-20: a bare `curl` posting only `{"cwd": …}` resolved
-  this working copy, and an un-onboarded directory came back named — "… has not
-  been onboarded, run `mix cms.harness.onboard <dir>`" — rather than silently
-  adopting a parent checkout's identity.
-
-  This task writes no plugin directory at all — there is nothing left for it to
-  address that the installed plugin does not already resolve on its own. The
-  one exception, and the reason `plugins/claude` still exists as source in this
-  repo, is developing the plugin itself: editing `plugins/claude/agents`,
-  `skills`, or `hooks.json` and needing an agent to run *this checkout's* copy
-  before it ships. That is a manual `--plugin-dir` pointed at `plugins/claude`
-  directly — this task has no part in it, because it is not about addressing.
+  Developing the plugin itself (`plugins/claude`) is a manual `--plugin-dir`;
+  this task has no part in it.
 
   ## What gets minted
 
   A harness config at the working copy's root — `CmsHarness.HarnessConfig` —
-  holding the id the server issued, the project it serves, and where it is. The
-  server records the same root on the harness object.
-
-  That file is why nothing has to be discovered afterwards. A working copy
-  knows where it is; writing that down when its identity is minted removes
-  every mechanism that previously guessed — the walk up to the nearest
-  `mix.exs`, the list of directories in the environment, the lookup against the
-  server.
+  holding the id the server issued, the project it serves, and where it is.
+  The server records the same root on the harness object, so nothing has to be
+  discovered afterwards.
 
   Asking the server for the id rather than waiting for a channel join is what
   lets a brand-new worktree be onboarded before anything has ever run in it.
   """
 
   use Mix.Task
-  # Classified to CmsHarness rather than CodeMySpec, unlike every other task in
-  # here. This one is a harness task — it reads the harness config and the
-  # harness's own server settings — and `CodeMySpec` may not reference
-  # `CmsHarness`; the dependency runs the other way. Classified to CodeMySpec it
-  # compiled with a forbidden-reference warning, and the analyzer treats any
-  # compiler problem as a reason to skip exunit, credo and spex entirely, so one
-  # misclassified line holds back every other check.
+  # Classified to CmsHarness, unlike the other tasks: it reads the harness
+  # config and settings, and `CodeMySpec` may not reference `CmsHarness`.
   use Boundary, classify_to: CmsHarness
 
   alias ClientUtils.Harness.Onboarding
@@ -90,12 +64,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   @impl Mix.Task
   def run(args) do
-    # `:req` and nothing else. Minting an id is one HTTP call, and this runs in
-    # checkouts that have never been started — `app.start` would boot Phoenix
-    # and Ecto to make it, and fail on a database the new copy does not need.
-    # Without this the call reaches Finch before its pool registry exists and
-    # dies as `unknown registry: Req.Finch`, which reads like a dependency
-    # problem rather than a task that forgot to start one.
+    # `:req` and nothing else: minting is one HTTP call, and `app.start` would
+    # boot Phoenix and Ecto in a checkout that has never been started.
     {:ok, _} = Application.ensure_all_started(:req)
 
     root = target_root(args)
@@ -111,28 +81,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # Every file this writes goes through `Environments`, and the environment is
-  # resolved once here. `--project` names one already registered, which is how a
-  # spec drives this: it registers the in-memory environment and the task writes
-  # into it, so onboarding is observable on the filesystem surface rather than
-  # through a directory a spec had to build.
-  #
-  # That mattered more than it looks. Written against `File.write!/2` this task
-  # could only be exercised by constructing a working copy on disk — a temp
-  # directory, a git repo, a plugin tree, a hand-written harness config — and
-  # every one of those is a fixture standing in for a surface. The boundary said
-  # so first: `CodeMySpecSpex` may not reference `CmsHarness`, and the way past
-  # that is not to write the bytes yourself.
-  # Where the disk is, which is a different question from which project this
-  # checkout belongs to.
-  #
-  # A registered environment wins when there is one: that is the remote-checkout
-  # case, and writing locally there would put the config on the wrong machine.
-  # Otherwise the disk is here.
-  #
-  # `--project` used to *require* a registered environment and raise without
-  # one, which blocked the case the flag now exists for — onboarding a local
-  # checkout for a project this session is not scoped to.
+  # Where the disk is (a different question from which project this checkout
+  # belongs to). A registered environment for `--project` wins — the
+  # remote-checkout case, and how a spec drives this through an in-memory
+  # environment; otherwise the disk is here. Every write goes through
+  # `Environments`.
   defp environment(root, args) do
     registered =
       case project_flag(args) do
@@ -161,68 +114,27 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end)
   end
 
-  # Absence has to report itself. Every incident behind story 1013 was a missing
-  # thing that produced no error where it was missing and surfaced somewhere far
-  # away wearing another failure's costume — a stale analyzer database arriving as
-  # `undefined_column` from inside a `given_`, a submodule losing writes in
-  # silence, `0/0 satisfied` meaning three different things. An agent that can ask
-  # a working copy whether it is onboarded never has to infer it from the wreckage.
-  #
-  # It prints as well as returns, and the print is not decoration. The first
-  # version only returned, which is what the spex assert — correctly, since a
-  # structured return is what makes this callable. But a mix task's return value
-  # goes to whoever called it, and at a terminal that is nobody: `--check` gave
-  # identical empty output for opposite states, which is worse than unhelpful. QA
-  # caught it where the spex structurally could not (d053bac5), and it was this
-  # story's own defect wearing the costume of its own fix.
-  #
-  # It answered from `file_exists?` alone for the same reason, and got the one
-  # state anybody runs it to diagnose wrong: a run that refuses partway leaves
-  # the file behind, written by an earlier attempt. The measured copy printed
-  # `onboarded:` and `hooks: skipped` two lines apart while `CMS_HARNESS_ID` was
-  # absent and `ANTHROPIC_BASE_URL` was the prefix with no id on it — so the
-  # plugin's MCP mount sent the literal `${CMS_HARNESS_ID}` and every hook
-  # resolved to the *parent* checkout's harness for three days (`c79ee092`).
-  #
-  # So this asks `client_utils`, which is the only implementation now.
-  #
-  # There were two. This side had its own `check/2`, its own `@required_env`,
-  # its own `blank_or_invalid?/2` — and its own comment saying so: "two
-  # implementations … kept in step by naming the same three keys rather than by
-  # one calling the other: this side reads through `Environments` so specs can
-  # drive an in-memory copy." The reason was real and the conclusion was not.
-  # `Onboarding`'s port takes `{module, handle}` and its callbacks are
-  # `Environments`' own functions, so driving it through `Environments` is the
-  # argument below and nothing else.
+  # Absence has to report itself. Asks `ClientUtils.Harness.Onboarding.check/2`,
+  # the one implementation, through `Environments` so specs can drive it. It
+  # prints as well as returns: at a terminal the return value goes nowhere.
   defp check(env, root) do
     report = Onboarding.check(root, io: io(env), remedy: "mix cms.harness.onboard")
     announce_check(report.onboarded, report.missing, report.remedy, root)
     report
   end
 
-  # No adapter, on purpose. `Onboarding.Port` calls `read_file/2`,
-  # `write_file/3`, `file_exists?/2` and `cmd/4` on whatever module it is given,
-  # with the handle it is paired with — which is `CodeMySpec.Environments`'
-  # contract exactly. A translation module here would have contained four
-  # renames and nothing else, and a layer whose whole content is a rename is a
-  # layer that will eventually disagree with the thing it renames.
+  # No adapter: `Onboarding.Port` calls `read_file/2`, `write_file/3`,
+  # `file_exists?/2` and `cmd/4` on the module it is given — `Environments`'
+  # contract exactly.
   defp io(env), do: {Environments, env}
 
   defp announce_check(true, _missing, _remedy, root) do
     Mix.shell().info("onboarded: #{root}")
   end
 
-  # Names them, because "not onboarded" alone sends the reader back to the file
-  # to work out which half failed — and the half-onboarded copy, file present
-  # and some keys right, is where that costs most.
-  #
-  # The remedy is the one `check/2` returned, not a constant repeated here. The
-  # shared default names `--id`, because a generated application cannot mint a
-  # harness id — nothing in it talks to the server, so a bare re-run leaves the
-  # same keys missing and the advice is a loop. This task *does* mint, which is
-  # why it passes `remedy: "mix cms.harness.onboard"`: here the bare command is
-  # the whole fix, and printing `--id` would send the reader hunting a value
-  # they never need.
+  # Names the missing keys, and prints the remedy `check/2` returned. The shared
+  # default names `--id` (a generated app cannot mint); this task mints, so its
+  # remedy is the bare command.
   defp announce_check(false, [_ | _] = missing, remedy, root) do
     Mix.shell().info(
       "not onboarded: #{root}\n  missing: #{Enum.join(missing, ", ")}\nrun: #{remedy}"
@@ -246,40 +158,15 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # Into the checkout's own config, which is where the harness will read it and
-  # report it from. Written here because onboarding is the one moment something
-  # knows both that this machine exists and that it is the one serving this
-  # project — and written down rather than held, so a restart does not lose it.
+  # Into the checkout's own config, which is where the harness reads it. Called
+  # directly rather than over `/api/harnesses/:id/preview`, because this task
+  # runs inside CodeMySpec, where the Cloudflare credential lives; both end at
+  # `PreviewTunnel.ensure/1`.
   #
-  # Provisioned here rather than passed in on a flag. It was a flag for a day,
-  # which made the address something an operator had to already know — the exact
-  # errand story 968 exists to remove.
-  #
-  # Called directly rather than over `/api/harnesses/:id/preview`, because this
-  # task *is* the server: it runs inside CodeMySpec, which is where the
-  # Cloudflare credential lives. `client_utils` has the same job and no
-  # credential, so it asks over HTTP; both end at `PreviewTunnel.ensure/1`.
-  #
-  # Every refusal is `:ok`. A worktree gets one, a machine with no Cloudflare
-  # account configured gets one, and neither is a reason to fail an onboarding
-  # that has already established this copy's identity and databases.
-  #
-  # ## It has to start the database itself
-  #
-  # `run/1` starts `:req` and nothing else, on purpose — this task runs in
-  # checkouts that have never been started, where `app.start` would boot Phoenix
-  # and Ecto against a database the new copy does not need. `WorkingCopies.fetch/1`
-  # is a `Repo.get`, so reaching it without saying so raised
-  # "could not lookup Ecto repo CodeMySpec.Repo" on *every* invocation — after
-  # the id had been minted, the row created and the config written, so half the
-  # onboarding stood and the operator saw only a stack trace. Running it again
-  # then minted a second working copy for the same root.
-  #
-  # `start_local_repo/0` already exists for this, and brings up only `Vault` and
-  # `Repo` rather than the endpoint a `mix phx.server` may already have bound.
-  # A machine with no database reachable is a refusal like the others, not a
-  # failure: the preview is an address, and the identity this task exists to
-  # write is already on disk.
+  # Every refusal is `:ok` — a worktree, no Cloudflare account, no reachable
+  # database — because the identity is already written. `reachable_repo/0`
+  # starts only `Vault` and `Repo` (via `start_local_repo/0`): `run/1` starts
+  # just `:req`, and `WorkingCopies.fetch/1` is a `Repo.get`.
   defp provision_preview(env, root, id) do
     with :ok <- reachable_repo(),
          {:ok, copy} <- WorkingCopies.fetch(id),
@@ -299,10 +186,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # Started *and* answering. `Repo.start_link/1` succeeds against a database
-  # nobody is running — Postgrex pools connect lazily — so a started repo is not
-  # yet evidence that a query will not raise. One `SELECT 1`, which returns a
-  # tuple rather than raising, is.
+  # Started *and* answering: Postgrex pools connect lazily, so a started repo is
+  # not evidence a query will work. One `SELECT 1`, which returns a tuple.
   defp reachable_repo do
     with :ok <- start_local_repo(),
          {:ok, _result} <- SQL.query(CodeMySpec.Repo, "SELECT 1", []) do
@@ -321,13 +206,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   """
   def record_preview(_env, _root, _id, preview) when preview == %{}, do: :ok
 
-  # Merged over what the file already says, never written from scratch. By the
-  # time this runs `identity/3` has recorded `project_id` there, and possibly a
-  # `deploy_key` beside it, and a fresh map would take both with it — leaving a
-  # copy that can no longer say which project it serves and has lost its
-  # credential. `HarnessConfig.write/2` merges for exactly this reason; this
-  # path cannot call it because the copy may be on another machine, so it does
-  # the same thing through `Environments`.
+  # Merged over what the file already says, never written from scratch:
+  # `identity/3` has recorded `project_id` and possibly a `deploy_key` there.
+  # Same rule as `HarnessConfig.write/2`, through `Environments` because the
+  # copy may be on another machine.
   def record_preview(env, root, id, preview) do
     body =
       env
@@ -354,30 +236,19 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # `address_model_turns/4` is opt-in, not the default: its proxy only
-  # understands `/v1/messages`, so routing an interactive session's model
-  # turns through it silently breaks any other Anthropic surface the Claude
-  # Code client needs (`/remote-control` measured, 2026-08-19) with no error
-  # anywhere naming why. `address_mcp/3` covers what every session needs
-  # regardless — `CMS_HARNESS_ID` for MCP, the partition — without that.
+  # `address_model_turns/4` is opt-in: its proxy only understands
+  # `/v1/messages`, so routing an interactive session's turns through it breaks
+  # other Anthropic surfaces silently. `address_mcp/3` covers what every
+  # session needs — `CMS_HARNESS_ID` for MCP, the partition.
   defp address(env, root, id, true), do: address_model_turns(env, root, id)
   defp address(env, root, id, false), do: address_mcp(env, root, id)
 
   defp address_mcp(env, root, id), do: write_settings(env, root, id, false, nil)
 
-  # A brand-new worktree has neither of the dev-only surfaces this repo keeps
-  # outside git: `envs/.env` (other secrets this build reads, and the fixture
-  # data devops spex want) and the sibling `code_my_spec_test_repos` checkout
-  # the devops spex read. Both live once and get symlinked into every
-  # worktree — `.gitignore` says as much ("Symlinked into worktrees alongside
-  # /envs") — but nothing actually did the symlinking for a worktree made
-  # outside `just`, so `MIX_ENV=test` compiles refuse on `GITHUB_CLIENT_ID not
-  # set`, unreadable as "you're missing a symlink".
-  #
-  # Best-effort and silent by design: a generated application has none of
-  # this, and a checkout that is not a linked worktree of a repo carrying
-  # these directories just isn't this case — `main_checkout_root/1` returns
-  # `nil` or `root` itself and everything below no-ops.
+  # A new worktree lacks the dev-only surfaces kept outside git — `envs/.env`
+  # and the sibling `code_my_spec_test_repos` checkout — which live once and are
+  # symlinked into every worktree. Best-effort and silent: anything that is not
+  # a linked worktree of such a repo no-ops (`main_checkout_root/1`).
   defp bootstrap_local_dev_env(root) do
     case main_checkout_root(root) do
       nil ->
@@ -413,37 +284,19 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # The deploy key minting exchanges is the project's own — `Projects.Project`
-  # schema, `deploy_key` field — not a copy of it hand-pasted into a file.
-  # This machine's own database already has that row: a local dev server and
-  # this task read the same `code_my_spec_dev`, so there is nothing to keep in
-  # sync. Best-effort and silent — no local database, a project this database
-  # does not know, or a blank key all leave `CmsHarness.Token` to answer
-  # exactly as it did before this existed, and a copy served by a daemon holding
-  # that project's key already works.
-  #
-  # Answers the key rather than exporting it. It used to `System.put_env` into
-  # `CMS_DEPLOY_KEY` and return `:ok`, and nothing has read that variable since
-  # the environment came out of `CmsHarness.Config`:
-  # `Credentials.from_configured_deploy_key/0` reads `:harness_deploy_key`,
-  # which no config file in this repo sets. So this found the right key, put it
-  # somewhere nothing looks, and onboarding failed `:no_credential` telling the
-  # operator to export the same variable.
+  # The project's own deploy key, from this machine's database (a local dev
+  # server and this task share `code_my_spec_dev`). Returned, not exported.
+  # Best-effort: no database, an unknown project or a blank key leaves
+  # `CmsHarness.Token` to answer.
   defp ensure_local_credential(project_id) do
     cond do
       not blank?(System.get_env("CMS_DEPLOY_KEY")) ->
         {:ok, System.get_env("CMS_DEPLOY_KEY")}
 
       not local_server?(Config.server_url()) ->
-        # The database this reads is on this machine, and it backs a server on
-        # this machine. Asked about a project id that belongs to a remote
-        # CodeMySpec it can only answer "never heard of it", which is true of the
-        # database and says nothing about the credential.
-        #
-        # Silence there cost a diagnosis: onboarding against production with a
-        # production project id failed `:no_credential`, and that was read as
-        # "production's project has no key" — true, and not the reason. Nothing
-        # in this path asks production for anything.
+        # This database backs only a server on this machine; for a remote
+        # project id it can only answer "never heard of it", which says nothing
+        # about the credential.
         Mix.shell().info([
           :yellow,
           "Not reading a deploy key from the local database: this is onboarding " <>
@@ -463,12 +316,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   # A key in hand exchanges directly; otherwise fall back to the lookup.
-  #
-  # `Token.access_token/0` cannot serve this call. Every credential it consults
-  # is indexed by a root or by a project the daemon is already serving, and a
-  # copy being onboarded is neither — that is what onboarding it means. So it
-  # answers `:no_credential`, which reads as "this machine has no credential"
-  # while eleven onboarded copies sit beside it holding good ones.
+  # `Token.access_token/0` cannot serve this: its credentials are indexed by
+  # roots and projects the daemon already serves, and a copy being onboarded
+  # is neither.
   defp token_for({:ok, key}), do: Token.access_token_for_key(key)
   defp token_for(:none), do: Token.access_token()
 
@@ -499,11 +349,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     _ -> nil
   end
 
-  # Only the two children a `deploy_key` read needs — `Vault` to decrypt the
-  # column, `Repo` to fetch the row — never the full application. This runs
-  # inside a one-shot mix task that a `mix phx.server` may already have bound
-  # to :4000; starting `CodeMySpecWeb.Endpoint` alongside it would crash this
-  # task on `:eaddrinuse` to save one database read.
+  # Only `Vault` (to decrypt the column) and `Repo`, never the full
+  # application: a `mix phx.server` may already hold :4000.
   defp start_local_repo do
     Application.ensure_all_started(:postgrex)
     Application.ensure_all_started(:ecto_sql)
@@ -523,11 +370,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # Reported, not raised — the same shape as the hooks above and for the same
-  # reason. A working copy that is not a git repository still wants its identity,
-  # its partition and its address; aborting all of that because one `git config`
-  # could not run would report the absence of a repository as a failure to
-  # onboard, which is this story's whole complaint.
+  # Reported, not raised: a working copy that is not a git repository still
+  # wants its identity, partition and address. `submodule.recurse` matters
+  # because a submodule sits in detached HEAD and accepts writes with no
+  # branch to carry them.
   defp configure_git(env) do
     Enum.reduce_while(Onboarding.git_config(), true, fn {key, value}, true ->
       case Environments.cmd(env, "git", ["config", key, value]) do
@@ -541,66 +387,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end)
   end
 
-  # Named, and made by the run that wants them.
-  #
-  # Onboarding still creates nothing, and that rule is not stylistic: the version
-  # of this that did shelled out to `mix` with an environment that had `MIX_ENV`
-  # scrubbed out of it, so it resolved to **dev** — the database every agent
-  # shares — and a sibling truncate emptied it three times on 2026-08-13,
-  # reporting the rows it destroyed as escaped test data while it did so.
-  #
-  # What changed is who is asked to act. This printed six commands and left an
-  # agent to run them, which is telling an LLM to do what a program can do — and
-  # six commands is six chances to do five, with the `s` and `a` partitions the
-  # easy ones to skip because nothing wants them until a spex or analyzer run.
-  # `Mix.Tasks.Cms.CheckTestMigrations` now creates and migrates the partition
-  # in-VM on the first `mix test` or `mix spex` that needs it, so there is
-  # nothing outstanding here to hand over.
-  #
-  # They are still *named*. The report is what tells a reader which databases
-  # this working copy owns, and that question survives having nobody to answer
-  # it — it is what you read when you are looking at a list of databases
-  # wondering which to drop.
-  # The app the *target* is, not the app this task is running in.
-  #
-  # `Mix.Project.config()[:app]` answers for the project the VM booted, which is
-  # this repo. Onboarding another directory then named its databases after this
-  # one: a generated application called `verifyapp` was told it needed
-  # `code_my_spec_testhf3e24487`, while running `mix harness.onboard` inside it
-  # correctly said `verifyapp_testhf3e24487`. The partition agrees in both —
-  # it is derived from the path — so only the prefix was wrong, and wrong in the
-  # direction of naming a database belonging to a different application.
-  #
-  # `client_utils` warned about exactly this in `onboard_opts/1`: "The app name
-  # is required, never defaulted. Defaulting it is what produced
-  # `code_my_spec_test_*` inside an application called something else — a
-  # printed command that creates a different database than the one it names."
-  # It stopped being defaulted and started being taken from the wrong project,
-  # which produces the identical symptom.
-  #
-  # Read from the target's own `mix.exs` rather than evaluated: evaluating
-  # another project's build file to print a database name is far more than the
-  # question deserves, and `app:` is a literal atom in every generated app.
+  # `target_app/1` (below) is the app the *target* is, read from its own
+  # `mix.exs` — `Mix.Project.config()[:app]` names this repo, and would name
+  # another directory's databases after it. Read, not evaluated: `app:` is a
+  # literal atom in every generated app.
   @doc false
-  # Onboarding a checkout that is not under the one this build came from.
-  #
-  # The id is minted against `Config.server_url()`, which resolves from *this*
-  # process's env and app config — `CMS_SERVER_URL`, or the harness env's
-  # runtime default, codemyspec.com. Nothing
-  # about the target root is consulted, and a checkout has no way to name the
-  # server it belongs to.
-  #
-  # So a sibling repo can be onboarded against the wrong server and every
-  # artifact looks right: a plausible `.cms_harness.json`, a real harness id, a
-  # successful-looking run. It only surfaces later as "No harness with id …"
-  # from the daemon that actually serves that checkout, which reads like a
-  # deleted row rather than two servers that never shared data.
-  #
-  # The remedy is `--server-url`, which is the only thing that can be right: no
-  # tier under `Config.server_url/0` knows anything about the target, and the
-  # target has no key that names its server. The warning stays because the
-  # default is still the calling build's and a caller who did not think about it
-  # gets the same wrong answer — it just now says what to type.
+  # The id is minted against `Config.server_url/0`, which knows only *this*
+  # build. A sibling repo onboarded against the wrong server looks fine until
+  # its daemon answers "No harness with id …". The remedy is `--server-url`.
   defp warn_if_foreign_root(root) do
     here = File.cwd!() |> Path.expand()
     root = Path.expand(root)
@@ -640,13 +434,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # A target whose `mix.exs` cannot be read or does not name an app keeps the
-  # running project's answer, and that is a compromise rather than a fix: it is
-  # the old behaviour, and it is wrong in the same way. It is chosen over
-  # refusing because the databases are named for information now — nothing runs
-  # the printed commands since the first `mix test` creates what it needs — so a
-  # wrong prefix misinforms where a refusal would block an onboarding that has
-  # nothing else wrong with it.
+  # A target whose `mix.exs` cannot be read or names no app keeps the running
+  # project's answer. Wrong, but the databases are named for information only,
+  # and a refusal would block an otherwise sound onboarding.
   defp app_from_mix_exs(root, fallback) do
     with {:ok, contents} <- File.read(Path.join(Path.expand(root), "mix.exs")),
          [_, app] <- Regex.run(~r/^\s*app:\s*:([a-z][a-z0-9_]*)/m, contents) do
@@ -660,10 +450,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     partition = Onboarding.partition_name(root)
     databases = Onboarding.databases(partition, target_app(root))
 
-    # Everything the report knows, the terminal says. The report is the callable
-    # answer and the print is the readable one, and they carry the same facts —
-    # anything present in one and absent from the other is the `--check` defect
-    # waiting to happen again.
+    # The report and the print carry the same facts. Databases are named, not
+    # created: `Mix.Tasks.Cms.CheckTestMigrations` creates and migrates each in
+    # its own VM on first use.
     Mix.shell().info("""
 
     onboarded: #{root}
@@ -686,82 +475,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     }
   end
 
-  # Informational only — the installed marketplace plugin already calls
-  # `cms-mcp-relay hook /api/hooks/<name>` with no id in the command, and the
-  # relay itself resolves this working copy by walking up from the hook
-  # payload's `cwd` to `.cms_harness.json` (`relay/hook.go`, `harnessID/1`).
-  # Nothing here writes to, or depends on, that binary — onboarding has no
-  # plugin config left to gate. This only exists so a stale relay is named
-  # instead of discovered as eight silently dead hooks.
-
-  # `cms-mcp-relay` is no longer checked here.
-  #
-  # It was, and the reasoning was sound: hooks shelled out to
-  # `cms-mcp-relay hook /api/hooks/<name>`, and a relay from before that
-  # subcommand existed did not reject the argument — `hook` was not a flag it
-  # knew, so it fell through to the MCP path, posted the hook payload to
-  # /mcp?dir=, took the JSON-RPC parse error and exited 0. Claude Code reads 0
-  # as a hook that ran. All eight went silently dead with no error on either
-  # side, which is why the `capabilities` marker existed and why this reported
-  # its absence.
-  #
-  # Hooks are a plain `curl` now and the relay is not in that path, so the
-  # class is gone rather than mitigated: there is no version of curl that can
-  # be stale, and no argv a wrong binary can misread. The relay still ships
-  # for Codex's MCP mount, which is a different question from whether this
-  # checkout's hooks will fire.
-  # Takes a path so one checkout can onboard another. A worktree on an older
-  # branch does not have this task, and asking somebody to merge a branch
-  # before they can be onboarded is a worse first experience than a positional
-  # argument.
-  #
-  # Flags are skipped rather than treated as the path. `--check` alone used to
-  # become the root: `target_root(["--check"])` expanded it against the cwd, and
-  # the task then reported
-  #
-  #     not onboarded: /…/phx-new-generator/--check
-  #       missing: CMS_HARNESS_ID, MIX_TEST_PARTITION, ANTHROPIC_BASE_URL
-  #
-  # for a directory that does not exist, while all three values were present the
-  # whole time. That is the worst way for a check to fail — not an error, but a
-  # confident report that the thing you asked about is broken. Anyone acting on
-  # it re-onboards a working copy that was already fine.
-  #
-  # `--project <id>` has to lose its *value* too, not just the flag: the id is a
-  # bare word, so dropping only tokens starting with `-` would leave the id
-  # standing where the path goes and expand it against the cwd. Same bug, one
-  # argument along.
-  # `--device <id>`, read once and left where `device_id/0` can find it.
-  #
-  # Into application env rather than threaded, because the value is needed five
-  # calls down — `onboard/4` → `identity/3` → `mint/2` → `post/3` — and none of
-  # the four in between has any business knowing about it. The same seam
-  # `:device_config_path` uses, in a task that runs once and exits.
-  # Which server mints the id, when the caller knows better than the build does.
-  #
-  # The id is minted against whatever `Config.server_url/0` resolves, and every
-  # tier of that answers with the *calling* build: a dev checkout says
-  # localhost:4000, a packaged release says codemyspec.com. Onboarding a sibling
-  # repo from here therefore mints into a database the daemon that actually
-  # serves it has never seen, and the failure surfaces much later as "No harness
-  # with id …", which reads like a deleted row rather than two servers that
-  # never shared one. Issue a6d07cf3.
-  #
-  # A flag rather than something read off the target: a checkout has no key that
-  # names its server. `.code_my_spec/config.yml` carries `client_api_url`, which
-  # is where the *deployed app* talks — this repo's says codemyspec.com while
-  # its harness is localhost — so reading it would be confidently wrong.
-  # Four tiers, most specific first: what the caller typed, what this copy
-  # recorded when its id was minted, what the project says in its committed
-  # config, and failing all of those the build's own default.
-  #
-  # The copy above the project because a project served by dev.codemyspec.com on
-  # one machine and codemyspec.com on another cannot have one right answer in a
-  # tracked file — the committed value is the project's default and the copy's
-  # record is what actually happened. And the project above the build's default
-  # because it is the only tier that can answer *before* a copy exists, which is
-  # the first onboard of a foreign root: the case the flag exists for, now with
-  # something to fall back on when nobody typed it.
+  # Which server mints the id. Four tiers, most specific first: `--server-url`,
+  # what this copy recorded when its id was minted, the project's committed
+  # config (`ProjectIdentity.server_url/1`), then the build's default. The copy
+  # beats the project because one project can be served by different servers
+  # on different machines. Into application env because the value is needed
+  # several calls down.
   defp put_server_url_flag(args, root) do
     case flag(args, "--server-url") || recorded_server_url(root) ||
            ProjectIdentity.server_url(root) do
@@ -777,6 +496,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
+  # `--device <id>`, into application env for `device_id/0` several calls down.
   defp put_device_flag(args) do
     case device_flag(args) do
       nil -> Application.delete_env(:code_my_spec, :onboard_device_id)
@@ -788,17 +508,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp device_flag([_arg | rest]), do: device_flag(rest)
   defp device_flag([]), do: nil
 
-  # A checkout's own `.code_my_spec/` is where its specs live, not a checkout.
-  #
-  # Onboarding it registers a second working copy on the same project, and that
-  # copy then takes analysis runs the real root should have had — every one of
-  # which dies with no `mix.exs` a level down, while the real root's staleness
-  # never clears. It reconnected for days before anybody traced it (49e8340e).
-  #
-  # Caught here as well as server-side because `cd .code_my_spec && mix
-  # cms.harness.onboard` is how somebody gets there, and a refusal at the point
-  # of the mistake can name the directory to use instead. `Path.expand/1` first
-  # so `.code_my_spec/.` and a trailing slash are the same answer.
+  # A checkout's own `.code_my_spec/` is not a checkout: onboarded, it becomes a
+  # second working copy whose analysis runs fail with no `mix.exs`. Flags and
+  # their values are dropped before the path is taken (`drop_flags/1`), or
+  # `--check` or a project id would be expanded as the root.
   defp target_root(args) do
     root = args |> drop_flags() |> first_path()
 
@@ -844,13 +557,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   # Both key names, new one first — the compatibility window `HarnessConfig`
-  # already implements, which this had been left out of.
-  #
-  # It read only `harness_id` while `mint_and_record/2` below wrote only
-  # `working_copy_id`, so a copy onboarded twice found nothing the second time
-  # and was minted a *fresh* identity — orphaning every file, problem and
-  # session recorded against the first. Criterion 2356 is "onboarding twice is
-  # the same as onboarding once"; this was the opposite.
+  # implements. Reading only one name re-minted a fresh identity on a second
+  # onboard and orphaned everything recorded against the first.
   defp existing_id(contents, env, root) do
     case Jason.decode(contents) do
       {:ok, map} -> recorded_id(map, env, root)
@@ -889,11 +597,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
            HarnessConfig.write(root, %{
              working_copy_id: id,
              project_id: project.id,
-             # Written down because the id is only meaningful to the server that
-             # issued it, and nothing else can say which that was: every tier of
-             # `Config.server_url/0` answers with the build doing the *reading*.
-             # A later run on this copy reads it back rather than defaulting to
-             # its own server and 404ing against a row it never had (a6d07cf3).
+             # The id is meaningful only to the server that issued it; a later
+             # run reads this back rather than defaulting to its own server.
              server_url: Config.server_url(),
              root: root
            }) do
@@ -910,12 +615,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
          .code_my_spec`.
          """}
 
-      # Named, because the generic version sent a reader to the wrong place.
-      # `:no_credential` reads as "you have no credential"; when onboarding
-      # against a server this machine's database does not back, the truth is
-      # "your credential is for another server, and nothing here can find it".
-      # The devops agent read it the first way and was about to send an operator
-      # to generate a key that would not have helped.
+      # Named: against a server this machine's database does not back, the
+      # truth is "your credential is for another server", not "you have none".
       {:error, :no_credential} ->
         {:error,
          """
@@ -937,17 +638,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # Which project this checkout belongs to.
-  #
-  # `--project` wins. Without it the answer comes from the directory —
-  # `.code_my_spec/config.yml`, then an existing `.cms_harness.json` — which is
-  # right when a checkout knows what it is and useless when it does not. A
-  # checkout being onboarded for the first time often does not: the submodule
-  # carrying that config may not even be checked out yet.
-  #
-  # Silently adopting whatever the directory named is the failure this fixes. It
-  # attached a scratch directory to an unrelated project and minted a working
-  # copy there, with nothing in the output saying so.
+  # Which project this checkout belongs to. `--project` wins; otherwise
+  # `.code_my_spec/config.yml`, then an existing `.cms_harness.json`. A
+  # disagreement is said out loud rather than resolved quietly.
   defp project_for(root, nil), do: ProjectIdentity.resolve(root)
 
   defp project_for(root, project_id) do
@@ -991,29 +684,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     )
   end
 
-  # Which machine this checkout is on. Two cases, and they want opposite
-  # answers.
-  #
-  # Installing on somebody's own machine, the answer is the machine we are
-  # standing in, and it already has an identity: `Device.announce/0` writes one
-  # to `~/.codemyspec/device.json` the first time a harness comes up here, and
-  # `recorded_id/0` reads it. Minting a second identity for a machine that
-  # already has one is the duplicate this is trying to stop, one level up.
-  #
-  # Installing on our dev box, we are onboarding a checkout for a machine we
-  # are not: several people share it, and the box's own identity is not the
-  # answer for any of them. So it is passed explicitly, and nothing tries to
-  # infer it.
-  #
-  # A machine that has never run a harness has no identity yet, and this is
-  # usually the first thing that runs on it — so it announces, the same way the
-  # harness does at boot, rather than leaving the copy machine-less. The
-  # credential is already in hand: `mint/2` exchanged the deploy key a few lines
-  # up, which is what `announce/0` asks `Token.access_token/0` for.
-  #
-  # Announcing is idempotent by design. It presents the id we hold, and that is
-  # how the server recognises the machine instead of minting another, so this is
-  # safe on a box that has onboarded a dozen checkouts.
+  # Which machine this checkout is on. `--device` when given (a shared dev box,
+  # whose own identity is nobody's answer); otherwise the machine's recorded
+  # identity (`~/.codemyspec/device.json`), announcing first if it has none.
+  # Announcing is idempotent — it presents the id we hold — and the credential
+  # is already in hand from `mint/2`.
   defp device_id do
     case Application.get_env(:code_my_spec, :onboard_device_id) do
       id when is_binary(id) and id != "" -> id
@@ -1031,96 +706,41 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # The model turns, same question again.
+  # The model turns. A plugin cannot set an environment variable for the
+  # session, and `ANTHROPIC_BASE_URL` is read by the agent process itself, so
+  # the address goes in Claude Code's settings.
   #
-  # This one cannot be addressed by the plugin: a Claude Code plugin has no way
-  # to set an environment variable for the session, and `ANTHROPIC_BASE_URL` is
-  # read by the agent process itself, posted to directly, never through the
-  # relay. Claude Code's settings are where a checkout says what its sessions
-  # run with, so that is where the address goes — the one thing left that
-  # genuinely has to carry this working copy's id, because nothing reads it
-  # back off a file or a header the way hooks and MCP do.
+  # `settings.local.json`, not the tracked `settings.json`: the URL carries this
+  # working copy's id. Merged, never replaced — it keeps every key already there.
   #
-  # `settings.local.json`, not `settings.json`. The URL carries this working
-  # copy's harness id, and `settings.json` is tracked — writing it there would
-  # commit one machine's identity into every checkout that clones the repo. The
-  # `.local` file is gitignored by convention and Claude Code merges it over
-  # the tracked one.
-  #
-  # Merged, never replaced, because it is still a file the operator may have
-  # written in: it keeps every key already there and rewrites exactly one.
-  #
-  # Without it the turn arrives unaddressed, and an unaddressed turn is only
-  # recordable when the harness serves exactly one working copy. A sprite is
-  # that shape; a developer's machine never is, which is why local Claude Code
-  # has never appeared in the conversations UI.
-  #
-  # ## `CMS_HARNESS_ID` rides along, and has to
-  #
-  # The plugin's MCP mount sends `X-Harness-Id: ${CMS_HARNESS_ID}` — the only
-  # way it *can* name a working copy, because a `mcpServers` entry interpolates
-  # environment variables and cannot read a file. The hook shims walk up for
-  # `.cms_harness.json` themselves; an MCP mount has no such move.
-  #
-  # Nothing set that variable, which is precisely the failure `hooks_controller`
-  # already documents: the header arrived as the literal `${CMS_HARNESS_ID}` on
-  # every hook, and the server has a clause for it. Now that identity is the
-  # only routing key, an unexpanded one is a refusal rather than a fallback, so
-  # shipping the header without this line would have taken MCP down for every
-  # checkout.
-  #
-  # Written here rather than exported by a shell, because a session inherits
-  # this file and not anyone's `.zshrc`, and because it lands next to the URL
-  # that already carries the same id — one place, one value.
-  #
+  # `CMS_HARNESS_ID` rides along: the plugin's MCP mount sends
+  # `X-Harness-Id: ${CMS_HARNESS_ID}`, and an unexpanded one is a refusal.
+  # Written here because a session inherits this file, not anyone's shell rc.
   @doc """
   Public only so it can be tested directly. It is the one thing here that
   writes a file the operator owns, so "keeps what was already there" has to be
   checkable rather than asserted in a comment.
   """
   def address_model_turns(env, root, id, base_url \\ nil) do
-    # Rendered by the shared function, not here. This string existed twice and the
-    # two disagreed — `/api/harnesses/<id>` against `/harnesses/<id>/anthropic`,
-    # only one of which is a real route (3498d841). Two derivations of one value is
-    # the defect this story removes, and the refactor meant to fix it reintroduced
-    # it in the split.
+    # Rendered by `Onboarding` (one derivation of the URL), not here.
     write_settings(env, root, id, true, base_url || default_hook_base_url())
   end
 
-  # Both shapes are one call into `Onboarding.onboard/2`.
-  #
-  # This was `write_address/4` plus a private `read_settings/1`, and both were
-  # reimplementations. The merge that keeps every key the operator already had,
-  # and the refusal to rewrite a settings file that is not valid JSON — "a
-  # half-edited settings file is exactly the state someone is in when they run
-  # this to fix it" — were written here and, in the same words, in
-  # `client_utils`. Two copies of a rule about not destroying somebody's file is
-  # one copy too many.
-  #
-  # `onboard/2` also writes `.cms_harness.json` and sets `submodule.recurse`,
-  # which this path did not. Both are idempotent, and both are things every
-  # onboarded copy should have — a copy that was addressed but never given a
-  # harness config is exactly the half-state `check/2` now reports as
-  # `HARNESS_CONFIG` missing.
+  # One call into `ClientUtils.Harness.Onboarding.onboard/2`, which owns the
+  # merge that keeps the operator's keys, the refusal to rewrite invalid JSON,
+  # `.cms_harness.json` and `submodule.recurse` — all idempotent.
   defp write_settings(env, root, id, relay_model_turns?, base_url) do
-    # `working_copy_id:`, not `working_copy_id:`. This crosses into `ClientUtils`,
-    # which is a separate repository on its own release cadence — generated apps
-    # take it from hex — so its option names are as external as the wire and
-    # cannot be renamed from here. It moves when client_utils moves.
-    # `harness_id:`, not `working_copy_id:`. This crosses into `ClientUtils`,
-    # which is a separate repository on its own release cadence — generated apps
-    # take it from hex — so its option names are as external as the wire and
-    # cannot be renamed from here. It moves when client_utils moves.
+    # `harness_id:`, not `working_copy_id:`: `ClientUtils` is a separate
+    # repository released to hex, so its option names are as external as the
+    # wire.
     opts = [
       io: io(env),
       app: target_app(root),
       harness_id: id,
       relay_model_turns: relay_model_turns?,
       deploy_key: deploy_key_for(root),
-      # Passed as well as written by `mint/2`, so the two writers of this file
-      # agree. `mint/2` only runs when a copy has no id yet; every re-onboard
-      # goes straight here, and a run that recorded nothing would leave a copy
-      # minted before this existed without an answer forever.
+      # Passed as well as written by `mint/2`, which runs only for a copy with
+      # no id; every re-onboard records it here.
       server_url: Config.server_url()
     ]
 
@@ -1132,22 +752,11 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # This project's own key, read out of the database this machine already has —
-  # a local dev server and this task read the same `code_my_spec_dev`, so there
-  # is nothing to keep in sync. `onboard/2` records it in `.cms_harness.json`,
-  # so the daemon that serves this copy afterwards can authenticate *as this
-  # project*: a deploy key reaches exactly one, and one daemon serves several
-  # working copies.
-  #
-  # Read even when `CMS_DEPLOY_KEY` is already exported, which is the case that
-  # matters — onboarding a second project's checkout from a shell carrying the
-  # first project's key. The exported one is wrong for this copy by
-  # construction; the row in the database is right.
-  #
-  # `nil` is ordinary and not an error: no local database, a project it does not
-  # know, or a project with no key generated yet. `onboard/2` then leaves any key
-  # already recorded alone, and the copy is served by whatever the daemon holds
-  # — which is correct whenever that is this project's key.
+  # This project's own key, from this machine's database. `onboard/2` records it
+  # in `.cms_harness.json` so the daemon authenticates *as this project* — a
+  # deploy key reaches exactly one. Read even when `CMS_DEPLOY_KEY` is exported:
+  # that may be another project's. `nil` is ordinary; `onboard/2` then leaves
+  # any recorded key alone.
   defp deploy_key_for(root) do
     with {:ok, project} <- ProjectIdentity.resolve(root),
          key when is_binary(key) and key != "" <- local_project_deploy_key(project.id) do
@@ -1157,57 +766,17 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  # `client_utils` returns its own refusal sentence for malformed JSON and a raw
-  # posix reason for anything else. The sentence is passed through rather than
-  # rewritten: it is the useful one, and inventing a second wording for it here
-  # is how the two implementations drifted to begin with.
+  # `client_utils`' own refusal sentence for malformed JSON is passed through;
+  # anything else is a raw posix reason.
   defp describe_settings_error(reason) when is_binary(reason), do: reason
 
   defp describe_settings_error(reason),
     do: "Could not write #{@settings_file}: #{inspect(reason)}"
 
-  # `put_new`, unlike the URL beside it. The address has to be corrected when the
-  # harness id changes; the partition must not move once anything has been built
-  # against it, and a second onboarding re-deriving it from the path would rename
-  # a database that already has migrations in it.
-  #
-  # Recorded here, in the file the agent's session reads as environment, because
-  # that is what makes it *the* name rather than one of several. Two mechanisms
-  # derive this today — `config/test.exs` from the worktree path and
-  # `TestDatabase` from a digest of the cwd — and `analyzer_env.ex` says what
-  # follows in its own words: "different databases, by accident of two mechanisms
-  # rather than by design". An agent hit exactly that on 2026-08-13, was told to
-  # run a migrate against a database the command did not touch, and stayed blocked
-  # for three days across 50 rejected runs.
-
-  # Git settings a working copy needs, applied to the copy itself.
-  #
-  # `submodule.recurse` because a submodule sits in detached HEAD by design and so
-  # accepts writes with no branch to carry them. Four QA briefs — including the
-  # evidence behind a story shipped with QA recorded complete — existed in exactly
-  # one working copy for a day because of it, and nothing reported a problem: the
-  # superproject's dirty-pointer line is suppressed project-wide, for unrelated
-  # and well-reasoned purposes.
-
-  # The harness a model turn is posted to. Hooks and MCP resolve this working
-  # copy on their own now (`.cms_harness.json`, `${CMS_HARNESS_ID}`); this is
-  # the one address that still has to be told, because Claude Code's own
-  # Anthropic client posts here directly and reads nothing back off a file.
-  #
-  # This used to default to `Config.server_url()` — the CodeMySpec server. That
-  # is the wrong host entirely: `/api/harnesses/:working_copy_id/v1/messages` exists
-  # only in `CmsHarness.Web.Router`, never in `CodeMySpecWeb.Router`, so an
-  # agent pointed there posts every turn to a route that does not exist. The
-  # feature could not have worked as written.
-  #
-  # The tests did not catch it because every one of them passes an explicit
-  # `@base "http://localhost:4003"`. The parameter that exists "only so it can
-  # be tested directly" is exactly what kept the default off the tested path —
-  # so the default now has a test of its own below.
-  #
-  # Matches the shipped plugin's hooks, which is `--port 4004` unconditionally
-  # — there is no generated file left to read a port out of. `CMS_HARNESS_PORT`
-  # wins, because a sprite sets it and its harness is the thing serving hooks.
+  # The harness a model turn is posted to: Claude Code's Anthropic client posts
+  # here directly. The local harness, never `Config.server_url()` — the
+  # `/v1/messages` route exists only in `CmsHarness.Web.Router`. Port 4004 to
+  # match the shipped plugin; `CMS_HARNESS_PORT` wins (a sprite sets it).
   defp default_hook_base_url do
     "http://localhost:#{System.get_env("CMS_HARNESS_PORT") || "4004"}"
   end

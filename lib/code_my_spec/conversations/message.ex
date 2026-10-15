@@ -6,13 +6,11 @@ defmodule CodeMySpec.Conversations.Message do
   `ReqLLM.Message` — which is what the provider hands us, so an agent turn is
   stored as it arrived instead of being flattened on the way in. A human
   message is one `%{"type" => "text"}` part; a file shared through the widget
-  is a `%{"type" => "file"}` part, which is what `attachments` already was
-  before it had a name.
+  is a `%{"type" => "file"}` part.
 
   `tool_calls` rides on an assistant turn, `tool_call_id` pairs a `:tool` turn
-  back to the call it answers. Both are nil for human messages, which is the
-  whole point of one model: the human case is the degenerate one, not a
-  different table.
+  back to the call it answers. Both are nil for human messages: the human case
+  is the degenerate one, not a different table.
 
   Authorship stays `(role, sender_id)`, with `agent_role` naming the speaking
   lane on agent transcripts. Ordered by `inserted_at`.
@@ -31,48 +29,36 @@ defmodule CodeMySpec.Conversations.Message do
   @type t :: %__MODULE__{}
 
   # `count` and `tool` belong to orchestrator actions: how much of a thing there
-  # is, and the name of the tool that lists the rest. Typed parts rather than a
-  # sentence, so the view renders them distinctly and no reader — person or
-  # agent — is parsing prose for a number. Story 985.
+  # is, and the name of the tool that lists the rest. Typed parts, so no reader
+  # parses prose for a number.
   @part_types ~w(text image file thinking count tool kind)
 
   schema "conversation_messages" do
     # Typed parts, in order. See @part_types for what a part may be.
     field :content, {:array, :map}, default: []
-    # `:orchestrator` was a fifth value here, for what was done *to* an agent
-    # rather than by it. It is gone: `Chat.Runner.to_provider_message/1` never
-    # passed it to the model, so everything wearing it was visible to the person
-    # watching and to nobody else — and the reader story 985 built it for, an
-    # agent reading its own transcript, was never built. What genuinely reaches
-    # an agent is sent to it, and a sent message is `:operator`.
+    # What reaches an agent is sent to it, as `:operator`; there is no role for
+    # a line the model never sees.
     field :role, Ecto.Enum, values: [:user, :operator, :assistant, :tool]
     field :sender_id, :string
-    # The speaking lane for agent transcripts: manager / product / spec_writer
-    # / coding / qa. nil for human (user/operator) messages.
+    # The speaking lane for agent transcripts (an agent role, or a system kind
+    # such as "halted" / "failed"). nil for human (user/operator) messages.
     field :agent_role, :string
     # Calls this assistant turn made. nil on every other kind of turn.
     field :tool_calls, {:array, :map}
     # The call a :tool turn is answering.
     field :tool_call_id, :string
-    # Whether that call came back an error. Anthropic sends `is_error` on the
-    # `tool_result` block; keeping it as a boolean is what lets the view ask a
-    # field instead of matching a `"← failed: "` prefix it hoped the recorder
-    # wrote. Defaults false here rather than in the migration.
+    # Whether that call came back an error (the provider's `is_error`).
+    # Defaults false here rather than in the migration.
     field :tool_failed, :boolean, default: false
     # Where the widget that sent this was running, as its host app reported at
-    # connect time. Provisioning's widget step gates on it: markup can be right
-    # while the socket, credential or CORS is not, so "a message arrived" only
-    # proves the widget works if it arrived from the deployed site rather than
-    # from someone's laptop.
+    # connect time. Provisioning's widget step gates on it: a message proves the
+    # widget works only if it arrived from the deployed site.
     field :origin, :string
     # Whether the agent this was sent at has it. nil for everything that is not
-    # an operator message at an agent — a widget message has no delivery
-    # question, it is already where it was going.
+    # an operator message at an agent.
     field :delivery, Ecto.Enum, values: [:delivered, :pending, :withdrawn, :failed]
-    # The sender's handle on it while it can still be taken back. Minted before
-    # the message leaves and carried by the machine, so a withdrawal names the
-    # message rather than describing it: two identical messages are
-    # indistinguishable by text at exactly the moment it matters.
+    # The sender's handle on it while it can still be taken back, minted before
+    # it leaves, so a withdrawal names the message rather than its text.
     field :delivery_ref, :string
     field :mailbox_state, :string, virtual: true
     field :delivery_diagnostic, :string, virtual: true
@@ -85,8 +71,7 @@ defmodule CodeMySpec.Conversations.Message do
   @doc """
   Text of every text part, joined. The preview the inbox and search want.
 
-  Derived on read rather than stored: a denormalized copy of this drifts, and
-  the copy that drifts is the one a human reads.
+  Derived on read rather than stored, so it cannot drift.
   """
   @spec text(t()) :: String.t()
   def text(%__MODULE__{content: parts}) do
@@ -95,7 +80,7 @@ defmodule CodeMySpec.Conversations.Message do
     |> Enum.map_join("\n", &(get(&1, "text") || ""))
   end
 
-  @doc "The file parts, in order — what `attachments` used to hold."
+  @doc "The file parts, in order."
   @spec files(t()) :: [map()]
   def files(%__MODULE__{content: parts}) do
     parts
@@ -122,24 +107,9 @@ defmodule CodeMySpec.Conversations.Message do
   Every message belonging to any of `agent_ids`, in one query rather than one
   per agent.
 
-  The performance page's intervention read (issue 844907e0): a
-  `find_or_create` plus a `list_messages` per agent is a query per agent, and
-  all of them are one read. `agent_id` lives on `conversations`, not on the
-  message -- a conversation is the agent's, and `adopt_intake_conversation/2`
-  moves one onto an agent by writing that column -- so this joins back through
-  it, on the same column `find_or_create_agent_conversation/3` filters on. The
-  row's own `agent_id` comes back with the message, because a caller asking
-  for several agents has to know which one each message belongs to.
-
-  `limit_per_agent` bounds each agent's share, as `list_messages/2`'s `limit`
-  bounds one. A plain `limit` would bound the whole read instead and hand the
-  first agent all of it.
-
-  The pages that already have the conversations in hand filter on
-  `conversation_id` directly (`by_conversations/2`); joining back through
-  `conversations` to arrive at an id the caller knows is the query this module
-  does not need to repeat, and on the 188-agent project the read is the slow
-  half of the page either way (issue b118c546).
+  `agent_id` lives on `conversations`, so this joins back through it and
+  returns each row's `agent_id`. Callers that already hold the conversations
+  use `by_conversations/2`.
   """
   @spec by_agents([String.t()], keyword()) :: Ecto.Query.t()
   def by_agents(agent_ids, opts \\ []) do
@@ -169,13 +139,8 @@ defmodule CodeMySpec.Conversations.Message do
   Every message of `conversation_ids`, with the agent each belongs to.
 
   The same rows `by_agents/2` answers, for a caller that already knows the
-  conversations -- the performance page reads every agent's id from one read
-  and can join on `conversation_id` from there rather than asking the database
-  to find the same conversations again (issue b118c546).
-
-  The content is not selected: it is the bulk of a transcript, and every count
-  the page takes is off `role`, `sender_id` and `tool_failed`. `content_of/1`
-  reads the text back for the few rows whose text is actually reported.
+  conversations. The content is not selected (it is the bulk of a transcript);
+  `content_of/1` reads it back for the few rows whose text is reported.
   """
   @spec by_conversations([Ecto.UUID.t()], keyword()) :: Ecto.Query.t()
   def by_conversations(conversation_ids, opts \\ []) do
@@ -198,18 +163,14 @@ defmodule CodeMySpec.Conversations.Message do
   end
 
   # An intervention's text alone: every other message's `content` is the bulk
-  # of a transcript (10MB against 126,990 rows on the project this was measured
-  # on, of which 5,473 are interventions) and nothing reads it.
+  # of a transcript and nothing reads it.
   @intervention_senders ["operator", "system:restart"]
 
   @doc """
   The interventions among `conversation_ids`: the `:operator` messages whose
   sender says a person acted or a restart was performed, with their text.
 
-  Narrower than `by_conversations/2` on both axes a transcript is large in --
-  the sender, and `content` -- so the page's own nudge and restart counts are a
-  read of a few thousand short rows rather than of every message of every
-  agent, most of it assistant prose (issue b118c546).
+  Narrow on both axes a transcript is large in, the sender and the content.
 
   The order is `inserted_at` within an agent, which is what an intervention
   list is read in; callers group by `agent_id` themselves.
@@ -286,21 +247,9 @@ defmodule CodeMySpec.Conversations.Message do
     |> name_an_empty_writer()
   end
 
-  # Who wrote a message with nothing in it.
-  #
-  # I have guarded this four times — a missing `"text"` key, a `nil` text, a
-  # blank binary, and finally the rendered parts — and empty rows kept arriving
-  # from a caller I could not find by reading. Each guard was a guess about the
-  # shape; none of them was a way to find the writer.
-  #
-  # So the row names it. One `Logger.warning` with the stack, only on the path
-  # that should no longer happen, is worth more than a fifth guess: an empty
-  # message renders as the agent having spoken and said nothing, and a coding
-  # agent showing 99 of those against 0 real ones cost a day of looking inside a
-  # provider for a fault that was never there.
-  #
-  # Not a validation. Refusing the insert would lose whatever else the row
-  # carries, and the point is to learn where it comes from, not to drop it.
+  # Who wrote a message with nothing in it: a warning with the stack, on a path
+  # that should no longer happen. Not a validation — refusing would lose what
+  # else the row carries; the point is to find the writer.
   defp name_an_empty_writer(changeset) do
     with [] <- get_field(changeset, :content),
          tool_calls when tool_calls in [nil, []] <- get_field(changeset, :tool_calls) do
@@ -337,8 +286,7 @@ defmodule CodeMySpec.Conversations.Message do
     end
   end
 
-  # A human message must say or carry something. Replaces the old
-  # body-or-attachments rule, which was the same rule over the same two things.
+  # A human message must say or carry something.
   defp validate_carries_something(changeset) do
     case get_field(changeset, :content) || [] do
       [] -> add_error(changeset, :content, "can't be empty")

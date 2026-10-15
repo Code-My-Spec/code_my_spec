@@ -8,24 +8,14 @@ defmodule CodeMySpec.Agents.Credential do
       %{"type" => "oauth",   "refresh" => _, "access" => _, "expires" => _}
       %{"type" => "api_key", "key" => _}
 
-  Every OAuth provider shares the first shape, so there is no per-provider token
-  model to write — which is the whole reason adding a provider is adding an
-  integration rather than a second way to start an agent.
+  Every OAuth provider shares the first shape, so adding a provider is adding
+  an integration, not a second way to start an agent.
 
-  ## Why the three-way answer matters
+  Failures stay distinct: `:not_connected` (nobody connected the provider) and
+  `:reconnect_required` (its credential can no longer be refreshed, including
+  a refresh token revoked as replay) want opposite remedies.
 
-  `Integrations.fetch_access_token/2` already distinguishes the two failures
-  that must not be collapsed: `:not_found` is a provider nobody ever connected,
-  `:reauthorize_required` is one whose credential can no longer be refreshed.
-  They read alike and want opposite responses — the first sends someone to
-  connect a provider, the second to reconnect one they know they connected, and
-  telling them the wrong one sends them to set up something that already exists.
-
-  That second state is also the shape refresh-token replay revocation arrives
-  in. OpenAI rotates the refresh token on every refresh, so two working copies
-  seeded from one credential can refresh out of order; if the provider treats
-  the superseded token as replay it revokes the grant, and every copy discovers
-  it here, long after the event.
+  See knowledge/agents/coordination, "Credentials".
   """
 
   alias CodeMySpec.Agents.Providers
@@ -39,8 +29,8 @@ defmodule CodeMySpec.Agents.Credential do
 
   A `:local` provider (see `Providers`) short-circuits to `{:ok, %{}}`
   unconditionally — there is no Integration to check, no token to mint, and
-  every account reads as "connected" for it. That is deliberate for now, not
-  yet scoped to specific accounts; see the TODO on `Providers.@providers`.
+  every account reads as "connected" for it; not yet scoped to specific
+  accounts (see the TODO in `Providers`).
   """
   @spec fetch(Scope.t(), String.t()) ::
           {:ok, t()} | {:error, :not_connected | :reconnect_required | term()}
@@ -65,44 +55,21 @@ defmodule CodeMySpec.Agents.Credential do
   @doc """
   Ours, for a visitor who has connected nothing yet.
 
-  Story 875: intake ends with the visitor talking to their project's agent, and
-  someone who signed up ninety seconds ago has no provider. Making them connect
-  one there puts an OAuth detour in the exact stretch the flow exists to make
-  seamless, at the moment they have least invested.
+  Intake ends with the visitor talking to their project's agent, before they
+  have connected a provider, so that first conversation runs on our key.
 
-  So the first conversation runs on our credential.
-
-  ## Off unless configured, deliberately
-
-  This spends real money on people who may never come back — the interview runs
-  during the boot precisely because this funnel leaks.
-
-  `Agents.turn_allowance/2` now bounds it: ten turns per visitor, configurable
-  as `:platform_turn_cap`, enforced at `dispatch_message/3` and reported to the
-  visitor before they reach it. That is one of the three bounds this doc used to
-  say were missing; there is still no token budget and no expiry, so ten turns
-  of an expensive model is the worst case a deployment is agreeing to.
-
-  Still off by default. A cap makes the spend bounded, not free, and a default
-  that started spending on a version bump would be the wrong way round for a
-  commercial decision — the number is small enough to switch on deliberately and
-  large enough to matter multiplied by a funnel.
-
-  Only ever reached when the visitor's own integration is missing. Someone who
-  has connected their own provider uses it — this never silently pays for a
-  customer who is already paying for themselves.
+  Off unless `:platform_api_key` is configured. Bounded by
+  `Agents.turn_allowance/2` (`:platform_turn_cap`, default 10 turns, enforced
+  at `Agents.dispatch_message`); there is no token budget and no expiry. Only
+  reached when the visitor's own integration is missing.
   """
   @spec platform_credential(String.t()) :: {:ok, t()} | {:error, :not_connected}
   def platform_credential(_provider) do
-    # Trimmed, not just non-nil. A blank value is what an unset environment
-    # variable looks like once it has been through config — `""` or a few
-    # spaces — and it is truthy, so a bare presence check hands out a
-    # credential made of whitespace and the agent fails on its first call
-    # somewhere far from here.
+    # Trimmed: an unset env var arrives through config as `""` or spaces, which
+    # is truthy and would hand out a credential made of whitespace.
     case config()[:platform_api_key] |> to_string() |> String.trim() do
       key when key != "" ->
-        # The same two-key shape the connected path builds. An extra field here
-        # would be one this module's own moduledoc says Pi does not read.
+        # The same two-key shape the connected path builds.
         {:ok, %{"type" => "api_key", "key" => key}}
 
       _ ->
@@ -116,25 +83,14 @@ defmodule CodeMySpec.Agents.Credential do
   `:user` is theirs, `:platform` is ours, `:none` is nobody's — the agent cannot
   start at all.
 
-  Asked separately from `fetch/2` because the two callers want different things.
-  Starting an agent does not care whose credential it got, and folding the
-  answer into the return value would make every caller handle a distinction
-  almost none of them have an opinion about. What *does* care is the turn cap:
-  it exists because we are paying, so it has to apply to exactly the agents we
-  are paying for and to no others.
-
-  Derived rather than stored, and that is deliberate. A visitor who connects
-  their own provider later is paying for themselves from that moment, and their
-  cap should lift without anything having to notice and update a row. A stored
-  flag would say "started on ours" forever, which is a fact about the past
-  rather than about who is spending now.
+  Separate from `fetch/2` because only the turn cap cares: it applies to
+  exactly the agents we pay for. Derived, never stored, so a visitor who
+  connects their own provider later stops being capped at once.
   """
   @spec source(Scope.t(), String.t()) :: :user | :platform | :none
   def source(%Scope{} = scope, provider) when is_binary(provider) do
     case Providers.kind(provider) do
-      # Never ours to pay for and never capped — the account's own harness
-      # machine is spending whatever `claude` login is already sitting on it,
-      # which this server has no part in and no visibility into.
+      # Never ours to pay for: the harness machine spends its own login.
       {:ok, :local} ->
         :user
 
@@ -158,9 +114,8 @@ defmodule CodeMySpec.Agents.Credential do
       {:ok, _credential} ->
         :user
 
-      # A credential that needs reconnecting is still theirs. Treating it as
-      # ours would put a cap on someone who is paying and has a token to
-      # refresh, and `fetch/2` does not fall back for this case either.
+      # A credential that needs reconnecting is still theirs; `fetch/2` does
+      # not fall back to ours for it either.
       {:error, :reconnect_required} ->
         :user
 
@@ -189,12 +144,8 @@ defmodule CodeMySpec.Agents.Credential do
   defp to_credential({:error, :reauthorize_required}, _scope, _provider, _integration_provider),
     do: {:error, :reconnect_required}
 
-  # A refresh the provider refused is a credential that needs reconnecting,
-  # whatever shape the refusal arrived in. Passing the transport error through
-  # would report an `Assent.InvalidResponseError` at somebody who connected a
-  # subscription and wants to know what to do about it — and `invalid_grant` is
-  # exactly what a superseded refresh token gets, which is the case this has to
-  # name correctly rather than dump.
+  # A refresh the provider refused (an exception, e.g. `invalid_grant` for a
+  # superseded refresh token) is a credential that needs reconnecting.
   defp to_credential({:error, %{__exception__: true}}, _scope, _provider, _integration_provider),
     do: {:error, :reconnect_required}
 
@@ -231,25 +182,10 @@ defmodule CodeMySpec.Agents.Credential do
 
   defp oauth_entry({:error, reason}, _token), do: {:error, reason}
 
-  # When this token was last renewed, so the reader does not immediately renew it
-  # again.
-  #
-  # `codex exec` writes `last_refresh` into its own `auth.json` and reads it to
-  # decide whether the credential needs refreshing. Handed a file without one it
-  # has no evidence the token is current, so it refreshes on startup — and
-  # OpenAI rotates the refresh token on use, invalidating it for everyone else
-  # holding a copy. Every agent gets a copy of the same one, so the first to
-  # start burns it for every other agent *and* for the row in our database. That
-  # is the "your refresh token was already used" we kept arriving at, and why a
-  # token minutes old still came back 401.
-  #
-  # From the integration's own `updated_at`, which is when
-  # `persist_refreshed_token/4` last wrote it.
-  # `Integration` uses `timestamps(type: :utc_datetime_usec)`, so this is a
-  # `DateTime`. The first version of this guarded on `%NaiveDateTime{}`, matched
-  # nothing, and fell through the catch-all without a word — the file went out
-  # with no `last_refresh` and the whole point of it was lost silently. Both are
-  # accepted now rather than one assumed.
+  # When this token was last renewed (the integration's `updated_at`), so the
+  # reader does not renew it on startup and rotate the refresh token out from
+  # under every other copy. Both datetime kinds are accepted.
+  # See knowledge/agents/coordination, "Credentials".
   defp put_refreshed_at(entry, %{updated_at: %DateTime{} = at}),
     do: Map.put(entry, "refreshedAt", DateTime.to_iso8601(at))
 
@@ -259,35 +195,17 @@ defmodule CodeMySpec.Agents.Credential do
 
   defp put_refreshed_at(entry, _integration), do: entry
 
-  # The OIDC id token, carried because `codex exec` will not start without one.
-  #
-  # It reads its credentials from an `auth.json` and refuses a file that has no
-  # `id_token` — "missing field `id_token`", before any network call — so a
-  # subscription that reaches an agent without it cannot run a turn however
-  # valid the access and refresh tokens are.
-  #
-  # From `provider_metadata`, where `Integrations.keep_id_token/2` puts it. The
-  # refresh response carries one every time; it was simply being dropped, so
-  # every agent fell back to whatever `~/.codex/auth.json` held on that machine.
+  # The OIDC id token, from `provider_metadata` (`Integrations.keep_id_token/2`):
+  # `codex exec` refuses an `auth.json` without one.
   defp put_id_token(entry, %{provider_metadata: %{"id_token" => token}})
        when is_binary(token) and token != "",
        do: Map.put(entry, "idToken", token)
 
   defp put_id_token(entry, _integration), do: entry
 
-  # OpenAI's account id, which Pi sends as the `chatgpt-account-id` header on
-  # every model call (`openai-codex-responses.js`). An `auth.json` without it
-  # authenticates and then fails on the first request — the quiet failure this
-  # story's rules exist to keep out.
-  #
-  # Read from the access token rather than stored beside it, the way Pi reads it
-  # (`getAccountId/1` decodes the JWT and takes `chatgpt_account_id`). Deriving
-  # it means a refreshed token brings its own, instead of us carrying a copy that
-  # can go stale against the grant it describes.
-  #
-  # A token that carries no such claim is left alone: providers other than
-  # OpenAI have no account id, and inventing an empty one would send an empty
-  # header rather than none.
+  # OpenAI's account id, sent as the `chatgpt-account-id` header on every model
+  # call; without it the first request fails. Decoded from the access token's
+  # JWT so a refreshed token brings its own. No claim, no key.
   defp put_account_id(entry, token) do
     case account_id(token) do
       nil -> entry
@@ -307,9 +225,7 @@ defmodule CodeMySpec.Agents.Credential do
 
   defp account_id(_token), do: nil
 
-  # Pi stores the expiry as epoch milliseconds — `Date.now() + expires_in * 1000`
-  # in its own refresh path — so handing it seconds would read as 1970 and make
-  # every token permanently expired.
+  # Epoch milliseconds: seconds would read as 1970 and every token as expired.
   defp expires_ms(%DateTime{} = expires_at), do: DateTime.to_unix(expires_at, :millisecond)
   defp expires_ms(nil), do: 0
 end

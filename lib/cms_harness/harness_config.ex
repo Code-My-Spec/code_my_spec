@@ -10,38 +10,8 @@ defmodule CmsHarness.HarnessConfig do
   the project's main checkout — the address its preview answers on, written at
   onboarding and reported to the server on join, the same way `root` is.
 
-  There used to be two. `HarnessIdentity` wrote an id-only `.cms_working_copy_id`
-  when the server issued one, this wrote `.cms_harness.json` at onboarding, and
-  a working copy that had been through both carried two files naming two
-  harnesses with nothing on disk saying which counted. Reading preferred the
-  JSON, so behaviour was never ambiguous — but the first person to look at the
-  directory concluded they disagreed, which is cost enough. There is no fallback
-  now, and no second writer.
-
-  ## Why the root is in here
-
-  Because otherwise something has to discover it, and every way of discovering
-  it has been wrong. Walking up from the directory a hook fired in resolved one
-  session differently depending on the subdirectory, and resolved a nested
-  checkout to the outer one. A list of directories in the environment put the
-  operator back in the business of registering paths. A lookup against the
-  server made the harness unable to answer until the network came up, and
-  duplicated a record the server already holds.
-
-  A working copy knows where it is. Writing that down when we mint its identity
-  costs nothing and removes all three.
-
-  The server keeps the same fact on the harness record, reported on join. That
-  is not a second source of truth — it is the same fact, in the place an
-  operator looks at harnesses rather than the place a harness looks at itself.
-
-  ## Never committed
-
-  A committed harness id is cloned into every checkout, so a sprite that clones
-  the repo comes up wearing the laptop's identity and both sync into the same
-  rows. The file is gitignored, and it lives at the working-copy root rather
-  than under `.code_my_spec/`, which is a submodule pointing at the docs repo —
-  a file placed there is untracked here and stageable there.
+  The file is gitignored and lives at the working-copy root, never under
+  `.code_my_spec/` (a submodule). See knowledge/harness, "Working-copy identity".
   """
 
   require Logger
@@ -64,35 +34,9 @@ defmodule CmsHarness.HarnessConfig do
   @doc """
   What this working copy says about itself, or `:none`.
 
-  The file is the answer, and the only one — no environment fallback, not even
-  when there is no file at all. See `read/1`'s companion comment below for why.
-
-  ## The env used to win, and it collapsed every root onto one id
-
-  Onboarding writes `CMS_HARNESS_ID` into each checkout's
-  `.claude/settings.local.json`, because the Claude Code MCP mount interpolates
-  environment variables and cannot read a file — that one consumer is the whole
-  reason the variable exists. A session in worktree W therefore carries `id(W)`,
-  and `just refresh-harness` is designed to be launched from any session, so the
-  daemon it starts inherits it.
-
-  That daemon serves several roots and calls this once per root. With the env
-  checked first, every root answered `id(W)`. On the server they then presented
-  one id from one OS process, which `Analysis.take_over/3` reads as a harness
-  reconnecting to its own slot — so each join killed the previous one. Measured:
-  1078 evictions, roughly one every 1.4 seconds, every stop hook refused, until
-  the daemon was restarted with the variable stripped.
-
-  Inverting costs nothing for a correctly onboarded copy, because onboarding
-  writes the *same* id to `.cms_harness.json` and to `settings.local.json`. The
-  two differ only when something has gone wrong, and there the file is right: it
-  is the one that knows which working copy it is sitting in.
-
-  A file that exists but cannot be read returns its error rather than falling
-  through to the environment. Substituting another working copy's id for a
-  broken config is precisely the failure this ordering exists to prevent, and it
-  is worse than saying so — `write/2` already refuses to overwrite a malformed
-  config for the same reason.
+  The file is the only answer: no environment fallback, even when there is no
+  file. A file that exists but cannot be read returns its error.
+  See knowledge/harness, "Working-copy identity".
   """
   @spec read(String.t()) :: {:ok, t()} | :none | {:error, term()}
   def read(root) do
@@ -101,48 +45,12 @@ defmodule CmsHarness.HarnessConfig do
     from_file(root)
   end
 
-  # There is no environment fallback, deliberately.
-  #
-  # `read/1` used to fall back to `CMS_HARNESS_ID` when a root named no id of
-  # its own. The variable belongs to whatever process started the daemon, and
-  # the daemon serves every checkout on the machine — so one stale value in one
-  # launching shell answered for all of them.
-  #
-  # That is not hypothetical. The daemon on this machine carried
-  # `CMS_HARNESS_ID=6c4a7be3…`, the main checkout, while serving five roots that
-  # each name themselves correctly in their own `.cms_harness.json`. Every
-  # requirement row a worktree computed was written against main, and reading
-  # its own answer back gave it main's — which is how a checkout whose spec
-  # files were sitting right there was told they did not exist (`5b538c8b`).
-  #
-  # A checkout's identity is what its own file says. If the file says nothing,
-  # that is a copy which has not been onboarded, and the honest answer is
-  # `:none` — not a guess inherited from somebody's shell.
-  #
-  # `CMS_HARNESS_ID` still exists for exactly one consumer, and only that one:
-  # the Claude Code MCP mount interpolates `${CMS_HARNESS_ID}` into an
-  # `X-Harness-Id` header (`plugin.json`), because an `mcpServers` entry can
-  # read an environment variable and cannot read a file. That client sends the
-  # id explicitly; nothing here reads it.
-
   @doc """
-  What `.cms_harness.json` itself says about this working copy, ignoring
-  `CMS_HARNESS_ID`.
-
-  For callers resolving *this specific root's* own identity — never for
-  enumerating several roots at once, where the env override would make every
-  one of them answer with the same id. See `read/1`'s doc.
+  What `.cms_harness.json` says about this working copy. Same answer as
+  `read/1`.
   """
   @spec read_file(String.t()) :: {:ok, t()} | :none | {:error, term()}
   def read_file(root), do: root |> Path.expand() |> from_file()
-
-  # `from_env/0` is gone, and with it the last reader of `CMS_HARNESS_ID` in
-  # this module.
-  #
-  # It survived as "the id the environment names" after `read/1` stopped
-  # consulting it, which left a documented door into exactly the failure the
-  # rest of this module refuses: one variable, belonging to whichever process
-  # started the daemon, answering for every checkout the daemon serves.
 
   @doc """
   Write what a working copy knows about itself.
@@ -157,22 +65,9 @@ defmodule CmsHarness.HarnessConfig do
     root = Path.expand(root)
     file = path(root)
 
-    # Merged over what the file literally says, not over what this module can
-    # model. Callers supply the fields they know — `mint/1` knows the id and the
-    # project, and nothing about the deploy key — and a write that dropped the
-    # rest would take this copy's credential with it on the next mint.
-    #
-    # It used to merge over `recorded/1`, which round-trips through `decode/1`
-    # and keeps five named keys. That is fine while this module is the only
-    # writer and stopped being true when onboarding started putting the preview
-    # credentials here: every write silently dropped `preview_tunnel_secret`,
-    # which Cloudflare returns exactly once at creation and has no endpoint to
-    # read back. The checkout kept running the tunnel it had already started, so
-    # nothing looked wrong until something restarted.
-    #
-    # So the merge is over the raw JSON. A file shared with another writer has
-    # to preserve what this side does not understand — including keys that do
-    # not exist yet.
+    # Merged over the raw JSON, not the decoded map: other writers keep keys here
+    # this module does not model (`preview_tunnel_secret` cannot be re-read).
+    # See knowledge/harness, "Working-copy identity".
     body =
       root
       |> raw()
@@ -183,20 +78,15 @@ defmodule CmsHarness.HarnessConfig do
       |> merge_present(:project_id, config[:project_id] || recorded_value(root, :project_id))
       |> merge_present(:deploy_key, config[:deploy_key] || recorded_value(root, :deploy_key))
       |> merge_present(:preview_url, config[:preview_url] || recorded_value(root, :preview_url))
-      # Which CodeMySpec minted this copy's id. Recorded because nothing else can
-      # answer it: every tier of `Config.server_url/0` reports the *reading*
-      # build's server, so a copy onboarded from a sibling checkout had no way to
-      # say where it actually belongs, and its hooks 404ed against a daemon that
-      # had never seen the row (a6d07cf3).
+      # Which server minted this id; `Config.server_url/0` only knows the
+      # reading build's server.
       |> merge_present(:server_url, config[:server_url] || recorded_value(root, :server_url))
       |> Jason.encode!(pretty: true)
 
     with :ok <- refuse_to_clobber(root, file),
          :ok <- File.mkdir_p(Path.dirname(file)),
          :ok <- File.write(file, body <> "\n"),
-         # It holds a credential now, so it is not world-readable. The file is
-         # gitignored, which keeps it out of the repository; this keeps it out of
-         # other accounts on the machine.
+         # It holds a credential: keep it out of other accounts on the machine.
          :ok <- File.chmod(file, 0o600) do
       :ok
     else
@@ -218,10 +108,6 @@ defmodule CmsHarness.HarnessConfig do
   # one. Writing it would destroy the only record of the id its existing rows
   # are filed under. Refused, so the damage is one session rather than
   # permanent.
-  #
-  # Checks the file rather than `read/1`: an id injected by `CMS_HARNESS_ID`
-  # says nothing about what is on disk, and letting it answer here would report
-  # "nothing stored" for a copy whose file is merely unreadable.
   defp refuse_to_clobber(root, file) do
     case from_file(root) do
       {:error, reason} ->
@@ -241,13 +127,8 @@ defmodule CmsHarness.HarnessConfig do
     end
   end
 
-  # What the file already says, as a plain map, or empty when there is none to
-  # read. Deliberately not `from_file/1`'s error tuple: a caller here is about
-  # to write, and `refuse_to_clobber/2` is what decides whether an unreadable
-  # file may be replaced.
-  # The file exactly as it stands, string keys and all. Deliberately not
-  # `from_file/1`: that answers "what does this module understand", and a write
-  # needs "what is actually in there" so it can put back what it does not.
+  # The file exactly as it stands, string keys and all, or `%{}`. Not
+  # `from_file/1`: a write must put back what this module does not understand.
   defp raw(root) do
     with {:ok, contents} <- File.read(path(root)),
          {:ok, %{} = map} <- Jason.decode(contents) do
@@ -278,17 +159,9 @@ defmodule CmsHarness.HarnessConfig do
     end
   end
 
-  # Both key names are accepted, and that is the compatibility window.
-  #
-  # This file is on disk in every onboarded checkout, written by whichever build
-  # onboarded it, and read by whichever build is running now — including the
-  # published `cms` binary, which is not rebuilt when this repo is. So a reader
-  # that understood only the new name would refuse every existing checkout, and
-  # a writer that emitted only the new name would break the published binary
-  # reading the same file. Both sides accept both until nothing old is left.
-  #
-  # `working_copy_id` wins where both are present: it is what a current build
-  # wrote, and a stale `working_copy_id` beside it is the older of the two.
+  # Both `working_copy_id` and `harness_id` are read and written: older builds,
+  # including the published `cms` binary, read the same file.
+  # `working_copy_id` wins where both are present.
   defp decode(contents, root) do
     case Jason.decode(contents) do
       {:ok, map} ->

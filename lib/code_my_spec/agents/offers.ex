@@ -1,7 +1,6 @@
 defmodule CodeMySpec.Agents.Offers do
   @moduledoc """
-  Every nudge the harness sends an agent, as an offer with an observed outcome
-  (b75b0198, step 1).
+  Every nudge the harness sends an agent, as an offer with an observed outcome.
 
   Each nudge path calls `record/4` once, after recording its message, and the
   turn-end path calls `settle_turn/1` once; neither may change what is sent or
@@ -14,30 +13,29 @@ defmodule CodeMySpec.Agents.Offers do
   `turn_requested_at`. Open, with no turn running and inside the TTL, that offer
   is the one thing that says a turn is on its way (`in_flight?/1`): `Work`
   hands out no second turn while it stands, and main is not told the agent
-  stalled. This replaced a reservation on the agent row that said the same
-  thing without saying what was handed.
+  stalled.
 
   ## Expectations, by kind
 
     * `:work` — `start_task` on the subject this turn, resuming a held task
-      included (criterion 1865); a task-scoped `tap_out` on it is `:declined`
-      with its reason. A questions-only offer (main) wants a waiting question
-      answered, escalated or put to the user (criterion 1866).
+      included; a task-scoped `tap_out` on it, or a claim then cancel, is
+      `:declined`. A questions-only offer (main) wants a waiting question
+      answered, escalated or put to the user.
     * `:problems`, `:menu`, `:retry`, `:answer`, `:stalled` — any tool call
       after delivery. An answer's text is in the delivered message, so it wants
       no fetch. `:stalled` is main told a teammate stalled, on `agent:<id>`.
-    * `:unblocked` — `start_task` on the released task, on `task:<id>`
-      (criterion 1862). Read from the call, not from where the task is at
+    * `:unblocked` — `start_task` on the released task, on `task:<id>`.
+      Read from the call, not from where the task is at
       turn end: a task resumed and finished in one turn was resumed.
     * `:denial` — a declined tap-out: any `start_task` or
-      `answer_notification` after it (criterion 1672).
+      `answer_notification` after it.
     * `:resume` — informational: `:n_a`.
     * `:check_in` — no fixed expectation: `:n_a`, noting the tools it called.
     * `:instruction` — delivered and a subsequent turn observed: `:n_a`,
       noting delivered/seen. Operator compliance is not inferred. Repetition
       is reported to main once; it never suppresses a human's message.
     * `:team_free` — main re-assigning the named copy: `set_active_story` or
-      `assign_issue_to_working_copy` naming it (criteria 1881, 1892).
+      `assign_issue_to_working_copy` naming it.
   """
 
   import Ecto.Query
@@ -54,10 +52,10 @@ defmodule CodeMySpec.Agents.Offers do
 
   # Bump a kind's version when its prompt text changes, so claim rates can be
   # compared per template. Templates: `:work`, `:resume`, `:check_in` in `Work`
-  # and `MainAgent.CheckInReport`; `:menu`, `:problems` in `StopDecision` and
-  # `Validation.Menu`; `:retry` and the restart `:resume` notices in `Agents`;
+  # and `Agents.Main.CheckInReport`; `:menu`, `:problems` in `StopDecision` and
+  # `Agents.Menu`; `:retry` and the restart `:resume` notices in `Agents`;
   # `:answer`, `:unblocked` and `:denial` in `Notifications`, `TaskOwner` and `Work`; `:stalled` in
-  # `MainAgent.Cadence.announce_stalls/2`.
+  # `Agents.Main.Cadence.announce_stalls/2`.
   @template_versions %{
     work: "work/1",
     menu: "menu/1",
@@ -80,15 +78,14 @@ defmodule CodeMySpec.Agents.Offers do
   @reassignment_tools ~w(set_active_story assign_issue_to_working_copy)
 
   # The escalation ladder for every kind of offer that asks an agent to act, as
-  # data (criterion 2057). Keyed by `{kind, subject_type}`; after n ignored
+  # data. Keyed by `{kind, subject_type}`; after n ignored
   # offers the next rung is `Enum.at(ladder, n)`, and `:held_back` -- always
   # last -- is the rung that stops the offer reaching that agent at all.
   #
   # One map rather than a rule per kind, so a kind's own length is its
   # threshold: requirement work takes three ignored offers to be held back, a
   # released task two, a declined tap-out notice one. A kind not in this map
-  # never escalates (resume, check-in, instruction), which is what replaced the
-  # hard-coded `kind: :work` match and keeps criterion 1821.
+  # never escalates (resume, check-in, instruction).
   @ladders %{
     {:work, "requirement"} => [:detail, :alternatives, :held_back],
     {:work, "questions"} => [:held_back],
@@ -105,7 +102,7 @@ defmodule CodeMySpec.Agents.Offers do
 
   An open offer of the same kind and subject is superseded. Answers the offer,
   or nil when none was written, for `undelivered/1`. A failed write is logged
-  at warning and never raised: recording must not change what is sent (f5699eb9).
+  at warning and never raised: recording must not change what is sent.
   """
   @spec record(term(), Agent.t(), Offer.kind(), subject()) :: Offer.t() | nil
   def record(recorded, %Agent{id: agent_id} = agent, kind, {type, key})
@@ -216,12 +213,10 @@ defmodule CodeMySpec.Agents.Offers do
     end)
   end
 
-  # A turn handed to a harness reports started within seconds; nothing
-  # legitimate stays unstarted for minutes. It has to lapse because what closes
-  # it needs a live process: a harness that dies after accepting the turn
-  # leaves the offer open, and an open turn request blocks every other wake.
-  # Measured 2026-09-22 when this was the agent row's reservation: one survived
-  # three harness restarts and held its agent for two hours.
+  # A turn handed to a harness reports started within seconds. It has to lapse
+  # because what closes it needs a live process: a harness that dies after
+  # accepting the turn leaves the offer open, and an open turn request blocks
+  # every other wake.
   @turn_request_ttl_seconds 300
 
   @never_started "never started"
@@ -247,7 +242,7 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   # A turn request past the TTL never started. Superseded, as any offer made
-  # again is (criterion 1668), and noted, because that note is what tells the
+  # again is, and noted, because that note is what tells the
   # next request apart from a first offer: without it every re-offer to a
   # harness that swallows turns read as a fresh hand-over, and the stall was
   # never reported.
@@ -368,7 +363,7 @@ defmodule CodeMySpec.Agents.Offers do
   defp cutoff, do: DateTime.add(DateTime.utc_now(), -@turn_request_ttl_seconds, :second)
 
   @doc """
-  Mark an offer whose delivery failed or was held (criterion 1676). Only an
+  Mark an offer whose delivery failed or was held. Only an
   open offer moves; `ignored` must mean the agent saw it. Always `:ok`.
   """
   @spec undelivered(Offer.t() | nil) :: :ok
@@ -526,8 +521,8 @@ defmodule CodeMySpec.Agents.Offers do
   defp delivery_time(%Message{inserted_at: at}), do: at
 
   @doc """
-  Where each piece of work stands with this agent, for the escalation ladder
-  (criteria 1739–1741): `%{subject_key => %{ignored: n, held?: boolean}}`,
+  Where each piece of work stands with this agent, for the escalation ladder:
+  `%{subject_key => %{ignored: n, held?: boolean}}`,
   for requirement work offers and released-task offers (keyed by task id).
   `ignored` counts ignored offers since the last claim; `held?` is the kind's
   own ladder length, or a decline since.
@@ -562,14 +557,13 @@ defmodule CodeMySpec.Agents.Offers do
 
   def standing(_agent_id), do: %{}
 
-  # The row's own kind is what decides whether it escalates: a kind not in
-  # `@ladders` never does (criterion 1821 — a restart or resume notice is not
-  # an escalation ladder), and a row is only laddered when its whole key is.
+  # The row's own kind decides whether it escalates: a kind not in `@ladders`
+  # never does, and a row is only laddered when its whole key is.
   defp laddered?({_key, kind, type, _status}), do: Map.has_key?(@ladders, {kind, type})
 
   # Newest first, up to the last claim. `ignored` is how many settled ignored
   # offers stand since then; `held?` is that count reaching the subject's own
-  # ladder length, or a decline since (criterion 2057). Each offer is read by
+  # ladder length, or a decline since. Each offer is read by
   # the ladder for its own kind, so two kinds can share a subject key.
   defp streak(settled) do
     recent = Enum.take_while(settled, fn {_kind, _type, status} -> status != :claimed end)
@@ -589,7 +583,7 @@ defmodule CodeMySpec.Agents.Offers do
     %{ignored: ignored, held?: held?}
   end
 
-  @doc "Every escalation ladder, keyed by `{kind, subject_type}` (criterion 2057)."
+  @doc "Every escalation ladder, keyed by `{kind, subject_type}`."
   @spec ladders() :: %{{atom(), String.t()} => [atom()]}
   def ladders, do: @ladders
 
@@ -659,12 +653,12 @@ defmodule CodeMySpec.Agents.Offers do
 
   @doc """
   How many ignored offers hold requirement work back from an agent: the length
-  of its ladder (criteria 1741, 2057).
+  of its ladder.
   """
   def held_after, do: length(@ladders[{:work, "requirement"}])
 
   @doc """
-  Decline an open offer with a reason (criterion 1738): `offer_id`, or the
+  Decline an open offer with a reason: `offer_id`, or the
   agent's newest delivered open offer when nil. Pending, failed and withdrawn
   deliveries cannot be declined. Unlinked legacy offers remain eligible.
   """
@@ -689,10 +683,10 @@ defmodule CodeMySpec.Agents.Offers do
     end
   end
 
-  # A refusal ends it (criterion 2055): declining a kind that has a ladder
+  # A refusal ends it: declining a kind that has a ladder
   # holds its subject back from this agent alone, so the refusal is written on
-  # the ladder's terminal rung. `tell_main_held_back/2` reports that rung once,
-  # with the reason (criterion 2056) -- which is why a refusal does not also
+  # the ladder's terminal rung. `Agents.tell_main_held_back/2` reports that rung
+  # once, with the reason -- which is why a refusal does not also
   # send a notice of its own. A kind with no ladder never escalates, so it is
   # recorded as told, the way it always was.
   defp declined_step(offer) do
@@ -704,7 +698,7 @@ defmodule CodeMySpec.Agents.Offers do
 
   @doc """
   Close this agent's open work offers on `key` as declined: the work was found
-  already done when it tried to take it (67e6b5cb). The system knows the offer
+  already done when it tried to take it. The system knows the offer
   is stale, so it does not wait for the agent to say so. Always `:ok`.
   """
   @spec close_stale(Ecto.UUID.t(), String.t()) :: :ok
@@ -760,11 +754,11 @@ defmodule CodeMySpec.Agents.Offers do
 
   @doc """
   This agent's offers that have reached `held_back` and not yet been reported
-  to main (criterion 2056).
+  to main.
 
   Not a time window: an ignored offer is settled inside `settle_turn/1`, so
   "settled since" catches it, but a *refused* offer was settled earlier in the
-  same turn by the agent's own `reject_offer/4` -- before the turn end captures
+  same turn by the agent's own `Agents.reject_offer/4` -- before the turn end captures
   its timestamp -- and a window would drop exactly the refusal the escalation
   exists to carry. Reported offers are stamped `note: "told_main"`, so each
   reaches main once and a later turn does not repeat it. `note` is free here:
@@ -813,10 +807,8 @@ defmodule CodeMySpec.Agents.Offers do
     end)
   end
 
-  # The ladder's next rung, written on the offer it follows (criteria 2055-2057).
-  # Every kind in @ladders escalates on its own ladder, read from the offer's
-  # own attempt: a kind not in the map -- resume, check-in, instruction -- never
-  # does (criterion 1821: a restart or resume notice never escalates).
+  # The ladder's next rung, written on the offer it follows, read from the
+  # offer's own attempt. A kind not in `@ladders` never escalates.
   defp next_step(
          %{status: :ignored} = settled,
          %Offer{kind: kind, subject_type: type, attempt: attempt}
@@ -857,7 +849,7 @@ defmodule CodeMySpec.Agents.Offers do
         %{status: :declined, reason: tapped.blocked_reason}
 
       # Claimed and cancelled is declined, or the claim would reset the ladder
-      # and the agent could take and drop the same work forever (7169d3cf).
+      # and the agent could take and drop the same work forever.
       Enum.any?(tasks, &cancelled_since?(&1, offer.inserted_at)) ->
         %{status: :declined, reason: "claimed and cancelled"}
 
@@ -877,7 +869,7 @@ defmodule CodeMySpec.Agents.Offers do
     end
   end
 
-  # Offers recorded on the blocker before criterion 1862.
+  # Older offers keyed on the blocker rather than the task.
   defp outcome(%Offer{kind: :unblocked} = offer, agent, _calls),
     do: claimed_if(resumed?(agent, offer.subject_key))
 
@@ -895,7 +887,7 @@ defmodule CodeMySpec.Agents.Offers do
 
   # A `start_task` naming this task's requirement on the same kind of entity,
   # directly or through `run_script`. Resuming keeps `started_at`, so the call
-  # is the evidence (criteria 1862, 1865). Not the entity's id: an agent names
+  # is the evidence. Not the entity's id: an agent names
   # a story by number, the task holds its id, and one agent does not hold two
   # tasks on the same requirement.
   defp start_called?(calls, task) do
@@ -976,11 +968,8 @@ defmodule CodeMySpec.Agents.Offers do
 
   defp tasks_on(_agent, _key), do: []
 
-  # A work offer's `subject_key` names a story by the number everyone reads it
-  # by (issue 56a2d806), but `Work.task_on_node?/2` matches a task against its
-  # own `story_id`, which is the database id -- the two were the same string
-  # until the key started carrying the number, and `tasks_on/2` is the one
-  # place that still needs the id to match a task by.
+  # A work offer's `subject_key` names a story by its number, but
+  # `Work.task_on_node?/2` matches a task's `story_id`, the database id.
   defp resolve_entity_id(%Agent{project_id: project_id}, "story", number) do
     case CodeMySpec.Stories.get_story_by_number(%Scope{active_project_id: project_id}, number) do
       nil -> number

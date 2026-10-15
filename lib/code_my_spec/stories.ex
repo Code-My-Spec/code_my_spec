@@ -44,16 +44,9 @@ defmodule CodeMySpec.Stories do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{key}:stories")
   end
 
-  # Guarded on the id, not the loaded struct, because the id is the only thing
-  # below that is read — the topic is built from `active_account_id` and
-  # `GraphInputs.announce/2` wants `active_project_id`.
-  #
-  # It guarded on `active_account` and cost criterion 7942. `PortableHost`
-  # rebuilds the scope for the local endpoint with both ids set and the account
-  # struct unloaded, so every write through a story LiveView there took this
-  # clause: the row changed, the graph was never told, and nothing said so.
-  # Invisible until reads stopped recomputing, because until then the next read
-  # rebuilt the graph anyway and covered for it.
+  # Guarded on the id, not the loaded account struct: only ids are read below,
+  # and some scopes (the local endpoint's) carry ids with the struct unloaded.
+  # A guard on the struct silently skipped the graph announcement.
   defp broadcast(scope, message, kind \\ nil)
 
   defp broadcast(%Scope{active_account_id: nil} = _scope, _message, _kind), do: :ok
@@ -77,48 +70,24 @@ defmodule CodeMySpec.Stories do
     )
   end
 
-  # An entity appearing or going falls back to a recompute, deliberately.
-  #
-  # Handlers *settle* rows; they do not create them. `GraphStore.sweep/2` and
-  # `put_verdict/2` are both `UPDATE`s, and a story that has never been
-  # projected has no rows for them to touch — so an event the projector handles
-  # discards its fallback marks and the new story is never computed at all.
-  # Caught by the rows-vs-recompute diff: three rows `missing` for a story created after
-  # the seed.
-  #
-  # So creation and deletion emit a kind nothing handles, which leaves the marks
-  # standing and sends the entity through `compute_entity/4` — the only path
-  # that writes rows that did not exist, and the only one that reaps the rows of
-  # an entity that is gone.
+  # Creation and deletion emit kinds nothing handles: handlers settle rows and
+  # never create or reap them, so the entity must go through
+  # `compute_entity/4`.
+  # See knowledge/requirements_graph/checkers, "Announcing writes".
   defp story_event_kind({:created, _}), do: "story_created"
   defp story_event_kind({:deleted, _}), do: "story_deleted"
   defp story_event_kind(_message), do: "story_changed"
 
-  # `ready_for_dev` is creation and deletion by another name, as far as the
-  # projection is concerned: `Preloader` filters the story population on it, so
-  # a story that is released gains every requirement row it has and a story that
-  # is parked loses them. Handlers cannot write either — both sweeps are
-  # `UPDATE`s — so a readiness flip has to reach `compute_entity/4`, and it does
-  # that by being a kind nothing handles.
-  #
-  # `update_story/3` is the only caller that can move it: every other writer
-  # here sets a component, a promotion stamp or the specs-ready latch.
+  # A `ready_for_dev` flip is creation or deletion to the graph (`Preloader`
+  # projects only ready stories), so it too is a kind nothing handles. Only
+  # `update_story/3` can move it.
   defp readiness_kind(%Story{ready_for_dev: same}, %Story{ready_for_dev: same}), do: nil
   defp readiness_kind(_before, _after), do: "story_readiness_changed"
 
-  # The story, and the project.
-  #
-  # Only the story, as far as story requirements go: a story's `component_id` is
-  # an edge input — it is in `Freshness.topology_parts/2`, not in
-  # `Freshness.component/2` — so attaching a story to a component moves the
-  # graph's shape and not that component's own requirements. Topology is
-  # fingerprinted separately and is not what these marks replace.
-  #
-  # `:project` because three project requirements read stories: `stories_exist`,
-  # `work_dispatched` through `EpicDispatch.dispatch_state/1`, and
-  # `architecture_designed`, which reports stories that are ready and unlinked.
-  # A writer that names entities is asserting it moved nothing the project
-  # requirements read, and this one would be asserting something false.
+  # The story, and the project. Not the component: a story's `component_id` is
+  # an edge input (`Freshness.topology_parts/2`), not one of the component's.
+  # `:project` because `stories_exist`, `work_dispatched` and
+  # `architecture_designed` read stories.
   defp graph_entities({_verb, %{id: id}}) when not is_nil(id), do: [{"story", id}, :project]
   defp graph_entities(_message), do: []
 
@@ -154,14 +123,14 @@ defmodule CodeMySpec.Stories do
   @doc """
   `%{story_id => %{at: DateTime.t() | nil, commit: String.t() | nil}}` for the
   given story ids — when and where each one's `specs_ready` latch was earned.
-  Display data only, for a stop-hook refusal on a different checkout
-  (`51e319db`); never checked back for ancestry.
+  Display data only, for a stop-hook refusal on a different checkout; never
+  checked back for ancestry.
   """
   def specs_ready_stamps(scope, story_ids), do: impl().specs_ready_stamps(scope, story_ids)
 
   @doc """
   `%{story_id => number}` for the project — what a page needs to label a story
-  by the number that names its spex directory rather than by its id (1ab62ffd).
+  by the number that names its spex directory rather than by its id.
   """
   def story_numbers(scope), do: impl().story_numbers(scope)
 
@@ -230,7 +199,7 @@ defmodule CodeMySpec.Stories do
   def get_story(scope, id), do: impl().get_story(scope, id)
 
   @doc """
-  A story by its durable number rather than its id (1ab62ffd) — what the URL
+  A story by its durable number rather than its id — what the URL
   and the UI show a human, since the id and the number coincide on a young
   project and diverge later.
   """
@@ -262,17 +231,8 @@ defmodule CodeMySpec.Stories do
   end
 
   @doc """
-  Ready stories that belong to no epic.
-
-  The reading story 1058 came from: a product agent asked to group ready stories
-  into an epic worked out that one sat outside every one of them, could not name
-  it, and stopped. Nothing exposed this — `list_epics` lists epics and
-  `assign_story_to_epic` writes one, and neither answers a question about
-  absence.
-
-  Ready rather than all, because that is the question people ask. A story
-  nobody has released is not yet anybody's problem, and including them buries
-  the one that is.
+  Ready stories that belong to no epic — the absence `list_epics` cannot
+  answer. Ready only: an unreleased story is not yet anybody's problem.
   """
   @spec ready_stories_without_epic(Scope.t()) :: [Story.t()]
   defdelegate ready_stories_without_epic(scope), to: StoriesRepository
@@ -303,7 +263,7 @@ defmodule CodeMySpec.Stories do
 
   The latch is what the stop hook and the promote gate consult before letting
   a spex failure block. Only a promote of the story sets it
-  (`mark_story_promoted/4`, e1174640); rewriting the story's BDD specs,
+  (`mark_story_promoted/4`); rewriting the story's BDD specs,
   editing its criteria, and the story page's Unenforce clear it.
 
   Clearing also clears the ready-for-QA stamp (`set_qa_ready/4`): the events
@@ -314,13 +274,10 @@ defmodule CodeMySpec.Stories do
   enforcement consequences, so the write path is named rather than
   buried in a generic attrs map.
 
-  `opts` is display data only (`51e319db`) — `:at` and `:commit` are stamped
-  alongside a `true` write so a stop hook on a *different* checkout can say
-  when and where this was earned, never checked back for ancestry. Ignored
-  when `ready?` is `false`: `specs_ready_at`/`specs_ready_commit` are cleared
-  to `nil` by `Story.changeset/2`'s own readiness-change handling instead, so
-  a caller clearing the latch cannot accidentally leave a stale stamp behind
-  by omitting opts.
+  `opts` on a `true` write: `:at` and `:commit` (display data, so a stop hook
+  on a different checkout can say when and where this was earned) and the
+  promotion stamps `mark_story_promoted/4` passes. Ignored when `ready?` is
+  `false`, which clears the stamps itself.
   """
   def set_specs_ready(scope, story, ready?, opts \\ [])
 

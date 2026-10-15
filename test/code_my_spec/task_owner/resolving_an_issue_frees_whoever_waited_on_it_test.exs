@@ -26,6 +26,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.SessionsFixtures
+  import CodeMySpecTest.GraphHelpers, only: [assert_woken: 2]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
@@ -144,7 +145,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
         ResolveIssue.execute(%{issue_id: ctx.issue.id, resolution: "fixed"}, ctx.frame)
 
       refute response.isError
-      assert_woken(ctx.agent.id, "Your blocker issue #{ctx.issue.id} was resolved; resume")
+      assert_woken(ctx.agent.id, saying: "Your blocker issue #{ctx.issue.id} was resolved; resume")
 
       {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
       refute waiting?(fresh, ctx.issue.id), "resolving the issue left its task waiting"
@@ -168,7 +169,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
              clear this block — the task stays refused by `start_task` forever.
              """
 
-      assert_woken(ctx.agent.id, "Your blocker issue #{ctx.issue.id} was dismissed; resume")
+      assert_woken(ctx.agent.id, saying: "Your blocker issue #{ctx.issue.id} was dismissed; resume")
     end
 
     # Blocked at threshold, then re-triaged below it: nothing offers a fix
@@ -186,7 +187,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
 
       assert_woken(
         ctx.agent.id,
-        "Your blocker issue #{ctx.issue.id} is below the project's fix threshold; resume"
+        saying: "Your blocker issue #{ctx.issue.id} is below the project's fix threshold; resume"
       )
     end
 
@@ -223,13 +224,6 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
     end
   end
 
-  defp assert_woken(agent_id, needle) do
-    assert_receive {:work_turn_requested, ^agent_id, _ref, message}, 2_000
-
-    assert message =~ needle,
-           "the holder was offered a turn, but not told its blocker closed: #{message}"
-  end
-
   test "`:issue` is a blocker a task may actually hold", ctx do
     issue_id = Ecto.UUID.generate()
     blocked = blocked_on_issue(ctx.scope, ctx.agent, issue_id)
@@ -262,7 +256,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
 
       assert_woken(
         ctx.agent.id,
-        "Your blocker issue #{ctx.medium.id} is below the project's fix threshold; resume"
+        saying: "Your blocker issue #{ctx.medium.id} is below the project's fix threshold; resume"
       )
     end
 

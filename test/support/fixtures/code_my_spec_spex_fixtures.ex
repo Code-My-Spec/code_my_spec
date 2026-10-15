@@ -21,6 +21,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CmsHarness,
       CmsHarness.Agents,
       CmsHarness.Project,
+      # The connected desktop assistance fixture uses the real harness websocket rig.
+      CmsHarnessTest,
       CodeMySpec,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Embeddings,
@@ -35,6 +37,7 @@ defmodule CodeMySpecSpex.Fixtures do
       # `launch_agent/1` names the carried tools the way the channel's launch does.
       CodeMySpec.McpServers,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
       CodeMySpec.Architecture,
@@ -130,6 +133,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analytics.GoogleAnalytics
@@ -927,6 +931,32 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec mark_present(map()) :: map()
   def mark_present(agent), do: AgentPresence.present(agent)
 
+  @doc """
+  Untrack an agent's presence without ending its process: the lane leaves the
+  harness channel, the thing actually running it does not.
+  """
+  @spec mark_absent(map()) :: :ok
+  def mark_absent(agent), do: AgentPresence.absent(agent)
+
+  @doc """
+  Record the machine's own pid for an agent, the way a harness report does.
+
+  `os_pid` arrives on this project from the machine actually running the
+  agent, not from a decision made here — so a criterion whose premise is
+  "the machine already reported a pid for it" sets it directly rather than
+  standing up the full report round trip to produce the same row.
+  """
+  @spec record_os_pid(CodeMySpec.Agents.Agent.t(), integer()) :: CodeMySpec.Agents.Agent.t()
+  def record_os_pid(%CodeMySpec.Agents.Agent{} = agent, pid) when is_integer(pid) do
+    scope = %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id
+    }
+
+    {:ok, updated} = AgentsRepository.update_agent(scope, agent, %{os_pid: pid})
+    updated
+  end
+
   defp tool_set(role) when is_binary(role),
     do: role |> String.to_existing_atom() |> tool_set()
 
@@ -1167,6 +1197,85 @@ defmodule CodeMySpecSpex.Fixtures do
       ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "spex-placeholder-secret")
 
     ProjectSecrets.put_value(scope, "hetzner_api_token", token)
+  end
+
+  def stop_desktop_fixture_copies(directory) do
+    prefix = Path.expand(directory) <> "/"
+
+    roots =
+      CmsHarness.Projects.list()
+      |> Enum.filter(&String.starts_with?(Path.expand(&1), prefix))
+
+    # Closing the client side's socket does not wait for the matching
+    # server-side HarnessProjectChannel to notice and exit -- that happens on
+    # its own, async, over the local websocket. A channel still mid a
+    # reconcile when this test's Sandbox owner stops next outlives the
+    # connection it was using (add46395, 9d81dfbd). Monitored here, while the
+    # registry entry is still live, and waited out below.
+    refs = Enum.map(desktop_channel_pids(prefix), &Process.monitor/1)
+
+    Enum.each(roots, &CmsHarness.Projects.stop_serving/1)
+
+    Enum.each(refs, &await_desktop_channel_down/1)
+  end
+
+  # `root` is reported to the registry, not an identity it resolves by (see
+  # `HarnessRegistry.register_executor/3`'s own moduledoc) -- so this scans
+  # every entry and filters on it directly, instead of first resolving a
+  # working_copy_id for each root the way an ordinary caller would.
+  defp desktop_channel_pids(prefix) do
+    HarnessRegistry
+    |> Registry.select([{{:"$1", :"$2", {:_, :"$3"}}, [{:is_binary, :"$1"}], [{{:"$2", :"$3"}}]}])
+    |> Enum.filter(fn {_pid, root} -> is_binary(root) and String.starts_with?(Path.expand(root), prefix) end)
+    |> Enum.map(fn {pid, _root} -> pid end)
+  end
+
+  defp await_desktop_channel_down(ref) do
+    receive do
+      {:DOWN, ^ref, :process, _pid, _reason} -> :ok
+    after
+      5_000 -> raise "a desktop harness's server-side channel outlived the client copy that closed on it"
+    end
+  end
+
+  def desktop_setup_main_agent(user) do
+    account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user)
+    account_scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account)
+    {:ok, _} = UserPreferences.select_active_account(account_scope, account.id)
+    project = CodeMySpec.ProjectsFixtures.project_fixture(account_scope, account_id: account.id)
+    scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account, project)
+    {:ok, _} = UserPreferences.select_active_project(scope, project.id)
+    context = %{user: user, account: account, project: project, scope: scope}
+
+    :ok = install_recording_agent_transport(context)
+    :ok = designate_main(context.scope, context.scope.active_working_copy_id)
+    agent = running_agent(context.scope, role: "main")
+    Map.put(context, :setup_main_agent, agent)
+  end
+
+  def desktop_setup_connected_harness(scope) do
+    previous = System.get_env("CMS_PROJECT_ID")
+    System.delete_env("CMS_PROJECT_ID")
+    ExUnit.Callbacks.on_exit(fn -> restore_desktop_project_id(previous) end)
+
+    CmsHarnessTest.FakeServer.start()
+    project = CmsHarnessTest.Projects.project_dir(project_id: scope.active_project_id)
+    ExUnit.Callbacks.on_exit(fn -> CmsHarnessTest.Projects.stop_project(project.root) end)
+    {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+    %{connected: true} = CmsHarness.Setup.Connection.observe(project.root)
+    project
+  end
+
+  defp restore_desktop_project_id(nil), do: System.delete_env("CMS_PROJECT_ID")
+  defp restore_desktop_project_id(value), do: System.put_env("CMS_PROJECT_ID", value)
+
+  def desktop_harness_credential(user) do
+    {:ok, token} =
+      ExOauth2Provider.AccessTokens.create_token(user, %{expires_in: 3600},
+        otp_app: :code_my_spec
+      )
+
+    token.token
   end
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
@@ -1524,6 +1633,10 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec watch_graph(Scope.t()) :: :ok
   def watch_graph(%Scope{active_project_id: project_id} = scope) do
     {:ok, _pid} = GraphWatcher.ensure_watching(scope)
+
+    # Each project belongs to this test's teardown, including secondary projects.
+    # A named callback also handles repeated starts without accumulating callbacks.
+    ExUnit.Callbacks.on_exit({:stop_graph_watcher, project_id}, fn -> stop_watching(scope) end)
 
     # `GraphInputs.subscribe/1` is a plain `Phoenix.PubSub.subscribe/2`, which is
     # not idempotent per process: a second subscription from the same pid to the
@@ -3756,10 +3869,16 @@ defmodule CodeMySpecSpex.Fixtures do
     # which names a child spec and a pid and reads as a supervision bug in the
     # code under test. It took a stacktrace read to find that the second
     # installer was the caller's own fixture call.
-    case Process.whereis(FakeWorkspaceRunner) do
-      nil -> start_runner_with_ordered_teardown(opts)
-      _already_running -> FakeWorkspaceRunner.configure(opts)
-    end
+    #
+    # Checking `Process.whereis/1` and branching on it used to be how this
+    # decided which of those two cases it was in, and it is a check-then-act
+    # race: two async tests whose setup runs at the same moment can both see
+    # `nil`, both call `start_link`, and whichever loses crashes its own setup
+    # with `{:error, {:already_started, pid}}` instead of reading as a second
+    # install. Attempting the start and handling that outcome is the atomic
+    # form of the same idea — the name registration itself is the only lock
+    # that actually holds across processes.
+    start_runner_with_ordered_teardown(opts)
 
     :ok
   end
@@ -3804,8 +3923,19 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defp start_runner_with_ordered_teardown(opts) do
     started_before = WorkspaceWatchers.running()
-    {:ok, runner} = FakeWorkspaceRunner.start_link(opts)
 
+    case FakeWorkspaceRunner.start_link(opts) do
+      {:ok, runner} -> register_runner_teardown(started_before, runner)
+      # Lost the race to start it: somebody else's setup registered the name
+      # first, a moment too early for our own `Process.whereis/1` (if we still
+      # had one) to have seen it. Reconfiguring it is exactly what the other
+      # branch of the old check did, and leaving its teardown in place is
+      # correct — only the test that actually started it should tear it down.
+      {:error, {:already_started, _pid}} -> FakeWorkspaceRunner.configure(opts)
+    end
+  end
+
+  defp register_runner_teardown(started_before, runner) do
     ExUnit.Callbacks.on_exit(fn ->
       WorkspaceWatchers.kill_since(started_before)
       if Process.alive?(runner), do: GenServer.stop(runner)

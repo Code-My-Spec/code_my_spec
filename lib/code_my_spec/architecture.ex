@@ -31,10 +31,10 @@ defmodule CodeMySpec.Architecture do
   defdelegate generate_mermaid(components), to: MermaidProjector, as: :project
 
   @doc """
-  Story 1085 — where the planned graph and the live code disagree.
+  Where the planned graph and the live code disagree.
 
-  The comparison is already the data: a full sync (`Files.ComponentSync`,
-  story 1084) marks every component `provenance: :authored` (named by a tool
+  The comparison is already the data: a full sync (`Files.ComponentSync`)
+  marks every component `provenance: :authored` (named by a tool
   or a proposal) or `:discovered` (named only by code), and every dependency
   `provenance: :authored` paired with `in_code` (whether live code still
   names that edge). Checking the architecture is reading those four
@@ -139,16 +139,9 @@ defmodule CodeMySpec.Architecture do
     |> Enum.max(fn -> 0 end)
   end
 
-  # `73ff202b`: the count went from 4 to 21 without anyone noticing, because
-  # every surface that had it reduced it to a boolean on the way out. This one
-  # is called "a structured summary of architecture metrics" and a metric with a
-  # magnitude should not be reported as yes/no — `validate_dependency_graph`
-  # hands back the cycles themselves and they were being thrown away one line
-  # later.
-  #
-  # Reporting only. Nothing gates on the count, deliberately: at 21 a gate would
-  # wedge every agent, and which edge of each pair is the wrong one is an
-  # architecture decision per cycle.
+  # The cycles themselves, so the summary reports a count, not a boolean that
+  # hides growth. Reporting only: which edge of a cycle is wrong is an
+  # architecture decision, and a gate would wedge every agent.
   defp circular_dependencies(scope) do
     case Components.validate_dependency_graph(scope) do
       :ok -> []

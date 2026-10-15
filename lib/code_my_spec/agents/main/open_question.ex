@@ -86,10 +86,8 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   The same struct, built from a permission request.
 
   A `tap_out` or an `ask_user_question` is an agent waiting on a person exactly
-  as a question is, and `StopDecision.wake/2` treats them identically —
-  `Notifications.awaiting_answer?/1` is `pending_question? or
-  pending_permission?`, so either one takes the agent off the graph until
-  somebody decides.
+  as a question is: `Notifications.awaiting_answer?/1` is `pending_question? or
+  pending_permission?`.
 
   They were missing from the listing that calls itself "everything the agents on
   this project are waiting on, in one place", which made the commonest way for
@@ -163,8 +161,9 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   defp tap_out_task(%{task_id: task_id}) when is_binary(task_id), do: "\n  task: #{task_id}"
   defp tap_out_task(_request), do: ""
 
-  defp tap_out_reason(%{tool_input: %{"reason" => reason}}) when is_binary(reason) and reason != "",
-    do: "\n  reason: #{reason}"
+  defp tap_out_reason(%{tool_input: %{"reason" => reason}})
+       when is_binary(reason) and reason != "",
+       do: "\n  reason: #{reason}"
 
   defp tap_out_reason(_request), do: ""
 

@@ -4,23 +4,15 @@ defmodule CmsHarness.Project.AnalysisServer do
   time, and pushes each result back as it lands.
 
   **Serialized, not parallel.** `mix test` and `mix spex` share `_build/test`,
-  and a project on an older Elixir has no OS-level build lock, so two mix runs
-  at once can corrupt the build — and a corrupted build reports failures that
-  are not in the code. The server's own `Analysis.ProjectServer` serializes for
-  exactly this reason; this is the same rule on the machine that now does the
-  running.
+  and two mix runs at once can corrupt the build into reporting failures that
+  are not in the code. The server's `Analysis.ProjectServer` serializes for
+  the same reason.
 
   **Every request is answered, with a real result.** A run the server started
-  is a `:running` row in its ledger, and a row nobody finishes makes the stop
-  hook report analysis pending forever — which allows every stop with a note
-  that results will apply next time, on a next time that never comes. So a
-  crash, a timeout, and a tool that will not start all push a result saying
-  so. A duplicate request for a source already queued is never dropped
-  either: it ties onto the entry already waiting and receives that entry's
-  real result when it lands, story 839 (`CodeMySpec.Analysis`'s own
-  moduledoc: "the single execution path shared by the stop hook and
-  model-invoked test runs"). Silence, and an answer with no data in it, are
-  the two things this must never give.
+  is a `:running` row in its ledger; one nobody finishes makes the stop hook
+  report analysis pending forever. So a crash, a timeout, a cancel and a tool
+  that will not start all push a result saying so, and a duplicate request for
+  a source already queued ties onto that entry and receives its real result.
 
   Runs execute in a task under the project's `Task.Supervisor`, so a wedged
   `mix` cannot take the queue with it when it is killed.
@@ -36,9 +28,8 @@ defmodule CmsHarness.Project.AnalysisServer do
   alias CmsHarness.Sync
   alias CodeMySpec.Environments.Environment
 
-  # Generous, and a ceiling rather than an expectation: a full suite on a cold
-  # `_build` is minutes. What it is really for is the run that will never
-  # finish, which without this holds every later analyzer behind it.
+  # A ceiling, not an expectation: it bounds the run that will never finish,
+  # which would otherwise hold every later analyzer behind it.
   @default_timeout :timer.minutes(30)
 
   # --- Client ---
@@ -49,8 +40,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   # Keyed on the working copy, not the project: two checkouts of one project
-  # resolve the same id, and keying on that gave the second one the first's
-  # queue. Issue 8b83ba20.
+  # resolve the same id.
   def via(root), do: {:via, Registry, {CmsHarness.Registry, {:analysis, root}}}
 
   @doc """
@@ -82,13 +72,9 @@ defmodule CmsHarness.Project.AnalysisServer do
   Stop everything this project's queue holds: the run under way is killed, and
   it and every run queued behind it are answered as superseded, with `reason`.
 
-  The promotion gate asks for this when a batch leaves its copy. A batch
-  ejected on its first finding left the rest of its analyzers running, and the
-  next batch reset the tree and test databases underneath them: an exunit run
-  hung for its full thirty minutes, holding a machine-wide slot every other
-  copy's runs waited on (2026-10-12).
-
-  Answered rather than dropped, like every other way a run ends here.
+  The promotion gate asks for this when a batch leaves its copy, so the next
+  batch does not rebuild the tree under runs still holding machine-wide slots.
+  Returns how many entries were held.
   """
   @spec cancel(String.t(), String.t()) :: non_neg_integer()
   def cancel(root, reason) when is_binary(reason) do
@@ -114,15 +100,10 @@ defmodule CmsHarness.Project.AnalysisServer do
   Run ids this harness is still working on — the one executing plus everything
   queued behind it.
 
-  Declared to the server on join. The server closes a working copy's open runs
-  when a harness reconnects, on the reasoning that its queue went with it; that
-  is right for a harness that restarted and wrong for one whose socket dropped,
-  because the analyzers are OS processes here and a closed socket does not touch
-  them. They finish, report, and the result is refused for a run that is no
-  longer `:running`.
+  Declared to the server on join, so its reconnect sweep does not close runs
+  that survived a dropped socket and will still report.
 
-  Empty list when there is no server for this root, which reads as "declaring
-  nothing" and leaves the sweep exactly as it was.
+  Empty list when there is no server for this root ("declaring nothing").
   """
   @spec in_flight(String.t()) :: [integer()]
   def in_flight(root) do
@@ -137,13 +118,10 @@ defmodule CmsHarness.Project.AnalysisServer do
   one entry executing (or waiting for a machine-wide slot) and everything
   tied to it, plus every other source still queued behind it.
 
-  For the dev dashboard. The server's own `analysis_runs` ledger cannot
-  answer this — every entry tied to a source reads as its own `:running`
-  row, so four ties on one execution look like four things happening at
-  once. This is the one place that actually knows there is one.
+  For the dev dashboard. The server's `analysis_runs` ledger shows each tied
+  run as its own `:running` row; only this queue knows they are one execution.
 
-  `nil` when nothing is queued for this root, which reads as "asked and
-  there is nothing to say" rather than an error.
+  `nil` when there is no queue for this root.
   """
   @spec status(String.t()) :: %{running: map() | nil, queued: [map()]} | nil
   def status(root) do
@@ -248,9 +226,7 @@ defmodule CmsHarness.Project.AnalysisServer do
         {:DOWN, ref, :process, _pid, reason},
         %{running: %{task: %Task{ref: ref}} = running} = state
       ) do
-    # The task died without returning. Answered rather than dropped: an
-    # unanswered run is a ledger row that stays `:running` and a stop hook that
-    # reports analysis pending forever.
+    # The task died without returning. Answered rather than dropped.
     deliver(state, running, {:error, "analyzer task died: #{inspect(reason)}"})
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
@@ -266,20 +242,10 @@ defmodule CmsHarness.Project.AnalysisServer do
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
-  # Arms the kill timer the moment the analyzer actually starts, not the
-  # moment it was dispatched — the seam that lets `AnalysisSlots.acquire/0`
-  # wait for a machine-wide slot without spending the run's own budget
-  # waiting for one (story 839, criterion 3440). Guarded on `run_id` so a
-  # message from a run this server has already moved past (superseded by a
-  # kill, or already delivered) cannot arm a timer for whatever runs next.
-  #
-  # Logged, not just armed. `AnalysisSlots` logs the *start* of a wait ("an
-  # analyzer run is waiting for a machine-wide slot") but nothing ever said
-  # how it ended — a reader saw the wait begin and had no line telling them
-  # it resolved, how long it took, or that this exact run is what the timer
-  # is now counting for. `waited_ms` only worth naming past a few hundred
-  # milliseconds: most runs acquire a slot immediately, and logging "waited
-  # 2ms" for every single one would bury the ones that actually waited.
+  # Arms the kill timer when the analyzer actually starts, not at dispatch, so
+  # waiting for a machine-wide slot spends none of the run's budget. Guarded on
+  # `run_id` so a message from a run already moved past cannot arm a timer for
+  # the next. Logs how a long wait ended; short waits are not worth a line.
   def handle_info(
         {:slot_acquired, run_id, waited_ms},
         %{running: %{run_id: run_id, source: source}} = state
@@ -301,11 +267,8 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   # --- Internals ---
 
-  # Strips the live `Task` struct (a pid/ref, not meaningful off-process).
-  # Carries the actual `tied_run_ids`, not just their count — a dashboard
-  # correlating this against the server's own `analysis_runs` rows needs
-  # every id riding on this one execution, not a number to re-derive nothing
-  # from.
+  # Strips the live `Task`. Carries the `tied_run_ids` themselves so a
+  # dashboard can correlate them with the server's `analysis_runs` rows.
   defp entry_summary(nil), do: nil
 
   defp entry_summary(entry) do
@@ -317,43 +280,19 @@ defmodule CmsHarness.Project.AnalysisServer do
     }
   end
 
-  # Two `mix test` processes in one `_build` is the corruption this server
-  # exists to prevent, and the queue is what prevents it: `maybe_start_next/1`
-  # only starts when nothing is running. So a request for a source that is
-  # merely *running* can be queued rather than refused.
-  #
-  # It used to be refused, and the refusal was delivered as an error, which
-  # failed the run row and left the previous result standing as the newest the
-  # validator had. With a 30-minute analyzer timeout and an agent stopping
-  # every minute or two, one run wedged on the `_build` lock poisoned every
-  # stop in that window: the hook blocked on stale findings describing code
-  # that was already fixed, and no rerun could replace them. Five stops in a
-  # row, escapable only by clearing the stored problems by hand.
-  #
-  # A request for a source already queued is never a second queue entry — it
-  # ties onto the one already waiting, so N duplicate requests for one source
-  # cost one execution instead of N (or, before this, N empty "superseded"
-  # answers: 397 against 25 completed in ninety minutes on Broken Oaths
-  # 2026-09-08, and no spex sweep finishing for thirty-four minutes on a suite
-  # that takes under three — John: "We can't be superseding runs like that. We
-  # have to let it finish."). When the tied entry finally runs, every run_id
-  # tied to it receives the same real result `deliver/3` sends the primary
-  # one — never a synthetic status carrying no data.
-  #
-  # A request for a source that is merely *running*, with nothing yet queued
-  # behind it, needs no separate case: falling through to the plain "insert a
-  # new entry" branch below both starts it once the current run finishes
-  # (`maybe_start_next/1`'s ordinary behaviour) and gives every *further*
-  # duplicate something to tie onto — this new entry, not the run already in
-  # flight, because that run may be answering input now stale relative to
-  # what prompted these requests.
+  # Queue rules:
+  # - a run id already held is ignored (the server re-sends runs it has joined);
+  # - a source already *queued* ties onto that entry: one execution answers
+  #   every tied run id with the same real result;
+  # - otherwise a new entry, including for a source that is only *running*,
+  #   since that run may be answering input now stale.
+  # See knowledge/harness/channel, "Analysis queue".
   defp accept(request, state) do
     case parse(request) do
       {:ok, run_id, source, args} ->
         cond do
-          # The server re-sends a run it has joined rather than opening a new
-          # row for it (75acdb84). Already held, so there is nothing to add; a
-          # second entry for it would push its result twice.
+          # The server re-sends a run it has joined; a second entry would push
+          # its result twice.
           holds_run?(state, run_id) ->
             state
 
@@ -378,15 +317,9 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
-  # One queued "next" entry per source, ever — its arg set grows to cover
-  # every tied request, its identity does not. Without this, a second
-  # request naming files the first queued request never named got answered
-  # with the first request's result and its own files were never actually
-  # analyzed — silently, since `tied_run_ids` alone gave every tied run_id
-  # the same real (but incomplete) result, and "real, not synthetic" was the
-  # only thing being checked for. Story 839, John 2026-09-13: one source
-  # never needs more than two entries — current run, next run — and the
-  # next run's scope is the union of everyone tied to it.
+  # One queued entry per source: at most current run + next run. The next
+  # run's args grow to the union of everyone tied to it, so no tied request's
+  # files go unanalyzed.
   defp tie_to_queued(state, source, run_id, args) do
     Logger.info(
       "[CmsHarness] #{source} is already queued for #{state.project.root} — " <>
@@ -409,10 +342,8 @@ defmodule CmsHarness.Project.AnalysisServer do
     %{state | queue: queue}
   end
 
-  # Empty args mean "the whole suite" — a superset of any file list, so it
-  # wins the merge rather than being unioned away. Two non-empty lists merge
-  # to their union: the next run has to cover every file anyone tied to it
-  # actually asked about.
+  # Empty args mean "the whole suite", a superset of any file list, so it wins
+  # the merge. Two non-empty lists merge to their union.
   defp merge_args([], _other), do: []
   defp merge_args(_args, []), do: []
   defp merge_args(args, other), do: Enum.uniq(args ++ other)
@@ -424,12 +355,8 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp parse(request), do: {:error, request}
 
-  # Only the queue, deliberately not `state.running` too. A source that is
-  # merely running has nothing queued to tie onto yet — the first duplicate
-  # request for it falls through `accept/2` to the plain insert branch, which
-  # both starts it once the current run finishes and becomes what any
-  # *further* duplicate ties onto. Checking `running` here as well would make
-  # this true too early and change nothing about what gets created.
+  # Only the queue, deliberately not `state.running`: a duplicate of a running
+  # source becomes a new entry that later duplicates tie onto.
   defp queued_entry_for(state, source), do: Enum.find(state.queue, &(&1.source == source))
 
   defp holds_run?(state, run_id), do: run_id in held_run_ids(state)
@@ -442,51 +369,20 @@ defmodule CmsHarness.Project.AnalysisServer do
     |> Enum.flat_map(&[&1.run_id | Map.get(&1, :tied_run_ids, [])])
   end
 
-  # Cheapest first. Measured on this harness: compiler ~9s, credo ~10s,
-  # exunit ~2m10s, spex ~2m35s — more than an order of magnitude between the
-  # ends, and the two an agent can act on immediately were the two arriving
-  # last.
-  #
-  # Head-of-line blocking here does not read as slowness, it reads as wrong
-  # feedback that looks authoritative. A credo finding fixed and verified came
-  # back five stops running, correctly marked stale, each stop saying a rerun
-  # would replace it — and each rerun sat behind spex, so the replacement never
-  # arrived inside the working session. An agent that trusts that re-edits
-  # correct code; one that learns to distrust it stops reading the source that
-  # would catch a real regression.
-  #
-  # Ordering rather than a second slot, deliberately: two concurrent `mix`
-  # invocations contend for the same `_build` (c032af74), so parallelism would
-  # buy latency by making a worse failure more likely.
+  # Cheapest first, so the fast analyzers an agent can act on are not stuck
+  # behind spex. Ordering rather than a second slot: two concurrent `mix`
+  # runs contend for `_build`.
+  # See knowledge/harness/channel, "Analysis queue".
   @cost %{"compiler" => 0, "credo" => 1, "exunit" => 2, "spex" => 3}
 
   @doc """
-  Public only so the ordering can be tested without standing up a server and
-  timing four real analyzers. Named apart from the client-API `enqueue/2`
-  above: same name and arity, entirely different meaning, and they resolved
-  to the right clause only because one guards on `is_list`.
+  Public only so the ordering can be tested without standing up a server.
   """
   def insert_by_cost(queue, entry) do
-    # Cheapest first *among what is waiting together*, and never ahead of
-    # something that was already waiting.
-    #
-    # This sorted the whole queue on every arrival, so a compiler request
-    # landing while spex sat queued went in front of it. That is right for one
-    # batch — the two an agent can act on immediately should arrive first — and
-    # wrong the moment requests keep coming, because the cheap one keeps
-    # arriving and the expensive one never reaches the front.
-    #
-    # Measured on Broken Oaths 2026-09-08, after in-flight runs were allowed to
-    # finish: six compiler sweeps completed in thirty seconds and not one spex
-    # sweep, on a copy whose coding agent was blocked waiting for exactly that
-    # spex result. `bdd_specs_passing` needs a fresh one to latch, so the
-    # requirement could not be satisfied by any amount of correct work.
-    #
-    # `waiting` is everything that has been in the queue at least one arrival;
-    # a new entry sorts only against the arrivals it shares a batch with, which
-    # is what `@cost` was reasoning about in the first place.
-    # Absent reads as unsettled, so a caller building an entry by hand — every
-    # direct test of this ordering — still sorts the way the cost table says.
+    # Cheapest first *among what arrived together*, never ahead of something
+    # already waiting; otherwise a stream of cheap requests starves spex.
+    # `waiting` is every entry that has survived a batch (`settled`); absent
+    # reads as unsettled, so hand-built entries in tests sort by cost.
     {waiting, arriving} = Enum.split_while(queue, &Map.get(&1, :settled, false))
 
     sorted =
@@ -501,12 +397,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp settle(%{queue: queue} = state),
     do: %{state | queue: Enum.map(queue, &Map.put(&1, :settled, true))}
 
-  # No timer armed here any more — `run_with_slot/3` reports back once it
-  # actually has a slot, and `handle_info({:slot_acquired, _, _}, _)` arms it
-  # then. Arming at dispatch was what forced `AnalysisSlots.acquire/0` to
-  # refuse instantly rather than wait: a run queued behind others would have
-  # spent the kill budget waiting and been killed for being slow (story 839,
-  # criterion 3440).
+  # No timer armed here: `:slot_acquired` arms it once the run has a slot.
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     project = state.project
     parent = self()
@@ -521,20 +412,10 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp maybe_start_next(state), do: state
 
-  # Inside the task, so the slot is held by the process doing the work and comes
-  # back when it exits — including when the thirty-minute timer kills it.
-  #
-  # `acquire/0` now waits for a slot rather than refusing instantly (story 839,
-  # criterion 3440) — the timer moved to `parent`'s own arming, above, so
-  # waiting here spends none of the run's kill budget. `:slot_acquired` is
-  # what tells `parent` the wait is over and the clock should start; sent only
-  # on `:ok`, because a `:busy` past `AnalysisSlots.wait_ceiling/0` never
-  # actually ran and has nothing for a kill timer to bound.
-  #
-  # An error tuple rather than a silent skip either way, because this
-  # module's own rule is that every request is answered: a run the server
-  # started is a `:running` row in its ledger, and one nobody finishes makes
-  # the stop hook report analysis pending forever.
+  # Inside the task, so the slot is held by the process doing the work and is
+  # released when it exits, including when the timer kills it.
+  # `AnalysisSlots.acquire/1` waits for a slot; `:slot_acquired` is sent only on
+  # `:ok`, since a `:busy` never ran. `:busy` is still answered, as an error.
   defp run_with_slot(project, entry, parent) do
     requested_at = System.monotonic_time(:millisecond)
 
@@ -565,25 +446,13 @@ defmodule CmsHarness.Project.AnalysisServer do
     %{state | running: nil, timer: nil}
   end
 
-  # Every run_id tied to this entry gets the same real result the primary
-  # one does — the whole point of tying rather than superseding. `deliver/3`
-  # is the only place a tied request's answer is ever actually resolved.
-  #
-  # `push_result/5`'s last argument names which run_id actually owns this
-  # result: `nil` for the primary, `running.run_id` for every tied one. Two
-  # (or more) `analysis_result` messages carrying the identical Problems for
-  # one real execution used to reconcile them independently — 42 rows where
-  # 21 existed, exactly twice (`57333540`). This is the fix at its source
-  # rather than a lock on the write: one execution has one owner, and only
-  # the owner's message tells the server to touch Problems at all.
+  # Every tied run_id gets the same real result as the primary. `tied_to` is
+  # `nil` for the primary and the primary's run_id for tied ones: only the
+  # owner's message reconciles Problems, so one execution is reconciled once.
   #
   # `completed` is the checkout's git state when the analyzer finished; nil
-  # when it never returned (killed, crashed).
-  #
-  # `"args"` is what actually ran. A tie merges args, so a targeted entry a full
-  # request tied onto runs the whole suite, and the server decides what the
-  # result replaces from this rather than from the primary row's own request
-  # (batch 313e82812, 2026-10-05).
+  # when it never returned. `"args"` is what actually ran (a tie merges args),
+  # and the server decides what the result replaces from it.
   defp deliver(state, running, result, completed \\ nil) do
     tree = completed |> completed_tree() |> Map.put("args", Map.get(running, :args))
     push_result(state.project.root, running.run_id, running.source, result, nil, tree)
@@ -598,18 +467,10 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp completed_tree(_completed), do: %{}
 
-  # The result carries whether the build that produced it is behind the tree it
-  # decided about.
-  #
-  # A harness runs the analyzer it booted with, so a fix to `StaticAnalysis` is
-  # not in force until the harness is rebuilt — and from inside the stop loop
-  # that is indistinguishable from an ordinary stale finding. `d9f0846c`: three
-  # loops spent on findings already fixed, while the compiled pipeline sat
-  # eleven commits behind for a whole session. Diagnosing it needed a `.beam`
-  # timestamp.
-  #
-  # Sent rather than logged, because the reader is the agent being told to stop
-  # again, and the harness log is the one place it is not looking.
+  # Carries `analyzer_staleness`: a harness runs the analyzer it booted with,
+  # and a stale analyzer's findings otherwise look like ordinary stale
+  # findings. Sent rather than logged, because the agent reads the result, not
+  # the harness log.
   defp push_result(root, run_id, source, {:ok, result}, tied_to, tree) do
     Channel.deliver_analysis_result(
       root,
@@ -624,9 +485,8 @@ defmodule CmsHarness.Project.AnalysisServer do
     )
   end
 
-  # A failure never reconciles Problems either way (`Reconciler.fail/2` only
-  # ever stamps the row), so tying carries nothing useful here — every tied
-  # run_id still needs its own row closed, on the same terms as the primary.
+  # A failure never reconciles Problems, so `tied_to` is irrelevant; every tied
+  # run_id still needs its own row closed.
   defp push_result(root, run_id, source, {:error, reason}, _tied_to, tree) do
     Logger.error("[CmsHarness] #{source} run #{run_id} did not produce a result: #{reason}")
 

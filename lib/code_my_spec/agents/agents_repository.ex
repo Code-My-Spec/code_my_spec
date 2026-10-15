@@ -2,9 +2,9 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @moduledoc """
   Queries over the agents CodeMySpec started, scoped to the active project.
 
-  Every read is project-scoped. An agent names a working copy and a credential,
-  and both are tenant property — on a shared host the whole point of the record
-  is that one tenant's agent is not reachable from another's.
+  Every read is project-scoped except `list_every_agent/1` and the boot-time
+  scope listings: an agent names a working copy and a credential, both tenant
+  property.
   """
 
   import Ecto.Query, warn: false
@@ -30,11 +30,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Every agent row on this machine, ignoring scope.
 
-  The only listing here that does. `list_agents/1` answers what one project's
-  operator may see; this answers what is running on this machine, which is what
-  a person debugging a stuck agent needs before they know whose it is.
-
-  Reached from `/dev/agents` only, and that route is compiled out of a release.
+  For a person debugging a stuck agent before they know whose it is. Reached
+  from `/dev/agents` only, which is compiled out of a release.
   """
   @spec list_every_agent(keyword()) :: [Agent.t()]
   def list_every_agent(opts \\ []) do
@@ -57,14 +54,9 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Set continuous mode on every live agent of one working copy.
 
-  `update_all` rather than a changeset each: this is a mode being switched, not
-  a revision of what any agent is, and three rows moving together is the act
-  somebody performed. `updated_at` by hand because `update_all` does not touch
-  timestamps.
-
-  Agents off or retired are excluded. A mode on an agent nobody means to run
-  records an intention nothing can act on, and the row would read as a running
-  loop the next time somebody looked.
+  One `update_all` (the copy's rows move together); `updated_at` is set by hand
+  because `update_all` does not touch timestamps. Off and retired agents are
+  excluded: the row would read as a running loop nobody can act on.
   """
   @spec set_copy_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
           {:ok, non_neg_integer()} | {:error, :no_project}
@@ -89,19 +81,11 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Point every live agent of one working copy at its current root.
 
-  `working_copy` is a snapshot taken once, at start — `LaunchRequest.for/2`
-  sends it verbatim rather than resolving it fresh, so it is the only place a
-  restore actually reads the path from. `report_root/2` can correct
-  `working_copies.root` on any later rejoin (a checkout that moved, or one
-  whose first boot recorded the wrong path); without this, an agent started
-  before that correction keeps offering the harness the old one forever, and
-  restore fails with `:working_copy_missing` against a checkout that is
-  right there. `update_all` rather than a changeset each, same as
-  `set_copy_continuous/3` above: every agent of one copy moves together, and
-  `updated_at` is set by hand because `update_all` does not touch timestamps.
-
-  Agents off or retired are excluded, same reasoning as `set_copy_continuous/3`:
-  a path corrected on an agent nobody will restore is not one anybody will use.
+  `working_copy` is a snapshot taken at start and sent verbatim by
+  `LaunchRequest.for/2`, so it is where a restore reads the path from. When a
+  rejoin corrects `working_copies.root`, this follows it; otherwise restore
+  fails with `:working_copy_missing` against a checkout that is right there.
+  Off and retired agents are excluded, as in `set_copy_continuous/3`.
   """
   @spec sync_working_copy_root(Scope.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, non_neg_integer()} | {:error, :no_project}
@@ -126,12 +110,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   A scope per project that has at least one agent in the loop.
 
-  For `Agents.GraphWake.watch_active_projects/0` at boot. Scopeless because there is
-  no caller to scope it to — this runs before anybody has asked for anything,
-  and "which projects are being worked" is a fact about the whole install.
-
-  Carries only what a graph computation needs: the project and its account. No
-  user, because no user asked.
+  For `Agents.GraphWake.watch_active_projects/0` at boot, so scopeless. Each
+  scope carries only the project and its account; no user asked.
   """
   @spec continuous_project_scopes() :: [Scope.t()]
   def continuous_project_scopes do
@@ -146,22 +126,10 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Projects with a `main` agent running, for the cadence to wake.
 
-  The cadence used to be seeded from `continuous_project_scopes/0`, and QA found
-  what that costs: this project had twelve agents running, one of them `main`,
-  posting real messages minutes apart and fielding real questions — and every
-  one of them had `continuous = false`, so nothing was scheduled to wake anybody
-  (`11aea8f5`). "Nothing is in a loop" and "there is nobody to look in on" are
-  different statements, and the first was standing in for the second.
-
-  The trigger is the agent the cadence actually wakes. A project with continuous
-  coding agents and no `main` has nothing to deliver a digest to; a project with
-  a `main` agent and no loops is exactly the case story 1059 exists for — the
-  failure worth catching is the one where an agent cannot report its own
-  trouble, and that does not require it to have been looping.
-
-  On duty counts, whether or not its process is up this moment: an agent that
-  has not finished coming up, or is being restored, is one the cadence should
-  already be watching.
+  Keyed on the agent the cadence wakes, not on continuous mode: a project with
+  a `main` and no loops still needs looking in on, and one with loops and no
+  `main` has nobody to deliver a digest to. On duty counts, whether or not its
+  process is up this moment.
   """
   @spec main_agent_project_scopes() :: [Scope.t()]
   def main_agent_project_scopes do
@@ -210,15 +178,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Set continuous mode on one agent.
 
-  The grain a person actually watches. `set_copy_continuous/3` moves a whole
-  checkout, which is the right unit for staffing an epic, and the wrong one when
-  somebody is looking at a single agent's conversation and wants *that* one to
-  carry on — John: *"when I open the agent conversation for the agent, I should
-  get a play button that lets me start the agent."*
-
-  It is also the grain R6 already works at: a coding agent goes home when coding
-  work runs out while product keeps going, so the roles were always allowed to
-  differ and only the control was per copy.
+  The grain a person watches from one agent's conversation;
+  `set_copy_continuous/3` moves a whole checkout.
   """
   @spec set_agent_continuous(Scope.t(), Ecto.UUID.t(), boolean()) ::
           {:ok, Agent.t()} | {:error, term()}
@@ -262,8 +223,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def list_reported_running(%Scope{}), do: []
 
   @doc """
-  The agents meant to be running: neither off nor retired (39af5611), whether
-  or not their processes are up this moment.
+  The agents meant to be running: neither off nor retired, whether or not
+  their processes are up this moment.
 
   What to restore on a harness join and what the main agent reports as working.
   """
@@ -292,12 +253,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   not go empty the instant its agent is turned off.
 
   Every agent on duty, plus — for a `(working_copy_id, role)` with nobody on
-  duty — its single most recently turned-off agent. Bounded by
-  construction to one row per slot: a slot's stopped agent is superseded the
-  moment a new one starts there, so this never accumulates the way `stopping
-  == deleting` would have to be false to answer John's report that the team
-  panel loses a row — and everything it ever ran — the instant its one agent
-  is stopped from its own conversation page.
+  duty — its single most recently turned-off agent, so a slot does not vanish
+  from the panel when its agent is stopped. One row per slot by construction.
   """
   @spec list_for_team_status(Scope.t()) :: [Agent.t()]
   def list_for_team_status(%Scope{active_project_id: project_id}) when is_binary(project_id) do
@@ -308,7 +265,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
     filled_slots = MapSet.new(running, &{&1.working_copy_id, &1.role})
 
-    # A retired agent gave up its seat, so its slot shows empty (39af5611).
+    # A retired agent gave up its seat, so its slot shows empty.
     latest_stopped_per_empty_slot =
       from(a in Agent,
         where: a.project_id == ^project_id and not is_nil(a.off_at) and is_nil(a.retired_at),
@@ -327,27 +284,12 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   One agent on this project, or `{:error, :not_found}`.
 
-  An id that is not a uuid answers rather than raising, and that is the whole of
-  `a4e338ae`. This used to hand the value straight to the query, where Ecto threw
-  `value "61c87cd5" cannot be dumped to type :binary_id` — a stack trace naming
-  the schema, the column and the SQL, returned to a caller who had asked a
-  question about an agent.
+  An id that is not a uuid (a truncated id, a sub-agent label) is not found
+  rather than raising: surfaces print ids truncated, and an agent handed a
+  database error concludes its tooling is broken.
 
-  The eight-character prefix is what makes it common rather than exotic. Every
-  surface prints ids truncated — `list_agent_work`, the fleet page, log lines,
-  issue ids in prose — so reading one and passing it back is the obvious mistake,
-  and an agent handed a database error concludes its tooling is broken and stops.
-  That is precisely what happened twice on 2026-09-16.
-
-  It is also what lets `agent_id` carry sub-agent labels (`aqa-1013-…`) through
-  callers that try an agent lookup first and fall back: a label is simply not
-  found, rather than an exception from three layers down.
-
-  An agent conversation's id names its agent (`aeb22e38`). The cockpit URL
-  carries `?conversation=<id>`, so that is the id a person hands over; it was
-  read as an agent id, not found, and reported as another project's agent.
-  Resolved within the same scope, so another tenant's conversation is still
-  not found.
+  An agent conversation's id also resolves to its agent (the cockpit URL
+  carries `?conversation=<id>`), within the same scope.
   """
   @spec fetch_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, Agent.t()} | {:error, :not_found}
   def fetch_agent(%Scope{active_project_id: project_id} = scope, id)
@@ -360,7 +302,10 @@ defmodule CodeMySpec.Agents.AgentsRepository do
         end
 
       :error ->
-        {:error, :not_found}
+        case resolve_short_id(project_id, id) do
+          %Agent{} = agent -> {:ok, agent}
+          nil -> {:error, :not_found}
+        end
     end
   end
 
@@ -370,6 +315,31 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     Agent
     |> where([a], a.project_id == ^project_id and a.id == ^id)
     |> Repo.one()
+  end
+
+  # A team assignment names a teammate by the same short id this project uses
+  # everywhere else (issues, commits) -- never the full UUID, which whoever
+  # reads the assignment has no reason to have memorized. Ecto.UUID.cast/1
+  # always refuses that, so without this every short id read as "no agent or
+  # conversation with that id exists here" even when it names exactly one
+  # (98d45f5c).
+  #
+  # Hex-only and length-bounded on purpose: a sub-agent label (`aqa-1013-...`)
+  # is meant to fall through unmatched here, per this module's own moduledoc,
+  # not get coerced into a prefix search it could spuriously match.
+  @short_id ~r/^[0-9a-f]{4,35}$/i
+
+  defp resolve_short_id(project_id, id) do
+    if Regex.match?(@short_id, id) do
+      Agent
+      |> where([a], a.project_id == ^project_id)
+      |> where([a], fragment("?::text LIKE ?", a.id, ^(id <> "%")))
+      |> Repo.all()
+      |> case do
+        [agent] -> agent
+        _ -> nil
+      end
+    end
   end
 
   defp agent_of_conversation(scope, conversation_id) do
@@ -389,7 +359,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   def create_agent(%Scope{} = scope, attrs) do
     with :ok <- validate_own_working_copy(scope, attrs) do
-      # A member joining a copy takes its team's story and epic (a31f1cd6).
+      # A member joining a copy takes its team's story and epic.
       attrs =
         attrs
         |> Map.put(:project_id, scope.active_project_id)
@@ -402,13 +372,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     end
   end
 
-  # `foreign_key_constraint(:working_copy_id)` on the changeset only proves the
-  # id exists *somewhere* in working_copies — it says nothing about whose
-  # project that row belongs to. `Agents.start_agent/2` already refuses an id
-  # this project does not own before it gets here, but this is the only writer
-  # of an agent row and that invariant deserves to hold for whatever calls it
-  # next, not just the one call path that happens to check today. Issue
-  # c0facd8e.
+  # The FK only proves the copy exists somewhere; this is the only writer of an
+  # agent row, so the same-project invariant is held here for every caller.
   defp validate_own_working_copy(%Scope{active_project_id: project_id}, attrs) do
     case Map.get(attrs, :working_copy_id) do
       id when is_binary(id) and id != "" ->
@@ -440,11 +405,8 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   This person's setting for one agent type, or nil.
 
-  User-scoped rather than project- or account-scoped, unlike everything above
-  it. The row names a provider, and the credential for that provider lives on
-  `integrations`, which is keyed by user — so an account-level answer is only
-  true for whichever member connected the provider. Not project-scoped either:
-  someone with twenty projects should not answer this twenty times.
+  User-scoped, unlike everything above: the row names a provider, and that
+  provider's credential lives on `integrations`, keyed by user.
   """
   @spec model_setting(Scope.t(), atom()) :: ModelSetting.t() | nil
   def model_setting(%Scope{user: %{id: user_id}}, role) do
@@ -474,12 +436,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   @doc """
   Forget a type's setting, so it resolves from the defaults again.
 
-  The way back. Without it a row is one-way — a person who set a model once had
-  no way to say "actually, whatever is sensible", and `ModelSetting`'s own
-  moduledoc is about not being stuck with last year's cheap model.
-
-  `:ok` when there was nothing to forget, because "leave it as the default" and
-  "it already was" are the same instruction.
+  `:ok` when there was nothing to forget.
   """
   @spec clear_model_setting(Scope.t(), atom()) :: :ok
   def clear_model_setting(%Scope{user: %{id: user_id}}, role) do

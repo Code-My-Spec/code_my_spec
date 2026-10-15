@@ -169,6 +169,30 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       main_id = main.id
       refute_receive {:agent_dispatch, ^main_id, _, _}, 300
     end
+
+    test "a reaped teammate reaches main past its own open question too", ctx do
+      main = main(ctx)
+      coder = coder(ctx)
+
+      {:ok, _} =
+        Notifications.create_agent_question_request(
+          ctx.scope,
+          main.id,
+          %{
+            "title" => "Which way",
+            "holder" => "user",
+            "questions" => [%{"question" => "Which way?", "options" => []}]
+          },
+          nil
+        )
+
+      {:ok, _running} =
+        Agents.record_reported(ctx.scope, [
+          %{"agent_id" => main.id, "role" => "main", "working_copy_id" => main.working_copy_id}
+        ])
+
+      assert told(main) =~ coder.id
+    end
   end
 
   describe "a teammate stalling" do
@@ -220,6 +244,28 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
       assert text =~ "a1b2c3d4"
       assert text =~ "coding"
       assert text =~ "STALLED"
+    end
+
+    test "a stalled teammate reaches main past its own open question too", ctx do
+      main = main(ctx)
+
+      {:ok, _} =
+        Notifications.create_agent_question_request(
+          ctx.scope,
+          main.id,
+          %{
+            "title" => "Which way",
+            "holder" => "user",
+            "questions" => [%{"question" => "Which way?", "options" => []}]
+          },
+          nil
+        )
+
+      :ok = Cadence.announce_stalls(ctx.scope, [stalled("e5f6a7b8")])
+
+      text = told(main)
+      assert text =~ "e5f6a7b8"
+      assert text =~ "STALLED", "the work it holds (or lack of it) should be named, not just that it stalled"
     end
 
     defp ids({entries, seen}), do: {Enum.map(entries, & &1.agent_id), seen}

@@ -4,55 +4,25 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   Hand-written Req client — no API-wrapper library, per project convention.
 
-  ## Why there is no OAuth here
+  - **No OAuth.** Hetzner has only API tokens. `hetzner_api_token` is read
+    from `AccountSecrets`, then `ProjectSecrets`, then app config. The S3 key
+    pair (`hetzner_s3_access_key_id` / `hetzner_s3_secret_access_key`) is
+    always pasted: Hetzner mints it only in the console.
+  - **Only 22, 80 and 443 face the internet.** The public rule set is a fixed
+    list, not a parameter, so no code path can expose Postgres. 22 is open
+    because kamal deploys over it; `create_server/3` refuses without
+    `:ssh_key_ids`, and Hetzner disables root password login for a server
+    created with a key.
+  - **Idempotence.** `ensure_*` finds by name (or fingerprint) and creates
+    only on absence; the `create_*` calls underneath do not check. Prefer
+    `ensure_*` from step code.
 
-  Hetzner offers none. Cloudflare and Resend both have OAuth clients and live
-  in `CodeMySpec.Integrations`; Hetzner has only API tokens, so its credential
-  is a project-scoped secret in `CodeMySpec.ProjectSecrets` instead. That is
-  not a shortcut — it is the whole reason `ProjectSecrets` exists alongside
-  `Integrations`.
-
-  Two credentials, and they are different in kind:
-
-    - `hetzner_api_token` — mints servers and firewalls through this API.
-    - `hetzner_s3_access_key` / `hetzner_s3_secret_key` — always pasted by
-      Sam, because Hetzner exposes no API that creates them. The console is
-      the only place they exist, and the secret is shown exactly once.
-
-  ## Only the web ports face the internet
-
-  `default_firewall_rules/0` opens 22, 80 and 443 to the world and nothing
-  else. Story 966's criterion 8004 asserts the database port never answers
-  from outside, and the cheapest way to keep that true is to never have a code
-  path that opens it — so the public rule set is a fixed list, not a
-  parameter. Postgres is reachable over the private network or not at all.
-
-  22 is on the list because the deploy runs over it: kamal connects as root to
-  the host IP, so a server behind a firewall that drops 22 is a server nothing
-  can deploy to. An earlier version left it closed and the whole sequence
-  stopped dead at the deploy step — a firewall rule that makes the product
-  impossible is not a security control, it is a bug with a good excuse.
-
-  Password authentication is not a concern here, and that is enforced rather
-  than assumed: `create_server/3` refuses without `:ssh_key_ids`. Hetzner
-  disables root password login for any server created with a key, so the
-  refusal is what keeps an internet-facing 22 from being a password-guessing
-  target. A server created without a key and reachable on 22 is the one
-  combination that must not be possible, so there is no code path to it.
-
-  ## Idempotence
-
-  Setup steps converge rather than duplicating resources, so every `ensure_*`
-  function looks for the resource by name first and creates only on absence.
-  Re-running a step leaves one of everything (criterion 7965). The `create_*`
-  functions are the raw calls underneath and will happily make a second
-  server — prefer `ensure_*` from step code.
+  See knowledge/provisioning, "Hetzner".
   """
 
   require Logger
 
-  # A leaf: the provider client Servers and Provisioning both call
-  # (John, 2026-10-04).
+  # A leaf: the provider client Servers and Provisioning both call.
   use Boundary,
     top_level?: true,
     deps: [
@@ -72,22 +42,12 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   @token_key "hetzner_api_token"
 
-  # 22 for the deploy, 80 and 443 for traffic, and deliberately nothing else.
-  # Postgres is never on this list. See the moduledoc.
+  # 22 for the deploy, 80 and 443 for traffic, and nothing else.
   @public_ports ["22", "80", "443"]
 
-  # The registry, reachable only from inside the project's own private network.
-  #
-  # A cloud firewall filters everything arriving at the server, private traffic
-  # included — which is why the builder's push timed out rather than being
-  # refused. Nothing listening gives you a refusal; a drop gives you a timeout,
-  # and that difference is what said "firewall" rather than "dead container"
-  # after a probe proved the registry was up and answering locally.
-  #
-  # `10.0.0.0/16` is the network `ensure_network/2` creates, so this is open to
-  # this project's own machines and nothing else. It is deliberately NOT in
-  # `public_ports/0`: that list is what the status page renders as open to the
-  # internet, and this is the opposite of that.
+  # The registry port, open only to the private network range. A cloud
+  # firewall filters private traffic too (a drop shows as a push timeout).
+  # Not in `public_ports/0`, which the status page renders as internet-open.
   @private_range "10.0.0.0/16"
   @private_ports ["5000"]
 
@@ -100,9 +60,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Inbound rules applied to every provisioned server.
 
-  Only the web ports are open to the internet. Returned as data so a caller
-  can render them (the status page lists them as `data-test='firewall-rule'`)
-  without re-deriving the policy.
+  Only the web ports are open to the internet; port 5000 is open to the
+  private range. Returned as data so a caller can render them without
+  re-deriving the policy.
   """
   @spec default_firewall_rules() :: [map()]
   def default_firewall_rules do
@@ -135,14 +95,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   ## Servers
 
-  # Two lines, two architectures — matching how the environments are actually
-  # placed: arm in Europe because it is cheaper, x86 in the US for production.
-  # The image has to match the arch, and the deploy publishes a multi-arch
-  # image for exactly this reason.
-  #
-  # Do NOT reintroduce a `cx*` type here. The whole cx line is retired: the API
-  # answers "server type 104 is deprecated" for cx22, and no cx type appears in
-  # /server_types at all. Found by calling the live API, not by reading docs.
+  # arm in Europe (cheaper), x86 in the US. The image must match the box.
+  # Do NOT reintroduce a `cx*` type: the line is retired (the API answers
+  # "deprecated", and none appear in /server_types).
   @arm_default %{server_type: "cax11", location: "fsn1"}
   @x86_default %{server_type: "cpx11", location: "ash"}
 
@@ -160,20 +115,15 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   `:location` / `:image` / `:firewall_ids` / `:ssh_key_ids` to override
   individually, and `:labels` to tag the server.
 
-  `:user_data` is Hetzner's own cloud-init field: a script or cloud-config
-  document handed to the box at creation and run once on first boot, before
-  anything we do over SSH afterwards. Nothing in this codebase used it before
-  the Hetzner-burst-box groundwork (577de9bb) — every existing caller either
-  ships a pre-baked image (`Builder.ensure_burst_box_image/3`) or configures
-  the box over SSH after it answers (`Builder.Remote`), so there was nothing
-  to boot-time-configure until a FLAME runner needed to come up and dial
-  home on its own, unattended, with no SSH step in between.
+  `:user_data` is Hetzner's cloud-init field, run once on first boot; it is
+  logged by size only, since it can carry credentials.
 
-  Attaching an SSH key at creation is not optional in practice. A server made
-  without one has a root password Hetzner emails to the account owner and
-  nothing else — so the deploy step, which has to reach the box to configure
-  it, cannot. Provisioning a server nobody can log into is not provisioning a
-  server.
+  `:ssh_key_ids` is required (`{:error, :ssh_key_required}` otherwise): a
+  server made without a key cannot be reached by setup.
+
+  A sold-out type (412) or an unsupported location/type pairing (422) is
+  retried once on the other architecture's defaults, unless `:server_type`
+  is pinned.
   """
   @spec create_server(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def create_server(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
@@ -207,29 +157,18 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   defp try_other_architecture(_scope, _name, _arch, _opts, error, false), do: error
 
   defp try_other_architecture(scope, name, arch, opts, unavailable, true) do
-    # The other architecture is a real answer rather than a workaround: the
-    # image is built to match the box (criterion 7975), so the choice is ours
-    # to make as long as we record which one we made.
+    # The other architecture is a real answer: the image is built to match the
+    # box, as long as the box's architecture is read back.
     case fallback_for(arch, opts) do
       nil -> capacity_error(defaults_for(arch), opts)
       other -> retry_elsewhere(scope, name, arch, other, opts, unavailable)
     end
   end
 
-  # Hetzner says "this box cannot be had here" in two different shapes, and
-  # only one of them was being read.
-  #
-  # 412 `resource_unavailable` is capacity: it has none of that type in that
-  # location *right now*. Its message is "error during placement", which tells
-  # Sam nothing he can act on.
-  #
-  # 422 `invalid_input` "unsupported location for server type" is the standing
-  # version of the same fact — that pairing does not exist at all, today or
-  # ever. Hetzner started answering it for `cax11`/`fsn1`, and because the
-  # fallback only matched 412 the run died at the server step with a 422 that
-  # reads like a malformed request. Matched on the message rather than the
-  # status, because 422 is also what a genuinely bad request gets and that one
-  # must not be retried into a different box.
+  # Two shapes of "not on offer": 412 `resource_unavailable` (no capacity now)
+  # and 422 "unsupported location for server type" (never). Matched on the
+  # message for 422, which also covers genuinely bad requests that must not be
+  # retried.
   defp this_box_is_not_on_offer?({:hetzner_error, 412, _}), do: true
 
   defp this_box_is_not_on_offer?({:hetzner_error, 422, %{"error" => %{"message" => message}}})
@@ -238,9 +177,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   defp this_box_is_not_on_offer?(_), do: false
 
-  # What was actually asked for, which is not the same as the defaults: a
-  # caller can pin either field. Reporting the default when an override was in
-  # play sends the reader looking at a server type nobody requested.
+  # What was actually asked for: a caller can pin either field.
   defp requested(defaults, opts) do
     %{
       server_type: Keyword.get(opts, :server_type, defaults.server_type),
@@ -268,8 +205,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
         {:ok, server}
 
       {:error, {:hetzner_error, 412, _}} ->
-        # Both sold out. Say so in terms Sam can act on, rather than passing
-        # up a message about placement.
+        # Both sold out. Say so in terms the user can act on.
         {:error,
          {:capacity_unavailable,
           "Hetzner has no #{defaults_for(arch).server_type} in #{defaults_for(arch).location} " <>
@@ -282,11 +218,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     end
   end
 
-  # A caller who pinned `:server_type` has already said which box it wants, and
-  # `create_in/4` would re-apply that override to the retry — so "try the other
-  # architecture" would resend the identical request and call the result a
-  # second shortage. Swapping architecture under a pinned type would be worse
-  # still: the image is built to match the box, and the caller chose the box.
+  # A pinned `:server_type` means no fallback: the retry would resend the same
+  # request, and swapping architecture under a chosen box breaks the image.
   defp fallback_for(arch, opts) do
     if Keyword.has_key?(opts, :server_type), do: nil, else: fallback_for(arch)
   end
@@ -306,17 +239,10 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       }
       |> maybe_put(:firewalls, firewall_refs(Keyword.get(opts, :firewall_ids)))
       |> maybe_put(:ssh_keys, Keyword.get(opts, :ssh_key_ids))
-      # At creation rather than by a later attach, so the box has its private
-      # address from first boot. A builder that attaches afterwards has already
-      # been told where to push, and the address it was told is the one it does
-      # not have yet.
+      # At creation, so the box has its private address from first boot.
       |> maybe_put(:networks, Keyword.get(opts, :network_ids))
       |> maybe_put(:labels, Keyword.get(opts, :labels))
-      # Cloud-init, run once on first boot. A caller's script can carry
-      # anything — a FLAME runner's cloud-init is about to put a Docker
-      # registry credential and app secrets in it — so the line below logs
-      # its size, never its content, unlike every other field in this
-      # payload.
+      # Cloud-init can carry credentials: logged by size, never content.
       |> maybe_put(:user_data, Keyword.get(opts, :user_data))
 
     log_payload =
@@ -334,16 +260,12 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   Return the named server, creating it only if absent.
 
   This is the idempotent entry point: running the server step twice leaves one
-  server, not two.
+  server, not two. A found server is marked `"__adopted__"`.
 
-  An adopted server never went through `create_server/3`'s payload, which is
-  the only place a firewall or SSH key otherwise gets attached — so adopting
-  one used to leave it wide open under our own firewall's rules regardless of
-  what `ensure_firewall/2` just ensured. `opts[:firewall_ids]` is attached
-  here explicitly to close that gap. The SSH key has no equivalent: Hetzner's
-  API has no action that adds a key to a server that already exists, only at
-  creation, so a box adopted this way needs the account's key added to its
-  `authorized_keys` by hand — one time, by whoever owns the box.
+  A found server gets `opts[:firewall_ids]` attached explicitly, since only
+  `create_server/3`'s payload otherwise attaches one. SSH keys cannot be added
+  to an existing server through the API, so an adopted box needs the
+  account's key in `authorized_keys` by hand.
   """
   @spec ensure_server(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def ensure_server(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
@@ -379,15 +301,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   Apply an existing firewall to an existing server, treating "already
   applied" as success.
 
-  `create_server/3` does this as part of the create payload for a box we made
-  ourselves; this is the equivalent for a box `ensure_server/3` found instead
-  — the only case that needs a separate call. Setup runs more than once
-  though, same reasoning as `attach_to_network/3`: Hetzner answers a repeat
-  apply with 422 `firewall_already_applied`, not the no-op these docs used to
-  assume — found live against fuellytics-prod, where the box already carried
-  the firewall from an earlier run and the whole :server step failed on
-  exactly the state `ensure_server/3`'s "idempotent entry point" claim
-  requires it not to fail on.
+  The equivalent of `create_server/3`'s firewall payload for a box
+  `ensure_server/3` found. Hetzner answers a repeat apply with 422
+  `firewall_already_applied`, returned as `{:ok, :already_applied}`.
   """
   @spec attach_firewall(Scope.t(), integer() | String.t(), integer() | String.t()) ::
           {:ok, body() | :already_applied} | error()
@@ -418,13 +334,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   Every datacenter, and which server types each can actually supply today.
 
   `/datacenters` is the only endpoint that answers "can I create this right
-  now". `/server_types` lists what exists in the catalogue, which is a
-  different question: during QA every ARM type was listed and not deprecated
-  while being sold out in all six datacenters (issue 92e0b786). Offering a
-  size from the catalogue is how you offer something nobody can buy.
-
-  The `server_types.available` list holds type *ids*, so it is only useful
-  joined against `list_server_types/1`.
+  now"; `/server_types` lists the catalogue, which can show types sold out
+  everywhere. `server_types.available` holds type *ids*, so join against
+  `list_server_types/1`.
   """
   @spec list_datacenters(Scope.t()) :: {:ok, [body()]} | error()
   def list_datacenters(%Scope{} = scope) do
@@ -451,10 +363,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Find a server by name.
 
-  This is how a step's state is checked against the provider rather than read
-  back from our own row — criterion 7970 — and how a server deleted behind
-  setup's back shows up as absent so it can be rebuilt rather than skipped
-  (criterion 7964).
+  How a step's state is checked against the provider rather than our own
+  row, and how a server deleted behind setup's back shows up as absent.
   """
   @spec find_server(Scope.t(), String.t()) :: {:ok, body()} | {:error, :not_found} | error()
   def find_server(%Scope{} = scope, name) when is_binary(name) do
@@ -469,11 +379,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   The architecture a server actually runs.
 
-  Read off the provider rather than inferred from what we asked for, because
-  `create_server/3` answers a sold-out region by creating the *other*
-  architecture. That is a real answer only for as long as whatever builds the
-  image is told about it — an image built for the other one passes every check
-  we have and then dies at container start.
+  Read off the provider, because `create_server/3` answers a sold-out region
+  by creating the *other* architecture, and the image must be built for what
+  the box actually is.
   """
   @spec server_architecture(body()) :: {:ok, :arm | :x86} | {:error, term()}
   def server_architecture(%{"server" => server}), do: server_architecture(server)
@@ -496,11 +404,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Snapshot a server into a reusable image.
 
-  Hetzner's own create-server flow already returns the new server
-  synchronously and readiness is checked by polling SSH directly (see
-  `Builder.Remote.await_ssh/4`) rather than a Hetzner action's own status —
-  the same shape applies here: the caller polls `list_images/2` for the new
-  image to actually appear rather than watching an action id.
+  The caller polls `list_images/2` for the image to become available rather
+  than watching an action id.
   """
   @spec create_image(Scope.t(), integer() | String.t(), keyword()) :: {:ok, body()} | error()
   def create_image(%Scope{} = scope, server_id, opts \\ []) do
@@ -535,19 +440,13 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   ## Private networks
 
-  # 10.0.0.0/16 with one 10.0.0.0/24 subnet. Hetzner requires a subnet before a
-  # server can attach, and a network with no subnet accepts the attach call and
-  # then hands out no address — which surfaces as a registry bound to nothing.
+  # 10.0.0.0/16 with one /24 subnet: a network with no subnet accepts the
+  # attach and hands out no address.
   @network_range "10.0.0.0/16"
   @subnet_range "10.0.0.0/24"
 
-  # Which zone a location belongs to. A network's subnet lives in exactly one
-  # zone and a server can only reach a subnet in its own — so a subnet in the
-  # wrong zone produces a network both machines appear to be on, holding
-  # addresses, with no path between them. That is not a theoretical failure: it
-  # is what happened. App servers default to `ash` for x86, the builder was
-  # pinned to `fsn1`, and the subnet was hardcoded `eu-central`. Both boxes had
-  # 10.0.0.x addresses and routes, and ping got 100% loss.
+  # A subnet lives in one zone and a server reaches only subnets in its own:
+  # a wrong-zone subnet gives both boxes addresses and no path between them.
   @network_zones %{
     "fsn1" => "eu-central",
     "nbg1" => "eu-central",
@@ -564,15 +463,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Return the named private network, creating it only if absent.
 
-  The registry the deploy pulls from listens on this network rather than on a
-  public address. Both the app's server and the ephemeral builder attach to it,
-  which is what makes one image reference correct in both places: the builder
-  pushes to `<private-ip>:5000` and the app pulls from the same string, because
-  that address is the app box's own.
-
-  Loopback cannot do that — it is only true on one machine — and a public
-  address would put a registry on the internet to solve a problem two machines
-  in the same datacenter do not have.
+  The registry listens on this network, not a public address. The app box and
+  the builder both attach, so `<private-ip>:5000` is the same correct image
+  reference on both.
   """
   @spec ensure_network(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def ensure_network(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
@@ -592,18 +485,10 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Create a private network with a subnet servers can attach to.
 
-  `:network_index` picks the range: 0 (the default) is `10.0.0.0/16`, every
-  index after it its own `10.<index>.0.0/16`. A project used to ever create
-  exactly one network, so one hardcoded range was the whole project's range.
-  A project whose environments span more than one Hetzner zone now creates
-  more than one (`Steps.ensure_zone_networks/4`), and Hetzner refuses a
-  network whose range overlaps another's in the same project — zone or not.
-  Confirmed live against MarketMySpec: its existing network and a freshly
-  attempted second one both defaulted to the identical `10.0.0.0/16` and
-  Hetzner answered `networks_overlap`. Index 0 always stays the original
-  range so every project's existing, already-created network is completely
-  unaffected — this only matters for a network being created for the first
-  time.
+  `:network_index` picks the range: 0 (the default) is `10.0.0.0/16`, index
+  N is `10.N.0.0/16`. Hetzner refuses overlapping ranges within a project, so
+  a second zone's network needs its own index; index 0 stays the original
+  range so existing networks are unaffected.
   """
   @spec create_network(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def create_network(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
@@ -649,9 +534,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Find a private network by id, as read off a server's own `private_net`.
 
-  A server can already carry a network no name-based lookup would find —
-  `find_network/2`'s caller derives a name from the project asking, and a
-  linked server's network belongs to whoever actually made it.
+  A server can carry a network no name-based lookup would find: it belongs to
+  whoever made it.
   """
   @spec find_network_by_id(Scope.t(), integer() | String.t()) ::
           {:ok, body()} | {:error, :not_found} | error()
@@ -671,10 +555,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Attach a server to a private network, treating "already attached" as success.
 
-  Setup runs more than once, and Hetzner answers a repeat attach with a 409
-  `server_already_attached`. Reporting that as failure would make the second
-  run of an idempotent step fail, which is the opposite of what re-running is
-  for.
+  Setup runs more than once; Hetzner answers a repeat attach with
+  `server_already_attached` (409 or 422), returned as
+  `{:ok, :already_attached}`.
   """
   @spec attach_to_network(Scope.t(), integer() | String.t(), integer() | String.t()) ::
           {:ok, :attached | :already_attached} | error()
@@ -685,13 +568,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       {:ok, _} ->
         {:ok, :attached}
 
-      # Hetzner answers an attach that has already happened with 422
-      # `server_already_attached`, not 409 — which made the idempotence here
-      # decorative. The server step attaches every box to the baseline
-      # network, and the deploy attaches again for a box added later; the
-      # second call failed the whole deploy on a condition that is the desired
-      # state. Matched on the code as well as the status, because 422 covers
-      # plenty of things that are not this.
+      # 422 covers plenty besides this, so matched on the code too.
       {:error, {:hetzner_error, status, %{"error" => %{"code" => "server_already_attached"}}}}
       when status in [409, 422] ->
         {:ok, :already_attached}
@@ -708,10 +585,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   The address a server holds on a private network.
 
-  Read back from the server rather than assumed, because Hetzner assigns it —
-  the attach call does not say which address it handed out, and guessing the
-  next free one in the subnet is how two servers end up believing they share
-  an address.
+  Read back from the server: the attach call does not say which address
+  Hetzner assigned.
   """
   @spec private_ip(body(), integer() | String.t()) :: {:ok, String.t()} | {:error, term()}
   def private_ip(%{"server" => server}, network_id), do: private_ip(server, network_id)
@@ -754,15 +629,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Replace a firewall's rules with the current policy.
 
-  Adopting an existing firewall used to mean keeping whatever rules it already
-  had, so a change to the policy never reached a project that had run setup
-  before. That is the shape of failure this module's own principle warns
-  about — persisted state is a record, not the truth — and it cost a drill:
-  the registry port was opened in code, every run adopted a firewall from
-  before that change, and the builder's push timed out against a rule set
-  nobody had looked at.
-
-  Only written when it differs, so a converged run makes no call.
+  An adopted firewall keeps old rules otherwise, so a policy change (such as
+  opening the registry port) would never reach a project that already ran
+  setup. Only written when it differs, so a converged run makes no call.
   """
   @spec reconcile_rules(Scope.t(), body()) :: {:ok, :unchanged | :updated} | error()
   def reconcile_rules(%Scope{} = scope, %{"id" => id} = firewall) do
@@ -780,10 +649,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     end
   end
 
-  # Compared on what a rule *is* — direction, protocol, port, sources — rather
-  # than on the map, because the API answers with extra keys (`description`,
-  # `destination_ips`) that a comparison against our own rules would always
-  # find different, making every run rewrite the rules.
+  # Compared on direction, protocol, port and sources: the API adds keys
+  # (`description`, `destination_ips`) that would make every run rewrite.
   defp same_rules?(current, wanted) do
     MapSet.new(current, &rule_identity/1) == MapSet.new(wanted, &rule_identity/1)
   end
@@ -825,9 +692,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Whether the account is reachable with the stored token.
 
-  Used by the credential-intake step, which proves every credential with a
-  real provider call before provisioning starts rather than trusting the
-  paste.
+  Used by the credential-intake step.
   """
   @spec credential_valid?(Scope.t()) :: boolean()
   def credential_valid?(%Scope{} = scope) do
@@ -837,8 +702,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Whether the S3 key pair has been pasted.
 
-  Hetzner mints these only in the console, so there is nothing to call here —
-  presence is all that can be checked without attempting a bucket operation.
+  Presence only — there is nothing to call. Checks `hetzner_s3_access_key` /
+  `hetzner_s3_secret_key`, which are not the names `Storage.credentials/2`
+  reads.
   """
   @spec s3_credentials_present?(Scope.t()) :: boolean()
   def s3_credentials_present?(%Scope{} = scope) do
@@ -851,20 +717,10 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Return the account's copy of this exact public key, uploading it if absent.
 
-  ## Matched by fingerprint, and that is the whole point
-
-  An earlier version matched by name and reused whatever it found. A project
-  re-provisioned with a fresh keypair then got the *old* key attached to its
-  new server while setup held the *new* private half, so the server came up
-  perfectly and nothing could log into it. The symptom was a silent SSH
-  timeout several minutes later, which points nowhere near the cause.
-
-  A fingerprint identifies the key material itself, so this can only ever
-  return something the caller can actually authenticate with. When the name is
-  already taken by different material, the upload gets a suffixed name rather
-  than replacing anything — setup does not destroy resources, and someone
-  else's key under a colliding name is exactly the kind of thing that must not
-  quietly disappear.
+  Matched by fingerprint, so this only returns something the caller can
+  authenticate with: matching by name once attached an old key to a new
+  server. When the name is taken by different material, the upload gets a
+  suffixed name rather than replacing anyone's key.
   """
   @spec ensure_ssh_key(Scope.t(), String.t(), String.t()) :: {:ok, body()} | error()
   def ensure_ssh_key(%Scope{} = scope, name, public_key) when is_binary(name) do
@@ -890,8 +746,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
         {:ok, key}
 
       {:error, {:hetzner_error, 409, _}} ->
-        # The name is taken by different material. Suffixing is deliberate:
-        # deleting somebody's key to free a name is not setup's business.
+        # The name is taken by different material; never delete someone's key
+        # to free a name.
         suffix = print |> String.replace(":", "") |> String.slice(0, 8)
 
         with {:ok, %{"ssh_key" => key}} <-
@@ -954,9 +810,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Every SSH key on the account.
 
-  For the leak audit. Keys are easy to leak and easy to miss — they cost
-  nothing, so nobody notices seven of them, and each is still a credential a
-  recording left behind.
+  For the leak audit: keys cost nothing, so leaked ones go unnoticed.
   """
   @spec list_ssh_keys(Scope.t()) :: {:ok, [map()]} | {:error, term()}
   def list_ssh_keys(%Scope{} = scope) do
@@ -981,10 +835,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @doc """
   Make an arbitrary authenticated Hetzner API call.
 
-  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can let an
-  agent make ad hoc Hetzner calls without ever holding the token itself —
-  the credential is resolved and applied here, same as every other call in
-  this module, and never leaves this process.
+  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can make ad
+  hoc calls for an agent without the token ever leaving this process.
   """
   @spec request(Scope.t(), atom(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def request(scope, method, path, opts) do
@@ -1017,16 +869,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   defp handle_response({:error, reason}), do: {:error, reason}
 
-  # Project secret first — that is where a user's own token lives. Application
-  # config is the fallback so the platform's own token can drive cassette
-  # recording without a project scope.
-  # Account first, then the project, then application config.
-  #
-  # A Hetzner token names one Hetzner account, and the servers it reaches are
-  # shared across projects — so the account is where it belongs. The project
-  # read stays because installs predating the account grain stored it there,
-  # and a caller should not have to know which era it is in. The data
-  # migration copies existing tokens up, so the fallback is for stragglers.
+  # Account first (a token names a Hetzner account whose servers are shared
+  # across projects), then the project (older installs), then app config
+  # (platform token for cassette recording).
   defp token(%Scope{} = scope) do
     case AccountSecrets.fetch_account_then_project(scope, @token_key) do
       {:ok, _value} = ok -> ok

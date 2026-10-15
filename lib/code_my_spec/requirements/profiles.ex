@@ -3,18 +3,10 @@ defmodule CodeMySpec.Requirements.Profiles do
   One set-based read of a domain slice, shared by every requirement computed
   from it.
 
-  ## Why profiles and not queries-per-handler
-
-  Thirty distinct requirement names, and they do not read thirty different
-  things. Five `file_exists` names all read *which roles a component has files
-  for*. Three `file_valid` names read *whether those files parsed*. Three issue
-  names read *which issues are open and where*. The expensive part is the read,
-  the read is shared, and the per-requirement part is a map lookup.
-
-  So a profile is loaded once per drain and every requirement fed by it is
-  settled from memory. Adding a requirement is a lookup function; adding a
-  profile is a query. Neither is a new query per requirement, which is what a
-  handler-per-requirement design quietly becomes.
+  Many requirements read the same slice (which roles a component has files
+  for, which issues are open), so a profile is loaded once per drain and every
+  requirement it feeds is settled from memory. Adding a requirement is a lookup;
+  adding a profile is a query.
 
   Profiles settle fixed requirements across the project. Story-owned issue
   submission nodes are projected with their story family because accepting or
@@ -75,36 +67,16 @@ defmodule CodeMySpec.Requirements.Profiles do
   # `RequirementCalculator.bdd_specs_covered/3`, not this profile's own
   # file_exists table) — from one file read plus the two entity lists.
   #
-  # `spec_file`/`spec_valid`, `test_file`/`test_spec_alignment` and
-  # `review_file`/`review_valid` were removed from the definitions (8897edfb);
-  # the component graphs that once used them now reduce to
-  # `implementation_file` alone.
-  #
-  # The entity lists are here for the *unsatisfied* side. A component missing
-  # its implementation file needs `expected_path` in its details —
-  # `RequirementsFormatter` renders it, and it is the one thing telling an
-  # agent where to write the file — and that is per component, so those
-  # entities have to be enumerated rather than swept.
-  #
-  # Files are scoped to the checkout for the reason `Preloader.load/1` gives at
-  # length: blended, a file present in another worktree reads as present here,
-  # which it measured at 303 components whose specs an agent was told existed
-  # and skipped.
+  # The entity lists are for the unsatisfied side: a component missing its
+  # implementation needs its own `expected_path` in details, so those are
+  # enumerated rather than swept. Files are one checkout's (`scope_files_to_copy/2`).
   def load(%Scope{active_project_id: project_id} = scope, :files) do
     files =
       Repo.all(
         from(f in FileRecord,
           where: f.project_id == ^project_id,
-          # Whole rows, not a chosen subset.
-          #
-          # Selecting fields looked tidy and silently changed a verdict:
-          # `QaIntegrationPlan.check_index/1` reads `size` to decide whether the
-          # integrations index is empty, which this did not carry, so every
-          # index read as empty and `qa_integration_plan` came back invalid
-          # against a project where it is fine. Caught by the diff.
-          #
-          # A profile feeds checkers written against `Files.File`, and which
-          # fields each of them reads is not this module's to know.
+          # Whole rows: checkers written against `Files.File` read fields this
+          # module does not know about (`QaIntegrationPlan` reads `size`).
           select: f
         )
         |> scope_files_to_copy(scope)
@@ -116,8 +88,8 @@ defmodule CodeMySpec.Requirements.Profiles do
       story_ids: Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id)),
       by_component_role: index_by(files, :component_id),
       by_story_role: index_by(files, :story_id),
-      # For the five project `path_exists` requirements, which ask about named
-      # paths rather than about an owner's roles. Same read.
+      # For the project `path_exists` requirements, which ask about named
+      # paths rather than an owner's roles. Same read.
       by_path: Map.new(files, &{&1.path, &1}),
       all: files
     }
@@ -125,11 +97,9 @@ defmodule CodeMySpec.Requirements.Profiles do
 
   # What each story points at: the component it names, and its UAT deploy.
   #
-  # Two requirements, one read each, and both are about a reference rather than
-  # about the story — `component_linked` asks whether the named component
-  # actually exists, `deploy` whether the recorded deploy passed its health
-  # check. Neither is answerable from the story row alone, which is why they are
-  # a profile rather than a field lookup.
+  # `component_linked` asks whether the named component exists, `deploy`
+  # whether the recorded deploy passed its health check; neither is answerable
+  # from the story row alone.
   def load(%Scope{active_project_id: project_id} = scope, :links) do
     %{
       # What an undeployed story's `deploy` is waiting on, if anything.
@@ -145,9 +115,7 @@ defmodule CodeMySpec.Requirements.Profiles do
       component_ids:
         Repo.all(from(c in Component, where: c.project_id == ^project_id, select: c.id))
         |> MapSet.new(),
-      # Pinned to UAT because the `deploy` requirement's config is, and
-      # `Preloader.uat_deploy_by_story/1` reads it the same way: prod promotion
-      # is the release process's business, not this node's.
+      # UAT only, as the `deploy` requirement and `Preloader` read it.
       uat_deploy_by_story:
         Repo.all(
           from(d in Deploy,
@@ -166,14 +134,9 @@ defmodule CodeMySpec.Requirements.Profiles do
   # `promoted_version`, and `stories_exist` and `work_dispatched` are about the
   # set rather than about any row.
   #
-  # Every story, not only the released ones. `GraphStore.sweep/2` matches on name
-  # and entity type and can only touch rows that exist, so the parked stories
-  # this carries are swept over harmlessly — and filtering here would mean
-  # keeping `Preloader`'s `ready_for_dev` gate in a second place, where it would
-  # drift.
-  #
-  # The four collections are the shape `BddRulesChecker.complete?/3` reads, which
-  # is `Preloader`'s: grouped by story id, and empty for a story with none.
+  # Every story, not only ready ones: a sweep touches only rows that exist, so
+  # parked stories are harmless, and filtering would copy `Preloader`'s gate.
+  # The collections are in `Preloader`'s shape, which `BddRulesChecker` reads.
   def load(%Scope{active_project_id: project_id} = scope, :stories) do
     stories = Repo.all(from(s in Story, where: s.project_id == ^project_id))
     story_ids = Enum.map(stories, & &1.id)
@@ -194,12 +157,8 @@ defmodule CodeMySpec.Requirements.Profiles do
   end
 
   # The newest QA attempt per story, invalidations preloaded — what
-  # `QaAttempts.complete?/2` fetches one story at a time.
-  #
-  # The attempt rather than a boolean, for `Preloader.qa_latest_by_story/1`'s
-  # reason: deciding what counts as a pass is the Qa context's judgement, and
-  # `status == :pass and invalidations == []` written here would be a second
-  # copy of it.
+  # `QaAttempts.complete?/2` fetches one story at a time. The attempt, not a
+  # boolean: what counts as a pass is the Qa context's judgement.
   def load(%Scope{active_project_id: project_id} = scope, :qa) do
     story_ids = Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
 
@@ -225,10 +184,8 @@ defmodule CodeMySpec.Requirements.Profiles do
 
   # Personas and the files that describe them.
   #
-  # Project-wide, not checkout-scoped, and deliberately: a persona describes the
-  # project whichever tree its summary was written in — the reason
-  # `Files.list_project_files_with_roles/2` exists. `personas_complete` used to
-  # issue both of these itself on every drain that touched a file.
+  # Project-wide, not checkout-scoped: a persona describes the project whichever
+  # tree its summary was written in.
   def load(%Scope{} = scope, :personas) do
     %{
       personas: Personas.list_personas(scope),
@@ -253,14 +210,8 @@ defmodule CodeMySpec.Requirements.Profiles do
     end)
   end
 
-  # `Preloader.files_vantage/1` decides, including for a reader that named no
-  # checkout — which resolves to the project's main copy rather than blending.
-  #
-  # This blended, and the diff caught it: on the unscoped vantage twenty
-  # components read as having an implementation that exists only in another
-  # worktree, `handlers.ex` and `profiles.ex` among them. Over-satisfaction is
-  # the expensive direction — an agent is told the work is done and skips it —
-  # and it is the whole reason that function exists.
+  # The scope's checkout, else `Preloader.files_vantage/1` (the reading copy),
+  # never a blend: a file in another worktree must not satisfy anything here.
   defp scope_files_to_copy(query, %Scope{active_working_copy_id: copy} = scope) do
     case copy || Preloader.files_vantage(scope) do
       nil -> query
@@ -280,11 +231,9 @@ defmodule CodeMySpec.Requirements.Profiles do
     |> Enum.group_by(& &1.story_id)
   end
 
-  # Ordered as `AcceptanceCriteria.list_story_criteria/2` orders them, because
-  # `bdd_specs_exist` reports `missing_criteria` and a list in a different
-  # order is a different answer — the diff compares details, and two rows that
-  # agree on the verdict while disagreeing on the list are a difference somebody
-  # investigates later for nothing.
+  # Ordered as `AcceptanceCriteria.list_story_criteria/2` orders them:
+  # `bdd_specs_exist` reports `missing_criteria`, and another order is another
+  # answer.
   defp criteria_by_story(story_ids) do
     Repo.all(
       from(c in Criterion,

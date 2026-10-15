@@ -1,0 +1,207 @@
+defmodule CodeMySpecSpex.DesktopSetupHelpers do
+  @moduledoc "Isolated external machine prerequisites for desktop setup acceptance specs."
+
+  alias CodeMySpecSpex.Fixtures
+
+  def fresh_machine(context) do
+    # `register/3` (CodeMySpecWeb.AppLive.DesktopProject) links a project
+    # through CmsHarness.Projects.ensure_started/1, which starts a child
+    # under CmsHarness.CopiesSupervisor. `mix spex` loads no test helper, so
+    # nothing boots that supervisor unless this does -- it previously relied
+    # on some other spex file happening to start it first in the same BEAM.
+    CmsHarnessTest.Projects.ensure_harness_supervisor_started()
+
+    root =
+      Path.join(System.tmp_dir!(), "desktop-setup-spex-#{System.unique_integer([:positive])}")
+
+    bin = Path.join(root, "bin")
+    log = Path.join(root, "commands.log")
+    File.mkdir_p!(bin)
+    File.write!(log, "")
+
+    Enum.each(
+      [
+        {"psql", "psql (PostgreSQL) 16.4\nvector|0.8.0"},
+        {"mise", "mise 2026.1.0\nerlang 27.2\nelixir 1.18.1"},
+        {"asdf", "v0.16.0\nerlang 27.2\nelixir 1.18.1"},
+        {"erl", "27"},
+        {"elixir", "Erlang/OTP 27\nElixir 1.18.1"},
+        {"cms", "cms 2.0.0"},
+        {"vibium", "Vibium 1.0.0"}
+      ],
+      fn {name, output} ->
+        script =
+          "#!/bin/sh\nprintf '%s' '" <>
+            name <>
+            "' >> '" <>
+            log <>
+            "'\nprintf ' %s' \"$@\" >> '" <>
+            log <>
+            "'\nprintf '\\n' >> '" <>
+            log <>
+            "'\nprintf '%b\\n' '" <> output <> "'\n"
+
+        path = Path.join(bin, name)
+        File.write!(path, script)
+        File.chmod!(path, 0o700)
+      end
+    )
+
+    device_path = Path.join(root, "device.json")
+    File.write!(device_path, Jason.encode!(%{device_id: Ecto.UUID.generate()}))
+    previous_device_path = Application.fetch_env(:code_my_spec, :device_config_path)
+    Application.put_env(:code_my_spec, :device_config_path, device_path)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous_device_path do
+        {:ok, value} -> Application.put_env(:code_my_spec, :device_config_path, value)
+        :error -> Application.delete_env(:code_my_spec, :device_config_path)
+      end
+    end)
+
+    git = System.find_executable("git") || raise "Desktop setup specs require git"
+    File.ln_s!(git, Path.join(bin, "git"))
+
+    previous_env = Application.fetch_env(:code_my_spec, :env)
+    previous_path = System.get_env("PATH")
+    previous_project = System.get_env("CMS_PROJECT_DIR")
+    Application.put_env(:code_my_spec, :env, :desktop)
+    System.put_env("PATH", bin)
+    System.put_env("CMS_PROJECT_DIR", Path.join(root, "unlinked-project"))
+
+    ExUnit.Callbacks.on_exit(fn ->
+      restore_application(previous_env)
+      restore_environment("PATH", previous_path)
+      restore_environment("CMS_PROJECT_DIR", previous_project)
+      File.rm_rf!(root)
+    end)
+
+    os_user = System.get_env("USER") || System.get_env("USERNAME") || "user"
+    local = os_user |> String.replace(~r/[^A-Za-z0-9._-]/, "") |> String.downcase()
+    user = Fixtures.user_fixture(%{email: desktop_email(local)})
+    previous_token = Application.fetch_env(:code_my_spec, :harness_token)
+    Application.put_env(:code_my_spec, :harness_token, Fixtures.desktop_harness_credential(user))
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous_token do
+        {:ok, value} -> Application.put_env(:code_my_spec, :harness_token, value)
+        :error -> Application.delete_env(:code_my_spec, :harness_token)
+      end
+    end)
+
+    start_local_server(root)
+    environment = Fixtures.local_environment_fixture(working_dir: root)
+
+    {:ok,
+     Map.merge(context, %{
+       desktop_user: user,
+       machine_root: root,
+       command_log: log,
+       machine_environment: environment
+     })}
+  end
+
+  def with_project_generator(context) do
+    previous_runner = Application.fetch_env(:code_my_spec, :generator_runner)
+
+    Application.put_env(
+      :code_my_spec,
+      :generator_runner,
+      CmsHarness.Projects.Generator.Runner.Real
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous_runner do
+        {:ok, value} -> Application.put_env(:code_my_spec, :generator_runner, value)
+        :error -> Application.delete_env(:code_my_spec, :generator_runner)
+      end
+    end)
+
+    Enum.each(["cms", "mix"], fn executable ->
+      path = Path.join([context.machine_root, "bin", executable])
+
+      File.write!(path, """
+      #!/bin/sh
+      printf '#{executable}' >> '#{context.command_log}'
+      printf ' %s' "$@" >> '#{context.command_log}'
+      printf '\\n' >> '#{context.command_log}'
+      case "$1" in
+        new|cms.new)
+          target="$2"
+          case "$target" in
+            '#{context.machine_root}'/*) ;;
+            *) printf 'Refusing generation outside the fixture\\n'; exit 1 ;;
+          esac
+          /bin/mkdir -p "$target/lib" || exit 1
+          printf '%s\\n' 'defmodule GeneratedApp.MixProject do' '  use Mix.Project' '  def project, do: [app: :generated_app, version: "0.1.0", deps: []]' '  def application, do: []' 'end' > "$target/mix.exs"
+          printf '%s\\n' 'Generated by the external cms.new fixture' > "$target/generator-output.txt"
+          ;;
+        version) printf 'code_my_spec_cli 2.0.10\\n' ;;
+        *) printf 'Unexpected generator command\\n'; exit 1 ;;
+      esac
+      """)
+
+      File.chmod!(path, 0o700)
+    end)
+
+    context
+  end
+
+  def without_pgvector(context) do
+    path = Path.join([context.machine_root, "bin", "psql"])
+
+    File.write!(path, """
+    #!/bin/sh
+    printf 'psql' >> '#{context.command_log}'
+    printf ' %s' "$@" >> '#{context.command_log}'
+    printf '\\n' >> '#{context.command_log}'
+    case "$*" in
+      *--version*) printf 'psql (PostgreSQL) 16.4\\n' ;;
+      *vector*) printf 'pgvector is not installed\\n'; exit 1 ;;
+      *) exit 0 ;;
+    esac
+    """)
+
+    context
+  end
+
+  defp start_local_server(root) do
+    {:ok, listener} =
+      Bandit.start_link(
+        plug: CodeMySpecWeb.Endpoint,
+        scheme: :http,
+        ip: {127, 0, 0, 1},
+        port: 0,
+        startup_log: false
+      )
+
+    Process.unlink(listener)
+    {:ok, {_ip, port}} = ThousandIsland.listener_info(listener)
+    previous = Application.fetch_env(:code_my_spec, :harness_server_url_override)
+    Application.put_env(:code_my_spec, :harness_server_url_override, "http://127.0.0.1:#{port}")
+
+    ExUnit.Callbacks.on_exit(fn ->
+      # The harness subtree first: Copy.stop/1 blocks until the channel
+      # GenServer (and any health-check write it is mid-sending) is fully
+      # terminated, so nothing it does can still be in flight once this
+      # returns. Stopping the listener first let a write already queued in
+      # the server-side channel process land after its own subtree here
+      # had moved on, surfacing as a stale-struct error in whichever test
+      # happened to be running at that moment (add46395).
+      Fixtures.stop_desktop_fixture_copies(root)
+      if Process.alive?(listener), do: ThousandIsland.stop(listener, 1_000)
+
+      case previous do
+        {:ok, value} -> Application.put_env(:code_my_spec, :harness_server_url_override, value)
+        :error -> Application.delete_env(:code_my_spec, :harness_server_url_override)
+      end
+    end)
+  end
+
+  defp desktop_email(""), do: "user@localhost"
+  defp desktop_email(local), do: local <> "@localhost"
+  defp restore_application({:ok, value}), do: Application.put_env(:code_my_spec, :env, value)
+  defp restore_application(:error), do: Application.delete_env(:code_my_spec, :env)
+  defp restore_environment(key, nil), do: System.delete_env(key)
+  defp restore_environment(key, value), do: System.put_env(key, value)
+end

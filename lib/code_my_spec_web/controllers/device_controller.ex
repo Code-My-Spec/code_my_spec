@@ -1,71 +1,22 @@
 defmodule CodeMySpecWeb.DeviceController do
   @moduledoc """
-  A machine announcing itself.
+  A machine announcing itself: the one route a harness needs before it has a
+  checkout (and so before it has a `harness_project:<id>` channel).
 
-  The one route a harness needs before it has anything else. Every other
-  device-facing surface is per working copy — `harness_project:<project_id>` is
-  a channel per checkout — and a machine is a machine before it has a checkout
-  on it. So onboarding cannot ride the channel: at boot there is no project to
-  name, and waiting for one would mean a box with nothing checked out never
-  appears at all.
+  Behind `Plugs.DeployKeyOrOAuth`: a laptop holds a user's OAuth token, a
+  sprite only a deploy key.
 
-  Plain HTTP for the same reason `HarnessLookupController` is: this is the side
-  that knows, reached by a client that holds only a credential and whatever it
-  wrote down last time.
+  Repeated on a heartbeat. The request reports which of this device's checkouts
+  are on disk (`working_copies`, `id => boolean`; ids from other devices are
+  ignored). The reply carries the device id, every copy attached to it
+  (`id => root`, so a restarted harness knows where to look), and, for a
+  `:local` device with an account, local projects pending generation.
 
-  ## Both credentials, because both kinds of machine exist
+  Idempotent: a client-minted id we do not know creates the row with that id;
+  an id already naming a device the caller cannot reach (another account,
+  not one of the user's) gets a fresh one instead.
 
-  It sits behind `Plugs.DeployKeyOrOAuth`, which takes a user's OAuth token or a
-  project's deploy key. That is not a convenience — it is the same distinction
-  `kind` records. A laptop has a signed-in user; a sprite has no user at all and
-  only ever holds a deploy key. A route that took one of them would onboard half
-  the fleet.
-
-  ## Announcing repeats, and carries what the machine can see
-
-  A harness re-announces on a heartbeat, so this doubles as the device's proof
-  of life and as where it reports which of its checkouts are still on disk —
-  `working_copies`, a map of id to boolean.
-
-  That report belongs here and not on a channel, because of the scoping. A
-  device is account-scoped and a working copy is project-scoped, so "the copies
-  I can see" spans projects by nature; `harness_project:<project_id>` is a
-  channel per checkout and could only ever carry claims about its own. This is
-  the one surface with the right shape for a statement about a whole machine.
-
-  What it does *not* let a machine do is talk about copies that are not its own
-  — `WorkingCopies.observe_paths/2` is scoped to `device_id`, so an id from
-  another box is ignored rather than believed.
-
-  ## And the answer says what this device is carrying
-
-  The reply carries `working_copies` — every copy attached to this machine, as
-  `id => root`. The exchange has to go both ways, because a harness builds its
-  own list from the roots it has been asked to serve since it started, and it is
-  asked by a hook arriving. A copy nobody works in again is therefore never on
-  that list, and a copy nobody works in again is exactly the one whose worktree
-  has been deleted. Telling the device what it is carrying is what lets it look
-  at the right places after a restart.
-
-  ## Announcing is idempotent, and unrecognised is taken at its word
-
-  A machine presents the id it holds, or none. The id is minted client-side now
-  (see `CmsHarness.Device`) rather than asked for here, so an id we do not
-  recognise is the *ordinary* shape of a first announce, not an exceptional one
-  — `Devices.announce/3` creates the row using that id rather than minting a
-  different one, on the same reasoning `WorkingCopies.issue/3` already applies
-  one level down: the caller's own identifier is honoured unless there is a
-  concrete reason not to.
-
-  There is exactly one such reason: the id already names *another* account's
-  device. A self-picked id is not guaranteed globally unique the way a
-  server-minted one was — astronomically unlikely for a random id, more
-  plausible for one derived from shared hardware (a cloned VM image, say) — and
-  handing that announce a different account's machine would be a tenancy hole,
-  not idempotence. Only then does this fall back to minting a fresh id, which
-  puts the machine in exactly the position of one presenting nothing: it needs
-  an identity, and refusing outright would leave a real machine with no way to
-  onboard.
+  See knowledge/web, "Device announce".
   """
 
   use CodeMySpecWeb, :controller
@@ -101,26 +52,10 @@ defmodule CodeMySpecWeb.DeviceController do
     end
   end
 
-  # Local projects this account confirmed and no harness has a checkout for
-  # yet — so an already-running harness picks one up on its own next
-  # heartbeat rather than a human typing `mix cms.new` by hand. See
-  # `CodeMySpec.Intake.pending_local_projects/1`.
-  #
-  # A deploy key is minted here rather than left for the harness to ask for
-  # separately — `mix harness.onboard` takes one as a flag or an env var and
-  # has no other way to reach the server for it, so a project with none
-  # would onboard with no credential and every hook after would refuse.
-  #
-  # Nothing for a device with no account: a shared box's own persistent
-  # harness announces with none, and it must not be handed somebody's
-  # pending project to generate into a directory nobody there is expecting.
-  #
-  # And nothing for anything but a laptop (`kind: :local`). A sprite
-  # (`kind: :cloud`) is already tied to the one project `Runner.Local`/
-  # `Runner.Docker` provisioned it for via its deploy key — self-generating
-  # a *second* project onto a container built for the first is not a thing
-  # a sprite should ever be offered, regardless of what else its account has
-  # pending.
+  # Confirmed local projects with no checkout yet, so a running harness picks
+  # one up on its next heartbeat. The deploy key is minted here: the onboard
+  # task has no other way to get one. Only for a `:local` device with an
+  # account; a shared box or a sprite is never offered one.
   defp pending_local_projects(%{active_account_id: account_id}, %{kind: :local})
        when is_binary(account_id) do
     for plan <- Intake.pending_local_projects(account_id) do
@@ -141,24 +76,11 @@ defmodule CodeMySpecWeb.DeviceController do
     %CodeMySpec.Users.Scope{active_account_id: account_id, active_project_id: project_id}
   end
 
-  # The account this machine belongs to, if it belongs to one.
-  #
-  # A device is account-scoped and a working copy is project-scoped, so a
-  # machine announcing itself names an account at most — never a project. It has
-  # no checkout yet, which is the whole reason this route exists rather than the
-  # channel.
-  #
-  # And it may name nothing. A shared development box belongs to no account:
-  # several people work on it, and forcing one would attach it to whichever
-  # announced first. `Devices.announce/3` takes a scope with a nil account, and
-  # a nil account matches only other accountless devices — so a shared box
-  # recognising itself never becomes a route to somebody's laptop.
+  # The machine's account, or none (a shared box). A nil account matches only
+  # other accountless devices in `Devices.announce/3`.
   defp scope(conn), do: conn.assigns[:current_scope] || %CodeMySpec.Users.Scope{}
 
-  # Only what a machine can honestly say about itself. `kind` is refused rather
-  # than coerced: an unrecognised value is a client this server does not
-  # understand, and recording it as `:local` would make a sprite read as
-  # somebody's laptop — the one distinction the field exists for.
+  # An unrecognised `kind` is nil (refused), never coerced to `:local`.
   defp attrs(params) do
     %{hostname: params["hostname"], kind: kind(params["kind"])}
   end
@@ -167,13 +89,8 @@ defmodule CodeMySpecWeb.DeviceController do
   defp kind("cloud"), do: :cloud
   defp kind(_other), do: nil
 
-  # What the harness says it can see, as `id => present?`.
-  #
-  # Only real booleans count. A JSON body is whatever the caller sent, and a
-  # string `"false"` is truthy in Elixir — read loosely, a malformed report
-  # would mark every copy on the machine present and silently clear warnings
-  # that were correct. Anything that is not `true` or `false` is dropped, which
-  # puts it in the same position as a copy the harness never mentioned.
+  # `id => present?`. Only real booleans count (a string "false" is truthy);
+  # anything else is dropped, as if unmentioned.
   defp observations(map) when is_map(map) do
     for {id, present?} <- map, is_binary(id), is_boolean(present?), into: %{}, do: {id, present?}
   end

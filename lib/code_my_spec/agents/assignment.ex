@@ -1,15 +1,12 @@
 defmodule CodeMySpec.Agents.Assignment do
   @moduledoc """
-  The story and epic a copy's team works on (a31f1cd6).
+  The story and epic a copy's team works on.
 
-  The team is the copy's story-scope agents — coding and QA. John: *"the team
-  would get assigned a story and see it through to full completion together …
-  fine for the team to take a new story from the working copy when the team
-  collectively finishes a story."* So a story is assigned to the whole team at
-  once and held on each member's `story_id`; that is the only record. The copy
-  keeps no story of its own (*"it just blows through"*); a session or product
-  reads the team's through `WorkingCopies.team_story_id/1`. The main agent reads
-  none and holds none: main is promoted to, never worked on.
+  The team is the copy's story-scope agents — coding and QA. A story is
+  assigned to the whole team at once and held on each member's `story_id`;
+  that is the only record. The copy keeps no story of its own; a session or
+  product reads the team's through `WorkingCopies.team_story_id/1`. The main
+  agent reads none and holds none: main is promoted to, never worked on.
 
   `stories.working_copy_id` stays the checkout reservation: the team's story is
   reserved for its copy, and released when the team moves off it.
@@ -21,8 +18,7 @@ defmodule CodeMySpec.Agents.Assignment do
     * `advance/4` — an explicit assignment's *move*. It locks the team's rows
       so two teammates arriving at once move the team once. No read calls it:
       a team keeps one story until it lands, and landing tells main the team is
-      free (criterion 2064) so main assigns the next with `set_active_story`
-      (criterion 2065).
+      free (`notify_team_free/3`) so main assigns the next.
     * `claim/3` — a team member starting a story's work when its team holds no
       story assigns that story to the whole team. Starting another story's work
       while the team holds one is refused.
@@ -32,10 +28,9 @@ defmodule CodeMySpec.Agents.Assignment do
 
   ## Product's epic
 
-  Product lives on the main copy at epic scope and holds no story (step 4c).
-  John: *"Product does an epic's detailed design on the main copy; the
-  approved epic then goes to a working copy, where coding and QA build it."*
-  So product's `epic_id` is the epic it is designing: set by `claim/3` when it
+  Product lives on the main copy at epic scope and holds no story: it designs
+  an epic there, and the approved epic goes to a working copy where coding and
+  QA build it. So product's `epic_id` is the epic it is designing: set by `claim/3` when it
   starts work on one of that epic's stories, and cleared when the epic is
   placed on a working copy (`assign_epic/3` takes it from every agent not on
   the destination, and product is never there).
@@ -79,8 +74,7 @@ defmodule CodeMySpec.Agents.Assignment do
     end
   end
 
-  # Story work happens on feature copies. John: "Main is what protects us from
-  # dogshit from the agents" — work is promoted to it, never done on it.
+  # Story work happens on feature copies; main is promoted to, never worked on.
   defp feature_copy(scope, copy_id) do
     case WorkingCopies.fetch(copy_id) do
       {:ok, %{project_id: project_id, main: true}} when project_id == scope.active_project_id ->
@@ -162,7 +156,7 @@ defmodule CodeMySpec.Agents.Assignment do
   @doc """
   Move the team from its finished story `from_id` onto `to_id`, once.
 
-  Called by an explicit assignment, never by a read (criterion 2064). Teammates
+  Called by an explicit assignment, never by a read. Teammates
   reading the finished story at the same moment all ask; the team's rows are
   locked first, so the first moves the team and the rest find it no longer on
   `from_id` and do nothing. `{:ok, :moved}` either way, or the assignment's own
@@ -238,7 +232,7 @@ defmodule CodeMySpec.Agents.Assignment do
   def inherit(%{working_copy_id: copy_id, role: role} = attrs) when is_binary(copy_id) do
     if team_member?(role) do
       attrs
-      |> maybe_put(:story_id, WorkingCopies.team_story_id(copy_id))
+      |> maybe_put(:story_id, WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id))
       |> maybe_put(:epic_id, team_epic_id(copy_id))
     else
       attrs
@@ -246,6 +240,31 @@ defmodule CodeMySpec.Agents.Assignment do
   end
 
   def inherit(attrs), do: attrs
+
+  # A seat filled the moment it is vacated finds no *live* teammate to
+  # inherit from -- `WorkingCopies.team_story_id/1` excludes a retired row on
+  # purpose, because "retired" means gone and an ordinary read should not
+  # surface years-old history for a copy nobody is on. But a seat
+  # `retire_agent/3` just freed is not stale history: it is the same work,
+  # mid-handoff, and the copy keeps no story of its own to fall back on
+  # (John's ruling: "we don't have to record the active story on the copy, it
+  # just blows through"). A replacement with no live teammate to inherit from
+  # takes the most recently retired team member's story instead of starting
+  # unbound -- the shape that left `submit_story_issue` answering
+  # `story_not_assigned_to_agent` for work the predecessor had already queued.
+  defp retired_team_story_id(copy_id) do
+    roles = team_roles() |> Enum.map(&to_string/1)
+
+    from(a in "agents",
+      where:
+        a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role in ^roles and
+          not is_nil(a.retired_at) and not is_nil(a.story_id),
+      order_by: [desc: a.retired_at],
+      select: a.story_id,
+      limit: 1
+    )
+    |> Repo.one()
+  end
 
   defp maybe_put(attrs, _key, value) when value in [nil, false], do: attrs
   defp maybe_put(attrs, key, value), do: Map.put_new(attrs, key, value)
@@ -267,7 +286,7 @@ defmodule CodeMySpec.Agents.Assignment do
   end
 
   @doc """
-  Tell main a team finished a story by promoting it (criterion 1892).
+  Tell main a team finished a story by promoting it.
 
   Release the promoted story and clear only matching active assignments.
   Completed work remains in history; other queued stories remain reserved.
@@ -352,10 +371,8 @@ defmodule CodeMySpec.Agents.Assignment do
     |> Repo.all()
   end
 
-  # The notice tells main what to do next, so it must name tools main can
-  # actually call. `assign_team/3` is an internal function; the agent-facing
-  # route to it is `set_active_story`, which is what `assignment.ex:19`
-  # documented all along (issue e21ab16c).
+  # Names the tools main can call (`set_active_story`, not the internal
+  # `assign_team/3`).
   defp team_free_message(copy_id, story) do
     "Working copy #{copy_id}'s team is free: story #{story.number} (\"#{story.title}\") is " <>
       "promoted and nothing else is assigned to it. Assign it another issue with " <>
@@ -385,7 +402,7 @@ defmodule CodeMySpec.Agents.Assignment do
 
   Agents elsewhere lose it, and with it any of its stories they held: the
   stories now live on another checkout. That includes product, which was
-  designing it on the main copy and is not sent with it (step 4c). `nil`
+  designing it on the main copy and is not sent with it. `nil`
   takes it from everyone, as `EpicDispatch.place/3` returning the stories to
   the backlog does.
   """
@@ -451,7 +468,7 @@ defmodule CodeMySpec.Agents.Assignment do
 
   # Never refuses: which epic product is designing is a record, not a gate.
   # A story placed on another copy went there with its approved epic, so
-  # product's work on it (triage, questions) is not designing it (step 4d).
+  # product's work on it (triage, questions) is not designing it.
   defp design(scope, agent, id) do
     case Stories.get_story(scope, id) do
       %{working_copy_id: copy} when not is_nil(copy) and copy != agent.working_copy_id ->
@@ -481,11 +498,9 @@ defmodule CodeMySpec.Agents.Assignment do
   @doc """
   Move one story to another working copy, wherever it is now.
 
-  `EpicDispatch.place/3` moves every story in an epic at once; this is the
-  one-story counterpart `stories.working_copy_id` has never had (ae4e748f).
-  `Stories.reserve_story/3` only *claims* an unassigned story, and `WorkingCopies.offboard/2`
-  releases every story a copy holds, discarding the copy with it -- neither
-  takes one story from a copy that still has others.
+  The one-story counterpart of `EpicDispatch.place/3`.
+  `Stories.reserve_story/3` only claims an unassigned story, and
+  `WorkingCopies.offboard/2` releases every story a copy holds.
 
   Refuses onto a target with no checkout on disk, and refuses to take a
   story out from under the copy whose team has it as the active story

@@ -4,50 +4,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   what they returned, with sub-agent turns attributed to the sub-agent via
   `agent_role`. New turns arrive live while the agent runs, with no reload.
 
-  ## Saying something back
+  The only place a person types at an agent; other pages link here rather than
+  grow a second transcript. The composer appears only when this
+  conversation's own agent can take a message (`talkable?/2`): a box over a
+  stopped agent would swallow the text.
 
-  This is the only place a person types at an agent, and it is here because the
-  transcript is here: a composer on a page that does not show the conversation
-  is a person answering something they cannot read. `WorkingCopyLive.Show`
-  links in rather than growing a second, worse transcript of its own.
-
-  The box appears only where there is an agent on the other end — this
-  conversation's own agent, running now. A conversation with no agent, or whose
-  agent has stopped, has nowhere to put what you type, and a box offered over
-  one would take the text and drop it: worse than no box, because the person
-  believes they redirected an agent and finds out when the work comes back
-  wrong.
-
-  It used to be gated on `pi:<root>`: any Pi lane the harness reported on that
-  *copy*. That key outlived the agent that opened it, so the box appeared over
-  finished sessions, and a copy running two agents had one answer for both.
-
-  One page is one **session**, taken from the URL. It used to be "whichever
-  conversation for this project moved most recently", which reads as *the*
-  conversation while a project has one agent and silently hides four when it has
-  five — and changes under you as they take turns. `Index` lists them.
-
-  Deliberately separate from `InboxLive`: that is a support queue where a person
-  is writing to the operator; this is a machine being watched. Agent
+  One page is one conversation, named by `?conversation=`; none means the
+  project's main agent. `Index` lists them. Separate from `InboxLive`: agent
   conversations never appear in `Conversations.list_conversations/1` or count
-  toward `Conversations.unread_count/1`, so watching an agent never raises the
-  support inbox's unread badge.
+  toward `Conversations.unread_count/1`.
 
-  ## What an empty transcript means depends on who was writing it
+  An empty transcript means "nothing yet" for an agent conversation (the agent
+  streams its own steps) and "turns were not recorded" only for a recorded lane
+  with no agent (`emptiness/2`).
 
-  "Turns were taken but not recorded" used to appear over any conversation with
-  no messages. It was written for story 984's sprite, whose turns are recorded
-  after the fact by a recorder that can fail — there, an empty transcript is
-  evidence of loss and saying so is the point (criterion 8175).
-
-  An agent conversation is not written that way. The agent streams its own
-  steps as it takes them, so empty means it has not done anything yet — the
-  ordinary state one second after starting one. Saying "turns were lost" there
-  is a warning about a real failure raised over a working system, and it
-  devalues the sentence for the case that needs it.
-
-  The conversation says which path it is on: an agent conversation names its
-  agent, a recorded lane names its session.
+  See knowledge/web, "Agent conversation".
   """
 
   use CodeMySpecWeb, :live_view
@@ -88,28 +59,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
 
   @impl true
-  # `:analysis_running` defaults here rather than on the params path: that
-  # function has an error branch which assigns almost nothing, and a render
-  # missing the key is a `KeyError` on a page whose whole job is to show an
-  # agent that something went wrong.
+  # Defaults here, not on the params path, whose error branch assigns almost
+  # nothing; a missing key would crash the render.
   def mount(_params, _session, socket),
     do: {:ok, assign(socket, analysis_running: [], agent_writing: nil)}
 
-  # One page of turns. 50 is `Conversations.@default_page_size`; named here too
-  # because the loader compares against it to decide whether more sit above.
+  # One page of turns (`Conversations`' default page size); the loader compares
+  # against it to decide whether more sit above.
   @page 50
 
   defp messages_for(nil), do: []
   defp messages_for(conversation), do: Conversations.list_messages(conversation, limit: @page)
 
-  # The project comes off the scope, not out of a lookup here: `PortableHost`
-  # resolves `:project_id` for every route in this live_session. It attaches on
-  # `handle_params`, which is why this cannot run in `mount`.
+  # `PortableHost` assigns `:project` on `handle_params`, so this cannot run in
+  # `mount`. The first clause redirects the old path-style conversation link
+  # (push notifications, bookmarks) to the canonical query-string address.
   @impl true
-  # A link written before the conversation moved into the query string — a Web
-  # Push notification sitting on a phone, a bookmark. Answered by sending it to
-  # the URL this page has now, so there is one canonical address rather than two
-  # that both work.
   def handle_params(%{"conversation_id" => id, "project_id" => project_id}, _uri, socket) do
     {:noreply,
      push_navigate(socket,
@@ -133,19 +98,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp mount_conversation(socket, project, conversation_id) do
     scope = with_active_project(socket.assigns.current_scope, project)
 
-    # Which agent this project's own is, asked once per project and kept. It
-    # answers three questions — the conversation to open when the URL names
-    # none, the agent id the page marks as the project's, and why there is
-    # nothing to talk to when there is nothing to talk to — and `ensure/1` can
-    # *start* an agent, which is not something to redo on every agent you click
-    # through to.
-    #
-    # Per *project*, not per socket. `assign_new/3` keeps whatever is already
-    # there, and this LiveView survives navigation between projects — so a main
-    # agent resolved for one project stayed assigned while the page rendered
-    # another, and "the project's own agent" named somebody else's. Only ever
-    # visible to somebody who reaches two projects, which is why it went unseen
-    # and why QA found it (`21325686`).
+    # The project's main agent, resolved once per project (`ensure/1` can start
+    # one). Keyed per project, not per socket: this LiveView survives navigating
+    # between projects.
     socket = assign_main(socket, project, scope)
 
     conversation = resolve_conversation(scope, conversation_id, socket.assigns.main)
@@ -153,24 +108,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     socket = follow_conversation(socket, conversation)
 
-    # The activity tab is about agents this conversation is not. A question
-    # asked from another working copy arrives on the user's notification topics
-    # and on none this thread would otherwise hear, so without this the
-    # attention mark only appears on the next full page load — by which time the
-    # agent has been stopped for however long that took.
-    #
-    # The *list* topic, not the badge topic. `NotificationsHook` attaches a
-    # `:handle_info` hook that `:halt`s `{:pending_notifications_changed}` on
-    # purpose, so every LiveView gets a live navbar badge without writing a
-    # clause of its own. A clause here for that message is therefore
-    # unreachable — it compiles, it sits above the catch-all, and it never runs.
-    # The hook's own moduledoc names the way through: the list topic is passed
-    # on with `:cont`.
-    # Everything below is about the *project*, not about the agent you happen to
-    # be reading, and `handle_params` runs again every time you pick a different
-    # one. Subscribing once — the same guard `FilesLive` uses — rather than
-    # trusting PubSub to dedupe a pid it already has on a topic.
+    # Project-wide subscriptions, taken once per connected mount (this runs on
+    # every patch).
     if connected?(socket) && !socket.assigns[:watching_project?] do
+      # Questions from other copies, for the activity tab. The list topic: the
+      # badge topic is halted by `NotificationsHook`, so a clause here would
+      # never run.
       case user_id_of(scope) do
         nil ->
           :ok
@@ -179,42 +122,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           Notifications.subscribe_notifications_list(user_id)
       end
 
-      # This person's screen for this project. Its own topic rather than the
-      # project's: two people looking at one project have two screens, and a
-      # broadcast that reached both would move one its owner never touched.
+      # This person's screen for this project; per person, not per project.
       ScreenState.subscribe(scope)
 
-      # The team-status panel is a live view of every working copy on the
-      # project, same as `WorkingCopyLive.Index` — without this it only ever
-      # reflects whatever was true at the last navigation.
+      # The team-status panel: every working copy on the project, live.
       Agents.subscribe(scope)
       Agents.subscribe_presence(scope)
 
-      # What the analyzers are doing right now.
-      #
-      # The internal agent starts a run, ends its turn, and is messaged when it
-      # lands — which is right for the agent and leaves the person watching an
-      # idle transcript with no idea anything is happening. John: "there should
-      # be an indicator in the UI of what is going on."
-      #
-      # `analysis:<project_id>` is the completion topic both the local queue and
-      # the remote path broadcast on, deliberately in the same shape so a
-      # subscriber cannot tell which machine ran the tool.
+      # Analyzer runs in progress, so an idle transcript still shows work. Local
+      # and remote runs broadcast here in the same shape.
       Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{scope.active_project_id}")
 
-      # Each agent's task line is a live view of the same sessions the Sessions
-      # page watches — without this, starting or finishing a task only shows up
-      # here after something else happens to cause a re-render.
+      # Each agent's task line.
       Sessions.subscribe_sessions(scope)
 
-      # The dynamic panel's own content, live. Without these, "stories" and
-      # "epics" were only ever a snapshot taken the moment the tab last
-      # switched — an agent creating a new epic while you watched something
-      # else, or adding a story to an epic already on screen, changed nothing
-      # you could see without navigating away and back. Epics additionally
-      # drives the panel to the epic view itself on any epic event, the same
-      # way `show_in_panel` does when the agent remembers to call it — this is
-      # the version that does not depend on the agent remembering.
+      # The dynamic panel's content, live. An epic event also switches the panel
+      # to the epic view, as `show_in_panel` would.
       Epics.subscribe(scope)
       Stories.subscribe_stories(scope)
 
@@ -230,9 +153,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     mark_seen(socket, scope, conversation)
 
-    # Computed once and reused: `team_status/3` cross-references the same
-    # pending questions `@waiting` already carries rather than asking a
-    # second time.
+    # Computed once; `team_status/3` reuses it.
     waiting = waiting_for(scope, conversation)
 
     socket
@@ -240,10 +161,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:assigned_modal, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
+    |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
     |> assign(:conversation, conversation)
-    # True exactly when the block above has run, and false on the disconnected
-    # first render that precedes it — which is what makes the guard there fire
-    # once on the connected mount rather than never.
+    # True once the subscriptions above have run.
     |> assign(:watching_project?, connected?(socket))
     |> assign(:page_title, page_title(project, conversation))
     |> assign(:emptiness, emptiness(conversation, messages))
@@ -261,33 +181,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:waiting, waiting)
     |> assign(:copies, team_status(scope, project, waiting))
     |> with_chat_states()
-    # `assign_new`, because this is the screen's own state rather than the
-    # conversation's. This function runs again on every PubSub update, and
-    # `assign/3` here would slam a panel shut under someone's hand every time
-    # an agent said anything.
-    # `:screen`, not `:layout`. Phoenix reserves `:layout` for the render layout
-    # and `prepare_assigns/4` case-matches it, so assigning a viewport atom there
-    # crashes every request with `CaseClauseError: :wide`.
-    # Narrow until the client says otherwise, because the two failure modes are
-    # not symmetrical. The first paint happens before the viewport hook can
-    # report, and a stacked layout on a desk is merely narrow — while a
-    # side-by-side layout on a phone puts a 384px panel column next to the
-    # conversation on a 390px screen, which overlaps and runs off the edge.
-    # Caught by screenshotting the frame before the round trip landed.
+    |> assign_new(:firing?, fn -> false end)
+    # Screen state uses `assign_new`: this runs on every PubSub update, and
+    # `assign/3` would undo what the person just did. `:screen`, not `:layout`
+    # (reserved by Phoenix). Narrow until the client reports: wide on a phone
+    # overflows, narrow on a desk is merely narrow.
     |> assign_new(:screen, fn -> :narrow end)
-    # Seeded from the stored screen and kept in the socket after that. The
-    # `assign_new` matters twice over here: this function re-runs on every
-    # PubSub update, and re-reading the row each time would undo a panel the
-    # person opened a moment ago from a write that has not landed yet.
+    # Seeded from the stored screen, then owned by the socket.
     |> assign_new(:open_panels, fn -> stored_panels(scope) end)
     |> assign_new(:dynamic_view, fn -> ScreenState.get(scope).dynamic_view end)
     |> assign_new(:dynamic_story_id, fn -> ScreenState.get(scope).dynamic_story_id end)
     |> assign_new(:offer, fn -> offer_of(ScreenState.get(scope)) end)
     |> assign_new(:activity, fn -> [] end)
-    # The address the main checkout recorded for itself, and whether anything is
-    # answering on it. `assign` rather than `assign_new`: unlike the panels
-    # above this is not the person's own state, and a preview that came up while
-    # they were reading should appear without a reload.
+    # `assign`, not `assign_new`: a preview that comes up should appear live.
     |> assign_preview(scope)
     |> assign_new(:draft, fn -> "" end)
     |> assign_more_above(messages, @page)
@@ -295,16 +201,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign_dynamic()
   end
 
-  # Which conversation the URL is asking for.
-  #
-  # No `?conversation=` means the project's own agent, which is the answer to
-  # "I opened my project" — the cockpit is a project page and its default
-  # subject is the agent that runs the project. Naming one explicitly wins over
-  # the default, and a name that resolves to nothing falls back rather than
-  # erroring: a stale link from a deleted conversation should land you on your
-  # agent, not on a broken page.
-  # Keyed on the project it was resolved for, so navigating to another one asks
-  # again instead of keeping an answer to a different question.
+  # Keyed on the project it was resolved for, so navigating to another asks again.
   defp assign_main(socket, project, scope) do
     socket
     |> assign_new(:main_for, fn -> project.id end)
@@ -320,22 +217,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:main, MainAgentConversation.ensure(scope))
   end
 
+  # No `?conversation=` opens the main agent's. A named one that does not
+  # resolve is nil, never a substitute.
+  # See knowledge/web, "Agent conversation".
   defp resolve_conversation(_scope, nil, main), do: main_conversation(main)
 
-  # A named conversation that does not resolve is not an invitation to show a
-  # different one.
-  #
-  # This used to fall through to the project's main agent, and the page rendered
-  # it without a word: the URL named one agent, the transcript and the
-  # pause control belonged to another, and a missing agent looked exactly like
-  # an agent that is not working. QA hit it twice trying to confirm criterion
-  # 3293 and reasonably concluded the scope was wrong — it is not, the scope is
-  # corrected on the line above this call. The substitution was the whole of it
-  # (`21325686`).
-  #
-  # `nil` is already a state this page handles, because the no-conversation
-  # clause above can produce it. So an unresolvable id renders as nothing to
-  # show rather than as somebody else's thread, and `handle_params/3` says so.
   defp resolve_conversation(scope, conversation_id, _main),
     do: Conversations.get_agent_conversation_by_id(scope, conversation_id)
 
@@ -355,14 +241,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp main_summary(_error), do: ""
 
-  # Listen to the conversation on screen, and stop listening to the one that
-  # was.
-  #
-  # Switching agents is a patch now, so this process outlives the conversation
-  # it opened with. Without the unsubscribe the old topic stays bound and the
-  # agent you just navigated away from goes on appending its turns to the
-  # transcript of the one you are reading — the subscription leaking is not
-  # noise, it is the wrong agent's work in the wrong window.
+  # Subscribe to the conversation on screen and unsubscribe from the previous
+  # one: switching is a patch, and a leaked topic appends another agent's turns
+  # here.
   defp follow_conversation(socket, conversation) do
     previous = socket.assigns[:conversation]
 
@@ -370,8 +251,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       {false, _, _} ->
         socket
 
-      # The same conversation, re-resolved by a patch that changed something
-      # else. Already subscribed; resubscribing would double every turn.
+      # Same conversation re-resolved; resubscribing would double every turn.
       {true, %{id: id}, %{id: id}} ->
         socket
 
@@ -383,26 +263,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         # arrives rather than being missed.
         conversation && Drafts.subscribe(conversation.id)
 
-        # The composer belongs to the agent you were talking to, not to the
-        # screen. Carrying a half-typed message across to a different agent is
-        # how you send it to the wrong one.
+        # The draft belongs to the agent, not the screen: clear it on switch.
         socket
         |> assign(:draft, "")
         |> assign(:agent_writing, conversation && Drafts.get(conversation.id))
     end
   end
 
-  # Where this project's preview answers, and what it is doing.
-  #
-  # The address comes off the working copy rather than being derived here. Two
-  # things follow from that: a project with no main checkout has no preview,
-  # which is correct — nothing is serving it — and a checkout that records one
-  # gets it without this view knowing how it was provisioned.
-  #
-  # The state is asked for rather than inferred from whether the address is
-  # set. `PreviewComponents.pane/1` renders five of them and the distinctions
-  # are the point: `:down` says a thing that existed has stopped, and showing
-  # that as `:starting` makes a broken app read as a slow one.
+  # The preview address comes off the main working copy (none, no preview); its
+  # state is asked for, not inferred from the address.
   defp assign_preview(socket, scope) do
     src = WorkingCopies.preview_url(scope)
     status = WorkingCopies.preview_status(scope)
@@ -416,30 +285,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     )
   end
 
-  # No address is `:absent` — nothing was asked for, so the pane promises
-  # nothing. An address the checkout has never reported against is
-  # `:starting` rather than `:running`: framing it before anything answers
-  # renders a blank rectangle indistinguishable from an app that rendered
-  # nothing, which lands on the person as "my app is broken" — and, worse,
-  # framing a tunnel before `cloudflared` has connected doesn't even render
-  # blank, it renders Cloudflare's own error page inside the pane. Measured
-  # live, 2026-09-22: a preview minted at instance-boot time and probed
-  # before its first health check read as broken for the whole gap between
-  # the URL existing and the app actually answering it.
+  # Never reported is `:starting`, not `:running`: framing a URL before anything
+  # answers shows a blank pane or Cloudflare's error page, which reads as broken.
   defp preview_state(nil, _status), do: :absent
   defp preview_state(_src, "serving"), do: :running
   defp preview_state(_src, "erroring"), do: :broken
   defp preview_state(_src, "down"), do: :down
   defp preview_state(_src, _never_reported), do: :starting
 
-  # What the dynamic tab is showing, loaded once per change rather than per
-  # render. The tab is one tab whose contents swap — this is the swap.
-  #
-  # Loaded even while the tab is shut, because the alternative is a panel that
-  # is empty for one frame every time it opens, and the query is a list of the
-  # project's own stories rather than anything expensive.
-  # Panels come back as strings and are atoms in the socket, because everything
-  # that reasons about them — the phone rule, the render — matches on atoms.
+  # Stored as strings, atoms in the socket.
   defp stored_panels(scope) do
     scope
     |> ScreenState.get()
@@ -453,16 +307,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp to_panel("activity"), do: :activity
   defp to_panel(_other), do: nil
 
-  # What the agent is asking for, or nothing. A view with no offer is the
-  # ordinary state of a screen nobody is steering.
+  # The view the agent offered, or nil.
   defp offer_of(%{offered_view: nil}), do: nil
   defp offer_of(%{offered_view: view, offered_story_id: id}), do: %{view: view, story_id: id}
   defp offer_of(_screen), do: nil
 
-  # Written on every change the person makes, so the screen they leave is the
-  # screen they come back to. Failure is deliberately silent: a layout that
-  # could not be saved is worth less than the conversation it sits beside, and
-  # raising here would take both.
+  # Saved on every change. Failure is silent: losing a layout is better than
+  # crashing the conversation beside it.
   defp remember(socket) do
     ScreenState.put(socket.assigns.current_scope, %{
       open_panels: Enum.map(socket.assigns.open_panels, &to_string/1),
@@ -511,60 +362,31 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # A panel that cannot list epics should say so and leave the rest of the
-  # screen alone, same reasoning as `safe_stories/1` below.
+  # A panel that cannot list should not take the transcript down with it.
   defp safe_epics(scope) do
     Utils.rescued("AgentConversationLive.safe_epics", [], fn -> Epics.list_epics(scope) end)
   end
 
-  # A panel that cannot list stories should say so and leave the rest of the
-  # screen alone. This one rides the conversation, and a raise here takes the
-  # transcript and the composer with it.
   defp safe_stories(scope) do
     Utils.rescued("AgentConversationLive.safe_stories", [], fn -> Stories.list_stories(scope) end)
   end
 
-  # Why this transcript is empty, when it is.
-  #
-  # `:gap` is story 984's claim — turns happened and the recorder lost them —
-  # and it belongs only to conversations written after the fact, which are the
-  # ones keyed by session rather than by agent. `:nothing_yet` is an agent that
-  # streams its own steps and has not taken one.
+  # Why this transcript is empty. `:gap` (turns lost) only for recorded lanes,
+  # keyed by session; `:nothing_yet` for an agent that has not taken a step.
   defp emptiness(nil, _messages), do: :none
   defp emptiness(_conversation, [_ | _]), do: :none
   defp emptiness(%{agent_id: agent_id}, []) when is_binary(agent_id), do: :nothing_yet
   defp emptiness(_conversation, []), do: :gap
 
-  # A conversation is answerable when its own agent has not been stopped.
-  #
-  # Its own, not any agent on the copy. An older version keyed on "a Pi lane the
-  # harness reports on `pi:<root>`", and that key outlives the agent that opened
-  # it, so the box appeared over sessions that had finished.
-  #
-  # Then it asked `Agents.list_running/1` — the agents we asked for, filtered to
-  # `:running`. A row only reaches `:running` through `record_reported/2`, driven
-  # by `LaneReporter`, which the light harness never starts. On such a machine no
-  # row ever becomes `:running`, so this box never opened however alive the agent
-  # was.
-  #
-  # What is left is the fact the page can actually answer: there is an agent on
-  # this thread and nobody has stopped it. Reachability is deliberately not asked
-  # here — criterion 2896 requires that a message to an unreachable machine be
-  # *accepted and reported undelivered*, which needs the box present to say so.
-  # `send_message` dispatches through `Agents.dispatch_message/3`, which answers
-  # `{:error, :not_running}` rather than absorbing the message, so the report is
-  # real.
-  # Whether this agent keeps going when its turn ends — the state the play
-  # control shows and flips. Story 538's R13 at the grain somebody watches: the
-  # working copy page moves all three roles at once, which is right for staffing
-  # an epic and wrong when you are looking at one agent.
+  # Whether this agent keeps going when its turn ends: the play control, per
+  # agent (the working copy page moves every role at once).
   defp working?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
     match?({:ok, %{continuous: true}}, Agents.fetch_agent(scope, agent_id))
   end
 
   defp working?(_scope, _conversation), do: false
 
-  # On is intent (neither off nor retired), not whether the process is up (39af5611).
+  # On is intent (neither off nor retired), not whether the process is up.
   defp on?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
     match?({:ok, %Agent{off_at: nil, retired_at: nil}}, Agents.fetch_agent(scope, agent_id))
   end
@@ -580,7 +402,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp assigned_to(_scope, _conversation), do: []
 
-  # The issue first: it takes priority over the story in dispatch (story 1091).
+  # The issue first: it takes priority over the story in dispatch.
   defp assignments(scope, %Agent{} = agent) do
     Enum.reject([assigned_issue(scope, agent), assigned_story(scope, agent)], &is_nil/1)
   end
@@ -694,10 +516,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp power_flash(_error, _was, false),
     do: {:error, "Agent turned off, but its machine could not be reached to end it."}
 
-  # Keeps the header's own controls (for whichever agent this conversation has
-  # open) in step when a toggle landed through the team panel instead — the
-  # one case they can disagree, since the panel can act on any agent on the
-  # project, not only this one.
+  # Keeps the header's controls in step when the team panel toggled this
+  # conversation's agent.
   defp sync_header_state(socket, agent) do
     conversation = socket.assigns.conversation
 
@@ -711,6 +531,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # Answerable when this conversation's own agent is neither off nor retired.
+  # Reachability is not asked: a message to an unreachable machine must be
+  # accepted and reported undelivered, which needs the box.
   defp talkable?(_scope, nil), do: false
 
   defp talkable?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
@@ -722,12 +545,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp talkable?(_scope, _conversation), do: false
 
-  # Whether this thread is the project's own agent.
-  #
-  # By identity, not by role: `agents.role` defaults to "main", so every agent
-  # ever started carries the word. What makes one the project's is where it is —
-  # the checkout the project designated — which is what `Agents.main_agent/1`
-  # answers.
+  # Whether this thread is the project's own agent, by identity
+  # (`Agents.main_agent/1`), not role: `agents.role` defaults to "main".
   defp main_agent?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
     case Agents.main_agent(scope) do
       %{id: ^agent_id} -> true
@@ -737,10 +556,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp main_agent?(_scope, _conversation), do: false
 
-  # What this conversation is still waiting to hand over. Read from the record
-  # rather than kept in assigns: a person who reloads has not stopped waiting,
-  # and a pending message that vanished on refresh reads as one that was never
-  # accepted.
+  # Messages still waiting to be handed over, read from the record so they
+  # survive a reload.
   defp pending_for(nil), do: []
   defp pending_for(conversation), do: Agents.Mailbox.waiting_messages(conversation)
 
@@ -810,8 +627,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   attr :message, :any, required: true
 
-  # Story 1051: stops a busy agent's turn so this is its next message, rather
-  # than waiting for the turn to end.
+  # Stops a busy agent's turn so this is its next message.
   defp send_now_button(assigns) do
     ~H"""
     <button
@@ -842,26 +658,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp short_session(_), do: ""
 
-  # `active_project_id` is what `Conversations.get_agent_conversation/2` scopes
-  # on, so both fields are set together — otherwise the page for one project
-  # could read another project's turns off a stale `active_project_id`.
+  # Both fields together: conversation lookups scope on `active_project_id`,
+  # and a stale one would read another project's turns.
   defp with_active_project(scope, project),
     do: %{scope | active_project: project, active_project_id: project.id}
 
-  # Delivered to the agent, and recorded from what the machine answered.
-  #
-  # This used to be `Conversations.add_message(:operator, ...)` and nothing
-  # else: the message was written into the transcript and never sent anywhere.
-  # It read as delivered from both ends and reached nobody.
-  #
-  # Nothing is written here either, for the opposite reason — `dispatch_message`
-  # records it, once the machine has said what became of it, with that outcome
-  # on the row. Written first, the transcript claims the agent was told every
-  # time the machine could not be reached.
   @impl true
-  # f096eba2: the team panel's own row for an agent, which may not be the one
-  # this conversation has open. Same underlying call as the header's own
-  # button below; only where the id comes from differs.
   def handle_event("set_read", %{"id" => id, "read" => read}, socket) do
     Reads.set_read(socket.assigns.current_scope, id, read == "true")
     {:noreply, with_chat_states(socket)}
@@ -938,6 +740,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_event("close_assigned", _params, socket),
     do: {:noreply, assign(socket, :assigned_modal, nil)}
 
+  # The team panel's row for any agent; the header's clause below acts on this
+  # conversation's.
   def handle_event("toggle_agent_working", %{"agent-id" => agent_id}, socket) do
     scope = socket.assigns.current_scope
 
@@ -954,28 +758,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Put this one agent to work, or let it stop. Story 538's R13.
-  #
-  # Switching on also wakes it, because a flag alone marks an agent willing and
-  # leaves it idle — an agent is a supervised process that acts when messaged
-  # and nothing polls. `Agents.set_agent_continuous/3` owns both halves so this
-  # and the working-copy switch cannot drift.
+  # Put this agent to work or let it stop. Switching on also wakes it (nothing
+  # polls); `Agents.set_agent_continuous/3` owns both halves.
   def handle_event("toggle_agent_working", _params, socket) do
     scope = socket.assigns.current_scope
     agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
 
-    # The direction comes from the agent, not from what this page last drew.
-    #
-    # It was `not @working?`, and that inverted the control the moment the assign
-    # was stale: the wide layout rendered `working?` false over an agent that was
-    # working, so a click meant to pause it computed `not false` and switched it
-    # *on*. John: "I was unable to stop that agent." He was pressing pause and
-    # starting it.
-    #
-    # Reading the row costs one query on a click a person made, and it cannot
-    # disagree with the thing it is about — where the assign is a copy that goes
-    # stale whenever anything else moves the agent, including the other switch on
-    # the working copy page.
+    # The direction comes from the row, never from a possibly stale assign.
+    # See knowledge/web, "Lessons".
     with agent_id when is_binary(agent_id) <- agent_id,
          {:ok, current} <- Agents.fetch_agent(scope, agent_id),
          {:ok, agent, outcome} <-
@@ -990,8 +780,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # f096eba2: same split as `toggle_agent_working` above — the team panel's
-  # row names its own agent, which the header's button never had to.
+  # The team panel's row for any agent, as with `toggle_agent_working`.
   def handle_event("toggle_agent_power", %{"agent-id" => agent_id} = params, socket) do
     scope = socket.assigns.current_scope
 
@@ -1015,9 +804,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # The power button (39af5611): on turns it off, off turns it on, through the
-  # same `Agents` functions the tools use. Immediate, no confirm; a `reason`
-  # param is recorded when sent and never required.
+  # The header's power button: on turns it off, off turns it on, through the
+  # same `Agents` functions the tools use. No confirm; `reason` is optional.
   def handle_event("toggle_agent_power", params, socket) do
     scope = socket.assigns.current_scope
     agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
@@ -1041,19 +829,61 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
+  # Arms the in-page confirmation rather than acting immediately -- firing
+  # retires the agent for good, unlike the power button beside it, which
+  # only ever stops and starts the same one.
+  def handle_event("fire_agent", _params, socket) do
+    {:noreply, assign(socket, :firing?, true)}
+  end
+
+  def handle_event("cancel_fire_agent", _params, socket) do
+    {:noreply, assign(socket, :firing?, false)}
+  end
+
+  def handle_event("confirm_fire_agent", _params, socket) do
+    scope = socket.assigns.current_scope
+    agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
+
+    if is_binary(agent_id) do
+      result = Agents.retire_agent(scope, agent_id, by: Agents.actor(scope))
+
+      socket = assign(socket, :firing?, false)
+
+      case result do
+        {:ok, agent} ->
+          {:noreply,
+           socket
+           |> sync_header_state(agent)
+           |> refresh_team_status()
+           |> put_flash(:info, "Agent fired.")}
+
+        {:ok, agent, {:unreachable, _machine}} ->
+          {:noreply,
+           socket
+           |> sync_header_state(agent)
+           |> refresh_team_status()
+           |> put_flash(
+             :info,
+             "Agent fired; its machine could not be reached to end the process."
+           )}
+
+        {:error, _reason} ->
+          {:noreply, put_flash(socket, :error, "That agent could not be fired. Try again.")}
+      end
+    else
+      {:noreply, assign(socket, :firing?, false)}
+    end
+  end
+
   def handle_event("send_message", _params, %{assigns: %{talkable?: false}} = socket) do
-    # A control that is merely hidden is still reachable, and "no button" is a
-    # weaker promise than "no effect". Nothing is recorded, because a
-    # transcript claiming something was said to an agent that was not there to
-    # hear it is worse than an unanswered click.
+    # A hidden control is still reachable. Nothing is recorded: the transcript
+    # must not claim an absent agent was told something.
     {:noreply, put_flash(socket, :error, "That agent is not running, so nothing was sent.")}
   end
 
   def handle_event("send_message", %{"message" => message}, socket) do
-    # Cleared here rather than by rendering an empty value, now that `@draft`
-    # keeps the box across unrelated patches. Sent is the one moment the message
-    # should leave the box, and saying so explicitly is what keeps a panel
-    # toggle from doing it by accident.
+    # Sending is the one moment the draft clears. `dispatch_message` records the
+    # message with its delivery outcome; nothing is written here first.
     socket = assign(socket, :draft, "")
 
     socket.assigns.current_scope
@@ -1061,12 +891,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> sent(socket)
   end
 
-  # Taking one back, while it is still only waiting.
-  #
-  # Asked of the machine rather than cleared here: a withdrawal that only
-  # cleared the view would leave the operator believing the agent will not see
-  # something it is about to act on, which is the worst of the three possible
-  # outcomes.
+  # Takes back a waiting message. Asked of the machine, not cleared locally: the
+  # operator must not believe the agent will not see something it will.
   def handle_event("withdraw_message", %{"ref" => ref}, socket) do
     socket.assigns.current_scope
     |> Agents.withdraw_message(socket.assigns.conversation.agent_id, ref)
@@ -1090,12 +916,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # The questions this session asked. They belong here rather than only on a
-  # page of their own: a question read without the work that prompted it is a
-  # question you cannot answer well.
+  # Answers a question beside the work that prompted it.
   def handle_event("answer_question", params, socket) do
-    # By the form's own request id. Taking the first pending question answered
-    # an older one when an agent had two open, with the newer one's form.
+    # By the form's own request id, never "the first pending" one.
     case Enum.find(socket.assigns.questions, &(&1.id == params["request_id"])) do
       nil ->
         {:noreply, put_flash(socket, :error, "That question is no longer here.")}
@@ -1106,9 +929,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         {kind, message} =
           ChatComponents.answer_flash(Notifications.answer_question_request(request.id, answers))
 
-        # Re-fold as well as re-read. The run was split so the form could sit
-        # inside it; once answered there is nothing to sit there, and the calls
-        # belong back in one collapsed item.
+        # Re-fold too: the run was split for the form, which is now gone.
         {:noreply,
          socket
          |> put_flash(kind, message)
@@ -1117,12 +938,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # A permission/tap-out request the agent raised, resolved beside the work
-  # that raised it — the same reasoning as `answer_question`, for the request
-  # shape rather than the question shape. Unlike a question, more than one of
-  # these can be pending on one agent at once (a tap-out and a tool approval,
-  # say), so the button that fired this names which one by id rather than
-  # assuming "the one pending request."
+  # A permission/tap-out request, resolved by id: several can be pending on one
+  # agent.
   def handle_event("approve_permission", %{"id" => id}, socket) do
     resolve_permission(socket, id, "allow")
   end
@@ -1131,13 +948,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     resolve_permission(socket, id, "deny")
   end
 
-  # The client reports its own width, because the server cannot see one and the
-  # difference here is behavioural rather than cosmetic. "A phone shows one
-  # panel" is state, not a media query — closing a panel is something the server
-  # decides — so the width has to reach it.
-  # `is_number`, not `is_integer`: `window.innerWidth` is fractional under browser
-  # zoom, and an integer-only guard would leave no matching clause and crash the
-  # view for anyone not at 100%.
+  # The client reports its width: "a phone shows one panel" is server state, not
+  # a media query. `is_number`: `innerWidth` is fractional under browser zoom.
   def handle_event("viewport", %{"width" => width}, socket) when is_number(width) do
     screen = if width < 768, do: :narrow, else: :wide
 
@@ -1146,11 +958,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       |> assign(:screen, screen)
       |> assign(:open_panels, fit(socket.assigns.open_panels, screen))
 
-    # A screen that *loads* with an offer already waiting has to resolve it
-    # here, not only when one arrives. The first paint happens before the width
-    # is known, so an offer made while nobody was looking would otherwise sit as
-    # a mark on a desk — where the whole point is that the change is free and
-    # simply appears.
+    # A wide screen that loads with an offer waiting takes it now; the first
+    # paint came before the width was known.
     case {screen, socket.assigns.offer} do
       {:wide, offer} when not is_nil(offer) ->
         ScreenState.take(socket.assigns.current_scope)
@@ -1169,9 +978,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       if panel in open do
         List.delete(open, panel)
       else
-        # On a narrow screen the panel being opened is the only one. Two open
-        # panels there push the conversation off the bottom of the screen, which
-        # costs the founder the half they came for.
+        # Narrow holds one panel; two push the conversation off screen.
         case socket.assigns.screen do
           :narrow -> [panel]
           :wide -> open ++ [panel]
@@ -1180,9 +987,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     socket = assign(socket, :open_panels, open)
 
-    # Opening the dynamic tab is also how a person accepts what the agent is
-    # offering — the offer lives on that tab, so taking it is the same gesture
-    # as looking at it.
+    # Opening the dynamic tab also accepts the agent's offer.
     socket =
       if panel == :dynamic and socket.assigns.offer do
         ScreenState.take(socket.assigns.current_scope)
@@ -1194,9 +999,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, remember(socket)}
   end
 
-  # The dynamic tab shows a different thing. It does not become another tab —
-  # that would make the accordion a navigation menu, and empty the one-slot rule
-  # on a phone of any meaning.
+  # Swaps what the one dynamic tab shows; it never becomes another tab.
   def handle_event("dynamic_view", %{"view" => view} = params, socket) do
     {:noreply,
      socket
@@ -1206,10 +1009,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> remember()}
   end
 
-  # Progress is ambient: it lands in activity and raises nothing. That is the
-  # half that keeps the attention mark worth looking at — a mark that lights up
-  # for everything is a mark nobody reads, and the blocked agent it exists for
-  # is lost with it.
+  # Progress is ambient: it lands in activity and raises no attention mark.
   def handle_event("agent_progress", %{"message" => message} = params, socket) do
     entry = %{
       source: Map.get(params, "working_copy", "somewhere on this project"),
@@ -1219,23 +1019,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, assign(socket, :activity, socket.assigns.activity ++ [entry])}
   end
 
-  # Kept so the box survives a re-render it did not cause. The form renders
-  # `value=""` deliberately — see the comment on it — and every panel toggle is
-  # a patch, so without somewhere to keep it, opening a panel throws away
-  # whatever was being written.
+  # Kept so the composer survives patches it did not cause (panel toggles).
   def handle_event("draft", %{"message" => message}, socket) do
     {:noreply, assign(socket, :draft, message)}
   end
 
-  # Older turns, when the operator reaches the top.
-  #
-  # A transcript is 1,572 messages on a session that has run all day, and the
-  # page loads fifty — so everything before the last fifty was unreachable.
-  # `list_messages/2` already took a `:before` cursor and simply had no caller.
-  #
-  # Prepends, and re-folds the whole list: a run of calls is grouped by looking
-  # at neighbours, so an older page arriving can legitimately join a run that is
-  # already on screen.
+  # Older turns when the operator reaches the top. Prepends and re-folds the
+  # whole list: an older page can join a run already on screen.
   def handle_event("load_older", _params, %{assigns: %{conversation: nil}} = socket),
     do: {:noreply, socket}
 
@@ -1270,10 +1060,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Two outcomes, because switching on is two things. An agent with eligible
-  # work takes a turn now; one with none sits exactly as it did, and a flash
-  # that cannot tell them apart leaves the operator asking the question the
-  # button was meant to answer.
+  # Distinct flashes: switching on with work requests a turn; without, nothing
+  # happens yet.
   defp flash_for_continuous_outcome(socket, %Agent{}, :enabled_and_turn_requested) do
     put_flash(
       socket,
@@ -1300,31 +1088,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp flash_for_continuous_outcome(socket, %Agent{}, :paused), do: socket
 
-  # A narrow screen holds one panel. A stored layout with several open has to
-  # resolve to one, and to a decided one — whichever happens to render first is
-  # not an answer anybody can predict or explain.
+  # A narrow screen holds one panel: a stored layout resolves deterministically
+  # (preview if open, else the first).
   defp fit(open, :wide), do: open
   defp fit([], :narrow), do: []
   defp fit(open, :narrow), do: [if(:preview in open, do: :preview, else: hd(open))]
 
-  # Every working copy on the project, its agents, and which of them (if any)
-  # has a question waiting — the same data `WorkingCopyLive.Index` shows, cut
-  # down to what a founder actually opens this panel to answer: John, "we have
-  # a place to see what agents need us, and a really fast way to get to the
-  # conversation so we can answer the question."
-  #
-  # Built from `Rows.list/3` rather than duplicating it — a second reading of
-  # "what is a working copy" would drift from the page that already owns that
-  # question the moment either one changes.
+  # Every working copy, its agents, and which have a question waiting. Built on
+  # `Rows.list/3` so there is one reading of "what is a working copy".
   defp team_status(scope, project, waiting) do
     now = DateTime.utc_now()
     pending_sessions = MapSet.new(waiting, & &1.session_external_id)
 
-    # `include_stopped?: true` — this page has its own "Stop" button now, and
-    # a stopped agent's row disappearing here reads as the agent having been
-    # deleted rather than stopped. `WorkingCopyLive.Show`/`Index` do not pass
-    # this: they offer "Staff it" and withhold "open chat" on the absence of a
-    # live agent, and widening their source would break both.
+    # Stopped agents stay listed here (this page can stop them); the working
+    # copy pages do not pass this.
     scope
     |> Rows.list(project, now, include_stopped?: true)
     |> Enum.map(&copy_status(&1, scope, now, pending_sessions))
@@ -1407,16 +1184,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp apply_chat_state(agent, _states), do: Map.put(agent, :unread?, false)
 
-  # A seat whose agent retired is empty and offers staffing (39af5611). Each
-  # copy's seats are its home roles: main and product on the main copy.
+  # A seat whose agent retired is empty and offers staffing. Each copy's seats
+  # are its home roles: main and product on the main copy.
   defp empty_seats(row), do: Agents.empty_seats(row.agents, Agents.home_roles(row.harness))
 
-  # What this agent is doing right now, in as few words as the number of
-  # tasks allows. One task names itself — the requirement is the one thing
-  # worth reading at a glance. More than one names only the count: two
-  # truncated task names in the line-and-a-half this panel affords is harder
-  # to read than either name alone, and the fast path this panel exists for
-  # is "click through to find out", not "read every title here".
+  # One task names itself; more name only the count.
   defp task_label(scope, agent_id) do
     case Sessions.list_active_tasks_for_agent(scope, agent_id) do
       [] -> nil
@@ -1426,8 +1198,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   # What is waiting on this person anywhere on the project, minus what this
-  # thread already shows inline. An agent in a worktree nobody is watching is
-  # precisely the one whose question goes unnoticed.
+  # thread shows inline.
   defp waiting_for(scope, conversation) do
     case user_id_of(scope) do
       nil ->
@@ -1442,43 +1213,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # `Scope` carries both `user` and `user_id`, and which one is populated depends
-  # on how the scope was built. Matching only on a loaded `user` returned an
-  # empty list on a scope that had the id and not the struct — so the activity
-  # tab was permanently empty, and nothing said why, because "no questions" and
-  # "I could not tell who you are" render identically.
+  # Either field may be the populated one, depending on how the scope was built.
   defp user_id_of(%{user: %{id: id}}) when not is_nil(id), do: id
   defp user_id_of(%{user_id: id}) when not is_nil(id), do: id
   defp user_id_of(_scope), do: nil
 
-  # Excluded only when this thread genuinely owns the question. A conversation
-  # with no session id owns nothing, and `nil == nil` would quietly hide every
-  # question on the project behind an equality that reads as a match.
+  # A conversation with no session id owns nothing (`nil == nil` is no match).
   defp elsewhere?(_request, nil), do: false
   defp elsewhere?(%{session_external_id: same}, same), do: true
   defp elsewhere?(_request, _mine), do: false
 
-  # Only the ones still waiting.
-  #
-  # Answered questions used to render here too, on the reasoning that in a
-  # transcript the answer is part of the record. In practice it put the same
-  # exchange on the page twice — the tool call block with its parameters, then
-  # a card repeating the question and the answer — and an old answered one with
-  # no anchor landed at the bottom, below the live question, out of any order
-  # that made sense.
-  #
-  # John: "we just leave those as normal tool call blocks and we only render the
-  # unanswered question." The call block already says what was asked and the
-  # answer already reached the agent, so the card was decorating a record that
-  # was complete without it. `QuestionLive.Show` still renders the answered
-  # state — landing there from a notification you have already answered should
-  # say so rather than show nothing.
+  # Only pending questions render as cards; answered ones stay as their tool call
+  # blocks. `QuestionLive.Show` still renders the answered state.
   defp pending(questions), do: Enum.filter(questions, &(&1.status == "pending"))
 
-  # The questions asked at any message in this group. A group's dom id is its
-  # *first* message's id, and the anchor is whichever message was newest when
-  # the question was asked — so matching on `item.id` alone would miss every
-  # question anchored mid-group.
+  # Questions anchored at any message in this group (a group's id is only its
+  # first message's).
   defp questions_at(questions, item) do
     ids = MapSet.new(item.messages, & &1.id)
 
@@ -1487,9 +1237,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> Enum.filter(&MapSet.member?(ids, &1.conversation_message_id))
   end
 
-  # Everything the loop above did not place. Checked against the messages on the
-  # page rather than against `nil`, because the page holds fifty turns and a
-  # question anchored above the window would otherwise render nowhere at all.
+  # Pending questions whose anchor is not on this page.
   defp unanchored_questions(questions, items) do
     shown = items |> Enum.flat_map(& &1.messages) |> MapSet.new(& &1.id)
 
@@ -1498,11 +1246,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> Enum.reject(&MapSet.member?(shown, &1.conversation_message_id))
   end
 
-  # Every pending permission request, unconditionally. Unlike a question, a
-  # permission request carries no `conversation_message_id` — there is no
-  # column for "which turn this happened at" — so there is no per-turn anchor
-  # to place it beside, only the one bucket a question falls into when its own
-  # anchor is not on the page.
+  # Permission requests have no message anchor, so all pending ones go here.
   defp unanchored_permissions(permissions), do: pending(permissions)
 
   defp analysis_label([one]), do: "Running #{one}…"
@@ -1517,19 +1261,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Which analyzers are mid-run **on this agent's checkout**, oldest first.
-  #
-  # `running_since/1` scopes to the working copy the scope names — and drops the
-  # filter entirely when it names none (`scope_to_harness/2`), which is exactly
-  # the web UI's case: a person browsing has no checkout selected. So this asked
-  # "is any copy of this project running anything", and with several checkouts
-  # the answer is almost always yes.
-  #
-  # John, watching it: "it's constantly saying analyzers are running. Pretty
-  # sure that's not true anymore." It was true, about somebody else's tree.
-  #
-  # The conversation is about one agent, and that agent has one checkout. That
-  # is the vantage the indicator is claiming, so that is the one it asks about.
+  # Analyzers mid-run on this agent's checkout, oldest first. Scoped to the
+  # copy: an unscoped read answers for every copy of the project.
   defp analysis_running_since(scope, conversation) do
     scope |> at_agents_copy(conversation) |> RunsRepository.running_since()
   end
@@ -1541,24 +1274,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> sources_in_order()
   end
 
-  # Accumulated from the events, not re-read on each one.
-  #
-  # Every transition broadcasts — `:running` when a run starts, its final status
-  # when it ends — and each event now carries the run's own `started_at` and
-  # `working_copy_id`. So "which analyzers are running here, and since when" is
-  # a map this process keeps, seeded once at mount and moved by the events that
-  # change it.
-  #
-  # It used to re-query on every event: one `running_since/1` per analysis
-  # event, per open conversation, to rediscover a column the writer had already
-  # recorded. The earlier comment argued for re-reading over "subtracting the
-  # completed source", because a sweep enqueues several and the arithmetic could
-  # disagree with the rows. That holds when the event says only that *something*
-  # finished — it does not when each event names one source and its new status,
-  # which is a transition rather than a subtraction.
-  #
-  # An event about another checkout is dropped without touching anything: the
-  # indicator claims this agent's copy, and that is the vantage it accumulates.
+  # Accumulated from events (each names its source, status, `started_at` and
+  # copy), seeded once at mount. Events about another copy are dropped.
   defp apply_analysis_event(socket, %{working_copy_id: copy} = payload) do
     agents_copy =
       socket.assigns.current_scope
@@ -1589,9 +1306,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> Enum.map(fn {source, _started_at} -> to_string(source) end)
   end
 
-  # A conversation with no agent is the operator's own thread and has no
-  # checkout; the project-wide answer is the only one available and is what it
-  # meant all along.
+  # A conversation with no agent has no checkout: the project-wide answer.
   defp at_agents_copy(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
     case Agents.fetch_agent(scope, agent_id) do
       {:ok, %{working_copy_id: copy_id}} when is_binary(copy_id) ->
@@ -1606,11 +1321,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp questions_for(nil), do: []
 
-  # An agent's conversation shows the agent's questions. No fallback to the
-  # session — they are different abstractions, and a conversation is one or the
-  # other. An agent with nothing asked has nothing to show, which is the honest
-  # answer; going and asking about a session it does not have would only ever
-  # find somebody else's question or nothing at all.
+  # By agent for an agent's conversation, by session otherwise; never both.
   defp questions_for(%{agent_id: agent_id}) when is_binary(agent_id),
     do: Notifications.list_question_requests_for_agent(agent_id)
 
@@ -1619,36 +1330,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp permissions_for(nil), do: []
 
-  # Same split as `questions_for/1`: an agent's requests by agent, a Claude
-  # Code session's tap-outs by the session they were raised from.
+  # Same split as `questions_for/1`.
   defp permissions_for(%{agent_id: agent_id}) when is_binary(agent_id),
     do: Notifications.list_permission_requests_for_agent(agent_id)
 
   defp permissions_for(conversation),
     do: Notifications.list_permission_requests_for_session(conversation.session_external_id)
 
-  # A plain assign, not a stream.
-  #
-  # Two things here need to see a message's neighbours: folding a run of calls
-  # into one item, and nesting a result inside the call it answers. A result
-  # arrives a *turn* after its call, so it has to join something already
-  # rendered — and a stream cannot do that. `stream_insert/3` appends without
-  # reordering, and a group's dom id is its first message's id, so streaming
-  # that id back would replace the whole group with a single turn.
-  #
-  # The page holds one page of messages (50 by default), so re-folding the list
-  # on each arrival costs nothing and the whole class of problem goes away.
+  # A plain assign, not a stream: folding and nesting a result in its call need
+  # neighbours, and `stream_insert/3` cannot regroup. One page, so re-folding on
+  # each arrival is cheap.
+  # See knowledge/web, "Transcripts".
   defp assign_turns(socket, messages) do
     # Pending messages belong in the queue; failed and withdrawn attempts
     # remain audit records, not things the agent has received.
     messages = Enum.filter(messages, &(Map.get(&1, :delivery) in [nil, :delivered]))
 
-    # A run of calls folds into one expandable item, and a pending question
-    # anchored inside that run would render after the whole thing — below calls
-    # the agent made *after* it asked. So the run breaks where the question is.
-    #
-    # Questions are read from the socket rather than passed in, because this is
-    # called from the message paths and the questions change on their own.
+    # Break runs at pending questions so each renders where it was asked. Read
+    # from the socket: questions change on their own.
     breaks =
       socket.assigns
       |> Map.get(:questions, [])
@@ -1663,56 +1362,36 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:results, results)
   end
 
-  # A message already on screen is replaced where it stands, never appended
-  # again: one loaded at mount can still arrive as a broadcast, and a queued one
-  # arrives again when it is delivered. Appending rendered it twice.
+  # Replace a message already on screen where it stands: a loaded one can still
+  # arrive as a broadcast, and a queued one arrives again when delivered.
   defp upsert(messages, %{id: id} = message) do
     if Enum.any?(messages, &(&1.id == id)),
       do: Enum.map(messages, &if(&1.id == id, do: message, else: &1)),
       else: messages ++ [message]
   end
 
-  # A full page back means there is probably more; a short one means we reached
-  # the beginning. Assumed true before the first fetch so the binding is armed
-  # on a conversation that is exactly one page long — the check costs one query
-  # and being wrong the other way means the operator can never reach the top.
+  # A full page back means there is probably more.
   defp assign_more_above(socket, fetched, limit),
     do: assign(socket, :more_above?, length(fetched) >= limit)
 
-  # Nothing is appended here on success: the page is subscribed to the
-  # conversation topic, so the message it just wrote arrives back through
-  # `handle_info/2` like any other turn. Appending as well would render it
-  # twice.
+  # Nothing appended on success: the message arrives back via `handle_info/2`.
   defp sent({:ok, :started, _message}, socket), do: {:noreply, socket}
 
   defp sent({:ok, :queued, _message}, socket),
     do: {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
 
-  # Named, not generic. "Could not be sent" over a machine that is not
-  # reachable and over an agent that has stopped send a person to different
-  # places, and the second is something they can act on immediately.
+  # Named reasons: each sends the person somewhere different.
   defp sent({:error, reason}, socket),
     do: {:noreply, put_flash(socket, :error, undelivered(reason))}
 
-  # The one refusal that is not a fault. Running out of turns on our credential
-  # is the arrangement working as intended, so it says what happened and what
-  # to do about it rather than reporting a delivery problem — nothing failed
-  # and nothing is broken.
+  # Not a fault: the free allowance on our credential is used up.
   defp undelivered({:turn_cap_reached, cap}),
     do:
       "That is #{cap} messages on our account, which is where the free conversation ends. " <>
         "Connect your own provider in Settings and the agent picks straight back up."
 
-  # What is known, which is less than this used to claim. `:harness_not_connected`
-  # means nothing is registered for the copy, and there are two ways to get
-  # there: a machine that is off, and a machine that is here and had its channel
-  # refused. QA 963 hit the second — the daemon was serving four other roots
-  # while this one presented a deploy key belonging to another project — and
-  # read "not reachable from here", which sends a person to the network.
-  #
-  # The refusal's own wording is good and lives in the harness's log; the server
-  # only ever sends `unauthorized`, so the page cannot repeat it. Naming both
-  # causes is what it can honestly do. Filed as 1da05ada.
+  # No harness holds the copy: either its machine is off or its channel was
+  # refused (the server only sees `unauthorized`), so both are named.
   defp undelivered(:harness_not_connected),
     do:
       "That message could not be delivered: nothing here is holding that working " <>
@@ -1728,9 +1407,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp withdrawn({:ok, message}, socket),
     do: {:noreply, assign(socket, :pending, drop_ref(socket, message.delivery_ref))}
 
-  # The race this exists for: the turn ended while the operator was reaching
-  # for the control. Told rather than reported as a success, because they are
-  # about to watch the agent act on something they believe was taken back.
+  # The turn ended while the operator reached for the control; say so.
   defp withdrawn({:error, :already_delivered}, socket),
     do:
       {:noreply,
@@ -1773,15 +1450,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_async(:graph_modal, _result, socket), do: {:noreply, socket}
 
   @impl true
-  # A run finished, so what is in flight has changed. Re-read rather than
-  # subtracting the completed source: a sweep enqueues several, and the
-  # arithmetic would be a second answer that can disagree with the rows.
   def handle_info({:analysis, payload}, socket) do
     {:noreply, apply_analysis_event(socket, payload)}
   end
 
-  # Any chat in the account moved. The one on screen is being read; the panel's
-  # read marks and order are refreshed without rebuilding the team status.
+  # Any chat in the account moved: mark the one on screen read and refresh the
+  # panel's read marks.
   def handle_info({:inbox_updated, conversation_id}, socket) do
     conversation = socket.assigns[:conversation]
 
@@ -1798,9 +1472,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
-  # What the agent is writing, before it is a message: the whole draft so far,
-  # or nil once it has been said. Checked against the conversation on screen,
-  # because a draft already in the mailbox outlives a switch to another agent.
+  # The agent's draft so far, or nil once said, for the conversation on screen.
   def handle_info({:agent_draft, conversation_id, text}, socket) do
     case socket.assigns[:conversation] do
       %{id: ^conversation_id} -> {:noreply, assign(socket, :agent_writing, text)}
@@ -1808,9 +1480,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # A waiting message settled — the agent picked it up, or it was taken back.
-  # Either way it is no longer something the operator can change, and a control
-  # still offering to change it is the failure the ref exists to prevent.
+  # A waiting message settled (picked up or taken back).
   def handle_info({:message_updated, message}, socket) do
     {:noreply,
      socket
@@ -1818,14 +1488,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
-  # Above the catch-all deliberately. A clause added below it is dead code that
-  # compiles, and the screen simply never updates — which is how this same file
-  # lost a handler earlier and looked like a rendering bug for a while.
-  # The agent asked for something. Whether it lands now is a property of the
-  # screen rather than of the change: a wide one holds every panel, so taking it
-  # costs nothing and asking would be ceremony. A phone holds one, so taking it
-  # would evict whatever is open — possibly mid sentence in the composer — and
-  # it waits behind a mark instead.
+  # Above the catch-all: a clause below it compiles and never runs.
+  # An agent's offer is taken at once on a wide screen; a narrow one waits for a
+  # tap rather than evict the open panel.
   def handle_info({:screen_changed, screen}, socket) do
     socket = assign(socket, :offer, offer_of(screen))
 
@@ -1846,12 +1511,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, refresh_team_status(socket)}
   end
 
-  # An epic changing refreshes the panel in place when it is already showing
-  # epics, and offers the switch to it otherwise — the same offer/take path
-  # `show_in_panel` uses when the agent remembers to call it, so a narrow
-  # screen still waits for a tap and a wide one takes it immediately.
-  # `ScreenState.show/2` broadcasts `:screen_changed`, which the handler above
-  # applies; this only decides whether to ask.
+  # An epic change refreshes the epics view, or offers it via `ScreenState.show/2`
+  # (same offer/take path as `show_in_panel`).
   def handle_info({event, _epic_payload}, socket)
       when event in [:epic_created, :epic_updated, :epic_deleted, :epic_stories_released] do
     if socket.assigns.dynamic_view == "epics" do
@@ -1862,11 +1523,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Refreshes the stories view in place when one is already showing. Scoped to
-  # this project: `Stories.subscribe_stories/1`'s topic is account-wide, so an
-  # edit to a sibling project's story would otherwise redraw a list that never
-  # included it. Unlike epics, a story change does not offer a switch — stories
-  # is already the panel's default view.
+  # Refreshes a showing stories view for this project only (the topic is
+  # account-wide). No offer: stories is the default view.
   def handle_info({event, %Story{project_id: project_id}}, socket)
       when event in [:created, :updated, :deleted] do
     socket =
@@ -1880,13 +1538,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, socket}
   end
 
-  # The team-status panel's whole claim is "what is running, and who needs
-  # you, right now" — the same news `WorkingCopyLive.Index` redraws on.
-  # `:session_changed` is in the mix too: it is what fires when a task
-  # activates or completes, which is the only way an agent's task line ever
-  # moves without somebody reloading the page.
-  # An agent's process came up or went down (`Agents.Presence`): the same
-  # redraw as the agent news below.
+  # Presence diffs and agent/session news redraw the team-status panel.
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket),
     do: handle_info({:agent_started, nil}, socket)
 
@@ -1931,12 +1583,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> refresh_main(scope)
   end
 
-  # `@main` is `assign_new`'d once on mount and never invalidated otherwise
-  # (`9bef58fb`'s bonus finding) — a visitor already on the page when their main
-  # agent finishes starting saw the stale "Getting ready" header until a full
-  # reload, even after the agent genuinely came up. These are exactly the events
-  # that mean it might have changed, and `MainAgentConversation.ensure/1` is the
-  # same idempotent, already-cheap call `assign_main/3` makes on mount.
+  # Re-resolves `@main` on agent news, so "Getting ready" turns into the running
+  # header without a reload. `ensure/1` is idempotent and cheap.
   defp refresh_main(socket, scope) do
     case MainAgentConversation.ensure(scope) do
       {:ok, _agent, _conversation} = main -> assign(socket, :main, main)
@@ -2120,6 +1768,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
+      <CodeMySpecWeb.AppLive.DesktopSetupResults.results snapshot={@desktop_setup_results} />
       <%!-- Only here, and only for the project's own agent.
       John, seeing it on every page: "it should only show up on the chat for
       the main agent on the main checkout." The timeline describes the whole
@@ -2190,6 +1839,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           working?={@working?}
           on?={@on?}
           retired?={@retired?}
+          firing?={@firing?}
           assigned={@assigned}
           draft={@draft}
           agent_writing={@agent_writing}
@@ -2237,6 +1887,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               working?={@working?}
               on?={@on?}
               retired?={@retired?}
+              firing?={@firing?}
               assigned={@assigned}
               draft={@draft}
               agent_writing={@agent_writing}
@@ -2301,18 +1952,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :pending, :list, required: true
   attr :talkable?, :boolean, required: true
 
-  # Required rather than defaulted, and the default is why. The column is
-  # rendered twice — narrow and wide — and only the narrow one got this at
-  # first, so the wide layout fell back to `false` and drew "put this agent to
-  # work" over an agent that was already working. A control that misreports its
-  # own state is the failure this whole day kept producing; a missing attribute
-  # should stop the compile rather than pick an answer.
   attr :current_scope, :any, required: true
   attr :analysis_running, :list, required: true
+  # State attrs are required, not defaulted: the column renders twice (narrow
+  # and wide), and a defaulted one drew the wrong control state.
   attr :working?, :boolean, required: true
-  # Required for the same reason: the power button must never guess its state.
   attr :on?, :boolean, required: true
   attr :retired?, :boolean, required: true
+  attr :firing?, :boolean, required: true
   attr :assigned, :list, required: true
   attr :draft, :string, required: true
 
@@ -2320,17 +1967,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     default: nil,
     doc: "what the agent is writing, before it is a message"
 
-  # Whether the thread on screen is the project's own agent, and — when there
-  # is no agent to have — why. Both came from the agents index, which was the
-  # only page that said either; this is the page people land on now, so it is
-  # the page that has to say them.
+  # Whether this is the project's own agent and, when there is none, why.
   attr :main_agent?, :boolean, required: true
   attr :main, :any, required: true
 
-  # The transcript, its composer, and the header above them — pulled out of
-  # `render/1` so a wide screen can put it inside a `LivePane.pane` and a
-  # narrow one can put it directly in the stacked column, without maintaining
-  # two copies of ~150 lines of chat markup.
+  # Transcript, composer and header, shared by the wide (`LivePane.pane`) and
+  # narrow layouts.
   defp conversation_column(assigns) do
     ~H"""
     <div
@@ -2441,6 +2083,42 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-power" class="size-4" />
         </button>
+
+        <button
+          :if={@conversation && @conversation.agent_id && not @retired? && not @firing?}
+          type="button"
+          phx-click="fire_agent"
+          data-test="fire-agent"
+          class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
+          title="Fire this agent: retires it for good"
+        >
+          <.icon name="hero-fire" class="size-4" />
+        </button>
+
+        <div
+          :if={@conversation && @conversation.agent_id && @firing?}
+          class="flex shrink-0 items-center gap-2 text-xs"
+        >
+          <span class="opacity-70" data-test="fire-agent-confirm-text">
+            Fire {@conversation && Conversations.display_name(@conversation)}? This cannot be undone.
+          </span>
+          <button
+            type="button"
+            phx-click="confirm_fire_agent"
+            data-test="confirm-fire-agent"
+            class="btn btn-error btn-xs"
+          >
+            Fire
+          </button>
+          <button
+            type="button"
+            phx-click="cancel_fire_agent"
+            data-test="cancel-fire-agent"
+            class="btn btn-ghost btn-xs"
+          >
+            Cancel
+          </button>
+        </div>
       </header>
 
       <%!-- `overflow-anchor` is what keeps your place when older turns are

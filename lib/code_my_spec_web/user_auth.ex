@@ -24,13 +24,8 @@ defmodule CodeMySpecWeb.UserAuth do
     same_site: "Lax"
   ]
 
-  # How old the session token should be before a new one is issued. When a request is made
-  # with a session token older than this value, then a new session token will be created
-  # and the session and remember-me cookies (if set) will be updated with the new token.
-  # Lowering this value will result in more tokens being created by active users. Increasing
-  # it will result in less time before a session token expires for a user to get issued a new
-  # token. This can be set to a value greater than `@max_cookie_age_in_days` to disable
-  # the reissuing of tokens completely.
+  # A request with a session token older than this gets a new one (session and
+  # remember-me cookie updated). Above `@max_cookie_age_in_days` disables reissue.
   @session_reissue_age_in_days 7
 
   @doc """
@@ -113,14 +108,8 @@ defmodule CodeMySpecWeb.UserAuth do
     end
   end
 
-  # This function is the one responsible for creating session tokens
-  # and storing them safely in the session and cookies. It may be called
-  # either when logging in, during sudo mode, or to renew a session which
-  # will soon expire.
-  #
-  # When the session is created, rather than extended, the renew_session
-  # function will clear the session to avoid fixation attacks. See the
-  # renew_session function to customize this behaviour.
+  # Creates the session token and stores it in the session and cookies (log in,
+  # sudo mode, renewal). A new session is cleared first to avoid fixation.
   defp create_or_extend_session(conn, user, params) do
     token = Users.generate_user_session_token(user)
     remember_me = get_session(conn, :user_remember_me)
@@ -137,31 +126,13 @@ defmodule CodeMySpecWeb.UserAuth do
     conn
   end
 
-  # This function renews the session ID and erases the whole
-  # session to avoid fixation attacks. If there is any data
-  # in the session you may want to preserve after log in/log out,
-  # you must explicitly fetch the session data before clearing
-  # and then immediately set it after clearing, for example:
-  #
-  #     defp renew_session(conn, _user) do
-  #       delete_csrf_token()
-  #       preferred_locale = get_session(conn, :preferred_locale)
-  #
-  #       conn
-  #       |> configure_session(renew: true)
-  #       |> clear_session()
-  #       |> put_session(:preferred_locale, preferred_locale)
-  #     end
-  #
+  # Renews the session id and clears the session to avoid fixation. Data to keep
+  # across log in/out must be fetched before clearing and put back after.
   defp renew_session(conn, _user) do
     delete_csrf_token()
 
-    # The guided-intake token is the only way back to a plan the visitor built
-    # before they had an account, and clearing the session at the gate orphaned
-    # it — they signed up and landed back on "What do you want to build?",
-    # having lost everything, which is the exact opposite of the promise.
-    # Carried across the renewal rather than kept out of the session, so
-    # fixation protection still does its job.
+    # The intake token is the only way back to a plan built before signing up,
+    # so it is carried across the renewal (fixation protection still applies).
     intake_token = get_session(conn, IntakeSession.session_key())
 
     conn
@@ -349,18 +320,14 @@ defmodule CodeMySpecWeb.UserAuth do
   @doc """
   Returns the path to redirect to after log in.
 
-  Straight to the project you were last working on, because that is what
-  logging in is for — John: "this is what people should be working from
-  entirely". Settings was a strange place to land and nobody chose it; it was
-  simply the path that did not need to know anything.
-
-  `/app` for a user with no project yet, which is the onboarding it renders.
+  The active project's agent conversation; `/app` (onboarding) for a user with
+  no project yet; `/` otherwise.
   """
   # Called with a User struct directly (e.g. from log_in_user/3 before the scope plug runs)
   def signed_in_path(%Users.User{} = user),
     do: user |> UserPreferences.scope_for() |> signed_in_path()
 
-  # Called with a Conn that already has current_scope populated (legacy callers)
+  # Called with a Conn that already has current_scope populated
   def signed_in_path(%Plug.Conn{assigns: %{current_scope: %Scope{} = scope}}),
     do: signed_in_path(scope)
 

@@ -5,37 +5,26 @@ defmodule CodeMySpec.EpicDispatch do
 
   ## Two acts, not one
 
-  John: *"the agent sending it and the meatbags approving it are two different
-  things."* `propose/2` is the first — the main agent saying "this set is ready,
-  shall I?". `approve/2` is the second, and it is the only thing that starts
-  work. Nothing here collapses them, and `ready_for_dev` on a story stays what
-  it always was: a judgement that stories are shaped, not a trigger.
+  The agent proposing and a person approving are two acts. `propose/2` is the
+  main agent saying "this set is ready, shall I?"; `approve/2` is the only
+  thing that starts work. `ready_for_dev` on a story is a judgement that it is
+  shaped, not a trigger.
 
-  ## Act when idle, not assign everything
+  ## Act when idle
 
-  `work_to_assign?/1` is the condition behind the `work_dispatched` node. John
-  corrected his own first version of it:
-
-  > "maybe the condition is actually that there is no ongoing work, so none of
-  > the working copies are in progress, and there is no unassigned work ... if
-  > an agent is working on our story, the main agent doesn't need to assign more
-  > work."
-
-  So there is work to assign only when **nothing is in progress and unassigned
-  work exists**. Idle-and-finished and idle-with-work-waiting are both "nothing
-  is happening" and only the second wants anybody to act, which is why
-  `dispatch_state/1` answers with a reason rather than a boolean.
+  `work_to_assign?/1` is the condition behind the `work_dispatched` node: work
+  to assign only when **nothing is in progress and unassigned work exists**.
+  `dispatch_state/1` answers with a reason rather than a boolean, because
+  idle-and-finished and idle-with-work-waiting both look like nothing
+  happening.
 
   ## Reporting is reading, not doing
 
-  `progress/1` answers from what the dispatched side wrote down — `source:
-  :record`. That is the point of the hand-off: the main agent reports on work it
-  is not doing, and a report it had to run something to produce is the main
-  agent doing the work again.
+  `progress/1` answers from what the dispatched side wrote down (`source:
+  :record`). A failed epic is a distinct status, because an agent that died and
+  one that is thinking both produce nothing.
 
-  A failed epic is a distinct status rather than an absence, because an agent
-  that died and an agent that is thinking both produce nothing. Story 962 drew
-  that line inside one working copy; this is the same line one level up.
+  See knowledge/agents/coordination, "Epic dispatch".
   """
 
   use Boundary,
@@ -88,15 +77,11 @@ defmodule CodeMySpec.EpicDispatch do
   @doc """
   Agree to build an epic, and hand it to a working copy.
 
-  The only thing that starts work. Where it goes is decided here rather than
-  asked of the user — John: *"the agent decides. If an existing working copy and
-  agent is appropriate it gets assigned there, or a fresh one at the agent's
-  discretion."* Knowing which checkout anything is in is what story 963 exists
-  to spare somebody.
+  The only thing that starts work. Where it goes is decided here, never asked
+  of the user: a copy already carrying the project's work, else a new one.
 
   `{:error, :not_proposed}` for anything that was not put in front of the user
-  first, which is the gate: approving something nobody proposed would mean the
-  approval came from somewhere other than the screen it belongs on.
+  first.
   """
   @spec approve(Scope.t(), Ecto.UUID.t()) :: {:ok, Epic.t()} | {:error, term()}
   def approve(%Scope{} = scope, epic_id) do
@@ -108,17 +93,8 @@ defmodule CodeMySpec.EpicDispatch do
     end
   end
 
-  # Which copy the work goes to.
-  #
-  # The project's main checkout, because that is the one it definitely has and
-  # the one already carrying its context — the reuse John described. A copy per
-  # epic would mint checkouts until the machine ran out, and choosing between
-  # six of them on a path or a last-seen time is the inference story 963's
-  # designation rule exists to rule out.
-  #
   # An epic with nowhere to go is still dispatched rather than refused: the
-  # decision was the user's and it stands. `working_copy_id` is nil until a
-  # checkout exists, which the page reports as waiting rather than as an error.
+  # decision was the user's and it stands; the page reports it as waiting.
   defp dispatch(scope, epic) do
     copy = destination(scope)
 
@@ -128,28 +104,10 @@ defmodule CodeMySpec.EpicDispatch do
         dispatched_at: DateTime.utc_now() |> DateTime.truncate(:second)
       })
 
-    # Placed and staffed together, both after the save.
-    #
-    # The placement itself lands on the stories, not here. An epic is a
-    # convenience for acting on several stories at once, and the graph is
-    # grained on stories — so a copy recorded on the epic named a routing
-    # nothing performed, which is why an agent asked to release an epic could
-    # find no step that did it. `place/3` is that write-through.
-    #
-    # Staffed on placement, because a copy with an epic and nobody on it is the
-    # state this story exists to stop producing. `EpicDispatch.dispatch/2` used
-    # to set a status and return — grepping `:dispatched` found the LiveView,
-    # the requirement checker and the schema, and no starter (28e838cc).
-    #
-    # After the save rather than inside it: the placement is the user's decision
-    # and it stands whether or not three agents could be started. A provider
-    # that is not connected is a reason to report an unstaffed copy, not to
-    # refuse an epic somebody agreed to.
-    #
-    # Idempotent by role, so a second epic onto the same copy starts nothing —
-    # the coding and QA agents there are the ones that take it. Product stays
-    # on the main copy and is not sent with it. Approval assigns the epic
-    # after staffing and clears product's design binding (step 4c).
+    # Placed (on the stories: `place/3`), staffed and assigned, all after the
+    # save — the approval stands whether or not agents could be started.
+    # Staffing is idempotent by role; product stays on the main copy, and
+    # assigning the epic clears its design binding.
     with {:ok, _epic} <- result, %{} <- copy do
       place(scope, epic.id, copy.id)
       Agents.ensure_copy_agents(scope, copy)
@@ -159,58 +117,14 @@ defmodule CodeMySpec.EpicDispatch do
     result
   end
 
-  # A checkout, or nothing.
-  #
-  # The project's main copy when it has one. Not `ensure_default/1`: that mints
-  # a rootless nil-object row for writers with no checkout, and sending an epic
-  # there made the page say "Being built on your project's checkout" about a
-  # directory that does not exist — story 963's defect, reintroduced here after
-  # being fixed there. A row is not a checkout until it reports a root.
-  #
-  # `nil` rather than a refusal, because the user agreed and that stands. The
-  # epic is dispatched and waiting for somewhere to be built, which the page
-  # says in those words.
-  # Returns the copy rather than its id: placing an epic now also staffs it, and
-  # `ensure_copy_agents/2` needs the root to start an agent in.
-  #
-  # A copy already carrying this project's work comes first. John, 2026-08-25:
-  # *"the agent decides. If an existing working copy and agent is appropriate —
-  # for example I've had you doing all the harness work — it gets assigned
-  # there."* Continuity of context is the reason, and it is a real one: the copy
-  # that has been doing the harness work knows the harness, and its three agents
-  # are already there, so a second epic costs nothing to staff.
-  #
-  # The main checkout is the fallback and not the preference, which is the
-  # opposite of what this did. It answered `WorkingCopies.main/1` for every
-  # epic on every project, so a project with a copy dedicated to a body of work
-  # sent that work's next epic to the main checkout instead — and staffing it
-  # there is refused outright, correctly: the main copy holds one agent and it
-  # is the project's own (`Agents.main_copy_is_free/2`). Two agents in one
-  # checkout are two processes editing one tree.
-  # Reuse, then mint. The main checkout is not in the list, and that is the
-  # point.
-  #
-  # John, 2026-09-04, on how the boundary is meant to work: *"the main copy just
-  # gets the main agent, and we would create a working copy to do the actual
-  # work on."* The codebase already enforced half of it — `main_copy_is_free/2`
-  # keeps the main checkout to one agent, the project's own — so sending an epic
-  # there produced a copy that could never be staffed. Every epic went there,
-  # because `WorkingCopies.main/1` was the whole of this function.
-  #
-  # So an epic that has nowhere to go gets somewhere made for it. That is the
-  # last link in the chain: agree to build an epic, and a copy exists with the
-  # three agents that will build it.
+  # A copy already carrying this project's work (its context and agents are
+  # there), else a new one; `nil` if neither. Never the main checkout: it does
+  # not hold coding or QA seats. Returns the copy: staffing needs its root.
   defp destination(scope) do
     carrying(scope) || minted(scope)
   end
 
-  # Nothing suitable exists, so make one.
-  #
-  # `nil` on failure rather than a refusal, keeping the rule this module already
-  # holds: "An epic with nowhere to go is still dispatched rather than refused —
-  # the decision was the user's and it stands." A machine that is off is a
-  # reason for the page to say the epic is waiting, not a reason to throw away
-  # somebody's approval.
+  # Nothing suitable exists, so make one; `nil` on failure (the epic waits).
   defp minted(scope) do
     case Staffing.mint(scope, label: "an epic's working copy") do
       {:ok, copy, _staffed} ->
@@ -253,32 +167,20 @@ defmodule CodeMySpec.EpicDispatch do
 
   defp carrying(%Scope{}), do: nil
 
-  # A row is not a checkout until it reports a root. `ensure_default/1` mints a
-  # rootless nil-object row, and sending an epic there made the page say "Being
-  # built on your project's checkout" about a directory that does not exist.
+  # A row is not a checkout until it reports a root (`ensure_default/1` mints
+  # rootless rows).
   defp checkout(%{root: root} = copy) when is_binary(root) and root != "", do: copy
   defp checkout(_copy), do: nil
 
   @doc """
   Put an epic's stories on a checkout.
 
-  The write-through that makes assigning an epic mean anything. An epic has no
-  place in the requirement graph — nothing in `RequirementCalculator` or
-  `Predicates` mentions one — so the binding has to reach the grain the graph
-  actually reads, which is the story.
+  An epic is a convenience for acting on several stories; the graph is grained
+  on stories, so the binding is written to `stories.working_copy_id`.
 
-  John: *"an epic is just basically a convenience measure to act on multiple
-  stories ... these assignments need to go into the story because that's how the
-  graph works, and that's what the graph should be grained on anyway."*
-
-  So this is the convenience, and `stories.working_copy_id` is the axis. Passing
-  `nil` returns the epic's stories to the shared backlog, which is what a
-  checkout being torn down should do to the work that was on it.
-
-  `update_all` rather than a changeset per story: assignment is routing and not
-  a revision of the story's content, and nine PaperTrail versions saying
-  "assigned" would bury the edits that are actually about the work. `updated_at`
-  is set by hand because `update_all` does not touch timestamps.
+  `update_all` rather than a changeset per story: routing is not a revision of
+  the story's content and should not add PaperTrail versions. `updated_at` is
+  set by hand.
 
   Placement edits the queue and preserves stories currently held by agents.
   Passing `nil` returns only unheld stories to the backlog. Approval separately
@@ -367,20 +269,9 @@ defmodule CodeMySpec.EpicDispatch do
   @doc """
   Record a question a dispatched agent needs the user to answer.
 
-  On the epic's own conversation, not the project's. John: *"these other agents
-  can come back and ask us questions about business rules and stuff and that'll
-  all go into those other sub conversations."*
-
-  The main conversation stays at the level of the project. An agent three layers
-  down asking which rate applies is a real question and it belongs beside the
-  work that raised it — dropped into the project thread it buries the
-  conversation the user and the main agent are actually having, and six agents
-  doing it makes that thread unreadable.
-
-  Keyed `epic:<id>`, so the thread belongs to the work rather than to whichever
-  agent happens to be holding it. An epic outlives the agent building it —
-  that is the whole of story 962's "the record outlives the agent", and a
-  question keyed to a process would be lost with it.
+  On the epic's own conversation, keyed `epic:<id>`, not the project's: the
+  question belongs beside the work, and the work outlives whichever agent
+  holds it.
   """
   @spec record_question(Scope.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, term()} | {:error, term()}
@@ -399,9 +290,8 @@ defmodule CodeMySpec.EpicDispatch do
   @doc """
   Record that a dispatched agent stopped without finishing.
 
-  A status of its own, because silence is what an agent thinking looks like. Any
-  report that cannot tell the two apart says "still going" about work that
-  stopped hours ago, and the user finds out by asking why it is taking so long.
+  A status of its own, because silence is also what an agent thinking looks
+  like.
   """
   @spec record_failure(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, Epic.t()} | {:error, term()}
   def record_failure(%Scope{} = scope, epic_id, reason) when is_binary(reason) do
@@ -413,19 +303,12 @@ defmodule CodeMySpec.EpicDispatch do
   @doc """
   What the main agent can see about work it dispatched.
 
-  `source: :record` is part of the answer rather than decoration: it says this
-  came from what the dispatched side wrote down. A report the main agent had to
-  run something to produce is the main agent doing the work again, which is the
-  one thing the hand-off exists to stop.
+  `source: :record` says this came from what the dispatched side wrote down.
   """
   @spec progress(Scope.t()) :: %{epics: [map()], source: :record}
   def progress(%Scope{active_project_id: project_id}) when is_binary(project_id) do
-    # Where each epic went, read back off its stories. An epic no longer records
-    # a copy of its own, so this is derived — and it can now legitimately be
-    # several, because two stories of one epic on two checkouts is expressible
-    # in the new shape and was not in the old one. Reported as the first by id
-    # so the answer is stable; `working_copy_ids` carries the whole set for a
-    # caller that cares.
+    # Where each epic went, read off its stories; may be several copies.
+    # `working_copy_id` is the first by id, for stability.
     copies_by_epic =
       from(s in Story,
         where:
@@ -470,13 +353,8 @@ defmodule CodeMySpec.EpicDispatch do
   @doc "Whether anything dispatched is still being built. See `Epics.in_progress?/1`."
   defdelegate in_progress?(scope_or_project_id), to: Epics
 
-  # Cast before the query, because `Repo.get_by/3` raises on an id that is not a
-  # UUID rather than answering nil — and the raise reaches an agent as a dump of
-  # the Ecto query, which reads like a broken tool rather than a bad argument.
-  #
-  # `:not_found` for both, deliberately. To the caller "that is not an epic id"
-  # and "no epic has that id" are the same fact — there is no epic — and two
-  # answers would only invite an agent to try casting the string differently.
+  # Cast before the query (`Repo.get_by/3` raises on a non-UUID, which reads as
+  # a broken tool). `:not_found` either way: there is no epic.
   defp fetch(%Scope{active_project_id: project_id}, epic_id) do
     with {:ok, id} <- cast_id(epic_id),
          epic when not is_nil(epic) <- Repo.get_by(Epic, id: id, project_id: project_id) do
@@ -489,10 +367,7 @@ defmodule CodeMySpec.EpicDispatch do
   defp cast_id(id) when is_binary(id), do: Ecto.UUID.cast(id)
   defp cast_id(_), do: :error
 
-  # Through `Epics` rather than straight to the repo, so every transition
-  # broadcasts the way an edit does. The epics screen is where the user watches
-  # the main agent work — an epic that only appears on reload is a report
-  # rather than something being watched.
+  # Through `Epics`, so every transition broadcasts like an edit.
   defp save(scope, epic, attrs) do
     Epics.update_epic(scope, epic, attrs)
   end

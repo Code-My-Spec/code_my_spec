@@ -8,15 +8,12 @@ defmodule CodeMySpec.Files.Scanner do
   and nothing it returns contains file content — validation happens here and
   only its verdict travels.
 
-  That is the point of the split. `FileSync` turns these observations into
-  File rows, links them to components and stories, and reconciles them against
-  what is already stored. Those are interpretations, and they can run anywhere.
-  Scanning cannot: it has to be where the files are.
+  `FileSync` turns these observations into File rows, links them to components
+  and stories, and reconciles them against what is stored; that can run
+  anywhere. Scanning has to be where the files are.
 
-  The one thing scanning needs from the domain is a `ReadModel` — component
-  module names, the project's story ids, and whether document validation is strict.
-  It is small, it changes slowly, and it is passed in rather than queried so
-  this module holds no repo of its own.
+  The one thing scanning needs from the domain is a `ReadModel`, passed in
+  rather than queried so this module holds no repo of its own.
   """
 
   alias CodeMySpec.BddSpecs.ContentCheck
@@ -28,17 +25,9 @@ defmodule CodeMySpec.Files.Scanner do
 
   # The subtrees a sync walks. Everything outside them is invisible to the
   # domain, which is what keeps a project's own deps/ and _build/ out of it.
-  #
-  # `bin`, `.github`, `config`, `rel`, `envs`, `Dockerfile`, `.sops.yaml` and
-  # the plaintext env names joined 2026-08-30: `DeployBoilerplate`'s own
-  # manifest lives entirely outside the original list, so a harness-scoped
-  # devops call's fallback to this table could never see it regardless of
-  # whether sync itself worked — confirmed live against MarketMySpec, whose
-  # sync was genuinely healthy (a real scan, a real reconcile, real rows) and
-  # still reported every boilerplate artifact missing, because none of those
-  # paths were ever walked. Each of these is small and bounded the same way
-  # `lib`/`test` already are — nothing here risks the `deps`/`_build` problem
-  # this list exists to avoid.
+  # The deploy roots (`bin`, `.github`, `config`, `rel`, `envs`, `Dockerfile`,
+  # `.sops.yaml`, the plaintext env names) are here so `DeployBoilerplate`'s
+  # manifest can be answered from rows; each is small and bounded.
   @sync_roots [
     "lib",
     "test",
@@ -73,31 +62,17 @@ defmodule CodeMySpec.Files.Scanner do
 
     Both path families name a story by its durable number —
     `.code_my_spec/qa/<number>/` and `test/spex/<number>_<slug>/` — and
-    `story_ids_by_number` resolves it to the id File rows key on. One map
-    served both while the two identifiers were the same value; once they
-    diverged, every spex directory resolved to nothing and the files it held
-    were owned by no story, so `bdd_specs_passing` could never be satisfied.
+    `story_ids_by_number` resolves it to the id File rows key on.
 
-    `component_by_path` is the component-side version of that same move.
-    `component_by_module` requires deriving a module name from a path, and that
-    derivation cannot be made correct: `Macro.underscore/1` destroys
-    capitalization and `Macro.camelize/1` cannot restore it, so
-    `code_my_spec/git/cli` comes back as `Git.Cli` and never matches
-    `Git.CLI`. Projecting the known module names *forward* into paths is exact,
-    so this map is built that way and the path is looked up. See
+    `component_by_path` projects known module names *forward* into their
+    conventional paths, which is exact; deriving a module from a path is not
+    (`code_my_spec/git/cli` camelizes to `Git.Cli`, never `Git.CLI`). See
     `Components.ConventionalPaths`.
 
-    `story_by_spec_path` is the one that does not guess. A criterion records
-    which file is its spex, so a spex file's story is a lookup rather than a
-    number parsed out of a directory name. That parse survives only as the
-    fallback for files nothing has claimed yet.
-
-    The parse is wrong exactly when a project has been migrated: story ids are
-    per-deployment, so every directory then names a story that has a different
-    id here. On this project it left 76 stories unable to satisfy
-    `bdd_specs_exist` while their spex sat on disk, and bound 8 more to
-    whichever story happened to share a number with an old directory —
-    "OAuth registration logs the user in" holding subagent-dispatch spex.
+    `story_by_spec_path` is the one that does not guess: a criterion records
+    which file is its spex, so a spex file's story is a lookup. The number
+    parse survives only as the fallback for files nothing has claimed yet —
+    it is wrong after a migration, because story ids are per-deployment.
     """
     defstruct component_by_module: %{},
               component_by_path: %{},
@@ -125,18 +100,9 @@ defmodule CodeMySpec.Files.Scanner do
   Ownership is resolved before validation because `validate_entry/4` dispatches
   on `component_id` for `:test` files.
 
-  Returns `{:error, reason}` when the environment does not scan. It used to
-  return `[]` there, which is the same value a genuinely empty working copy
-  produces — and a caller cannot tell those apart, so it deletes.
-
-  `FileSync.sync/2` did exactly that. Running on the server, whose environment
-  is a `Harness` with no tree to walk, it took the empty list as a snapshot and
-  `Files.delete_removed/2` removed all 3936 rows for the working copy plus 452
-  of its Problems. The harness re-sent its manifest, the rows came back, and the
-  next `get_next_requirement` deleted them again — so asking what to work on
-  next destroyed the projection it had just answered from, and the answer was
-  `implementation_file` for `CodeMySpec.Authorization`, a module committed
-  months ago with eleven call sites.
+  Returns `{:error, reason}` when the environment does not scan — never `[]`,
+  which a caller cannot tell from an empty working copy and would answer by
+  deleting every row.
   """
   @spec observe(Environments.Environment.t(), ReadModel.t()) :: {:ok, [map()]} | {:error, term()}
   def observe(env, %ReadModel{} = read_model) do
@@ -159,20 +125,12 @@ defmodule CodeMySpec.Files.Scanner do
   @doc """
   Paths under the sync roots that no clause of `classify/1` claims.
 
-  These are dropped by `stream_files/1`, and until now they were dropped in
-  silence — which is the single most expensive piece of missing information in
-  this system. An unclassified file never syncs, so the scan reports a
-  *constant* file count while an agent keeps writing, and the requirement that
-  gates on it reports it missing while it sits on disk.
-
-  That reads exactly like a dead file watcher. Three drills were spent trying to
-  revive watchers that were scanning every forty-five seconds and having every
-  manifest accepted; the answer each time was one unclassified path.
-
-  Most of what this returns is legitimately ignorable — test-support scaffolding,
-  fixtures, page content. The point is not that the list is empty. It is that
-  the list is *visible*, so "the harness cannot see my file" and "the harness
-  chose not to track my file" stop looking the same.
+  These are dropped by `stream_files/1`. An unclassified file never syncs, so
+  the requirement that gates on it reports it missing while it sits on disk —
+  which reads exactly like a dead file watcher. Most of what this returns is
+  legitimately ignorable (test-support scaffolding, fixtures, page content);
+  the point is that "cannot see my file" and "chose not to track it" stop
+  looking the same.
   """
   @spec unclassified(Environments.Environment.t()) :: [String.t()]
   def unclassified(env) do
@@ -199,13 +157,9 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # What the file says it is, learned during the read that fingerprints it.
-  #
-  # `resolve_owners/2` prefers this over the module implied by the path, because
-  # Phoenix does not put every module where its name suggests —
-  # `MyAppWeb.CoreComponents` lives under `components/`, `MyAppWeb.ErrorHTML`
-  # under `controllers/`. Deriving from the path makes those owned by nothing,
-  # and their `implementation_file` requirements unsatisfiable by any correct
-  # work.
+  # `resolve_owners/2` prefers this over the module implied by the path, since
+  # Phoenix puts `CoreComponents` under `components/` and `ErrorHTML` under
+  # `controllers/`.
   defp put_declared_module(%{role: :implementation} = entry, content),
     do: Map.put(entry, :declared_module, ComponentExtract.extract_defmodule(content))
 
@@ -220,9 +174,8 @@ defmodule CodeMySpec.Files.Scanner do
 
   `{:ok, stream}` of maps with `:path`, `:role`, `:mtime`, `:size`, paths
   relative to `env.cwd` — or `{:error, reason}` from an environment that does
-  not walk a working copy. Same contract as `observe/2` and for the same
-  reason: the refusal has to stay distinguishable from an empty tree, because
-  the caller's next move is to delete everything the walk did not mention.
+  not walk a working copy. Same contract as `observe/2`: the refusal must stay
+  distinguishable from an empty tree.
   """
   @spec stream_files(Environments.Environment.t()) :: {:ok, Enumerable.t()} | {:error, term()}
   def stream_files(env) do
@@ -233,13 +186,6 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # The half of the walk that turns paths into entries. Shared with `observe/2`.
-  #
-  # A `scannable/1` clause used to sit ahead of this, folding
-  # `{:error, :not_supported_on_harness}` into `[]` so the stream stayed a
-  # stream. Its own comment closed with "turning the second into an empty
-  # working copy is how a sync deletes everything it could not see", which is
-  # what it then did — twice, 3936 rows and 452 Problems each time. Both
-  # entry points return the refusal now, so there is nothing left to fold.
   defp classified(stream, env) do
     stream
     |> Stream.map(&classify/1)
@@ -251,20 +197,15 @@ defmodule CodeMySpec.Files.Scanner do
   @doc """
   Validate a file entry based on its role.
 
-  Component specs and design reviews are not parsed: components are records
-  (3aeb66cf), so those files describe nothing and are valid by existence, like
-  test files and the other tracked roles.
+  Component specs and design reviews are not parsed: components are records,
+  so those files describe nothing and are valid by existence, like test files
+  and the other tracked roles.
   """
   def validate_entry(entry, env, component_by_id, strict? \\ true)
 
   # Spex files are checked here, on the machine that has them: the server may
-  # hold no working copy, and something that can only validate by reading a disk answers "not found" for
-  # every file when there is no disk to read. That is exactly what happened —
-  # six specs reported missing in a stop no edit could clear, while the
-  # requirement graph read this same report and correctly found them present.
-  #
-  # Only the verdict travels. `ContentCheck` is pure so it can run here without
-  # a database and without shipping file content anywhere.
+  # hold no working copy. Only the verdict travels; `ContentCheck` is pure so it
+  # runs without a database or shipping content.
   def validate_entry(%{role: :bdd_spec} = entry, env, _component_by_id, _strict?) do
     case Environments.read_file(env, entry.path) do
       {:ok, content} ->
@@ -295,10 +236,9 @@ defmodule CodeMySpec.Files.Scanner do
     end
   end
 
-  # Setup artifacts: each validator runs all the per-concern checks the setup
-  # steps used to do at evaluate-time, and persists the results into
-  # `validation_errors` keyed by concern. The corresponding Setup.* step then
-  # decides pass/fail by reading those keys — zero filesystem access.
+  # Setup artifacts: each validator runs its per-concern checks and persists the
+  # results into `validation_errors` keyed by concern. The Setup.* step decides
+  # pass/fail by reading those keys, with no filesystem access.
   def validate_entry(%{role: :mix_exs} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_mix_exs/1)
   end
@@ -319,32 +259,16 @@ defmodule CodeMySpec.Files.Scanner do
     validate_setup_file(entry, env, &validate_test_support(&1, entry.path))
   end
 
-  # Persona artifacts follow the setup pattern for the same reason: the
-  # verdict has to survive the trip to a server that cannot read the file.
-  # `PersonasChecker` used to read and validate these itself and could not do
-  # it at all without a disk.
   # Parsed against the registered `qa_plan` document spec at sync time, so the
   # requirement reads a verdict instead of a file.
   def validate_entry(%{role: :qa_plan} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_qa_plan(&1, entry.path))
   end
 
-  # An integration spec's verdict, decided where the file is.
-  #
-  # `QaIntegrationPlan.evaluate/2` read these itself — a glob for the spec list
-  # and a read per spec for the status and the verify-script path. That is a
-  # delegate on the *project* requirement template, so it ran for every project
-  # on every graph computation, and against a harness-served project each of
-  # those is a `GenServer.call` to the harness with a 35-second limit. Measured:
-  # a stop decision that waited 35s on the glob and 24 more on a read.
-  #
-  # Same move as the persona and QA-plan artifacts above, and the same reason:
-  # the verdict has to survive the trip to a server that cannot read the file.
-  #
-  # Facts rather than errors. A spec that says `pending` is not a malformed
-  # document — it is one whose work is not finished, which is the requirement's
-  # question and not this file's validity. Recording it as an error would put
-  # every in-progress integration in the invalid-files list.
+  # An integration spec's verdict, decided where the file is, so
+  # `Requirements.QaIntegrationPlanChecker` never globs or reads over a harness
+  # call on every graph computation. Facts rather than errors: a `pending` spec
+  # is unfinished work, not a malformed document.
   def validate_entry(%{role: :integration} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_integration/1)
   end
@@ -359,28 +283,17 @@ defmodule CodeMySpec.Files.Scanner do
 
   # Which required secret names an environment's encrypted file declares —
   # never their values, and never a decryption. SOPS's dotenv mode encrypts
-  # values only; key names are plaintext in the file exactly as committed, so
-  # this reads no differently than any other setup artifact here. What used
-  # to be a server-side `Environments.file_exists?/2` + `sops decrypt` against
-  # a project's checkout — unreachable for a harness-only project, the same
-  # gap `module_name`/`health_route_status` had — is answered here instead,
-  # at sync time, where the file actually is. `Provisioning.Steps.
-  # check_secrets/2` reads the verdict rather than the file.
+  # values only, so key names are plaintext. Answered here, at sync time, so
+  # `Provisioning.Steps.check_secrets/2` reads the verdict, not the file.
   def validate_entry(%{role: :encrypted_env} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_encrypted_env/1)
   end
 
   def validate_entry(%{role: :implementation} = entry, env, _component_by_id, _strict?) do
-    # Not "valid by existence" any more, but the validity claim is unchanged —
-    # an implementation file is valid because it is there. What is new is the
-    # module name travelling with it, which `ComponentSync` used to open the
-    # file to learn.
-    #
-    # `ecto_schema` travels the same way and for the same reason: the content is
-    # already in hand here, so recording it costs nothing, where inferring it in
-    # `ComponentSync` would mean re-opening every implementation file on the
-    # project. It is the one type fact read from an implementation — see
-    # `ComponentExtract.ecto_schema?/1` for why schemas are the exception.
+    # Valid because it is there. The scan also records the `defmodule` name and
+    # whether it is an Ecto schema (the one type fact read from an
+    # implementation — see `ComponentExtract.ecto_schema?/1`), so
+    # `ComponentSync` never re-opens the file.
     case Environments.read_file(env, entry.path) do
       {:ok, content} ->
         Map.merge(entry, %{
@@ -441,15 +354,10 @@ defmodule CodeMySpec.Files.Scanner do
   # for cross-file decisions (e.g. TestSupportNamespace needs app_name from
   # mix_exs to know what namespace to look for in conn_case / data_case).
 
-  # Both lifted verbatim from `PersonasChecker`, which ran them against a disk
-  # at evaluate time. Same rules, decided once at sync and carried in
-  # `validation_errors` so a server with no working copy can still read the
-  # verdict.
-  # Two files share this role and they are *not* the same document. `plan.md`
-  # parses as `qa_plan`, `journey_plan.md` as `qa_journey_plan` — both registered,
-  # with different required sections. Validating the journey plan against the
-  # other schema marked a perfectly good file invalid, which is worse than not
-  # validating it: an agent is told to fix something that is already right.
+  # Persona and QA-plan rules are decided once at sync and carried in
+  # `validation_errors`, so a server with no working copy can read the verdict.
+  # Two files share the `:qa_plan` role and are different documents: `plan.md`
+  # parses as `qa_plan`, `journey_plan.md` as `qa_journey_plan`.
   defp validate_qa_plan(content, path) do
     {doc_type, label} =
       if path == Paths.qa_journey_plan(),
@@ -484,22 +392,8 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # Every entry names something you can go back to: a URL, or a path in the
-  # repo. That is the whole rule.
-  #
-  # It used to require a URL *and* a YYYY-MM-DD date on the same physical line,
-  # while the message said "URL or date" — so the message described a rule the
-  # code did not implement, and the code described one the playbook did not
-  # teach. `agent_personas.md` documents the expected format with a URL-less
-  # codebase citation that also wraps, which failed twice over: no URL, and only
-  # its first line was ever examined. Following the guide produced a file that
-  # could not validate (1d9bbf6a), and the fix applied at the time was to
-  # rewrite every sources file into URL-and-date form rather than to correct the
-  # rule.
-  #
-  # A date is no longer required. Most of what a persona cites is an agent
-  # definition, an MCP registration or a log observation, and for those the
-  # locator is the reproducible part — a path with a SHA beside it says more
-  # about what was read than the day somebody read it.
+  # repo. No date is required — for an agent definition or a log observation
+  # the locator is the reproducible part.
   defp validate_persona_sources(content) do
     entries = source_entries(content)
     invalid = Enum.find(entries, &(not locates_something?(&1)))
@@ -521,8 +415,7 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # One bullet is one entry even when it wraps, which is what markdown means by
-  # a list item. Splitting on newlines alone made a wrapped citation into a
-  # first line the validator judged and a remainder it never saw.
+  # a list item.
   defp source_entries(content) do
     content
     |> String.split("\n")
@@ -555,12 +448,8 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # The two facts a requirement asks of an integration spec: where its verify
-  # script is, and whether it has been verified. Both lifted from
-  # `QaIntegrationPlan`, which parsed them at evaluate time against a disk.
-  #
-  # The index (`integrations.md`) carries the same role and is not one of these
-  # — it is a list, with no status and no script. Nothing to record, and its
-  # presence is `size` on the row.
+  # script is, and whether it has been verified. The index (`integrations.md`)
+  # carries the same role but is a list, with nothing to record.
   defp validate_integration(content) do
     %{
       errors: %{},
@@ -578,14 +467,8 @@ defmodule CodeMySpec.Files.Scanner do
     end
   end
 
-  # The body of the `## Status` section, anchored.
-  #
-  # This was `String.contains?(String.downcase(content), "verified")` over the
-  # whole document, which passes on the word appearing anywhere — and
-  # "unverified" contains "verified". So an integration explicitly marked
-  # unverified satisfied the check, as did one whose prose merely said "once
-  # verified, …". A gate that reports satisfied when it is not is the worst
-  # failure available to a gate, because it is invisible.
+  # The body of the `## Status` section, anchored — a whole-document substring
+  # match passes on "unverified" and on prose like "once verified".
   defp verified_status?(content) do
     content
     |> String.split("\n")
@@ -681,10 +564,8 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # The exact key names `CodeMySpec.Provisioning.Steps.check_secrets/2` needs
-  # before it will run a deploy — kept here rather than derived from a shared
-  # constant because this is the one place either side actually has to agree
-  # on the literal strings, and a rename on one side without the other should
-  # fail loudly (a missing key reads as "not configured", not as "renamed").
+  # before it will run a deploy. Literal here on purpose: a rename on one side
+  # should fail loudly (a missing key reads as "not configured").
   @required_secret_keys ~w(SECRET_KEY_BASE DATABASE_URL)
 
   defp validate_encrypted_env(content) do
@@ -831,12 +712,9 @@ defmodule CodeMySpec.Files.Scanner do
     )
   end
 
-  # `DeployBoilerplate`'s own manifest — walked since `bin`/`.github`/`config`/
-  # `rel`/`envs` joined `@sync_roots`, but a walk alone answers nothing: the
-  # scan pipeline drops anything `classify/1` returns nil for before it ever
-  # reaches a `File` row (`classified/2`'s own `Stream.reject(&is_nil/1)`).
-  # Existence is all `DeployBoilerplate.present?/2` ever asks of these, so one
-  # role covers the whole manifest rather than one per artifact.
+  # `DeployBoilerplate`'s manifest. Walking is not enough: `classified/2`
+  # drops anything `classify/1` returns nil for. Existence is all
+  # `DeployBoilerplate.missing/2` asks of these, so one role covers them all.
   @deploy_artifact_dirs ~w(bin/ .github/ config/ rel/ envs/)
   @deploy_artifact_files ~w(Dockerfile .sops.yaml .env .env.local .env.production .env.schema)
 
@@ -855,8 +733,7 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # Setup-time artifacts. Validated at sync time so the requirements graph
-  # can decide `project_setup` satisfaction with O(1) DB lookups instead of
-  # re-reading these files on every render.
+  # decides `project_setup` from rows instead of re-reading these files.
   defp classify_setup_artifact(path) do
     cond do
       path == "mix.exs" -> {path, :mix_exs}
@@ -875,12 +752,10 @@ defmodule CodeMySpec.Files.Scanner do
   defp test_support?(path) do
     base = Path.basename(path)
 
-    # The fixtures bridge `SpexBoundaryChecker` looks for. `.ex` files
-    # under test/ match no other classifier — `classify_code/1` claims
-    # only `_test.exs` and `_spex.exs` there — so this went unsynced and
-    # the checker could only find it by statting a disk.
+    # The fixtures bridge `SpexBoundaryChecker` looks for: `classify_code/1`
+    # claims only `_test.exs`/`_spex.exs` under test/, so it needs this.
     # `do_validate_test_support/3` treats an unrecognised basename as
-    # valid-by-existence, which is exactly the claim being made here.
+    # valid-by-existence.
     String.starts_with?(path, "test/support/") and
       (String.ends_with?(base, "_spex.ex") or
          String.ends_with?(base, "_test_boundary.ex") or
@@ -922,16 +797,9 @@ defmodule CodeMySpec.Files.Scanner do
     ]
   end
 
-  # `.code_my_spec/credo_checks/**/*.ex[s]`.
-  #
-  # `classify_code/1` only claims `lib/` and `test/`, and `classify_docs/1`
-  # only claims `.md`, so these fell between the two and never synced at all —
-  # which is why `SpexBoundaryChecker` had to stat them and could not run
-  # without a disk.
-  #
-  # Both extensions: the framework ships `checks.exs` beside the `.ex` checks,
-  # and a checker that wants only one can filter. Syncing less than is there
-  # is how a directory listing and a file table stop agreeing.
+  # `.code_my_spec/credo_checks/**/*.ex[s]`, which neither `classify_code/1`
+  # (`lib/`, `test/`) nor `classify_docs/1` (`.md`) claims. Both extensions: the
+  # framework ships `checks.exs` beside the `.ex` checks.
   defp classify_credo_check(path) do
     if String.starts_with?(path, Paths.credo_checks_dir() <> "/") and
          (String.ends_with?(path, ".ex") or String.ends_with?(path, ".exs")),
@@ -945,15 +813,9 @@ defmodule CodeMySpec.Files.Scanner do
       end
   end
 
-  # `.code_my_spec/integrations.md` is a sibling of `integrations/`, not a file
-  # inside it, so `match_doc_dir/2` — which requires the trailing slash — never
-  # claimed it and it never synced.
-  #
-  # `QaIntegrationPlan` reads it twice: `check_index/1` is the first gate of its
-  # state machine, and writing it is half the task's stated done signal. So an
-  # agent could do exactly what it was told, write the index, and the graph
-  # fingerprint would not move — the requirement stays unsatisfied and the
-  # agent is handed the same instruction again.
+  # `.code_my_spec/integrations.md` is a sibling of `integrations/`, so
+  # `match_doc_dir/2` (trailing slash) never claims it.
+  # `Requirements.QaIntegrationPlanChecker`'s `check_index/1` gates on it.
   defp exact_doc_role(path) do
     if path == Paths.integrations_index(), do: {path, :integration}
   end
@@ -962,10 +824,8 @@ defmodule CodeMySpec.Files.Scanner do
   #
   # Their own roles rather than a shared `:persona`, because each is validated
   # differently — the summary against a document schema, the sources against a
-  # line format — and `PersonasChecker` reports them as separate gaps.
-  #
-  # Anything else in the folder is unclassified and therefore never synced,
-  # which costs the old stray-file rule — see `PersonasChecker`.
+  # line format — and `PersonasChecker` reports them as separate gaps. Anything
+  # else in the folder is unclassified.
   defp classify_persona(path) do
     prefix = Paths.personas_dir() <> "/"
 
@@ -987,27 +847,13 @@ defmodule CodeMySpec.Files.Scanner do
 
   defp classify_qa(path) do
     cond do
-      # The plans `qa_setup` and the journey requirements gate on. Neither
-      # was classified, so neither ever synced, so the checkers had to read
-      # them off a disk — and reported them missing on a server that has
-      # none, while they sat in the agent's working copy.
+      # The plans `qa_setup` and the journey requirements gate on.
       path in [Paths.qa_plan(), Paths.qa_journey_plan()] -> {path, :qa_plan}
-      # The scripts the integration specs point at. `41406ceb`: classifying the
-      # specs closed the fingerprint hole for their *contents*, but
-      # `QaIntegrationPlan.check_one_verify_script/2` parses a path out of each
-      # spec and asserts that file exists — and that file was claimed by
-      # nothing, so creating the very script that satisfies the check left
-      # `files_digest/1` unchanged and the published graph served as current.
-      # Same defect as the specs had, one indirection along.
-      #
-      # `qa_integration_plan` is a graph requirement
-      # (`requirement_definition_data.ex:900`), which is what makes the
-      # fingerprint the mechanism here. `.code_my_spec/qa/summary.md` and
-      # `.code_my_spec/design/design_system.html` are read by evaluators too and
-      # are deliberately *not* claimed: `QaApp` and `DesignUi` are session types
-      # started by hand, not graph nodes, so nothing caches a decision about
-      # them and `read_file/2` answers over the channel on a light harness.
-      # Unclassified is the right answer for a file no graph reads.
+      # The scripts the integration specs point at. The checker asserts each
+      # named script exists, so an unclaimed script would not move the graph
+      # fingerprint when created. `.code_my_spec/qa/summary.md` and
+      # `design/design_system.html` are deliberately unclaimed: no graph
+      # node reads them. See knowledge/platform, "File classification".
       match_qa_script?(path) -> {path, :qa_script}
       match_qa_file?(path, "brief.md") -> {path, :qa_brief}
       match_qa_result?(path) -> {path, :qa_result}
@@ -1038,12 +884,8 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   # Anything under `.code_my_spec/qa/scripts/`, without pinning an extension.
-  # The specs name their verify script by path and nothing constrains it to
-  # `.sh` — the three that exist happen to be shell, and a Python one would be
-  # just as valid and just as invisible.
-  #
-  # Checked before `match_qa_file?/2` so a script named `brief.md` cannot be
-  # taken for a story brief; the story-id parse would then fail on "scripts".
+  # Checked before `match_qa_file?/2` so a script named `brief.md` is not taken
+  # for a story brief.
   defp match_qa_script?(path) do
     String.starts_with?(path, Paths.qa_scripts_dir() <> "/")
   end
@@ -1051,12 +893,8 @@ defmodule CodeMySpec.Files.Scanner do
   # Only result_complete.md satisfies the :qa_result role. In-progress
   # (result.md) and archived failures (result_failed_<ts>.md) live on disk
   # but aren't role-tagged — qa_complete must not be satisfied by an
-  # unfinished or failed run.
-  # `journey_result.md` is here because `qa_journey_execute` gates on it and it
-  # matched nothing — the fifth artifact in this codebase that a requirement
-  # required and the classifier had never heard of. See
-  # `ClassifiableArtifactsTest`, which now enumerates them so there is not a
-  # sixth.
+  # unfinished or failed run. `journey_result.md` is what `qa_journey_execute`
+  # gates on. `ClassifiableArtifactsTest` enumerates the gated artifacts.
   defp match_qa_result?(path) do
     qa_prefix = Paths.qa_dir() <> "/"
 
@@ -1095,39 +933,19 @@ defmodule CodeMySpec.Files.Scanner do
     end)
   end
 
-  # What the file *declares* beats what its path implies.
-  #
-  # Phoenix does not put every module where its name suggests:
-  # `E2eTodoWeb.CoreComponents` lives at
-  # `lib/e2e_todo_web/components/core_components.ex`, and `E2eTodoWeb.ErrorHTML`
-  # at `controllers/error_html.ex`. Deriving the module from the path reads
-  # those as `E2eTodoWeb.Components.CoreComponents` and
-  # `E2eTodoWeb.Controllers.ErrorHTML`, which match no component — so the files
-  # are owned by nothing and their `implementation_file` requirements can never
-  # be satisfied. The QA drill hit exactly four of these and correctly refused to
-  # relocate framework files to satisfy a checker.
-  #
-  # `Files.Scanner` already extracts the `defmodule` from every implementation
-  # file, so the answer is in the record. This is only populated after
-  # `validate_entry/4`, which runs *after* this on the harness pass — harmless,
-  # because the server re-resolves ownership on every manifest
-  # (`FileSync.reconcile/2`) where it is present, and the path remains the
-  # fallback for a spec or test that declares nothing.
-  # Three sources, in descending order of how much they know.
+  # Three sources, in descending order of how much they know:
   #
   # 1. The path, against components projected forward into their conventional
   #    paths. Exact.
-  # 2. The module the file declares, which is what it actually is.
-  # 3. A module name derived from the path — a guess, and one that cannot be
-  #    made correct: `Macro.underscore/1` destroys capitalization and
-  #    `Macro.camelize/1` cannot restore it, so `code_my_spec/git/cli` comes
-  #    back `Git.Cli` and never matches `Git.CLI`.
+  # 2. The module the file declares (Phoenix puts `CoreComponents` under
+  #    `components/`). Populated only after `validate_entry/4`, which runs after
+  #    this on the harness pass — harmless, because the server re-resolves on
+  #    every manifest (`FileSync.reconcile/2`).
+  # 3. A module name derived from the path — a guess that cannot be made
+  #    correct (`Git.Cli` never matches `Git.CLI`). Last resort: wrong there
+  #    costs an unowned file, not a wrong owner.
   #
-  # (3) alone is what left `Git.CLI` and `Git.URLParser` unresolvable. It stays
-  # as the last resort because it still answers for files that are conventional
-  # but belong to a component this read model has not seen, and being wrong
-  # there costs an unowned file rather than a wrong owner. See
-  # `Components.ConventionalPaths`.
+  # See `Components.ConventionalPaths`.
   defp owner_for(entry, %ReadModel{} = read_model)
        when is_map_key(entry, :role) and
               entry.role in [:implementation, :test] do
@@ -1143,10 +961,8 @@ defmodule CodeMySpec.Files.Scanner do
 
   # test/spex/{story_number_and_title}/criterion_*_spex.exs → story
   #
-  # Through `story_ids_by_number`, because the directory is named from the
-  # durable number and every File row keys on the primary key. Handing the
-  # number to a map of ids matched whichever story held that id, or nothing —
-  # and nothing is what it does now on any project where the two differ.
+  # Through `story_ids_by_number`: the directory is named from the durable
+  # number, and every File row keys on the primary key.
   defp owner_for(%{path: path, role: :bdd_spec}, %ReadModel{} = read_model) do
     story_number = extract_story_number_from_spex_path(path)
     {nil, Map.get(read_model.story_ids_by_number, story_number)}
@@ -1202,16 +1018,9 @@ defmodule CodeMySpec.Files.Scanner do
     end
   end
 
-  # The story a criterion says this file belongs to.
-  #
-  # Only for spex: a criterion records its own file, so this is a join rather
-  # than a heuristic. Everything else keeps resolving by module name and path,
-  # which is correct for them — an implementation file's owner really is
-  # derivable from where it sits.
-  #
-  # `nil` when nothing has claimed the path, which sends the entry to the parse
-  # below. That is right for a spex file written moments ago and not yet
-  # recorded, and it is why the parse survives at all.
+  # The story a criterion says this file belongs to. Only for spex: a criterion
+  # records its own file, so this is a join. `nil` when nothing has claimed the
+  # path (a spex just written), which sends the entry to the number parse.
   defp recorded_story(%{role: :bdd_spec, path: path}, story_by_spec_path)
        when is_binary(path) do
     Map.get(story_by_spec_path, path)

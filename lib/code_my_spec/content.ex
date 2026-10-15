@@ -2,26 +2,16 @@ defmodule CodeMySpec.Content do
   @moduledoc """
   Published content for public and authenticated viewing.
 
-  This is the production-ready content system that serves blog posts, pages, landing pages,
-  and documentation to end users. Content is single-tenant (no account_id/project_id), and
-  access control is based on authentication (scope vs nil) rather than multi-tenancy.
+  Serves blog posts, pages, landing pages and documentation to end users.
+  Content is single-tenant (no account_id/project_id); access control is by
+  authentication, not tenancy:
 
-  ## Architectural Note
+  - **With %Scope{}**: authenticated → public and protected content
+  - **With nil**: anonymous → public content only (`protected = false`)
 
-  Content is distinct from ContentAdmin:
-  - **ContentAdmin**: Multi-tenant validation/preview layer where developers test content synced from Git
-  - **Content**: Single-tenant published content layer where end users view finalized content
-
-  Content is NOT copied from ContentAdmin. Publishing triggers a fresh Git pull, processes
-  content, and POSTs to the Content sync endpoint.
-
-  ## Scope Integration
-
-  **Scope is for authentication, NOT multi-tenancy**:
-  - **With %Scope{}**: User is authenticated → can access both public and protected content
-  - **With nil**: Anonymous visitor → can only access public content (protected = false)
-
-  NO account_id or project_id filtering. All queries are unscoped from a multi-tenant perspective.
+  Content is written only by `sync_content/1`, which replaces everything. It is
+  reached from `/api/content/sync` and from `Content.Pull`, which a deployed
+  client runs when `ContentPublishing.publish/1` triggers it.
   """
 
   use Boundary,
@@ -50,7 +40,7 @@ defmodule CodeMySpec.Content do
 
   ## Parameters
     - scope_or_nil: %Scope{} for authenticated users (access to protected content), nil for anonymous (public only)
-    - content_type: String "blog", "page", "landing", or "documentation"
+    - content_type: `:blog`, `:page`, `:landing` or `:documentation`
 
   ## Examples
 
@@ -73,7 +63,7 @@ defmodule CodeMySpec.Content do
   ## Parameters
     - scope_or_nil: %Scope{} for authenticated users, nil for anonymous
     - slug: String slug identifier
-    - content_type: String "blog", "page", "landing", or "documentation"
+    - content_type: `:blog`, `:page`, `:landing` or `:documentation`
 
   ## Examples
 
@@ -89,7 +79,7 @@ defmodule CodeMySpec.Content do
   end
 
   @doc """
-  Gets content by slug and content type. Raises if not found.
+  Gets content by slug and content type.
 
   With %Scope{}: Raises Ecto.NoResultsError if not found.
   With nil: Returns nil if not found (non-raising for anonymous users).
@@ -97,7 +87,7 @@ defmodule CodeMySpec.Content do
   ## Parameters
     - scope_or_nil: %Scope{} for authenticated users, nil for anonymous
     - slug: String slug identifier
-    - content_type: String "blog", "page", "landing", or "documentation"
+    - content_type: `:blog`, `:page`, `:landing` or `:documentation`
 
   ## Examples
 
@@ -115,19 +105,10 @@ defmodule CodeMySpec.Content do
   # Content Sync (Publishing Flow)
 
   @doc """
-  Synchronizes content from publishing flow.
+  Replaces all content with `content_list`, in one transaction.
 
-  Deletes all existing content and creates new content records in a transaction.
-  This ensures Content always reflects the GitHub source of truth.
-
-  ## Publishing Flow
-
-  1. Developer clicks "Publish" in ContentAdmin UI
-  2. Server pulls latest from GitHub repository
-  3. Server processes content files (markdown → HTML, parse frontmatter)
-  4. Server extracts/generates tags
-  5. Server POSTs processed content to `/api/content/sync` endpoint
-  6. This function handles the sync
+  Any invalid row is logged and rolls the whole sync back, leaving existing
+  content intact.
 
   ## Parameters
     - content_list: List of content maps with all fields (slug, title, content_type, processed_content, etc.)
@@ -144,23 +125,19 @@ defmodule CodeMySpec.Content do
     require Logger
 
     Repo.transaction(fn ->
-      # Delete all existing content
       {deleted_count, _} = Repo.delete_all(Content)
       Logger.info("Deleted #{deleted_count} existing content records")
 
-      # Build changesets
       changesets =
         Enum.with_index(content_list, fn attrs, index ->
           changeset = Content.changeset(%Content{}, attrs)
           {changeset, index}
         end)
 
-      # Log validation errors
       changesets
       |> Enum.filter(fn {cs, _index} -> not cs.valid? end)
       |> Enum.each(&log_invalid_changeset/1)
 
-      # Check for invalid changesets
       case Enum.find(changesets, fn {cs, _index} -> not cs.valid? end) do
         nil -> insert_valid_content(changesets)
         {invalid_changeset, index} -> abort_sync_content(invalid_changeset, index)
@@ -181,8 +158,6 @@ defmodule CodeMySpec.Content do
 
   @doc """
   Deletes all content.
-
-  Used during sync to clear existing content before inserting new content.
 
   ## Examples
 
@@ -259,7 +234,6 @@ defmodule CodeMySpec.Content do
     end
   end
 
-  # Helper to generate slug from name
   defp slugify(string) do
     string
     |> String.downcase()
@@ -287,12 +261,10 @@ defmodule CodeMySpec.Content do
   @spec sync_content_tags(Content.t(), [String.t()]) :: {:ok, Content.t()} | {:error, term()}
   def sync_content_tags(%Content{} = content, tag_names) do
     Repo.transaction(fn ->
-      # Delete existing associations
       ContentTag
       |> where([ct], ct.content_id == ^content.id)
       |> Repo.delete_all()
 
-      # Upsert tags and create new associations
       tag_names
       |> Enum.map(fn name ->
         {:ok, tag} = upsert_tag(name)
@@ -304,7 +276,6 @@ defmodule CodeMySpec.Content do
         |> Repo.insert!()
       end)
 
-      # Reload content with tags
       content
       |> Repo.reload!()
       |> ContentRepository.preload_tags()

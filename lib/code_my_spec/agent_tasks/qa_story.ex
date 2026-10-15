@@ -2,15 +2,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @moduledoc """
   QA-test a single user story end-to-end.
 
-  ## Deprecation notice
+  `qa_complete` is satisfied by a DB-backed QA attempt
+  (`CodeMySpec.Qa.qa_complete?/2`), landed with `submit_qa_result`
+  (`CodeMySpec.Qa.submit_qa_result/2`). Files on disk never satisfy it;
+  `evaluate/2` still validates the plan and brief, files issues from an
+  optional `result.md`, and then demands a submit.
 
-  The file-rename approach (`result.md` → `result_complete.md`) that this
-  evaluator previously used to signal QA completion is **no longer load-bearing**.
-  `qa_complete` satisfaction is now driven by DB-backed QA attempts via
-  `CodeMySpec.Qa.complete?/2`. The `evaluate/2` function below retains the
-  plan/brief/result validation logic and issue-filing side-effect, but no
-  longer renames any files. Use `CodeMySpec.Qa.submit_qa_result/2` (exposed
-  as the `submit_qa_result` MCP tool) as the new completion path.
+  See knowledge/tools, "Agent task prompts".
   """
 
   require Logger
@@ -25,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @required_plan_sections ["app overview", "tools registry", "seed strategy"]
 
   # ============================================================================
-  # orchestrate — relevance signal for the requirement graph
+  # dispatch — relevance signal for the requirement graph
   # ============================================================================
 
   def dispatch(_node) do
@@ -58,23 +56,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   # ============================================================================
-  # Evaluate — validates artifacts and files issues; no longer renames files
-  #
-  # @deprecated Use `CodeMySpec.Qa.submit_qa_result/2` (the `submit_qa_result`
-  # MCP tool) as the new completion path. The file-rename side-effect
-  # (result.md → result_complete.md) has been removed; `qa_complete` satisfaction
-  # is now driven by DB-backed QA attempts via `CodeMySpec.Qa.complete?/2`.
+  # Evaluate — a DB attempt decides; files only shape the feedback
   # ============================================================================
 
   @doc """
   Validate the QA cycle for a story.
 
-  Walks plan → brief → result. Files issues from the result to the DB.
-  Returns `:valid` once the result is structurally valid.
-
-  Note: this evaluator no longer renames `result.md` to `result_complete.md`.
-  QA completion is now recorded via `CodeMySpec.Qa.submit_qa_result/2` and
-  checked by the requirement graph through `CodeMySpec.Qa.complete?/2`.
+  `{:ok, :valid}` once a passing DB attempt exists. A task owned by a
+  sub-agent is left alone (`{:ok, :skip, why}`). With a failed or invalidated
+  attempt, demands a fresh submit. Otherwise walks plan → brief → optional
+  result (filing the result's issues) and demands a submit.
   """
   def evaluate(scope, task) do
     with {:ok, story_id} <- get_story_id(scope, task) do
@@ -86,10 +77,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
       cond do
         CodeMySpec.Qa.qa_complete?(scope, story_id) ->
-          # Cutover short-circuit: a DB-backed pass attempt exists for
-          # this story. The legacy file-validation chain (plan/brief/
-          # result on disk) is obsolete once `submit_qa_result` has
-          # landed, so skip it.
+          # A passing DB attempt: the file checks have nothing to add.
           Logger.info(
             "[QaStory] evaluate(#{story_id}): DB attempt satisfies qa_complete; skipping legacy file checks"
           )
@@ -97,30 +85,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           {:ok, :valid}
 
         subagent_owns?(task) ->
-          # Issue c884dbda: when the qa_complete task is owned by a
-          # sub-agent (agent_id set), the parent agent's stop hook must
-          # NOT demand a submit. The sub-agent owns the work and the
-          # submission; the parent has no scenarios to report.
-          # TaskEvaluator iterates all session tasks regardless of
-          # which agent is stopping, so this guard prevents the
-          # parent's stop from getting slammed with demand-submit
-          # feedback for the sub-agent's in-flight task.
-          #
-          # `:skip`, not `:valid`. Returning `:valid` here *completed* the
-          # sub-agent's live task on the parent's stop, before any attempt
-          # existed — 7f79b855, the defect that `validation_type: :manual` was
-          # added to work around. The guard never had an answer that meant
-          # "leave it alone"; now it does, and the workaround can go.
+          # Owned by a sub-agent: the parent's stop must neither demand a
+          # submit nor complete the sub-agent's live task, so `:skip`.
           {:ok, :skip, "owned by sub-agent #{task.agent_id}, which has not submitted yet"}
 
         attempts != [] ->
-          # Issue a15c252b. An attempt exists but doesn't satisfy — it failed,
-          # or it was invalidated. Either way the agent has already been
-          # through the DB flow for this story, so the legacy plan/brief/result
-          # chain has nothing left to teach it. Running that chain here is
-          # actively misleading: after an invalidation it demands a brief.md
-          # the DB flow never produces, which reads as "go write a document"
-          # when the actual obligation is "run QA again and submit the result".
+          # A failed or invalidated attempt: the obligation is to re-run and
+          # submit, not to write documents, so the file chain is skipped.
           Logger.info(
             "[QaStory] evaluate(#{story_id}): prior attempt exists but does not satisfy; demanding a fresh submit"
           )
@@ -169,10 +140,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     with :ok <- check_plan(scope, env),
          :ok <- check_brief(env, story_number),
          :ok <- maybe_check_result(scope, env, story_id, story_number) do
-      # File-based artifacts validate, but `qa_complete?` was false so no DB
-      # attempt exists. The DB attempt is canonical (issue 3dd4ec46) — without
-      # it, `qa_complete` stays unsatisfied even though `evaluate_task` would
-      # mark the Task completed. Force a submit instead of silently passing.
+      # Files validate but no DB attempt exists, and only the attempt
+      # satisfies `qa_complete`: demand a submit rather than pass.
       {:ok, :invalid, submit_required_feedback(story_number)}
     else
       {:ok, :invalid, feedback} = result ->
@@ -204,11 +173,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  # Result is no longer required in any case — `submit_qa_result` is the
-  # canonical completion path, and result.md is now an optional human-
-  # readable evidence trail. When present, validate format and file
-  # issues from it. When absent, accept silently — the agent will call
-  # `submit_qa_result` to land the typed attempt (issue a15c252b).
+  # `result.md` is optional evidence. When present, validate it and file its
+  # issues; when absent, accept.
   defp maybe_check_result(scope, env, story_id, story_number) do
     if result_exists?(env, story_number) do
       case check_result(env, story_number) do
@@ -267,14 +233,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  # Says which project and which directory it looked in.
-  #
-  # "QA plan not found at `.code_my_spec/qa/plan.md`" sent a reader to a file
-  # that was present and 308 lines long. The plan is looked up through the
-  # project the working directory resolves to, and the working directory had
-  # resolved to a *different* project — so the message named the wrong thing
-  # one level below the actual cause. Naming the project and the path makes
-  # "resolved to QA Fixture Project" visible at a glance.
+  # Says which project and directory it looked in, so a working directory that
+  # resolved to the wrong project is visible at a glance.
   defp plan_missing_feedback(scope, env) do
     where =
       case env do
@@ -420,13 +380,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  # A re-offered story, told what moved since the last pass.
-  #
-  # QA needs the submitted fix evidence and revision when re-testing a story.
-  # metric_flow story 47, 2026-09-29: coding fixed both highs QA had filed,
-  # QA was re-offered the story, concluded "no code has changed" and tapped out
-  # (255f1dcd). The server holds the issue history but not the copy's git log,
-  # so issues are listed and commits are a command to run.
+  # A re-offered story, told what moved since the last pass, so QA does not
+  # conclude "nothing changed". The server holds the issue history but not the
+  # copy's commit history, so issues are listed and commits are a command to run.
   defp changed_since_section(scope, story) do
     case CodeMySpec.Qa.list_qa_attempts(scope, story.id) do
       [] -> nil
@@ -470,27 +426,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end)
   end
 
-  # Story 1108: QA tests the working copy the story's fix actually landed
-  # on, not main's app wearing the story's name. A copy that never ran the
-  # fix answering as though it had is exactly how metric_flow's story 1103
-  # slipped through (issue 2d612ae8) — the copy's address silently served
-  # main's pre-fix code.
+  # QA tests the working copy the story's fix landed on, never main's app under
+  # the story's name. `main_app_url_line/1` is only for a scope with no copy, or
+  # a copy id that does not resolve.
   #
-  # Story 1003, revised 2026-09-28 (phase 2): main is just another working
-  # copy under story 1108's model now — `qa_complete` moved ahead of
-  # `story_promoted` for every copy, not only non-main ones, so main no
-  # longer gets to assume its app is already running. `main_app_url_line/1`
-  # survives only as the fallback for the two cases where there is no copy id
-  # to resolve at all (no active working copy on the scope, or the id it
-  # names does not exist) — there is nothing else to ask in either case.
-  #
-  # Harness session, 2026-09-29: dropped from 3 minutes. `AppInstance.ensure_running/2`
-  # no longer blocks a first start through its own cold `npm install`/compile
-  # — past its own short (~30s) inline window it replies `starting` and keeps
-  # working in the background, reporting the real outcome later through
-  # `app_status`. Waiting minutes *here* for a reply that arrives in ~30s
-  # either way just held this call, and the agent, idle. Comfortably above
-  # `AppInstance`'s own budget for the round trip and the channel hop.
+  # The harness replies `starting` after a short inline window and keeps
+  # building in the background, so this waits just above that window.
   @app_start_timeout to_timeout(second: 35)
 
   defp app_url_line(%{active_working_copy_id: id}, endpoint_module)
@@ -503,13 +444,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp app_url_line(_scope, endpoint_module), do: main_app_url_line(endpoint_module)
 
-  # Do not tell the agent to boot a BEAM here (ab4e412c). `mix run` was the
-  # original instruction, and it hangs against any copy where the app is already
-  # running — which is every copy QA runs against. The fresh node blocks on the
-  # compile lock the running release holds rather than failing fast: the reporter
-  # ran it twice, 10s then 60s, and both hung, for information `qa/plan.md`
-  # already documents. `:4000`, `:4003` and `:4004` all hold compile locks on
-  # this machine, so the command shape is the hazard, not the endpoint.
+  # Never tell the agent to boot a node to ask for the URL: a fresh `mix run`
+  # blocks on the compile lock a running app holds and hangs.
   defp main_app_url_line(endpoint_module) do
     "**App URL:** `http://127.0.0.1:4000` (hosted), " <>
       "`http://127.0.0.1:4004` (this checkout's local app). " <>
@@ -559,24 +495,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  # Some repros are consumed by being run, and reusing one measures the wrong
-  # thing.
-  #
-  # Story 1018's criterion 3252 asks that a product decision is escalated rather
-  # than answered. The repro a previous pass used — "should we build a dark mode
-  # toggle" — was asked four times, and by the fourth the main agent answered
-  # from precedent: "this has already been decided, four separate times." That is
-  # criterion 3257 working, and it is indistinguishable from 3252 failing.
-  #
-  # It nearly cost a real fix: two high-severity issues were open on 3252, a fix
-  # landed, and re-testing with the burned question would have reported the fix
-  # as ineffective. It is also self-worsening — every pass consumes one more
-  # question, so the pool shrinks and the chance of a false failure rises with
-  # each run. Issue `53d3f4d4`.
-  #
-  # Here rather than in the playbook because it is a rule about *choosing* the
-  # test, which happens while the brief is being written and before any playbook
-  # is reached.
+  # Some repros are consumed by being run: a system that correctly declines a
+  # settled question looks like one that failed to escalate it. In the prompt
+  # rather than the playbook because it governs choosing the test, while the
+  # brief is written.
   defp single_use_repro_section do
     """
     ## Repros that consume themselves
@@ -773,16 +695,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  # From the synced File records, not from a disk.
-  #
-  # `BddSpecs.list_specs_for_story/2` walks the working copy and has no clause
-  # for a nil environment, so `start_task` raised a FunctionClauseError for
-  # `qa_complete` on every story — the QA drill worked around it by following
-  # the playbook by hand, which only works for an agent that knows to.
-  #
-  # Only the paths are wanted here, and those are exactly what the scan already
-  # recorded: role `:bdd_spec`, owned by this story. This works with or without
-  # a working copy.
+  # From the synced file records, not a disk, so it works with or without a
+  # working copy.
   defp collect_spec_file_paths(scope, story_id) do
     scope
     |> Files.list_files()
@@ -824,18 +738,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Session Helpers
   # ============================================================================
 
-  # Two routes reach this, and they name the story differently.
-  #
-  # The graph-dispatch route (`start_task`) sets `story_id` from the
-  # requirement's entity. The skill route (`/codemyspec:qa story <number>`) is a
-  # topic task, and `run_topic_task/4` threads the topic through
-  # `requirement_name` — the same convention `ThreeAmigos` follows and
-  # documents. What is typed there is the story number people use.
-  #
-  # Only the first was handled, so every skill invocation fell through to the
-  # "requires a story ID argument" clause regardless of what was passed. The
-  # message named the one thing the caller had definitely done, which is why it
-  # read as a usage error rather than a bug.
+  # Both routes (`start_task`, and `StartAgentTask`'s topic route) create the
+  # task with `story_id`. A task naming the story number in `requirement_name`,
+  # the topic convention other topic tasks use, is also accepted.
   defp get_story_id(_scope, %{story_id: story_id}) when not is_nil(story_id),
     do: parse_integer(story_id)
 
@@ -852,8 +757,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     {:error, "QaStory requires a story number argument. Usage: /qa-story <story_number>"}
   end
 
-  # `Integer.parse/1` alone accepts "892abc" as 892. On the skill route the value
-  # is whatever was typed after the topic, so the remainder has to be empty.
+  # `Integer.parse/1` alone accepts "892abc"; the remainder must be empty.
   defp parse_integer(value) do
     case Integer.parse(to_string(value)) do
       {int, ""} -> {:ok, int}

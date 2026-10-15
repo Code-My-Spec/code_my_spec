@@ -3,15 +3,8 @@ defmodule CodeMySpec.Issues do
   The Issues context.
 
   Issues live in whatever database this application is talking to, and
-  every function here writes it directly.
-
-  There used to be a second path: the CLI envs routed each call over HTTP
-  to the server through `RemoteClient`, because the tools ran on a
-  developer's machine and the rows lived elsewhere. The tools run on the
-  server now — the harness forwards to them rather than reimplementing
-  them — so "somewhere else" is gone and with it the reason to dispatch.
-  The local application keeps its own issues, locally, and does not
-  replicate or sync anybody else's.
+  every function here writes it directly. The local application keeps its
+  own issues and does not replicate or sync anybody else's.
   """
 
   use Boundary,
@@ -53,8 +46,7 @@ defmodule CodeMySpec.Issues do
   is reported by every call that notices it.
 
   Unfinished means anything but `:resolved` — a dismissed fault recurring is
-  still not worth acting on, a resolved one recurring is a regression. The
-  repository's doc has the reasoning.
+  still not worth acting on, a resolved one recurring is a regression.
   """
   @spec open_issue_titled?(Scope.t(), String.t()) :: boolean()
   def open_issue_titled?(%Scope{} = scope, title),
@@ -74,9 +66,8 @@ defmodule CodeMySpec.Issues do
   Called when a QA attempt is submitted: the agent has just named these
   issues as the findings of a pass over one story. The inherited submission
   graph reads `story_id` to place accepted blocking fixes before shared story
-  QA; promotion completes the reviewed submissions. Leaving it to
-  the agent to pass `story_id` on every `create_issue` call did not work —
-  every accepted issue on this project reached triage unattributed.
+  QA; promotion completes the reviewed submissions. Done here because agents
+  do not reliably pass `story_id` to `create_issue`.
   """
   def attribute_to_story(%Scope{} = scope, issue_ids, story_id)
       when is_list(issue_ids) and not is_nil(story_id) do
@@ -124,15 +115,8 @@ defmodule CodeMySpec.Issues do
   Resolved issues in one project, by id, for callers that hold an id rather
   than a scope.
 
-  `list_issues/1` and its neighbours read `scope.active_project.id` — the
-  loaded association — so a scope assembled from a bare project_id raises
-  inside the repository. A caller that only ever has the id (a notification
-  deciding whether the thing an agent named has since been fixed) would have
-  to fake an association to ask a question that needs neither account nor
-  preloads.
-
-  Same shape as `report_from_widget/3`, which takes raw ids for the same
-  reason: the caller genuinely has no scope to offer.
+  `list_issues/1` and its neighbours read the loaded `scope.active_project`,
+  which a caller holding only an id does not have.
   """
   @spec resolved_in_project(Ecto.UUID.t()) :: [%{id: String.t(), title: String.t()}]
   def resolved_in_project(project_id) when is_binary(project_id) do
@@ -239,19 +223,9 @@ defmodule CodeMySpec.Issues do
   @doc """
   Report an issue from an end user of a generated app.
 
-  The deploy key identifies the *project*; the person reporting is not
-  authenticated and is not expected to be. That is the whole point — someone
-  hitting a bug in a shipped app has no CodeMySpec account and should not need
-  one to say so.
-
-  Before this, the feedback widget filed through the OAuth path, so a generated
-  project could not accept feedback until its owner had generated client
-  credentials and set `CODEMYSPEC_CLIENT_ID` / `CODEMYSPEC_CLIENT_SECRET`. Two
-  QA drills reported the widget rendering fine and failing only on submit, which
-  is the worst shape for that failure: it looks like it works.
-
-  Scoped `"app"`, not `"framework"` — this is feedback about the generated app,
-  not about CodeMySpec.
+  The deploy key identifies the project; the reporter is not authenticated
+  and needs no CodeMySpec account. Scoped `"app"`, defaulting to `medium`
+  severity.
   """
   @spec report_widget_issue(String.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def report_widget_issue(account_id, project_id, attrs)
@@ -301,20 +275,10 @@ defmodule CodeMySpec.Issues do
     {:ok, created}
   end
 
-  # Whether a parsed QA-result issue has a severity this domain recognizes at
-  # all, not whether its severity is any *particular* one -- that judgment
-  # belongs to `parse_severity/1`, which defaults an unrecognized string to
-  # `:medium` rather than reject. The two must not agree: `parse_severity/1`
-  # never fails, so nothing else stops an issue with a garbled severity field
-  # from being filed. This is the one check upstream of it.
-  #
-  # Moved here from `Documents.QaIssue.fileable?/1` (formerly a boundary
-  # cycle: Documents depended on Issues.Issue for its own `@scopes`, and
-  # Issues depended back on Documents.QaIssue just for this predicate).
-  # Written against a plain value's `.severity` field rather than pattern-
-  # matched against the `QaIssue` struct, so any caller can pass a QaIssue
-  # (or anything else shaped like one) without Issues needing to know the
-  # struct exists.
+  # Whether a parsed QA-result issue has a recognized severity at all. The only
+  # check upstream of `parse_severity/1`, which never fails (an unknown string
+  # becomes `:medium`). Matches on `.severity`, not the `QaIssue` struct, so
+  # Issues need not depend on Documents.
   @fileable_severities ~w(critical high medium low info)
 
   @spec fileable?(%{severity: String.t()}) :: boolean()
@@ -525,10 +489,9 @@ defmodule CodeMySpec.Issues do
        when is_binary(account_id) do
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{account_id}:issues", message)
 
-    # The event, not an invalidation. `Requirements.Handlers` settles the three
-    # issue requirements from it directly — an issue at or above the threshold
-    # *is* `issues_triaged = false`. `graph_entities/1` rides along so a
-    # consumer with no handler for this kind still has something to invalidate.
+    # The event, not an invalidation: `Requirements.Handlers` settles the issue
+    # requirements from it directly. `graph_entities/1` rides along for a kind
+    # with no handler.
     GraphInputs.event(
       scope,
       "Issues",

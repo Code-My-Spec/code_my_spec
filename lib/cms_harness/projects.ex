@@ -7,20 +7,13 @@ defmodule CmsHarness.Projects do
   are two subtrees: they hold different files, so a manifest from one is not a
   statement about the other.
 
-  Not an OS process per working copy: the hooks are POSTed to a fixed URL in
-  the plugin's configuration, so a process apiece means a port apiece and a
-  discovery step on the critical path of every agent turn, whose failure mode
-  is a hook that silently posts nowhere.
+  Subtrees start on demand, when a hook names a harness id and
+  `CmsHarness.WorkingCopies` asks the server where that copy is. Previously
+  served roots bootstrap credentials after restart, but only the server's
+  current device roster decides which roots are served. A sprite is N=1 of the
+  same code.
 
-  Subtrees start on demand, when a hook names a
-  harness id and `CmsHarness.WorkingCopies` asks the server where that copy is.
-  Previously served roots bootstrap credentials after restart. Only the
-  server's current device roster decides which roots the reporter serves;
-  remembering a path must not re-onboard a copy removed while we were offline.
-
-  A sprite is simply N=1 here. Same code, same lifecycle, one child in the
-  tree — which is the point, because a drill on a sprite is then a drill on the
-  laptop path.
+  See knowledge/harness/channel, "Projects and working copies".
   """
 
   require Logger
@@ -45,21 +38,15 @@ defmodule CmsHarness.Projects do
   def ensure_started(dir) when is_binary(dir) do
     with :ok <- not_preparing(dir),
          {:ok, project} <- ProjectIdentity.resolve(dir) do
-      # Under the copy's own supervisor (`Copy.Supervisor`), beside its agents
-      # and its app rather than above them.
+      # Under the copy's own supervisor, beside its agents and its app.
       case Copy.serve(project.root, project) do
         {:started, _pid} ->
           ServedRoots.remember(project.root)
           Logger.info("[CmsHarness] serving project #{project.id} at #{project.root}")
           {:ok, project}
 
-        # Now that the subtree is keyed on the root, this means *this working
-        # copy* is already served, and returning the caller's project is
-        # truthful. Keyed on `project.id` it did not: a second checkout of one
-        # project resolved the same id, landed here, and got back its own root
-        # while the running subtree watched the first one — hooks answered, the
-        # health endpoint said served, and every file event belonged to a tree
-        # nobody asked about. Issue 8b83ba20.
+        # Keyed on the root, so this means *this working copy* is served.
+        # See knowledge/harness/channel, "Projects and working copies".
         {:already_started, _pid} ->
           ServedRoots.remember(project.root)
           {:ok, project}
@@ -74,29 +61,12 @@ defmodule CmsHarness.Projects do
   @doc """
   Start the working copy named by the environment, if there is one.
 
-  The sprite's path, and the one thing this module deliberately did not do.
+  Reads `CMS_PROJECT_DIR`. The sprite's path: its agent waits for an accepted
+  manifest before it starts, so a harness that waited for a hook would wait
+  forever.
 
-  Everything else here starts on demand: a hook names a harness id, and the
-  subtree comes up to answer it. That is right on a laptop, where an agent
-  session fires a hook within seconds of starting, and it is why the moduledoc
-  above says nothing is configured.
-
-  A sprite is the opposite shape. Its agent has not started yet — `drill.sh`
-  waits for "accepted the manifest" *before* running `devbox-agent` — so a
-  harness that waits for a hook waits forever, scans nothing, pushes no
-  manifest, and looks healthy the whole time. Measured: the in-repo harness
-  booted clean in a drill container against a real workspace and wrote two
-  lines to harness.log, the endpoint starting and its URL (bddb1ac1, 92cffa52).
-
-  `CMS_PROJECT_DIR` is already the name for this — `sprite.sh` exports it in the
-  light-harness branch, and the standalone harness has read it since it was
-  extracted. Adopting the same variable rather than inventing one is what lets
-  the sprite switch over without touching how it is launched.
-
-  Errors are logged and swallowed. A working copy that cannot be served at boot
-  is worth saying loudly, but it must not take the harness down: a hook naming
-  a *different* copy can still be answered, and a harness that refuses to start
-  answers nothing at all.
+  Errors are logged and swallowed: a hook naming a different copy can still be
+  answered, and a harness that refuses to start answers nothing.
   """
   @spec start_configured() :: :ok
   def start_configured do
@@ -129,17 +99,8 @@ defmodule CmsHarness.Projects do
 
   @doc "Every working-copy root this harness currently has a subtree for."
   @spec list() :: [String.t()]
-  # `[]` rather than a raise when the registry is not up yet, because callers
-  # reach this during boot.
-  #
-  # `Application.start_harness/0` warns about a missing credential before the
-  # supervision tree exists, and `Credentials.any/0` answers that by asking
-  # which copies are served — so a boot-time call landed in `Registry.select/2`
-  # against a registry that had not started, and the whole harness failed to
-  # come up with `unknown registry: CmsHarness.Registry`.
-  #
-  # Nothing is being served before the registry exists, so an empty list is the
-  # true answer rather than a softened one.
+  # `[]` before the registry is up: `Credentials.any/0` calls this during boot,
+  # and nothing is served before the registry exists.
   def list do
     case Process.whereis(CmsHarness.Registry) do
       nil -> []
@@ -159,19 +120,9 @@ defmodule CmsHarness.Projects do
   @doc """
   Stop serving a working copy, releasing its channel and its watchers.
 
-  The counterpart to `ensure_started/1`, and until now there wasn't one. A copy
-  offboarded on the server stayed served here forever: still joined, still
-  holding a project supervisor, still scanning a directory that no longer
-  exists. Every cycle it logged "the scan of … found no files at all … This is
-  a harness fault — a wrong working directory or an unreadable checkout" —
-  correct as a guard, and exactly wrong as a description of a copy somebody
-  deliberately removed. It repeats indefinitely, so whoever reads the log later
-  goes looking for a broken checkout that was retired on purpose. Issue
-  03ea1ee5.
-
-  `:not_serving` rather than an error: being asked to stop something already
-  stopped is the request being satisfied, and an offboard must not fail because
-  it arrived twice.
+  The counterpart to `ensure_started/1`, called when a copy is offboarded on
+  the server. `{:error, :not_serving}` for a root not served; callers treat it
+  as satisfied, so an offboard that arrives twice does not fail.
   """
   @spec stop_serving(String.t()) :: :ok | {:error, :not_serving}
   def stop_serving(root) when is_binary(root) do
@@ -192,24 +143,13 @@ defmodule CmsHarness.Projects do
   @doc """
   Drop one working copy's channel and take it up again.
 
-  The reconnect the harness performs on a restart, for one root instead of all
-  of them. `handle_join/3` is where the `agents_to_restore` handshake lives, so
-  a rejoin is what makes the server name this copy's agents and the harness
-  relaunch them — the only way that path runs.
+  The reconnect a harness restart performs, for one root instead of all of
+  them. A fresh join runs the server's `agents_to_restore` handshake, so this
+  copy's agents are named and relaunched; other copies are untouched.
 
-  Until now it ran only on a real harness restart, which is one process serving
-  every checkout on the machine: seeing the handshake meant killing four other
-  projects' in-flight work, and `0fb7bf03` records five QA passes declining to.
-  This is the same event with the blast radius it should always have had.
-
-  It is not only for testing. An operator whose copy has stopped reporting has
-  had exactly one remedy — restart the harness — and the restart notice says
-  what that costs: "in-flight analysis for every working copy dies with it".
-
-  Honest about what it does cost: this copy's own analyzers die with its
-  supervisor, and its next stop re-enqueues them. Sequential rather than
-  supervised-restart so the join is a fresh one — `ensure_started/1` reads the
-  config again, which is what makes this a reconnect rather than a resume.
+  This copy's in-flight analyzers die with its channel chain; its next stop
+  re-enqueues them. Sequential rather than a supervised restart so
+  `ensure_started/1` re-reads the config and the join is fresh.
   """
   @spec rejoin(String.t()) :: {:ok, ProjectIdentity.t()} | {:error, term()}
   def rejoin(root) when is_binary(root) do

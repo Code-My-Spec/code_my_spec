@@ -15,10 +15,9 @@ defmodule CodeMySpec.Requirements.Topology do
 
   Names of specific requirements (e.g. `"qa_journey_plan"`,
   `"spec_valid"`) and component-type strings (e.g. `"context"`,
-  `"schema"`) never appear here. Layout rules that used to depend
-  on those names should ask Topology for the underlying graph fact
-  instead — fan-in, fan-out, cross-entity seams, depth — and pixel
-  decisions stay in the projector.
+  `"schema"`) never appear here. Layout asks for the graph fact —
+  fan-in, fan-out, cross-entity seams, depth — and pixel decisions
+  stay in the projector.
 
   Edge endpoints are tuples `{entity_type, entity_id, name}` (the
   same shape `RequirementGraph` produces). Node-level lookups use
@@ -125,7 +124,8 @@ defmodule CodeMySpec.Requirements.Topology do
 
   Edges that reference nodes outside `nodes` (dangling endpoints)
   are ignored — they neither contribute to nor block depth
-  resolution. Cycles are broken arbitrarily.
+  resolution. Nodes in a cycle get sequential depths after the
+  deepest resolved node, in key order.
   """
   @spec depth_map([Requirement.t()], [edge()]) :: %{node_key() => non_neg_integer()}
   def depth_map(nodes, edges) do
@@ -216,10 +216,8 @@ defmodule CodeMySpec.Requirements.Topology do
   @doc """
   Reachability over `edges`, computed once so it can be asked many times.
 
-  `transitive_reduction/1` is `reduce/2` over this. `Edges` asks it once per
-  drain and then per story, which is the point: reachability among component
-  nodes is a fact about the component graph alone, so one computation of it
-  serves every story drawn over it.
+  `transitive_reduction/1` is `reduce/2` over this. `Edges` computes it once
+  over the component side and asks it for every story drawn over it.
   """
   @spec reach([edge()]) :: reach()
   def reach(edges) do
@@ -233,8 +231,7 @@ defmodule CodeMySpec.Requirements.Topology do
   """
   @spec reduce([edge()], reach()) :: [edge()]
   def reduce(edges, %{bit: bit, reach: reach, outgoing: outgoing}) do
-    # Once per source, not once per edge. A source with twenty-four successors
-    # otherwise rebuilt the same union twenty-four times.
+    # Once per source, not once per edge.
     via_successors =
       Map.new(outgoing, fn {a, successors} ->
         {a, Enum.reduce(successors, 0, fn s, acc -> acc ||| Map.get(reach, s, 0) end)}
@@ -322,23 +319,11 @@ defmodule CodeMySpec.Requirements.Topology do
   @spec successors(reach(), node_key()) :: [node_key()]
   def successors(%{outgoing: outgoing}, key), do: Map.get(outgoing, key, [])
 
-  # Reachability as one integer per node, each bit a node.
-  #
-  # The previous implementation ran a fresh DFS per distinct successor, with no
-  # sharing between them, so cost scaled with (distinct successors × edges).
-  # Measured on a 1045-node graph: 26ms when edges landed on 144 distinct
-  # targets, 471ms when they landed on 1035 — the same edge count, eighteen
-  # times the work, purely from how spread out the targets were. Real
-  # requirement graphs are the spread-out kind.
-  #
-  # Bignum `bor` on a 1045-bit integer is one BEAM operation, so a node's whole
-  # reachable set merges in constant-ish time and each edge is visited once.
-  #
-  # Cycles are real here — `finalize_unresolved/1` exists precisely because
-  # nodes fail to resolve a depth — so this condenses strongly-connected
-  # components first. Within an SCC everything reaches everything, and the
-  # condensation is a DAG by construction, which is what makes a single
-  # reverse-topological pass correct.
+  # Reachability as one integer per node, each bit a node: a bignum `bor`
+  # merges a whole reachable set at once, so each edge is visited once.
+  # Cycles occur, so strongly-connected components are condensed first; the
+  # condensation is a DAG, which makes one reverse-topological pass correct.
+  # See knowledge/requirements_graph/checkers, "Edge derivation".
   defp reachability(edges, outgoing) do
     nodes = edges |> Enum.flat_map(&[&1.from, &1.to]) |> Enum.uniq()
     bit = nodes |> Enum.with_index() |> Map.new(fn {n, i} -> {n, 1 <<< i} end)
@@ -520,11 +505,9 @@ defmodule CodeMySpec.Requirements.Topology do
   end
 
   # Cyclic nodes (those that never resolved) get sequential depths in
-  # stable key order, starting at max-known + 1. This stops cycles
-  # from collapsing to the same depth band (and the same y in
-  # GraphProjector), at the cost of one back-edge per cycle — the
-  # unavoidable tradeoff for rendering a cycle in a downward-flowing
-  # layout.
+  # stable key order, starting at max-known + 1, so a cycle does not
+  # collapse onto one row in `GraphProjector`; one back-edge per cycle
+  # is the cost.
   defp finalize_unresolved(depths) do
     max_known =
       depths

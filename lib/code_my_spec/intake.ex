@@ -74,9 +74,8 @@ defmodule CodeMySpec.Intake do
   has claimed with a checkout yet.
 
   What a device's own announce answers so an already-running harness can pick
-  a fresh one up itself — see `CodeMySpecWeb.DeviceController`. Chosen over a
-  push: the harness already polls on a heartbeat, and a device is
-  account-scoped exactly the way this question is.
+  a fresh one up itself — see `CodeMySpecWeb.DeviceController`. The harness
+  already polls on a heartbeat, so no push is needed.
   """
   @spec pending_local_projects(Ecto.UUID.t()) :: [Plan.t()]
   def pending_local_projects(account_id) when is_binary(account_id),
@@ -124,18 +123,10 @@ defmodule CodeMySpec.Intake do
   Asks the model what to do next, off the caller's process.
 
   Returns a `:thinking` plan immediately; the answer arrives as a broadcast. A
-  caller that goes away — a reload, a dropped socket — does not take the call
-  with it, and a caller that comes back reads `:thinking` off the row and waits
-  alongside whoever else is watching.
-
-  The call used to run inside the LiveView's `handle_event`, which made the
-  LiveView the only record of it: reload mid-call and the process died with the
-  request, the answer landed nowhere, and the visitor came back to a page that
-  had forgotten it was waiting.
-
-  Under `CodeMySpec.TaskSupervisor` for the same reason `Workspaces.boot/1` is:
-  the work outlives the request that started it, and a crash in it must not take
-  the requester down.
+  caller that goes away (a reload, a dropped socket) does not take the call with
+  it, and one that comes back reads `:thinking` off the row and waits. Under
+  `CodeMySpec.TaskSupervisor`: the work outlives the request, and a crash in it
+  must not take the requester down.
   """
   @spec shape_async(Plan.t(), module()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def shape_async(%Plan{} = plan, shaper \\ CodeMySpec.Intake.Shaper) do
@@ -148,9 +139,7 @@ defmodule CodeMySpec.Intake do
         {:ok, thinking}
       else
         # Inline in test, where a task in another process cannot see the
-        # sandbox's transaction. Same reasoning as `content_pull_async`.
-        # Returns the *finished* plan, so a test asserts on an outcome rather
-        # than on a race.
+        # sandbox's transaction. Returns the finished plan.
         {:ok, shape(thinking, shaper)}
       end
     end
@@ -161,9 +150,8 @@ defmodule CodeMySpec.Intake do
   @doc """
   Asks the model and records what it said. Runs wherever it is called.
 
-  Public because `Intake.Conversation` owns the task that runs it: the process
-  has to know whether a call is out, and it cannot know that about work it fired
-  and forgot.
+  Public because `Intake.Conversation` owns the task that runs it and must know
+  whether a call is out.
   """
   @spec shape(Plan.t(), module()) :: Plan.t()
   def shape(%Plan{} = plan, shaper \\ CodeMySpec.Intake.Shaper), do: run_shaping(plan, shaper)
@@ -177,9 +165,8 @@ defmodule CodeMySpec.Intake do
   @doc """
   Records that a call died without answering, and tells anyone watching.
 
-  A crashed task leaves the row saying `:thinking`, and the row is what the next
-  page load reads — so without this a crash is indistinguishable from a call
-  still running, forever.
+  A crashed task leaves the row saying `:thinking`; without this a crash is
+  indistinguishable from a call still running.
   """
   @spec mark_shaping_failed(Plan.t() | nil) :: :ok
   def mark_shaping_failed(%Plan{} = plan) do
@@ -198,9 +185,8 @@ defmodule CodeMySpec.Intake do
         broadcast(updated)
 
       _ ->
-        # `:failed`, not `:idle`. The failure has to outlive the task that hit
-        # it, or a reload renders a plan that looks merely unanswered and the
-        # visitor is left with a box and no reason.
+        # `:failed`, not `:idle`: the failure must outlive the task, or a reload
+        # renders a plan that looks merely unanswered.
         {:ok, settled} = Plan.shaping_status_changeset(plan, :failed) |> PlansRepository.update()
         broadcast(settled)
     end
@@ -305,12 +291,9 @@ defmodule CodeMySpec.Intake do
   @doc """
   The tier suggested for this visitor, before they have confirmed one.
 
-  Not a decision — `confirm_tier/2` still requires an explicit choice, and
-  this is only what the form pre-selects. A visitor who said they are not
-  technical could never act on the free, self-hosted option regardless of
-  what it costs, so cloud is what they are shown first; a technical visitor
-  is offered the choice on equal footing, cloud still first because it is
-  what most people actually want.
+  Not a decision — `confirm_tier/2` still requires an explicit choice; this is
+  what the form pre-selects. A non-technical visitor could never act on the
+  self-hosted option, so they are shown cloud.
   """
   @spec suggested_location(Plan.t()) :: Plan.location()
   def suggested_location(%Plan{technical: true}), do: :local
@@ -333,16 +316,12 @@ defmodule CodeMySpec.Intake do
   @doc """
   Whether a visitor has already confirmed the account/project names.
 
-  The same signal `confirmed_names/2` in `transcript/3` uses: `location` is
-  only ever set by `names_changeset` (via `confirm_names/2`), never by the
-  planner's own write, so its presence means a confirmation actually
-  happened rather than the plan merely holding freshly-generated guesses.
+  The same signal `confirmed_names/2` in `transcript/3` uses: `location` is set
+  only by a confirmation (`confirm_names/2` or `confirm_tier/2`), never by the
+  planner's own write, so its presence means the names are no longer guesses.
 
-  Public because the LiveView needs it too — a mount is a fresh process with
-  no memory of what a previous process already assigned, so whether to show
-  the signup card has to be re-derived from the row, not carried in a
-  transient socket assign (990/3425 follow-up: reloading after confirming
-  names was flipping the signup card back to the plan-confirmation card).
+  Public because the LiveView re-derives it from the row on every mount rather
+  than carrying it in a socket assign, which a reload loses.
   """
   @spec names_confirmed?(Plan.t()) :: boolean()
   def names_confirmed?(%Plan{
@@ -355,27 +334,14 @@ defmodule CodeMySpec.Intake do
   @doc """
   Everything said so far, in the order it was said.
 
-  Derived from the plan row rather than accumulated anywhere, which is what
-  makes it survive both a reload and the navigation through the signup gate. A
-  visitor who comes back in the same browser gets their conversation back, and
-  the workspace page can show what was said before it existed — the two pages
-  read one row rather than passing a list between them.
+  Derived from the plan row rather than accumulated anywhere, so it survives a
+  reload and the signup gate, and two pages read one row. The opening question
+  is part of it.
 
-  The opening question is part of it. It was an `<h1>` above a textarea, which
-  is what made the visitor's own description the only thing on screen that was
-  not part of a conversation.
-
-  The shaping half — turns and pending question — comes off `plan` itself
-  rather than from the caller: both are `Plan` schema state
-  (`shaping_turns`, `pending_question`), so deriving them here is what keeps
-  the confirmation turn in its actual chronological place. `turns` and
-  `question` here are only ever the *interview* half, which happens strictly
-  after confirmation and has nowhere else to live (it is a separate `Turn`
-  schema the caller already queried) — passing shaping data through these
-  used to let it land after `confirmed_names/2` regardless of when shaping
-  vs. confirming actually happened, so a visitor who confirmed names before
-  the interview even started read as having answered its first question with
-  their account name (990/3431 follow-up).
+  The shaping half (turns, pending question) comes off `plan` itself, which
+  keeps the name confirmation in its chronological place. `interview_turns` and
+  `interview_question` are only the interview half, which happens strictly
+  after confirmation.
   """
   @spec transcript(Plan.t(), [map()], String.t() | nil) :: [
           %{from: :agent | :visitor, text: String.t()}
@@ -401,13 +367,8 @@ defmodule CodeMySpec.Intake do
     |> planned(plan)
   end
 
-  # `shaped/2` can decide no question is needed at all and land straight on a
-  # generated plan with nothing in `pending_question` to carry a reply — or a
-  # visitor can answer the last question and land there the same way. Either
-  # way `pending_question` is nil by definition once the plan is `:planned`,
-  # so without this the chat goes silent at exactly the moment the agent
-  # answered, and the only sign anything happened is the card on the side
-  # updating on its own.
+  # A planned plan has no pending question, so without this line the chat goes
+  # silent at the moment the agent answered.
   defp planned(transcript, %Plan{status: status}) when status in [:planned, :converted] do
     said(transcript, "Here's what I think you're building — take a look on the right.", :agent)
   end
@@ -427,8 +388,7 @@ defmodule CodeMySpec.Intake do
   end
 
   # An action taken in the panel is a turn in the conversation, not a silent
-  # write (990/3417) — `confirm_names` used to update the row and say nothing,
-  # so the agent's last line kept referring to its own superseded guess.
+  # write.
   defp confirmed_names(transcript, %Plan{account_name: account, project_name: project} = plan) do
     if names_confirmed?(plan) do
       transcript
@@ -471,19 +431,11 @@ defmodule CodeMySpec.Intake do
     end
   end
 
-  # The interview borrows `conversations`' shape before any agent exists to
-  # have it — `find_or_create_session_conversation/3`'s own moduledoc says so.
-  # Copied here rather than left for the agent's own conversation to somehow
-  # discover it later, because the plan and the project's agent conversation
-  # answer different questions forever after this: one is a stranger talking
-  # before anything was built, the other is a record of what got built.
-  # `find_or_create_agent_conversation/3` adopts this same row once a real
-  # agent starts (matched on the `"intake:"` prefix), so the visitor's history
-  # and the agent's own turns end up as one scroll rather than two.
-  #
-  # Deliberately not part of the `with` above, same reasoning as
-  # `record_persona/3` beside it: a visitor who cannot get a project at all
-  # because this write failed is worse than one whose history starts empty.
+  # The interview is copied onto a session conversation keyed `"intake:<id>"`,
+  # which the project's first agent adopts
+  # (`Conversations.find_or_create_agent_conversation/3`), so the visitor's
+  # history and the agent's turns read as one thread. Outside the `with`: a
+  # failed write must not cost the visitor their project.
   defp carry_conversation(%Scope{active_account: %Account{} = account}, project, %Plan{} = plan) do
     session_id = "intake:#{plan.id}"
 
@@ -499,23 +451,10 @@ defmodule CodeMySpec.Intake do
   defp echo_turn(conversation, %{from: :visitor, text: text}),
     do: Conversations.add_message(conversation, :user, text)
 
-  # Who the visitor said they are building for, as a persona on the project.
-  #
-  # Intake asks this already — `who_uses` feeds the plan — but the answer was
-  # only ever prose used to write a summary, and the project was created with no
-  # persona at all. That is a structural hole rather than a missing nicety:
-  # `personas_complete` is a project requirement, and `add_rule` refuses a story
-  # with no persona linked, so the first Three Amigos on a project born here
-  # stops until somebody invents one by hand — at which point the answer the
-  # visitor actually gave has been thrown away.
-  #
-  # `:proto` because that is what it is: an identity and a headline, taken from
-  # one sentence. Researching it is `personas_complete`'s job and happens later
-  # against this record rather than instead of it.
-  #
-  # Deliberately not part of the `with` above. A project with no persona is
-  # worse than one with; a visitor who cannot get a project at all because the
-  # persona write failed is worse than both.
+  # Who the visitor said they are building for (`who_uses`), as a `:proto`
+  # persona: `add_rule` refuses a story with no persona, so a project born here
+  # would otherwise stall at its first Three Amigos. Outside the `with`: a
+  # failed write must not cost the visitor their project.
   defp record_persona(%Scope{} = scope, project, %Plan{who_uses: who})
        when is_binary(who) and who != "" do
     scope = %Scope{scope | active_project: project, active_project_id: project.id}
@@ -543,8 +482,7 @@ defmodule CodeMySpec.Intake do
   defp plan_name(%{name: name}) when is_binary(name) and name != "", do: name
   defp plan_name(_project), do: "this project"
 
-  # Slugs are an identifier, and this one is built from a sentence a stranger
-  # typed. Anything outside the set gets collapsed rather than escaped.
+  # Built from a sentence a stranger typed: anything outside the set collapses.
   defp persona_slug(who) do
     who
     |> String.downcase()

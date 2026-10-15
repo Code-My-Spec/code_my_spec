@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2876Spex do
       end
 
       when_ "a stop is asked for and the machine cannot be reached", context do
-        machine_out_of_reach(context)
+        machine_out_of_reach(context.scope)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)

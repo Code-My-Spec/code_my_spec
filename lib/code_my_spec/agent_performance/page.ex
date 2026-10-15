@@ -473,8 +473,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
   end
 
   # `BlockedTime.project_level/1` reads the main agent's own open questions --
-  # the same listing `StopDecision.wake/2` obeys, rather than a second opinion
-  # over `question_requests`/`permission_requests`.
+  # rather than a second opinion over `question_requests`/`permission_requests`.
   defp project_blocked(scope) do
     scope
     |> MainAgent.list_open_questions()

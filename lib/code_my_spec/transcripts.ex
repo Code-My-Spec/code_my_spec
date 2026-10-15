@@ -111,7 +111,6 @@ defmodule CodeMySpec.Transcripts do
 
   Unlike `extract_edited_files/1` which deduplicates to unique paths, this
   returns every file-modifying operation in order, preserving duplicates.
-  Used by the Replayer to apply operations sequentially.
 
   ## Parameters
 

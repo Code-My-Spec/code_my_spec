@@ -54,6 +54,28 @@ defmodule CodeMySpec.AgentPerformance.StoryFilteredMessagesBeginAtStoryStartTest
     assert Enum.sum(messages["data"]) == 2
   end
 
+  test "the chart includes a newly recorded message in its seven-day window", context do
+    agent = Fixtures.running_agent(context.scope, role: "coding")
+
+    {:ok, conversation} =
+      Conversations.find_or_create_agent_conversation(
+        context.scope.active_account_id,
+        context.scope.active_project_id,
+        agent.id
+      )
+
+    {:ok, _message} =
+      Conversations.add_message(conversation, :operator, "current message", "operator")
+
+    option = Chart.option(context.scope, %{agent_id: agent.id})
+    messages = Enum.find(option["series"], &(&1["name"] == "messages"))
+
+    assert option["bucket_count"] == 168
+    assert length(option["categories"]) == 168
+    assert Chart.detail(context.scope, %{agent_id: agent.id}).messages == 1
+    assert Enum.sum(messages["data"]) == 1
+  end
+
   defp add_message(conversation, text, at) do
     {:ok, message} = Conversations.add_message(conversation, :operator, text, "operator")
     {:ok, _message} = message |> Ecto.Changeset.change(inserted_at: at) |> Repo.update()

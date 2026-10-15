@@ -40,7 +40,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
   schema do
     field :source, :string, required: true, doc: "spex | exunit | credo | compiler"
 
-    field :paths, {:array, :string},
+    field :paths, {:list, :string},
       default: [],
       doc:
         "Scope the run to these paths (e.g. one test file), instead of the full suite. " <>

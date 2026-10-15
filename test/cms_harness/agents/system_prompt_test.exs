@@ -151,6 +151,29 @@ defmodule CmsHarness.Agents.SystemPromptTest do
       refute prompt =~ "running at"
     end
 
+    test "the scratch directory is told to the agent, between the app url and the tool index" do
+      prompt =
+        SystemPrompt.compose(
+          app_url: "https://example.test",
+          scratch_dir: "/var/cms/agent_scratch/abc123",
+          tool_index: "TOOL-SECTION"
+        )
+
+      assert prompt =~ "/var/cms/agent_scratch/abc123"
+
+      assert :binary.match(prompt, "https://example.test") <
+               :binary.match(prompt, "/var/cms/agent_scratch/abc123") and
+               :binary.match(prompt, "/var/cms/agent_scratch/abc123") <
+                 :binary.match(prompt, "TOOL-SECTION"),
+             "the scratch directory belongs with the rest of §2, before the tool index"
+    end
+
+    test "no scratch directory contributes nothing" do
+      prompt = SystemPrompt.compose(universal: "RULES", scratch_dir: nil)
+
+      refute prompt =~ "read back"
+    end
+
     test "nothing to say is nil, not an empty prompt" do
       assert SystemPrompt.compose([]) == nil
       assert SystemPrompt.compose(universal: nil, role_brief: nil) == nil

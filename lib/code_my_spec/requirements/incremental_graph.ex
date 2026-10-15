@@ -7,40 +7,14 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   announces what moved. `GraphWatcher` is the front callers use to start and
   settle it.
 
-  ## No debounce, and that is the point
+  A mark that arrives is drained; there is no timer. Each drain applies the
+  events it has handlers for, and plans the rest before loading anything:
+  `:everything` when a writer could not say what it moved or the projector has
+  not seeded, otherwise one narrow load per named entity (`Preloader.load/1` is
+  never called). A drain that raises leaves its marks queued — they are
+  consumed only after the writes — so the next drain retries them.
 
-  A mark names an entity, `RequirementGraph.compute_entity/4`
-  computes that entity, and the cost is proportional to what actually moved. So
-  there is no timer: a mark that arrives is handled. Marks still arrive in
-  groups when this process is behind or was down, and they are handled one at a
-  time when they do — `Invalidations.pending/1` returning several is a consumer
-  catching up, not a window being drained.
-
-  ## What a drain loads is decided before it loads anything
-
-  `plan/2` reads the marks and picks one of two shapes, because what they claim
-  decides what has to be read:
-
-    * `:everything` — a writer could not say what it moved, or this projector
-      has not seeded. Whole context, every entity. This is what an un-narrowed
-      writer costs.
-    * `{:narrow, entities}` — every mark named something. One narrow load per
-      entity — `load_story/3`, `load_component_family/3` or `load_project/2` —
-      and `Preloader.load/1` is never called.
-
-  That last shape is the point of the whole exercise, and it inverts the
-  premise `load/1` was built on. The story delegates take a scope and a story
-  and query per story — "304 queries inside one graph computation" on a project
-  with 76 ready stories — so batching them into `@delegated_tables` is what made
-  a whole-project pass affordable. For one story the N+1 *is* the narrow load:
-  four per-story queries against fifteen project-wide ones to avoid them.
-
-  ## Failure is loud and nothing is dropped
-
-  A drain that raises leaves its marks in place — `consume/1` runs only after
-  the writes — so the next event retries them. A projector that cannot keep up
-  or keeps failing shows as a growing `pending` count, which is the honest
-  signal and the one an in-memory dirty set could never give.
+  See knowledge/requirements_graph, "Marks and drains" and "Seeding".
   """
 
   use GenServer, restart: :transient
@@ -69,10 +43,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   def start_link({project_id, scope}), do: start_link({project_id, scope, nil})
 
   # `owners` are the processes whose sandbox connection this one uses under
-  # test (`SandboxAllowance.owners/0`).
-  # The allowance is taken in `init/1`, before the first compute this process
-  # sends itself; granted by the caller after `start_child` returned, it raced
-  # that compute and an async test's watcher stopped on its first query.
+  # test (`SandboxAllowance.owners/0`). Taken in `init/1`, before the first
+  # drain this process sends itself; granted afterwards, it raced that drain.
   def start_link({project_id, scope, owners}) do
     GenServer.start_link(__MODULE__, {project_id, scope, owners}, name: via(project_id))
   end
@@ -120,8 +92,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   def settle(project_id, requested) when is_binary(project_id) do
     case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
-      # Re-granted from each reader, as `GraphWatcher.settle/2` does: the
-      # projector outlives whoever started it.
+      # Re-granted from each reader: the projector outlives whoever started it.
       [{pid, _}] ->
         SandboxAllowance.grant(pid)
         GenServer.call(pid, {:drain, requested}, 30_000)
@@ -154,16 +125,12 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     :exit, reason -> unsettled(project_id, :reproject, reason)
   end
 
-  # The projector was there and the call did not come back. Answering `:ok`
-  # served whatever the rows said as the settled graph, so a projector killed
-  # mid-test read as an empty graph — which is how one test stopping every
-  # project's projector hid behind "the graph is flaky" (2026-10-14).
-  #
-  # Under the sandbox a kill, crash or timeout raises with the cause. A normal
-  # stop or a projector already gone does not: that is a projector whose test
-  # ended, read by a task the test left running, and raising there logs a crash
-  # that fails whichever spex is running when it lands. Outside the sandbox a
-  # reader must not fail for wanting to be current: logged, rows served as is.
+  # The projector was there and the call did not come back. Not `:ok`: that
+  # served the rows as a settled graph, so a killed projector read as an empty
+  # one. Under the sandbox a kill, crash or timeout raises; a normal stop or a
+  # projector already gone is a test that ended, read by a task it left behind,
+  # and is only logged. Outside the sandbox: logged, rows served as they are.
+  # See knowledge/requirements_graph, "Tests and the sandbox".
   defp unsettled(project_id, call, reason) do
     message =
       "[IncrementalGraph] #{call} for #{project_id} did not complete: the projector " <>
@@ -198,32 +165,16 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   @impl true
   def init({project_id, scope, owners}) do
     SandboxAllowance.take(owners)
-    # So a supervisor's `:shutdown` waits for the drain in flight, as
-    # `GraphWatcher` does. This process drains the moment a mark lands, off a
-    # PubSub message, so it is the writer most often mid-transaction when a
-    # spex scenario's teardown stops the supervisor's children — and a
-    # GenServer that does not trap exits dies on the spot, taking the shared
-    # sandbox connection down with it: `Postgrex.Protocol … client exited`,
-    # then `cannot find ownership process` in whichever scenario runs next.
-    # Reproduced in the whole-suite run and never alone.
+    # So a supervisor's `:shutdown` waits for the drain in flight: dying
+    # mid-transaction takes a shared sandbox connection down with it.
     Process.flag(:trap_exit, true)
 
     GraphInputs.subscribe(project_id)
 
-    # Establish every vantage on arrival, then maintain from events.
-    #
-    # A vantage with rows is trusted as it stands: the rows are durable, the
-    # mark queue is durable, so everything that happened while this process
-    # was down is still queued and applied by the first drain — and the files,
-    # the one input with no row of its own, are rescanned by the harness when
-    # it reconnects and arrive as `files_synced`. A vantage with no rows is
-    # seeded whole, which is the one case a delta has nothing to be relative
-    # to. This used to reseed every vantage on every start: 10.3s on the big
-    # project at every promote, recomputing rows the diff had just agreed with.
-    # John, 2026-09-21: "we can trust our domain".
-    #
-    # Sent rather than done in `init/1`, because this blocks the supervisor and
-    # a vantage with no rows is a whole graph.
+    # Establish every vantage on arrival: a vantage with rows is trusted (rows
+    # and marks are durable), one without is seeded whole. Sent rather than done
+    # here because a seed can be a whole graph and `init/1` blocks the
+    # supervisor. See knowledge/requirements_graph, "Seeding".
     send(self(), :seed)
 
     {:ok,
@@ -231,19 +182,13 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
        project_id: project_id,
        scope: scope,
        seeded: false,
-       # The vantage this projector was started for is asked about from the
-       # first drain, as `GraphWatcher` does: a checkout whose reader started
-       # the writers is established in the same drain as `nil`, not one drain
-       # later when something reads it.
+       # The starter's vantage is established in the first drain, not when
+       # something first reads it.
        requested_vantages: MapSet.new([scope.active_working_copy_id]),
-       # The vantages this process has seen rows for — its own writes, or rows
-       # found already there. `settle_vantage/6` asks the table once per vantage
-       # and remembers the answer here.
+       # Vantages this process has seen rows for (its own writes or rows found).
        established_vantages: MapSet.new(),
-       # The topology this projector last wrote edges for. Edges are a global
-       # computation, so the cheap question is whether they can have moved at
-       # all — `Freshness.topology/2` is the same hash the pass records, over
-       # component ids, types, parents, dependencies and the story population.
+       # Per vantage: the `Freshness.topology/2` hash the edges were last drawn
+       # for, so a drain can ask whether edges can have moved at all.
        last_topology: %{},
        # Generated edges keyed by shape and discovered-file membership.
        # See `edge_plan/3`.
@@ -273,8 +218,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   def handle_call(:status, _from, state) do
     {:reply,
      %{
-       # No debounce and no timer: a mark is handled when it arrives, so
-       # nothing is pending between drains.
+       # A mark is drained when it arrives, so nothing waits between drains.
        pending: false,
        last_recompute: state.last_drain,
        last_error: state.last_error,
@@ -292,27 +236,17 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   def handle_info(_other, state), do: {:noreply, state}
 
-  # Nothing pending and already seeded is the common case and costs one query.
-  #
-  # Nothing pending and *not* seeded still computes: the marks say what has
-  # moved since this process started, and on the first pass that is the wrong
-  # question. It has to establish what is true before deltas mean anything.
-  #
-  # Nothing pending and a checkout a reader asked about that this process has
-  # never seen still computes: `requested_vantages` is the reader's half, and a
-  # checkout no mark names is otherwise never written — the read that asked is
-  # served nothing, forever.
+  # Nothing pending, seeded, and every requested vantage established is the
+  # common case and costs one query. Otherwise it computes: an unseeded
+  # projector must establish what is true before deltas mean anything, and a
+  # vantage a reader asked about that no mark names would never be written.
   defp drain(state) do
-    # The same dev fault the pass honours (`POST /dev/faults`,
-    # `graph_recompute_fails`), so "the graph says so when its last recompute
-    # failed" is a statement about whichever writer serves the reader.
+    # The dev fault `graph_recompute_fails` (`POST /dev/faults`).
     refuse_if_faulted(state.project_id)
 
     case {state.seeded, Invalidations.pending(state.project_id), unestablished(state)} do
-      # Nothing pending and every checkout asked about already has rows: the
-      # requests are served as they stand, so they are forgotten here as they
-      # are after a drain — or the next drain about some other checkout's
-      # files settles them too (criterion 3518).
+      # Requests already served are forgotten, or every later drain settles
+      # them again.
       {true, [], []} -> %{state | requested_vantages: MapSet.new()}
       {_seeded, marks, _asked} -> apply_marks(state, marks)
     end
@@ -321,9 +255,17 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       owner_gone(state, Exception.message(error))
 
     error ->
+      # 09fd73a4: this swallows any recompute failure other than a sandbox
+      # owner going away, leaving the cached graph exactly as stale as before
+      # the attempt -- a satisfied requirement (ready_for_qa, qa_complete)
+      # can then be re-offered forever if the recompute that would clear it
+      # keeps hitting the same bug. Logging the stacktrace alongside the
+      # message (nothing else changes) is what finds that bug's call site;
+      # without it, only the exception's name and message survive.
       Logger.warning(
         "[IncrementalGraph] #{state.project_id} left #{inspect(error.__struct__)} pending: " <>
-          Exception.message(error)
+          Exception.message(error) <>
+          "\n" <> Exception.format(:error, error, __STACKTRACE__)
       )
 
       %{state | last_error: %{at: DateTime.utc_now(), message: Exception.message(error)}}
@@ -334,10 +276,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
         else: exit(reason)
   end
 
-  # Only under the sandbox: the process that owned this projector's connection
-  # is gone, so a scenario ended and this projector outlived it. Stopped as
-  # `GraphWatcher` stops, normally: crashing had its supervisor restart it into
-  # the same dead sandbox, and enough of those took the application down.
+  # Only under the sandbox: the test that owned this projector's connection has
+  # ended. Stopped normally: a crash is restarted into the same dead sandbox,
+  # and enough of those trip the supervisor's restart intensity.
   defp owner_gone(state, why) do
     Logger.warning(
       "[IncrementalGraph] stopping: the sandbox owner for #{state.project_id} is gone (#{why})"
@@ -346,13 +287,11 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     exit(:normal)
   end
 
-  # Every shape a checkout exits with once the test that owned the connection
-  # has finished: the owner exited (as a string or a ConnectionError), the
-  # holder is already gone, or another client of the same connection exited
-  # mid-query. Matching only the first left the rest as crashes, and enough
-  # crashes across concurrent tests tripped `WatcherSupervisor`'s restart
-  # intensity, taking every project's projector with it (2026-10-14). Only ever
-  # asked under the sandbox; outside it a checkout that exits is a real fault.
+  # Every shape a checkout exits with once the owning test has finished: the
+  # owner exited (string or ConnectionError), the holder is gone, or another
+  # client of the connection exited mid-query. Each unmatched shape is a crash
+  # toward `WatcherSupervisor`'s restart intensity. Asked only under the
+  # sandbox; outside it a checkout that exits is a real fault.
   defp sandbox_gone?({reason, {DBConnection.Holder, :checkout, _}}), do: sandbox_gone?(reason)
   defp sandbox_gone?({:shutdown, "owner " <> _}), do: true
   defp sandbox_gone?({:shutdown, %DBConnection.ConnectionError{message: "owner " <> _}}), do: true
@@ -363,39 +302,16 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   defp sandbox_gone?(:noproc), do: true
   defp sandbox_gone?(_reason), do: false
 
-  # The vantages these marks are about — asked of the marks, not enumerated.
-  #
-  # A verdict is a statement about a checkout, so the graph is projected per
-  # vantage and this process was settling whichever scope happened to start it,
-  # leaving the rest to whatever wrote them last. Found by `graph_store_test`'s
-  # accepted-issue case, which settles one vantage and asserts on another.
-  #
-  # The fix is not to loop every vantage on every drain. A file sync happens in
-  # one worktree and moves one checkout's answers; dragging the other eight
-  # through a settle for it is the whole-project recompute this path exists to
-  # avoid, wearing a different hat. So a mark records the copy it was written
-  # from and this reads it back — `nil` means the writer's change is not about a
-  # checkout (a story renamed, an issue accepted), which every vantage reads and
-  # which is the only case that fans out.
-  #
-  # The topology cache goes with it. `last_topology` is computed from what that
-  # checkout can see, so it is a per-vantage fact and a single slot silently
-  # answered one vantage's question with another's.
+  # Settles each vantage the marks name — a mark records the checkout it was
+  # written from; `nil` (not about a checkout) fans out to every vantage.
+  # See knowledge/requirements_graph, "Vantages".
   defp apply_marks(state, marks) do
     config = Configurations.get_or_create(state.scope)
     base_scope = state.scope
 
-    # Events first, and only what is left over goes to a plan.
-    #
-    # A handled event writes the verdict it already knew — one row, no
-    # recompute. A mark with no handler still names entities, so it falls
-    # through to `plan/2` exactly as before. That is what lets handlers arrive
-    # one requirement at a time instead of all at once: the projection is never
-    # wrong in the meantime, only slower where a handler is missing.
-    # `handled` and `recomputed` are the applied-versus-re-derived split, which
-    # is what a cost reading has to say for either number to mean anything: a
-    # drain that fell back is a pass wearing this label, and comparing it
-    # against one that applied its events would be comparing two systems.
+    # Events first; what has no handler falls through to `plan/2`. The cost
+    # line reports `handled` against `recomputed`, since a drain that fell back
+    # costs a recompute. See knowledge/requirements_graph, "Verdicts and handlers".
     state =
       DrainCost.measure(
         %{
@@ -406,10 +322,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
         fn ->
           vantages = vantages(state, marks)
 
-          # Counted per vantage rather than accumulated, and `log_handled/2` is
-          # asked per vantage too. "This handler change matched no row" is a
-          # statement about one checkout, so summing the lists first lets a hit
-          # in one worktree cover a miss in another.
+          # Counted per vantage: a hit at one checkout must not cover a miss at
+          # another in `log_handled/2`.
           {state, handled, recomputed, kinds} =
             Enum.reduce(
               vantages,
@@ -427,17 +341,13 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
         end
       )
 
-    # Only once the writes are done. A mark consumed before the work it asks
-    # for is a mark that a crash turns into a permanently stale entity, which
-    # is the failure the durable set exists to rule out.
+    # Only once the writes are done: a mark consumed first is one a crash turns
+    # into a permanently stale entity.
     Invalidations.consume(marks)
     account_for(marks, state.project_id)
     announce(state, marks)
 
-    # Served, so forgotten — what `GraphWatcher` does after a pass. A checkout
-    # a reader asked about has rows now, and the marks that name it or the
-    # project keep it current from here; remembering it would settle it on
-    # every drain about some other checkout's files (criterion 3518).
+    # Served, so forgotten; marks keep those vantages current from here.
     %{
       state
       | seeded: true,
@@ -458,12 +368,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     )
   end
 
-  # What the pass does after it writes, done here when this is the writer that
-  # counts. `GraphWatcher` broadcasts `{:graph_updated, project_id}` and asks
-  # `Work.consider_project/2` whether anyone should be woken, both gated on
-  # having consumed something — a pass that ran for nothing announces nothing.
-  # The projector did neither, so a flip of `graph_event_is_source` would have
-  # left every reader current and every agent asleep.
+  # Readers refresh on `{:graph_updated, project_id}`; agents are woken off the
+  # `graph_changed` telemetry. Only when something was consumed.
   defp announce(_state, []), do: :ok
 
   defp announce(state, _marks) do
@@ -483,31 +389,12 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     :ok
   end
 
-  # What the marks say, widened to everything only when one of them cannot say.
-  #
-  # `nil` on a mark is a writer whose change is not about a checkout — a story
-  # renamed, an issue accepted — which every checkout reads, so it is the one
-  # case that fans out. That is the conservative reading rather than a gap, the
-  # same meaning `entity_scope` gives an un-narrowed writer.
-  #
-  # The `nil` *vantage* is not the same thing and does not follow from the same
-  # rule. It is the row-space a reader with no checkout is answered from, and
-  # `Preloader.files_vantage/1` computes it from the project's default checkout
-  # — so a file sync in that checkout moves it, and a sync in any other
-  # worktree does not. `live_vantages/2` prepends `nil` unconditionally, which
-  # is right for a reader asking what to compute and wrong here: it would drag
-  # the browser's view through a settle for every worktree on the project.
-  # The seed asks a different question, and it is the question `init/1` says it
-  # asks: not "which checkouts did these marks move" but "what is true". With no
-  # marks there is nothing to read a checkout off, so this answered the empty
-  # list and the whole-project computation ran against no vantage at all.
-  #
-  # The cost of that is exactly what `init/1` warns about: a projector that only
-  # ever applies deltas is permanently missing every entity nothing has touched
-  # since it started, and reports the gap as a coverage failure it cannot fix.
-  # Measured on dev, 2026-09-17 — nine verdicts wrong at three vantages, last
-  # settled before two fixes that would have corrected them, surviving four
-  # restarts of the process whose arrival was supposed to correct them.
+  # The vantages to settle. Unseeded: every stored and requested vantage,
+  # since the seed asks "what is true", not "what did these marks move".
+  # Seeded: the checkouts the marks name plus requested ones; a `nil` mark fans
+  # out to all. The `nil` *vantage* (no-checkout readers) reads the default
+  # checkout's files, so it is kept only when that checkout's marks moved it.
+  # See knowledge/requirements_graph, "Vantages".
   defp vantages(%{seeded: false} = state, _marks) do
     stored = Projection.vantages(state.scope)
     Projection.live_vantages(state.scope, stored ++ MapSet.to_list(state.requested_vantages))
@@ -521,8 +408,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       Projection.live_vantages(state.scope, Projection.vantages(state.scope))
     else
       # `nil` reads the default checkout's files, or every checkout's when the
-      # project has none — so a checkout's own sync moves it in the second case
-      # whichever checkout it was. The pass reads `nil` the same way.
+      # project has none.
       keep_nil? =
         case Preloader.files_vantage(state.scope) do
           nil -> true
@@ -535,38 +421,21 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     end
   end
 
-  # The vantages a reader has asked about, which is the half the pass had and
-  # this did not.
-  #
-  # `GraphWatcher` folds `requested_vantages` into every pass, so a checkout
-  # somebody read is considered even when no mark names it. Nothing told the
-  # projector, so it settled only what marks named — and the two drifted for as
-  # long as reads and writes pointed at different checkouts. Measured on dev
-  # 2026-09-21: the `Harness` vantage was current on the pass side at 11:19:47
-  # and 6h36m behind on this one, because a reader had asked the pass for it and
-  # nothing had asked here.
-  #
-  # Not a recompute-on-read, which is what criterion 3423 forbids and what the
-  # 348-computes/2.6s measurement was. The vantage is *considered*; a pass over
-  # it recomputes only entities whose own inputs moved, which is nothing at all
-  # when nothing moved.
+  # The vantages readers asked about, considered in the next drain even when no
+  # mark names them. Not a recompute-on-read: an established vantage with
+  # nothing pending costs nothing.
   defp remember(state, requested) do
     %{state | requested_vantages: Enum.into(requested, state.requested_vantages)}
   end
 
   # Each event offered to its handler; anything without one handed back.
-  #
-  # `{:ok, changes}` with an empty list is a real answer — the event moved
-  # nothing the graph reads — and is *not* the same as `:no_handler`, which says
-  # we do not know and must re-derive. Collapsing the two would make an
-  # uninteresting event silently skip work it owed.
+  # `{:ok, []}` (moved nothing the graph reads) is not `:no_handler` (unknown,
+  # must re-derive).
   defp apply_handlers(state, marks) do
     {handled, rest} = split_handled(state, marks)
 
-    # An invalidation beside an event this drain handled is that event's
-    # fallback, and it has been superseded. Dropping it by observation id is
-    # what stops a handled event *also* recomputing the entities it named —
-    # which would have made the handler pure overhead rather than a saving.
+    # An invalidation beside a handled event is that event's fallback: dropped by
+    # observation id, or the handled event would recompute its entities too.
     answered =
       handled
       |> Enum.reject(fn {mark, _c, _w} -> Handlers.partial_event?(mark) end)
@@ -578,38 +447,11 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
      end)}
   end
 
-  # One transaction for every sweep this event settles, rather than one each.
-  #
-  # Correctness first: an event moves a *set* of requirements, and a reader
-  # landing between two of its sweeps sees `spec_file` settled against
-  # `spec_valid`'s previous answer — a projection that is internally
-  # inconsistent in a way neither sweep is. `GraphStore.sweep/2` keeps its own
-  # transaction for its two halves; Ecto joins a nested one to the outer, so
-  # this replaces twenty `BEGIN`/`COMMIT` pairs with one and changes nothing
-  # else.
-  #
-  # The lock hold that would normally argue against this is not there: sweeps
-  # skip rows whose answer did not move, so the steady state locks nothing and
-  # a real change locks only what it changed.
-  # One settle per distinct kind, not one per mark.
-  #
-  # A handler is a function of current state: `Handlers.apply_event/3` takes the
-  # kind and ignores the payload, reloads the profiles that kind dirties, and
-  # settles every requirement they move across the whole population. Running it
-  # twice in one drain reaches the same answer and pays for it twice.
-  #
-  # Marks arrive in bulk more often than the design assumed.
-  # `Stories.mark_ready_stories_promoted/2` (gone since e1174640) broadcast per story, so one
-  # promotion stamping 130 stories emitted 130 `story_changed` marks — and this
-  # settled each of them: four profile loads and eleven sweeps apiece, with
-  # `ArchitectureChecker.orphans/1` preloading every component's stories on
-  # every pass through. That is the whole-project recompute the event path
-  # exists to avoid, 130 times over, for one act.
-  #
-  # Every mark of a handled kind is still returned, because `apply_handlers/2`
-  # drops fallback marks by observation id and needs all of them. Only the first
-  # carries the changes, so `log_handled/2` counts the work once rather than
-  # once per mark.
+  # One settle per distinct kind, not per mark: a handler is a function of
+  # current state (it ignores the payload), so running it twice in a drain pays
+  # twice for the same answer, and marks arrive in bulk. Every mark of a handled
+  # kind is still returned — `apply_handlers/2` drops fallbacks by observation
+  # id — but only the first carries the changes, so work is counted once.
   defp split_handled(state, marks) do
     marks
     |> Enum.group_by(& &1.kind)
@@ -629,6 +471,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   defp attribute([first | rest], changes, written),
     do: [{first, changes, written} | Enum.map(rest, &{&1, [], []})]
 
+  # One transaction for the event's verdicts and sweeps, so a reader never sees
+  # one requirement settled against another's previous answer. Sweeps skip
+  # unchanged rows, so the steady state locks nothing.
   defp settle(scope, changes, sweeps) do
     {:ok, written} =
       Repo.transaction(fn ->
@@ -651,15 +496,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     count
   end
 
-  # A handler that wrote nothing matched no row, which means the event named an
-  # entity this vantage has never projected. Worth a line, because a handler
-  # silently writing nothing is precisely the failure that looks like success.
-  # `unhandled == []` is "nothing left to re-derive", which is true of a drain
-  # whose handlers covered everything — and of the seed, which has no marks at
-  # all. Those are not the same, and collapsing them is what stopped the seed
-  # seeding: `plan/2` still answers `:everything` for an unseeded projector, and
-  # nothing ever asked it. So the guard is "no work to do", and a projector that
-  # has not established what is true has work to do whatever its marks say.
+  # Applies the handled events at this vantage, then whatever is left: a seed
+  # for an unestablished vantage (whatever the marks say — the seed has none),
+  # a baseline or edge redraw when handlers covered everything, else a plan.
   defp settle_vantage(vantage, {state, handled, recomputed, kinds}, marks, base_scope, config) do
     state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
     {applied, unhandled} = apply_handlers(state, marks)
@@ -668,13 +507,11 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)
 
     # Rows are trusted; edges are redrawn once per vantage per process, by
-    # `baseline/2` when every mark was a verdict and by `reproject_topology/3`
-    # when one could have moved the shape. A mark still pending when this
-    # process meets a vantage is one the previous process never finished with.
+    # `baseline/2` for verdict-only drains and `reproject_topology/3` when the
+    # shape could have moved.
     state =
       cond do
-        # A vantage with no rows has nothing to be partial against, whatever
-        # the marks say — the pass's `no_stored_rows`, asked per checkout.
+        # A vantage with no rows has nothing to be partial against.
         not established?(state, vantage, config) -> run(:everything, state, config)
         unhandled == [] and not shape_moved? -> baseline(state, config)
         unhandled == [] -> reproject_topology(state, config, false)
@@ -695,13 +532,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   end
 
   # Whether this vantage has rows to be partial against: seen by this process,
-  # or found in the table. One query per vantage per process — a vantage that
-  # has rows was projected by this process or the one before it, and every
-  # mark that arrived in between is still in the queue.
-  #
-  # Rows that predate a definition are not rows to be partial against either.
-  # A release that adds or removes a requirement changes what every entity
-  # should have, and no observation says so — see `GraphStore.definitions_covered?/2`.
+  # or found in the table and covering every current definition (a release that
+  # adds a requirement moves no observation — `GraphStore.definitions_covered?/2`).
   defp established?(state, vantage, config) do
     MapSet.member?(state.established_vantages, vantage) or
       (GraphStore.projected?(state.scope) and
@@ -719,9 +551,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       |> MapSet.to_list()
 
   # Which kinds this drain handled and which it fell back on, by mark count,
-  # for the cost line. Queries are attributable to a kind only if the line
-  # names the kinds; without this every 37-query drain read alike, and the
-  # question "which event costs three profile loads" had no answer in the log.
+  # so the cost line attributes queries to kinds.
   defp tally(kinds, applied, unhandled) do
     applied
     |> Enum.frequencies_by(fn {mark, _changes, _written} -> {:handled, kind_of(mark)} end)
@@ -755,40 +585,19 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   defp run_plan(state, unhandled, config), do: run(plan(state, unhandled), state, config)
 
-  # A vantage this process meets with rows already there and only verdicts
-  # pending is redrawn once, then left alone.
-  #
-  # Its rows are trusted — `established?/3` — but its edges were drawn by
-  # whichever process wrote them last, under whatever templates that process
-  # had loaded, and a release that moves a prerequisite moves the edges and not
-  # one row. This used to take the shape's hash as the baseline instead of
-  # redrawing: the hash taken after a restart already carries the new
-  # templates, so the old edges read as current at every vantage — 17 of 20
-  # on dev after `story_issues_resolved` moved ahead of `qa_complete`
-  # (v2.0.152). A redraw is a plan and a diffed write now, ~50ms per vantage
-  # and 0 rows written when nothing moved, where the baseline was four
-  # queries; `reproject_topology/3` redraws when it has no baseline and
-  # remembers one. Nothing to do once this process has been here.
+  # A vantage met with rows already there is redrawn once per process, then
+  # left alone: its rows are trusted, but its edges were drawn under whatever
+  # templates the previous process had, and a release that moves a
+  # prerequisite moves edges and no row. See knowledge/requirements_graph, "Edges".
   defp baseline(state, config) do
     if Map.has_key?(state.last_topology, vantage(state)),
       do: state,
       else: reproject_topology(state, config, false)
   end
 
-  # What this drain has to load, which is decided before anything is loaded.
-  # Three claims, three costs.
-  #
-  # `unknown?` — some writer could not say what it moved, so the entity set is
-  # not a complete account and the only safe reading is everything. That is the
-  # whole-project pass this exists to replace, and it is what an un-narrowed
-  # writer costs.
-  #
-  # `project?` — a writer said the project requirements moved. That adds one
-  # entity to the set; it does not change the shape of the plan, because
-  # `Preloader.load_project/2` is a narrow load like the other two.
-  #
-  # Anything else narrow. `Preloader.load/1` is reached only when a writer
-  # could not say what it moved.
+  # What this drain has to load, decided before anything is loaded:
+  # everything when a writer could not say what it moved (`unknown?`), else the
+  # named entities, plus the project when a writer said the project moved.
   defp plan(_state, marks) do
     {named, flags} = Invalidations.entities(marks)
 
@@ -802,16 +611,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   defp run(:everything, state, config) do
     {:ok, ctx} = Preloader.load(state.scope)
 
-    # Computed once and written once. This used to compute every entity on its
-    # own — `write_each/4`, one `compute_entity/4` and one `GraphStore.write/3`
-    # transaction per entity — and then call `reproject_topology/3`, which
-    # computed every node a second time to get the edges. Measured on dev: the
-    # seed after every restart was **17.9-19.9s, 26,395 queries, 14,945 rows**
-    # across nine vantages, with `observations: 0`. Nothing had happened; the
-    # process had merely started.
-    #
-    # `compute_topology/3` is one `compute_all_from_ctx/3` and one
-    # `compute_edges/3`, which is exactly what the pass does on a cold vantage.
+    # Every node computed once and written in one write; computing entity by
+    # entity cost a seed tens of seconds. See knowledge/requirements_graph, "Seeding".
     {nodes_us, {nodes, enriched}} =
       :timer.tc(fn -> RequirementGraph.compute_nodes(state.scope, ctx, config) end)
 
@@ -820,12 +621,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
     {write_us, {:ok, _moved}} = :timer.tc(fn -> GraphStore.write(state.scope, covered, nodes) end)
 
-    # Drawn over the rows just written, the way every later drain draws them.
-    # Per vantage, and it has to be: every checkout sees its own stories, so
-    # no two vantages of the big project share a node set (2,109 nodes at
-    # `nil`, 1,535–1,815 at the checkouts, measured 2026-09-21). What this log
-    # line is for: nodes, edges and writes, per vantage, so the seed's cost
-    # has a shape.
+    # Edges drawn over the rows just written, per vantage: every checkout sees
+    # its own stories, so no two vantages share a node set.
     {state, drawn} = redraw(state, enriched, config)
 
     Logger.info(
@@ -838,15 +635,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   end
 
   # The narrow path: one entity at a time, each loading only what it needs, and
-  # no project-wide read at all.
-  #
-  # Nothing project-wide is read here: `bdd_specs_passing` asks the run ledger
-  # for the one story it computes, so a drain that touches no story pays
-  # nothing for it.
-  #
-  # Deduped by what each computation covered, for the reason `write_each/4`
-  # gives: a component's unit is its family, so two marks naming siblings are
-  # one piece of work.
+  # no project-wide read. Deduped by what each computation covered: a
+  # component's unit is its family, so two marks naming siblings are one.
   defp run({:narrow, entities}, state, config) do
     {_done, node_set_moved?} = narrow_each(entities, state.scope, config)
     reproject_topology(state, config, node_set_moved?)
@@ -868,30 +658,10 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     end)
   end
 
-  # Whether the edges have to be redrawn, asked of the shape and of the node
-  # set — and if so, redrawn over the rows already written rather than by
-  # recomputing every node.
-  #
-  # Two questions, because they move at different times. The shape —
-  # `Freshness.topology/2` over component ids, types, parents, dependencies and
-  # the story population — moves the moment a story or component row does. Its
-  # nodes arrive when the drain carrying that entity's mark computes them, and
-  # that can be a later drain. Measured on criterion 3428: a story showed in
-  # the shape one drain before its rows existed, the rebuild drew over a node
-  # set without it and remembered the shape, and when its seven rows landed
-  # the shape had not moved since — eleven edges never written, and the
-  # story's `bdd_specs_passing` offered with nothing gating it. So a write that
-  # inserted or reaped a row redraws whatever the shape says.
-  #
-  # This called `Preloader.load/2` — the whole project — on every narrow drain
-  # to compare one fingerprint, and on a move called `compute_topology/3`,
-  # which computes every node to get the edges. `topology_context/1` is four
-  # queries and holds exactly what `Freshness.topology/2` and `Edges.over/4`
-  # read.
-  #
-  # No baseline is a reason to redraw, not to trust: `last` is `nil` when this
-  # process has never settled the vantage, and it is here rather than in
-  # `trust/2` because a mark was pending — see `settle_vantage/6`.
+  # Redraws edges over the stored rows when the shape (`Freshness.topology/2`)
+  # moved or a write inserted or reaped a row — the two move in different
+  # drains, so both are asked. No baseline (`last` is nil) means redraw.
+  # See knowledge/requirements_graph, "Edges".
   defp reproject_topology(state, config, node_set_moved?) do
     shape = Preloader.topology_context(state.scope)
     last = Map.get(state.last_topology, vantage(state))
@@ -917,17 +687,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     end
   end
 
-  # The edge set at this vantage, drawn over the rows it holds and written as
-  # a difference.
-  #
-  # `Edges.over/3` derives it one entity at a time against the component side,
-  # so a component appearing costs its own edges and the stories drawn through
-  # it — not a reduction of every edge in the project at every vantage, which
-  # is what `edges_over/4` cost: 355ms of a 430ms edge phase per vantage, ten
-  # vantages, for one event (2026-09-21).
-  #
-  # Announced as an edge rebuild for `last_drain`, so criterion 3618 can go on
-  # saying that a drain of verdicts drew nothing.
+  # The edge set at this vantage, drawn over the rows it holds (one entity at a
+  # time against the component side) and written as a difference. Announced as
+  # an edge rebuild, so a drain of verdicts can be shown to have drawn nothing.
   defp redraw(state, shape, config) do
     {state, plan} = edge_plan(state, shape, config)
     ids = GraphStore.node_ids(state.scope)
@@ -1011,9 +773,6 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     )
   end
 
-  # Each entity in turn, skipping what an earlier one in this drain already
-  # answered for.
-  #
   @doc false
   def entity_of(%Invalidation{} = mark), do: Invalidation.entity(mark)
 end

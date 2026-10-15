@@ -2,28 +2,14 @@ defmodule CodeMySpecWeb.ChatComponents do
   @moduledoc """
   One set of message components for every conversation surface.
 
-  Three views render conversations — the support inbox, the story interview,
-  and the record of what an agent did — and each grew its own `turn/1`,
-  `chat_side/1` and `chat_bubble/1`. They drifted, as copies do: tool calls
-  render slightly differently in two of them, and a tool result is labelled
-  `tool-result` in one and `tool-call` in another.
+  Used by the support inbox, the story interview and the agent conversation.
 
-  ## Two things a surface has to say
+  **Which side is "mine"** is an argument (`own_role`): the operator sits right
+  in the support inbox, the assistant in an agent conversation.
 
-  **Which side is "mine".** In the support inbox the operator is the reader, so
-  the operator's messages sit right. In an agent conversation the reader is
-  watching, and the assistant sits right. Same markup, different answer, so it
-  is an argument (`own_role`) rather than a hardcoded clause.
-
-  **What `role: :tool` means.** This is not cosmetic. Two writers use that role
-  for opposite things: `ConversationRecorder.write_tool_calls/3` writes a tool
-  *call* with it, and `Conversations.add_tool_result/4` writes a tool *result*
-  with it. A component cannot tell them apart from the message, because the
-  difference is not in the message — so the surface says which it is
-  (`tool_role`), and the naming stays honest on both.
-
-  That ambiguity is worth fixing in the data rather than carrying here forever.
-  Naming it in the API is how it stops being invisible.
+  **Calls and results.** A tool call is an assistant turn carrying a
+  `tool_calls` array; a `role: :tool` message is a result
+  (`Conversations.add_tool_result/5`), rendered inside the call it answers.
   """
   use Phoenix.Component
 
@@ -70,10 +56,8 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
-  # A result whose call is not on this page — the transcript is paginated, so a
-  # call can be above the window while its answer is inside it. Rendered on its
-  # own rather than dropped, because a result with nowhere to nest is still
-  # something that happened.
+  # A result whose call is not on this page (paginated transcript). Rendered on
+  # its own rather than dropped.
   def turn(%{message: %{role: :tool}} = assigns) do
     ~H"""
     <.tool_call
@@ -132,13 +116,9 @@ defmodule CodeMySpecWeb.ChatComponents do
   @doc """
   When a turn landed, in the reader's own clock rather than the server's.
 
-  Rendered server-side in UTC — the one zone every request agrees on — and
-  then corrected in the browser by the `LocalTime` hook, which is the only
-  place that actually knows the reader's offset. `phx-update="ignore"`
-  because nothing about a past message's timestamp ever changes after it is
-  first rendered, and without it a later patch (the next turn arriving) would
-  morph this element's text back to the server's UTC fallback, undoing every
-  local time the hook had already set.
+  Rendered server-side in UTC and corrected in the browser by the `LocalTime`
+  hook. `phx-update="ignore"` so a later patch does not morph the text back to
+  the UTC fallback.
   """
   attr :id, :string, required: true
   attr :at, :any, required: true, doc: "a DateTime"
@@ -242,16 +222,9 @@ defmodule CodeMySpecWeb.ChatComponents do
   @doc """
   A call the agent made, and what it came back with.
 
-  One collapsible per call, which is the shape every chat UI that renders agent
-  work converges on — `vercel/ai-chatbot`'s `ai-elements/tool.tsx` and
-  `assistant-ui`'s opencode example both do exactly this. The result belongs
-  *inside* the call. Rendered as a sibling card it doubles the block count and
-  loses which call it answers, which is what this used to do.
-
-  The summary on the header is what makes a run readable. `Bash` alone says
-  nothing; `Bash — Check the alias group around line 69` says what happened, and
-  the model already sends that text. Everything below the header is behind the
-  disclosure, so a turn that called five tools is five lines.
+  One collapsible per call, with its result inside it. The header carries a
+  one-line summary of the call (`Bash — <description>`); everything else is
+  behind the disclosure, so a turn that called five tools is five lines.
   """
   attr :id, :string, default: nil
   attr :name, :string, required: true
@@ -368,17 +341,10 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   defp encode_args(other), do: inspect(other)
 
-  # What this call actually did, in one line.
-  #
-  # Every tool has an argument that carries the point, and it is never the same
-  # one. `Bash` sends a human-written `description` — present on 775 of 799
-  # calls in this project's history — which is better than anything derivable
-  # from the command. A file tool's point is the file. A search's is the
-  # pattern. Guessing generically ("first string argument") picks `content` for
-  # a `Write`, which is the whole file.
-  #
-  # Falls back to nothing rather than to something wrong: a header showing just
-  # the tool name is honest, and the arguments are one click away.
+  # What this call did, in one line, from the argument that carries each tool's
+  # point (Bash's `description`, a file tool's path, a search's pattern). Falls
+  # back to nil, never a generic guess: "first string argument" picks a Write's
+  # whole `content`.
   @summary_limit 80
 
   defp call_summary(_name, args) when not is_map(args), do: nil
@@ -447,22 +413,13 @@ defmodule CodeMySpecWeb.ChatComponents do
   @doc """
   A question the agent asked, answerable where it is shown.
 
-  Lifted out of `QuestionLive.Show` unchanged — it was already the right thing
-  and had been working; what it lacked was a second place to appear. The plan
-  is that a notification takes you to the conversation the question came from,
-  so you answer it with the surrounding work visible rather than on a page that
-  shows the question and nothing else.
+  Shared by `QuestionLive.Show` and the agent transcript. Answered questions
+  keep rendering what was asked and what was said: the answer is part of the
+  record.
 
-  Answered questions keep rendering, showing what was asked and what was said.
-  In a transcript that is the whole point: the answer is part of the record,
-  not a modal that closes.
-
-  `on_submit` names the event because the two hosts handle it differently — a
-  page that has one question, and a transcript that may have several. `target`
-  is `phx-target` verbatim — nil for a page or LiveView (the default; HEEx
-  drops the attribute entirely), `@myself` for a host embedding this inside a
-  stateful `LiveComponent` so the submit reaches the component and not the
-  enclosing LiveView.
+  `on_submit` names the event, since hosts handle it differently. `target` is
+  `phx-target` verbatim: nil for a LiveView, `@myself` inside a stateful
+  `LiveComponent`.
   """
   attr :id, :string, default: nil
   attr :request, :any, required: true, doc: "a %Notifications.QuestionRequest{}"
@@ -636,10 +593,9 @@ defmodule CodeMySpecWeb.ChatComponents do
   defp format_answer(a) when is_list(a), do: Enum.join(a, ", ")
   defp format_answer(a), do: to_string(a)
 
-  # A main agent's answer is provisional until a person confirms or corrects
-  # it — criterion 3222. A user's own answer is not: `answer_question_request/3`
-  # never lets a second one through, and offering a form here that would only
-  # be refused is worse than no form at all.
+  # A main/product agent's answer is provisional until a person confirms or
+  # corrects it. A user's own answer is final (`answer_question_request/3`
+  # refuses a second), so no form is offered for it.
   defp main_agent_answered?(%{status: "answered", answered_by: by})
        when by in ~w(main_agent product_agent),
        do: true
@@ -651,8 +607,7 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   defp answered_by_agent(_request), do: "The main agent answered this from project records."
 
-  # Nil rather than `[]` for every row written before `answer_history` existed,
-  # which is most of them.
+  # Nil on rows written before `answer_history` existed.
   defp answer_history(%{answer_history: revisions}) when is_list(revisions), do: revisions
   defp answer_history(_request), do: []
 
@@ -666,21 +621,16 @@ defmodule CodeMySpecWeb.ChatComponents do
     end
   end
 
-  # The same string the recorder stores, built from the array shape instead.
-  #
-  # `tool_call/1` reads "<tool>\\n<arguments>", which is how the recorder writes
   @doc """
   Fold a message list into the items a transcript renders.
 
-  A turn that calls five tools writes five messages, and five blocks in a column
-  is most of a phone screen spent on one turn. What the reader needs first is
-  that five calls happened; which five is the follow-up.
+  Runs of two or more consecutive calls fold into one expandable item; a lone
+  call renders as itself. Back-to-back routine promotion notices fold too.
+  `break_after` names message ids a run must split after (e.g. an unanswered
+  question, so its form renders in order and visible).
 
-  Only runs of two or more consecutive calls fold. Most calls are alone — 848 of
-  them against 20 runs on this project — so wrapping every call in a group of
-  one would make the common case worse to save the rare one.
-
-  Returns items carrying an `:id`, so the caller can stream them.
+  Returns `{items, results_by_call_id}`; items carry an `:id`, so the caller can
+  stream them.
   """
   @spec group_turns([struct()], MapSet.t()) :: {[map()], %{String.t() => struct()}}
   def group_turns(messages, break_after \\ MapSet.new()) do
@@ -693,15 +643,11 @@ defmodule CodeMySpecWeb.ChatComponents do
       |> Enum.chunk_by(&run_kind/1)
       |> Enum.flat_map(fn run ->
         cond do
-          # Calls, not messages. A turn can make three calls at once — the
-          # model answers with three `tool_use` blocks in one response — and
-          # chunking by message saw that as a single item and left it
-          # unfolded, which is the exact case the fold exists for.
+          # Count calls, not messages: one turn can carry several calls.
           call?(hd(run)) and call_count(run) > 1 ->
             run |> split_after(break_after) |> Enum.flat_map(&fold/1)
 
-          # A landing and its reload arrive back to back, and a line apiece
-          # still buried the feed (5150cd98).
+          # A landing and its reload arrive back to back; fold them.
           routine_notice?(hd(run)) and length(run) > 1 ->
             [Map.put(group(run), :notices, true)]
 
@@ -721,22 +667,11 @@ defmodule CodeMySpecWeb.ChatComponents do
     end
   end
 
-  # Where a run must not be folded across.
-  #
-  # The fold collapses a run of calls into one expandable item, which is right
-  # until something has to render *between* two of them. A pending question is
-  # the case: three calls, then `ask_user_question`, then two more calls is one
-  # item, and a form rendered after it appears below work that happened after
-  # the question was asked. Putting it inside the item is worse — a question
-  # nobody can see behind an expander is a question that does not get answered.
-  #
-  # So the caller names the messages a run has to break after, and the run
-  # becomes several items with the boundary between them. Everything without a
-  # boundary folds exactly as before.
-  #
-  # The caller names them rather than this looking them up, because what
-  # deserves a break is not a fact about messages — today it is an unanswered
-  # question, and the next one will be something else.
+  # Splits a run after each message in `break_after`, so something (a pending
+  # question's form) can render between calls instead of below later work or
+  # hidden in an expander. The caller names the breaks: what deserves one is not
+  # a fact about messages.
+  # See knowledge/web, "Transcripts".
   defp split_after(run, break_after) do
     if MapSet.size(break_after) == 0 do
       [run]
@@ -762,43 +697,15 @@ defmodule CodeMySpecWeb.ChatComponents do
       else: {:cont, acc}
   end
 
-  # A piece of a split run folds on its own terms: two calls still collapse, one
-  # left over renders as itself rather than as a group of one.
+  # A piece of a split run folds on its own terms; one call renders as itself.
   defp fold(messages) do
     if call_count(messages) > 1, do: [group(messages)], else: singles(messages)
   end
 
-  # Carried on the message's own parts rather than in the sentence, so the view
-  # can render them distinctly and a test can assert them without parsing prose.
-
-  # Which kind of act this was. "One decision is one action" is a claim about
-  # decisions, and a stop that also nudges an agent about open work produces two
-  # actions that are not duplicates of each other.
-
-  # A decision points at where the rest of it is; a nudge names the act to
-  # perform. One template said "run X for the detail" for both, which told an
-  # agent its own next call was somewhere to go reading (QA 985).
-
-  # Results keyed by the call they answer, so a call can render its own.
-  # A result belongs to the call it answered, not to every call that ever
-  # carried its id.
-  #
-  # Tool call ids are sequential per agent run — `call_1`, `call_16`,
-  # `call_26_retry` — so a conversation that has run all day holds `call_16`
-  # several times over. Collecting them into a map keyed by id alone made the
-  # newest call inherit the oldest surviving answer.
-  #
-  # What that looked like: an `ask_user_question` that had worked — question
-  # created, delivered, answered — rendered with "No session_id available" from
-  # a `start_task` eight hours earlier that happened to be call_16 too. The
-  # error was real, belonged to a different call, and read as this one failing.
-  # It only appeared once scrolling loaded the older turns, which is why it
-  # showed up long after the call itself.
-  #
-  # Folded in order rather than comprehended: a call *clears* any result
-  # standing against its id, so a later call starts unanswered and renders "no
-  # result recorded" until its own answer arrives. Inheriting a stale one is
-  # strictly worse than admitting there is none.
+  # Results keyed by the call they answer. Folded in order: a call clears any
+  # result standing against its id, because call ids repeat across runs in one
+  # conversation.
+  # See knowledge/web, "Transcripts".
   defp results_by_call_id(messages) do
     Enum.reduce(messages, %{}, fn message, results ->
       results
@@ -833,25 +740,19 @@ defmodule CodeMySpecWeb.ChatComponents do
         do: call["id"]
   end
 
-  # A result renders inside its call, so it must not render again at the top
-  # level — but only when that call is on the page. The transcript is
-  # paginated, so a call can sit above the window while its answer is inside
-  # it; that result stays, because it is still something that happened.
+  # A result renders inside its call, so it is dropped from the top level only
+  # when that call is on this page.
   defp nested?(%{role: :tool, tool_call_id: id}, called) when is_binary(id),
     do: MapSet.member?(called, id)
 
   defp nested?(_message, _called), do: false
 
-  # `grouped` is carried rather than inferred from the list length. A turn can
-  # make three calls in one message, so a folded run is often a single message
-  # — and matching on `[message]` sent exactly that case to the unfolded clause.
+  # `grouped` is carried, not inferred from length: a folded run is often one
+  # message carrying several calls.
   defp singles(messages), do: Enum.map(messages, &%{id: &1.id, messages: [&1], grouped: false})
   defp group(run), do: %{id: hd(run).id, messages: run, grouped: true}
 
-  # Both writers now record a call the same way — an assistant turn carrying a
-  # `tool_calls` array. The old check also had to sniff `role: :tool` text for
-  # "a name is one token", because the recorder wrote calls that way; it does
-  # not any more.
+  # A call is an assistant turn carrying a `tool_calls` array.
   defp call?(%{tool_calls: calls}) when is_list(calls) and calls != [], do: true
   defp call?(_message), do: false
 
@@ -920,8 +821,7 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
-  # A turn can carry more than one call, so the count is calls rather than
-  # messages — "used 5 tools" above four rows would be a lie either way round.
+  # Counts calls, not messages: a turn can carry more than one.
   defp call_count(messages) do
     Enum.reduce(messages, 0, fn
       %{tool_calls: calls}, acc when is_list(calls) -> acc + length(calls)

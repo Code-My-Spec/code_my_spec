@@ -3,67 +3,29 @@ defmodule CodeMySpec.Provisioning.Repository do
   The project's Git remote — created or adopted through the user's own GitHub
   OAuth grant.
 
-  ## An OAuth App, which means we own the picker
+  - **An OAuth App, not a GitHub App.** The `repo` scope grants everything
+    the user can reach, so choosing which repository is our job
+    (`GitHub.list_repositories/2`), and the grant is revocable only wholesale.
+  - **Adoption is not collision.** `adopt: true` takes the user's chosen
+    repository and creates nothing. An existing repository the user did not
+    choose returns `{:name_taken, ...}` with both choices; neither is taken
+    on their behalf.
+  - **No credential fallback.** A revoked grant returns
+    `{:error, :github_not_connected}`; a platform token or local `gh` would
+    create the repository under the wrong account and look like success.
+  - **Done is a push.** `run/4` completes only when a push lands and records
+    the commit: a read-only grant, an archived repo or a protected branch all
+    leave a repository that exists but is not a remote.
 
-  Confirmed with the app owner: this is an OAuth App, not a GitHub App. An
-  earlier draft of this module assumed the opposite — the `Ov23` client-id
-  prefix is widely documented as indicating a GitHub App — and got the design
-  backwards as a result.
-
-  The difference is not cosmetic. A GitHub App has an installation screen
-  where the user picks repositories, so a picker of our own would be wrong.
-  An OAuth App has no such screen: the `repo` scope grants access to
-  everything the user can reach, and choosing *which* repository is therefore
-  our job. Hence `list_repositories/2`.
-
-  It also means the grant is coarse and revocable only wholesale — Sam cannot
-  withdraw one repository, only the whole authorization. Worth knowing rather
-  than assuming per-repository control that does not exist.
-
-  ## Adoption and collision are different things
-
-  Both involve a repository that already exists, and conflating them produces
-  one of two bugs.
-
-  - **Adoption** (`adopt: true`) is Sam having chosen this repository. Setup
-    takes it as the remote and creates nothing. Criterion 8179.
-  - **Collision** is setup wanting a name and finding something already there
-    that Sam has not pointed at. `{:name_taken, ...}` is returned with both
-    choices and neither is taken on his behalf. Criterion 8185.
-
-  Auto-adopting a collision could scribble on an unrelated project.
-  Auto-renaming leaves Sam with a repository he did not choose and cannot
-  easily find — the project form's existing `-docs` suffix habit is exactly
-  that reflex.
-
-  ## No credential fallback
-
-  A revoked authorization returns `{:error, :github_not_connected}` and stops.
-  There is deliberately no fallback to a platform token, a machine account, or
-  a locally-authenticated `gh` — each would create the repository under the
-  wrong account and look like success. `gh` in particular is authenticated as
-  whoever installed it, which in a multi-tenant product is never the right
-  answer.
-
-  ## Done is a push, not a repository
-
-  `run/3` completes only when a push lands, and records the commit. A
-  repository that exists but rejects the push is not a remote: the grant may
-  be read-only, the repository may be archived, the default branch may be
-  protected. All three were observed while recording this story's cassettes —
-  the archived case is where the real 403 came from. Reporting "repository created" there would be true
-  and useless — the harness would fail on its first push, far from setup.
+  See knowledge/provisioning, "Repository".
   """
 
   alias CodeMySpec.Environments
   alias CodeMySpec.GitHub
   alias CodeMySpec.Users.Scope
 
-  # `cms_new`'s CI template writes this literally, next to an EEx tag that
-  # does render (`templates/deploy/build.yml.eex`): the owner cannot be known
-  # at generation time, because no repository exists yet to have one. `ensure/3`
-  # is the first point that does, so the substitution happens here rather than
-  # at generation.
+  # The generated CI template writes this placeholder literally: the owner is
+  # unknown until a repository exists, so `push/3` substitutes it.
   @ci_workflow_path ".github/workflows/build.yml"
   @github_owner_placeholder "<GITHUB_OWNER>"
 
@@ -93,13 +55,13 @@ defmodule CodeMySpec.Provisioning.Repository do
   defdelegate default_name(project), to: CodeMySpec.Projects.Project, as: :slug
 
   @doc """
-  Create the repository, or adopt one Sam has chosen.
+  Create the repository, or adopt one the user has chosen.
 
   `opts`:
     * `:name` — overrides `default_name/1`
     * `:owner` — the account login; required to check for an existing repo
     * `:org` — create inside this organisation instead of the personal account
-    * `:adopt` — `true` when Sam has chosen the existing repository
+    * `:adopt` — `true` when the user has chosen the existing repository
     * `:private` — defaults to `true`
   """
   @spec ensure(Scope.t(), map(), keyword()) ::
@@ -118,10 +80,8 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # Whose account to look in, when the caller did not say. Falling straight to
-  # create without this made "adopt rather than duplicate" depend on the caller
-  # already knowing the owner — so the ordinary path created a second
-  # repository, and GitHub's 422 was the first anyone heard of it.
+  # Whose account to look in when the caller did not say; without it the
+  # ordinary path created a duplicate and GitHub's 422 was the first sign.
   defp authenticated_owner(scope) do
     case GitHub.authenticated_login(scope) do
       {:ok, login} -> login
@@ -129,8 +89,8 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # Still nil when GitHub will not say who the token is. Treat the name as free
-  # and let GitHub arbitrate on create, rather than guessing an account.
+  # Still nil when GitHub will not say who the token is: let GitHub arbitrate
+  # on create rather than guessing an account.
   defp existing(_scope, nil, _name), do: {:error, :not_found}
   defp existing(scope, owner, name), do: GitHub.get_repository(scope, owner, name)
 
@@ -149,14 +109,8 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # Deliberately no `auto_init`. GitHub's README commit and the initial commit
-  # `push/3` makes are unrelated histories, so the push that immediately
-  # follows is rejected as a non-fast-forward — the repository is created and
-  # then unusable as a remote. Found live: "Updates were rejected because the
-  # remote contains work that you do not have locally."
-  #
-  # The repository we create must be empty, because we are the ones putting
-  # the first commit in it.
+  # No `auto_init`: GitHub's README commit and our first commit would be
+  # unrelated histories, and the push would be rejected as non-fast-forward.
   defp create(scope, name, opts) do
     attrs = %{
       name: name,
@@ -178,18 +132,9 @@ defmodule CodeMySpec.Provisioning.Repository do
   Runs through `Environments.cmd/4` so it executes on whichever device the
   environment names.
 
-  ## It initialises, because a new project has no git yet
-
-  This step exists for a project that was just generated: the files are there,
-  git is not. An earlier version assumed a repository and failed with
-  `git exited 128` on exactly the case it was built for. So it inits when
-  absent, commits when there is nothing to push, and sets the remote whether
-  or not `origin` already exists.
-
-  Every git invocation captures stderr. Without `stderr_to_stdout: true`,
-  `System.cmd/3` discards it and a failure reports only its exit code —
-  which is how the first failure here said "git exited 128:" and nothing
-  else.
+  Inits when absent (a just-generated project has no git yet), commits when
+  there is no HEAD, and sets the remote whether or not `origin` exists. Every
+  git invocation captures stderr, so a failure says more than its exit code.
   """
   @spec push(Environments.Environment.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
@@ -212,15 +157,9 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # Written before `ensure_commit` so a fresh repository's `git add -A` picks
-  # up the substitution as part of its one initial commit, rather than
-  # producing two. An adopted repository that already pushed the placeholder
-  # gets it written to the working tree here too — `commit_owner_patch/1`,
-  # after `ensure_commit`, is what notices and commits it on that path.
-  #
-  # No-ops without an `:owner` (nothing to substitute) or without the file
-  # (not every project generated one — `DeployArtifacts.ci_workflow/1`
-  # interpolates the owner directly rather than templating a placeholder).
+  # Before `ensure_commit` so a fresh repository's initial commit includes the
+  # substitution. An already-pushed repository gets it committed by
+  # `commit_owner_patch/1`. No-op without `:owner` or without the file.
   defp patch_ci_owner(env, opts) do
     case Keyword.get(opts, :owner) do
       owner when is_binary(owner) and owner != "" -> substitute_owner(env, owner)
@@ -250,11 +189,9 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # `ensure_commit/1` only commits when there is no HEAD at all, so a
-  # repository this project already pushed to leaves the substitution above
-  # sitting uncommitted in the working tree. Scoped to the one path rather
-  # than `git add -A`: this step's job is landing the owner fix, not
-  # committing whatever else happens to be dirty.
+  # `ensure_commit/1` commits only when there is no HEAD, so an existing
+  # repository would leave the substitution uncommitted. Scoped to the one
+  # path, not `git add -A`.
   defp commit_owner_patch(run) do
     case run.(["status", "--porcelain", "--", @ci_workflow_path]) do
       {"", 0} ->
@@ -276,21 +213,9 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # The one part of this that talks to GitHub, and the only part a replay cannot
-  # honestly reproduce.
-  #
-  # `git` is a subprocess, not HTTP, so no cassette intercepts it: a replay
-  # pushes to a repository that existed only while the recording was being made.
-  # Whether it succeeds then depends on whether that repository still happens to
-  # be there — which made the same criterion pass or fail by the age of its
-  # cassette rather than by anything about the code. It read as
-  # `remote: Repository not found`, which sounds like a defect in the step.
-  #
-  # Everything local still runs: the repo is initialised, the commit is made,
-  # the remote is set, and the sha returned is the real one. Only the network
-  # round-trip is skipped, and only when a caller asks — production never does,
-  # because a repository that was not pushed to is not a usable remote and that
-  # is the whole point of the step.
+  # `push_remote: false` skips only the network round-trip: git is a
+  # subprocess no cassette intercepts, so a replay would push to a repository
+  # that existed only during recording. Production never skips it.
   defp push_remote(run, branch, opts) do
     case Keyword.get(opts, :push_remote, true) do
       false ->
@@ -317,8 +242,8 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # A repository with no commit has nothing to push, and `git push` on one
-  # fails in a way that reads like a permissions problem.
+  # `git push` with no commit fails in a way that reads like a permissions
+  # problem.
   defp ensure_commit(run) do
     case run.(["rev-parse", "HEAD"]) do
       {_, 0} ->
@@ -335,16 +260,9 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # `remote add` fails when origin exists, which is an ordinary state on a
-  # retry rather than an error.
-  #
-  # But an origin pointing somewhere *else* is not a retry — it is this
-  # function running in a directory that already belongs to another
-  # repository. `push/3` takes the environment's cwd with no `cd:`, so a
-  # misconfigured working directory lands here, and repointing would then push
-  # that repository's whole history to the provisioned remote. It happened:
-  # a run against a real checkout republished it and left every worktree
-  # sharing the rewritten origin. Refuse instead.
+  # An existing origin pointing at the same repository is a retry; one
+  # pointing elsewhere means the working directory belongs to another
+  # repository, and repointing would push its whole history. Refuse.
   defp set_remote(run, url) do
     case run.(["remote", "add", "origin", url]) do
       {_, 0} ->
@@ -394,8 +312,7 @@ defmodule CodeMySpec.Provisioning.Repository do
   Ensure the repository exists and prove it by pushing to it.
 
   Returns a result whose `pushed_at` is set only when a push actually landed.
-  As with the deploy, content and widget steps, there is no field claiming
-  success independently of the proof.
+  There is no field claiming success independently of the proof.
   """
   @spec run(Scope.t(), Environments.Environment.t(), map(), keyword()) :: result()
   def run(%Scope{} = scope, env, project, opts \\ []) do
@@ -431,10 +348,8 @@ defmodule CodeMySpec.Provisioning.Repository do
   end
 
   defp prove(repo, disposition, env, push_fun, now, opts) do
-    # `repo["owner"]["login"]` rather than re-deriving `authenticated_owner/1`:
-    # `ensure/3` creates under `opts[:org]` when given one, and the org — not
-    # the authenticated user — is the real owner of the repository GitHub just
-    # handed back. Re-deriving would substitute the wrong login for that case.
+    # The repository's own owner: under `opts[:org]` that is the org, not the
+    # authenticated user.
     opts = Keyword.put(opts, :owner, repo_owner_login(repo))
 
     case push_fun.(env, repo["clone_url"] || repo["ssh_url"], opts) do
