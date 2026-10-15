@@ -42,13 +42,6 @@ defmodule CodeMySpecSpex.Story839.Criterion3447Spex do
     fail_on_error_logs: false,
     criterion: 1386 do
     scenario "a compiler run never finishes once it starts" do
-      given_ "a short kill timeout, so this scenario does not wait thirty minutes", context do
-        Application.put_env(:code_my_spec, :harness_analysis_timeout, 300)
-        on_exit(fn -> Application.delete_env(:code_my_spec, :harness_analysis_timeout) end)
-
-        {:ok, context}
-      end
-
       given_ "a working copy whose compiler analyzer blocks — and here, never unblocks",
              context do
         ensure_harness_supervisor_started()
@@ -61,6 +54,26 @@ defmodule CodeMySpecSpex.Story839.Criterion3447Spex do
         await_connected(project.root)
 
         {:ok, Map.put(context, :project, project)}
+      end
+
+      given_ "a kill timeout derived from this machine's own measured mix-subprocess " <>
+               "boot cost, not a guessed constant",
+             context do
+        # 55379e16: a fixed millisecond budget races per-invocation OS-process +
+        # BEAM-boot + Mix-bootstrap latency, confirmed independent of _build
+        # cache warmth -- the same cost on a busier machine, any day. Reading
+        # make_blocking/1's own unarmed warm-compile timing (just taken, same
+        # project, same MIX_BUILD_PATH) answers "how long does spawning mix
+        # cost right now" directly, rather than guessing a number that races
+        # the exact same cost the next time this machine is busier. 3x
+        # margin, floor 300ms: generous enough to clear that cost reliably
+        # without waiting anywhere near production's 30-minute default.
+        boot_ms = BlockingProject.warm_boot_ms(context.project.root)
+        timeout = max(300, boot_ms * 3)
+        Application.put_env(:code_my_spec, :harness_analysis_timeout, timeout)
+        on_exit(fn -> Application.delete_env(:code_my_spec, :harness_analysis_timeout) end)
+
+        {:ok, context}
       end
 
       when_ "the harness is asked to run it", context do

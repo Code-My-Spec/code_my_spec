@@ -960,6 +960,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert reason =~ "harness_never_answered"
     end
 
+    # 8db9e442: the row this request opened (see the comment above) is still
+    # on it by name, so a caller giving up is never left with only a verdict
+    # -- the run_id it already saw in `run_analysis` is also in the reason it
+    # gets back, durable and inspectable, not dropped once the wait ends.
+    test "the run_id survives into the never-answered reason", %{channel: channel} do
+      ref = push(channel, "analysis_run", %{"source" => "credo", "args" => []})
+
+      assert_push "run_analysis", %{"runs" => [run]}, 5_000
+
+      assert_reply ref, :error, %{"reason" => reason}, 5_000
+      assert reason =~ to_string(run["run_id"])
+    end
+
     test "a stop asks the harness to run nothing", %{channel: channel} do
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, _decision, 5_000

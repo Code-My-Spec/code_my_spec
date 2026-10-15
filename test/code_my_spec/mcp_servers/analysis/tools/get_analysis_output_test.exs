@@ -100,11 +100,24 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
 
   test "running without output is unavailable, not a successful empty result", ctx do
     run = analysis_run_fixture(ctx.scope)
+    run = RunsRepository.record_tree(run, %{"began_at" => DateTime.utc_now()})
     result = page(%{run_id: run.id}, ctx.frame)
 
     assert result["status"] == "running"
     assert result["output_available"] == false
     assert result["exit_status"] == nil
+  end
+
+  # bf627680: a run the harness has not yet reported starting (no `began_at`)
+  # is still `status: :running` in the ledger -- it is waiting for a
+  # machine-wide analyzer slot, not executing. Reading it back as a bare
+  # "running" made that wait indistinguishable from real progress.
+  test "a run waiting for a machine-wide slot reads as queued, not running", ctx do
+    run = analysis_run_fixture(ctx.scope)
+    result = page(%{run_id: run.id}, ctx.frame)
+
+    assert result["status"] == "queued"
+    assert result["output_available"] == false
   end
 
   test "an empty retained result remains available", ctx do

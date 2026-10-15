@@ -79,7 +79,7 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
        %{
          run_id: run.id,
          source: run.source,
-         status: run.status,
+         status: status_label(run),
          kind: run.kind,
          exit_status: run.exit_status,
          start_commit: run.start_commit,
@@ -94,6 +94,15 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
     else
       {:error, "offset exceeds the retained output length."}
     end
+  end
+
+  # bf627680: `status` alone cannot tell a run waiting on a machine-wide
+  # slot from one actually executing -- both are `:running` in the ledger,
+  # since the row is created at dispatch time, not when the harness reports
+  # the slot granted (`Run.began_at`). `Run.queued?/1` already distinguishes
+  # them; this is the one place that read the raw status instead.
+  defp status_label(run) do
+    if Run.queued?(run), do: "queued", else: to_string(run.status)
   end
 
   defp failure(reason, frame),

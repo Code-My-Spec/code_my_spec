@@ -53,7 +53,9 @@ defmodule CmsHarness.Agents.Tools.Bash do
       "suite again. To learn its outcome, run `curl -sS -X POST " <>
       "'http://localhost:#{port()}/api/harnesses/#{copy_id}/analysis/wait'` with a " <>
       "timeout of #{PreToolUse.rewrite_timeout_ms()}: it returns when this copy's " <>
-      "analyzers are idle, with each source's state and problem count."
+      "analyzers are idle, with each source's state and problem count. " <>
+      "GET /dashboard-status on this harness reports queued and running work " <>
+      "alongside machine-wide slot usage while you wait."
   end
 
   defp timeout(input, default) do
