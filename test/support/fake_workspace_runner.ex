@@ -5,15 +5,71 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   Booting a real devbox takes minutes and needs a Docker daemon, so the
   outcomes the story cares about — it came up, it died, it never answered —
   are driven from here instead.
+
+  ## Owned by the test that installs it, not a global singleton
+
+  Issue 7f3a2936 (a concrete instance of 9839ae69): this used to be a single
+  `Agent` registered under a fixed name, shared by every async test using this
+  fake across any number of files at once. Two different failures came out of
+  sharing one slot: `calls/0` and `booted_env/0`-style reads picked up another
+  concurrently-running test's most recent call instead of this test's own, and
+  whichever test's setup happened to stop the Agent at `on_exit` could stop it
+  out from under a different, still-running test mid-scenario.
+
+  Installing now starts an unnamed `Agent` and registers it in a `Registry`
+  keyed by the calling process — the same ownership-dies-with-the-process
+  pattern `CodeMySpecTest.AgentTransportRouter` already uses for the same
+  reason. Every read or write resolves `owner/0` first: the calling process
+  itself, or — because `Workspaces.boot/1`'s watcher runs on a `Task` started
+  off the test process, not the test process itself — whichever of its
+  `$callers` is registered. `Task` and `Task.Supervisor` set `$callers` on
+  every child they start, so that chain always reaches back to the test that
+  installed this fake, and never to an unrelated one.
   """
 
   use Agent
 
   @behaviour CodeMySpec.Workspaces.Runner
 
-  @doc "Starts the fake with the outcomes this test wants."
+  @registry __MODULE__.Registry
+
+  @doc """
+  Start the registry if it is not running.
+
+  `mix spex` loads no test helper, so the first install starts it; it is
+  unlinked so it outlives whichever test happened to start it.
+  """
+  @spec ensure_registry() :: :ok
+  def ensure_registry do
+    case Registry.start_link(keys: :unique, name: @registry) do
+      {:ok, pid} -> Process.unlink(pid)
+      {:error, {:already_started, _pid}} -> :ok
+    end
+
+    :ok
+  end
+
+  @doc """
+  Starts the fake with the outcomes this test wants, owned by the caller.
+
+  `{:error, {:already_started, _}}` is not a crash to propagate — it is this
+  same process installing a second time (two scenarios in one `spex` block
+  share a process, and read as sibling blocks, not a second install of the
+  same fixture). The caller already knows to read that as "reconfigure
+  instead" (`CodeMySpecSpex.Fixtures.install_workspace_runner/2`).
+  """
   def start_link(opts) do
-    Agent.start_link(fn -> Map.put(outcomes(opts), :calls, []) end, name: __MODULE__)
+    ensure_registry()
+    {:ok, agent} = Agent.start_link(fn -> Map.put(outcomes(opts), :calls, []) end)
+
+    case Registry.register(@registry, self(), agent) do
+      {:ok, _} ->
+        {:ok, agent}
+
+      {:error, {:already_registered, _self}} ->
+        Agent.stop(agent)
+        {:error, {:already_started, agent}}
+    end
   end
 
   @doc """
@@ -30,7 +86,7 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   about earlier calls is a reasonable thing for a later scenario to make.
   """
   def configure(opts) do
-    Agent.update(__MODULE__, &Map.merge(&1, outcomes(opts)))
+    Agent.update(owner(), &Map.merge(&1, outcomes(opts)))
   end
 
   defp outcomes(opts) do
@@ -44,11 +100,11 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   end
 
   @doc "Replaces what the container has announced so far."
-  def put_logs(logs), do: Agent.update(__MODULE__, &%{&1 | logs: logs})
+  def put_logs(logs), do: Agent.update(owner(), &%{&1 | logs: logs})
 
   @doc "Sets what the app is doing: :serving, :erroring or :down."
   def put_serving(serving) when serving in [:serving, :erroring, :down, :ok] do
-    Agent.update(__MODULE__, &%{&1 | serving: normalize(serving)})
+    Agent.update(owner(), &%{&1 | serving: normalize(serving)})
   end
 
   defp normalize(:ok), do: :serving
@@ -61,13 +117,13 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   of racing the watcher's wall-clock deadline — a race the test loses on a
   loaded machine, which is exactly where it must not be flaky.
   """
-  def put_healthy(healthy?), do: Agent.update(__MODULE__, &%{&1 | healthy?: healthy?})
+  def put_healthy(healthy?), do: Agent.update(owner(), &%{&1 | healthy?: healthy?})
 
   @doc "Kills the instance from the test — the container has gone away."
-  def put_alive(alive?), do: Agent.update(__MODULE__, &%{&1 | alive?: alive?})
+  def put_alive(alive?), do: Agent.update(owner(), &%{&1 | alive?: alive?})
 
   @doc "Every `start/3` the context made, oldest first."
-  def calls, do: __MODULE__ |> Agent.get(& &1.calls) |> Enum.reverse()
+  def calls, do: owner() |> Agent.get(& &1.calls) |> Enum.reverse()
 
   # The env is recorded rather than dropped, because "the instance was told
   # which working copy it is" is the difference between a container that
@@ -75,17 +131,17 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   # claim a test should be able to make.
   @impl true
   def start(container_name, app_name, port, env \\ []) do
-    Agent.get_and_update(__MODULE__, fn state ->
+    Agent.get_and_update(owner(), fn state ->
       {state.start_result,
        %{state | calls: [{container_name, app_name, port, env} | state.calls]}}
     end)
   end
 
   @impl true
-  def healthy?(_port), do: Agent.get(__MODULE__, & &1.healthy?)
+  def healthy?(_port), do: Agent.get(owner(), & &1.healthy?)
 
   @impl true
-  def serving(_port), do: Agent.get(__MODULE__, & &1.serving)
+  def serving(_port), do: Agent.get(owner(), & &1.serving)
 
   @impl true
   def url(_container_name, port), do: "http://localhost:#{port}"
@@ -95,14 +151,28 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   @impl true
   def alive?(_container_name) do
     case Application.get_env(:code_my_spec, :fake_workspace_alive) do
-      nil -> Agent.get(__MODULE__, & &1.alive?)
+      nil -> Agent.get(owner(), & &1.alive?)
       alive? -> alive?
     end
   end
 
   @impl true
-  def logs(_container_name), do: Agent.get(__MODULE__, & &1.logs)
+  def logs(_container_name), do: Agent.get(owner(), & &1.logs)
 
   @impl true
   def stop(_container_name), do: :ok
+
+  defp owner, do: owner([self() | Process.get(:"$callers", [])])
+
+  defp owner([]) do
+    raise "No #{inspect(__MODULE__)} installed for this process, or anything in its " <>
+            "$callers chain -- call CodeMySpecSpex.Fixtures.install_workspace_runner/2 first."
+  end
+
+  defp owner([pid | rest]) do
+    case Registry.lookup(@registry, pid) do
+      [{_registrant, agent}] -> agent
+      [] -> owner(rest)
+    end
+  end
 end
