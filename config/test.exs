@@ -592,6 +592,13 @@ config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.
 config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.Gsc}
 config :code_my_spec, CodeMySpec.Google.Ga4, plug: {Req.Test, CodeMySpec.Google.Ga4}
 
+# c1b2d03a: this mix task confirms an existing working copy's recorded id
+# against the server before trusting it. Hundreds of onboarding specs call
+# it through `Mix.Task.run/2`, so an unset plug is a real request from the
+# unit suite, same as every other client here.
+config :code_my_spec, Mix.Tasks.Cms.Harness.Onboard,
+  plug: {Req.Test, Mix.Tasks.Cms.Harness.Onboard}
+
 config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
   plug: {Req.Test, CodeMySpec.Provisioning.ContentPublishing}
 

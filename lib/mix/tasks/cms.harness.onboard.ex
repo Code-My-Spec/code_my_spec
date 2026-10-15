@@ -607,9 +607,18 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
+  # The raw deploy key, not an exchanged access token: `GET /api/harnesses/:id`
+  # sits behind `DeployKeyOrOAuth`, which accepts a project's deploy key
+  # directly, same as the exchange endpoint would have taken it to trade for
+  # a token. Confirming a recorded id has no business trading a key for a
+  # token it then uses once -- that trip went through `CmsHarness.Token`'s
+  # own exchange, which is deliberately exempt from the suite's stub
+  # convention (it dials whatever `Config.server_url()` names, by design) and
+  # always logs at `:error` on anything but a clean 200, win or lose. Every
+  # confirmation this code performs reached that log, real server or not.
   defp confirm_with_project(id, env, root, project, project_id) do
-    case token_for(ensure_local_credential(project.id)) do
-      {:ok, token} -> handle_confirmation(confirm(id, token), id, env, root, project_id)
+    case ensure_local_credential(project.id) do
+      {:ok, key} -> handle_confirmation(confirm(id, key), id, env, root, project_id)
       _ -> {:ok, id}
     end
   end
@@ -619,12 +628,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   `confirm/2` would have returned.
 
   Public so the decision is testable without the network call `confirm/2`
-  makes -- this file's own `Req` client is exempt from the suite's stub
-  convention because mix tasks are not run by it (see
-  `CodeMySpec.HttpClientsAreStubbableTest`), so only the 200 and
-  fallback branches, which touch nothing else, are covered directly; the
-  404 branch's re-mint is covered by `recorded_id/4`'s own moduledoc note
-  and by manual verification, same as `mint/2` itself.
+  makes -- only the 200 and fallback branches, which touch nothing else, are
+  covered directly; the 404 branch's re-mint is covered by `recorded_id/4`'s
+  own moduledoc note and by manual verification, same as `mint/2` itself.
   """
   def handle_confirmation({:ok, %{status: 200}}, id, _env, _root, _project_id), do: {:ok, id}
 
@@ -633,16 +639,27 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   def handle_confirmation(_other, id, _env, _root, _project_id), do: {:ok, id}
 
-  defp confirm(id, token) do
+  # Pinned like every other Req client in this app (`CodeMySpec.HttpClientsAreStubbableTest`):
+  # `config :code_my_spec, __MODULE__, plug: {Req.Test, __MODULE__}` in test,
+  # stubbed per test with `Req.Test.stub/2`. With no stub installed -- true
+  # for every existing onboarding spec, which never deliberately exercises
+  # this confirmation -- `Req.Test`'s own plug raises rather than reaching the
+  # internet; rescued here into the same "could not tell" outcome a real
+  # network failure already gets, so an ordinary spec's onboard call is
+  # unaffected by a confirmation it never asked to exercise (c1b2d03a).
+  defp confirm(id, key) do
     Req.get(
       url:
         Config.server_url()
         |> String.trim_trailing("/")
         |> Kernel.<>("/api/harnesses/#{id}"),
-      headers: [{"authorization", "Bearer " <> token}],
+      headers: [{"authorization", "Bearer " <> key}],
       retry: false,
-      receive_timeout: to_timeout(second: 15)
+      receive_timeout: to_timeout(second: 15),
+      plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
     )
+  rescue
+    exception -> {:error, exception}
   end
 
   defp mint_and_record(env, root, project_id) do
