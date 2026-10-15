@@ -209,6 +209,10 @@ defmodule CmsHarness.Project.AnalysisServer do
     {:reply, length(held), clear_running(%{state | queue: []})}
   end
 
+  def handle_call(:status, _from, %{running: %{started: false} = waiting} = state) do
+    {:reply, %{running: nil, queued: Enum.map([waiting | state.queue], &entry_summary/1)}, state}
+  end
+
   def handle_call(:status, _from, state) do
     {:reply,
      %{running: entry_summary(state.running), queued: Enum.map(state.queue, &entry_summary/1)},
@@ -252,7 +256,7 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
 
     timer = Process.send_after(self(), {:timeout, run_id}, timeout())
-    {:noreply, %{state | timer: timer}}
+    {:noreply, %{state | timer: timer, running: Map.put(running, :started, true)}}
   end
 
   def handle_info(
@@ -565,7 +569,7 @@ defmodule CmsHarness.Project.AnalysisServer do
         run_with_slot(project, entry, parent)
       end)
 
-    %{state | running: Map.put(entry, :task, task), queue: rest, timer: nil}
+    %{state | running: Map.merge(entry, %{task: task, started: false}), queue: rest, timer: nil}
   end
 
   defp maybe_start_next(state), do: state
