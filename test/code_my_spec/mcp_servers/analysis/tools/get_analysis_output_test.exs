@@ -62,6 +62,33 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
     assert second["next_offset"] == nil
   end
 
+  test "a later superseded run does not shadow an earlier one with real output", ctx do
+    run = finished(ctx.scope, "exunit", "the assertion that failed\n", :failed)
+    newer = analysis_run_fixture(ctx.scope, %{source: "exunit", kind: :partial})
+
+    {:ok, _superseded} =
+      RunsRepository.finish_run(newer, :superseded, %{stats: %{"superseded" => "requeued"}})
+
+    result = page(%{source: "exunit"}, ctx.frame)
+
+    assert result["run_id"] == run.id
+    assert result["output"] == "the assertion that failed\n"
+    assert result["output_available"] == true
+  end
+
+  test "a source with nothing but a superseded run still answers with it", ctx do
+    run = analysis_run_fixture(ctx.scope, %{source: "exunit", kind: :partial})
+
+    {:ok, run} =
+      RunsRepository.finish_run(run, :superseded, %{stats: %{"superseded" => "requeued"}})
+
+    result = page(%{source: "exunit"}, ctx.frame)
+
+    assert result["run_id"] == run.id
+    assert result["status"] == "superseded"
+    assert result["output_available"] == false
+  end
+
   test "failed runs expose their retained boot error", ctx do
     run = finished(ctx.scope, "exunit", "** (RuntimeError) missing configuration\n", :failed)
     result = page(%{source: "exunit"}, ctx.frame)
