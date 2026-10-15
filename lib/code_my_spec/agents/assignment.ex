@@ -76,17 +76,22 @@ defmodule CodeMySpec.Agents.Assignment do
     end
   end
 
-  # A story whose every requirement is already satisfied at this copy has
-  # nothing left for a team to do, and nothing will land for it, so the
+  # A promoted story whose every requirement is already satisfied at this copy
+  # has nothing left for a team to do, and nothing will land for it, so the
   # team-free notice main waits on never comes: team 3 sat idle on story 811
   # (2026-10-15). A shipped story with a new criterion or open issues has
-  # unsatisfied requirements again, and is work. Read before the transaction:
+  # unsatisfied requirements again, and an unpromoted one still has its landing
+  # to come; both are work. Read before the transaction:
   # the graph can wait on its projector, which must not happen under locks.
   defp work_left(_scope, _copy_id, nil), do: :ok
 
   defp work_left(scope, copy_id, story_id) do
-    case Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id) do
-      {done, done} when done > 0 -> {:error, :story_done}
+    with %{promoted_version: version} when is_binary(version) <-
+           Stories.get_story(scope, story_id),
+         {done, done} when done > 0 <-
+           Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id) do
+      {:error, :story_done}
+    else
       _ -> :ok
     end
   end

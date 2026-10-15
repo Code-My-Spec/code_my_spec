@@ -123,8 +123,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
 
   defp error_message(:story_done),
     do:
-      "Every requirement of that story is already satisfied on this copy, so there is nothing " <>
-        "left for a team to do on it. Pick another story."
+      "That story is already promoted and every requirement of it is satisfied on this copy, " <>
+        "so there is nothing left for a team to do on it. Pick another story."
 
   defp error_message(:story_assigned_elsewhere),
     do: "The story is assigned to another working copy. Reassign it explicitly first."

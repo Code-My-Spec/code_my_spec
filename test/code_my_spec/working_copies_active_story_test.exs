@@ -89,10 +89,11 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
   # Story 811 was handed to team 3 with every requirement already satisfied;
   # nothing could land for it, so no team-free notice reached main and the team
   # sat idle (2026-10-15).
-  test "a story with every requirement satisfied at the copy is refused", %{scope: scope} do
+  test "a promoted story with every requirement satisfied at the copy is refused", %{scope: scope} do
     held = story_fixture(scope)
     {:ok, _} = choose(scope, held.id)
     done = story_fixture(scope)
+    {:ok, done} = done |> Story.changeset(%{promoted_version: "2.0.1"}) |> Repo.update()
 
     {_done, total} = CodeMySpec.Requirements.story_progress(scope, done.id)
 
