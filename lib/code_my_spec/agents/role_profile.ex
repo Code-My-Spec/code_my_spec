@@ -113,7 +113,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue update_issue
     list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
     withdraw_question
-    call_mcp_server
+    call_mcp_server get_local_app_token
     ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file

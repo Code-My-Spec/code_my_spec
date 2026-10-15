@@ -114,6 +114,24 @@ session start, before it was removed — calling it explains this and names
 the two HTTP endpoints (`/analysis/run`, `/analysis/wait`, documented in
 AGENTS.md) that replaced it; reconnecting through `/mcp` refreshes the list.
 
+## Scoping a manual `mix credo` run
+
+Prefer `start_analysis({ source = "credo", paths = [...] })` over invoking
+`mix credo` by hand -- it does not go near the problem below.
+
+If you do run `mix credo --strict` directly for a quick check, scope it
+with a bare positional path (`mix credo --strict lib/foo.ex test/bar_test.exs`),
+not `--files-included`. Credo documents `--files-included` as repeatable
+and it accumulates correctly at the CLI-parsing layer, but a project with
+its own `.credo.exs` (every project here has one) silently discards it
+again one step later and the run falls back to scanning everything --
+confirmed directly on the installed version (93d1e6f3: a run that should
+have checked one file reported "running 111 checks on 4345 files"). A bare
+positional path does not go through that code path and reliably checks
+only what you named ("Checking 1 source file", confirmed the same way).
+This is Credo's own CLI option handling, not anything in this repository,
+so there is nothing here to patch -- only the invocation to get right.
+
 ## When specs are red
 
 `bdd_specs_passing` has its own task, and its instruction is worth
