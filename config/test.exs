@@ -311,6 +311,7 @@ config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
 # test runner — and the whole suite down with no summary. Tests that want a
 # report drive it (`WorkingCopyReporter.report/1`) or start their own.
 config :code_my_spec, :working_copy_reporter, first_report: :never, heartbeat: :never
+config :code_my_spec, :app_log_trimmer, interval: :never
 
 # `CmsHarness.Projects.Generator`'s own subprocess calls, pinned for the same
 # reason: the default shells out through several `mix` tasks that take real
