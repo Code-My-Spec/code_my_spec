@@ -17,9 +17,13 @@ defmodule CodeMySpecSpex.FailedRecordingRejectedTest do
   Driven through `with_provider_cassette/3` with a block that raises, against a
   temp cassette directory — the real function on the real path, rather than a
   reimplementation of the rename.
+
+  Not async: `with_provider_cassette/3` installs its plug in every provider's
+  application env, so a concurrent test calling a provider got the cassette
+  instead of its own stub.
   """
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureIO
 

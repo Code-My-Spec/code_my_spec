@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story599.Criterion1664Spex do
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpecSpex.Fixtures
 
-  cloud_endpoint()
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

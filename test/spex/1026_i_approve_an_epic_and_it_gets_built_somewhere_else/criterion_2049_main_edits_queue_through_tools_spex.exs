@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion2049Spex do
   alias CodeMySpecSpex.WorkingCopyHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
-  cloud_endpoint()
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

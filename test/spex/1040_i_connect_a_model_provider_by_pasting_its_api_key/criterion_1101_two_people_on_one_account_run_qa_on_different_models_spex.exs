@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1040.Criterion3026Spex do
 
   use CodeMySpecSpex.Case
 
-  cloud_endpoint()
-
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
