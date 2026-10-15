@@ -61,6 +61,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewTunnel
 
@@ -125,6 +126,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
        |> assign(:reconciling, nil)
        |> assign(:pending_manifest, nil)}
     else
+      # A changeset is a map too, so it must be matched ahead of the generic
+      # refusal clause below — otherwise it passes through as a raw struct
+      # instead of a reason a harness can show.
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error, %{reason: Utils.changeset_error_to_string(changeset)}}
+
       # A refusal that already built its own payload passes through; the
       # clause below calls `to_string/1`, which raises on a map.
       {:error, %{} = refusal} ->
