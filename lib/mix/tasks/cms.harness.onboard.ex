@@ -566,69 +566,13 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  defp recorded_id(%{"working_copy_id" => id}, env, root) when is_binary(id) and id != "",
-    do: confirm_or_remint(id, env, root)
+  defp recorded_id(%{"working_copy_id" => id}, _env, _root) when is_binary(id) and id != "",
+    do: {:ok, id}
 
-  defp recorded_id(%{"harness_id" => id}, env, root) when is_binary(id) and id != "",
-    do: confirm_or_remint(id, env, root)
+  defp recorded_id(%{"harness_id" => id}, _env, _root) when is_binary(id) and id != "",
+    do: {:ok, id}
 
   defp recorded_id(_map, env, root), do: mint_and_record(env, root)
-
-  # A recorded id is confirmed against the server rather than trusted on
-  # faith: `Staffing.offboard/2` deletes the server's row but never touches
-  # the checkout's own files (its own moduledoc says so), so the original
-  # unconditional trust here left a checkout re-onboarded after an explicit
-  # offboard invisible to the server forever, with nothing anywhere saying
-  # so (45cb6b07). Confirmed gone, this follows the rule story 1014's
-  # criterion 965 already establishes for a checkout that vanished and came
-  # back: never repaired into the old identity, onboarded as a new one --
-  # the same path `mint_and_record/2` already takes for a checkout with no
-  # recorded id at all.
-  #
-  # A check that itself fails (network, credential) is read as "could not
-  # tell", not "gone": that would trade a silent loss of registration for a
-  # forced re-mint on every transient network hiccup, which is worse.
-  defp confirm_or_remint(id, env, root) do
-    case project_for(root, nil) do
-      {:ok, project} -> confirm_with_project(id, env, root, project)
-      _ -> {:ok, id}
-    end
-  end
-
-  defp confirm_with_project(id, env, root, project) do
-    case token_for(ensure_local_credential(project.id)) do
-      {:ok, token} -> handle_confirmation(confirm(id, token), id, env, root)
-      _ -> {:ok, id}
-    end
-  end
-
-  @doc """
-  What a recorded id's confirmation answer decides, given the response
-  `confirm/2` would have returned.
-
-  Public so the decision is testable without the network call `confirm/2`
-  makes -- this file's own `Req` client is exempt from the suite's stub
-  convention because mix tasks are not run by it (see
-  `CodeMySpec.HttpClientsAreStubbableTest`), so only the 200 and
-  fallback branches, which touch nothing else, are covered directly; the
-  404 branch's re-mint is covered by `recorded_id/3`'s own moduledoc note
-  and by manual verification, same as `mint/2` itself.
-  """
-  def handle_confirmation({:ok, %{status: 200}}, id, _env, _root), do: {:ok, id}
-  def handle_confirmation({:ok, %{status: 404}}, _id, env, root), do: mint_and_record(env, root)
-  def handle_confirmation(_other, id, _env, _root), do: {:ok, id}
-
-  defp confirm(id, token) do
-    Req.get(
-      url:
-        Config.server_url()
-        |> String.trim_trailing("/")
-        |> Kernel.<>("/api/harnesses/#{id}"),
-      headers: [{"authorization", "Bearer " <> token}],
-      retry: false,
-      receive_timeout: to_timeout(second: 15)
-    )
-  end
 
   defp mint_and_record(env, root) do
     with {:ok, id} <- mint(root, nil) do
