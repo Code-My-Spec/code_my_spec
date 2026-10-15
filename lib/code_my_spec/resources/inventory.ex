@@ -87,13 +87,17 @@ defmodule CodeMySpec.Resources.Inventory do
   # wrong; the record pointing at a released address is.
   defp cloudflare(scope) do
     with {:ok, zones} <- Cloudflare.list_zones(scope) do
-      Enum.reduce_while(zones, {:ok, []}, fn zone, {:ok, acc} ->
-        case Cloudflare.list_dns_records(scope, zone["id"]) do
-          {:ok, records} -> {:cont, {:ok, acc ++ Enum.map(records, &dns_resource/1)}}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+      zone_records(scope, zones)
     end
+  end
+
+  defp zone_records(scope, zones) do
+    Enum.reduce_while(zones, {:ok, []}, fn zone, {:ok, acc} ->
+      case Cloudflare.list_dns_records(scope, zone["id"]) do
+        {:ok, records} -> {:cont, {:ok, acc ++ Enum.map(records, &dns_resource/1)}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp dns_resource(record) do

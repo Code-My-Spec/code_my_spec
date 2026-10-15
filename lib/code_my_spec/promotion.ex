@@ -458,10 +458,7 @@ defmodule CodeMySpec.Promotion do
     result =
       Repo.transaction(fn ->
         for {story, copy_id, expected_revision} <- stories, not is_nil(story) do
-          case Qa.complete_reviewed_story_issues(scope, story, commit, expected_revision) do
-            {:ok, _issues} -> stamp_promoted_story(scope, story, version, commit, copy_id)
-            {:error, reason} -> Repo.rollback(reason)
-          end
+          complete_and_stamp_story(scope, story, version, commit, copy_id, expected_revision)
         end
       end)
 
@@ -482,6 +479,13 @@ defmodule CodeMySpec.Promotion do
            reason:
              "Code landed, but story work could not be completed: #{inspect(reason)}. Assignment remains held."
          }}
+    end
+  end
+
+  defp complete_and_stamp_story(scope, story, version, commit, copy_id, expected_revision) do
+    case Qa.complete_reviewed_story_issues(scope, story, commit, expected_revision) do
+      {:ok, _issues} -> stamp_promoted_story(scope, story, version, commit, copy_id)
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 

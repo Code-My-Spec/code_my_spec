@@ -263,16 +263,19 @@ defmodule CodeMySpec.Google.Ads do
         {:ok, resp} ->
           results = acc ++ Map.get(resp, "results", [])
 
-          case Map.get(resp, "nextPageToken") do
-            next when next in [nil, ""] -> {:ok, results}
-            next -> search(token, customer_id, query, opts, results, next)
-          end
+          next_search_page(token, customer_id, query, opts, results, Map.get(resp, "nextPageToken"))
 
         {:error, _} = error ->
           error
       end
     end
   end
+
+  defp next_search_page(_token, _customer_id, _query, _opts, results, next) when next in [nil, ""],
+    do: {:ok, results}
+
+  defp next_search_page(token, customer_id, query, opts, results, next),
+    do: search(token, customer_id, query, opts, results, next)
 
   defp mutate(token, customer_id, collection, operations, opts) do
     cid = normalize_customer_id(customer_id)

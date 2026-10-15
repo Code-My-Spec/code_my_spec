@@ -123,19 +123,23 @@ defmodule CodeMySpec.Knowledge do
           {:ok, "# #{config.title}\n\n#{lines}\n"}
 
         segments ->
-          # The listing strips `.md` (`format_entries/1`), so read the name it
-          # printed as well as the name on disk.
-          full_path = Path.join([root_path(root) | segments])
-
-          case locate(root, full_path) do
-            :not_found ->
-              with_md = full_path <> ".md"
-              resolve_located(locate(root, with_md), root, with_md, config)
-
-            located ->
-              resolve_located(located, root, full_path, config)
-          end
+          resolve_segments(root, segments, config)
       end
+    end
+  end
+
+  defp resolve_segments(root, segments, config) do
+    # The listing strips `.md` (`format_entries/1`), so read the name it
+    # printed as well as the name on disk.
+    full_path = Path.join([root_path(root) | segments])
+
+    case locate(root, full_path) do
+      :not_found ->
+        with_md = full_path <> ".md"
+        resolve_located(locate(root, with_md), root, with_md, config)
+
+      located ->
+        resolve_located(located, root, full_path, config)
     end
   end
 
@@ -184,18 +188,22 @@ defmodule CodeMySpec.Knowledge do
           {:ok, {:dir, browse_entries(root, base)}}
 
         segments ->
-          full_path = Path.join([base | segments])
-
-          case locate(root, full_path) do
-            :invalid_path -> {:error, :invalid_path}
-            :not_found -> {:error, :not_found}
-            :dir -> {:ok, {:dir, browse_entries(with_path(root, full_path), base)}}
-            :file -> browse_file(root, full_path)
-          end
+          browse_segments(root, base, segments)
       end
     else
       :error -> {:error, :unknown_library}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp browse_segments(root, base, segments) do
+    full_path = Path.join([base | segments])
+
+    case locate(root, full_path) do
+      :invalid_path -> {:error, :invalid_path}
+      :not_found -> {:error, :not_found}
+      :dir -> {:ok, {:dir, browse_entries(with_path(root, full_path), base)}}
+      :file -> browse_file(root, full_path)
     end
   end
 

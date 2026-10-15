@@ -666,11 +666,15 @@ defmodule CodeMySpec.TaskOwner do
           {:error, :task_not_found}
 
         _ ->
-          with :ok <- allow_activation(current, task_id) do
-            update_embedded_task(current, task_id, activation_attrs(current, agent_id))
-          end
+          activate_if_allowed(current, task_id, agent_id)
       end
     end)
+  end
+
+  defp activate_if_allowed(current, task_id, agent_id) do
+    with :ok <- allow_activation(current, task_id) do
+      update_embedded_task(current, task_id, activation_attrs(current, agent_id))
+    end
   end
 
   @doc "Close a task out."

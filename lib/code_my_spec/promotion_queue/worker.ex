@@ -285,12 +285,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
       case Enum.split_with(entries, &MapSet.member?(merged, &1.commit)) do
         {[], unaccounted} ->
-          # One the build neither merged nor ejected is still queued, so
-          # building again at once rebuilds the same batch, silently, forever.
-          case Enum.reject(unaccounted, &MapSet.member?(conflicted, &1.commit)) do
-            [] -> next(%{state | reserved_entries: []})
-            left -> could_not_gate(state, left, %{reason: unaccounted_reason(left, built)})
-          end
+          next_or_unaccounted(state, unaccounted, conflicted, built)
 
         {in_batch, _out} ->
           gating(state, in_batch, gate, base, built.head)
@@ -299,6 +294,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       {:error, :gate_busy} -> wait_for_gate(state)
       {:error, %{unreachable: true} = reason} -> wait_for_gate_harness(state, entries, reason)
       {:error, reason} -> could_not_gate(state, entries, reason)
+    end
+  end
+
+  # One the build neither merged nor ejected is still queued, so
+  # building again at once rebuilds the same batch, silently, forever.
+  defp next_or_unaccounted(state, unaccounted, conflicted, built) do
+    case Enum.reject(unaccounted, &MapSet.member?(conflicted, &1.commit)) do
+      [] -> next(%{state | reserved_entries: []})
+      left -> could_not_gate(state, left, %{reason: unaccounted_reason(left, built)})
     end
   end
 

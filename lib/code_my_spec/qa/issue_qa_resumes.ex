@@ -77,55 +77,63 @@ defmodule CodeMySpec.Qa.IssueQaResumes do
 
       case existing do
         nil ->
-          unless issue.awaiting_role == :coding, do: Repo.rollback(:issue_not_awaiting_coding)
-
-          audit_attrs =
-            Map.take(attrs, [
-              :issue_id,
-              :attempt_id,
-              :working_copy_id,
-              :coding_agent_id,
-              :coding_task_id,
-              :candidate_sha,
-              :reason
-            ])
-            |> Map.merge(%{
-              project_id: scope.active_project_id,
-              authorized_by_agent_id: actor.id,
-              authorized_at: DateTime.utc_now()
-            })
-
-          audit =
-            case %IssueQaResume{} |> IssueQaResume.changeset(audit_attrs) |> Repo.insert() do
-              {:ok, audit} -> audit
-              {:error, error} -> Repo.rollback(error)
-            end
-
-          case Issues.set_awaiting_role(scope, issue, :qa) do
-            {:ok, _} -> audit
-            {:error, error} -> Repo.rollback(error)
-          end
+          new_resume!(scope, actor, issue, attrs)
 
         audit ->
-          same? =
-            Enum.all?(
-              [
-                :issue_id,
-                :working_copy_id,
-                :coding_agent_id,
-                :coding_task_id,
-                :candidate_sha,
-                :reason
-              ],
-              &(Map.get(audit, &1) == attrs[&1])
-            )
-
-          unless same? && issue.awaiting_role == :qa,
-            do: Repo.rollback(:conflicting_or_stale_resume)
-
-          audit
+          same_resume!(audit, attrs, issue)
       end
     end)
+  end
+
+  defp new_resume!(scope, actor, issue, attrs) do
+    unless issue.awaiting_role == :coding, do: Repo.rollback(:issue_not_awaiting_coding)
+
+    audit_attrs =
+      Map.take(attrs, [
+        :issue_id,
+        :attempt_id,
+        :working_copy_id,
+        :coding_agent_id,
+        :coding_task_id,
+        :candidate_sha,
+        :reason
+      ])
+      |> Map.merge(%{
+        project_id: scope.active_project_id,
+        authorized_by_agent_id: actor.id,
+        authorized_at: DateTime.utc_now()
+      })
+
+    audit =
+      case %IssueQaResume{} |> IssueQaResume.changeset(audit_attrs) |> Repo.insert() do
+        {:ok, audit} -> audit
+        {:error, error} -> Repo.rollback(error)
+      end
+
+    case Issues.set_awaiting_role(scope, issue, :qa) do
+      {:ok, _} -> audit
+      {:error, error} -> Repo.rollback(error)
+    end
+  end
+
+  defp same_resume!(audit, attrs, issue) do
+    same? =
+      Enum.all?(
+        [
+          :issue_id,
+          :working_copy_id,
+          :coding_agent_id,
+          :coding_task_id,
+          :candidate_sha,
+          :reason
+        ],
+        &(Map.get(audit, &1) == attrs[&1])
+      )
+
+    unless same? && issue.awaiting_role == :qa,
+      do: Repo.rollback(:conflicting_or_stale_resume)
+
+    audit
   end
 
   def latest(scope, issue_id) do
