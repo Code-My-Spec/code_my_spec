@@ -127,7 +127,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   defp moved?(name) do
     not Enum.any?(__components__(), &(&1.name == name)) and
-      Enum.any?(ScriptableTools.__components__(), &(&1.name == name))
+      Enum.any?(ScriptableTools.registrations(), &(&1.name == name))
   end
 
   # `to_protocol/1`, not the struct. Anubis's own handler converts before

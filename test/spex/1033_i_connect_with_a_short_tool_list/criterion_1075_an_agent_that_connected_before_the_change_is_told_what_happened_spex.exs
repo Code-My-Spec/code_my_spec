@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion3000Spex do
   spex "I connect with a short tool list", criterion: 1075 do
     scenario "An agent that connected before the change is told what happened" do
       given_ "a tool that has moved to code mode", context do
-        moved = ScriptableTools.__components__() |> hd() |> Map.get(:name)
+        moved = ScriptableTools.registrations() |> hd() |> Map.get(:name)
 
         refute moved in MapSet.new(LocalServer.__components__(), & &1.name)
 

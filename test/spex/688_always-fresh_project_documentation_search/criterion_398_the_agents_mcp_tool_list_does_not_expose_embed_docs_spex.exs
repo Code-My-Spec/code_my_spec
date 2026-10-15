@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5973Spex do
   Anubis registers MCP tools statically on the server module via
   `component/1` calls. Story 971 split that registration in two:
   `LocalServer.__components__(:tool)` is the spine an agent gets at
-  connect, and `ScriptableTools.__components__(:tool)` is everything
+  connect, and `ScriptableTools.registrations()` is everything
   else, reachable only through `run_script` (see
   `LocalServer.moved?/1`). Neither list alone is "what the agent can
   invoke" any more — the union of both is. This spec reads that union.
@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5973Spex do
         # reached with `run_script`. The anchor below is about the knowledge
         # tools still being reachable, which is the union, not one list.
         tool_names =
-          (LocalServer.__components__(:tool) ++ ScriptableTools.__components__(:tool))
+          (LocalServer.__components__(:tool) ++ ScriptableTools.registrations())
           |> Enum.map(& &1.name)
 
         {:ok, Map.put(context, :tool_names, tool_names)}

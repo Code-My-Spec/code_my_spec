@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion2999Spex do
         # declarations on the two server modules, so there is nothing to drive.
         # Asserted rather than assumed because the saving below is only
         # meaningful against the whole surface.
-        total = length(LocalServer.__components__()) + length(ScriptableTools.__components__())
+        total = length(LocalServer.__components__()) + length(ScriptableTools.registrations())
 
         assert total > 100, "expected the whole tool surface, found #{total}"
 

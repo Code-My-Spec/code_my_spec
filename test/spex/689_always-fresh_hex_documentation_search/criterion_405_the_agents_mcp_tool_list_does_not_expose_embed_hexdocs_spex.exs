@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
   Same approach as story 688's `embed_docs` removal scenario. Story
   971 split tool registration in two: `LocalServer.__components__(:tool)`
   is the spine an agent gets at connect, and
-  `ScriptableTools.__components__(:tool)` is everything else, reachable
+  `ScriptableTools.registrations()` is everything else, reachable
   only through `run_script` (see `LocalServer.moved?/1`). Neither list
   alone is "what the agent can invoke" any more — the union of both is.
   This spec reads that union and asserts `embed_hexdocs` is in neither.
@@ -27,7 +27,8 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Agent cannot invoke a manual embed_hexdocs action against the local MCP server", criterion: 405 do
+  spex "Agent cannot invoke a manual embed_hexdocs action against the local MCP server",
+    criterion: 405 do
     scenario "embed_hexdocs is absent from the registered tool list" do
       given_ "an agent connected to the local MCP server", context do
         # given: already true — there is nothing to connect to. The local MCP
@@ -45,7 +46,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
         # reached with `run_script`. The anchor below is about the knowledge
         # tools still being reachable, which is the union, not one list.
         tool_names =
-          (LocalServer.__components__(:tool) ++ ScriptableTools.__components__(:tool))
+          (LocalServer.__components__(:tool) ++ ScriptableTools.registrations())
           |> Enum.map(& &1.name)
 
         {:ok, Map.put(context, :tool_names, tool_names)}

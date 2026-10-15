@@ -14,8 +14,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5153Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.ListPersonas
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -28,18 +27,16 @@ defmodule CodeMySpecSpex.Story560.Criterion5153Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreatePersona.execute(
+        {:ok, _} =
+          ToolLibrary.run(
+            "create_persona",
             %{
               slug: "founder",
               name: "Founder",
               headline: "Solo founder shipping a product"
             },
-            frame
+            %{scope: frame.assigns.current_scope}
           )
-
-        refute response.isError == true,
-               "expected create_persona to succeed, got: #{inspect(response)}"
 
         {:ok, context}
       end
@@ -62,14 +59,14 @@ defmodule CodeMySpecSpex.Story560.Criterion5153Spex do
 
       when_ "the agent calls list_personas with the second project's scope", context do
         frame = %Frame{assigns: %{current_scope: context.second_scope}}
-        {:reply, response, _frame} = ListPersonas.execute(%{}, frame)
+
+        {:ok, response} =
+          ToolLibrary.run("list_personas", %{}, %{scope: frame.assigns.current_scope})
+
         {:ok, Map.put(context, :list_response, response)}
       end
 
       then_ "the persona does NOT appear in the second project's library", context do
-        refute context.list_response.isError == true,
-               "expected list_personas to succeed, got: #{inspect(context.list_response)}"
-
         body = TaskResponseHelpers.response_text(context.list_response)
 
         assert body =~ ~r/persona|Persona/i,

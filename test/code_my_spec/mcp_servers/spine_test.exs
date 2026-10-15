@@ -13,7 +13,7 @@ defmodule CodeMySpec.McpServers.SpineTest do
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
   defp advertised, do: MapSet.new(LocalServer.__components__(), & &1.name)
-  defp scriptable, do: MapSet.new(ScriptableTools.__components__(), & &1.name)
+  defp scriptable, do: MapSet.new(ScriptableTools.registrations(), & &1.name)
 
   describe "the list an agent receives at connect" do
     test "is the spine, not every tool" do

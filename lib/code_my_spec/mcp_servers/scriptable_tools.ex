@@ -47,13 +47,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
   component(CodeMySpec.McpServers.Issues.Tools.SetActiveIssue)
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssue)
-  component(CodeMySpec.McpServers.Personas.Tools.CreatePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.UpdatePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.DeletePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory)
-  component(CodeMySpec.McpServers.Personas.Tools.UnlinkPersonaFromStory)
-  component(CodeMySpec.McpServers.Personas.Tools.ListPersonas)
-  component(CodeMySpec.McpServers.Personas.Tools.GetPersona)
   component(CodeMySpec.McpServers.BddRules.Tools.AddRule)
   component(CodeMySpec.McpServers.BddRules.Tools.UpdateRule)
   component(CodeMySpec.McpServers.BddRules.Tools.DeleteRule)
@@ -231,4 +224,10 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Observability.Tools.GetTrace)
   component(CodeMySpec.McpServers.Observability.Tools.SlowSpans)
   component(CodeMySpec.McpServers.Observability.Tools.ErrorSummary)
+
+  @doc """
+  Every scriptable tool: the components above, then the tools domains own
+  (`CodeMySpec.ToolLibrary`), in the one shape every reader takes.
+  """
+  def registrations, do: __components__() ++ CodeMySpec.ToolLibrary.registrations()
 end

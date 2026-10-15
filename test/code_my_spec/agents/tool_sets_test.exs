@@ -31,11 +31,9 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
     # something that waits on a running copy rather than data an agent can
     # compute with. A role can be granted either kind, so "exists" has to mean
     # "either server exposes it," not just the narrower one.
-    names = fn server -> server.__components__() |> Enum.map(& &1.name()) end
-
     real =
-      (names.(ScriptableTools) ++ names.(LocalServer))
-      |> MapSet.new()
+      (ScriptableTools.registrations() ++ LocalServer.__components__())
+      |> MapSet.new(& &1.name)
 
     %{real: real}
   end
@@ -59,7 +57,7 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
   end
 
   test "coding and QA can retrieve original analyzer output through scripts" do
-    names = ScriptableTools.__components__() |> Enum.map(& &1.name())
+    names = Enum.map(ScriptableTools.registrations(), & &1.name)
 
     assert "get_analysis_output" in names
     assert "get_analysis_output" in ToolSets.for_role(:coding)

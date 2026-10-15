@@ -11,7 +11,7 @@ defmodule CodeMySpec.SyncWorkingCopyIsReachableTest do
   alias CodeMySpec.McpServers.ScriptableTools
 
   test "the tool exists over MCP" do
-    names = ScriptableTools.__components__() |> Enum.map(& &1.name)
+    names = ScriptableTools.registrations() |> Enum.map(& &1.name)
 
     assert "sync_working_copy" in names,
            "the tool is written and tested and no agent can call it, because it " <>
