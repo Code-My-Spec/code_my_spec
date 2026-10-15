@@ -36,31 +36,16 @@ defmodule CmsHarness.TestDatabase do
   @doc """
   The partition name for a working copy — **read, never derived**.
 
-  Reads through `ClientUtils.Harness.Onboarding.resolve_partition/2`, the same
-  recorded-only lookup `resolve_partition!/2` wraps, and raises this project's
-  own remedy for a copy that has none: `resolve_partition!/2`'s own message
-  names a bare `mix harness.onboard`, which is correct for a generated
-  application but not this one — CodeMySpec's own task is namespaced
-  `mix cms.harness.onboard` and takes the directory as an argument, the same
-  as `CmsHarness.HookDecision`'s `:not_onboarded` explanation already gives
-  (ba5a1f09).
+  Delegates to `ClientUtils.Harness.Onboarding.resolve_partition!/2`, which returns
+  what onboarding recorded and raises for a copy that has none, naming the command
+  that fixes it.
 
   One path, deliberately: no derive-on-miss fallback here, which would keep a
   second copy of the algorithm alive.
   """
   @spec partition_for(String.t()) :: String.t()
   def partition_for(cwd) do
-    case Onboarding.resolve_partition(cwd) do
-      {:ok, partition} ->
-        partition
-
-      {:error, :not_onboarded} ->
-        raise """
-        #{cwd} has no recorded test partition, so it has not been onboarded.
-
-        Run: mix cms.harness.onboard #{cwd}
-        """
-    end
+    Onboarding.resolve_partition!(cwd)
   end
 
   @doc """
