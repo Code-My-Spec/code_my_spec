@@ -20,6 +20,7 @@ defmodule CmsHarness.AppInstance do
 
   require Logger
 
+  alias CmsHarness.AppInstance.LogTrim
   alias CmsHarness.AppInstance.Runner
   alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
@@ -27,6 +28,9 @@ defmodule CmsHarness.AppInstance do
   # Configurable so a test of the idle stop need not wait 30 minutes.
   defp idle_timeout,
     do: Application.get_env(:code_my_spec, :app_instance_idle_timeout_ms, to_timeout(minute: 30))
+
+  defp log_max_bytes,
+    do: Application.get_env(:code_my_spec, :app_instance_log_max_bytes, 50 * 1024 * 1024)
 
   defp idle_check_interval,
     do:
@@ -361,6 +365,8 @@ defmodule CmsHarness.AppInstance do
   # Each tick re-probes a running app and reports a change, so an app that came
   # up after its health wait gave up does not stay "down".
   defp refresh_status(state) do
+    LogTrim.trim(state.log_path, log_max_bytes())
+
     if running?(state) do
       probed = probe(state)
       if probed.status != state.status, do: deliver_app_status(probed)

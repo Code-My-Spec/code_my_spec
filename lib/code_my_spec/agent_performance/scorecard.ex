@@ -110,6 +110,29 @@ defmodule CodeMySpec.AgentPerformance.Scorecard do
     }
   ]
 
+  # What to change first when a rate needs it -- the scorecard's own
+  # recommendations, carried on the rate so the page and the export say the
+  # same thing.
+  @changes %{
+    throughput:
+      "Fewer stories landed than last week. Look at Time per story and Blocked time for where they are waiting.",
+    qa_first_pass:
+      "Raise QA first pass: have the coder run the QA brief's checks before certifying, and restart the copy's app onto the committed code before QA starts.",
+    tap_out_expiry:
+      "Never let a tap-out expire unseen: route undecided tap-outs to main after a short timeout, so main decides or escalates.",
+    question_wait:
+      "Get questions answered faster: have main try them first and escalate only real product calls.",
+    offer_acceptance:
+      "Find out why offers go unclaimed: Offers by kind shows which kinds are ignored or declined most.",
+    tool_failure_rate:
+      "Cut tool failures: Activity by role and the agent chart show which roles and agents fail most, and the tools behind it.",
+    failed_turns:
+      "Fewer failed turns: Activity over time shows when they cluster; the failure notices name the provider error.",
+    messages_per_story:
+      "Fewer messages per story: Time per story shows which stories needed the most, and what they waited on.",
+    tokens_per_story: "Bring cost per story down: Activity by role compares tokens by provider."
+  }
+
   @doc "The headline rates and the breakdowns behind them, narrowed by `filter`."
   @spec load(Scope.t(), map()) :: map()
   def load(%Scope{} = scope, filter \\ %{}) do
@@ -260,6 +283,7 @@ defmodule CodeMySpec.AgentPerformance.Scorecard do
       end
 
     spec
+    |> Map.put(:change, Map.fetch!(@changes, spec.key))
     |> Map.put(:value, value)
     |> Map.put(:previous, before)
     |> Map.put(:days, days)

@@ -179,6 +179,16 @@ topbar.config({ barColors: { 0: "#29d" }, shadowColor: "rgba(0, 0, 0, .3)" })
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
+// A file the server built, saved by the browser (the performance report).
+window.addEventListener("phx:download", ({ detail: { filename, content, type } }) => {
+  const url = URL.createObjectURL(new Blob([content], { type: type || "text/plain" }))
+  const link = Object.assign(document.createElement("a"), { href: url, download: filename })
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+})
+
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 

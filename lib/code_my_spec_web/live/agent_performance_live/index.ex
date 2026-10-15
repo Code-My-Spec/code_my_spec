@@ -97,6 +97,24 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     {:noreply, report_failed(socket, reason)}
   end
 
+  def handle_async(:export, {:ok, markdown}, socket) do
+    {:noreply,
+     socket
+     |> assign(:exporting?, false)
+     |> push_event("download", %{
+       filename: "agent-performance-#{Date.utc_today()}.md",
+       content: markdown,
+       type: "text/markdown"
+     })}
+  end
+
+  def handle_async(:export, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:exporting?, false)
+     |> put_flash(:error, "The report could not be built: #{inspect(reason)}")}
+  end
+
   def handle_async(:offer_results, {:ok, results}, socket),
     do: {:noreply, assign(socket, offer_results: results, offer_loading?: false)}
 
@@ -104,6 +122,18 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     do: {:noreply, assign(socket, offer_results: %{}, offer_loading?: false)}
 
   @impl true
+  # The page as Markdown, for an agent to plan from; built in the background
+  # and handed to the browser to save.
+  def handle_event("export_report", _params, socket) do
+    scope = socket.assigns.current_scope
+    filter = socket.assigns.filter
+
+    {:noreply,
+     socket
+     |> assign(:exporting?, true)
+     |> start_async(:export, fn -> AgentPerformance.report(scope, filter) end)}
+  end
+
   def handle_event("offer_role", %{"role" => role}, socket) do
     role = Enum.find(Agent.roles(), &(to_string(&1) == role))
     scope = socket.assigns.current_scope
@@ -169,6 +199,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     |> assign(:offer_results, %{})
     |> assign(:offer_role, socket.assigns[:offer_role])
     |> assign(:offer_loading?, false)
+    |> assign(:exporting?, false)
     |> assign(:qa_results, %{})
     |> assign(:intervention_results, %{})
     |> assign(:stage_chart, %{"categories" => []})
@@ -384,6 +415,16 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
           </option>
         </select>
       </div>
+      <button
+        type="button"
+        phx-click="export_report"
+        data-test="export-report"
+        class="btn btn-sm btn-outline ml-auto"
+        disabled={@exporting?}
+      >
+        <.icon name="hero-arrow-down-tray" class="size-4" />
+        {if @exporting?, do: "Preparing…", else: "Download for agents (.md)"}
+      </button>
       <span :if={@page_loading?} data-test="performance-loading" class="text-sm text-base-content/60">
         Loading...
       </span>

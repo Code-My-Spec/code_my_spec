@@ -175,6 +175,8 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
   component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
   component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
+  # The performance page as Markdown, for an agent to plan improvements from.
+  component(CodeMySpec.McpServers.AgentPerformance.Tools.AgentPerformanceReport)
 
   # The main agent's view across its working copies, and the one act it can
   # take on what it finds there. Scripted rather than on the spine because the
