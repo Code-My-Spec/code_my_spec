@@ -25,6 +25,18 @@ defmodule CmsHarness.AnAppLogIsTrimmedNotGrownForeverTest do
            "the app wrote at its old offset, leaving the trimmed log the same size"
   end
 
+  test "only the log's tail is kept, so trimming never needs the log's size free",
+       %{tmp_dir: dir} do
+    path = Path.join(dir, "app.log")
+    File.write!(path, String.duplicate("a", 6 * 1024 * 1024) <> "the end")
+
+    assert LogTrim.trim(path, 1_000) == :trimmed
+    kept = File.read!(path <> ".1")
+    assert byte_size(kept) == 5 * 1024 * 1024
+    assert String.ends_with?(kept, "the end")
+    assert File.read!(path) == ""
+  end
+
   test "a log within its limit is left alone", %{tmp_dir: dir} do
     path = Path.join(dir, "app.log")
     File.write!(path, "short")
