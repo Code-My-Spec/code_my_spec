@@ -1659,9 +1659,15 @@ defmodule CmsHarness.Project.ChannelClient do
       # attributed from a rendered line, and `block_changed` therefore could
       # never narrow for an agent with no session. And the page had nothing to
       # render as a tool call, so it drew one as a chat message.
-      "tool" => tool_meta(envelope)
+      "tool" => tool_meta(envelope),
+      # What the turn cost, on `turn_ended` only. Dropped here before, so the
+      # server never recorded an in-app agent's spend.
+      "usage" => usage_meta(Map.get(envelope, :usage))
     }
   end
+
+  defp usage_meta(%{} = usage), do: Map.new(usage, fn {key, value} -> {to_string(key), value} end)
+  defp usage_meta(_usage), do: nil
 
   # The whole call: what was asked and, at its end, what came back. This is the
   # conversation a restart resumes from, so an argument cut short or a result

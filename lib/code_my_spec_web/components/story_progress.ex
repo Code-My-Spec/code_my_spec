@@ -30,8 +30,8 @@ defmodule CodeMySpecWeb.StoryProgress do
     end
   end
 
-  defp progress(%{story_id: story_id, working_copy_id: copy_id}),
-    do: Requirements.story_progress(story_id, copy_id)
+  defp progress(%{scope: scope, story_id: story_id, working_copy_id: copy_id}),
+    do: Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id)
 
   @impl true
   def render(assigns) do
@@ -39,22 +39,27 @@ defmodule CodeMySpecWeb.StoryProgress do
     assigns = assign(assigns, done: done, total: total)
 
     ~H"""
-    <span
+    <button
+      type="button"
       id={@id}
+      phx-click="show_story_graph"
+      phx-value-story-id={@story_id}
+      phx-value-copy-id={@working_copy_id}
       data-test="story-progress"
       data-done={@done}
       data-total={@total}
       title={"#{@done} of #{@total} requirements satisfied"}
       style={"background: conic-gradient(currentColor #{percent(@done, @total)}%, transparent 0)"}
       class={[
-        "inline-block size-3 shrink-0 rounded-full ring-1",
+        "inline-block size-3 shrink-0 cursor-pointer rounded-full ring-1",
         if(@total > 0 and @done == @total,
           do: "text-success ring-success/60",
           else: "text-primary ring-base-content/25"
         )
       ]}
+      aria-label={"Show the requirements graph: #{@done} of #{@total} satisfied"}
     >
-    </span>
+    </button>
     """
   end
 

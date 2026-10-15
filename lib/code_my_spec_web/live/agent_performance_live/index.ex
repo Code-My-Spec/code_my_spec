@@ -49,9 +49,12 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   alias CodeMySpec.AgentPerformance
   alias CodeMySpec.AgentPerformance.Page
-  alias CodeMySpec.AgentPerformance.Stage
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecWeb.AgentPerformanceLive.Charts
+  alias CodeMySpecWeb.AgentPerformanceLive.Scorecard
+  alias CodeMySpecWeb.WorkingCopyLive.Components.Offers
 
   @impl true
   def mount(_params, _session, socket) do
@@ -94,7 +97,35 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     {:noreply, report_failed(socket, reason)}
   end
 
+  def handle_async(:offer_results, {:ok, results}, socket),
+    do: {:noreply, assign(socket, offer_results: results, offer_loading?: false)}
+
+  def handle_async(:offer_results, {:exit, _reason}, socket),
+    do: {:noreply, assign(socket, offer_results: %{}, offer_loading?: false)}
+
   @impl true
+  def handle_event("offer_role", %{"role" => role}, socket) do
+    role = Enum.find(Agent.roles(), &(to_string(&1) == role))
+    scope = socket.assigns.current_scope
+    filter = offer_filter(socket.assigns.filter, role)
+
+    {:noreply,
+     socket
+     |> assign(offer_role: role, offer_loading?: true)
+     |> start_async(:offer_results, fn -> AgentPerformance.offer_results(scope, filter) end)}
+  end
+
+  def handle_event("chart_page", %{"chart" => chart, "page" => page}, socket) do
+    {key, data} =
+      case chart do
+        "stages" -> {:stage_page, socket.assigns.stage_chart}
+        "agents" -> {:agent_page, socket.assigns.agent_chart}
+      end
+
+    page = page |> String.to_integer() |> max(1) |> min(Charts.page_count(data))
+    {:noreply, assign(socket, key, page)}
+  end
+
   def handle_event("filter", params, socket) do
     query =
       %{}
@@ -103,7 +134,9 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       |> maybe_put_param("agent_id", present(params["agent_id"]))
 
     {:noreply,
-     push_patch(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/agent-performance?#{query}")}
+     push_patch(socket,
+       to: ~p"/app/projects/#{socket.assigns.project.id}/agent-performance?#{query}"
+     )}
   end
 
   defp maybe_put_param(map, _key, nil), do: map
@@ -133,6 +166,22 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     |> assign(:stories, [])
     |> assign(:reports, %{})
     |> assign(:teams, [])
+    |> assign(:offer_results, %{})
+    |> assign(:offer_role, socket.assigns[:offer_role])
+    |> assign(:offer_loading?, false)
+    |> assign(:qa_results, %{})
+    |> assign(:intervention_results, %{})
+    |> assign(:stage_chart, %{"categories" => []})
+    |> assign(:blocked_chart, %{"categories" => []})
+    |> assign(:team_chart, %{"categories" => []})
+    |> assign(:agent_chart, %{"categories" => []})
+    |> assign(:stage_page, 1)
+    |> assign(:scorecard, %{kpis: []})
+    |> assign(:role_chart, %{"categories" => []})
+    |> assign(:tap_out_chart, %{"categories" => []})
+    |> assign(:question_chart, %{"categories" => []})
+    |> assign(:offer_kind_chart, %{"categories" => []})
+    |> assign(:agent_page, 1)
     |> assign(:summary, %{
       agents: [],
       offer_health: [],
@@ -148,14 +197,16 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   defp start_async_report(socket, scope, filter) do
     if connected?(socket) do
-      start_async(socket, :report, fn -> %{report: report(scope, filter)} end,
+      role = socket.assigns.offer_role
+
+      start_async(socket, :report, fn -> %{report: report(scope, filter, role)} end,
         timeout: @report_timeout
       )
     else
       # The first (HTTP) render has no task to deliver into -- `start_async`
       # would leave it loading forever. It reads synchronously, which is the
       # old cost, and the connected mount replaces it before anyone can click.
-      assign_report(socket, report(scope, filter))
+      assign_report(socket, report(scope, filter, socket.assigns.offer_role))
     end
   end
 
@@ -171,16 +222,61 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
 
   defp failure_text(reason), do: inspect(reason)
 
-  defp report(scope, filter) do
+  # The reads that do not need the page run beside `Page.load/1` rather than
+  # after it: one after another they outgrew a render's wait.
+  defp report(scope, filter, offer_role) do
+    tasks =
+      Map.new(
+        %{
+          chart_option: fn -> AgentPerformance.chart_option(scope, filter) end,
+          rates_option: fn -> AgentPerformance.rates_option(scope, filter) end,
+          chart_detail: fn -> AgentPerformance.chart_detail(scope, filter) end,
+          offer_results: fn ->
+            AgentPerformance.offer_results(scope, offer_filter(filter, offer_role))
+          end,
+          qa: fn -> AgentPerformance.qa_counts(scope, filter) end,
+          scorecard: fn -> AgentPerformance.scorecard(scope, filter) end,
+          working_copies: fn -> WorkingCopies.list_harnesses(scope) end
+        },
+        fn {key, read} -> {key, Task.async(read)} end
+      )
+
     page = Page.load(scope)
+    read = Map.new(tasks, fn {key, task} -> {key, Task.await(task, @report_timeout)} end)
+    stories = Charts.stories(page.stories, page.reports, page.agents, filter)
 
     %{
+      stage_chart: Charts.stages(stories, page.reports),
+      blocked_chart:
+        Charts.blocked(
+          stories,
+          page.reports,
+          open_waits(page.summary.project_level_blocked, filter)
+        ),
+      intervention_results:
+        Charts.message_kinds(page.summary.message_kinds_by_agent, page.agents, filter),
+      qa_results: read.qa.total,
+      scorecard: read.scorecard,
+      role_chart: Charts.roles(read.scorecard.roles),
+      tap_out_chart: Charts.tap_outs(read.scorecard.tap_outs),
+      question_chart: Charts.questions(read.scorecard.questions),
+      offer_kind_chart: Charts.offer_kinds(read.scorecard.offer_kinds),
+      agent_chart: Charts.agents(page.summary.agents, page.agents, filter),
+      team_chart:
+        Charts.teams(
+          page.teams,
+          page.summary.throughput_by_team,
+          read.qa.by_copy,
+          read.working_copies
+        ),
       stories: page.stories,
       reports: page.reports,
       teams: page.teams,
       summary: page.summary,
-      chart_option: AgentPerformance.chart_option(scope, filter),
-      chart_detail: AgentPerformance.chart_detail(scope, filter)
+      chart_option: read.chart_option,
+      rates_option: read.rates_option,
+      chart_detail: read.chart_detail,
+      offer_results: read.offer_results
     }
   end
 
@@ -191,10 +287,30 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     |> assign(:teams, report.teams)
     |> assign(:summary, report.summary)
     |> assign(:chart_option, report.chart_option)
+    |> assign(:rates_option, report.rates_option)
     |> assign(:chart_detail, report.chart_detail)
+    |> assign(:offer_results, report.offer_results)
+    |> assign(:qa_results, report.qa_results)
+    |> assign(:intervention_results, report.intervention_results)
+    |> assign(:stage_chart, report.stage_chart)
+    |> assign(:blocked_chart, report.blocked_chart)
+    |> assign(:team_chart, report.team_chart)
+    |> assign(:scorecard, report.scorecard)
+    |> assign(:role_chart, report.role_chart)
+    |> assign(:tap_out_chart, report.tap_out_chart)
+    |> assign(:question_chart, report.question_chart)
+    |> assign(:offer_kind_chart, report.offer_kind_chart)
+    |> assign(:agent_chart, report.agent_chart)
     |> assign(:page_loading?, false)
     |> assign(:loading?, false)
   end
+
+  defp offer_filter(filter, nil), do: filter
+  defp offer_filter(filter, role), do: Map.put(filter, :role, role)
+
+  # Open waits belong to no story, so a story filter leaves them out.
+  defp open_waits(_waits, %{story_id: _}), do: []
+  defp open_waits(waits, _filter), do: waits
 
   defp chart_filter(params) do
     %{}
@@ -224,10 +340,18 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     ~H"""
     <.header>Agent Performance</.header>
 
-    <form phx-change="filter" data-test="performance-filter" class="mt-4 flex flex-wrap gap-4 items-end">
+    <form
+      phx-change="filter"
+      data-test="performance-filter"
+      class="mt-4 flex flex-wrap gap-4 items-end"
+    >
       <div>
         <label class="label" for="filter-working-copy">Working copy</label>
-        <select id="filter-working-copy" name="working_copy_id" class="select select-bordered select-sm">
+        <select
+          id="filter-working-copy"
+          name="working_copy_id"
+          class="select select-bordered select-sm"
+        >
           <option value="">All</option>
           <option
             :for={wc <- @working_copies}
@@ -242,7 +366,11 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
         <label class="label" for="filter-story">Story</label>
         <select id="filter-story" name="story_id" class="select select-bordered select-sm">
           <option value="">All</option>
-          <option :for={story <- @story_options} value={story.id} selected={story.id == @filter[:story_id]}>
+          <option
+            :for={story <- @story_options}
+            value={story.id}
+            selected={story.id == @filter[:story_id]}
+          >
             {story.title}
           </option>
         </select>
@@ -269,215 +397,258 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       The report could not be read: {@report_error}
     </p>
 
-    <section data-test="performance-chart" class="mt-6">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-        Activity over time
-      </h2>
+    <section id="section-standouts" data-test="standouts" class="mt-6 scroll-mt-4">
+      <.heading>What stands out</.heading>
+      <p class="mb-2 text-xs text-base-content/60">
+        This week against last. Click a card for the chart behind it.
+      </p>
+      <div :if={@page_loading?} class="h-40 w-full animate-pulse rounded bg-base-200"></div>
+      <Scorecard.standouts :if={not @page_loading?} kpis={@scorecard.kpis} />
+    </section>
+
+    <section id="section-activity" data-test="performance-chart" class="mt-8 scroll-mt-4">
+      <.heading>Activity over time</.heading>
       <div
         :if={not @page_loading?}
         id="performance-chart"
         phx-hook="EChart"
         phx-update="ignore"
         data-option={Jason.encode!(@chart_option)}
-        style="width: 100%; height: 360px;"
+        style="width: 100%; height: 340px;"
       >
       </div>
-      <div :if={@page_loading?} data-test="chart-loading" class="h-[360px] w-full animate-pulse rounded bg-base-200">
+      <div
+        :if={@page_loading?}
+        data-test="chart-loading"
+        class="h-[340px] w-full animate-pulse rounded bg-base-200"
+      >
       </div>
       <div data-test="chart-detail" class="mt-2 flex gap-4 text-sm text-base-content/70">
-        <span :if={not @page_loading?} data-test="chart-detail-tokens">{chart_tokens_label(@chart_detail.tokens_total)}</span>
-        <span :if={not @page_loading?} data-test="chart-detail-nudges">
-          Nudges: {@chart_detail.nudges}
+        <span :if={not @page_loading?} data-test="chart-detail-tokens">
+          {chart_tokens_label(@chart_detail.tokens_total)}
+        </span>
+        <span :if={not @page_loading?} data-test="chart-detail-messages">
+          Messages: {@chart_detail.messages}
         </span>
       </div>
-      <p :if={@page_loading?} data-test="chart-detail-loading" class="mt-2 text-sm text-base-content/60">
+      <p
+        :if={@page_loading?}
+        data-test="chart-detail-loading"
+        class="mt-2 text-sm text-base-content/60"
+      >
         Loading the chart's detail...
       </p>
-    </section>
-
-    <section data-test="project-interventions" class="mt-6">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-        Project-level interventions
-      </h2>
-      <p :if={@loading?} data-test="project-interventions-loading" class="text-base-content/60">
-        Loading...
-      </p>
-      <p :if={not @loading? and @summary.project_level_interventions == []} class="text-base-content/60">
-        None -- every intervention served a story.
-      </p>
-      <p
-        :if={not @loading? and @summary.project_level_interventions != []}
-        data-test="project-interventions-summary"
-      >
-        {length(@summary.project_level_interventions)} total ({intervention_kind_counts(@summary.project_level_interventions)})
-      </p>
-    </section>
-
-    <section data-test="project-blocked" class="mt-6">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">
-        Blocked time
-      </h2>
-      <p :if={@loading?} data-test="project-blocked-loading" class="text-base-content/60">
-        Loading...
-      </p>
-      <p :if={not @loading? and @summary.project_level_blocked == []} class="text-base-content/60">
-        None -- nothing is waiting on a person right now.
-      </p>
-      <div
-        :for={b <- @summary.project_level_blocked}
-        data-test="blocked-time"
-        data-cause={b.cause}
-      >
-        waiting on {waiting_on_label(b.waiting_on)} ({cause_label(b.cause)}): {hours(b.seconds)}
-        <span :if={not b.resolved?}>-- lapsed, still unresolved</span>
+      <div data-test="rates-chart" class="mt-6">
+        <h3 class="text-xs font-medium text-base-content/70">Rates over time</h3>
+        <div
+          :if={not @page_loading?}
+          id="rates-chart"
+          phx-hook="EChart"
+          phx-update="ignore"
+          data-option={Jason.encode!(@rates_option)}
+          style="width: 100%; height: 260px;"
+        >
+        </div>
+        <div :if={@page_loading?} class="h-[260px] w-full animate-pulse rounded bg-base-200"></div>
+        <p class="mt-1 text-xs text-base-content/60">
+          Offer acceptance is the share of settled offers an agent claimed; tool failure rate is the
+          share of tool calls that failed. Hours with neither are skipped.
+        </p>
       </div>
     </section>
 
-    <section data-test="teams" class="mt-6">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Teams</h2>
-      <div
-        :for={{working_copy_id, rate} <- @teams}
-        data-test="team"
-        data-working-copy-id={working_copy_id}
-      >
-        First-pass rate: {percent(rate)}
-        <span>Promoted: {Map.get(@summary.throughput_by_team, working_copy_id, 0)}</span>
-      </div>
-    </section>
-
-    <section data-test="offer-health" class="mt-6">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Offer health</h2>
-      <div :for={h <- @summary.offer_health} data-test="offer-health-role" data-role={h.role}>
-        <span>{h.role}</span> -- claim rate {percent(h.claim_rate)}
-        <span :if={h.claim_rate != nil}>, ignored {h.ignored}, declined {h.declined}</span>
-        <span :if={h.superseded > 0}>, superseded {h.superseded}</span>
-      </div>
-    </section>
-
-    <section data-test="stories" class="mt-6 space-y-6">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Stories</h2>
-      <p :if={@loading?} data-test="stories-loading" class="text-base-content/60">
-        Loading the project's stories...
+    <section id="section-roles" data-test="roles" class="mt-8 scroll-mt-4">
+      <.heading>Activity by role</.heading>
+      <p class="mb-2 text-xs text-base-content/60">
+        Tool failure rate this week by role and provider; hover for replies, calls, failed turns and tokens.
       </p>
-      <div
-        :for={story <- @stories}
-        id={"story-#{story.id}"}
-        data-test="story"
-        class="card bg-base-100 shadow-md"
-      >
-        <div class="card-body">
-          <h3 class="card-title">{story.title}</h3>
-          {cycle_time_block(Map.fetch!(@reports, story.id).cycle_time)}
-          {qa_rounds_block(Map.fetch!(@reports, story.id).qa_rounds)}
-          {blocked_block(Map.fetch!(@reports, story.id).cycle_time)}
-          {interventions_block(Map.fetch!(@reports, story.id).interventions)}
-          {tokens_block(Map.fetch!(@reports, story.id).tokens)}
+      <.bar_chart
+        :if={not @loading?}
+        id="roles-chart"
+        chart={@role_chart}
+        empty="No agent has made a tool call this week."
+      />
+      <div data-test="agents" class="mt-6">
+        <h3 class="text-xs font-medium text-base-content/70">By agent</h3>
+        <p :if={@loading?} data-test="agents-loading" class="text-base-content/60">
+          Loading the project's agents...
+        </p>
+        <p :if={not @loading? and @agent_chart["categories"] == []} class="text-base-content/60">
+          No agent has made a tool call yet.
+        </p>
+        <.paged_chart
+          :if={not @loading? and @agent_chart["categories"] != []}
+          id="agents-chart"
+          chart={@agent_chart}
+          page={@agent_page}
+          name="agents"
+        />
+      </div>
+    </section>
+
+    <section id="section-qa" data-test="qa" class="mt-8 scroll-mt-4">
+      <.heading>QA</.heading>
+      <div class="grid gap-6 md:grid-cols-3">
+        <div data-test="qa-attempts">
+          <Offers.chart
+            :if={not @page_loading?}
+            agent_id="qa-attempts"
+            results={@qa_results}
+            title="QA attempts"
+            label="QA attempts"
+            empty="No QA attempts yet."
+            test="qa-results"
+          />
+        </div>
+        <div data-test="teams" class="md:col-span-2">
+          <h3 class="text-xs font-medium text-base-content/70">By team</h3>
+          <.bar_chart
+            :if={not @loading?}
+            id="teams-chart"
+            chart={@team_chart}
+            empty="No team has QA attempts or promotions yet."
+          />
         </div>
       </div>
     </section>
 
-    <section data-test="agents" class="mt-6 space-y-2">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-base-content/60">Agents</h2>
-      <p :if={@loading?} data-test="agents-loading" class="text-base-content/60">
-        Loading the project's agents...
+    <section id="section-stories" data-test="story-stages" class="mt-8 scroll-mt-4">
+      <.heading>Time per story</.heading>
+      <p :if={@loading?} data-test="stories-loading" class="text-base-content/60">
+        Loading the project's stories...
       </p>
-      <div
-        :for={agent <- @summary.agents}
-        id={"agent-#{agent.agent_id}"}
-        data-test="agent-row"
-        class="flex items-center gap-4"
-      >
-        <.link navigate={"/app/projects/#{@project.id}/agent-performance/#{agent.agent_id}"}>
-          {agent.role} ({agent.provider})
-        </.link>
-        <span>tool failures: {agent.tool_failures.failed_calls}</span>
-        <span :for={f <- agent.reliability}>failed turn: {f.cause}</span>
+      <p :if={not @loading? and @stage_chart["categories"] == []} class="text-base-content/60">
+        No story has been released yet.
+      </p>
+      <.paged_chart
+        :if={not @loading? and @stage_chart["categories"] != []}
+        id="story-stages-chart"
+        chart={@stage_chart}
+        page={@stage_page}
+        name="stages"
+      />
+      <p class="mt-1 text-xs text-base-content/60">
+        Stage times are active time; waiting is time blocked on a person. Stages can overlap,
+        so a story's bar may run past its total. Hover a story for its QA rounds, waits,
+        messages and tokens.
+      </p>
+    </section>
+
+    <section id="section-blocked" data-test="project-blocked" class="mt-8 scroll-mt-4">
+      <.heading>Blocked time</.heading>
+      <p :if={@loading?} data-test="project-blocked-loading" class="text-base-content/60">
+        Loading...
+      </p>
+      <div :if={not @loading?} class="grid gap-6 lg:grid-cols-3">
+        <div>
+          <h3 class="text-xs font-medium text-base-content/70">Hours waiting, by who held it</h3>
+          <.bar_chart id="blocked-chart" chart={@blocked_chart} empty="Nothing waited." />
+        </div>
+        <div>
+          <h3 class="text-xs font-medium text-base-content/70">Tap-outs this week, by role</h3>
+          <.bar_chart id="tap-outs-chart" chart={@tap_out_chart} empty="No tap-outs this week." />
+        </div>
+        <div>
+          <h3 class="text-xs font-medium text-base-content/70">
+            Wait for an answer this week, by who asked
+          </h3>
+          <.bar_chart id="questions-chart" chart={@question_chart} empty="No questions this week." />
+        </div>
       </div>
     </section>
-    """
-  end
 
-  defp cycle_time_block(cycle_time) do
-    assigns = %{cycle_time: cycle_time}
-
-    ~H"""
-    <div data-test="cycle-time" data-status={@cycle_time.status}>
-      <span :if={@cycle_time.status == :in_flight}>Still running</span>
-      <span :if={@cycle_time.status == :finished}>Total: {hours(@cycle_time.total_seconds)}</span>
-      <div :for={stage <- Stage.names()} data-test="stage" data-stage={stage}>
-        {stage}: {hours(Map.get(@cycle_time.stages, stage))}
+    <section id="section-offers" data-test="offers" class="mt-8 scroll-mt-4">
+      <.heading>Offers</.heading>
+      <div class="grid gap-6 md:grid-cols-3">
+        <div data-test="offer-health">
+          <form phx-change="offer_role" data-test="offer-role-filter" class="mb-1">
+            <label class="sr-only" for="offer-role">Role</label>
+            <select id="offer-role" name="role" class="select select-bordered select-xs">
+              <option value="">All roles</option>
+              <option
+                :for={h <- @summary.offer_health}
+                value={h.role}
+                selected={h.role == @offer_role}
+              >
+                {h.role}
+              </option>
+            </select>
+          </form>
+          <Offers.chart
+            :if={not @page_loading? and not @offer_loading?}
+            agent_id={"performance-#{@offer_role || "all"}"}
+            results={@offer_results}
+          />
+          <div
+            :if={@offer_loading?}
+            data-test="offer-results-loading"
+            class="h-36 w-full animate-pulse rounded bg-base-200"
+          >
+          </div>
+          <div
+            :for={h <- @summary.offer_health}
+            :if={is_nil(@offer_role) or h.role == @offer_role}
+            data-test="offer-health-role"
+            data-role={h.role}
+            class="text-xs text-base-content/70"
+          >
+            <span>{h.role}</span> -- claim rate {percent(h.claim_rate)}
+            <span :if={h.claim_rate != nil}>, ignored {h.ignored}, declined {h.declined}</span>
+            <span :if={h.superseded > 0}>, superseded {h.superseded}</span>
+          </div>
+        </div>
+        <div class="md:col-span-2">
+          <h3 class="text-xs font-medium text-base-content/70">By kind this week</h3>
+          <.bar_chart
+            :if={not @loading?}
+            id="offer-kinds-chart"
+            chart={@offer_kind_chart}
+            empty="No offers this week."
+          />
+        </div>
       </div>
-      <p data-test="stage-overlap-note" class="text-xs text-base-content/60">
-        Stages can overlap, so they may add up to more than the total.
+    </section>
+
+    <section id="section-messages" data-test="project-interventions" class="mt-8 scroll-mt-4">
+      <.heading>Messages to agents</.heading>
+      <p :if={@loading?} data-test="project-interventions-loading" class="text-base-content/60">
+        Loading...
       </p>
-    </div>
-    """
-  end
+      <Offers.chart
+        :if={not @loading?}
+        agent_id="interventions"
+        results={@intervention_results}
+        title="Messages"
+        label="Messages to agents by kind"
+        empty="None recorded."
+        test="intervention-results"
+      />
+      <p
+        :if={not @loading? and @summary.project_level_interventions != []}
+        data-test="project-interventions-summary"
+        class="text-sm"
+      >
+        {length(@summary.project_level_interventions)} at project level, serving no story ({intervention_kind_counts(
+          @summary.project_level_interventions
+        )})
+      </p>
+    </section>
 
-  defp qa_rounds_block(%{measured?: false}) do
-    assigns = %{}
+    <section id="section-changes" data-test="changes" class="mt-8 scroll-mt-4">
+      <.heading>What I'd change first</.heading>
+      <Scorecard.changes :if={not @page_loading?} kpis={@scorecard.kpis} />
+    </section>
 
-    ~H"""
-    <div data-test="qa-rounds">First-pass rate: not yet measured (no QA attempt)</div>
-    """
-  end
-
-  defp qa_rounds_block(qa_rounds) do
-    assigns = %{qa_rounds: qa_rounds}
-
-    ~H"""
-    <div data-test="qa-rounds">
-      <span>Rounds: {@qa_rounds.rounds}</span>
-      <span :if={@qa_rounds.first_time_pass?}>first-time pass</span>
-      <span :if={not @qa_rounds.first_time_pass?}>no first-time pass</span>
-      <span :if={@qa_rounds.findings != []} data-test="qa-findings-count">
-        {length(@qa_rounds.findings)} finding(s)
-      </span>
-      <ul>
-        <li :for={finding <- @qa_rounds.findings}>{finding}</li>
-      </ul>
-    </div>
-    """
-  end
-
-  defp blocked_block(%{blocked: []}), do: nil
-
-  defp blocked_block(cycle_time) do
-    assigns = %{blocked: cycle_time.blocked}
-
-    ~H"""
-    <div :for={b <- @blocked} data-test="blocked-time" data-cause={b.cause}>
-      waiting on {waiting_on_label(b.waiting_on)} ({cause_label(b.cause)}): {hours(b.seconds)}
-      <span :if={not b.resolved?}>-- lapsed, still unresolved</span>
-    </div>
-    """
-  end
-
-  defp cause_label(:tap_out), do: "tap-out"
-  defp cause_label(cause), do: to_string(cause)
-
-  defp waiting_on_label(:another_team), do: "another team"
-  defp waiting_on_label(:main_agent), do: "the main agent"
-  defp waiting_on_label(:user), do: "the user"
-
-  defp interventions_block([]), do: nil
-
-  defp interventions_block(interventions) do
-    assigns = %{interventions: interventions}
-
-    ~H"""
-    <div data-test="story-interventions">
-      <span>{length(@interventions)}</span> intervention(s) ({intervention_kind_counts(@interventions)})
-      <div :for={i <- @interventions} data-test="intervention">
-        {kind_label(i.kind)} ({i.reason})
-      </div>
-    </div>
+    <section id="section-limits" data-test="limits" class="mt-8 scroll-mt-4">
+      <.heading>Limits of this report</.heading>
+      <Scorecard.limits />
+    </section>
     """
   end
 
   defp agent_label(agent), do: "#{agent.role} (#{agent.provider})"
 
-  defp kind_label(:nudge), do: "nudge"
+  defp kind_label(:message), do: "message"
   defp kind_label(:restart), do: "restart"
 
   defp intervention_kind_counts(interventions) do
@@ -488,26 +659,88 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     |> Enum.join(", ")
   end
 
-  defp tokens_block(%{total: :unknown}), do: nil
+  slot :inner_block, required: true
 
-  defp tokens_block(tokens) do
-    assigns = %{tokens: tokens}
+  defp heading(assigns) do
+    ~H"""
+    <h2 class="mb-2 text-sm font-semibold uppercase tracking-wide text-base-content/60">
+      {render_slot(@inner_block)}
+    </h2>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :chart, :map, required: true
+  attr :empty, :string, required: true
+
+  # A bar chart, or a line saying there is nothing to draw.
+  defp bar_chart(assigns) do
+    ~H"""
+    <p :if={@chart["categories"] == []} class="text-sm text-base-content/60">{@empty}</p>
+    <div
+      :if={@chart["categories"] != []}
+      id={@id}
+      data-test={@id}
+      phx-hook="EChart"
+      phx-update="ignore"
+      data-option={Jason.encode!(@chart)}
+      style={"width: 100%; height: #{Charts.bars_height(@chart)}px;"}
+    >
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :chart, :map, required: true
+  attr :page, :integer, required: true
+  attr :name, :string, required: true
+
+  # A bar chart ten rows at a time. The id carries the page so the hook, which
+  # LiveView leaves alone once mounted, draws each page fresh.
+  defp paged_chart(assigns) do
+    assigns =
+      assigns
+      |> assign(:shown, Charts.page(assigns.chart, assigns.page))
+      |> assign(:pages, Charts.page_count(assigns.chart))
 
     ~H"""
-    <div data-test="story-tokens">
-      <span>{@tokens.total} tokens</span>
-      <span :for={{provider, total} <- @tokens.by_provider} data-test="story-tokens-by-provider">
-        {provider}: {total}
-      </span>
+    <div
+      id={"#{@id}-#{@page}"}
+      data-test={@id}
+      phx-hook="EChart"
+      phx-update="ignore"
+      data-option={Jason.encode!(@shown)}
+      style={"width: 100%; height: #{Charts.bars_height(@shown)}px;"}
+    >
+    </div>
+    <div :if={@pages > 1} data-test={"#{@id}-pager"} class="mt-1 flex items-center gap-2 text-sm">
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs"
+        phx-click="chart_page"
+        phx-value-chart={@name}
+        phx-value-page={@page - 1}
+        disabled={@page == 1}
+      >
+        Previous
+      </button>
+      <span class="text-base-content/70">Page {@page} of {@pages}</span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-xs"
+        phx-click="chart_page"
+        phx-value-chart={@name}
+        phx-value-page={@page + 1}
+        disabled={@page == @pages}
+      >
+        Next
+      </button>
     </div>
     """
   end
 
   defp chart_tokens_label(:unknown), do: "unknown"
   defp chart_tokens_label(total), do: "#{total} tokens"
-
-  defp hours(nil), do: "unknown"
-  defp hours(seconds), do: "#{div(seconds, 3600)}h"
 
   defp percent(nil), do: "not yet measured"
   defp percent(rate), do: "#{round(rate * 100)}%"

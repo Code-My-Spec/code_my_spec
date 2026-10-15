@@ -4,6 +4,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
@@ -40,21 +41,20 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
 
     assert html =~ story.title
 
-    cycle_time = index |> element("[data-test='cycle-time']") |> render()
+    row = index |> chart_data("[data-test='story-stages-chart']") |> story_row(story.title)
 
-    refute cycle_time =~ "Total: unknown",
+    refute "Total: unknown" in row.details,
            "the story's own total release-to-promotion time could not be computed"
 
-    specs_stage = index |> element("[data-test='stage'][data-stage='specs']") |> render()
-
-    assert specs_stage =~ "unknown",
-           "a stage with no matching tasks is not shown as unknown"
-
-    refute specs_stage =~ "0h",
+    assert row.hours["specs"] == nil,
            "a stage with no matching tasks is shown as though no time at all was spent on it"
+
+    assert Enum.any?(row.details, &(&1 =~ "Unknown" and &1 =~ "specs")),
+           "a stage with no matching tasks is not shown as unknown"
   end
 
-  test "the cycle-time card notes that stages can overlap and may exceed the total", context do
+  test "the time-per-story chart notes that stages can overlap and may exceed the total",
+       context do
     {:ok, story} =
       Stories.create_story(context.scope, %{
         title: "Promoted with a single task",
@@ -80,9 +80,75 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
     {:ok, index, _html} = live(context.conn, index_path(context))
     _html = render_async(index)
 
-    cycle_time = index |> element("[data-test='cycle-time']") |> render()
+    stages = index |> element("[data-test='story-stages']") |> render()
 
-    assert cycle_time =~ "Stages can overlap",
-           "the cycle-time card does not say that stages can overlap and may exceed the total"
+    assert stages =~ "Stages can overlap",
+           "the time-per-story chart does not say that stages can overlap and may exceed the total"
+  end
+
+  test "offer health narrows its ring to one role, read in the background", context do
+    coder = Fixtures.running_agent(context.scope, role: "coding")
+    qa = Fixtures.running_agent(context.scope, role: "qa")
+    Offers.record(nil, coder, :work, {"requirement", "coder-offer"})
+    Offers.record(nil, qa, :work, {"requirement", "qa-offer-1"})
+    Offers.record(nil, qa, :work, {"requirement", "qa-offer-2"})
+
+    {:ok, index, _html} = live(context.conn, index_path(context))
+    _ = render_async(index)
+
+    assert has_element?(
+             index,
+             "#offer-results-performance-all[aria-label='Offer results: Open: 3']"
+           )
+
+    changed =
+      index |> element("[data-test='offer-role-filter']") |> render_change(%{"role" => "qa"})
+
+    assert changed =~ "offer-results-loading",
+           "the role's offers were read before the page answered the change"
+
+    _ = render_async(index)
+
+    assert has_element?(
+             index,
+             "#offer-results-performance-qa[aria-label='Offer results: Open: 2']"
+           )
+
+    assert has_element?(index, "[data-test='offer-health-role'][data-role='qa']")
+    refute has_element?(index, "[data-test='offer-health-role'][data-role='coding']")
+  end
+
+  test "the page leads with the week's rates, and a bad one gets its change first", context do
+    coder = Fixtures.running_agent(context.scope, role: "coding")
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    for status <- ["expired", "expired", "approved"] do
+      Repo.insert!(%CodeMySpec.Notifications.PermissionRequest{
+        user_id: context.user.id,
+        agent_id: coder.id,
+        tool_name: "tap_out",
+        tool_input: %{"reason" => "blocked"},
+        status: status,
+        inserted_at: now,
+        updated_at: now
+      })
+    end
+
+    {:ok, index, _html} = live(context.conn, index_path(context))
+    _ = render_async(index)
+
+    assert index |> element("[data-test='standouts']") |> render() =~ "Tap-outs expired undecided"
+
+    assert has_element?(
+             index,
+             "[data-test='kpi'][data-kpi='tap_out_expiry'][data-severity='bad']"
+           )
+
+    assert has_element?(
+             index,
+             "[data-test='change'][data-kpi='tap_out_expiry'] a[href='#section-blocked']"
+           )
+
+    assert has_element?(index, "#section-blocked [data-test='tap-outs-chart']")
   end
 end

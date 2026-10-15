@@ -30,7 +30,11 @@ defmodule CodeMySpec.AgentPerformance.ToolFailures do
              scope.active_project_id,
              agent.id
            ) do
-      calls = conversation |> Conversations.list_messages(limit: @large_limit) |> Enum.filter(&tool_result?/1)
+      calls =
+        conversation
+        |> Conversations.list_messages(limit: @large_limit)
+        |> Enum.filter(&tool_result?/1)
+
       failed = Enum.filter(calls, & &1.tool_failed)
 
       %{

@@ -37,17 +37,36 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph do
         No published requirements for this story at this working copy.
       </p>
       <div :if={@flow && map_size(@flow.nodes) > 0}>
-        <div class="story-requirements h-[calc(100dvh-260px)] min-h-[420px] overflow-hidden rounded-box border border-base-300">
-          <.live_component
-            module={LiveFlow.Components.Flow}
-            id="story-requirements-flow"
-            flow={@flow}
-            node_types={%{requirement: &requirement/1, context: &context/1}}
-            opts={%{controls: true, nodes_draggable: false, nodes_connectable: false}}
-          />
-        </div>
+        <.canvas
+          flow={@flow}
+          id="story-requirements-flow"
+          class="h-[calc(100dvh-260px)] min-h-[420px]"
+        />
       </div>
     </section>
+    """
+  end
+
+  attr(:flow, :any, required: true)
+  attr(:id, :string, required: true)
+  attr(:class, :string, default: nil)
+  attr(:style, :string, default: nil)
+
+  @doc "The requirement cards and their edges, read-only. Shared with the cockpit's pie modal."
+  def canvas(assigns) do
+    ~H"""
+    <div
+      class={["story-requirements overflow-hidden rounded-box border border-base-300", @class]}
+      style={@style}
+    >
+      <.live_component
+        module={LiveFlow.Components.Flow}
+        id={@id}
+        flow={@flow}
+        node_types={%{requirement: &requirement/1, context: &context/1}}
+        opts={%{controls: true, nodes_draggable: false, nodes_connectable: false}}
+      />
+    </div>
     """
   end
 

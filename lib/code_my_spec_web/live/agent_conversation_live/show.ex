@@ -52,6 +52,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   use CodeMySpecWeb, :live_view
 
+  import CodeMySpecWeb.Markdown, only: [md_html: 1]
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Analysis.RunsRepository
@@ -63,6 +64,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.ScreenState
   alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
@@ -75,8 +77,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.StoryProgress
+  alias CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph, as: StoryGraphComponents
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
+  alias CodeMySpecWeb.WorkingCopyLive.StoryGraph, as: WorkingCopyStoryGraph
+  alias CodeMySpecWeb.WorkingCopyLive.StoryGraphLayout
+  alias LiveFlow.Changes.NodeChange
   alias Phoenix.LiveView.JS
 
   import CodeMySpecWeb.ConversationPanels, only: [panels: 1]
@@ -231,6 +237,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     socket
     |> assign(:current_scope, scope)
+    |> assign(:assigned_modal, nil)
+    |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:conversation, conversation)
     # True exactly when the block above has run, and false on the disconnected
@@ -577,6 +585,36 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     Enum.reject([assigned_issue(scope, agent), assigned_story(scope, agent)], &is_nil/1)
   end
 
+  defp assigned_modal(scope, "story", number) do
+    case Stories.get_story_by_number(scope, number) do
+      nil ->
+        nil
+
+      story ->
+        %{
+          kind: :story,
+          story: story,
+          path: ~p"/app/projects/#{scope.active_project_id}/stories/#{story.number}"
+        }
+    end
+  end
+
+  defp assigned_modal(scope, "issue", id) do
+    case Issues.get_issue(scope, id) do
+      nil ->
+        nil
+
+      issue ->
+        %{
+          kind: :issue,
+          issue: issue,
+          path: ~p"/app/projects/#{scope.active_project_id}/issues/#{issue.id}"
+        }
+    end
+  end
+
+  defp assigned_modal(_scope, _kind, _key), do: nil
+
   defp assigned_issue(_scope, %Agent{issue_id: nil}), do: nil
 
   defp assigned_issue(scope, %Agent{issue_id: id}) do
@@ -588,6 +626,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         %{
           kind: :issue,
           ref: String.slice(issue.id, 0, 8),
+          key: issue.id,
           title: issue.title,
           path: ~p"/app/projects/#{scope.active_project_id}/issues/#{issue.id}"
         }
@@ -620,6 +659,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           story_id: story.id,
           working_copy_id: story.working_copy_id,
           ref: "##{story.number}",
+          key: story.number,
           title: story.title,
           path: ~p"/app/projects/#{scope.active_project_id}/stories/#{story.number}"
         }
@@ -826,6 +866,77 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     Reads.set_read(socket.assigns.current_scope, id, read == "true")
     {:noreply, with_chat_states(socket)}
   end
+
+  # A story's pie opens the requirements graph the working copy status page
+  # draws, built the same way, over the cockpit.
+  def handle_event("show_story_graph", %{"story-id" => story_id} = params, socket) do
+    scope = %{socket.assigns.current_scope | active_working_copy_id: blank_nil(params["copy-id"])}
+
+    case Stories.get_story(scope, story_id) do
+      nil ->
+        {:noreply, socket}
+
+      story ->
+        {:noreply,
+         socket
+         |> assign(:graph_modal, %{
+           story: story,
+           copy_id: scope.active_working_copy_id,
+           flow: nil,
+           error: nil
+         })
+         |> start_async(:graph_modal, fn ->
+           {:ok, graph} = RequirementStoryGraph.read(scope, story.id)
+
+           {WorkingCopyStoryGraph.build(graph), RequirementStoryGraph.progress(graph)}
+         end)}
+    end
+  end
+
+  def handle_event("close_story_graph", _params, socket),
+    do: {:noreply, assign(socket, :graph_modal, nil)}
+
+  # The modal's canvas follows the status page: the hook measures each card,
+  # then the graph is arranged with those sizes and fitted. Fitting before the
+  # cards were measured gave a zero-size view (scale 0).
+  def handle_event("lf:request_layout", _params, socket), do: {:noreply, arrange_graph(socket)}
+
+  def handle_event("lf:node_change", %{"changes" => changes}, socket) do
+    case socket.assigns[:graph_modal] do
+      %{flow: flow} = modal when not is_nil(flow) ->
+        changes = Enum.filter(changes, &(&1["type"] in ["position", "dimensions", "select"]))
+        modal = %{modal | flow: NodeChange.apply_changes(flow, changes)}
+        socket = assign(socket, :graph_modal, modal)
+        {:noreply, if(modal[:needs_layout], do: arrange_graph(socket), else: socket)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("lf:viewport_change", params, socket) do
+    case socket.assigns[:graph_modal] do
+      %{flow: flow} = modal when not is_nil(flow) ->
+        {:noreply,
+         assign(socket, :graph_modal, %{
+           modal
+           | flow: LiveFlow.State.update_viewport(flow, params)
+         })}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("lf:" <> _event, _params, socket), do: {:noreply, socket}
+
+  # A story or issue opens over the cockpit rather than navigating away from it.
+  def handle_event("show_assigned", %{"kind" => kind, "key" => key}, socket) do
+    {:noreply, assign(socket, :assigned_modal, assigned_modal(socket.assigns.scope, kind, key))}
+  end
+
+  def handle_event("close_assigned", _params, socket),
+    do: {:noreply, assign(socket, :assigned_modal, nil)}
 
   def handle_event("toggle_agent_working", %{"agent-id" => agent_id}, socket) do
     scope = socket.assigns.current_scope
@@ -1639,6 +1750,29 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp drop_ref(socket, ref), do: Enum.reject(socket.assigns.pending, &(&1.delivery_ref == ref))
 
   @impl true
+  def handle_async(
+        :graph_modal,
+        {:ok, {flow, progress}},
+        %{assigns: %{graph_modal: modal}} = socket
+      )
+      when is_map(modal) do
+    {:noreply,
+     socket
+     |> assign(
+       :graph_modal,
+       Map.merge(modal, %{flow: flow, progress: progress, needs_layout: true})
+     )}
+  end
+
+  def handle_async(:graph_modal, {:exit, _reason}, %{assigns: %{graph_modal: modal}} = socket)
+      when is_map(modal) do
+    {:noreply,
+     assign(socket, :graph_modal, %{modal | error: "Could not load this story’s requirements."})}
+  end
+
+  def handle_async(:graph_modal, _result, socket), do: {:noreply, socket}
+
+  @impl true
   # A run finished, so what is in flight has changed. Re-read rather than
   # subtracting the completed source: a sweep enqueues several, and the
   # arithmetic would be a second answer that can disagree with the rows.
@@ -1812,6 +1946,171 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   # -- Render -----------------------------------------------------------------
 
+  attr :item, :map, required: true
+
+  # The story or issue an agent holds, over the cockpit.
+  defp assigned_modal(assigns) do
+    ~H"""
+    <div
+      id="assigned-modal"
+      class="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      data-test={"assigned-modal-#{@item.kind}"}
+      phx-window-keydown="close_assigned"
+      phx-key="Escape"
+    >
+      <div class="modal-box max-w-2xl max-h-[85dvh] overflow-y-auto">
+        <button
+          type="button"
+          phx-click="close_assigned"
+          class="btn btn-ghost btn-sm btn-circle absolute right-2 top-2"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+        <.assigned_body item={@item} />
+        <div class="modal-action">
+          <.link navigate={@item.path} class="btn btn-sm btn-ghost">
+            View full {if @item.kind == :issue, do: "issue", else: "story"}
+            <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+          </.link>
+        </div>
+      </div>
+      <button type="button" class="modal-backdrop" phx-click="close_assigned" aria-label="Close">
+      </button>
+    </div>
+    """
+  end
+
+  attr :item, :map, required: true
+
+  defp assigned_body(%{item: %{kind: :story}} = assigns) do
+    ~H"""
+    <p class="text-xs uppercase tracking-wide opacity-60">Story {@item.story.number}</p>
+    <h2 class="mt-1 pr-8 text-lg font-semibold text-balance">{@item.story.title}</h2>
+    <div class="prose prose-sm mt-3 max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-pre:my-2 prose-headings:mt-4 prose-headings:mb-1">
+      {md_html(@item.story.description)}
+    </div>
+    <h3 class="mt-5 text-sm font-semibold">Acceptance criteria</h3>
+    <p :if={@item.story.criteria == []} class="mt-1 text-sm italic opacity-60">None yet.</p>
+    <ul class="mt-2 space-y-1.5 text-sm">
+      <li :for={c <- @item.story.criteria} class="flex gap-2">
+        <.icon
+          name={if c.verified, do: "hero-check-circle", else: "hero-minus-circle"}
+          class={
+            if c.verified,
+              do: "mt-0.5 size-4 shrink-0 text-success",
+              else: "mt-0.5 size-4 shrink-0 opacity-40"
+          }
+        />
+        <span>{c.description}</span>
+      </li>
+    </ul>
+    """
+  end
+
+  defp assigned_body(%{item: %{kind: :issue}} = assigns) do
+    ~H"""
+    <p class="text-xs uppercase tracking-wide opacity-60">
+      Issue {String.slice(@item.issue.id, 0, 8)}
+    </p>
+    <h2 class="mt-1 pr-8 text-lg font-semibold text-balance">{@item.issue.title}</h2>
+    <div class="mt-2 flex flex-wrap gap-2">
+      <span class="badge badge-sm">{@item.issue.severity}</span>
+      <span class="badge badge-sm badge-ghost">{@item.issue.status}</span>
+    </div>
+    <div class="prose prose-sm mt-3 max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-pre:my-2 prose-headings:mt-4 prose-headings:mb-1">
+      {md_html(@item.issue.description)}
+    </div>
+    <div :if={@item.issue.resolution} class="mt-4">
+      <h3 class="text-sm font-semibold">Resolution</h3>
+      <div class="prose prose-sm mt-1 max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-pre:my-2 prose-headings:mt-4 prose-headings:mb-1">
+        {md_html(@item.issue.resolution)}
+      </div>
+    </div>
+    """
+  end
+
+  attr :modal, :map, required: true
+  attr :project_id, :string, required: true
+
+  # The requirements graph behind a story's pie, on the status page's own canvas.
+  defp graph_modal(assigns) do
+    ~H"""
+    <div
+      id="story-graph-modal"
+      class="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      data-test="story-graph-modal"
+      phx-window-keydown="close_story_graph"
+      phx-key="Escape"
+    >
+      <div class="modal-box w-11/12 max-w-6xl space-y-3">
+        <button
+          type="button"
+          phx-click="close_story_graph"
+          class="btn btn-ghost btn-sm btn-circle absolute right-2 top-2"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 pr-8">
+          <h2 class="text-lg font-semibold">Story {@modal.story.number} · {@modal.story.title}</h2>
+          <span :if={@modal[:progress]} class="text-sm opacity-70" data-test="story-graph-progress">
+            {elem(@modal.progress, 0)} of {elem(@modal.progress, 1)} requirements satisfied
+          </span>
+          <button :if={@modal.flow} phx-click="lf:request_layout" class="btn btn-ghost btn-xs ml-auto">
+            Arrange
+          </button>
+        </div>
+        <p :if={@modal.error} role="alert" class="text-error">{@modal.error}</p>
+        <p :if={is_nil(@modal.flow) and is_nil(@modal.error)} class="text-sm opacity-60">
+          Loading requirements…
+        </p>
+        <p :if={@modal.flow && map_size(@modal.flow.nodes) == 0} class="text-sm opacity-60">
+          No published requirements for this story at this working copy.
+        </p>
+        <StoryGraphComponents.canvas
+          :if={@modal.flow && map_size(@modal.flow.nodes) > 0}
+          flow={@modal.flow}
+          id="story-graph-modal-flow"
+          class={@modal[:needs_layout] && "invisible"}
+          style="height: 65vh; min-height: 420px"
+        />
+        <div :if={@modal.copy_id} class="flex justify-end">
+          <.link
+            navigate={~p"/app/projects/#{@project_id}/working-copies/#{@modal.copy_id}/status"}
+            class="btn btn-sm btn-ghost"
+          >
+            Working copy status <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+          </.link>
+        </div>
+      </div>
+      <button type="button" class="modal-backdrop" phx-click="close_story_graph" aria-label="Close">
+      </button>
+    </div>
+    """
+  end
+
+  defp arrange_graph(socket) do
+    case socket.assigns[:graph_modal] do
+      %{flow: flow} = modal when not is_nil(flow) ->
+        modal = Map.merge(modal, %{flow: StoryGraphLayout.arrange(flow), needs_layout: false})
+
+        socket
+        |> assign(:graph_modal, modal)
+        |> push_event("lf:fit_view", %{padding: 0.1, duration: 0})
+
+      _ ->
+        socket
+    end
+  end
+
+  defp blank_nil(""), do: nil
+  defp blank_nil(value), do: value
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -1856,6 +2155,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       >
         <.panels
           :if={@screen == :narrow}
+          scope={@current_scope}
           screen={@screen}
           open={@open_panels}
           dynamic_view={@dynamic_view}
@@ -1875,6 +2175,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
         <.conversation_column
           :if={@screen == :narrow}
+          current_scope={@current_scope}
           project={@project}
           conversation={@conversation}
           emptiness={@emptiness}
@@ -1921,6 +2222,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             class="flex min-h-0 min-w-0 flex-col self-stretch"
           >
             <.conversation_column
+              current_scope={@current_scope}
               project={@project}
               conversation={@conversation}
               emptiness={@emptiness}
@@ -1962,6 +2264,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             class="flex min-h-0 min-w-64 flex-col self-stretch"
           >
             <.panels
+              scope={@current_scope}
               screen={:wide}
               open={@open_panels}
               dynamic_view={@dynamic_view}
@@ -1981,6 +2284,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           </LivePane.pane>
         </LivePane.group>
       </div>
+      <.assigned_modal :if={assigns[:assigned_modal]} item={@assigned_modal} />
+      <.graph_modal :if={assigns[:graph_modal]} modal={@graph_modal} project_id={@project.id} />
     </Layouts.app>
     """
   end
@@ -2002,6 +2307,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # work" over an agent that was already working. A control that misreports its
   # own state is the failure this whole day kept producing; a missing attribute
   # should stop the compile rather than pick an answer.
+  attr :current_scope, :any, required: true
   attr :analysis_running, :list, required: true
   attr :working?, :boolean, required: true
   # Required for the same reason: the power button must never guess its state.
@@ -2049,20 +2355,24 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             <h1 class="min-w-0 shrink-0 truncate text-lg font-semibold">
               {@conversation && Conversations.display_name(@conversation)}
             </h1>
-            <.link
+            <button
               :for={item <- @assigned}
-              navigate={item.path}
+              type="button"
+              phx-click="show_assigned"
+              phx-value-kind={item.kind}
+              phx-value-key={item.key}
               data-test={"assigned-#{item.kind}"}
               title={item.title}
-              class="link link-hover min-w-0 truncate text-xs opacity-70"
+              class="link link-hover min-w-0 truncate text-left text-xs opacity-70"
             >
               {if item.kind == :issue, do: "Issue", else: "Story"} {item.ref} · {item.title}
-            </.link>
+            </button>
             <.live_component
               :for={item <- @assigned}
               :if={item.kind == :story}
               module={StoryProgress}
               id="story-progress-header"
+              scope={@current_scope}
               story_id={item.story_id}
               working_copy_id={item.working_copy_id}
             />

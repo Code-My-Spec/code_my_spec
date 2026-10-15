@@ -62,6 +62,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution
+  alias CodeMySpec.Requirements.StoryGraph
   alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -157,7 +158,7 @@ defmodule CodeMySpec.Requirements do
   An unlinked story has a nil root and no component work; an inaccessible story
   returns `{:error, :not_found}`. Reads the existing projection; no graph edits.
   """
-  defdelegate story_graph(scope, story_id), to: CodeMySpec.Requirements.StoryGraph, as: :read
+  defdelegate story_graph(scope, story_id), to: StoryGraph, as: :read
 
   @doc "Adds live project-issue branches to the requirements graph visualization."
   defdelegate issue_bag_graph(issues), to: CodeMySpec.Requirements.ProjectIssueGraph, as: :bag
@@ -376,9 +377,19 @@ defmodule CodeMySpec.Requirements do
     RequirementGraph.compute_all(scope)
   end
 
-  @doc "How many of a story's requirements are satisfied, at one working copy."
-  @spec story_progress(integer(), Ecto.UUID.t() | nil) :: {non_neg_integer(), non_neg_integer()}
-  defdelegate story_progress(story_id, working_copy_id), to: NodeRepository
+  @doc """
+  How many of a story's requirements are satisfied, at the scope's working copy.
+
+  Counted over the same slice `story_graph/2` returns, so the cockpit's pie and
+  the working copy status page's graph cannot disagree.
+  """
+  @spec story_progress(Scope.t(), integer()) :: {non_neg_integer(), non_neg_integer()}
+  def story_progress(%Scope{} = scope, story_id) do
+    case story_graph(scope, story_id) do
+      {:ok, graph} -> StoryGraph.progress(graph)
+      _ -> {0, 0}
+    end
+  end
 
   @doc """
   Every requirement node, read from the projection when it is still current.

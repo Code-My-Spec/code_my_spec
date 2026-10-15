@@ -104,20 +104,20 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
       end
 
       then_ "each stage's time is taken from when its tasks opened and closed", context do
-        assert context.html =~ "build",
+        chart = chart_data(context.index, "[data-test='story-stages-chart']")
+        row = story_row(chart, context.story.title)
+
+        assert Map.has_key?(row.hours, "build"),
                "the story's performance has no build stage at all"
 
-        build_stage =
-          context.index |> element("[data-test='stage'][data-stage='build']") |> render()
-
-        refute build_stage =~ "2h",
+        refute row.hours["build"] >= 2,
                "the build stage's time matches the hours since release rather than the task's own, much shorter, open-to-close span"
 
-        {:ok, context}
+        {:ok, Map.put(context, :row, row)}
       end
 
       then_ "and a stage waiting on a person shows that wait separately", context do
-        assert context.html =~ "waiting" or context.html =~ "blocked",
+        assert Enum.any?(context.row.details, &(&1 =~ "Waited on")),
                "the half hour the build task spent waiting on a tap-out decision is not shown apart from the stage's own active time"
 
         {:ok, context}

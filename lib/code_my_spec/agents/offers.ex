@@ -439,6 +439,13 @@ defmodule CodeMySpec.Agents.Offers do
     do: where(query, [o], o.status == ^status)
 
   defp filter({:since, %DateTime{} = at}, query), do: where(query, [o], o.inserted_at >= ^at)
+
+  defp filter({:role, role}, query) when is_atom(role) and not is_nil(role) do
+    query
+    |> join(:inner, [o], a in assoc(o, :agent), as: :role_agent)
+    |> where([role_agent: a], a.role == ^role)
+  end
+
   defp filter(_other, query), do: query
 
   @doc "This agent's offers, oldest first, with their message links."

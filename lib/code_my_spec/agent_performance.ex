@@ -36,6 +36,7 @@ defmodule CodeMySpec.AgentPerformance do
   alias CodeMySpec.AgentPerformance.Page
   alias CodeMySpec.AgentPerformance.QaRounds
   alias CodeMySpec.AgentPerformance.Reliability
+  alias CodeMySpec.AgentPerformance.Scorecard
   alias CodeMySpec.AgentPerformance.Throughput
   alias CodeMySpec.AgentPerformance.TokenUsage
   alias CodeMySpec.AgentPerformance.ToolFailures
@@ -170,7 +171,7 @@ defmodule CodeMySpec.AgentPerformance do
 
   @doc """
   The performance page's chart option, ready for `Jason.encode!/1` and the
-  page's EChart hook: token spend, nudges, QA first-pass rate and failed
+  page's EChart hook: token spend, messages and failed
   turns bucketed hourly over the last 7 days, with story starts and
   promotions as events (criteria 2029-2031). `filter` narrows to one
   working copy or one story (criteria 2032-2033); omit for the project.
@@ -178,7 +179,31 @@ defmodule CodeMySpec.AgentPerformance do
   @spec chart_option(Scope.t(), Chart.filter()) :: map()
   def chart_option(%Scope{} = scope, filter \\ %{}), do: Chart.option(scope, filter)
 
-  @doc "Tokens spent and nudges served under the chart, summarized rather than listed row by row (criterion 2034)."
+  @doc "Offers by status, narrowed like the chart (offers carry no story) and optionally to one `:role`, for the page's offer ring."
+  @spec offer_results(Scope.t(), Chart.filter()) :: %{atom() => pos_integer()}
+  def offer_results(%Scope{} = scope, filter \\ %{}) do
+    scope
+    |> Agents.Offers.count_by_kind_and_status(
+      Enum.to_list(Map.take(filter, [:working_copy_id, :agent_id, :role]))
+    )
+    |> Enum.reduce(%{}, fn {{_kind, status}, count}, totals ->
+      Map.update(totals, status, count, &(&1 + count))
+    end)
+  end
+
+  @doc "The headline rates this week against last, and the breakdowns behind them."
+  @spec scorecard(Scope.t(), Chart.filter()) :: map()
+  def scorecard(%Scope{} = scope, filter \\ %{}), do: Scorecard.load(scope, filter)
+
+  @doc "QA attempts by outcome, in total and per working copy, narrowed like the chart."
+  @spec qa_counts(Scope.t(), Chart.filter()) :: map()
+  def qa_counts(%Scope{} = scope, filter \\ %{}), do: Chart.qa_counts(scope, filter)
+
+  @doc "The rates chart beside it: offer acceptance and tool-call failure rate over the same hours."
+  @spec rates_option(Scope.t(), Chart.filter()) :: map()
+  def rates_option(%Scope{} = scope, filter \\ %{}), do: Chart.rates_option(scope, filter)
+
+  @doc "Tokens spent and messages sent under the chart, summarized rather than listed row by row (criterion 2034)."
   @spec chart_detail(Scope.t(), Chart.filter()) :: Chart.detail()
   def chart_detail(%Scope{} = scope, filter \\ %{}), do: Chart.detail(scope, filter)
 end

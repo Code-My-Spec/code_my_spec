@@ -70,11 +70,15 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
         assert html =~ "superseded",
                "the offer the restart overtook before delivery is not shown as superseded"
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, context |> Map.put(:html, html) |> Map.put(:index, index)}
       end
 
       then_ "and it does not lower the coding role's claim rate", context do
-        refute context.html =~ "ignored" and context.html =~ "coding",
+        refute has_element?(
+                 context.index,
+                 "[data-test='offer-health-role'][data-role='coding']",
+                 ~r/ignored [1-9]/
+               ),
                "the superseded offer is counted as ignored against the coding role, lowering its claim rate"
 
         {:ok, context}

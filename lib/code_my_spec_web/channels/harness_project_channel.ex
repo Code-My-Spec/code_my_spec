@@ -927,6 +927,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   def handle_in("agent_turn_event", %{"agent_id" => agent_id, "event" => event}, socket) do
     Agents.record_turn_event(socket.assigns.scope, agent_id, event)
+    record_turn_usage(socket.assigns.scope, agent_id, event)
     settle_draft(socket, agent_id, event)
     {:reply, :ok, socket}
   end
@@ -2709,6 +2710,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         mirror_failed_tool_results(scope, agent, payload["request"] || %{})
     end
   end
+
+  # An in-app agent's turn spend, the `agent_turns` row the performance page
+  # charts. Only this copy's agents; a turn that never reached a provider
+  # carries no usage and records nothing.
+  defp record_turn_usage(scope, agent_id, %{"kind" => "turn_ended", "usage" => %{} = usage}) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, %{working_copy_id: copy_id} = agent} when copy_id == scope.active_working_copy_id ->
+        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, %{
+          "model" => agent.model,
+          "usage" => usage
+        })
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp record_turn_usage(_scope, _agent_id, _event), do: :ok
 
   # A tool failure on this turn landed on the session conversation
   # `ConversationRecorder.record_turn` just wrote to -- keyed by

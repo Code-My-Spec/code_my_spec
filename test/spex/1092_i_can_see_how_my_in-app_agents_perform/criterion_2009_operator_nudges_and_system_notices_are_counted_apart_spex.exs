@@ -84,23 +84,20 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
 
       then_ "interventions are counted", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
-        {:ok, Map.put(context, :html, html)}
+        _ = render_async(index)
+        chart = chart_data(index, "[data-test='story-stages-chart']")
+        {:ok, Map.put(context, :row, story_row(chart, context.story.title))}
       end
 
       then_ "only the operator and user messages count as interventions", context do
-        assert context.html =~ context.story.title and
-                 Regex.match?(
-                   ~r/data-test="story-interventions">\s*<span>1<\/span>/,
-                   context.html
-                 ),
+        assert "1 intervention(s)" in context.row.details,
                "the story's intervention count is not exactly the one operator message that was sent"
 
         {:ok, context}
       end
 
       then_ "and harness notices are shown separately", context do
-        refute Regex.match?(~r/data-test="story-interventions">\s*<span>3<\/span>/, context.html),
+        refute "3 intervention(s)" in context.row.details,
                "the two harness turn-ended events were folded into the same count as the operator's own nudge"
 
         {:ok, context}

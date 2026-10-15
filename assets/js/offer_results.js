@@ -4,6 +4,11 @@ const colors = {
   Claimed: "#22c55e", Ignored: "#f59e0b", Declined: "#ef4444",
   Undelivered: "#a855f7", Open: "#3b82f6", Superseded: "#94a3b8",
   Expired: "#64748b", "N a": "#14b8a6",
+  Pass: "#22c55e", Fail: "#ef4444", Partial: "#f59e0b",
+  Message: "#3b82f6", Restart: "#a855f7", "Work offer": "#22c55e", Analysis: "#14b8a6",
+  "Check in": "#f59e0b", "Turn end": "#64748b", "Harness restart": "#ef4444",
+  "Failed turn": "#dc2626", Promotion: "#8b5cf6", Problems: "#0ea5e9",
+  "Team free": "#84cc16", "Offer notice": "#eab308", Unblocked: "#06b6d4",
 }
 
 export const OfferResults = {
