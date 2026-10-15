@@ -42,7 +42,13 @@ defmodule CodeMySpecWeb.IntakeComponents do
   def said(%{entry: %{from: :agent}} = assigns) do
     ~H"""
     <div data-test="intake-said" data-from="agent">
-      <.chat_message id={@id} role={:assistant} own_role={:user} text={@entry.text} />
+      <.chat_message
+        id={@id}
+        role={:assistant}
+        own_role={:user}
+        label="product"
+        text={@entry.text}
+      />
     </div>
     """
   end

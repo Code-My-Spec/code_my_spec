@@ -54,14 +54,26 @@ defmodule CodeMySpec.Intake.Interview do
 
   defp ask_next(%Plan{} = plan, turns) do
     with {:ok, question} <- Interviewer.ask(plan, turns) do
-      case plan |> Turn.ask_changeset(length(turns) + 1, question) |> Repo.insert() do
-        {:ok, _turn} = ok ->
-          echo(plan, :assistant, question)
-          ok
+      insert_question(plan, turns, question)
+    end
+  end
 
-        error ->
-          error
-      end
+  # A second guard against the same gap `Interviewer.Llm` validates against
+  # at its own boundary (918d20e7): `Interviewer` is a behaviour, and a nil
+  # or blank question reaching an unguarded `Repo.insert` crashes on the
+  # column's own NOT NULL rather than falling through to the caller's
+  # "interview isn't available right now" branch.
+  defp insert_question(_plan, _turns, question) when question in [nil, ""],
+    do: {:error, :interview_unavailable}
+
+  defp insert_question(plan, turns, question) do
+    case plan |> Turn.ask_changeset(length(turns) + 1, question) |> Repo.insert() do
+      {:ok, _turn} = ok ->
+        echo(plan, :assistant, question)
+        ok
+
+      error ->
+        error
     end
   end
 

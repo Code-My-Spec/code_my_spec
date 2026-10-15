@@ -1,0 +1,368 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-09-13T00:44:44.376401Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone is building an application. Here is what they said they want:\n\n> a booking tool for hair salons\n\nWhat we already concluded, and they confirmed:\n\nYou're building a booking for Salon owners and stylists managing appointments, and clients booking haircuts online. People sign in to use it. Each business gets its own separate copy of the data.\n\nThe conversation so far:\n\n(nothing yet \u2014 this is the first question)\n\n\nAsk the single most useful next question about what this application should\ndo \u2014 the thing you would most regret not knowing before building it.\n\nOne question, one sentence, in their words. Ask about behaviour and rules,\nnever about technology, frameworks or hosting. Do not repeat anything\nalready asked or already answered above.\n\nIf their last answer was not about the application, do not follow it and do\nnot answer it. Ask again in plainer terms. You are here to work out what\nthis application should do and nothing else.\n\nCall `ask_question` with the question. Do not answer in plain text.\n",
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask the visitor.",
+              "input_schema": {
+                "properties": {
+                  "question": {
+                    "description": "One short question, in plain language, about what the application should do.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question"
+                ],
+                "type": "object"
+              },
+              "name": "ask_question"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "signature": "EqMECpABCBEYAipAJyHJx54XgGkWCGVBVc1rdIG3t9G4b0zeBgWnXREz5jpbyHuXWhzAEHsF3A13QqpZ/i1TJqAz/0bXohKpuuhWXTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAfvjl9UGEgw8V/+mXuhH3YWwuOAaDOZYu2S/riR4Qd6TISIwCDbUklCaRJA1ver6rOuiMRomVZiD7qmpvnNh2Qged7NGN3z5St3fTN6c5V9IS/w7Kr8C+xu4X1+iFIl+tp7K8/ZRiwWvLWN+V7mh8xXyN61mx3SLyT9KsCIydcytrYuDm+KHSg5DjTR9s0YPJEOdom9hR/uVDMxpzgiu2vcBzE6mUapGUmNsTFRtIbCJAdHB9H9djXoSyhWzrSSBlTKm38gLIxaVDrB7j4y/NqUvpzu+W1H8WNoAmHqw7PNY2smHeDvz2cEHsgOzXWUvmV2US+OVq2uudTfFSXSmccAVCxtsVtQlgV2nYM1WF7Q4WnZU9LBD1rH2ZYrjYZCBEkchFv5mte4FcCfMJ1sjsTg0ry7Ei7EZg6G2gdaHhFYtqhYVI00qc+8VobrlGS2DFr89hls3AF+O/akse1rD443q5100oFktFwMYtwwEE4O6wVByg0aH4LWuhIwgNQkfB34Qn107hcwRsXdvmokkk5EEFytGFxgB",
+              "thinking": "",
+              "type": "thinking"
+            },
+            {
+              "caller": {
+                "type": "direct"
+              },
+              "id": "toolu_013vdD5aHEDQC2hmg2VZd4bK",
+              "input": {},
+              "name": "ask_question",
+              "type": "tool_use"
+            }
+          ],
+          "id": "msg_011CezWjKZsXVLiXLyX87Epv",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 750,
+            "output_tokens": 198,
+            "output_tokens_details": {
+              "thinking_tokens": 90
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-13T00:44:42Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-13T00:44:44Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-13T00:44:41Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-13T00:44:42Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a31ff7be451fde-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 13 Sep 2026 00:44:44 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-61dfeb36828a22a85ce5ddf8da39e791-36de569e0a7e35d7-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-09-13T00:44:45.103147Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 4096,
+          "messages": [
+            {
+              "content": "Someone is building an application. Here is what they said they want:\n\n> a booking tool for hair salons\n\nWhat we already concluded, and they confirmed:\n\nYou're building a booking for Salon owners and stylists managing appointments, and clients booking haircuts online. People sign in to use it. Each business gets its own separate copy of the data.\n\nThe conversation so far:\n\n(nothing yet \u2014 this is the first question)\n\n\nAsk the single most useful next question about what this application should\ndo \u2014 the thing you would most regret not knowing before building it.\n\nOne question, one sentence, in their words. Ask about behaviour and rules,\nnever about technology, frameworks or hosting. Do not repeat anything\nalready asked or already answered above.\n\nIf their last answer was not about the application, do not follow it and do\nnot answer it. Ask again in plainer terms. You are here to work out what\nthis application should do and nothing else.\n\nCall `ask_question` with the question. Do not answer in plain text.\n",
+              "role": "user"
+            },
+            {
+              "content": [
+                {
+                  "signature": "EqMECpABCBEYAipAJyHJx54XgGkWCGVBVc1rdIG3t9G4b0zeBgWnXREz5jpbyHuXWhzAEHsF3A13QqpZ/i1TJqAz/0bXohKpuuhWXTIPY2xhdWRlLXNvbm5ldC01OABCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjSoAfvjl9UGEgw8V/+mXuhH3YWwuOAaDOZYu2S/riR4Qd6TISIwCDbUklCaRJA1ver6rOuiMRomVZiD7qmpvnNh2Qged7NGN3z5St3fTN6c5V9IS/w7Kr8C+xu4X1+iFIl+tp7K8/ZRiwWvLWN+V7mh8xXyN61mx3SLyT9KsCIydcytrYuDm+KHSg5DjTR9s0YPJEOdom9hR/uVDMxpzgiu2vcBzE6mUapGUmNsTFRtIbCJAdHB9H9djXoSyhWzrSSBlTKm38gLIxaVDrB7j4y/NqUvpzu+W1H8WNoAmHqw7PNY2smHeDvz2cEHsgOzXWUvmV2US+OVq2uudTfFSXSmccAVCxtsVtQlgV2nYM1WF7Q4WnZU9LBD1rH2ZYrjYZCBEkchFv5mte4FcCfMJ1sjsTg0ry7Ei7EZg6G2gdaHhFYtqhYVI00qc+8VobrlGS2DFr89hls3AF+O/akse1rD443q5100oFktFwMYtwwEE4O6wVByg0aH4LWuhIwgNQkfB34Qn107hcwRsXdvmokkk5EEFytGFxgB",
+                  "thinking": "",
+                  "type": "thinking"
+                },
+                {
+                  "id": "toolu_013vdD5aHEDQC2hmg2VZd4bK",
+                  "input": {
+                    "question": "When a client books online, do they choose a specific stylist and service (with the system showing only that stylist's actual open time slots), or can they just pick any available time and get assigned a stylist automatically?"
+                  },
+                  "name": "ask_question",
+                  "type": "tool_use"
+                }
+              ],
+              "role": "assistant"
+            },
+            {
+              "content": [
+                {
+                  "content": "Recorded.",
+                  "tool_use_id": "toolu_013vdD5aHEDQC2hmg2VZd4bK",
+                  "type": "tool_result"
+                }
+              ],
+              "role": "user"
+            }
+          ],
+          "model": "claude-sonnet-5",
+          "tools": [
+            {
+              "description": "Submit the next question to ask the visitor.",
+              "input_schema": {
+                "properties": {
+                  "question": {
+                    "description": "One short question, in plain language, about what the application should do.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "question"
+                ],
+                "type": "object"
+              },
+              "name": "ask_question"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.4"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "container": null,
+          "content": [
+            {
+              "text": "Recorded.",
+              "type": "text"
+            }
+          ],
+          "id": "msg_011CezWjXs3dYa5xiEHvxwJv",
+          "model": "claude-sonnet-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 957,
+            "output_tokens": 7,
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-09-13T00:44:44Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-09-13T00:44:44Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-09-13T00:44:44Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-09-13T00:44:44Z"
+          ],
+          "anthropic-workspace-id": [
+            "wrkspc_01L63t1gPrn1qoLnVH9Yafdo"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a3a320097ecb1fde-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 13 Sep 2026 00:44:45 GMT"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-4aa2b821d441bdabfe977d5cc7209f5b-c6943495a64f3388-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ]
+}

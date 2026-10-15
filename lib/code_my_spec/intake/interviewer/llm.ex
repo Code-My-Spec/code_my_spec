@@ -71,12 +71,23 @@ defmodule CodeMySpec.Intake.Interviewer.Llm do
     run_opts = [model: model(), req_options: configured_req_options()]
 
     case Agent.run(prompt, tool, run_opts) do
-      {:ok, input} -> {:ok, fetch(input, field)}
+      {:ok, input} -> input |> fetch(field) |> validate(field)
       {:error, reason} -> failed(field, reason)
     end
   end
 
   defp fetch(input, key), do: input[key] || input[String.to_existing_atom(key)]
+
+  # `until_tool` only guarantees the named tool was called, not that its
+  # input satisfies the tool's own declared `required` schema — the model
+  # can call `ask_question` with no `question` key at all. Unvalidated, that
+  # reached here as `{:ok, nil}` and an unguarded `Repo.insert` downstream
+  # crashed on it instead of falling through to the existing "interview
+  # isn't available right now" branch (918d20e7).
+  defp validate(value, field) when value in [nil, "", []],
+    do: failed(field, :missing_required_field)
+
+  defp validate(value, _field), do: {:ok, value}
 
   defp ask_question_tool do
     Alloy.Tool.inline(
