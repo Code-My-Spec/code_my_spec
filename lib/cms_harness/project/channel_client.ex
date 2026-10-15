@@ -1178,9 +1178,10 @@ defmodule CmsHarness.Project.ChannelClient do
   # The engine must obtain a durable consumption acknowledgement through this
   # channel, so keep the channel free while waiting for it.
   def handle_message(topic, "mailbox_delivery", %{"ref" => ref} = msg, socket) do
+    root = socket.assigns.project.root
     parent = self()
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(Sync.task_supervisor(root), fn ->
       result = CmsHarness.Agents.send_message(msg["agent_id"], msg["message_ref"], msg["message"])
       send(parent, {:mailbox_send_result, topic, ref, result})
     end)
