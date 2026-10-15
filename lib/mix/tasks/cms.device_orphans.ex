@@ -131,7 +131,9 @@ defmodule Mix.Tasks.Cms.DeviceOrphans do
   def orphan?(copy_ids) when is_list(copy_ids), do: copy_ids == []
 
   defp report(orphans_by_account, total) do
-    Mix.shell().info("#{total} orphaned device(s) across #{map_size(orphans_by_account)} account(s):\n")
+    Mix.shell().info(
+      "#{total} orphaned device(s) across #{map_size(orphans_by_account)} account(s):\n"
+    )
 
     for {account_id, devices} <- orphans_by_account do
       Mix.shell().info("  account #{account_id} (#{length(devices)}):")
@@ -173,11 +175,15 @@ defmodule Mix.Tasks.Cms.DeviceOrphans do
       scope = %Scope{active_account_id: account_id}
 
       for device <- devices do
-        case Devices.destroy(scope, device) do
-          {:ok, _} -> Mix.shell().info("    removed #{device.id} (#{device.hostname})")
-          {:error, reason} -> Mix.shell().error("    FAILED  #{device.id}: #{inspect(reason)}")
-        end
+        destroy_device(scope, device)
       end
+    end
+  end
+
+  defp destroy_device(scope, device) do
+    case Devices.destroy(scope, device) do
+      {:ok, _} -> Mix.shell().info("    removed #{device.id} (#{device.hostname})")
+      {:error, reason} -> Mix.shell().error("    FAILED  #{device.id}: #{inspect(reason)}")
     end
   end
 end

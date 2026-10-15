@@ -214,12 +214,16 @@ defmodule CmsHarness.AppInstance do
         # Under its copy (`Copy.Supervisor`), beside the channel chain rather
         # than in it: an app must survive a reconnect.
         with {:ok, _copy} <- Copy.ensure(root) do
-          case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, {:already_started, pid}} -> {:ok, pid}
-            {:error, reason} -> {:error, reason}
-          end
+          start_under_copy(root)
         end
+    end
+  end
+
+  defp start_under_copy(root) do
+    case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:error, reason} -> {:error, reason}
     end
   end
 

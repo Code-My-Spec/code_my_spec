@@ -131,17 +131,21 @@ defmodule CodeMySpec.Intake do
   @spec shape_async(Plan.t(), module()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
   def shape_async(%Plan{} = plan, shaper \\ CodeMySpec.Intake.Shaper) do
     with {:ok, thinking} <- mark_thinking(plan) do
-      if async?() do
-        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-          shape(thinking, shaper)
-        end)
+      start_shaping(thinking, shaper)
+    end
+  end
 
-        {:ok, thinking}
-      else
-        # Inline in test, where a task in another process cannot see the
-        # sandbox's transaction. Returns the finished plan.
-        {:ok, shape(thinking, shaper)}
-      end
+  defp start_shaping(thinking, shaper) do
+    if async?() do
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        shape(thinking, shaper)
+      end)
+
+      {:ok, thinking}
+    else
+      # Inline in test, where a task in another process cannot see the
+      # sandbox's transaction. Returns the finished plan.
+      {:ok, shape(thinking, shaper)}
     end
   end
 

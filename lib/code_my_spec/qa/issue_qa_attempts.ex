@@ -41,24 +41,7 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   def submit(%Scope{} = scope, %Agent{} = owner, params) do
     with :ok <- validate_findings_path(params) do
       result =
-        Repo.transaction(fn ->
-          issue_id = MapAccess.get(params, :issue_id)
-
-          issue =
-            Repo.one(
-              from(i in CodeMySpec.Issues.Issue,
-                where: i.id == ^issue_id and i.project_id == ^scope.active_project_id,
-                lock: "FOR UPDATE"
-              )
-            )
-
-          if is_nil(issue), do: Repo.rollback(:issue_not_found)
-
-          case insert_attempt(build_attrs(owner, params)) do
-            {:ok, attempt} -> handle_outcome(scope, owner, attempt)
-            {:error, reason} -> Repo.rollback(reason)
-          end
-        end)
+        Repo.transaction(fn -> record_attempt(scope, owner, params) end)
 
       # Completion can wake Main. Publish only after the QA transaction commits.
       case result do
@@ -67,6 +50,25 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
       end
 
       result
+    end
+  end
+
+  defp record_attempt(scope, owner, params) do
+    issue_id = MapAccess.get(params, :issue_id)
+
+    issue =
+      Repo.one(
+        from(i in CodeMySpec.Issues.Issue,
+          where: i.id == ^issue_id and i.project_id == ^scope.active_project_id,
+          lock: "FOR UPDATE"
+        )
+      )
+
+    if is_nil(issue), do: Repo.rollback(:issue_not_found)
+
+    case insert_attempt(build_attrs(owner, params)) do
+      {:ok, attempt} -> handle_outcome(scope, owner, attempt)
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 

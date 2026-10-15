@@ -182,10 +182,14 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
       if zone_owned do
         {:ok, true}
       else
-        with {:ok, domains} <- list_domains(scope) do
-          {:ok, Enum.any?(domains, &(&1["name"] == name))}
-        end
+        registered?(scope, name)
       end
+    end
+  end
+
+  defp registered?(scope, name) do
+    with {:ok, domains} <- list_domains(scope) do
+      {:ok, Enum.any?(domains, &(&1["name"] == name))}
     end
   end
 

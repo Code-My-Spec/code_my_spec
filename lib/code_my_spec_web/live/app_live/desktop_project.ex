@@ -9,17 +9,7 @@ defmodule CodeMySpecWeb.AppLive.DesktopProject do
          {:ok, snapshot} <- Setup.status(),
          true <- Setup.prerequisites_passed?(snapshot),
          {:ok, root} <- Setup.Project.validate(path) do
-      case :global.trans(
-             {{__MODULE__, root}, self()},
-             fn ->
-               register(scope, root, device_id)
-             end,
-             [node()],
-             0
-           ) do
-        :aborted -> {:error, :project_registration_busy}
-        result -> result
-      end
+      register_exclusively(scope, root, device_id)
     else
       :none -> {:error, :prerequisites_not_checked}
       false -> {:error, :prerequisites_failed}
@@ -28,6 +18,20 @@ defmodule CodeMySpecWeb.AppLive.DesktopProject do
   end
 
   def connect(_scope, _path, _device_id), do: {:error, :device_identity_unavailable}
+
+  defp register_exclusively(scope, root, device_id) do
+    case :global.trans(
+           {{__MODULE__, root}, self()},
+           fn ->
+             register(scope, root, device_id)
+           end,
+           [node()],
+           0
+         ) do
+      :aborted -> {:error, :project_registration_busy}
+      result -> result
+    end
+  end
 
   defp register(scope, root, device_id) do
     with :ok <- compatible_server(root),

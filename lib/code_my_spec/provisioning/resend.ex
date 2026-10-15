@@ -300,11 +300,15 @@ defmodule CodeMySpec.Provisioning.Resend do
           {:ok, webhook}
 
         %{"id" => id} = webhook ->
-          case update_webhook_status(scope, id, "enabled") do
-            {:ok, updated} -> {:ok, Map.merge(webhook, updated)}
-            {:error, reason} -> {:error, {:webhook_disabled, endpoint, reason}}
-          end
+          reenable_webhook(scope, webhook, id, endpoint)
       end
+    end
+  end
+
+  defp reenable_webhook(scope, webhook, id, endpoint) do
+    case update_webhook_status(scope, id, "enabled") do
+      {:ok, updated} -> {:ok, Map.merge(webhook, updated)}
+      {:error, reason} -> {:error, {:webhook_disabled, endpoint, reason}}
     end
   end
 
@@ -402,12 +406,16 @@ defmodule CodeMySpec.Provisioning.Resend do
         {:halt, {:ok, inbound}}
       else
         _ ->
-          # Asking is what makes Resend look.
-          verify_domain(scope, domain_id)
-          if attempt < attempts, do: Wait.sleep(interval)
+          ask_to_verify(scope, domain_id, attempt, attempts, interval)
           {:cont, acc}
       end
     end)
+  end
+
+  defp ask_to_verify(scope, domain_id, attempt, attempts, interval) do
+    # Asking is what makes Resend look.
+    verify_domain(scope, domain_id)
+    if attempt < attempts, do: Wait.sleep(interval)
   end
 
   @doc """
@@ -442,15 +450,19 @@ defmodule CodeMySpec.Provisioning.Resend do
       suppressions
       |> Enum.filter(&(String.downcase(&1["email"] || "") == String.downcase(address)))
       |> Enum.reduce(:ok, fn %{"id" => id}, acc ->
-        case request(scope, :delete, "/suppressions/#{id}") do
-          {:ok, _} ->
-            Logger.info("[Resend] cleared suppression for #{address}")
-            acc
-
-          {:error, _} = error ->
-            error
-        end
+        delete_suppression(scope, id, address, acc)
       end)
+    end
+  end
+
+  defp delete_suppression(scope, id, address, acc) do
+    case request(scope, :delete, "/suppressions/#{id}") do
+      {:ok, _} ->
+        Logger.info("[Resend] cleared suppression for #{address}")
+        acc
+
+      {:error, _} = error ->
+        error
     end
   end
 
