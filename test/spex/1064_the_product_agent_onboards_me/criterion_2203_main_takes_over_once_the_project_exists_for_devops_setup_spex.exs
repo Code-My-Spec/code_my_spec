@@ -8,15 +8,14 @@ defmodule CodeMySpecSpex.Story1064.Criterion2203Spex do
   ## Beyond "onboarding ends somewhere"
 
   Criterion 1327 in this story already drives confirming the plan through to
-  a page with a project on it, and already asserts the visitor is "in front
-  of the agent that runs it" — but, written before John's 2026-10-13 call
-  that the product agent runs onboarding until the project exists, it asserts
-  that destination is still an intake-style page (`intake-transcript`,
-  `form[phx-submit=answer]`). This criterion is the more specific, later
-  claim that supersedes that assumption: the page is the project's own
-  agent-conversation, and the agent on it is identifiably *main*, not a
-  continuation of intake. This spex does not touch 1327 — a stale assertion
-  there is 1327's own question to settle, not this one's to silence.
+  a page with a project on it, and (per product, question 321a5627) now
+  asserts the visitor lands on the project's own agent-conversation with
+  `[data-test='main-agent']` — the same landing this criterion names. This
+  spex reuses that exact drive (cloud + `start_workspace_runner`, the pattern
+  criterion 1058/story 990 established, plus the platform credential
+  criterion 2978/story 990 established) and adds this criterion's own,
+  stronger claim: not just that *an* agent is there, but that it starts on
+  devops setup.
 
   ## What stands for "starts on devops setup"
 
@@ -33,14 +32,24 @@ defmodule CodeMySpecSpex.Story1064.Criterion2203Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
+  alias CodeMySpec.Agents.Credential
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_and_log_in_user
 
   setup do
-    stub_local_trial()
+    start_workspace_runner([healthy?: true], boot_timeout: 5_000, poll_interval: 20)
+
+    previous = Application.get_env(:code_my_spec, Credential)
+    Application.put_env(:code_my_spec, Credential, platform_api_key: "sk-platform-2203")
+    on_exit(fn -> restore_credential_env(previous) end)
+
     :ok
   end
+
+  defp restore_credential_env(nil), do: Application.delete_env(:code_my_spec, Credential)
+  defp restore_credential_env(config), do: Application.put_env(:code_my_spec, Credential, config)
 
   spex "the onboarding questions are answered and the project exists", criterion: 2203 do
     scenario "Main takes over once the project exists, for devops setup" do
@@ -51,19 +60,29 @@ defmodule CodeMySpecSpex.Story1064.Criterion2203Spex do
         describe_idea(live, "a booking tool for a two-chair barbershop")
         answer_shaping_questions(live)
 
-        destination = confirm_plan(live, %{location: "local"})
-        {:ok, confirmed, _html} = live(conn, destination)
+        destination = confirm_plan(live, %{location: "cloud"})
 
-        {:ok, context |> Map.put(:conn, conn) |> Map.put(:confirmed, confirmed)}
+        {:ok, context |> Map.put(:conn, conn) |> Map.put(:destination, destination)}
       end
 
       when_ "onboarding finishes", context do
-        confirm_payment(context.confirmed)
-        {:ok, context}
+        {:ok, workspace_live, _html} = live(context.conn, context.destination)
+        render_hook(workspace_live, "payment_confirmed", %{})
+
+        html = context.conn |> get("/app/projects") |> html_response(200)
+
+        [_, project_id] =
+          Regex.run(~r|/app/projects/([a-f0-9-]{36})|, html) ||
+            raise("expected to find a project on /app/projects, got: #{html}")
+
+        {:ok, live, html} =
+          live(context.conn, "/app/projects/#{project_id}/agent-conversation")
+
+        {:ok, context |> Map.put(:conversation_live, live) |> Map.put(:conversation_html, html)}
       end
 
       then_ "the project's main agent takes over the conversation", context do
-        assert has_element?(context.confirmed, "[data-test='main-agent']"),
+        assert has_element?(context.conversation_live, "[data-test='main-agent']"),
                """
                The agent on this page is not identifiable as the project's main
                agent. Onboarding finishing has to hand the conversation to the
@@ -75,9 +94,7 @@ defmodule CodeMySpecSpex.Story1064.Criterion2203Spex do
       end
 
       and_ "it starts on the project's devops setup", context do
-        html = render(context.confirmed)
-
-        assert html =~ ~r/devops|setup/i,
+        assert context.conversation_html =~ ~r/devops|setup/i,
                """
                Nothing on the page the visitor landed on says anything about
                devops or setup. Taking over silently is indistinguishable from

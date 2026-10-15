@@ -26,11 +26,23 @@ defmodule CodeMySpecSpex.Story1064.Criterion3376Spex do
   rather than inventing a second one. Payment is kept because, for cloud, it
   is genuinely part of reaching the project: `gate_new_workspace/5` does not
   provision anything until it is confirmed.
+
+  ## The platform credential
+
+  Same reasoning as criterion 2978 (story 990): with nothing connected, a
+  freshly onboarded visitor's first agent runs on our credential, not
+  theirs, and the honest state for a visitor who has connected *neither* is
+  `[data-test='no-provider']` — which is a different criterion from this one.
+  Without this, `main_agent?/2` is still false for an unrelated reason
+  (`:not_connected`, not `:no_main_working_copy`), which this spex is not
+  about.
   """
 
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.IntakeSteps
+
+  alias CodeMySpec.Agents.Credential
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -38,8 +50,16 @@ defmodule CodeMySpecSpex.Story1064.Criterion3376Spex do
 
   setup do
     start_workspace_runner([healthy?: true], boot_timeout: 5_000, poll_interval: 20)
+
+    previous = Application.get_env(:code_my_spec, Credential)
+    Application.put_env(:code_my_spec, Credential, platform_api_key: "sk-platform-3376")
+    on_exit(fn -> restore_credential_env(previous) end)
+
     :ok
   end
+
+  defp restore_credential_env(nil), do: Application.delete_env(:code_my_spec, Credential)
+  defp restore_credential_env(config), do: Application.put_env(:code_my_spec, Credential, config)
 
   spex "the questions have been answered", criterion: 1327 do
     scenario "Onboarding ends somewhere" do
@@ -73,17 +93,15 @@ defmodule CodeMySpecSpex.Story1064.Criterion3376Spex do
       end
 
       and_ "they are in front of the agent that runs it", context do
-        eventually(fn ->
-          {:ok, live, _html} =
-            live(context.conn, "/app/projects/#{context.project_id}/agent-conversation")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project_id}/agent-conversation")
 
-          assert has_element?(live, "[data-test='main-agent']"),
-                 """
-                 The visitor arrived somewhere with no identifiable agent running
-                 the project. A project existing is only half of having arrived --
-                 the other half is being in front of the thing that runs it.
-                 """
-        end)
+        assert has_element?(live, "[data-test='main-agent']"),
+               """
+               The visitor arrived somewhere with no identifiable agent running
+               the project. A project existing is only half of having arrived --
+               the other half is being in front of the thing that runs it.
+               """
 
         {:ok, context}
       end
