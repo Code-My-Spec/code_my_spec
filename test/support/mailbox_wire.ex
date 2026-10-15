@@ -20,6 +20,11 @@ defmodule CodeMySpecTest.MailboxWire do
       Process.put({CmsHarness.Project.Transport, :impl}, CmsHarness.Project.Transport.Test)
       Process.put({CmsHarness.Project.Transport.Test, :owner}, self())
 
+      # `mailbox_delivery` answers from a supervised task, the same one the
+      # real `Project.Supervisor` starts (32185981) -- without it, delivery
+      # has nowhere to run.
+      {:ok, _} = Task.Supervisor.start_link(name: CmsHarness.Sync.task_supervisor(root))
+
       socket = %Slipstream.Socket{
         assigns: %{
           joined: true,

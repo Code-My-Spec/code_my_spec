@@ -288,6 +288,26 @@ defmodule CodeMySpec.CodeModeTest do
       assert result.error.kind == :compile
     end
 
+    # 2a269214/2665ea24/cce3b192: a reserved word used as a table key (the
+    # natural way to pass `since`/`until` to a tool that takes them) read only
+    # as "Expected expression", with no location and no source line -- nothing
+    # pointing at `until` as the problem. The parser already works out that
+    # richer report; discarding it with the bare `Exception.message/1` threw
+    # it away.
+    test "a compile error names where it happened, not just that it did" do
+      result = CodeMode.eval(stories_catalog(), ~S[return { until = "x" }])
+
+      assert Result.failed?(result)
+      assert result.error.kind == :compile
+
+      assert result.error.message =~ "line 1",
+             "the bare message carried no location at all"
+
+      assert result.error.message =~ "until",
+             "the offending source line must be echoed back, not just the " <>
+               "generic 'Expected expression'"
+    end
+
     test "what the script printed, in order" do
       script = ~S"""
       print("checking 970")
