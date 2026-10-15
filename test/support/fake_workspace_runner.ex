@@ -17,14 +17,21 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   out from under a different, still-running test mid-scenario.
 
   Installing now starts an unnamed `Agent` and registers it in a `Registry`
-  keyed by the calling process — the same ownership-dies-with-the-process
-  pattern `CodeMySpecTest.AgentTransportRouter` already uses for the same
-  reason. Every read or write resolves `owner/0` first: the calling process
-  itself, or — because `Workspaces.boot/1`'s watcher runs on a `Task` started
-  off the test process, not the test process itself — whichever of its
-  `$callers` is registered. `Task` and `Task.Supervisor` set `$callers` on
-  every child they start, so that chain always reaches back to the test that
-  installed this fake, and never to an unrelated one.
+  keyed by the test process — the same ownership-dies-with-the-process pattern
+  `CodeMySpecTest.AgentTransportRouter` already uses for the same reason.
+  Every read or write resolves `owner/0` first: the calling process itself, or
+  whichever of its `$callers` is registered — covering a `Task` spawned off
+  the test (`Workspaces.boot/1`'s own watcher), a Phoenix LiveView process
+  under test (`Phoenix.LiveViewTest` puts the test pid in the connect params'
+  `"caller"`, and `phoenix_live_view`'s own channel sets `$callers` to it on
+  connect), and this module's own `start_link/1` called through
+  `start_supervised!` (ExUnit's test supervisor has had `$callers` pointing at
+  the test process in its own process dictionary since Elixir 1.17, so reading
+  it from inside the synchronous `Supervisor.start_child` call that runs our
+  `start_link/1` resolves it correctly). Registering under the *last* entry
+  in that chain, not under `self()` directly, is what makes the
+  `start_supervised!` case register under the test rather than under whatever
+  ExUnit process happened to call `start_link/1` on the test's behalf.
   """
 
   use Agent
@@ -62,11 +69,19 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
     ensure_registry()
     {:ok, agent} = Agent.start_link(fn -> Map.put(outcomes(opts), :calls, []) end)
 
-    case Registry.register(@registry, self(), agent) do
+    # The *last* entry in `self()`'s own `$callers` chain, not `self()` on its
+    # own: called through `start_supervised!`, `start_link/1` runs inside
+    # ExUnit's test supervisor process, not the test process, and that
+    # supervisor's `$callers` already names the test as its last (and only)
+    # entry -- registering under its own pid instead would tie ownership to
+    # the wrong process.
+    owner_key = List.last([self() | Process.get(:"$callers", [])])
+
+    case Registry.register(@registry, owner_key, agent) do
       {:ok, _} ->
         {:ok, agent}
 
-      {:error, {:already_registered, _self}} ->
+      {:error, {:already_registered, _owner_key}} ->
         Agent.stop(agent)
         {:error, {:already_started, agent}}
     end
@@ -164,40 +179,17 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
 
   defp owner, do: owner([self() | Process.get(:"$callers", [])])
 
-  # A process with neither its own registration nor a `$callers` chain back
-  # to one falls back to the sole fake installed right now -- the same
-  # answer Ecto's own Sandbox gives in this exact shape (documented in
-  # `CodeMySpecSpex.Case`'s moduledoc: "Ecto's Sandbox falls back to whatever
-  # the ambient global mode says for any process with no ownership and no
-  # `$callers` chain of its own"). Phoenix's LiveView and Channel processes
-  # are exactly that case -- checked: zero `$callers` references in
-  # `deps/phoenix*/lib/phoenix/{live_view,channel,socket}*.ex` -- and most
-  # test files in this suite are `async: false`, so there is in practice
-  # only ever one fake installed when such a call lands. Two or zero means
-  # this really is ambiguous or missing, and raising is the fail-safe answer
-  # rather than guessing which test's state to hand back.
-  defp owner([]), do: owner_via_sole_entry()
+  defp owner([]) do
+    raise "No #{inspect(__MODULE__)} installed for this process, or anything in its " <>
+            "$callers chain -- call CodeMySpecSpex.Fixtures.install_workspace_runner/2 " <>
+            "(or, in a plain _test.exs file, start_supervised!({#{inspect(__MODULE__)}, opts})) " <>
+            "in this test's own setup first."
+  end
 
   defp owner([pid | rest]) do
     case Registry.lookup(@registry, pid) do
       [{_registrant, agent}] -> agent
       [] -> owner(rest)
-    end
-  end
-
-  defp owner_via_sole_entry do
-    case Registry.select(@registry, [{{:"$1", :"$2", :"$3"}, [], [:"$3"]}]) do
-      [agent] ->
-        agent
-
-      [] ->
-        raise "No #{inspect(__MODULE__)} installed anywhere -- call " <>
-                "CodeMySpecSpex.Fixtures.install_workspace_runner/2 first."
-
-      _many ->
-        raise "More than one #{inspect(__MODULE__)} is installed right now, and this " <>
-                "call has no $callers path back to any of them -- it needs to come from " <>
-                "(or through a Task spawned by) whichever test installed the one it means."
     end
   end
 end
