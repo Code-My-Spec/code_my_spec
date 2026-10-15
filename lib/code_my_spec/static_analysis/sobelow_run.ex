@@ -90,12 +90,12 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRun do
   end
 
   defp parse(output) do
-    output = String.trim(output)
+    trimmed = String.trim(output)
 
-    if output == "" do
+    if trimmed == "" do
       {:error, "sobelow produced no output; it likely never ran"}
     else
-      case extract_json(output) do
+      case extract_json(trimmed) do
         {:ok, %{"findings" => findings}} when is_map(findings) ->
           all =
             Map.get(findings, "high_confidence", []) ++
