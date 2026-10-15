@@ -48,9 +48,10 @@ defmodule CmsHarness.Agents.Tools.AToolDocsArgumentReachesTheRealToolTest do
     :persistent_term.put({RecordingTransport, :test_pid}, self())
 
     on_exit(fn ->
-      if previous,
-        do: Application.put_env(:code_my_spec, :harness_mcp_transport, previous),
-        else: Application.delete_env(:code_my_spec, :harness_mcp_transport)
+      case previous do
+        nil -> Application.delete_env(:code_my_spec, :harness_mcp_transport)
+        value -> Application.put_env(:code_my_spec, :harness_mcp_transport, value)
+      end
     end)
 
     %{context: %{mcp_client: RecordingTransport}}
