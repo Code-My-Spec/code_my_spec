@@ -163,6 +163,10 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Components.Tools.AddDependency)
   component(CodeMySpec.McpServers.Components.Tools.RemoveDependency)
   component(CodeMySpec.McpServers.Components.Tools.GetComponent)
+  # 8f26f7ba: present on `ComponentsServer` but missing here, so `list_components`
+  # was unreachable from a script even though every sibling Components tool
+  # above is registered and no exclusion applies.
+  component(CodeMySpec.McpServers.Components.Tools.ListComponents)
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)

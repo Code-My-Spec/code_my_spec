@@ -24,6 +24,8 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias Anubis.Server.Response
   alias CodeMySpec.Analysis
   alias CodeMySpec.McpServers.Validators
@@ -47,29 +49,50 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
 
   @impl true
   def execute(params, frame) do
-    case Validators.validate_local_scope(frame, params) do
-      {:ok, scope} ->
-        case severity(params) do
-          {:ok, severity} ->
-            opts = [
-              page: page(params),
-              per_page: per_page(params),
-              filter: Map.get(params, :source) || :all,
-              severity: severity
-            ]
-
-            %{problems: problems, total_count: total, page: page, total_pages: pages} =
-              Problems.list_problems_paginated(scope, opts)
-
-            {:reply, ok(render(scope, problems, total, page, pages, params)), frame}
-
-          {:error, reason} ->
-            {:reply, error(reason), frame}
-        end
+    case problems(params, frame) do
+      {:ok, scope, problems, total, page, pages} ->
+        {:reply, ok(render(scope, problems, total, page, pages, params)), frame}
 
       {:error, reason} ->
         {:reply, error(reason), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    with {:ok, _scope, problems, _total, _page, _pages} <- problems(params, frame) do
+      {:ok, Enum.map(problems, &row/1)}
+    end
+  end
+
+  defp problems(params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+         {:ok, severity} <- severity(params) do
+      opts = [
+        page: page(params),
+        per_page: per_page(params),
+        filter: Map.get(params, :source) || :all,
+        severity: severity
+      ]
+
+      %{problems: problems, total_count: total, page: page, total_pages: pages} =
+        Problems.list_problems_paginated(scope, opts)
+
+      {:ok, scope, problems, total, page, pages}
+    end
+  end
+
+  defp row(p) do
+    %{
+      "id" => p.id,
+      "severity" => to_string(p.severity),
+      "source" => p.source,
+      "file_path" => p.file_path,
+      "line" => p.line,
+      "message" => p.message,
+      "category" => p.category,
+      "rule" => p.rule
+    }
   end
 
   # `severity` was declared in the schema, printed in the header as

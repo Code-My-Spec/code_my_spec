@@ -104,4 +104,61 @@ defmodule CodeMySpec.McpServers.EveryScriptableListToolReturnsATableTest do
       returns_a_table("return type(list_tasks({ session_id = \"#{external_id}\" }))", frame)
     end
   end
+
+  describe "8f26f7ba's first batch of the remaining general tools" do
+    setup do
+      scope = full_scope_fixture()
+      story = story_fixture(scope, %{title: "A story with a question on it"})
+      %{frame: %Frame{assigns: %{current_scope: scope}}, scope: scope, story: story}
+    end
+
+    test "list_agent_work", %{frame: frame} do
+      returns_a_table(~S[return type(list_agent_work({}))], frame)
+    end
+
+    test "list_problems", %{frame: frame} do
+      returns_a_table(~S[return type(list_problems({}))], frame)
+    end
+
+    test "list_questions", %{frame: frame, story: story} do
+      returns_a_table("return type(list_questions({ story_number = #{story.number} }))", frame)
+    end
+
+    # list_user_questions is not here: `CodeMode.Catalog`'s `@excluded` map
+    # refuses it by name -- "it belongs with the asking tools, which a script
+    # cannot call" -- so it is not a candidate for this conversion at all.
+
+    test "list_offers", %{frame: frame} do
+      returns_a_table(~S[return type(list_offers({}))], frame)
+    end
+
+    test "list_qa_attempts", %{frame: frame, story: story} do
+      returns_a_table("return type(list_qa_attempts({ story_number = #{story.number} }))", frame)
+    end
+
+    test "list_components", %{frame: frame} do
+      returns_a_table(~S[return type(list_components({}))], frame)
+    end
+
+    test "list_agents", %{frame: frame} do
+      returns_a_table(~S[return type(list_agents({}))], frame)
+    end
+
+    test "list_projects", %{frame: frame} do
+      user = user_fixture()
+
+      {:ok, _client_user} =
+        CodeMySpec.Auth.OAuthClient.save_client_user(user.id, user.email, %{
+          "access_token" => "test-access-token",
+          "refresh_token" => "test-refresh-token",
+          "expires_in" => 3600
+        })
+
+      Req.Test.stub(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects, fn conn ->
+        Req.Test.json(conn, %{"projects" => [%{"id" => "proj-1", "name" => "Demo"}]})
+      end)
+
+      returns_a_table(~S[return type(list_projects({}))], frame)
+    end
+  end
 end
