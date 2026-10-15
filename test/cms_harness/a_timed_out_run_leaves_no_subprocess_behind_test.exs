@@ -6,26 +6,29 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
   CPU, free to overlap whatever the queue admitted next. SIGTERM alone did
   not stop the one observed live; only SIGKILL did.
 
-  Confirming the kill now runs in its own supervised task rather than inline
-  in `AnalysisServer`'s own callback, so a 5s-bounded `ps`/`kill` confirmation
-  does not block every other call this project's analyzer queue answers.
-  `running` carries that cleanup task until it reports back, so the queue
-  does not advance until the kill is actually confirmed.
+  The kill now runs in its own supervised task rather than inline in
+  `AnalysisServer`'s own callback, so a confirmation that shells out to `ps`
+  and `kill` does not block every other call this project's analyzer queue
+  answers. That confirmation is tracked in `pending_cleanups`, independent
+  of `running` -- the project's own queue advances to the next entry
+  immediately on timeout (only the machine-wide slot, held by the analyzer
+  task's own process until it actually dies, needs to wait for the kill;
+  `AnalysisSlots` already serializes on that by itself).
 
-  A third test covers the follow-up: `Execution.stop/1`'s own confirmation is
+  A later test covers the follow-up: `Execution.stop/1`'s own confirmation is
   bounded, but the `ps` call ahead of it is not. If the cleanup task never
   reports back at all, `AnalysisServer` now forces the analyzer task's own
   process dead directly once its own, independent deadline passes -- that is
   what actually frees the machine-wide slot, since a slot is released only
   by the death of the process that acquired it.
 
-  The first test is driven the same way the sibling `AnalysisServer` tests
-  drive `handle_cast/2` (see `a_running_sweep_answers_for_the_next_request_test.exs`):
+  Most tests are driven the same way the sibling `AnalysisServer` tests drive
+  `handle_cast/2` (see `a_running_sweep_answers_for_the_next_request_test.exs`):
   a hand-built state and direct calls to the `@impl` callbacks, no real
   channel needed since `project.root` here names none (`Channel.deliver_analysis_result/2`
-  logs and returns when `Registry.lookup` finds none). The second test needs
-  a real, running server, since "answers promptly while busy" is a property
-  of a live mailbox, not of a function call.
+  logs and returns when `Registry.lookup` finds none). The responsiveness
+  test needs a real, running server, since "answers promptly while busy" is
+  a property of a live mailbox, not of a function call.
 
   The task's own shell command writes its child's pid to a file rather than
   returning it as output -- `System.cmd/3` without `:into` only answers once
@@ -36,7 +39,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Sync
 
-  test "the OS child a timed-out run shelled out to is confirmed dead before the queue advances" do
+  test "the OS child a timed-out run shelled out to is confirmed dead once cleanup reports" do
     root = "/tmp/a-timed-out-run-test-#{System.unique_integer([:positive])}"
     {task, child_pid} = spawn_hanging_task()
 
@@ -49,24 +52,57 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
       project: %{root: root},
       running: %{run_id: 1, source: "exunit", task: task, args: [], tied_run_ids: []},
       queue: [],
+      pending_cleanups: [],
       timer: nil
     }
 
     assert {:noreply, mid_state} = AnalysisServer.handle_info({:timeout, 1}, state)
-    cleanup_ref = mid_state.running.cleanup.ref
 
-    # The handler itself only starts the cleanup task -- the run is not
-    # finished, and `running` is non-nil, until that task reports back.
-    assert mid_state.running.cleanup
+    # The queue already moved on -- there is nothing queued here, so
+    # `running` is nil immediately, not held waiting on this run's kill.
+    assert mid_state.running == nil
+    assert [%{run_id: 1, cleanup: %Task{ref: cleanup_ref}}] = mid_state.pending_cleanups
 
     assert_receive {^cleanup_ref, cleanup_result}, 6_000
 
     assert {:noreply, next_state} =
              AnalysisServer.handle_info({cleanup_ref, cleanup_result}, mid_state)
 
-    assert next_state.running == nil
+    assert next_state.pending_cleanups == []
 
     refute_alive(child_pid)
+  end
+
+  test "the next queued run starts before its predecessor's kill confirmation reports back" do
+    root = "/tmp/a-queue-advances-test-#{System.unique_integer([:positive])}"
+    {task, _child_pid} = spawn_hanging_task()
+
+    {:ok, _task_sup} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
+
+    running = %{run_id: 1, source: "exunit", task: task, args: [], tied_run_ids: []}
+    next_entry = %{run_id: 2, source: "exunit", tied_run_ids: [], args: [], settled: true}
+
+    state = %{
+      project: %{root: root},
+      running: running,
+      queue: [next_entry],
+      pending_cleanups: [],
+      timer: nil
+    }
+
+    assert {:noreply, next_state} = AnalysisServer.handle_info({:timeout, 1}, state)
+
+    # The queue advanced immediately: `running` is already the next entry,
+    # with its own new task, rather than held waiting on the first run's
+    # kill confirmation. Only the machine-wide slot (not this project's own
+    # queue) still has to wait for that -- `AnalysisSlots` enforces that on
+    # its own once the new task calls `acquire/1`.
+    assert %{run_id: 2, task: %Task{}} = next_state.running
+    assert next_state.queue == []
+
+    # The timed-out run's own cleanup is tracked separately and still
+    # pending, not lost in the handoff.
+    assert [%{run_id: 1, cleanup: %Task{}}] = next_state.pending_cleanups
   end
 
   test "while a timed-out run's kill is being confirmed, the server still answers other calls" do
@@ -85,21 +121,23 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     # No sleep: messages from one sender to one receiver are delivered in
     # send order on the BEAM, so this `idle?/1` call (sent immediately after,
     # from this same process) is guaranteed to be processed after `:timeout`
-    # already started the cleanup task -- and well before that task's own
-    # multi-shell-out confirmation (its first step alone is a `ps` and a
-    # `kill` subprocess each) can plausibly have finished and reported back.
+    # already moved the entry into `pending_cleanups` -- and well before that
+    # task's own multi-shell-out confirmation (its first step alone is a
+    # `ps` and a `kill` subprocess each) can plausibly have finished and
+    # reported back. `idle?/1` now also checks `pending_cleanups`, so it
+    # still answers "not idle" even though `running` itself is already nil.
     {elapsed_us, idle?} = :timer.tc(fn -> AnalysisServer.idle?(root) end)
 
-    refute idle?, "the run should still be held while its kill is being confirmed"
+    refute idle?, "the run should still be held (in pending_cleanups) while its kill is confirmed"
 
     assert elapsed_us < 500_000,
            "idle?/1 took #{elapsed_us}us -- the server's mailbox was blocked behind cleanup " <>
-             "confirmation (bounded at 5s), not answering independently of it"
+             "confirmation, not answering independently of it"
 
     refute_alive(child_pid)
   end
 
-  test "if the cleanup confirmation never reports back, the analyzer task is killed directly and the queue still advances" do
+  test "if the cleanup confirmation never reports back, the analyzer task is killed directly and its bookkeeping clears" do
     root = "/tmp/a-stuck-cleanup-test-#{System.unique_integer([:positive])}"
     {task, _child_pid} = spawn_hanging_task()
 
@@ -112,7 +150,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     # exists to recover from regardless of why the cleanup never reports.
     stuck_cleanup = Task.Supervisor.async_nolink(task_sup, fn -> Process.sleep(:infinity) end)
 
-    running = %{
+    pending = %{
       run_id: 1,
       source: "exunit",
       args: [],
@@ -121,30 +159,37 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
       cleanup_timer: nil
     }
 
-    state = %{project: %{root: root}, running: running, queue: [], timer: nil}
+    state = %{
+      project: %{root: root},
+      running: nil,
+      queue: [],
+      pending_cleanups: [pending],
+      timer: nil
+    }
 
     assert {:noreply, next_state} =
              AnalysisServer.handle_info({:cleanup_overdue, 1, task.pid}, state)
 
     # What this path actually guarantees: the analyzer task's own Elixir
     # process dies (which is what frees its `AnalysisSlots` slot -- a slot
-    # is released by that process's death, nothing else), and the queue is
-    # free to advance. It does NOT re-walk the OS process tree -- that walk
-    # is exactly what `Execution.stop/1` was stuck inside, so trusting
-    # another one here would risk the same hang. A detached grandchild (like
-    # this test's backgrounded `sleep`, reparented once its own shell dies)
-    # can outlive it; the delivered diagnostic says so rather than claiming
-    # confirmed cleanup it cannot back up.
-    assert next_state.running == nil
+    # is released by that process's death, nothing else), and its entry is
+    # dropped from `pending_cleanups`. It does NOT re-walk the OS process
+    # tree -- that walk is exactly what `Execution.stop/1` was stuck inside,
+    # so trusting another one here would risk the same hang. A detached
+    # grandchild (like this test's backgrounded `sleep`, reparented once its
+    # own shell dies) can outlive it; the delivered diagnostic says so
+    # rather than claiming confirmed cleanup it cannot back up.
+    assert next_state.pending_cleanups == []
     refute Process.alive?(task.pid)
     refute Process.alive?(stuck_cleanup.pid)
   end
 
-  test "a stray overdue message for a run already moved past is ignored" do
+  test "a stray overdue message for a run already resolved is ignored" do
     state = %{
       project: %{root: "/tmp/not-used"},
-      running: %{run_id: 2, source: "exunit", args: [], tied_run_ids: []},
+      running: nil,
       queue: [],
+      pending_cleanups: [],
       timer: nil
     }
 

@@ -39,7 +39,8 @@ defmodule CmsHarness.ARunningSweepAnswersForTheNextRequestTest do
       project: %{root: "/tmp/a-checkout"},
       running: %{source: running_source, run_id: 1, tied_run_ids: [], task: nil},
       queue: Enum.map(queued_sources, &%{run_id: 99, tied_run_ids: [], source: &1, args: []}),
-      timer: nil
+      timer: nil,
+      pending_cleanups: []
     }
   end
 

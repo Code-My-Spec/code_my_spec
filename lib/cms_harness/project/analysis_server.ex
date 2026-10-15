@@ -147,11 +147,16 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   @impl true
   def init(project) do
-    {:ok, %{project: project, running: nil, queue: [], timer: nil}}
+    {:ok, %{project: project, running: nil, queue: [], timer: nil, pending_cleanups: []}}
   end
 
   @impl true
   def handle_cast({:enqueue, runs}, state) do
+    Logger.info(
+      "[CmsHarness] enqueue for #{state.project.root}: " <>
+        "#{inspect(Enum.map(runs, &Map.get(&1, "run_id")))}"
+    )
+
     state =
       runs
       |> Enum.reduce(state, &accept/2)
@@ -163,7 +168,7 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   @impl true
   def handle_call(:idle?, _from, state) do
-    {:reply, is_nil(state.running) and state.queue == [], state}
+    {:reply, is_nil(state.running) and state.queue == [] and state.pending_cleanups == [], state}
   end
 
   # Queued and tied runs count as in flight. Their rows are already `:running`
@@ -256,17 +261,22 @@ defmodule CmsHarness.Project.AnalysisServer do
     # the agent bash tool already uses for exactly this failure mode: SIGKILL
     # every OS descendant it can find via the port and the live process tree,
     # then poll until none answer before returning -- but that confirmation
-    # is bounded at 5s of its own shelled-out `ps`/`kill` calls, and this
-    # server is the single queue every call for this project's analyzers goes
-    # through. Run it in its own supervised, monitored task rather than this
-    # callback, so `status/1`, `enqueue/2` and everything else answer
-    # immediately regardless of how long confirmation takes.
+    # is bounded at 5s of its own shelled-out `ps`/`kill` calls.
     #
-    # `running` stays non-nil (now carrying the cleanup task instead of the
-    # live one) until that task reports back, so `maybe_start_next/1`'s own
-    # guard keeps the next queued run from starting until the kill is
-    # confirmed -- not merely until the old task's own (immediate) death,
-    # which is what let an orphan overlap the next run in the first place.
+    # 55379e16 follow-up, per main's direction: only the machine-wide slot
+    # needs to wait for the kill to be confirmed -- `AnalysisSlots` already
+    # serializes on that independently, since a slot is released only when
+    # the process that acquired it dies. This project's own queue does not
+    # also need to wait: holding `running` non-nil until the cleanup
+    # confirmed meant a run queued right behind a hang could wait up to
+    # this deadline plus `Execution.stop/1`'s own bound before even
+    # starting, with no slot contention actually requiring it -- that is
+    # what kept criterion_1386's own deliberately-blocking scenario from
+    # starting within its fixture's wait budget when an earlier timed-out
+    # run's confirmation was still in flight. The timed-out run's own
+    # bookkeeping moves to `pending_cleanups`, tracked independently of
+    # `running`, so `maybe_start_next/1` is free to admit the next entry
+    # immediately.
     Process.demonitor(running.task.ref, [:flush])
     task_pid = running.task.pid
 
@@ -278,39 +288,53 @@ defmodule CmsHarness.Project.AnalysisServer do
     overdue_timer =
       Process.send_after(self(), {:cleanup_overdue, run_id, task_pid}, @cleanup_confirm_deadline)
 
-    running = Map.merge(running, %{cleanup: cleanup, cleanup_timer: overdue_timer})
-    {:noreply, %{state | running: running, timer: nil}}
-  end
+    pending = Map.merge(running, %{cleanup: cleanup, cleanup_timer: overdue_timer})
 
-  # The confirmed-dead report from the cleanup task above -- only now does
-  # this run actually finish, and the next queued one is free to start.
-  def handle_info(
-        {ref, cleanup_result},
-        %{running: %{cleanup: %Task{ref: ref}} = running} = state
-      ) do
-    Process.demonitor(ref, [:flush])
-    cancel_cleanup_deadline(running)
-
-    deliver(
-      state,
-      running,
-      {:error, "analyzer timed out after #{timeout()}ms. #{cleanup_status(cleanup_result)}"}
+    Logger.info(
+      "[CmsHarness] #{running.source} run #{run_id} for #{state.project.root} handed off to " <>
+        "cleanup; the queue is free to advance while its slot waits on confirmation"
     )
 
+    state = %{state | pending_cleanups: [pending | state.pending_cleanups], timer: nil}
     {:noreply, state |> clear_running() |> maybe_start_next()}
+  end
+
+  # The confirmed-dead report from the cleanup task above, found in
+  # `pending_cleanups` rather than `running` -- the queue moved on when the
+  # timeout fired, not when this arrives.
+  def handle_info({ref, cleanup_result}, state) do
+    case pop_pending_cleanup(state, &(&1.cleanup.ref == ref)) do
+      {:ok, pending, state} ->
+        Process.demonitor(ref, [:flush])
+        cancel_cleanup_deadline(pending)
+
+        deliver(
+          state,
+          pending,
+          {:error, "analyzer timed out after #{timeout()}ms. #{cleanup_status(cleanup_result)}"}
+        )
+
+        {:noreply, state}
+
+      :error ->
+        {:noreply, state}
+    end
   end
 
   # The cleanup task itself crashed rather than returning -- still answered,
   # the same as the analyzer task's own unexpected death above, rather than
-  # leaving this run (and the queue behind it) stuck on a message that will
-  # never arrive.
-  def handle_info(
-        {:DOWN, ref, :process, _pid, reason},
-        %{running: %{cleanup: %Task{ref: ref}} = running} = state
-      ) do
-    cancel_cleanup_deadline(running)
-    deliver(state, running, {:error, "analyzer timeout cleanup crashed: #{inspect(reason)}"})
-    {:noreply, state |> clear_running() |> maybe_start_next()}
+  # leaving this run stuck on a message that will never arrive. Found in
+  # `pending_cleanups`, same as its normal completion above.
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+    case pop_pending_cleanup(state, &(&1.cleanup.ref == ref)) do
+      {:ok, pending, state} ->
+        cancel_cleanup_deadline(pending)
+        deliver(state, pending, {:error, "analyzer timeout cleanup crashed: #{inspect(reason)}"})
+        {:noreply, state}
+
+      :error ->
+        {:noreply, state}
+    end
   end
 
   # 55379e16 follow-up: the cleanup task above has not reported back within
@@ -318,39 +342,44 @@ defmodule CmsHarness.Project.AnalysisServer do
   # doing internally (its confirmation loops are each bounded, but the `ps`
   # call ahead of them is not). Force the analyzer task's own Elixir process
   # dead directly -- that is what actually frees the `AnalysisSlots` slot it
-  # holds, regardless of whether the OS-process-tree walk ever completes --
-  # and move the queue on rather than leaving both wedged. Guarded on
-  # `run_id`: a message for a run this server has already moved past (the
-  # cleanup reported back in the race between it and this timer) is ignored
-  # by the generic `handle_info(_message, state)` clause below.
-  def handle_info(
-        {:cleanup_overdue, run_id, task_pid},
-        %{running: %{run_id: run_id} = running} = state
-      ) do
-    Logger.error(
-      "[CmsHarness] #{running.source} for #{state.project.root} timeout cleanup did not " <>
-        "confirm within #{@cleanup_confirm_deadline}ms of its own -- forcing the analyzer " <>
-        "task's process dead directly so its machine-wide slot is not leaked"
-    )
+  # holds, regardless of whether the OS-process-tree walk ever completes.
+  # Found in `pending_cleanups`, not `running` -- the queue already moved on
+  # when the timeout fired, so there is nothing left to advance here, only
+  # this run's own bookkeeping to resolve. `pop_pending_cleanup`'s lookup
+  # doubles as the guard a plain `run_id` pattern match used to be: a message
+  # for a run already resolved (the cleanup reported back in the race
+  # between it and this timer) finds nothing and is ignored.
+  def handle_info({:cleanup_overdue, run_id, task_pid}, state) do
+    case pop_pending_cleanup(state, &(&1.run_id == run_id)) do
+      {:ok, pending, state} ->
+        Logger.error(
+          "[CmsHarness] #{pending.source} for #{state.project.root} timeout cleanup did not " <>
+            "confirm within #{@cleanup_confirm_deadline}ms of its own -- forcing the analyzer " <>
+            "task's process dead directly so its machine-wide slot is not leaked"
+        )
 
-    if cleanup = running[:cleanup] do
-      Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), cleanup.pid)
-      Process.demonitor(cleanup.ref, [:flush])
+        if cleanup = pending[:cleanup] do
+          Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), cleanup.pid)
+          Process.demonitor(cleanup.ref, [:flush])
+        end
+
+        Process.exit(task_pid, :kill)
+
+        deliver(
+          state,
+          pending,
+          {:error,
+           "analyzer timed out after #{timeout()}ms. Subprocess termination unconfirmed after " <>
+             "#{@cleanup_confirm_deadline}ms of its own cleanup attempt -- forced the analyzer " <>
+             "task's own process dead directly so its machine-wide slot is not leaked. An " <>
+             "orphaned OS subprocess may remain."}
+        )
+
+        {:noreply, state}
+
+      :error ->
+        {:noreply, state}
     end
-
-    Process.exit(task_pid, :kill)
-
-    deliver(
-      state,
-      running,
-      {:error,
-       "analyzer timed out after #{timeout()}ms. Subprocess termination unconfirmed after " <>
-         "#{@cleanup_confirm_deadline}ms of its own cleanup attempt -- forced the analyzer " <>
-         "task's own process dead directly so its machine-wide slot is not leaked. An orphaned " <>
-         "OS subprocess may remain."}
-    )
-
-    {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
   # Arms the kill timer when the analyzer actually starts, not at dispatch, so
@@ -473,9 +502,10 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp holds_run?(state, run_id), do: run_id in held_run_ids(state)
 
   # Every run id this queue will answer: each entry's own and everything tied
-  # to it.
+  # to it, including a timed-out run still in pending_cleanups -- its result
+  # has not been delivered yet either.
   defp held_run_ids(state) do
-    [state.running | state.queue]
+    [state.running | state.queue ++ state.pending_cleanups]
     |> Enum.reject(&is_nil/1)
     |> Enum.flat_map(&[&1.run_id | Map.get(&1, :tied_run_ids, [])])
   end
@@ -512,6 +542,8 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     project = state.project
     parent = self()
+
+    Logger.info("[CmsHarness] #{entry.source} run #{entry.run_id} starting for #{project.root}")
 
     task =
       Task.Supervisor.async_nolink(Sync.task_supervisor(project.root), fn ->
@@ -555,6 +587,19 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp clear_running(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
     %{state | running: nil, timer: nil}
+  end
+
+  # Finds and removes the one entry matching `pred` from `pending_cleanups`,
+  # returning the updated state alongside it so a caller can both deliver
+  # its result and drop it from the list in one pass.
+  defp pop_pending_cleanup(state, pred) do
+    case Enum.find(state.pending_cleanups, pred) do
+      nil ->
+        :error
+
+      found ->
+        {:ok, found, %{state | pending_cleanups: List.delete(state.pending_cleanups, found)}}
+    end
   end
 
   defp cancel_cleanup_deadline(%{cleanup_timer: timer}) when is_reference(timer),
