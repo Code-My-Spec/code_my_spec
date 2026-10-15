@@ -20,7 +20,18 @@ defmodule CodeMySpec.Workspaces.AWorkspaceClaimsItsIdentityTest do
   file at all", after the env winning collapsed every root onto one id.
   """
 
-  use ExUnit.Case, async: true
+  # async: false, not true: two describe blocks below mutate the global
+  # Application config :code_my_spec, CodeMySpec.Workspaces (the dev-box
+  # harness_source override, and -- elsewhere in this file -- a runner
+  # override), restoring it on exit. Every other file that touches this
+  # same global key (workspaces_test.exs, the two IntakeLive tests) is
+  # already async: false for exactly this reason; this file alone being
+  # async: true let its mutation race a concurrently-running async module
+  # that reads the same key's default (743ecf1c: "runs from source instead
+  # of the installed release", test/code_my_spec/workspaces/
+  # a_workspace_claims_its_identity_test.exs:240, failed once under exactly
+  # that interleaving).
+  use ExUnit.Case, async: false
 
   alias CodeMySpec.Workspaces.Runner.Local
 
