@@ -35,16 +35,22 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # A partial run covers only the files it names, so it finishes with output
   # and stats and leaves Problems alone; the wholesale replace below would
   # delete everything it never looked at. `latest_full_run/2` ignores it.
-  def reconcile(%Scope{}, %Run{kind: :partial} = run, result, _opts) do
+  # Its asker is still answered: team 4's QA waited on targeted runs 59901 and
+  # 59902, both clean, that told nobody (2026-10-15).
+  def reconcile(%Scope{} = scope, %Run{kind: :partial} = run, result, _opts) do
     Logger.info(
       "[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched"
     )
 
-    RunsRepository.finish_run(run, :completed, %{
-      output: result.output,
-      exit_status: result.exit_status,
-      stats: result.stats
-    })
+    with {:ok, finished} <-
+           RunsRepository.finish_run(run, :completed, %{
+             output: result.output,
+             exit_status: result.exit_status,
+             stats: result.stats
+           }) do
+      report_tied(scope, run, result)
+      {:ok, finished}
+    end
   end
 
   def reconcile(%Scope{} = scope, %Run{} = run, result, opts) do
@@ -133,7 +139,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
     end
   end
 
-  # The agent that asked for a tied run waits on its own run's answer. The
+  # The agent that asked for a tied or partial run waits on its own run's answer. The
   # primary's report goes only to the primary's askers, so a tied requester
   # heard nothing and waited on a finished run: team 2's coder sat 40 minutes
   # on run 59471, which had completed clean (2026-10-15).
