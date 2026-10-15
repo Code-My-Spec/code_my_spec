@@ -249,6 +249,34 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
   end
 
+  # a0ad4e06: a 2026-10-14 promotion (2664c442b) conflicted with main itself --
+  # not with another queued candidate -- and the queue retried "could not
+  # build a batch" forever instead of ejecting it. The test above only ever
+  # conflicts a candidate against a SIBLING already merged into the batch
+  # (`merged` is non-empty, so the `{[], unaccounted}` branch in
+  # `build_in_gate_copy/3` is never exercised); this drives the single, lone
+  # candidate shape where `merged` stays empty and the `Enum.reject(...,
+  # conflicted)` fallback is what has to clear it.
+  test "a lone candidate that conflicts with main itself is ejected, not retried forever", ctx do
+    a = candidate(ctx, "a", "main", "app.ex", "a's App\n")
+
+    # Someone else's promotion lands on main directly, after `a` branched,
+    # touching the same line `a` touches -- so when the queue builds `a`'s
+    # batch, it conflicts with main's own HEAD, not with a sibling entry.
+    File.write!(Path.join(ctx.main_root, "app.ex"), "someone else's App\n")
+    git!(ctx.main_root, ["add", "-A"])
+    git!(ctx.main_root, ["commit", "-q", "-m", "landed first"])
+
+    clean_runs_at(ctx, a.commit)
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry),
+           "a lone candidate conflicting with main was retried instead of ejected"
+
+    assert result["reason"] =~ "app.ex"
+  end
+
   test "a red candidate is ejected with its findings, and nothing lands", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
     gate = gate_scope(ctx)
