@@ -551,7 +551,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # file the spec wrote through the same surface — not a fixture reaching past it.
   defp identity(env, root, project_id) do
     case Environments.read_file(env, @harness_config_file) do
-      {:ok, contents} -> existing_id(contents, env, root)
+      {:ok, contents} -> existing_id(contents, env, root, project_id)
       _ -> mint(root, project_id)
     end
   end
@@ -559,20 +559,20 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Both key names, new one first — the compatibility window `HarnessConfig`
   # implements. Reading only one name re-minted a fresh identity on a second
   # onboard and orphaned everything recorded against the first.
-  defp existing_id(contents, env, root) do
+  defp existing_id(contents, env, root, project_id) do
     case Jason.decode(contents) do
-      {:ok, map} -> recorded_id(map, env, root)
-      _ -> mint_and_record(env, root)
+      {:ok, map} -> recorded_id(map, env, root, project_id)
+      _ -> mint_and_record(env, root, project_id)
     end
   end
 
-  defp recorded_id(%{"working_copy_id" => id}, env, root) when is_binary(id) and id != "",
-    do: confirm_or_remint(id, env, root)
+  defp recorded_id(%{"working_copy_id" => id}, env, root, project_id) when is_binary(id) and id != "",
+    do: confirm_or_remint(id, env, root, project_id)
 
-  defp recorded_id(%{"harness_id" => id}, env, root) when is_binary(id) and id != "",
-    do: confirm_or_remint(id, env, root)
+  defp recorded_id(%{"harness_id" => id}, env, root, project_id) when is_binary(id) and id != "",
+    do: confirm_or_remint(id, env, root, project_id)
 
-  defp recorded_id(_map, env, root), do: mint_and_record(env, root)
+  defp recorded_id(_map, env, root, project_id), do: mint_and_record(env, root, project_id)
 
   # A recorded id is confirmed against the server rather than trusted on
   # faith: `Staffing.offboard/2` deletes the server's row but never touches
@@ -588,16 +588,28 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # A check that itself fails (network, credential) is read as "could not
   # tell", not "gone": that would trade a silent loss of registration for a
   # forced re-mint on every transient network hiccup, which is worse.
-  defp confirm_or_remint(id, env, root) do
-    case project_for(root, nil) do
-      {:ok, project} -> confirm_with_project(id, env, root, project)
+  #
+  # `project_for(root, project_id)`, not `project_for(root, nil)`: an
+  # explicit `--project` must confirm against THAT project, not whatever
+  # `ProjectIdentity.resolve(root)` finds on real disk at `root` -- with no
+  # `--root` given, `root` is `File.cwd!()`, which for a spec driving this
+  # through an in-memory `Environments` fixture is this very checkout's own
+  # real directory, unrelated to the fixture's project. Resolving the wrong
+  # project meant confirming a fixture-minted id against a real server using
+  # a real, unrelated project's credentials -- a mismatched 404 that
+  # re-minted a fresh id for a copy that was never actually gone (c1b2d03a's
+  # sibling: story 1030's onboarding criteria failed this way whenever a
+  # full-suite run reached this spec after any other real-root onboard call).
+  defp confirm_or_remint(id, env, root, project_id) do
+    case project_for(root, project_id) do
+      {:ok, project} -> confirm_with_project(id, env, root, project, project_id)
       _ -> {:ok, id}
     end
   end
 
-  defp confirm_with_project(id, env, root, project) do
+  defp confirm_with_project(id, env, root, project, project_id) do
     case token_for(ensure_local_credential(project.id)) do
-      {:ok, token} -> handle_confirmation(confirm(id, token), id, env, root)
+      {:ok, token} -> handle_confirmation(confirm(id, token), id, env, root, project_id)
       _ -> {:ok, id}
     end
   end
@@ -611,12 +623,15 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   convention because mix tasks are not run by it (see
   `CodeMySpec.HttpClientsAreStubbableTest`), so only the 200 and
   fallback branches, which touch nothing else, are covered directly; the
-  404 branch's re-mint is covered by `recorded_id/3`'s own moduledoc note
+  404 branch's re-mint is covered by `recorded_id/4`'s own moduledoc note
   and by manual verification, same as `mint/2` itself.
   """
-  def handle_confirmation({:ok, %{status: 200}}, id, _env, _root), do: {:ok, id}
-  def handle_confirmation({:ok, %{status: 404}}, _id, env, root), do: mint_and_record(env, root)
-  def handle_confirmation(_other, id, _env, _root), do: {:ok, id}
+  def handle_confirmation({:ok, %{status: 200}}, id, _env, _root, _project_id), do: {:ok, id}
+
+  def handle_confirmation({:ok, %{status: 404}}, _id, env, root, project_id),
+    do: mint_and_record(env, root, project_id)
+
+  def handle_confirmation(_other, id, _env, _root, _project_id), do: {:ok, id}
 
   defp confirm(id, token) do
     Req.get(
@@ -630,8 +645,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     )
   end
 
-  defp mint_and_record(env, root) do
-    with {:ok, id} <- mint(root, nil) do
+  defp mint_and_record(env, root, project_id) do
+    with {:ok, id} <- mint(root, project_id) do
       # Both names, matching `HarnessConfig.write/2`. This writes through
       # `Environments` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.
