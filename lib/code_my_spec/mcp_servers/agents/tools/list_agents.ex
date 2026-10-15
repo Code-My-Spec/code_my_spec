@@ -15,6 +15,8 @@ defmodule CodeMySpec.McpServers.Agents.Tools.ListAgents do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias CodeMySpec.Agents
   alias CodeMySpec.McpServers.Agents.AgentsMapper
   alias CodeMySpec.McpServers.Validators
@@ -28,6 +30,25 @@ defmodule CodeMySpec.McpServers.Agents.Tools.ListAgents do
       {:ok, scope} -> {:reply, AgentsMapper.listing(listed(scope)), frame}
       {:error, reason} -> {:reply, AgentsMapper.error(reason, nil), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame, params) do
+      {:ok, Enum.map(listed(scope), &row/1)}
+    end
+  end
+
+  defp row(a) do
+    %{
+      "id" => a.id,
+      "role" => to_string(a.role),
+      "status" => to_string(a.status),
+      "working_copy" => a.working_copy,
+      "provider" => a.provider,
+      "model" => a.model,
+      "off_at" => a.off_at && DateTime.to_iso8601(a.off_at)
+    }
   end
 
   # Every agent on duty, whether or not its process is up, and any still

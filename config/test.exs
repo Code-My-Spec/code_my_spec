@@ -587,6 +587,11 @@ config :code_my_spec, CodeMySpec.Integrations.Providers.ApiKey,
 config :code_my_spec, CodeMySpec.Observability.ClickHouseClient,
   plug: {Req.Test, CodeMySpec.Observability.ClickHouseClient}
 
+# list_projects calls the server's own /api/projects over HTTP rather than
+# querying this database, so it is pinned like every client above.
+config :code_my_spec, CodeMySpec.McpServers.Bootstrap.Tools.ListProjects,
+  plug: {Req.Test, CodeMySpec.McpServers.Bootstrap.Tools.ListProjects}
+
 config :code_my_spec, CodeMySpec.Mail.ImageProxy, plug: {Req.Test, CodeMySpec.Mail.ImageProxy}
 config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.Ads}
 config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.Gsc}
