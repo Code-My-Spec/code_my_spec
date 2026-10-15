@@ -397,31 +397,35 @@ defmodule CodeMySpec.Notifications do
 
         if is_nil(owner), do: Repo.rollback(:owner_not_found)
 
-        case pending_tap_out(owner_key, owner_id, task_id) do
-          nil ->
-            with {:ok, task} <- question_task(owner, task_id),
-                 {:ok, request} <-
-                   insert_permission_request(scope.user.id, %{
-                     Atom.to_string(owner_key) => owner_id,
-                     "task_id" => task_id,
-                     "tool_name" => "tap_out",
-                     "tool_input" => %{"task_id" => task_id, "reason" => reason}
-                   }),
-                 :ok <- block_tap_out_task(scope, owner, task, request, reason) do
-              {request, user_decides?(owner)}
-            else
-              {:error, error} -> Repo.rollback(error)
-            end
-
-          existing ->
-            {existing, false}
-        end
+        open_or_reuse_tap_out(scope, owner, owner_key, owner_id, task_id, reason)
       end)
 
     with {:ok, {request, push?}} <- result do
       if push?, do: deliver_permission(request)
 
       {:ok, request}
+    end
+  end
+
+  defp open_or_reuse_tap_out(scope, owner, owner_key, owner_id, task_id, reason) do
+    case pending_tap_out(owner_key, owner_id, task_id) do
+      nil ->
+        with {:ok, task} <- question_task(owner, task_id),
+             {:ok, request} <-
+               insert_permission_request(scope.user.id, %{
+                 Atom.to_string(owner_key) => owner_id,
+                 "task_id" => task_id,
+                 "tool_name" => "tap_out",
+                 "tool_input" => %{"task_id" => task_id, "reason" => reason}
+               }),
+             :ok <- block_tap_out_task(scope, owner, task, request, reason) do
+          {request, user_decides?(owner)}
+        else
+          {:error, error} -> Repo.rollback(error)
+        end
+
+      existing ->
+        {existing, false}
     end
   end
 
@@ -531,28 +535,7 @@ defmodule CodeMySpec.Notifications do
       Repo.transaction(fn ->
         request = Repo.one(from p in PermissionRequest, where: p.id == ^id, lock: "FOR UPDATE")
 
-        case request do
-          %{status: "pending"} ->
-            with {:ok, updated} <-
-                   request
-                   |> PermissionRequest.changeset(%{
-                     status: decision_to_status(decision),
-                     decision: decision,
-                     answered_by_user_id: answered_by_user_id
-                   })
-                   |> Repo.update(),
-                 :ok <- apply_tap_out_decision(updated) do
-              updated
-            else
-              {:error, reason} -> Repo.rollback(reason)
-            end
-
-          nil ->
-            Repo.rollback(:not_found)
-
-          %{status: status} ->
-            Repo.rollback({:already_resolved, status})
-        end
+        decide_tap_out(request, decision, answered_by_user_id)
       end)
 
     with {:ok, updated} <- result do
@@ -569,6 +552,31 @@ defmodule CodeMySpec.Notifications do
         do: wake_if_still_in_the_loop(updated, answer)
 
       {:ok, updated}
+    end
+  end
+
+  defp decide_tap_out(request, decision, answered_by_user_id) do
+    case request do
+      %{status: "pending"} ->
+        with {:ok, updated} <-
+               request
+               |> PermissionRequest.changeset(%{
+                 status: decision_to_status(decision),
+                 decision: decision,
+                 answered_by_user_id: answered_by_user_id
+               })
+               |> Repo.update(),
+             :ok <- apply_tap_out_decision(updated) do
+          updated
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      nil ->
+        Repo.rollback(:not_found)
+
+      %{status: status} ->
+        Repo.rollback({:already_resolved, status})
     end
   end
 
@@ -942,21 +950,25 @@ defmodule CodeMySpec.Notifications do
       session ->
         result =
           Repo.transaction(fn ->
-            with {:ok, task} <- question_task(session, task_ref),
-                 attrs =
-                   Map.merge(attrs, %{
-                     "task_id" => task && task.id,
-                     "story_id" => task && task.story_id
-                   }),
-                 {:ok, outcome} <- save_or_reuse_question_request(user_id, attrs),
-                 :ok <- block_question_task(scope, session, task, request_from(outcome)) do
-              outcome
-            else
-              {:error, reason} -> Repo.rollback(reason)
-            end
+            save_blocking_session_question(scope, user_id, attrs, task_ref, session)
           end)
 
         deliver_if_new(result)
+    end
+  end
+
+  defp save_blocking_session_question(scope, user_id, attrs, task_ref, session) do
+    with {:ok, task} <- question_task(session, task_ref),
+         attrs =
+           Map.merge(attrs, %{
+             "task_id" => task && task.id,
+             "story_id" => task && task.story_id
+           }),
+         {:ok, outcome} <- save_or_reuse_question_request(user_id, attrs),
+         :ok <- block_question_task(scope, session, task, request_from(outcome)) do
+      outcome
+    else
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 

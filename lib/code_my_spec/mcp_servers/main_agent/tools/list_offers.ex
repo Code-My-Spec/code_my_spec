@@ -13,6 +13,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListOffers do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
@@ -20,33 +22,54 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListOffers do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field(:agent_id, :string, doc: "One agent's offers, from `list_agent_work`.")
+    field(:agent_id, :string, description: "One agent's offers, from `list_agent_work`.")
 
     field(:kind, :string,
-      doc: "work, menu, problems, resume, retry, answer, unblocked, check_in or stalled."
+      description: "work, menu, problems, resume, retry, answer, unblocked, check_in or stalled."
     )
 
     field(:status, :string,
-      doc: "open, claimed, declined, ignored, superseded, expired, n_a or undelivered."
+      description: "open, claimed, declined, ignored, superseded, expired, n_a or undelivered."
     )
 
-    field(:since, :string, doc: "ISO8601 — only offers made at or after this time.")
-    field(:limit, :integer, doc: "How many offers to show, newest first. Defaults to 50.")
+    field(:since, :string, description: "ISO8601 — only offers made at or after this time.")
+    field(:limit, :integer, description: "How many offers to show, newest first. Defaults to 50.")
   end
 
   @impl true
   def execute(params, frame) do
+    case offers(params, frame) do
+      {:ok, offers, counts} -> {:reply, OfferMapper.listing(offers, counts), frame}
+      {:error, reason} -> {:reply, OfferMapper.error(reason), frame}
+    end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    with {:ok, offers, _counts} <- offers(params, frame) do
+      {:ok, Enum.map(offers, &row/1)}
+    end
+  end
+
+  defp offers(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, filters} <- filters(params),
          :ok <- own_agent(scope, filters[:agent_id]) do
-      {:reply,
-       OfferMapper.listing(
-         Offers.list(scope, filters),
-         Offers.count_by_kind_and_status(scope, filters)
-       ), frame}
-    else
-      {:error, reason} -> {:reply, OfferMapper.error(reason), frame}
+      {:ok, Offers.list(scope, filters), Offers.count_by_kind_and_status(scope, filters)}
     end
+  end
+
+  defp row(o) do
+    %{
+      "id" => o.id,
+      "agent_id" => o.agent_id,
+      "kind" => to_string(o.kind),
+      "subject_type" => o.subject_type,
+      "subject_key" => o.subject_key,
+      "attempt" => o.attempt,
+      "status" => to_string(o.status),
+      "reason" => o.reason
+    }
   end
 
   defp filters(params) do

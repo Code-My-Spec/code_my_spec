@@ -38,8 +38,7 @@ defmodule CodeMySpec.EpicDispatch do
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query, warn: false
 
@@ -215,23 +214,25 @@ defmodule CodeMySpec.EpicDispatch do
          true <- copy.project_id == scope.active_project_id,
          true <- is_binary(copy.root) and copy.root != "",
          {:ok, query} <- queue_subject(scope, kind, subject) do
-      Repo.transaction(fn ->
-        held = held_story_ids(scope)
-
-        query = where(query, [s], s.id not in ^held)
-
-        query =
-          if action == :remove, do: where(query, [s], s.working_copy_id == ^copy_id), else: query
-
-        destination = if action == :add, do: copy_id, else: nil
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        {count, _} = Repo.update_all(query, set: [working_copy_id: destination, updated_at: now])
-        count
-      end)
+      Repo.transaction(fn -> move_unheld_queue(scope, query, copy_id, action) end)
     else
       false -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp move_unheld_queue(scope, query, copy_id, action) do
+    held = held_story_ids(scope)
+
+    query = where(query, [s], s.id not in ^held)
+
+    query =
+      if action == :remove, do: where(query, [s], s.working_copy_id == ^copy_id), else: query
+
+    destination = if action == :add, do: copy_id, else: nil
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    {count, _} = Repo.update_all(query, set: [working_copy_id: destination, updated_at: now])
+    count
   end
 
   defp held_story_ids(scope) do

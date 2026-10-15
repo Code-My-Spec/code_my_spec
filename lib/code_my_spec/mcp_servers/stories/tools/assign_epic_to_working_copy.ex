@@ -53,11 +53,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy do
   alias CodeMySpec.WorkingCopies
 
   schema do
-    field :epic_id, :string, required: true, doc: "Id of the epic to place"
+    field :epic_id, :string, required: true, description: "Id of the epic to place"
 
     field :working_copy_id, :string,
       required: true,
-      doc: "Id of the checkout to build it on, from list_working_copies"
+      description: "Id of the checkout to build it on, from list_working_copies"
   end
 
   @impl true

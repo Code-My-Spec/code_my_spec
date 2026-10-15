@@ -27,6 +27,7 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   alias CodeMySpec.McpServers.Agents.Tools.TurnOnAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Staffing
+  alias CodeMySpec.Stories.Story
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
 
@@ -128,6 +129,56 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
       })
 
     assert fresh.story_id == story.id
+  end
+
+  test "a replacement keeps the loop its predecessor was in", ctx do
+    {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.agent, %{continuous: true})
+    retire(ctx)
+
+    {:ok, fresh} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    assert fresh.continuous,
+           "the replacement came up out of the loop, so the graph offers it no work"
+  end
+
+  test "a replacement for an agent outside the loop stays outside it", ctx do
+    {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.agent, %{continuous: false})
+    retire(ctx)
+
+    {:ok, fresh} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    refute fresh.continuous
+  end
+
+  test "a replacement does not inherit a story that has already been promoted", ctx do
+    story = story_fixture(ctx.scope)
+
+    {:ok, _} =
+      story |> Story.changeset(%{promoted_version: "2.0.440"}) |> Repo.update()
+
+    {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.agent, %{story_id: story.id})
+
+    retire(ctx)
+
+    {:ok, fresh} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    assert fresh.story_id == nil,
+           "the replacement took a promoted story, so its team reads as busy with nothing to do"
   end
 
   test "an off agent that is then retired leaves the off list and frees its seat", ctx do

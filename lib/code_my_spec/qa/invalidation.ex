@@ -6,7 +6,7 @@ defmodule CodeMySpec.Qa.Invalidation do
   The original QaAttempt is preserved; this row marks it as invalidated.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
   use Ecto.Schema
   import Ecto.Changeset
 

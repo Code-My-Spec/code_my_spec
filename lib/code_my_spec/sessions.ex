@@ -142,6 +142,32 @@ defmodule CodeMySpec.Sessions do
   def open_task_for_agent(_scope, _agent_id), do: nil
 
   @doc """
+  When a registered sub-agent was last heard from, across the project's
+  active sessions.
+
+  `:not_registered` when no active session has a registration for this
+  `agent_id` -- distinct from `{:ok, nil}`, a registration that has never
+  sent a heartbeat. A caller deciding whether a sub-agent's claim on a task
+  is stale (733ac788) needs to tell those two apart from "it answered
+  recently": one says the agent is gone, the other says it has not yet had
+  the chance to be touched.
+  """
+  @spec subagent_heartbeat(Scope.t(), String.t()) ::
+          {:ok, DateTime.t() | nil} | :not_registered
+  def subagent_heartbeat(%Scope{} = scope, agent_id) when is_binary(agent_id) do
+    scope
+    |> list_active_sessions()
+    |> Enum.find_value(:not_registered, fn session ->
+      case Enum.find(session.subagents || [], &(&1.agent_id == agent_id)) do
+        nil -> nil
+        subagent -> {:ok, subagent.last_heartbeat_at}
+      end
+    end)
+  end
+
+  def subagent_heartbeat(_scope, _agent_id), do: :not_registered
+
+  @doc """
   Every task an agent is actively working, across the project's active
   sessions.
 

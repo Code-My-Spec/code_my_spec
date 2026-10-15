@@ -32,7 +32,7 @@ defmodule CodeMySpec.Migration do
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope
     ],
-    exports: :all
+    exports: [Client]
 
   import Ecto.Query, warn: false
 

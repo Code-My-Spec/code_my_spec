@@ -34,8 +34,10 @@ defmodule CodeMySpec.McpServers.LocalServer do
 
   alias Anubis.Server.Handlers
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.LibraryTools
   alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.ToolLibrary
 
   use Anubis.Server,
     name: "codemyspec-local",
@@ -71,7 +73,6 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
   component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
-  component(CodeMySpec.McpServers.Tasks.Tools.RejectOffer)
   component(CodeMySpec.McpServers.Health.Tools.Health)
   component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
 
@@ -100,6 +101,25 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # made.
   component(CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript)
 
+  # Domain tools on this list (`CodeMySpec.ToolLibrary`), by the same rule as
+  # the components above: `reject_offer` is a script exclusion. Registered on
+  # each session's frame at `init/2`; see `LibraryTools`.
+  @library_tools ~w(reject_offer)
+
+  @doc "The library tools this server lists."
+  def library_tools, do: Enum.filter(ToolLibrary.tools(), &(&1.name() in @library_tools))
+
+  @doc "Every tool on this server: the components, then its library tools."
+  def registrations,
+    do: __components__() ++ Enum.map(library_tools(), &ToolLibrary.registration/1)
+
+  @impl Anubis.Server
+  def init(_client_info, frame), do: {:ok, LibraryTools.register(frame, library_tools())}
+
+  @impl Anubis.Server
+  def handle_tool_call(name, params, frame),
+    do: LibraryTools.call(library_tools(), name, params, frame)
+
   # ── A client that connected before the spine ──────────────────────────────
   #
   # A tool list is cached at connect, so a session that joined before story 971
@@ -117,7 +137,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
       do: {:reply, moved_response(name), frame},
       else:
         request
-        |> StoryRefs.normalize_request(__components__())
+        |> StoryRefs.normalize_request(registrations())
         |> Handlers.handle(__MODULE__, frame)
   end
 
@@ -126,8 +146,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   end
 
   defp moved?(name) do
-    not Enum.any?(__components__(), &(&1.name == name)) and
-      Enum.any?(ScriptableTools.__components__(), &(&1.name == name))
+    not Enum.any?(registrations(), &(&1.name == name)) and
+      Enum.any?(ScriptableTools.registrations(), &(&1.name == name))
   end
 
   # `to_protocol/1`, not the struct. Anubis's own handler converts before

@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5156Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -34,10 +34,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5156Spex do
       when_ "the PM calls LinkPersonaToStory via MCP", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, response} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: context.second_story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok, Map.put(context, :response, response)}

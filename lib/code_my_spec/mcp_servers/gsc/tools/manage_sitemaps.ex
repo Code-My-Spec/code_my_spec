@@ -11,10 +11,10 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.ManageSitemaps do
   @valid_actions ~w(list details submit delete)
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :action, :string, required: true, doc: "list, details, submit, or delete"
-    field :sitemap_url, :string, doc: "Required for details, submit, delete"
-    field :sitemap_index, :string, doc: "Optional sitemap index URL (list action only)"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :action, :string, required: true, description: "list, details, submit, or delete"
+    field :sitemap_url, :string, description: "Required for details, submit, delete"
+    field :sitemap_index, :string, description: "Optional sitemap index URL (list action only)"
   end
 
   @impl true

@@ -26,8 +26,7 @@ defmodule CodeMySpec.Staffing do
       # ingress rule and DNS record before the row goes — otherwise Cloudflare
       # keeps answering for a hostname nothing here remembers any more.
       CodeMySpec.Workspaces
-    ],
-    exports: :all
+    ]
 
   require Logger
 

@@ -21,7 +21,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     <.header>
       Issues
       <:actions>
-        <form phx-change="filter" class="flex items-center gap-2">
+        <form id="issues-filter" phx-change="filter" class="flex items-center gap-2">
           <select class="select select-sm select-bordered" name="status">
             <option :for={s <- @status_options} value={s} selected={s == @filter_status}>
               {String.capitalize(s)}

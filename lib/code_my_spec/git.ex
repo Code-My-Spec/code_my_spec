@@ -28,7 +28,7 @@ defmodule CodeMySpec.Git do
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
-    exports: :all
+    exports: [Behaviour]
 
   @behaviour CodeMySpec.Git.Behaviour
 

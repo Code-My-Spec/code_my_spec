@@ -10,8 +10,7 @@ defmodule CodeMySpec.Compile do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.TempFile],
-    exports: :all
+    deps: [CodeMySpec.Environments, CodeMySpec.TempFile]
 
   require Logger
 

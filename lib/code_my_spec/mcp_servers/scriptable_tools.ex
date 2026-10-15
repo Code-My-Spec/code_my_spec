@@ -47,13 +47,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
   component(CodeMySpec.McpServers.Issues.Tools.SetActiveIssue)
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssue)
-  component(CodeMySpec.McpServers.Personas.Tools.CreatePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.UpdatePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.DeletePersona)
-  component(CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory)
-  component(CodeMySpec.McpServers.Personas.Tools.UnlinkPersonaFromStory)
-  component(CodeMySpec.McpServers.Personas.Tools.ListPersonas)
-  component(CodeMySpec.McpServers.Personas.Tools.GetPersona)
   component(CodeMySpec.McpServers.BddRules.Tools.AddRule)
   component(CodeMySpec.McpServers.BddRules.Tools.UpdateRule)
   component(CodeMySpec.McpServers.BddRules.Tools.DeleteRule)
@@ -128,6 +121,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.UnassignStoryFromWorkingCopy)
+  component(CodeMySpec.McpServers.Stories.Tools.ReleaseStoryFromWorkingCopy)
   component(CodeMySpec.McpServers.Stories.Tools.UnassignEpicFromWorkingCopy)
 
   # Story 1108: an agent on a copy can start, restart and stop its own copy's
@@ -164,6 +158,10 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Components.Tools.AddDependency)
   component(CodeMySpec.McpServers.Components.Tools.RemoveDependency)
   component(CodeMySpec.McpServers.Components.Tools.GetComponent)
+  # 8f26f7ba: present on `ComponentsServer` but missing here, so `list_components`
+  # was unreachable from a script even though every sibling Components tool
+  # above is registered and no exclusion applies.
+  component(CodeMySpec.McpServers.Components.Tools.ListComponents)
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
@@ -226,4 +224,15 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Observability.Tools.GetTrace)
   component(CodeMySpec.McpServers.Observability.Tools.SlowSpans)
   component(CodeMySpec.McpServers.Observability.Tools.ErrorSummary)
+
+  @doc """
+  Every scriptable tool: the components above, then the tools domains own
+  (`CodeMySpec.ToolLibrary`), in the one shape every reader takes.
+  """
+  def registrations do
+    direct = Enum.map(CodeMySpec.McpServers.LocalServer.library_tools(), & &1.name())
+
+    __components__() ++
+      Enum.reject(CodeMySpec.ToolLibrary.registrations(), &(&1.name in direct))
+  end
 end

@@ -17,9 +17,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CancelTask do
   alias CodeMySpec.TaskOwner
 
   schema do
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :session_id, :string, description: "Injected by hook — do not set manually"
 
-    field :task_id, :string, required: true, doc: "Task to cancel"
+    field :task_id, :string, required: true, description: "Task to cancel"
   end
 
   @impl true

@@ -33,14 +33,14 @@ defmodule CodeMySpec.McpServers.Agents.Tools.MessageAgent do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "Id of the agent to send this to"
+    field :agent_id, :string, required: true, description: "Id of the agent to send this to"
 
     field :message, :string,
       required: true,
-      doc: "What to tell the agent — an instruction, a question, or the next piece of work"
+      description: "What to tell the agent — an instruction, a question, or the next piece of work"
 
     field :send_now, :boolean,
-      doc:
+      description:
         "Stop a busy agent's running turn so this message is its next one, instead of " <>
           "waiting for the turn to end. The agent keeps what it did up to its last " <>
           "completed tool call. Use it to correct work in progress."

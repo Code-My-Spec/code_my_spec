@@ -60,6 +60,14 @@ defmodule CodeMySpec.Qa do
     to: CodeMySpec.Qa.StoryReviews,
     as: :current_pass?
 
+  @doc """
+  Why `attempt` — a recorded pass with no invalidations — does not satisfy
+  `qa_complete` for `story_id` anyway, or `nil` if it does (or does not apply).
+  """
+  defdelegate story_review_currency_gap(scope, story_id, attempt),
+    to: CodeMySpec.Qa.StoryReviews,
+    as: :currency_gap
+
   defdelegate carry(story, changed), to: CodeMySpec.Qa.StoryReviews
   defdelegate product_change?(paths), to: CodeMySpec.Qa.StoryReviews
 

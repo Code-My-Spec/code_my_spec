@@ -6,48 +6,15 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript do
       browser_wait_for_text({ text = "Overview", timeout = 20000 })
       return browser_get_url({})
 
-  ## The names come from the machine, so look them up
+  Tool names come from the machine, not from Playwright or Puppeteer — look
+  them up with `tool_docs({ search = "wait" })` or `tool_docs({ name = "..." })`
+  (called directly, not from inside a script) before guessing. A nil global
+  means the name is wrong, not that the browser is broken; see
+  `read_knowledge({ path = "qa-tooling/vibium_reference.md" })` for common
+  mistakes.
 
-  `tool_docs({ search = "wait" })` lists what this machine's browser actually
-  offers; `tool_docs({ name = "browser_wait_for_text" })` gives one tool's
-  arguments and a runnable example. Call it **directly**, not from inside a
-  script — the catalog refuses it there, because reading the documentation is
-  something you do before writing the script.
-
-  Do this rather than guessing. The catalog is whatever the installed vibium
-  publishes over MCP, which is not the Playwright or Puppeteer API an agent has
-  otherwise read a great deal of, and the two are similar enough to be
-  dangerous. Watched on 2026-09-08: a QA agent spent forty-five minutes without
-  a successful tool call, on `browser_wait_for_timeout` — Playwright's
-  `page.waitForTimeout`, which does not exist here. The waits that do are
-  `browser_sleep`, `browser_wait`, `browser_wait_for_text`,
-  `browser_wait_for_url`, `browser_wait_for_load` and `browser_wait_for_fn`.
-
-  A nil global in this sandbox means the name is wrong, not that the browser is
-  broken.
-
-  Separate from `run_script`, and separate on purpose. The browser's tools are a
-  different kind of thing under a wall clock: several of them **wait by design**
-  — `browser_wait_for_text`, `browser_wait_for_url` and `browser_sleep` all take
-  a duration from the caller — while ours are database reads that answer in
-  milliseconds.
-
-  One deadline cannot be right for both. Sharing one made that concrete: a
-  browser call was given a hardcoded 30 seconds inside a script whose own wall
-  clock was also 30 seconds, so they expired together, and a call that used its
-  budget left the script nothing to do with the answer.
-
-  So this sandbox takes a `timeout` from the caller, defaults to a minute, and
-  the browser tools live only here. They do not need to interact with ours in
-  one script — a value that has to cross between them crosses through the
-  agent's turn, which costs a call and buys a deadline that fits.
-
-  ## `timeout`
-
-  Milliseconds, for the whole script rather than any one call. Each browser call
-  inside it is given the remaining budget less a small margin, so a call that
-  hangs reports as a timeout rather than being taken out by the sandbox at the
-  same instant.
+  Separate from `run_script` because browser tools wait — for a page, an
+  element, a redirect — on their own `timeout`, not the project's fast ones.
   """
 
   use Anubis.Server.Component, type: :tool

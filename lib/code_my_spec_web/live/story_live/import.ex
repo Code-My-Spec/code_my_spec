@@ -19,7 +19,7 @@ defmodule CodeMySpecWeb.StoryLive.Import do
         </:subtitle>
       </.header>
 
-      <form phx-submit="import" phx-change="validate">
+      <form id="story-import-form" phx-submit="import" phx-change="validate">
         <div class="form-control mb-4">
           <label class="label">
             <span class="label-text">Upload Markdown File</span>

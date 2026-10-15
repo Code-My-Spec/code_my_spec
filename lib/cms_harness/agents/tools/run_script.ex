@@ -102,5 +102,5 @@ defmodule CmsHarness.Agents.Tools.RunScript do
   # Delegated so there is one implementation as well as one number — this one
   # split a binary on a byte boundary, which can land inside a multi-byte
   # character and produce a reply that fails to encode.
-  defp truncate(text), do: CodeMySpec.CodeMode.cap(text)
+  defp truncate(text), do: CodeMySpec.CodeMode.cap(text, spill_label: "run_script")
 end

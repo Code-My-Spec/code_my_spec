@@ -17,8 +17,7 @@ defmodule CodeMySpec.AppTokens do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Projects, CodeMySpec.Repo],
-    exports: :all
+    deps: [CodeMySpec.Projects, CodeMySpec.Repo]
 
   import Ecto.Query
 

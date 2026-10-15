@@ -34,7 +34,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential do
   schema do
     field :environment, :string,
       required: true,
-      doc: "Environment name, e.g. \"prod\" or \"uat\"."
+      description: "Environment name, e.g. \"prod\" or \"uat\"."
   end
 
   @impl true

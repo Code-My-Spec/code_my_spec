@@ -20,7 +20,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :story_number, :integer, doc: "Optional story number; must match your active story"
+    field :story_number, :integer, description: "Optional story number; must match your active story"
   end
 
   @impl true

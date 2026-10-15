@@ -11,8 +11,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Issues, CodeMySpec.Users.Scope, CodeMySpec.WorkingCopies],
-    exports: :all
+    deps: [CodeMySpec.Issues, CodeMySpec.Users.Scope, CodeMySpec.WorkingCopies]
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Users.Scope

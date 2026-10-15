@@ -21,11 +21,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule do
   schema do
     field :criterion_number, :integer,
       required: true,
-      doc: "Criterion number to relink (from get_story)"
+      description: "Criterion number to relink (from get_story)"
 
     field :rule_id, :string,
       required: true,
-      doc: "Rule UUID to attach the criterion to (from list_rules)"
+      description: "Rule UUID to attach the criterion to (from list_rules)"
   end
 
   @impl true

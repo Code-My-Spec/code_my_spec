@@ -117,5 +117,5 @@ defmodule CmsHarness.Agents.Tools.RunBrowserScript do
   # multi-byte character handed back a binary that was no longer valid UTF-8 —
   # and a page of prose is full of them. That travels as far as the JSON
   # encoder and fails there, turning a large answer into no answer at all.
-  defp truncate(text), do: CodeMySpec.CodeMode.cap(text)
+  defp truncate(text), do: CodeMySpec.CodeMode.cap(text, spill_label: "run_browser_script")
 end

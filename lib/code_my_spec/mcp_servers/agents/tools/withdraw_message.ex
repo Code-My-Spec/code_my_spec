@@ -16,11 +16,11 @@ defmodule CodeMySpec.McpServers.Agents.Tools.WithdrawMessage do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "Id of the agent the message was sent to"
+    field :agent_id, :string, required: true, description: "Id of the agent the message was sent to"
 
     field :message_id, :string,
       required: true,
-      doc: "The message id `message_agent` replied with"
+      description: "The message id `message_agent` replied with"
   end
 
   @impl true

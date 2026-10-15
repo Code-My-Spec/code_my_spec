@@ -177,29 +177,30 @@ defmodule CodeMySpec.Google.Gsc do
             position: round1(Map.get(totals_row, "position", 0))
           }
 
-          daily_trend =
-            date_response
-            |> Map.get("rows", [])
-            |> Enum.sort_by(fn row -> hd(Map.get(row, "keys", [""])) end)
-            |> Enum.map(fn row ->
-              %{
-                date: hd(Map.get(row, "keys", [nil])),
-                clicks: Map.get(row, "clicks", 0),
-                impressions: Map.get(row, "impressions", 0),
-                ctr: round4(Map.get(row, "ctr", 0)),
-                position: round1(Map.get(row, "position", 0))
-              }
-            end)
-
           {:ok,
            %{
              site_url: site_url,
              date_range: %{start: start_date, end: end_date, days: days},
              totals: totals,
-             daily_trend: daily_trend
+             daily_trend: daily_trend(date_response)
            }}
       end
     end
+  end
+
+  defp daily_trend(date_response) do
+    date_response
+    |> Map.get("rows", [])
+    |> Enum.sort_by(fn row -> hd(Map.get(row, "keys", [""])) end)
+    |> Enum.map(fn row ->
+      %{
+        date: hd(Map.get(row, "keys", [nil])),
+        clicks: Map.get(row, "clicks", 0),
+        impressions: Map.get(row, "impressions", 0),
+        ctr: round4(Map.get(row, "ctr", 0)),
+        position: round1(Map.get(row, "position", 0))
+      }
+    end)
   end
 
   @doc """
@@ -389,27 +390,7 @@ defmodule CodeMySpec.Google.Gsc do
 
         inspection ->
           index_status = Map.get(inspection, "indexStatusResult", %{})
-
-          rich_results =
-            case Map.get(inspection, "richResultsResult") do
-              nil ->
-                nil
-
-              rich ->
-                %{
-                  verdict: Map.get(rich, "verdict", "UNKNOWN"),
-                  detected_types:
-                    rich
-                    |> Map.get("detectedItems", [])
-                    |> Enum.map(&Map.get(&1, "richResultType", "Unknown")),
-                  issues:
-                    rich
-                    |> Map.get("richResultsIssues", [])
-                    |> Enum.map(
-                      &%{severity: Map.get(&1, "severity"), message: Map.get(&1, "message")}
-                    )
-                }
-            end
+          rich_results = rich_results(Map.get(inspection, "richResultsResult"))
 
           {:ok,
            %{
@@ -430,6 +411,22 @@ defmodule CodeMySpec.Google.Gsc do
            }}
       end
     end
+  end
+
+  defp rich_results(nil), do: nil
+
+  defp rich_results(rich) do
+    %{
+      verdict: Map.get(rich, "verdict", "UNKNOWN"),
+      detected_types:
+        rich
+        |> Map.get("detectedItems", [])
+        |> Enum.map(&Map.get(&1, "richResultType", "Unknown")),
+      issues:
+        rich
+        |> Map.get("richResultsIssues", [])
+        |> Enum.map(&%{severity: Map.get(&1, "severity"), message: Map.get(&1, "message")})
+    }
   end
 
   @doc "Inspects up to 10 URLs, returning a compact per-URL summary."
@@ -602,29 +599,31 @@ defmodule CodeMySpec.Google.Gsc do
       sitemaps =
         body
         |> Map.get("sitemap", [])
-        |> Enum.map(fn sitemap ->
-          errors = to_int(Map.get(sitemap, "errors", 0))
-          warnings = to_int(Map.get(sitemap, "warnings", 0))
-
-          status =
-            cond do
-              errors > 0 -> "Has errors"
-              warnings > 0 -> "Has warnings"
-              true -> "Valid"
-            end
-
-          %{
-            path: Map.get(sitemap, "path", "Unknown"),
-            last_downloaded: Map.get(sitemap, "lastDownloaded"),
-            status: status,
-            indexed_urls: web_content_submitted(sitemap),
-            errors: errors,
-            warnings: warnings
-          }
-        end)
+        |> Enum.map(&sitemap_summary/1)
 
       {:ok, %{site_url: site_url, count: length(sitemaps), sitemaps: sitemaps}}
     end
+  end
+
+  defp sitemap_summary(sitemap) do
+    errors = to_int(Map.get(sitemap, "errors", 0))
+    warnings = to_int(Map.get(sitemap, "warnings", 0))
+
+    status =
+      cond do
+        errors > 0 -> "Has errors"
+        warnings > 0 -> "Has warnings"
+        true -> "Valid"
+      end
+
+    %{
+      path: Map.get(sitemap, "path", "Unknown"),
+      last_downloaded: Map.get(sitemap, "lastDownloaded"),
+      status: status,
+      indexed_urls: web_content_submitted(sitemap),
+      errors: errors,
+      warnings: warnings
+    }
   end
 
   @doc "Lists sitemaps with full detail, optionally scoped to an index."

@@ -57,7 +57,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
            Stories.get_story_by_number(scope, number),
          {:ok, copy} <- WorkingCopies.fetch(copy_id) do
       "Story #{number} is assigned to working copy #{copy.label || copy_id} (#{copy_id}). " <>
-        "Free it with unassign_story_from_working_copy, then select it again."
+        "Free it with release_story_from_working_copy, then select it again."
     else
       _ -> error_message(:story_assigned_elsewhere)
     end
@@ -120,6 +120,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
 
   defp error_message(:not_found), do: "No eligible story or working copy exists in this project."
   defp error_message(:story_not_ready), do: "The story must be ready for development first."
+
+  defp error_message(:story_done),
+    do:
+      "That story is already promoted and every requirement of it is satisfied on this copy, " <>
+        "so there is nothing left for a team to do on it. Pick another story."
 
   defp error_message(:story_assigned_elsewhere),
     do: "The story is assigned to another working copy. Reassign it explicitly first."

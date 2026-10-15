@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RestoreCriterion do
   schema do
     field :criterion_number, :integer,
       required: true,
-      doc: "Criterion number to restore (from get_criterion)"
+      description: "Criterion number to restore (from get_criterion)"
   end
 
   @impl true

@@ -230,25 +230,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, webhooks} <- Resend.list_webhooks(scope),
          %{"status" => "enabled"} <-
            Enum.find(webhooks, &(&1["endpoint"] == webhook_endpoint(scope, opts))) do
-      # Configured is not proven: only a recorded delivery proof for this
-      # Resend domain id (not just its name) satisfies this.
-      # See knowledge/provisioning/steps, "Inbound".
-      case delivery_proof(scope, name) do
-        nil ->
-          {:ok, :absent}
-
-        proof ->
-          if proof_current?(proof, domain["id"]) do
-            {:ok, :satisfied,
-             [
-               %{kind: "receiving_domain", location: "resend/#{name}"},
-               %{kind: "webhook", location: webhook_endpoint(scope, opts)},
-               proof
-             ]}
-          else
-            {:ok, :absent}
-          end
-      end
+      proven_inbound(scope, opts, name, domain)
     else
       # Anything short of a receiving domain plus an enabled webhook is absent.
       _ ->
@@ -268,6 +250,28 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Everything else is either cheap to re-run or has no read-back that
   # distinguishes done from not-done without doing the work.
   def verify(_key, _scope, _opts), do: {:ok, :absent}
+
+  # Configured is not proven: only a recorded delivery proof for this
+  # Resend domain id (not just its name) satisfies this.
+  # See knowledge/provisioning/steps, "Inbound".
+  defp proven_inbound(scope, opts, name, domain) do
+    case delivery_proof(scope, name) do
+      nil ->
+        {:ok, :absent}
+
+      proof ->
+        if proof_current?(proof, domain["id"]) do
+          {:ok, :satisfied,
+           [
+             %{kind: "receiving_domain", location: "resend/#{name}"},
+             %{kind: "webhook", location: webhook_endpoint(scope, opts)},
+             proof
+           ]}
+        else
+          {:ok, :absent}
+        end
+    end
+  end
 
   # Each environment's own credentials: Hetzner lists only the buckets the
   # presented key owns, and environments may have separate keys.
@@ -680,32 +684,7 @@ defmodule CodeMySpec.Provisioning.Steps do
           {:halt, {:paused, Storage.credentials_instructions(scope.active_project_id)}}
 
         {:ok, credentials} ->
-          # `bin/backup` decrypts the env file itself; sops reads its identity
-          # from `SOPS_AGE_KEY`, which `put_age_key/3` supplies.
-          environment_opts =
-            env_opts
-            |> Keyword.put(:bucket, bucket)
-            |> Keyword.put(:credentials, credentials)
-            |> put_age_key(scope, environment)
-            |> put_database_url(scope, environment)
-            |> put_restore_admin_url(scope, environment)
-            |> Keyword.put_new(:scratch_database, Database.scratch_database(scope, environment))
-
-          with :ok <- require_script(scope, "bin/backup"),
-               {:ok, environment_opts} <-
-                 on_the_environments_box(scope, environment, environment_opts),
-               {:ok, resources} <-
-                 backups_outcome(
-                   Backups.run(env(scope), environment, environment_opts),
-                   bucket,
-                   environment
-                 ) do
-            {:cont, {:ok, acc ++ resources}}
-          else
-            # What was already dumped is named in the failure. Nothing in the
-            # `with` can pause.
-            {:error, reason} -> {:halt, {:error, reason, acc}}
-          end
+          back_up_environment(scope, environment, env_opts, bucket, credentials, acc)
       end
     end)
   end
@@ -734,6 +713,35 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       {:ok, credentials} ->
         ensure_bucket_for(environment, {:ok, acc}, project, credentials, env_opts)
+    end
+  end
+
+  defp back_up_environment(scope, environment, env_opts, bucket, credentials, acc) do
+    # `bin/backup` decrypts the env file itself; sops reads its identity
+    # from `SOPS_AGE_KEY`, which `put_age_key/3` supplies.
+    environment_opts =
+      env_opts
+      |> Keyword.put(:bucket, bucket)
+      |> Keyword.put(:credentials, credentials)
+      |> put_age_key(scope, environment)
+      |> put_database_url(scope, environment)
+      |> put_restore_admin_url(scope, environment)
+      |> Keyword.put_new(:scratch_database, Database.scratch_database(scope, environment))
+
+    with :ok <- require_script(scope, "bin/backup"),
+         {:ok, environment_opts} <-
+           on_the_environments_box(scope, environment, environment_opts),
+         {:ok, resources} <-
+           backups_outcome(
+             Backups.run(env(scope), environment, environment_opts),
+             bucket,
+             environment
+           ) do
+      {:cont, {:ok, acc ++ resources}}
+    else
+      # What was already dumped is named in the failure. Nothing in the
+      # `with` can pause.
+      {:error, reason} -> {:halt, {:error, reason, acc}}
     end
   end
 
@@ -1108,10 +1116,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          true <- is_binary(private) and private != "" do
       case Sops.recipients(env(scope), environment) do
         {:ok, [_ | _] = recipients} ->
-          case Sops.public_key(private) do
-            {:ok, public} -> public in recipients
-            _ -> false
-          end
+          recipient?(private, recipients)
 
         # No readable recipient (e.g. no file yet): not drift, so the key's
         # presence is the answer.
@@ -1119,6 +1124,13 @@ defmodule CodeMySpec.Provisioning.Steps do
           true
       end
     else
+      _ -> false
+    end
+  end
+
+  defp recipient?(private, recipients) do
+    case Sops.public_key(private) do
+      {:ok, public} -> public in recipients
       _ -> false
     end
   end
@@ -3961,20 +3973,24 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp confirm_cleared(scope, zone, records, opts, published) do
     if Keyword.get(opts, :confirm_inbound_mx_repoint, false) do
       with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
-        case competing_records(zone, records, existing) do
-          [] ->
-            {:ok, published}
-
-          survivors ->
-            named = Enum.map_join(survivors, ", ", &"#{&1["content"]} (#{&1["name"]})")
-
-            {:error,
-             "confirmed and published, but #{length(survivors)} competing record(s) are " <>
-               "still there afterward: #{named} — the replace did not fully take; run again"}
-        end
+        published_unless_survivors(zone, records, existing, published)
       end
     else
       {:ok, published}
+    end
+  end
+
+  defp published_unless_survivors(zone, records, existing, published) do
+    case competing_records(zone, records, existing) do
+      [] ->
+        {:ok, published}
+
+      survivors ->
+        named = Enum.map_join(survivors, ", ", &"#{&1["content"]} (#{&1["name"]})")
+
+        {:error,
+         "confirmed and published, but #{length(survivors)} competing record(s) are " <>
+           "still there afterward: #{named} — the replace did not fully take; run again"}
     end
   end
 
@@ -4004,24 +4020,28 @@ defmodule CodeMySpec.Provisioning.Steps do
     if Keyword.get(opts, :confirm_inbound_mx_repoint, false) do
       clear_competing_mx(scope, zone, records)
     else
-      with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
-        records
-        |> Enum.find_value(fn record ->
-          record_name = qualify(record["name"], zone["name"])
+      refuse_competing_mx(scope, zone, records)
+    end
+  end
 
-          Enum.find(
-            existing,
-            &(&1["name"] == record_name and &1["type"] == "MX" and
-                &1["content"] != record["value"])
-          )
-        end)
-        |> case do
-          nil ->
-            :ok
+  defp refuse_competing_mx(scope, zone, records) do
+    with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+      records
+      |> Enum.find_value(fn record ->
+        record_name = qualify(record["name"], zone["name"])
 
-          %{"name" => record_name, "content" => current} ->
-            {:error, {:competing_mx, record_name, current}}
-        end
+        Enum.find(
+          existing,
+          &(&1["name"] == record_name and &1["type"] == "MX" and
+              &1["content"] != record["value"])
+        )
+      end)
+      |> case do
+        nil ->
+          :ok
+
+        %{"name" => record_name, "content" => current} ->
+          {:error, {:competing_mx, record_name, current}}
       end
     end
   end
@@ -4034,12 +4054,14 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
       zone
       |> competing_records(records, existing)
-      |> Enum.reduce_while(:ok, fn stale, :ok ->
-        case Cloudflare.delete_dns_record(scope, zone["id"], stale["id"]) do
-          {:ok, _} -> {:cont, :ok}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+      |> Enum.reduce_while(:ok, &delete_stale_mx(&1, &2, scope, zone))
+    end
+  end
+
+  defp delete_stale_mx(stale, :ok, scope, zone) do
+    case Cloudflare.delete_dns_record(scope, zone["id"], stale["id"]) do
+      {:ok, _} -> {:cont, :ok}
+      {:error, reason} -> {:halt, {:error, reason}}
     end
   end
 

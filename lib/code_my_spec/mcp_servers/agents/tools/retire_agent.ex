@@ -16,8 +16,8 @@ defmodule CodeMySpec.McpServers.Agents.Tools.RetireAgent do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "Id of the agent to retire"
-    field :reason, :string, doc: "Optional. Why it is being retired."
+    field :agent_id, :string, required: true, description: "Id of the agent to retire"
+    field :reason, :string, description: "Optional. Why it is being retired."
   end
 
   @impl true

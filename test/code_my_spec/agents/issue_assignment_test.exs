@@ -545,7 +545,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       :ok = IssueAssignment.free(ctx.scope, second)
       assert reload(coding).issue_id == nil
       assert reload(coding).team_free_at != nil
-      assert [%{status: :undelivered}] = Agents.Offers.list_for_agent(main.id)
+      assert [%{status: :open}] = Agents.Offers.list_for_agent(main.id)
       assert Agents.assigned_issues(ctx.scope, copy_id) == []
       assert reload(qa).issue_id == nil
       :ok = IssueAssignment.free(ctx.scope, second)

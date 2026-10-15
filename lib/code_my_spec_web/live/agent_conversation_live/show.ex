@@ -1632,8 +1632,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           </.link>
         </div>
       </div>
-      <button type="button" class="modal-backdrop" phx-click="close_assigned" aria-label="Close">
-      </button>
+      <button type="button" class="modal-backdrop" phx-click="close_assigned" aria-label="Close"></button>
     </div>
     """
   end
@@ -1743,8 +1742,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           </.link>
         </div>
       </div>
-      <button type="button" class="modal-backdrop" phx-click="close_story_graph" aria-label="Close">
-      </button>
+      <button type="button" class="modal-backdrop" phx-click="close_story_graph" aria-label="Close"></button>
     </div>
     """
   end
@@ -1908,8 +1906,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             id="conversation-panes-resizer"
             class="group flex w-3 shrink-0 cursor-col-resize select-none items-stretch justify-center self-stretch"
           >
-            <span class="w-0.5 rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary">
-            </span>
+            <span class="w-0.5 rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary"></span>
           </LivePane.resizer>
 
           <LivePane.pane
@@ -2342,6 +2339,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
       <form
         :if={@talkable?}
+        id="agent-message-form"
         data-test="agent-message-form"
         phx-submit="send_message"
         phx-change="draft"

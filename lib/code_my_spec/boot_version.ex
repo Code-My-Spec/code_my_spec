@@ -20,7 +20,7 @@ defmodule CodeMySpec.BootVersion do
   promote reloads or restarts.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   @key {__MODULE__, :boot}
 

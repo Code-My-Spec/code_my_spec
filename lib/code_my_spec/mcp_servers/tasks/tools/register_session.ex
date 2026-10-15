@@ -23,7 +23,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.RegisterSession do
   schema do
     field :session_id, :string,
       required: true,
-      doc: "This conversation's id — Claude Code exposes it as CLAUDE_SESSION_ID"
+      description: "This conversation's id — Claude Code exposes it as CLAUDE_SESSION_ID"
   end
 
   @impl true

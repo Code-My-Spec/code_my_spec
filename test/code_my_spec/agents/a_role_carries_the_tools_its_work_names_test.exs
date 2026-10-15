@@ -51,7 +51,7 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
   # Scoped tools only: what `ToolSets` grants and withholds. A direct-call tool
   # is not gated by it, so naming one in a prompt is never the defect.
   defp scoped_tool_names do
-    (LocalServer.__components__() ++ ScriptableTools.__components__())
+    (LocalServer.registrations() ++ ScriptableTools.registrations())
     |> MapSet.new(& &1.name)
     |> MapSet.difference(MapSet.new(Catalog.excluded()))
   end

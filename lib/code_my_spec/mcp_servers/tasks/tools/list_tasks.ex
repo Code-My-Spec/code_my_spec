@@ -20,13 +20,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
   alias CodeMySpec.Sessions
 
   schema do
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :session_id, :string, description: "Injected by hook — do not set manually"
 
     field :agent_id, :string,
-      doc: "Whose tasks to list. Omit for your own; name an agent to read its queue."
+      description: "Whose tasks to list. Omit for your own; name an agent to read its queue."
 
     field :status, :string,
-      doc: "Filter by status: active, completed, failed, cancelled (optional)"
+      description: "Filter by status: active, completed, failed, cancelled (optional)"
   end
 
   @impl true

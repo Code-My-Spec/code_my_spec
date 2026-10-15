@@ -8,7 +8,7 @@ defmodule CodeMySpec.Paths do
   exception: this machine's state, outside any project.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   @base_dir ".code_my_spec"
 

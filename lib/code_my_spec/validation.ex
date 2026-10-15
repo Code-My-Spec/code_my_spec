@@ -37,8 +37,7 @@ defmodule CodeMySpec.Validation do
       CodeMySpec.Users.Scope,
       CodeMySpec.Validation.Blocking,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   require Logger
 

@@ -6,8 +6,8 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.ListSitemapsEnhanced do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :sitemap_index, :string, doc: "Optional sitemap index URL to list child sitemaps"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :sitemap_index, :string, description: "Optional sitemap index URL to list child sitemaps"
   end
 
   @impl true

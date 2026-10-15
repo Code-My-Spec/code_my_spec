@@ -99,25 +99,29 @@ defmodule CodeMySpec.Agents.CompletionHandoffs do
   def acknowledge(scope, main_id, id, note) when is_binary(note) and byte_size(note) > 0 do
     with :ok <- main?(scope, main_id) do
       Repo.transaction(fn ->
-        handoff = fetch_locked!(scope, id)
-
-        case handoff.status do
-          :completed ->
-            update!(handoff, %{
-              status: :acknowledged,
-              acknowledged_at: DateTime.utc_now(),
-              acknowledged_by_agent_id: main_id,
-              acknowledgement: note
-            })
-
-          :acknowledged ->
-            handoff
-
-          :assigned ->
-            Repo.rollback(:completion_not_recorded)
-        end
+        scope
+        |> fetch_locked!(id)
+        |> acknowledge_locked!(main_id, note)
       end)
       |> publish()
+    end
+  end
+
+  defp acknowledge_locked!(handoff, main_id, note) do
+    case handoff.status do
+      :completed ->
+        update!(handoff, %{
+          status: :acknowledged,
+          acknowledged_at: DateTime.utc_now(),
+          acknowledged_by_agent_id: main_id,
+          acknowledgement: note
+        })
+
+      :acknowledged ->
+        handoff
+
+      :assigned ->
+        Repo.rollback(:completion_not_recorded)
     end
   end
 

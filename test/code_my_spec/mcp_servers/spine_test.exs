@@ -12,8 +12,8 @@ defmodule CodeMySpec.McpServers.SpineTest do
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.{LocalServer, ScriptableTools}
 
-  defp advertised, do: MapSet.new(LocalServer.__components__(), & &1.name)
-  defp scriptable, do: MapSet.new(ScriptableTools.__components__(), & &1.name)
+  defp advertised, do: MapSet.new(LocalServer.registrations(), & &1.name)
+  defp scriptable, do: MapSet.new(ScriptableTools.registrations(), & &1.name)
 
   describe "the list an agent receives at connect" do
     test "is the spine, not every tool" do
@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers.SpineTest do
       # `show_in_panel` and `assign_subagent` are not far behind. The saving is
       # 81%, not 90%.
       payload =
-        LocalServer.__components__()
+        LocalServer.registrations()
         |> Enum.map(&%{name: &1.name, description: &1.description, inputSchema: &1.input_schema})
         |> Jason.encode!()
 

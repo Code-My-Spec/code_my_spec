@@ -64,7 +64,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
   """
   @spec catalog(Scope.t(), [String.t()] | nil, map()) :: Catalog.t()
   def catalog(scope, allowed, caller) do
-    ScriptableTools.__components__()
+    ScriptableTools.registrations()
     |> Catalog.from(&invoker(&1, scope, caller), allowed)
   end
 
@@ -181,7 +181,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
 
   @doc "What this agent may not call, of the tools that exist."
   @spec out_of_scope([String.t()] | nil) :: [String.t()]
-  def out_of_scope(allowed), do: Catalog.out_of_scope(ScriptableTools.__components__(), allowed)
+  def out_of_scope(allowed), do: Catalog.out_of_scope(ScriptableTools.registrations(), allowed)
 
   defp invoker(tool, scope, caller) do
     frame = %Frame{assigns: Map.put(caller, :current_scope, scope)}
@@ -263,6 +263,18 @@ defmodule CodeMySpec.McpServers.CodeMode do
   defp validate(_tool, args), do: {:ok, args}
 
   # Data when the tool implements `script_result/2`, prose otherwise.
+  # A domain's tool (`CodeMySpec.ToolLibrary`) takes no frame, only who asks.
+  defp execute(%{tool: tool}, params, frame) do
+    context =
+      frame.assigns
+      |> Map.take([:session_id, :agent_id])
+      |> Map.put(:scope, frame.assigns.current_scope)
+
+    if function_exported?(Code.ensure_loaded!(tool), :script_result, 2),
+      do: tool.script_result(params, context),
+      else: tool.call(params, context)
+  end
+
   defp execute(tool, params, frame) do
     if ScriptResult.implemented?(tool.handler),
       do: script_result(tool, params, frame),

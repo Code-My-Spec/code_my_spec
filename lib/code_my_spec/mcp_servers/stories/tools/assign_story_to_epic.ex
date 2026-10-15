@@ -20,10 +20,10 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
 
     field :epic_name, :string,
-      doc: "Destination epic name. Omit to remove the story from its epic."
+      description: "Destination epic name. Omit to remove the story from its epic."
   end
 
   @impl true

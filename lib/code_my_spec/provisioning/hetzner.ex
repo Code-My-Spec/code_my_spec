@@ -30,8 +30,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       CodeMySpec.ProjectSecrets,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
-    ],
-    exports: :all
+    ]
 
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Users.Scope

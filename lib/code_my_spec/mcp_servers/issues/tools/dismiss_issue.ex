@@ -14,8 +14,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.DismissIssue do
   alias CodeMySpec.TaskOwner
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID to dismiss"
-    field :reason, :string, required: true, doc: "Reason for dismissing the issue"
+    field :issue_id, :string, required: true, description: "Issue ID to dismiss"
+    field :reason, :string, required: true, description: "Reason for dismissing the issue"
   end
 
   @impl true

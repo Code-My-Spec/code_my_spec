@@ -24,11 +24,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignSubagent do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :session_id, :string, description: "Injected by hook — do not set manually"
 
-    field :agent_id, :string, required: true, doc: "Registered sub-agent id"
+    field :agent_id, :string, required: true, description: "Registered sub-agent id"
 
-    field :task_id, :string, required: true, doc: "Target task id"
+    field :task_id, :string, required: true, description: "Target task id"
   end
 
   @impl true

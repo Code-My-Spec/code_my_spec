@@ -74,13 +74,13 @@ defmodule CodeMySpec.McpServers.Devops.Tools.AdoptRepository do
   schema do
     field :repository_name, :string,
       required: true,
-      doc: "The GitHub repository's exact name, e.g. \"market_my_spec\" — not a guess."
+      description: "The GitHub repository's exact name, e.g. \"market_my_spec\" — not a guess."
 
     field :branch, :string,
-      doc: "The checkout's actual default branch, if it isn't \"main\" (e.g. \"master\")."
+      description: "The checkout's actual default branch, if it isn't \"main\" (e.g. \"master\")."
 
     field :owner, :string,
-      doc:
+      description:
         "The account or organisation the repository actually lives under, if it " <>
           "is not the connected account's own login (e.g. \"Code-My-Spec\")."
   end

@@ -17,6 +17,8 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Qa
@@ -25,7 +27,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
   schema do
     field(:story_number, :integer,
       required: true,
-      doc: "Story number whose QA history you want to read"
+      description: "Story number whose QA history you want to read"
     )
   end
 
@@ -39,6 +41,30 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
       {:error, reason} ->
         {:reply, error_response(reason), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+         {:ok, story} <- fetch_story(scope, params.story_number) do
+      {:ok, Enum.map(Qa.list_qa_attempts(scope, story.id), &script_row/1)}
+    end
+  end
+
+  defp script_row(a) do
+    %{
+      "id" => a.id,
+      "status" => to_string(a.status),
+      "agent_id" => a.agent_id,
+      "submitted_at" => a.submitted_at && DateTime.to_iso8601(a.submitted_at),
+      "parent_attempt_id" => a.parent_attempt_id,
+      "stale" => a.stale,
+      "issue_ids" => a.issue_ids || [],
+      "scenarios" =>
+        Enum.map(a.scenarios, fn s ->
+          %{"name" => s.name, "status" => to_string(s.status), "observation" => s.observation}
+        end)
+    }
   end
 
   defp fetch_story(scope, number) do

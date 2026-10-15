@@ -12,6 +12,8 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias Anubis.Server.Response
   alias CodeMySpec.Knowledge
   alias CodeMySpec.McpServers.Validators
@@ -54,6 +56,44 @@ defmodule CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge do
       {:error, reason} ->
         {:reply, error_response("#{reason}"), frame}
     end
+  end
+
+  # `Knowledge.browse/3` already returns structured data rather than rendered
+  # markdown -- it exists for the LiveView display surface, and a script
+  # needs exactly the same thing `resolve/3` throws away by rendering it.
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(params, frame) do
+    with {:ok, library} <- library_atom(params),
+         {:ok, scope} <- Validators.validate_local_scope(frame) do
+      path_segments = parse_path(params)
+
+      case Knowledge.browse(scope, library, path_segments) do
+        {:ok, {:dir, entries}} ->
+          {:ok, %{"type" => "dir", "entries" => Enum.map(entries, &entry_row/1)}}
+
+        {:ok, {:file, content}} ->
+          {:ok, %{"type" => "file", "content" => content}}
+
+        {:error, :not_found} ->
+          {:error, "Path not found"}
+
+        {:error, :invalid_path} ->
+          {:error, "Invalid path"}
+
+        {:error, reason} ->
+          {:error, "#{inspect(reason)}"}
+      end
+    else
+      {:error, {:invalid_library, value}} ->
+        {:error, "Invalid library #{inspect(value)}. Use 'knowledge' or 'project_knowledge'."}
+
+      {:error, reason} ->
+        {:error, "#{reason}"}
+    end
+  end
+
+  defp entry_row({name, type, rel_path}) do
+    %{"name" => name, "type" => to_string(type), "path" => rel_path}
   end
 
   defp library_atom(%{library: nil}), do: {:ok, :knowledge}

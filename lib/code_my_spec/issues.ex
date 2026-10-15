@@ -383,13 +383,26 @@ defmodule CodeMySpec.Issues do
 
   @doc """
   Stamps `issue` ready for QA at `commit` — the commit `Promotion.certify/3`
-  passed at. The only writer of `qa_ready_commit`; `IssueFix` reads it.
+  passed at. With `clear_qa_ready/2`, the only writer of `qa_ready_commit`;
+  `IssueFix` reads it.
   """
   @spec set_qa_ready(Scope.t(), Issue.t(), String.t(), DateTime.t()) ::
           {:ok, Issue.t()} | {:error, term()}
   def set_qa_ready(%Scope{} = scope, %Issue{} = issue, commit, at \\ DateTime.utc_now())
       when is_binary(commit) do
     with {:ok, updated} <- IssuesRepository.update_qa_ready_commit(issue, commit, at) do
+      broadcast(scope, {:updated, updated})
+      {:ok, updated}
+    end
+  end
+
+  @doc """
+  Removes `issue`'s QA-ready stamp: a failed QA attempt means the certified
+  commit is not the fix, so the rework has to be certified afresh.
+  """
+  @spec clear_qa_ready(Scope.t(), Issue.t()) :: {:ok, Issue.t()} | {:error, term()}
+  def clear_qa_ready(%Scope{} = scope, %Issue{} = issue) do
+    with {:ok, updated} <- IssuesRepository.clear_qa_ready_commit(issue) do
       broadcast(scope, {:updated, updated})
       {:ok, updated}
     end

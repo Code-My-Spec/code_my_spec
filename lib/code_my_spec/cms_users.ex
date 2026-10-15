@@ -10,8 +10,7 @@ defmodule CodeMySpec.CmsUsers do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Repo, CodeMySpec.Users],
-    exports: :all
+    deps: [CodeMySpec.Repo, CodeMySpec.Users]
 
   import Ecto.Query, only: [from: 2]
 

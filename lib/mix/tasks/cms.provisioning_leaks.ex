@@ -391,16 +391,20 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
         Mix.shell().info("  LEAKED (#{length(leaked)}): deleting…")
 
         for name <- leaked do
-          case deleter.(name) do
-            :ok -> Mix.shell().info("    deleted #{name}")
-            {:skipped, why} -> Mix.shell().info("    kept    #{name} — #{why}")
-            {:error, _} -> Mix.shell().error("    FAILED  #{name}")
-          end
+          delete_leak(deleter, name)
         end
 
       true ->
         Mix.shell().info("  LEAKED (#{length(leaked)}): #{inspect(leaked)}")
         Mix.shell().info("  re-run with --delete to remove them")
+    end
+  end
+
+  defp delete_leak(deleter, name) do
+    case deleter.(name) do
+      :ok -> Mix.shell().info("    deleted #{name}")
+      {:skipped, why} -> Mix.shell().info("    kept    #{name} — #{why}")
+      {:error, _} -> Mix.shell().error("    FAILED  #{name}")
     end
   end
 end

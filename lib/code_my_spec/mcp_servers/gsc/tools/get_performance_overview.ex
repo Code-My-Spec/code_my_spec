@@ -6,8 +6,8 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetPerformanceOverview do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :days, :integer, doc: "Days to look back (default 28)"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :days, :integer, description: "Days to look back (default 28)"
   end
 
   @impl true

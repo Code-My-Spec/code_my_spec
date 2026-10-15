@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
       `check_type: :delegate` pointing at `PersonasChecker.complete?/1`.
     - `CodeMySpec.AgentTasks.PersonaResearch` with `command/2` + `evaluate/2`.
     - `personas` table migration + schema.
-    - MCP tool `CodeMySpec.McpServers.Personas.Tools.CreatePersona` exposing
+    - tool `create_persona` exposing
       persona creation as the real contract surface.
     - `persona_summary` document type registered with
       `CodeMySpec.Documents.Registry`.

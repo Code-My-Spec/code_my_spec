@@ -18,11 +18,11 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.AddRule do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
 
     field :statement, :string,
       required: true,
-      doc:
+      description:
         "The rule statement in business terms (e.g., 'Suspended cards cannot be used for purchases'). 1–1000 characters."
   end
 
