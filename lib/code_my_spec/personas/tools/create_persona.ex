@@ -48,7 +48,7 @@ defmodule CodeMySpec.Personas.Tools.CreatePersona do
 
   @impl true
   def call(params, context) do
-    with {:ok, scope} <- Tools.scope(context),
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, persona} <- Personas.create_persona(scope, params) do
       {:ok, Tools.persona_text(persona)}
     else

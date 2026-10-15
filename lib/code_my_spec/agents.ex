@@ -39,6 +39,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
+      CodeMySpec.Tools,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,

@@ -13,6 +13,6 @@ defmodule CodeMySpec.McpServers.ToolRegistry do
 
   @spec registry() :: ToolIndex.registry()
   def registry do
-    %{direct: LocalServer.__components__(), scriptable: ScriptableTools.registrations()}
+    %{direct: LocalServer.registrations(), scriptable: ScriptableTools.registrations()}
   end
 end

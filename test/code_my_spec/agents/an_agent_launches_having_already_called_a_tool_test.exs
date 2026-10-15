@@ -63,7 +63,7 @@ defmodule CodeMySpec.Agents.AnAgentLaunchesHavingAlreadyCalledAToolTest do
   test "both tools it demonstrates are ones the agent can actually reach" do
     # A seeded call naming a tool absent from `available_tools` would teach the
     # exact confusion this exists to remove.
-    assert Enum.any?(LocalServer.__components__(), &(&1.name == "health"))
+    assert Enum.any?(LocalServer.registrations(), &(&1.name == "health"))
     assert Enum.any?(ScriptableTools.registrations(), &(&1.name == "script_health"))
   end
 end

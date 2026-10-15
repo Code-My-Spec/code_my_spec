@@ -77,7 +77,7 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
   end
 
   defp scoped_tool_names do
-    (LocalServer.__components__() ++ ScriptableTools.registrations())
+    (LocalServer.registrations() ++ ScriptableTools.registrations())
     |> MapSet.new(& &1.name)
     |> MapSet.difference(MapSet.new(Catalog.excluded()))
   end

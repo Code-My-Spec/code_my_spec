@@ -37,7 +37,7 @@ defmodule CodeMySpec.Personas.Tools.GetPersona do
   # Slug first: the description promises it wins when both are given.
   @impl true
   def call(params, context) do
-    with {:ok, scope} <- Tools.scope(context),
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, persona} <- Tools.fetch_persona(scope, slug_first(params)) do
       {:ok, Tools.persona_text(persona, heading: "Persona")}
     else

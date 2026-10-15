@@ -4,7 +4,6 @@ defmodule CodeMySpec.Personas.Tools do
   """
 
   alias CodeMySpec.Personas
-  alias CodeMySpec.Stories
   alias CodeMySpec.Tools
 
   @doc "Every persona tool, for `CodeMySpec.ToolLibrary`."
@@ -18,17 +17,6 @@ defmodule CodeMySpec.Personas.Tools do
       __MODULE__.ListPersonas,
       __MODULE__.GetPersona
     ]
-  end
-
-  @doc "The caller's scope, when it names a project."
-  def scope(%{scope: %{active_project_id: id} = scope}) when not is_nil(id), do: {:ok, scope}
-  def scope(_context), do: {:error, :missing_active_project}
-
-  def fetch_story(scope, number) do
-    case Stories.get_story_by_number(scope, number) do
-      nil -> {:error, :story_not_found}
-      story -> {:ok, story}
-    end
   end
 
   @doc "A persona by `persona_id`, else by `slug`."
@@ -111,12 +99,7 @@ defmodule CodeMySpec.Personas.Tools do
     "Personas on this project (#{length(personas)}):\n\n#{lines}"
   end
 
-  @doc "Why a call failed, as the agent is told it."
-  def error(%Ecto.Changeset{} = changeset), do: {:error, Tools.changeset_errors(changeset)}
-
-  def error(:story_not_found),
-    do: {:error, "Story not found in the active project. list_story_titles shows the numbers."}
-
+  @doc "Why a call failed, as the agent is told it; reasons not a persona's go to `Tools.error/1`."
   def error(:not_found), do: {:error, "Persona not found on the active project."}
 
   def error(:missing_identifier), do: {:error, "must provide either 'slug' or 'persona_id'"}
@@ -126,12 +109,5 @@ defmodule CodeMySpec.Personas.Tools do
       {:error,
        "Cross-project operation rejected. The persona or story does not belong to the active project."}
 
-  def error(:missing_active_project),
-    do:
-      {:error,
-       "Active project is not set on the scope. " <>
-         "Run `init_project` to link your working directory to a project, then retry."}
-
-  def error(reason) when is_atom(reason), do: {:error, to_string(reason)}
-  def error(reason) when is_binary(reason), do: {:error, reason}
+  def error(reason), do: Tools.error(reason)
 end

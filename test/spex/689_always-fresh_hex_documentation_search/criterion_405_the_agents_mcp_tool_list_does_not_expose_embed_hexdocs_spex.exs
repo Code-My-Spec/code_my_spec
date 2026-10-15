@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
   ## Observation surface
 
   Same approach as story 688's `embed_docs` removal scenario. Story
-  971 split tool registration in two: `LocalServer.__components__(:tool)`
+  971 split tool registration in two: `LocalServer.registrations()`
   is the spine an agent gets at connect, and
   `ScriptableTools.registrations()` is everything else, reachable
   only through `run_script` (see `LocalServer.moved?/1`). Neither list
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5981Spex do
         # reached with `run_script`. The anchor below is about the knowledge
         # tools still being reachable, which is the union, not one list.
         tool_names =
-          (LocalServer.__components__(:tool) ++ ScriptableTools.registrations())
+          (LocalServer.registrations() ++ ScriptableTools.registrations())
           |> Enum.map(& &1.name)
 
         {:ok, Map.put(context, :tool_names, tool_names)}

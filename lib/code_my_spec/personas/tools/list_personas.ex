@@ -39,7 +39,8 @@ defmodule CodeMySpec.Personas.Tools.ListPersonas do
   end
 
   defp personas(context) do
-    with {:ok, scope} <- Tools.scope(context), do: {:ok, Personas.list_personas(scope)}
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+         do: {:ok, Personas.list_personas(scope)}
   end
 
   defp row(persona) do

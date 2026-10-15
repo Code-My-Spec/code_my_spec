@@ -43,6 +43,33 @@ defmodule CodeMySpec.Tools do
     end
   end
 
+  @doc "The caller's scope, when it names a project: what a project's tool needs."
+  @spec project_scope(context()) :: {:ok, Scope.t()} | {:error, :missing_active_project}
+  def project_scope(%{scope: %{active_project_id: id} = scope}) when not is_nil(id),
+    do: {:ok, scope}
+
+  def project_scope(_context), do: {:error, :missing_active_project}
+
+  @doc """
+  A failure every tool can have, as the agent is told it. A domain answers its
+  own reasons first and hands the rest here.
+  """
+  @spec error(term()) :: {:error, String.t()}
+  def error(%Ecto.Changeset{} = changeset), do: {:error, changeset_errors(changeset)}
+
+  def error(:story_not_found),
+    do: {:error, "Story not found in the active project. list_story_titles shows the numbers."}
+
+  def error(:missing_active_project),
+    do:
+      {:error,
+       "Active project is not set on the scope. " <>
+         "Run `init_project` to link your working directory to a project, then retry."}
+
+  def error(reason) when is_binary(reason), do: {:error, reason}
+  def error(reason) when is_atom(reason), do: {:error, to_string(reason)}
+  def error(reason), do: {:error, inspect(reason)}
+
   @doc "A changeset's errors as the text an agent is shown."
   @spec changeset_errors(Ecto.Changeset.t()) :: String.t()
   def changeset_errors(%Ecto.Changeset{} = changeset) do

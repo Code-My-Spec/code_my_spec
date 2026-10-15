@@ -32,7 +32,7 @@ defmodule CodeMySpec.Personas.Tools.DeletePersona do
 
   @impl true
   def call(params, context) do
-    with {:ok, scope} <- Tools.scope(context),
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, persona} <- fetch(scope, params),
          {:ok, deleted} <- Personas.delete_persona(scope, persona) do
       {:ok, Tools.delete_text(deleted)}

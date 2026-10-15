@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion3000Spex do
       given_ "a tool that has moved to code mode", context do
         moved = ScriptableTools.registrations() |> hd() |> Map.get(:name)
 
-        refute moved in MapSet.new(LocalServer.__components__(), & &1.name)
+        refute moved in MapSet.new(LocalServer.registrations(), & &1.name)
 
         {:ok, Map.put(context, :moved, moved)}
       end

@@ -4,6 +4,7 @@ defmodule CodeMySpec.Personas.Tools.UnlinkPersonaFromStory do
 
   alias CodeMySpec.Personas
   alias CodeMySpec.Personas.Tools
+  alias CodeMySpec.Stories
 
   @impl true
   def name, do: "unlink_persona_from_story"
@@ -29,8 +30,8 @@ defmodule CodeMySpec.Personas.Tools.UnlinkPersonaFromStory do
 
   @impl true
   def call(params, context) do
-    with {:ok, scope} <- Tools.scope(context),
-         {:ok, story} <- Tools.fetch_story(scope, params[:story_number]),
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+         {:ok, story} <- Stories.fetch_story_by_number(scope, params[:story_number]),
          {:ok, :unlinked} <-
            Personas.unlink_persona_from_story(scope, params[:persona_id], story.id) do
       {:ok, Tools.unlink_text(params[:persona_id], story)}

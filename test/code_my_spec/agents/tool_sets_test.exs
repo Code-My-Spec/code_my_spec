@@ -32,7 +32,7 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
     # compute with. A role can be granted either kind, so "exists" has to mean
     # "either server exposes it," not just the narrower one.
     real =
-      (ScriptableTools.registrations() ++ LocalServer.__components__())
+      (ScriptableTools.registrations() ++ LocalServer.registrations())
       |> MapSet.new(& &1.name)
 
     %{real: real}

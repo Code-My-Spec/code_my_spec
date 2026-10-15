@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1738Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.RejectOffer
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -50,7 +50,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1738Spex do
           })
 
         {:reply, reply, _} =
-          RejectOffer.execute(%{reason: reason}, agent_frame(context, context.coder))
+          LocalServer.handle_tool_call(
+            "reject_offer",
+            %{reason: reason},
+            agent_frame(context, context.coder)
+          )
 
         refute reply.isError, response_text(reply)
         {:ok, Map.put(context, :reason, reason)}

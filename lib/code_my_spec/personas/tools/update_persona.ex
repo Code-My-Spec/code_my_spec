@@ -41,7 +41,7 @@ defmodule CodeMySpec.Personas.Tools.UpdatePersona do
 
   @impl true
   def call(params, context) do
-    with {:ok, scope} <- Tools.scope(context),
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, persona} <- fetch(scope, params),
          {:ok, updated} <- Personas.update_persona(scope, persona, attrs(params)) do
       {:ok, Tools.update_text(updated)}

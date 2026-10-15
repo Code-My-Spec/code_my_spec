@@ -229,5 +229,10 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   Every scriptable tool: the components above, then the tools domains own
   (`CodeMySpec.ToolLibrary`), in the one shape every reader takes.
   """
-  def registrations, do: __components__() ++ CodeMySpec.ToolLibrary.registrations()
+  def registrations do
+    direct = Enum.map(CodeMySpec.McpServers.LocalServer.library_tools(), & &1.name())
+
+    __components__() ++
+      Enum.reject(CodeMySpec.ToolLibrary.registrations(), &(&1.name in direct))
+  end
 end
