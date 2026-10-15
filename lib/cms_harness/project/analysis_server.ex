@@ -244,16 +244,55 @@ defmodule CmsHarness.Project.AnalysisServer do
     # run). `Execution.stop/1` is the same confirmed, process-tree-aware kill
     # the agent bash tool already uses for exactly this failure mode: SIGKILL
     # every OS descendant it can find via the port and the live process tree,
-    # then poll until none answer before returning.
-    cleanup = Execution.stop(running.task.pid)
+    # then poll until none answer before returning -- but that confirmation
+    # is bounded at 5s of its own shelled-out `ps`/`kill` calls, and this
+    # server is the single queue every call for this project's analyzers goes
+    # through. Run it in its own supervised, monitored task rather than this
+    # callback, so `status/1`, `enqueue/2` and everything else answer
+    # immediately regardless of how long confirmation takes.
+    #
+    # `running` stays non-nil (now carrying the cleanup task instead of the
+    # live one) until that task reports back, so `maybe_start_next/1`'s own
+    # guard keeps the next queued run from starting until the kill is
+    # confirmed -- not merely until the old task's own (immediate) death,
+    # which is what let an orphan overlap the next run in the first place.
     Process.demonitor(running.task.ref, [:flush])
+    task_pid = running.task.pid
+
+    cleanup =
+      Task.Supervisor.async_nolink(Sync.task_supervisor(state.project.root), fn ->
+        Execution.stop(task_pid)
+      end)
+
+    {:noreply, %{state | running: Map.put(running, :cleanup, cleanup), timer: nil}}
+  end
+
+  # The confirmed-dead report from the cleanup task above -- only now does
+  # this run actually finish, and the next queued one is free to start.
+  def handle_info(
+        {ref, cleanup_result},
+        %{running: %{cleanup: %Task{ref: ref}} = running} = state
+      ) do
+    Process.demonitor(ref, [:flush])
 
     deliver(
       state,
       running,
-      {:error, "analyzer timed out after #{timeout()}ms. #{cleanup_status(cleanup)}"}
+      {:error, "analyzer timed out after #{timeout()}ms. #{cleanup_status(cleanup_result)}"}
     )
 
+    {:noreply, state |> clear_running() |> maybe_start_next()}
+  end
+
+  # The cleanup task itself crashed rather than returning -- still answered,
+  # the same as the analyzer task's own unexpected death above, rather than
+  # leaving this run (and the queue behind it) stuck on a message that will
+  # never arrive.
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %{running: %{cleanup: %Task{ref: ref}} = running} = state
+      ) do
+    deliver(state, running, {:error, "analyzer timeout cleanup crashed: #{inspect(reason)}"})
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
