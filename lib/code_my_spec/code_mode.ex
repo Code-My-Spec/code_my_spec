@@ -141,7 +141,16 @@ defmodule CodeMySpec.CodeMode do
     Result.ok(values |> Enum.map(&LuaValue.from_lua/1) |> value(), Bindings.printed())
   rescue
     error in Lua.CompilerException ->
-      Result.error(:compile, Exception.message(error), Bindings.printed())
+      # `Exception.message/1` is deliberately the bare, ANSI-free summary
+      # (Lua.CompilerException's own moduledoc says so) -- it drops the
+      # location, source context and suggestion the parser already worked
+      # out, which is exactly the signal an agent needs to fix a script
+      # rather than guess at it (e.g. a reserved word used as a table key
+      # reads only as "Expected expression" with no hint that `until` is the
+      # problem). `Lua.format_exception/1` renders the richer report when
+      # structured diagnostics exist, falling back to the same bare message
+      # otherwise.
+      Result.error(:compile, Lua.format_exception(error), Bindings.printed())
 
     error in Lua.RuntimeException ->
       Result.error(kind(error), explain(Exception.message(error), catalog), Bindings.printed())
