@@ -2341,7 +2341,8 @@ defmodule CodeMySpecSpex.Fixtures do
               "options" => [%{"label" => "A"}, %{"label" => "B"}]
             }
           ]),
-        "session_external_id" => Keyword.get(opts, :session_external_id)
+        "session_external_id" => Keyword.get(opts, :session_external_id),
+        "agent_id" => Keyword.get(opts, :agent_id)
       })
 
     request.id
@@ -2473,7 +2474,8 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, request} =
       Notifications.create_permission_request(user_id, %{
         "tool_name" => Keyword.get(opts, :tool_name, "Bash"),
-        "tool_input" => Keyword.get(opts, :tool_input, %{"command" => "mix test"})
+        "tool_input" => Keyword.get(opts, :tool_input, %{"command" => "mix test"}),
+        "agent_id" => Keyword.get(opts, :agent_id)
       })
 
     request.id
