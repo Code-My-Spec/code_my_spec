@@ -75,8 +75,8 @@ defmodule CodeMySpecSpex.Story1033.Criterion3002Spex do
   spex "I connect with a short tool list", criterion: 1077 do
     scenario "No tool falls through the gap between the two surfaces" do
       given_ "the two surfaces an agent has", context do
-        advertised = MapSet.new(LocalServer.__components__(), & &1.name)
-        scriptable = MapSet.new(ScriptableTools.__components__(), & &1.name)
+        advertised = MapSet.new(LocalServer.registrations(), & &1.name)
+        scriptable = MapSet.new(ScriptableTools.registrations(), & &1.name)
 
         {:ok, context |> Map.put(:advertised, advertised) |> Map.put(:scriptable, scriptable)}
       end

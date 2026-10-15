@@ -11,6 +11,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   alias CodeMySpec.Issues
   alias CodeMySpec.Qa
   alias CodeMySpec.QaFixtures
+  alias CodeMySpec.WorkingCopies.AppTransport
 
   # ============================================================================
   # Test Helpers
@@ -418,6 +419,30 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert feedback =~ "Brief not found"
     end
 
+    # a83cb226: Environments.read_file failing for any reason other than
+    # :enoent (a harness unreachable, a timeout) used to collapse into the
+    # same "Brief not found" text as a genuinely absent file -- so a caller
+    # checking for "brief not found" in the feedback could not tell a
+    # transient read failure from the brief never having been written.
+    # A directory at the brief's path forces File.read to fail with
+    # :eisdir, not :enoent, deterministically exercising that other branch.
+    test "a read failure that is not :enoent names the error, not \"not found\"", %{
+      scope: scope,
+      task: task,
+      story: story
+    } do
+      env = fixture_environment(scope)
+      brief_dir = Path.join(env.cwd, ".code_my_spec/qa/#{story.number}/brief.md")
+      File.mkdir_p!(brief_dir)
+
+      assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+      refute feedback =~ "Brief not found",
+             "a read failure read as the file never having been written: #{feedback}"
+
+      assert feedback =~ "Could not read the brief"
+      assert feedback =~ "eisdir"
+    end
+
     test "returns invalid when brief is missing required sections", %{
       scope: scope,
       task: task,
@@ -776,6 +801,64 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
 
       assert {:ok, :valid} = QaStory.evaluate(scope, task)
+    end
+
+    # b4fe8c48: a pass with no invalidations and `stale: false` can still fail
+    # `qa_complete?` on review currency alone — the story was re-certified
+    # after the review ran. The feedback said only "recorded as pass",
+    # explaining nothing; it must name the actual gap `qa_complete?` found.
+    test "a pass that no longer reviews the story's current certification explains why", %{
+      scope: scope,
+      story: story,
+      task: task
+    } do
+      {:ok, _attempt} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
+
+      # Re-certify the story at a new commit, as if a fresh promotion had run
+      # and found something QA exercises had changed -- both `qa_ready_*` and
+      # `qa_reviewed_*` move to the new commit, so there is no carried-forward
+      # certification (`review_current?/3`'s second `reviewed?/3` clause,
+      # Verdict's own documented 2145 behaviour) for the old attempt to ride
+      # on. The attempt itself is untouched: still `status: :pass`, still
+      # `stale: false`, still no invalidations.
+      new_commit = "re-certified-revision-#{Ecto.UUID.generate()}"
+      new_at = DateTime.utc_now()
+
+      scope
+      |> CodeMySpec.Stories.get_story!(story.id)
+      |> Ecto.Changeset.change(
+        qa_ready_at: new_at,
+        qa_ready_commit: new_commit,
+        qa_reviewed_at: new_at,
+        qa_reviewed_commit: new_commit
+      )
+      |> CodeMySpec.Repo.update!()
+
+      {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+
+      refute feedback =~ "recorded as pass.\n",
+             "the fallback gave no reason for an attempt that in fact no longer counts"
+
+      assert feedback =~ "no longer counts"
+      assert feedback =~ "re-run"
+    end
+  end
+
+  describe "app_start_timeout/0" do
+    # cf006764: a hardcoded 35s once meant to sit "just above" the harness's
+    # 30s first-start window, but nothing enforced that relationship, and
+    # `AppTransport.call/4` adds its own grace on top -- so the effective
+    # slack was thinner than it looked and would silently vanish if either
+    # value ever changed. This checks the real invariant, derived from both,
+    # instead of a number that happened to work under today's defaults.
+    test "the effective deadline clears the harness's own first-start window by the safety margin" do
+      effective_deadline = QaStory.app_start_timeout() + AppTransport.call_grace_ms()
+      window = AppTransport.first_start_inline_window_ms()
+
+      assert effective_deadline >= window + to_timeout(second: 10),
+             "the effective deadline (#{effective_deadline}ms) does not clear the harness's " <>
+               "own first-start window (#{window}ms) by the intended safety margin -- a slow " <>
+               "first boot could time out before the harness's own 'starting' reply ever arrives"
     end
   end
 end

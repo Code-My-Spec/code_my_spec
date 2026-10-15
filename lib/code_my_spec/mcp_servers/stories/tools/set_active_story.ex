@@ -121,6 +121,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetActiveStory do
   defp error_message(:not_found), do: "No eligible story or working copy exists in this project."
   defp error_message(:story_not_ready), do: "The story must be ready for development first."
 
+  defp error_message(:story_done),
+    do:
+      "That story is already promoted and every requirement of it is satisfied on this copy, " <>
+        "so there is nothing left for a team to do on it. Pick another story."
+
   defp error_message(:story_assigned_elsewhere),
     do: "The story is assigned to another working copy. Reassign it explicitly first."
 

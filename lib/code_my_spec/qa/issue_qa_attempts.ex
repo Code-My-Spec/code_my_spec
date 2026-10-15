@@ -41,24 +41,7 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
   def submit(%Scope{} = scope, %Agent{} = owner, params) do
     with :ok <- validate_findings_path(params) do
       result =
-        Repo.transaction(fn ->
-          issue_id = MapAccess.get(params, :issue_id)
-
-          issue =
-            Repo.one(
-              from(i in CodeMySpec.Issues.Issue,
-                where: i.id == ^issue_id and i.project_id == ^scope.active_project_id,
-                lock: "FOR UPDATE"
-              )
-            )
-
-          if is_nil(issue), do: Repo.rollback(:issue_not_found)
-
-          case insert_attempt(build_attrs(owner, params)) do
-            {:ok, attempt} -> handle_outcome(scope, owner, attempt)
-            {:error, reason} -> Repo.rollback(reason)
-          end
-        end)
+        Repo.transaction(fn -> record_attempt(scope, owner, params) end)
 
       # Completion can wake Main. Publish only after the QA transaction commits.
       case result do
@@ -67,6 +50,25 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
       end
 
       result
+    end
+  end
+
+  defp record_attempt(scope, owner, params) do
+    issue_id = MapAccess.get(params, :issue_id)
+
+    issue =
+      Repo.one(
+        from(i in CodeMySpec.Issues.Issue,
+          where: i.id == ^issue_id and i.project_id == ^scope.active_project_id,
+          lock: "FOR UPDATE"
+        )
+      )
+
+    if is_nil(issue), do: Repo.rollback(:issue_not_found)
+
+    case insert_attempt(build_attrs(owner, params)) do
+      {:ok, attempt} -> handle_outcome(scope, owner, attempt)
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 
@@ -155,10 +157,19 @@ defmodule CodeMySpec.Qa.IssueQaAttempts do
 
   # A failing attempt is QA's turn finishing, same as a passing one —
   # it just hands the issue back to the coder instead of resolving it.
+  # The certification goes with it: left in place, `IssueFix` answered "already
+  # certified ... nothing to do" to every rework attempt, so the coder could
+  # never take the rework and the issue blocked its copy's promotion (Metric
+  # Flow's 787a0b85, framework issue 26839962, 2026-10-15).
   defp send_back_to_coder(scope, issue_id) do
     case Issues.get_issue(scope, issue_id) do
-      nil -> {:error, :issue_not_found}
-      issue -> with {:ok, _} <- Issues.set_awaiting_role(scope, issue, :coding), do: :ok
+      nil ->
+        {:error, :issue_not_found}
+
+      issue ->
+        with {:ok, issue} <- Issues.clear_qa_ready(scope, issue),
+             {:ok, _} <- Issues.set_awaiting_role(scope, issue, :coding),
+             do: :ok
     end
   end
 

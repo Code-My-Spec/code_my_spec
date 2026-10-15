@@ -17,7 +17,7 @@ defmodule CodeMySpec.AppToolsAreReachableTest do
   @tools ~w(ensure_app_running restart_app stop_app)
 
   test "the tools exist over MCP" do
-    names = ScriptableTools.__components__() |> Enum.map(& &1.name)
+    names = ScriptableTools.registrations() |> Enum.map(& &1.name)
 
     for tool <- @tools do
       assert tool in names,
@@ -33,5 +33,4 @@ defmodule CodeMySpec.AppToolsAreReachableTest do
                "copy can start, restart and stop its copy's app' — cannot call it"
     end
   end
-
 end

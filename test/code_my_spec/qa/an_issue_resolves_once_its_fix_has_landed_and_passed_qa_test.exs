@@ -78,6 +78,34 @@ defmodule CodeMySpec.Qa.AnIssueResolvesOnceItsFixHasLandedAndPassedQaTest do
 
   defp issue(ctx), do: Issues.get_issue(ctx.scope, ctx.issue.id)
 
+  # Metric Flow's 787a0b85 (2026-10-15): failed twice, still stamped certified
+  # at its old commit, so every rework attempt was told "nothing to do".
+  test "a failed attempt takes the certification away, so the rework can start", ctx do
+    {:ok, _} = Issues.set_qa_ready(ctx.scope, ctx.issue, "532dc58")
+    {:ok, _} = Issues.set_awaiting_role(ctx.scope, issue(ctx), :qa)
+
+    {:ok, owner} =
+      TaskOwner.add_task(ctx.scope, reload(ctx.qa), %{
+        status: :active,
+        requirement_name: "qa_complete",
+        issue_id: ctx.issue.id
+      })
+
+    task = Enum.find(owner.tasks, &(&1.requirement_name == "qa_complete"))
+    finding = issue_fixture(ctx.scope, %{status: :accepted})
+
+    {:ok, _attempt} =
+      Qa.submit_issue_qa_result(ctx.scope, owner, %{
+        issue_id: ctx.issue.id,
+        task_id: task.id,
+        status: :fail,
+        issue_ids: [finding.id],
+        scenarios: [%{name: "Delivered", status: :fail, observation: "It did not arrive."}]
+      })
+
+    assert %{awaiting_role: :coding, qa_ready_commit: nil, qa_ready_at: nil} = issue(ctx)
+  end
+
   test "a pass on a fix not yet landed sends the coder to promote it", ctx do
     :ok = qa_passes(ctx)
 

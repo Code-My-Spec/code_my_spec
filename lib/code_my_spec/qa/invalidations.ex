@@ -19,8 +19,7 @@ defmodule CodeMySpec.Qa.Invalidations do
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Users.Scope
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query, only: [from: 2]
 

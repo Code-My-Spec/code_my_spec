@@ -227,12 +227,16 @@ defmodule CodeMySpec.Provisioning.Registry do
           {:ok, %{username: username, password: password}}
 
         _ ->
-          password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
-
-          with {:ok, _} <- ProjectSecrets.put_value(scope, @password_secret, password) do
-            {:ok, %{username: username, password: password}}
-          end
+          mint_password(scope, username)
       end
+    end
+  end
+
+  defp mint_password(scope, username) do
+    password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+    with {:ok, _} <- ProjectSecrets.put_value(scope, @password_secret, password) do
+      {:ok, %{username: username, password: password}}
     end
   end
 
@@ -268,12 +272,15 @@ defmodule CodeMySpec.Provisioning.Registry do
     else
       with {:ok, credentials} <- credentials(scope, opts) do
         command = create_container_command(bucket, credentials, bind, location, opts)
-
-        case run.([command]) do
-          {_output, 0} -> {:ok, %{bucket: bucket, bind: bind, port: port()}}
-          {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
-        end
+        start_container(run, command, bucket, bind)
       end
+    end
+  end
+
+  defp start_container(run, command, bucket, bind) do
+    case run.([command]) do
+      {_output, 0} -> {:ok, %{bucket: bucket, bind: bind, port: port()}}
+      {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
     end
   end
 
@@ -454,11 +461,14 @@ defmodule CodeMySpec.Provisioning.Registry do
           delete_tag(repository, tag, bind, credential, run) == :ok
         end)
 
-      case deleted do
-        [] -> {:ok, []}
-        _ -> with :ok <- garbage_collect(run), do: {:ok, deleted}
-      end
+      collect_garbage_after(deleted, run)
     end
+  end
+
+  defp collect_garbage_after([], _run), do: {:ok, []}
+
+  defp collect_garbage_after(deleted, run) do
+    with :ok <- garbage_collect(run), do: {:ok, deleted}
   end
 
   defp tags_dir(repository),

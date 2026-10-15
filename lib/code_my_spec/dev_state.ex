@@ -27,8 +27,7 @@ defmodule CodeMySpec.DevState do
       CodeMySpec.Requirements,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query
 

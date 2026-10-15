@@ -41,9 +41,15 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
   end
 
   defp run_in(root, apply?, unpark?) do
-    Mix.Task.run("app.start")
+    start_minimal()
 
-    with {:ok, scope} <- Projects.scope_from_local_config(root),
+    # A dry run reads the graph through a scope resolved from whatever
+    # `--root` names, which is routinely a worktree used only to inspect it --
+    # never that checkout's own canonical location. `sync_local_path: false`
+    # keeps that read from repointing the project there (c1b2d03a): without
+    # it, a dry run from a worktree left the operator re-running the task
+    # against the main checkout just to undo the write this one made.
+    with {:ok, scope} <- Projects.scope_from_local_config(root, sync_local_path: false),
          {:ok, head} <- git(root, ["rev-parse", "HEAD"]) do
       scope = bind(scope, root)
       plan = StoryReconcile.plan(scope, head: head, unpark: unpark?)
@@ -52,6 +58,30 @@ defmodule Mix.Tasks.Cms.ReconcileStatus do
     else
       {:error, reason} -> Mix.shell().error("reconcile_status: #{format(reason)}")
     end
+  end
+
+  # `app.config`, not `app.start`: runtime.exs still runs, so the Repo is
+  # configured the way the app would configure it, but nothing is supervised
+  # beyond what this task uses. `app.start` booted the whole application in
+  # this task's BEAM -- background workers (agent scope scans, the embeddings
+  # reconciler, requirement-graph cache writes) included, against the shared
+  # database a dry run has no business touching (c1b2d03a). Same shape as
+  # `Mix.Tasks.Cms.Seed`'s own preamble.
+  defp start_minimal do
+    Mix.Task.run("app.config")
+
+    {:ok, _} = Application.ensure_all_started(:ecto_sql)
+    {:ok, _} = Application.ensure_all_started(:postgrex)
+
+    {:ok, _} = CodeMySpec.Vault.start_link([])
+    {:ok, _} = CodeMySpec.Repo.start_link([])
+
+    # StoryReconcile's contexts broadcast on write; without the registry that
+    # surfaces mid-apply as `** (ArgumentError) unknown registry:
+    # CodeMySpec.PubSub`, which reads as a broken context rather than a
+    # missing process.
+    {:ok, _} = Application.ensure_all_started(:phoenix_pubsub)
+    {:ok, _} = Phoenix.PubSub.Supervisor.start_link(name: CodeMySpec.PubSub)
   end
 
   # Without a registered copy step 1 refuses on its own; steps 2 and 3 still run.

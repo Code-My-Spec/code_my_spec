@@ -41,7 +41,9 @@ defmodule CodeMySpec.Agents.Assignment do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Issues
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
@@ -69,8 +71,31 @@ defmodule CodeMySpec.Agents.Assignment do
   def assign_team(%Scope{}, nil, _story_id), do: {:error, :no_working_copy}
 
   def assign_team(%Scope{} = scope, copy_id, story_id) do
-    with :ok <- feature_copy(scope, copy_id) do
+    with :ok <- feature_copy(scope, copy_id),
+         :ok <- work_left(scope, copy_id, story_id) do
       fan_out(scope, copy_id, story_id)
+    end
+  end
+
+  # A promoted story whose every requirement is already satisfied at this copy
+  # has nothing left for a team to do, and nothing will land for it, so the
+  # team-free notice main waits on never comes: team 3 sat idle on story 811
+  # (2026-10-15). A shipped story with a new criterion has unsatisfied
+  # requirements again, an accepted issue on it needs the story held to reach
+  # QA (Metric Flow's five fixes, 2026-10-15), and an unpromoted one still has
+  # its landing to come; all are work. Read before the transaction:
+  # the graph can wait on its projector, which must not happen under locks.
+  defp work_left(_scope, _copy_id, nil), do: :ok
+
+  defp work_left(scope, copy_id, story_id) do
+    with %{promoted_version: version} when is_binary(version) <-
+           Stories.get_story(scope, story_id),
+         false <- Enum.any?(Issues.list_by_story(scope, story_id), &(&1.status == :accepted)),
+         {done, done} when done > 0 <-
+           Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id) do
+      {:error, :story_done}
+    else
+      _ -> :ok
     end
   end
 
@@ -246,12 +271,30 @@ defmodule CodeMySpec.Agents.Assignment do
         WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id)
       )
       |> maybe_put(:epic_id, team_epic_id(copy_id))
+      |> maybe_put(:continuous, retired_seat_continuous(copy_id, role))
     else
       attrs
     end
   end
 
   def inherit(attrs), do: attrs
+
+  # A seat refilled after a retirement keeps the loop its predecessor was in.
+  # Main replaced both teams' Claude agents with Codex ones on 2026-10-15; all
+  # four predecessors were continuous and all four replacements came up out of
+  # the loop, so the graph offered them nothing -- team 4's coder sat 2.5 hours
+  # beside five open tasks. Same role on the same copy only; never turns it off.
+  defp retired_seat_continuous(copy_id, role) do
+    from(a in "agents",
+      where:
+        a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role == ^to_string(role) and
+          not is_nil(a.retired_at),
+      order_by: [desc: a.retired_at],
+      select: a.continuous,
+      limit: 1
+    )
+    |> Repo.one()
+  end
 
   # A seat filled the moment it is vacated finds no *live* teammate to
   # inherit from -- `WorkingCopies.team_story_id/1` excludes a retired row on
@@ -264,13 +307,21 @@ defmodule CodeMySpec.Agents.Assignment do
   # takes the most recently retired team member's story instead of starting
   # unbound -- the shape that left `submit_story_issue` answering
   # `story_not_assigned_to_agent` for work the predecessor had already queued.
+  #
+  # Only a story still to land: the newest retired member *holding a story* can
+  # be weeks back when the one just retired held none, and a promoted story is
+  # history. Team 2's replacement coder took story 1092, promoted at v2.0.440,
+  # and the team then read as busy -- no work offered, no team-free notice --
+  # for as long as the row held it (2026-10-15).
   defp retired_team_story_id(copy_id) do
     roles = team_roles() |> Enum.map(&to_string/1)
 
     from(a in "agents",
+      join: s in "stories",
+      on: s.id == a.story_id,
       where:
         a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role in ^roles and
-          not is_nil(a.retired_at) and not is_nil(a.story_id),
+          not is_nil(a.retired_at) and is_nil(s.promoted_version),
       order_by: [desc: a.retired_at],
       select: a.story_id,
       limit: 1

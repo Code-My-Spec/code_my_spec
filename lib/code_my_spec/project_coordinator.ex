@@ -16,8 +16,7 @@ defmodule CodeMySpec.ProjectCoordinator do
       CodeMySpec.LocalScope,
       CodeMySpec.Paths,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   require Logger
 

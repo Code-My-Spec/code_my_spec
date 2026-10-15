@@ -16,6 +16,31 @@ config :code_my_spec,
 # and ProjectScopeOverride relaxes account-access checks for that narrow path.
 config :code_my_spec, code_my_spec_project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
 
+# Story 1013: a plain `mix run`/`iex -S mix` in a working copy never had
+# DATABASE_NAME set -- only the harness-managed boot does -- so it silently
+# queried the shared main database instead of this copy's own, a result
+# that looks right and is wrong. CmsHarness.AppInstance writes the copy's
+# assigned name here on every boot; read it before the line below so that
+# line's own text keeps meaning "the literal default" for
+# CmsHarness.AppInstance.Runner.Local.main_database_name/1's own text scan
+# of this exact file. The file's mere presence means this is a working
+# copy with an assigned database, so a read failure other than its plain
+# absence fails loudly rather than falling back to the shared database.
+if System.get_env("DATABASE_NAME") in [nil, ""] do
+  case File.read(".code_my_spec/status/database_name") do
+    {:ok, name} ->
+      System.put_env("DATABASE_NAME", String.trim(name))
+
+    {:error, :enoent} ->
+      :ok
+
+    {:error, reason} ->
+      raise "Could not read .code_my_spec/status/database_name (#{inspect(reason)}). " <>
+              "This working copy's assigned database cannot be determined; refusing " <>
+              "to fall back to the shared code_my_spec_dev database."
+  end
+end
+
 # Configure your database
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",

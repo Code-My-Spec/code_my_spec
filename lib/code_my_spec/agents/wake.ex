@@ -182,6 +182,17 @@ defmodule CodeMySpec.Agents.Wake do
     end
   end
 
+  # The promote that frees a team often restarts main's harness; held as
+  # `:not_running`, the notice was dropped and team 2 sat idle (2026-10-15).
+  # It is kept until main comes back, like a repair message.
+  def allow_admission?(scope, %Agent{role: :main, status: status} = agent, :team_free)
+      when status in [:starting, :running] do
+    case allow?(scope, agent, :team_free) do
+      {:hold, :not_running} -> :ok
+      decision -> decision
+    end
+  end
+
   def allow_admission?(scope, agent, event), do: allow?(scope, agent, event)
 
   @doc "Every event kind."

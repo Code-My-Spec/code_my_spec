@@ -503,6 +503,13 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.update()
   end
 
+  @doc "Remove an issue's QA-ready stamp, so its fix has to be certified again."
+  def clear_qa_ready_commit(%Issue{} = issue) do
+    issue
+    |> Ecto.Changeset.change(qa_ready_commit: nil, qa_ready_at: nil)
+    |> Repo.update()
+  end
+
   @doc "Flip whose turn it is on an already-assigned issue."
   def update_awaiting_role(%Issue{} = issue, role) do
     issue

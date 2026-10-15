@@ -48,6 +48,9 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     # It is a default, not a rule — the PM answered that naming is overridable.
     test "an explicit name wins over the default", ctx do
       stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          json(conn, 200, [])
+
         %{method: "GET"} = conn ->
           json(conn, 404, %{})
 
@@ -104,6 +107,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
 
     test "a free name is simply created", ctx do
       stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn -> json(conn, 200, [])
         %{method: "GET"} = conn -> json(conn, 404, %{})
         %{method: "POST"} = conn -> json(conn, 201, @repo)
       end)
@@ -112,9 +116,152 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     end
   end
 
+  describe "a repository elsewhere, found by name" do
+    # Issue 0d55ff21: Metric Flow's real repository is Code-My-Spec/metric_flow
+    # (an org, underscored). With no `code_repo` recorded yet, the guessed
+    # (owner, name) found nothing and setup tried, and failed, to create a
+    # second one. A name match under a different owner is exactly the
+    # situation 8185 already names: a collision for Sam to resolve, not
+    # grounds to duplicate.
+    @elsewhere %{
+      "name" => "metric_flow",
+      "owner" => %{"login" => "Code-My-Spec"},
+      "clone_url" => "https://github.com/Code-My-Spec/metric_flow.git"
+    }
+
+    test "a name match under a different owner is reported as a collision", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/sam/metric-flow"} = conn ->
+          json(conn, 404, %{})
+
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          assert Plug.Conn.fetch_query_params(conn).query_params["affiliation"] ==
+                   "owner,organization_member"
+
+          json(conn, 200, [@elsewhere])
+
+        %{method: "POST"} = conn ->
+          flunk("created a repository when a matching one exists elsewhere")
+          conn
+      end)
+
+      assert {:name_taken, collision} =
+               Repository.ensure(ctx.scope, %{name: "Metric Flow"}, owner: "sam")
+
+      assert collision.repository == @elsewhere
+      assert collision.choices == [:adopt, :rename]
+    end
+
+    test "adopting the collision adopts the repository found elsewhere, creating nothing", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/sam/metric-flow"} = conn ->
+          json(conn, 404, %{})
+
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          assert Plug.Conn.fetch_query_params(conn).query_params["affiliation"] ==
+                   "owner,organization_member"
+
+          json(conn, 200, [@elsewhere])
+
+        %{method: "POST"} = conn ->
+          flunk("created a repository instead of adopting the one found elsewhere")
+          conn
+      end)
+
+      assert {:ok, :adopted, @elsewhere} =
+               Repository.ensure(ctx.scope, %{name: "Metric Flow"}, owner: "sam", adopt: true)
+    end
+
+    test "multiple matching repositories are offered without creating or choosing one", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/sam/metric-flow"} = conn ->
+          json(conn, 404, %{})
+
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          json(conn, 200, [@elsewhere, Map.put(@elsewhere, "owner", %{"login" => "another-org"})])
+
+        %{method: "POST"} ->
+          flunk("created a repository despite multiple existing matches")
+      end)
+
+      for opts <- [[owner: "sam"], [owner: "sam", adopt: true]] do
+        assert {:name_taken, collision} =
+                 Repository.ensure(ctx.scope, %{name: "Metric Flow"}, opts)
+
+        assert collision.repository == nil
+        assert collision.message =~ "Code-My-Spec/metric_flow"
+        assert collision.message =~ "another-org/metric_flow"
+        assert collision.choices == [:adopt, :rename]
+      end
+    end
+  end
+
+  describe "creation and adoption failures" do
+    test "a failed create identifies the new repository and offers adoption", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          json(conn, 200, [])
+
+        %{method: "GET"} = conn ->
+          json(conn, 404, %{})
+
+        %{method: "POST", request_path: "/user/repos"} = conn ->
+          json(conn, 404, %{"message" => "Not Found"})
+      end)
+
+      result = Repository.run(ctx.scope, ctx.env, @project, owner: "sam")
+      assert result.state == :create_failed
+      assert result.reason =~ "Tried to create a new repository sam/sams-thing"
+      assert result.reason =~ "404"
+      assert result.reason =~ "Adopt existing repository"
+      assert result.reason =~ "owner and repository name"
+    end
+
+    test "explicit adoption of a missing repository never creates one", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/Code-My-Spec/metric_flow"} = conn ->
+          json(conn, 404, %{})
+
+        _ ->
+          flunk("explicit adoption must only look up the chosen repository")
+      end)
+
+      result =
+        Repository.run(ctx.scope, ctx.env, @project,
+          owner: "Code-My-Spec",
+          name: "metric_flow",
+          adopt: true
+        )
+
+      assert result.state == :create_failed
+      assert result.reason =~ "Could not find existing repository Code-My-Spec/metric_flow"
+      assert result.reason =~ "No new repository was created"
+    end
+
+    test "failed discovery never falls through to creation", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/sam/sams-thing"} = conn ->
+          json(conn, 404, %{})
+
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          json(conn, 403, %{"message" => "Forbidden"})
+
+        _ ->
+          flunk("created a repository after discovery failed")
+      end)
+
+      result = Repository.run(ctx.scope, ctx.env, @project, owner: "sam")
+      assert result.reason =~ "Could not check existing GitHub repositories"
+      assert result.reason =~ "No new repository was created"
+    end
+  end
+
   describe "what gets created" do
     test "is private by default", ctx do
       stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          json(conn, 200, [])
+
         %{method: "GET"} = conn ->
           json(conn, 404, %{})
 
@@ -129,6 +276,9 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
 
     test "an organisation repository goes to the org endpoint, not /user/repos", ctx do
       stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn ->
+          json(conn, 200, [])
+
         %{method: "GET"} = conn ->
           json(conn, 404, %{})
 
@@ -147,6 +297,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
   describe "run/4 — done is a push, not a repository" do
     test "records the commit that landed and only then reports pushed", %{env: env} = ctx do
       stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn -> json(conn, 200, [])
         %{method: "GET"} = conn -> json(conn, 404, %{})
         %{method: "POST"} = conn -> json(conn, 201, @repo)
       end)
@@ -163,6 +314,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     # useless — the harness would fail on its first push, far from setup.
     test "a repository that exists but rejects the push is not done", %{env: env} = ctx do
       stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn -> json(conn, 200, [])
         %{method: "GET"} = conn -> json(conn, 404, %{})
         %{method: "POST"} = conn -> json(conn, 201, @repo)
       end)
@@ -239,6 +391,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
       write_workflow(env, @placeholder_workflow)
 
       stub_github(fn
+        %{method: "GET", request_path: "/user/repos"} = conn -> json(conn, 200, [])
         %{method: "GET"} = conn -> json(conn, 404, %{})
         %{method: "POST"} = conn -> json(conn, 201, @repo_with_owner)
       end)

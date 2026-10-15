@@ -15,7 +15,7 @@ defmodule CodeMySpec.PublicUrl do
   variable to keep in sync.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   @doc """
   Returns the public base URL, e.g. `"https://codemyspec.com"`.

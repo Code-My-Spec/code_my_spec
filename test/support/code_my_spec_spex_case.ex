@@ -224,25 +224,6 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
-  Rebind `~p` to CodeMySpecWeb's router, atomically with the `@endpoint` override.
-
-  `~p` is a compile-time macro bound by whichever `verified_routes` import is
-  lexically in scope, NOT by the `@endpoint` module attribute. A spex that
-  overrides `@endpoint` alone keeps resolving every `~p` against the base
-  `using` block's CodeMySpecLocalWeb router — silently, because `~p` still
-  evaluates to a plain path string at runtime even when bound to the wrong
-  router's validation. 58 files did exactly this (issue 2389874b) before this
-  existed. Call this instead of writing `@endpoint CodeMySpecWeb.Endpoint` by
-  hand, so the pairing can't be forgotten again.
-  """
-  defmacro cloud_endpoint do
-    quote do
-      @endpoint CodeMySpecWeb.Endpoint
-      use CodeMySpecWeb, :verified_routes
-    end
-  end
-
-  @doc """
   How long one criterion may take, given what it is actually waiting on.
 
   Recording waits on real DNS propagating and a provider re-checking it, which
@@ -3784,19 +3765,24 @@ defmodule CodeMySpecSpex.Case do
   """
   def published_sending_domains(scope, project, environments \\ ["prod", "uat"]) do
     for environment <- environments do
-      sending = Fixtures.sending_domain(project.domain, environment)
+      publish_sending_domain_unverified(
+        scope,
+        Fixtures.sending_domain(project.domain, environment)
+      )
+    end
+  end
 
-      case with_provider_cassette("setup_#{slug(sending)}_published", fn ->
-             Fixtures.publish_all_records_unverified(scope, sending)
-           end) do
-        {:ok, created} ->
-          teardown_later(sending, "teardown_#{slug(sending)}_published", fn ->
-            Fixtures.remove_published_records(scope, created)
-          end)
+  defp publish_sending_domain_unverified(scope, sending) do
+    case with_provider_cassette("setup_#{slug(sending)}_published", fn ->
+           Fixtures.publish_all_records_unverified(scope, sending)
+         end) do
+      {:ok, created} ->
+        teardown_later(sending, "teardown_#{slug(sending)}_published", fn ->
+          Fixtures.remove_published_records(scope, created)
+        end)
 
-        {:error, reason} ->
-          raise "could not publish #{sending}: #{inspect(reason)}"
-      end
+      {:error, reason} ->
+        raise "could not publish #{sending}: #{inspect(reason)}"
     end
   end
 
@@ -3820,19 +3806,21 @@ defmodule CodeMySpecSpex.Case do
   """
   def registered_sending_domains(scope, project, environments \\ ["prod", "uat"]) do
     for environment <- environments do
-      sending = Fixtures.sending_domain(project.domain, environment)
+      register_sending_domain(scope, Fixtures.sending_domain(project.domain, environment))
+    end
+  end
 
-      case with_provider_cassette("setup_#{slug(sending)}_registered", fn ->
-             Fixtures.register_sending_domain_only(scope, sending)
-           end) do
-        {:ok, _domain} ->
-          teardown_later(sending, "teardown_#{slug(sending)}_registered", fn ->
-            Fixtures.remove_sending_domain(scope, sending)
-          end)
+  defp register_sending_domain(scope, sending) do
+    case with_provider_cassette("setup_#{slug(sending)}_registered", fn ->
+           Fixtures.register_sending_domain_only(scope, sending)
+         end) do
+      {:ok, _domain} ->
+        teardown_later(sending, "teardown_#{slug(sending)}_registered", fn ->
+          Fixtures.remove_sending_domain(scope, sending)
+        end)
 
-        {:error, reason} ->
-          raise "could not register #{sending}: #{inspect(reason)}"
-      end
+      {:error, reason} ->
+        raise "could not register #{sending}: #{inspect(reason)}"
     end
   end
 
@@ -3940,31 +3928,33 @@ defmodule CodeMySpecSpex.Case do
 
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"], opts \\ []) do
     for environment <- environments do
-      sending = Fixtures.sending_domain(project.domain, environment)
-
-      # Inside a cassette, because this talks to Resend and Cloudflare for
-      # real. A precondition that reaches a provider outside a recording works
-      # while recording and then, on replay, tries the same live calls with a
-      # placeholder credential — so the spex fails in its `given_` for a
-      # reason that has nothing to do with what it is testing.
-      # The same window the step itself gets. Verification is the slow part
-      # either way, and a fixture that gives up sooner than the code it is
-      # setting up for fails in `given_` for a reason that looks like the
-      # story under test.
-      case with_provider_cassette("setup_#{slug(sending)}_records", fn ->
-             Fixtures.publish_all_records(scope, sending, verification_opts() ++ opts)
-           end) do
-        {:ok, created} ->
-          teardown_later(sending, "teardown_#{slug(sending)}_dns", fn ->
-            Fixtures.remove_published_records(scope, created)
-          end)
-
-        {:error, reason} ->
-          raise "could not publish #{sending}: #{inspect(reason)}"
-      end
+      verify_sending_domain(scope, Fixtures.sending_domain(project.domain, environment), opts)
     end
 
     project
+  end
+
+  defp verify_sending_domain(scope, sending, opts) do
+    # Inside a cassette, because this talks to Resend and Cloudflare for
+    # real. A precondition that reaches a provider outside a recording works
+    # while recording and then, on replay, tries the same live calls with a
+    # placeholder credential — so the spex fails in its `given_` for a
+    # reason that has nothing to do with what it is testing.
+    # The same window the step itself gets. Verification is the slow part
+    # either way, and a fixture that gives up sooner than the code it is
+    # setting up for fails in `given_` for a reason that looks like the
+    # story under test.
+    case with_provider_cassette("setup_#{slug(sending)}_records", fn ->
+           Fixtures.publish_all_records(scope, sending, verification_opts() ++ opts)
+         end) do
+      {:ok, created} ->
+        teardown_later(sending, "teardown_#{slug(sending)}_dns", fn ->
+          Fixtures.remove_published_records(scope, created)
+        end)
+
+      {:error, reason} ->
+        raise "could not publish #{sending}: #{inspect(reason)}"
+    end
   end
 
   @doc """
@@ -5185,23 +5175,25 @@ defmodule CodeMySpecSpex.Case do
   def scrub_cmd_cassette(name) do
     if recording?() do
       for dir <- ["test/fixtures/cassettes", "test/cassettes"] do
-        path = Path.join(dir, name <> ".json")
-
-        if File.exists?(path) do
-          scrubbed =
-            path
-            |> File.read!()
-            |> redact_recorded_env()
-            |> redact_inline_credentials()
-            |> wildcard_working_directories()
-            |> redact_sensitive_patterns()
-
-          File.write!(path, scrubbed)
-        end
+        scrub_cassette_file(Path.join(dir, name <> ".json"))
       end
     end
 
     :ok
+  end
+
+  defp scrub_cassette_file(path) do
+    if File.exists?(path) do
+      scrubbed =
+        path
+        |> File.read!()
+        |> redact_recorded_env()
+        |> redact_inline_credentials()
+        |> wildcard_working_directories()
+        |> redact_sensitive_patterns()
+
+      File.write!(path, scrubbed)
+    end
   end
 
   # ExCliVcr records the *whole* environment each command was given, and the
@@ -5969,12 +5961,34 @@ defmodule CodeMySpecSpex.Case do
         )
       end
 
+      # `after` alone does not run when this test's process is killed by an
+      # exit signal rather than an exception -- a LiveView crashing inside
+      # this block takes the linked test process down without unwinding
+      # anything, and every provider's plug then stays installed for the
+      # rest of the VM. Every later spex that reaches a provider *outside* a
+      # cassette gets this one instead of its own -- the same failure shape
+      # `connect_providers_for_real/2`'s own `on_exit` guards against, but
+      # that guard only exists for a spex that declares `setup
+      # :connect_providers`. `with_provider_cassette/3` has callers that
+      # reach here directly (lines above: `safe_teardown`, the mail-domain
+      # `given_` helpers, the generated per-criterion wrapper) without going
+      # through that setup, so this is the one place every path through
+      # actually installing a plug passes -- registering it here closes the
+      # gap regardless of which caller reached it (c1b2d03a's sibling issue,
+      # 471ad1ea: "ReqCassette shared session Agent is not alive" in a
+      # later, unrelated test).
+      on_exit(fn -> restore_provider_config(previous) end)
+
       try do
         fun.()
       after
         for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
       end
     end)
+  end
+
+  defp restore_provider_config(previous) do
+    for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
   end
 
   @doc """
@@ -6054,7 +6068,14 @@ defmodule CodeMySpecSpex.Case do
       # every other presigned-upload caller, done here instead since the
       # harness has no browser. Added before any spex could find the
       # omission for us.
-      CodeMySpec.Uploads
+      CodeMySpec.Uploads,
+      # c1b2d03a: confirming a recorded working copy id reads its own `:plug`
+      # the same way every provider above does. Added here directly rather
+      # than waiting for `provider_modules_complete_test.exs` to name it,
+      # since that check is exactly what caught it.
+      Mix.Tasks.Cms.Harness.Onboard,
+      # Remote onboarding's token exchange now reads the same HTTP plug.
+      CmsHarness.Token
     ]
   end
 

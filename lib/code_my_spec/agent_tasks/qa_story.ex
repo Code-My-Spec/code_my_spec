@@ -98,7 +98,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
             "[QaStory] evaluate(#{story_id}): prior attempt exists but does not satisfy; demanding a fresh submit"
           )
 
-          {:ok, :invalid, resubmit_required_feedback(story_number(scope, story_id), attempts)}
+          {:ok, :invalid,
+           resubmit_required_feedback(scope, story_id, story_number(scope, story_id), attempts)}
 
         true ->
           do_evaluate(scope, env, story_id, story_number(scope, story_id))
@@ -106,9 +107,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp resubmit_required_feedback(story_number, attempts) do
+  defp resubmit_required_feedback(scope, story_id, story_number, attempts) do
     """
-    QA for story #{story_number} is not complete. #{describe_latest(List.first(attempts))}
+    QA for story #{story_number} is not complete. #{describe_latest(scope, story_id, List.first(attempts))}
 
     QA completion is recorded in the database, not on disk — no file will
     satisfy this requirement. Re-run the QA scenarios against the real surface,
@@ -119,9 +120,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
   end
 
-  defp describe_latest(nil), do: "No attempt has been recorded."
+  defp describe_latest(_scope, _story_id, nil), do: "No attempt has been recorded."
 
-  defp describe_latest(%{invalidations: [_ | _] = invalidations}) do
+  defp describe_latest(_scope, _story_id, %{invalidations: [_ | _] = invalidations}) do
     reason =
       invalidations
       |> List.last()
@@ -130,7 +131,18 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     "The most recent attempt was invalidated: #{reason}"
   end
 
-  defp describe_latest(%{status: status}),
+  # b4fe8c48: a recorded, uninvalidated pass can still fail `qa_complete?` on
+  # `review_current?/3` alone — the story was re-certified since the review
+  # ran. The fallback clause below said only "recorded as pass", explaining
+  # nothing; this names the gap `qa_complete?` actually found.
+  defp describe_latest(scope, story_id, %{status: :pass} = attempt) do
+    case CodeMySpec.Qa.story_review_currency_gap(scope, story_id, attempt) do
+      nil -> "The most recent attempt is recorded as pass."
+      gap -> "The most recent attempt passed, but no longer counts: #{gap}."
+    end
+  end
+
+  defp describe_latest(_scope, _story_id, %{status: status}),
     do: "The most recent attempt is recorded as #{status}."
 
   defp subagent_owns?(%{agent_id: agent_id}) when is_binary(agent_id) and byte_size(agent_id) > 0,
@@ -317,10 +329,26 @@ defmodule CodeMySpec.AgentTasks.QaStory do
              "Brief at `#{path}` is invalid: #{reason}. Fix the brief and stop the session again."}
         end
 
-      _ ->
+      {:error, :enoent} ->
+        brief_not_found(path)
+
+      # Anything else is the read itself failing -- a harness unreachable, a
+      # timeout, a transport tag -- not the file being absent. Collapsing
+      # this into "not found" told an agent to write a brief that already
+      # existed, and let a transient failure satisfy a caller checking for
+      # "brief not found" in the text (a83cb226).
+      {:error, reason} ->
         {:ok, :invalid,
-         "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
+         "Could not read the brief at `#{path}`: #{inspect(reason)}. Stop the session again once this clears."}
+
+      _ ->
+        brief_not_found(path)
     end
+  end
+
+  defp brief_not_found(path) do
+    {:ok, :invalid,
+     "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
   end
 
   defp check_result(env, story_number) do
@@ -457,8 +485,23 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # a copy id that does not resolve.
   #
   # The harness replies `starting` after a short inline window and keeps
-  # building in the background, so this waits just above that window.
-  @app_start_timeout to_timeout(second: 35)
+  # building in the background -- `AppTransport.first_start_inline_window_ms/0`,
+  # not a guess: a hardcoded 35s here once meant to sit "just above" a 30s
+  # window, but nothing enforced that relationship, and `AppTransport.call/4`
+  # adds its own grace on top of whatever timeout it is given -- so the
+  # effective slack was thinner than it looked and would silently vanish if
+  # either the window or the grace ever changed (cf006764).
+  @app_start_safety_margin_ms to_timeout(second: 10)
+
+  @doc "How long `own_copy_app_url_line/1` waits for a first start's inline reply. Public for testability."
+  @spec app_start_timeout() :: pos_integer()
+  def app_start_timeout do
+    max(
+      AppTransport.first_start_inline_window_ms() + @app_start_safety_margin_ms -
+        AppTransport.call_grace_ms(),
+      to_timeout(second: 5)
+    )
+  end
 
   defp app_url_line(%{active_working_copy_id: id}, endpoint_module)
        when is_binary(id) do
@@ -481,7 +524,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   defp own_copy_app_url_line(copy) do
-    case AppTransport.ensure_app_running(copy.id, @app_start_timeout) do
+    case AppTransport.ensure_app_running(copy.id, app_start_timeout()) do
       {:ok, %{status: "serving", url: url, commit: commit}} ->
         "**App URL:** #{url} — this working copy's own instance" <>
           commit_suffix(commit) <> ", not main's. Test against this address."

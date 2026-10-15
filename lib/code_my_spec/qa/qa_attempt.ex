@@ -9,7 +9,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
 
   # A leaf so the requirement graph can read attempts (`Qa.Verdict`) without
   # depending on `Qa`, which sits above it.
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
   use Ecto.Schema
   import Ecto.Changeset
 

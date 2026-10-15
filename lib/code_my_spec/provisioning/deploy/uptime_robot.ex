@@ -38,17 +38,21 @@ defmodule CodeMySpec.Provisioning.Deploy.UptimeRobot do
   def ensure_monitors(hosts, notify, opts \\ []) do
     with {:ok, existing} <- list_monitors(),
          {:ok, alert_contact_id} <- alert_contact_id(notify, opts) do
-      hosts
-      |> Enum.reduce_while({:ok, []}, fn host, {:ok, acc} ->
-        case ensure_monitor(host, existing, alert_contact_id) do
-          {:ok, monitor} -> {:cont, {:ok, [monitor | acc]}}
-          {:error, _} = error -> {:halt, error}
-        end
-      end)
-      |> case do
-        {:ok, monitors} -> {:ok, Enum.reverse(monitors)}
-        error -> error
+      ensure_all(hosts, existing, alert_contact_id)
+    end
+  end
+
+  defp ensure_all(hosts, existing, alert_contact_id) do
+    hosts
+    |> Enum.reduce_while({:ok, []}, fn host, {:ok, acc} ->
+      case ensure_monitor(host, existing, alert_contact_id) do
+        {:ok, monitor} -> {:cont, {:ok, [monitor | acc]}}
+        {:error, _} = error -> {:halt, error}
       end
+    end)
+    |> case do
+      {:ok, monitors} -> {:ok, Enum.reverse(monitors)}
+      error -> error
     end
   end
 

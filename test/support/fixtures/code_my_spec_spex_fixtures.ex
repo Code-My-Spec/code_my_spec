@@ -550,28 +550,7 @@ defmodule CodeMySpecSpex.Fixtures do
           :except_dkim -> Enum.reject(records, &dkim?/1)
         end
 
-      published =
-        keep
-        |> Enum.map(fn record ->
-          name = qualify(record["name"], zone_name)
-
-          # Raise rather than ignore. This used to discard the result, so a
-          # record Cloudflare refused simply never existed — and every
-          # assertion downstream failed with "does not resolve", which is true
-          # and says nothing about why.
-          case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
-                 type: record["type"],
-                 priority: record["priority"]
-               ) do
-            {:ok, _} ->
-              :ok
-
-            other ->
-              raise "could not publish #{record["type"]} #{name}: #{inspect(other, limit: 5)}"
-          end
-
-          %{kind: "dns_record", location: "cloudflare/#{name}", type: record["type"]}
-        end)
+      published = Enum.map(keep, &publish_dns_record(scope, zone, zone_name, &1))
 
       # Deliberately NOT probing the records over DNS-over-HTTPS here. Asking a
       # recursive resolver for a record that was written a moment ago caches
@@ -596,6 +575,27 @@ defmodule CodeMySpecSpex.Fixtures do
          withheld: (records -- keep) |> Enum.map(& &1["name"])
        }}
     end
+  end
+
+  defp publish_dns_record(scope, zone, zone_name, record) do
+    name = qualify(record["name"], zone_name)
+
+    # Raise rather than ignore. This used to discard the result, so a
+    # record Cloudflare refused simply never existed — and every
+    # assertion downstream failed with "does not resolve", which is true
+    # and says nothing about why.
+    case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
+           type: record["type"],
+           priority: record["priority"]
+         ) do
+      {:ok, _} ->
+        :ok
+
+      other ->
+        raise "could not publish #{record["type"]} #{name}: #{inspect(other, limit: 5)}"
+    end
+
+    %{kind: "dns_record", location: "cloudflare/#{name}", type: record["type"]}
   end
 
   # Resend does not update record statuses synchronously with the verify call.
@@ -685,15 +685,19 @@ defmodule CodeMySpecSpex.Fixtures do
         # So an inbound record still verifying is not a failed premise. A
         # sending record still verifying is.
         {:error, {:still_verifying, pending}} ->
-          if Enum.all?(pending, &inbound_record?/1) do
-            {:ok, created}
-          else
-            {:error, {:never_verified, sending_domain, {:still_verifying, pending}}}
-          end
+          accept_inbound_pending(created, sending_domain, pending)
 
         {:error, reason} ->
           {:error, {:never_verified, sending_domain, reason}}
       end
+    end
+  end
+
+  defp accept_inbound_pending(created, sending_domain, pending) do
+    if Enum.all?(pending, &inbound_record?/1) do
+      {:ok, created}
+    else
+      {:error, {:never_verified, sending_domain, {:still_verifying, pending}}}
     end
   end
 
@@ -1226,7 +1230,9 @@ defmodule CodeMySpecSpex.Fixtures do
   defp desktop_channel_pids(prefix) do
     HarnessRegistry
     |> Registry.select([{{:"$1", :"$2", {:_, :"$3"}}, [{:is_binary, :"$1"}], [{{:"$2", :"$3"}}]}])
-    |> Enum.filter(fn {_pid, root} -> is_binary(root) and String.starts_with?(Path.expand(root), prefix) end)
+    |> Enum.filter(fn {_pid, root} ->
+      is_binary(root) and String.starts_with?(Path.expand(root), prefix)
+    end)
     |> Enum.map(fn {pid, _root} -> pid end)
   end
 
@@ -1234,7 +1240,8 @@ defmodule CodeMySpecSpex.Fixtures do
     receive do
       {:DOWN, ^ref, :process, _pid, _reason} -> :ok
     after
-      5_000 -> raise "a desktop harness's server-side channel outlived the client copy that closed on it"
+      5_000 ->
+        raise "a desktop harness's server-side channel outlived the client copy that closed on it"
     end
   end
 
@@ -2334,7 +2341,8 @@ defmodule CodeMySpecSpex.Fixtures do
               "options" => [%{"label" => "A"}, %{"label" => "B"}]
             }
           ]),
-        "session_external_id" => Keyword.get(opts, :session_external_id)
+        "session_external_id" => Keyword.get(opts, :session_external_id),
+        "agent_id" => Keyword.get(opts, :agent_id)
       })
 
     request.id
@@ -2466,7 +2474,8 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, request} =
       Notifications.create_permission_request(user_id, %{
         "tool_name" => Keyword.get(opts, :tool_name, "Bash"),
-        "tool_input" => Keyword.get(opts, :tool_input, %{"command" => "mix test"})
+        "tool_input" => Keyword.get(opts, :tool_input, %{"command" => "mix test"}),
+        "agent_id" => Keyword.get(opts, :agent_id)
       })
 
     request.id

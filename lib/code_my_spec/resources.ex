@@ -26,8 +26,7 @@ defmodule CodeMySpec.Resources do
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query
 

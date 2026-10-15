@@ -214,12 +214,16 @@ defmodule CmsHarness.AppInstance do
         # Under its copy (`Copy.Supervisor`), beside the channel chain rather
         # than in it: an app must survive a reconnect.
         with {:ok, _copy} <- Copy.ensure(root) do
-          case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
-            {:ok, pid} -> {:ok, pid}
-            {:error, {:already_started, pid}} -> {:ok, pid}
-            {:error, reason} -> {:error, reason}
-          end
+          start_under_copy(root)
         end
+    end
+  end
+
+  defp start_under_copy(root) do
+    case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -353,8 +357,11 @@ defmodule CmsHarness.AppInstance do
       Process.send_after(self(), :timeout, idle_check_interval())
       {:noreply, refresh_status(state), :infinity}
     else
+      # Stops the app, not this process: one exiting here stays registered until
+      # it is gone, so a request landing in between got no reply. The next
+      # `ensure_running` starts the app again.
       new_state = if running?(state), do: stop_process(state), else: state
-      {:stop, :normal, new_state}
+      {:noreply, new_state, :hibernate}
     end
   end
 
@@ -894,6 +901,25 @@ defmodule CmsHarness.AppInstance do
     }
 
     File.write!(state.state_path, Jason.encode!(payload))
+    write_database_name_status(state)
+  end
+
+  # Story 1013: the harness-managed boot sets DATABASE_NAME for the OS
+  # process it launches, but a plain `mix run`/`iex -S mix` run by hand in
+  # the same checkout never sees that env var and silently queries the
+  # shared main database instead -- a result that looks right and is wrong.
+  # Written inside the checkout, where config/dev.exs can read it back.
+  # Main is excluded: its database is always config/dev.exs's own literal
+  # default, not a per-copy name, so there is nothing of its own to record.
+  defp write_database_name_status(%__MODULE__{main?: true}), do: :ok
+
+  defp write_database_name_status(%__MODULE__{database: database}) when not is_binary(database),
+    do: :ok
+
+  defp write_database_name_status(state) do
+    path = Path.join(state.root, ".code_my_spec/status/database_name")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, state.database)
   end
 
   defp restore_persisted(state) do

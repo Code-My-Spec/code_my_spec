@@ -196,14 +196,16 @@ defmodule CodeMySpec.Transcripts.Player do
     if answer_block?(text) do
       lines = text |> String.split("\n", trim: true) |> Enum.take(@answer_cap)
 
-      for {line, i} <- Enum.with_index(lines) do
-        prefix = if i == 0, do: "  ⎿  ", else: "     "
-        colour = if i == 0, do: ANSI.faint(), else: ANSI.green()
-        puts([colour, prefix, cap(String.trim(line), @result_cap), ANSI.reset()])
-      end
+      for {line, i} <- Enum.with_index(lines), do: render_answer_line(line, i)
     else
       puts([ANSI.faint(), "  ⎿  ", cap(first_line(text), @result_cap), ANSI.reset()])
     end
+  end
+
+  defp render_answer_line(line, i) do
+    prefix = if i == 0, do: "  ⎿  ", else: "     "
+    colour = if i == 0, do: ANSI.faint(), else: ANSI.green()
+    puts([colour, prefix, cap(String.trim(line), @result_cap), ANSI.reset()])
   end
 
   defp answer_block?(text) do

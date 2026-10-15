@@ -41,14 +41,18 @@ defmodule CodeMySpec.Agents.Credential do
 
       {:ok, _kind} ->
         with {:ok, integration_provider} <- Providers.integration_provider(provider) do
-          case build(scope, provider, integration_provider) do
-            {:error, :not_connected} -> platform_credential(provider)
-            result -> result
-          end
+          build_or_platform(scope, provider, integration_provider)
         end
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp build_or_platform(scope, provider, integration_provider) do
+    case build(scope, provider, integration_provider) do
+      {:error, :not_connected} -> platform_credential(provider)
+      result -> result
     end
   end
 

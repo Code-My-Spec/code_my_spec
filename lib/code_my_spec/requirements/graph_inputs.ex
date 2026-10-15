@@ -20,8 +20,7 @@ defmodule CodeMySpec.Requirements.GraphInputs do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Requirements.Invalidations, CodeMySpec.Users.Scope],
-    exports: :all
+    deps: [CodeMySpec.Requirements.Invalidations, CodeMySpec.Users.Scope]
 
   require Logger
 

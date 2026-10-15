@@ -84,8 +84,10 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
   defp waiting?(%{status: :blocked, blocker_resolved_at: nil}), do: true
   defp waiting?(_task), do: false
 
+  # The wake is delivered from a task, so under a loaded gate it can take more
+  # than 2s (it did once, 2026-10-15). A passing assert returns on arrival.
   defp assert_woken(agent_id, needle) do
-    assert_receive {:work_turn_requested, ^agent_id, _ref, message}, 2_000
+    assert_receive {:work_turn_requested, ^agent_id, _ref, message}, 10_000
 
     assert message =~ needle,
            "the holder was offered a turn, but not told which task to resume: #{message}"

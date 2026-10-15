@@ -27,15 +27,13 @@ defmodule CmsHarness.Agents.Tools.Bash do
   def execute(input, context) do
     dir = Map.get(context, :working_directory)
 
-    case routed(input["command"], dir, Map.get(context, :working_copy_id)) do
+    copy_id = Map.get(context, :working_copy_id)
+
+    case routed(input["command"], dir, copy_id) do
       {:routed, command, _what} ->
         case Shell.run(command, dir, timeout(input, PreToolUse.rewrite_timeout_ms())) do
           {:error, "Command timed out" <> _ = message} ->
-            {:error,
-             message <>
-               "\nServer-side analysis outcome is unknown; stopping the HTTP client does not cancel the analyzer. " <>
-               "Do not retry until its execution state is confirmed -- GET /dashboard-status on this harness " <>
-               "reports whether it is still queued, running, or waiting on a machine-wide slot."}
+            {:error, message <> timed_out(copy_id)}
 
           result ->
             result
@@ -44,6 +42,20 @@ defmodule CmsHarness.Agents.Tools.Bash do
       :pass ->
         Shell.run(input["command"], dir, timeout(input, 10_000))
     end
+  end
+
+  # The run outlives the client, and nothing reports it to a caller that gave
+  # up: six reports of a coder waiting on a finished run (run 59858 among them,
+  # 2026-10-15). The wait route is how it learns the outcome.
+  defp timed_out(copy_id) do
+    "\nServer-side analysis outcome is unknown; stopping the HTTP client does not " <>
+      "cancel the analyzer, and no notice of its result will come. Do not start the " <>
+      "suite again. To learn its outcome, run `curl -sS -X POST " <>
+      "'http://localhost:#{port()}/api/harnesses/#{copy_id}/analysis/wait'` with a " <>
+      "timeout of #{PreToolUse.rewrite_timeout_ms()}: it returns when this copy's " <>
+      "analyzers are idle, with each source's state and problem count. " <>
+      "GET /dashboard-status on this harness reports queued and running work " <>
+      "alongside machine-wide slot usage while you wait."
   end
 
   defp timeout(input, default) do

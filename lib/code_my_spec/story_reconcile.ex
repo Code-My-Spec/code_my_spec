@@ -17,8 +17,7 @@ defmodule CodeMySpec.StoryReconcile do
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query
 

@@ -106,19 +106,21 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   def prioritize(scope, copy_id, issue_id) do
     with :ok <- in_project(scope, copy_id),
          issue when not is_nil(issue) <- Issues.get_issue(scope, issue_id) do
-      transaction(scope, issue.id, fn issue ->
-        unless issue.assigned_working_copy_id == copy_id and issue.status == :accepted,
-          do: Repo.rollback("The active issue must be an open issue in this working copy's bag.")
-
-        team = lock_team(scope, copy_id)
-        if team == [], do: Repo.rollback(:no_team)
-        bind(team, issue)
-        issue
-      end)
+      transaction(scope, issue.id, &prioritize_locked(scope, copy_id, &1))
     else
       nil -> {:error, :not_found}
       error -> error
     end
+  end
+
+  defp prioritize_locked(scope, copy_id, issue) do
+    unless issue.assigned_working_copy_id == copy_id and issue.status == :accepted,
+      do: Repo.rollback("The active issue must be an open issue in this working copy's bag.")
+
+    team = lock_team(scope, copy_id)
+    if team == [], do: Repo.rollback(:no_team)
+    bind(team, issue)
+    issue
   end
 
   # Serialize bag mutations within the project, including concurrent moves and

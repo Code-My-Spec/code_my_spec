@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
@@ -513,10 +513,11 @@ defmodule CodeMySpecSpex.GraphGivens do
 
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, _r, _f} =
-      LinkPersonaToStory.execute(
+    {:ok, _} =
+      ToolLibrary.run(
+        "link_persona_to_story",
         %{persona_id: context.persona_id, story_number: story.number},
-        frame
+        %{scope: scope}
       )
 
     rule_statement = "#{module_name} behaves correctly"

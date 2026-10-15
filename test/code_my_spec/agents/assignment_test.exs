@@ -230,7 +230,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
     assert placement(ctx.second) == ctx.scope.active_working_copy_id
     assert Repo.get!(Story, ctx.first.id).promoted_version == "2.0.99"
     assert next(ctx.scope, ctx.coding) =~ "Waiting for main assignment"
-    assert [%{status: :undelivered}] = Agents.Offers.list_for_agent(main.id)
+    assert [%{status: :open}] = Agents.Offers.list_for_agent(main.id)
 
     assert :ok =
              Agents.Assignment.notify_team_free(

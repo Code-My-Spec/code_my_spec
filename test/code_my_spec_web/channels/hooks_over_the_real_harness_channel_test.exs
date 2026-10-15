@@ -88,8 +88,12 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
     write_brief(ctx, session_id, brief, @complete_brief)
     allowed = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})
 
-    refute (allowed["reason"] || "") =~ brief,
-           "the brief on disk is complete, so a stop still citing it never re-read it: " <>
+    # Checked against the stale-content marker, not the bare path: the path
+    # alone would also appear in an honest read-failure message (a83cb226),
+    # which is a different, real problem that refute allowed["decision"] ==
+    # "block" below already catches on its own terms.
+    refute (allowed["reason"] || "") =~ "Missing required sections",
+           "the brief on disk is complete, so a stop still citing missing sections never re-read it: " <>
              inspect(allowed)
 
     refute allowed["decision"] == "block", "expected the stop through: #{inspect(allowed)}"

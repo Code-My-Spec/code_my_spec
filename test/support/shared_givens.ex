@@ -128,8 +128,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
@@ -214,10 +213,11 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, _response, _frame} =
-      LinkPersonaToStory.execute(
+    {:ok, _response} =
+      ToolLibrary.run(
+        "link_persona_to_story",
         %{persona_id: context.persona_id, story_number: story.number},
-        frame
+        %{scope: frame.assigns.current_scope}
       )
 
     rule_statement = "Example context behaves as expected"
@@ -482,14 +482,15 @@ defmodule CodeMySpecSpex.SharedGivens do
     unique = System.unique_integer([:positive])
     persona_slug = "founder-#{unique}"
 
-    {:reply, create_response, _frame} =
-      CreatePersona.execute(
+    {:ok, create_response} =
+      ToolLibrary.run(
+        "create_persona",
         %{
           slug: persona_slug,
           name: "Founder #{unique}",
           headline: "Solo founder shipping a product without hiring"
         },
-        frame
+        %{scope: frame.assigns.current_scope}
       )
 
     persona_id = extract_persona_id(create_response)
@@ -533,10 +534,11 @@ defmodule CodeMySpecSpex.SharedGivens do
         acceptance_criteria: ["Persona is linked to a story on the active project"]
       )
 
-    {:reply, _link_response, _frame} =
-      LinkPersonaToStory.execute(
+    {:ok, _link_response} =
+      ToolLibrary.run(
+        "link_persona_to_story",
         %{persona_id: persona_id, story_number: story.number},
-        frame
+        %{scope: frame.assigns.current_scope}
       )
 
     {:ok,

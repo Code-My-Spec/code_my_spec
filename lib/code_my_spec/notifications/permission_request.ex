@@ -38,6 +38,7 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
     belongs_to :session, CodeMySpec.Sessions.Session, type: :binary_id
 
     belongs_to :user, CodeMySpec.Users.User, type: :id
+    belongs_to :answered_by_user, CodeMySpec.Users.User, type: :id
 
     timestamps(type: :utc_datetime)
   end
@@ -53,6 +54,7 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
       :tool_input,
       :status,
       :decision,
+      :answered_by_user_id,
       :escalation_reason,
       :escalated_as
     ])

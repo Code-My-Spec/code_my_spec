@@ -43,29 +43,34 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   defp enqueue_new(%{project_id: project_id, working_copy_id: copy_id} = attrs) do
     Repo.transaction(fn ->
       case waiting_for_copy(project_id, copy_id) do
-        nil ->
-          case attrs |> Entry.enqueue_changeset() |> Repo.insert() do
-            {:ok, entry} -> entry
-            {:error, error} -> Repo.rollback(error)
-          end
-
-        %Entry{} = waiting ->
-          changeset =
-            Ecto.Changeset.change(waiting,
-              commit: attrs.commit,
-              subject_type: attrs[:subject_type],
-              subject_id: attrs[:subject_id],
-              requested_by_agent_id: attrs[:requested_by_agent_id],
-              restart: attrs.restart
-            )
-
-          case Repo.update(changeset) do
-            {:ok, entry} -> entry
-            {:error, error} -> Repo.rollback(error)
-          end
+        nil -> insert_entry(attrs)
+        %Entry{} = waiting -> retarget_waiting(waiting, attrs)
       end
     end)
     |> broadcast()
+  end
+
+  defp insert_entry(attrs) do
+    case attrs |> Entry.enqueue_changeset() |> Repo.insert() do
+      {:ok, entry} -> entry
+      {:error, error} -> Repo.rollback(error)
+    end
+  end
+
+  defp retarget_waiting(waiting, attrs) do
+    changeset =
+      Ecto.Changeset.change(waiting,
+        commit: attrs.commit,
+        subject_type: attrs[:subject_type],
+        subject_id: attrs[:subject_id],
+        requested_by_agent_id: attrs[:requested_by_agent_id],
+        restart: attrs.restart
+      )
+
+    case Repo.update(changeset) do
+      {:ok, entry} -> entry
+      {:error, error} -> Repo.rollback(error)
+    end
   end
 
   defp open_at(project_id, copy_id, commit) do
@@ -167,12 +172,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
              not CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(locked.project_id),
            do: Repo.rollback(:validation_held)
 
-        if status == :gating do
-          case CodeMySpec.Promotion.HandoffGate.check(locked.project_id, locked.working_copy_id) do
-            :ok -> :ok
-            {:error, _} -> Repo.rollback(:completion_handoff_pending)
-          end
-        end
+        if status == :gating, do: require_handoff_clear(locked)
 
         case locked |> Entry.status_changeset(Map.put(attrs, :status, status)) |> Repo.update() do
           {:ok, updated} -> updated
@@ -181,6 +181,13 @@ defmodule CodeMySpec.PromotionQueue.Repository do
       end)
 
     broadcast(result)
+  end
+
+  defp require_handoff_clear(locked) do
+    case CodeMySpec.Promotion.HandoffGate.check(locked.project_id, locked.working_copy_id) do
+      :ok -> :ok
+      {:error, _} -> Repo.rollback(:completion_handoff_pending)
+    end
   end
 
   @spec topic(Ecto.UUID.t()) :: String.t()

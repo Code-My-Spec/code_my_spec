@@ -210,6 +210,14 @@ defmodule CodeMySpec.Stories do
   """
   def get_story_by_number(scope, number), do: impl().get_story_by_number(scope, number)
 
+  @doc "The same, as `{:ok, story}` or `{:error, :story_not_found}`."
+  def fetch_story_by_number(scope, number) do
+    case get_story_by_number(scope, number) do
+      nil -> {:error, :story_not_found}
+      story -> {:ok, story}
+    end
+  end
+
   @doc "Unpromoted stories assigned to `working_copy_id` and certified ready for QA, newest first."
   def list_certified_on_copy(scope, working_copy_id),
     do: impl().list_certified_on_copy(scope, working_copy_id)

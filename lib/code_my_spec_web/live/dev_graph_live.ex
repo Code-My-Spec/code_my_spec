@@ -219,7 +219,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
         </p>
       </header>
 
-      <form phx-change="select" class="flex items-center gap-2">
+      <form id="dev-graph-project-form" phx-change="select" class="flex items-center gap-2">
         <label for="project" class="text-sm opacity-70">Project</label>
         <select id="project" name="project" class="select select-sm select-bordered">
           <option :for={p <- @projects} value={p.id} selected={@selected && p.id == @selected.id}>

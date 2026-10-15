@@ -67,9 +67,7 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallRules do
         {:ok, files} ->
           files
           |> Enum.filter(&String.ends_with?(&1, ".md"))
-          |> Enum.reject(fn file ->
-            Environments.file_exists?(env, Path.join(target_dir, file))
-          end)
+          |> Enum.reject(&rule_installed?(env, target_dir, &1))
           |> copy_rules(env, source_dir, target_dir)
 
         {:error, reason} ->
@@ -77,6 +75,9 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallRules do
       end
     end
   end
+
+  defp rule_installed?(env, target_dir, file),
+    do: Environments.file_exists?(env, Path.join(target_dir, file))
 
   defp copy_rules(files, env, source_dir, target_dir) do
     Enum.reduce_while(files, :ok, fn file, :ok ->

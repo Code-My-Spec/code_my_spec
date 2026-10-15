@@ -78,14 +78,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
       done = Enum.count(steps, & &1.done)
       total = length(steps)
 
-      checklist =
-        Enum.map_join(steps, "\n\n", fn step ->
-          if step.done do
-            "- [x] **#{step.name}**"
-          else
-            "- [ ] **#{step.name}**\n\n#{step.prompt}"
-          end
-        end)
+      checklist = Enum.map_join(steps, "\n\n", &checklist_item/1)
 
       {:ok,
        """
@@ -100,6 +93,9 @@ defmodule CodeMySpec.AgentTasks.ProjectSetup do
        """}
     end
   end
+
+  defp checklist_item(%{done: true} = step), do: "- [x] **#{step.name}**"
+  defp checklist_item(step), do: "- [ ] **#{step.name}**\n\n#{step.prompt}"
 
   defp build_step_status(scope, ctx) do
     setup_steps()

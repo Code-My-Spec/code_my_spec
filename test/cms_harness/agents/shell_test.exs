@@ -62,6 +62,7 @@ defmodule CmsHarness.Agents.ShellTest do
     assert output =~ "Local command subprocess termination confirmed"
     assert output =~ "Server-side analysis outcome is unknown"
     assert output =~ "/dashboard-status"
+    assert output =~ "/api/harnesses/timeout-regression-copy/analysis/wait"
     assert {:error, :closed} = :gen_tcp.recv(socket, 0, 1_000)
   end
 

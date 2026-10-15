@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion2047Spex do
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
   alias Ecto.Adapters.SQL.Sandbox
 
-  cloud_endpoint()
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

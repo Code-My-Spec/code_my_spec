@@ -43,7 +43,7 @@ defmodule CmsHarness.Device do
   removed worktree is noticed.
   """
 
-  @spec announce(%{optional(String.t()) => boolean()}) ::
+  @spec announce(%{optional(String.t()) => boolean()}, String.t() | nil) ::
           {:ok,
            %{
              device_id: String.t(),
@@ -53,12 +53,12 @@ defmodule CmsHarness.Device do
              ]
            }}
           | {:error, term()}
-  def announce(observations \\ %{}) do
+  def announce(observations \\ %{}, token \\ nil) do
     # Recorded before the round trip: the join payload reads `recorded_id/0`,
     # and a random fallback id must not be re-minted on every announce.
     id = ensure_id()
 
-    with {:ok, token} <- credential(),
+    with {:ok, token} <- credential(token),
          {:ok, %{device_id: confirmed} = reply} <- post(id, token, observations) do
       write(confirmed || id)
       Logger.info("[CmsHarness] this machine is device #{confirmed || id}")
@@ -174,7 +174,12 @@ defmodule CmsHarness.Device do
     end
   end
 
-  defp credential do
+  # A caller already holding a token passes it: onboarding a fresh machine has
+  # exchanged the project's deploy key, but nothing `Token.access_token/0`
+  # consults knows that key until the copy is written.
+  defp credential(token) when is_binary(token) and token != "", do: {:ok, token}
+
+  defp credential(_token) do
     case Token.access_token() do
       {:ok, token} -> {:ok, token}
       _ -> Config.credential()

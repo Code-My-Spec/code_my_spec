@@ -11,6 +11,8 @@ defmodule CodeMySpec.Notifications do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Projects,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Auth,
       CodeMySpec.Conversations,
@@ -179,6 +181,54 @@ defmodule CodeMySpec.Notifications do
     )
   end
 
+  defp recipient_agents(user_id) do
+    from a in Agent,
+      join: p in assoc(a, :project),
+      join: m in CodeMySpec.Accounts.Member,
+      on: m.account_id == p.account_id,
+      where: m.user_id == ^user_id and m.role in [:owner, :admin],
+      select: a.id
+  end
+
+  defp visible_to(query, user_id) do
+    where(
+      query,
+      [r],
+      (is_nil(r.agent_id) and r.user_id == ^user_id) or
+        r.agent_id in subquery(recipient_agents(user_id))
+    )
+  end
+
+  @doc "Whether a user receives this request under the account membership rule."
+  def recipient?(%{agent_id: nil, user_id: recipient_id}, user_id),
+    do: recipient_id == user_id
+
+  def recipient?(%{agent_id: agent_id}, user_id) do
+    recipient_agents(user_id) |> where([a], a.id == ^agent_id) |> Repo.exists?()
+  end
+
+  defp recipient_ids(%{agent_id: nil, user_id: user_id}), do: [user_id]
+
+  defp recipient_ids(%{agent_id: agent_id}) do
+    Repo.all(
+      from a in Agent,
+        join: p in assoc(a, :project),
+        join: m in CodeMySpec.Accounts.Member,
+        on: m.account_id == p.account_id,
+        where: a.id == ^agent_id and m.role in [:owner, :admin],
+        select: m.user_id,
+        distinct: true
+    )
+  end
+
+  defp notify_recipients(request, payload) do
+    Enum.each(recipient_ids(request), &notify_user(&1, payload))
+  end
+
+  defp broadcast_request_changed(request) do
+    Enum.each(recipient_ids(request), &broadcast_notifications_changed/1)
+  end
+
   defp pending_notifications(user_id) do
     ((pending_query(QuestionRequest, user_id) |> Repo.all()) ++
        (pending_query(PermissionRequest, user_id) |> Repo.all()))
@@ -199,10 +249,11 @@ defmodule CodeMySpec.Notifications do
   # See knowledge/agents/coordination, "Notifications".
   defp pending_query(schema, user_id) do
     from(r in schema,
-      where: r.user_id == ^user_id and r.status == "pending",
+      where: r.status == "pending",
       where: is_nil(r.agent_id) or r.agent_id not in subquery(stopped_agent_ids()),
       order_by: [desc: r.inserted_at]
     )
+    |> visible_to(user_id)
     |> held_by_user(schema)
   end
 
@@ -236,18 +287,22 @@ defmodule CodeMySpec.Notifications do
   # their behalf.
   defp resolved_query(schema, user_id) do
     from(r in schema,
-      where: r.user_id == ^user_id and r.status != "pending",
+      where: r.status != "pending",
+      preload: [:answered_by_user],
       order_by: [desc: r.inserted_at],
       limit: @resolved_limit
     )
+    |> visible_to(user_id)
   end
 
   defp resolved_page_query(schema, user_id, limit, before) do
     from(r in schema,
-      where: r.user_id == ^user_id and r.status != "pending",
+      where: r.status != "pending",
+      preload: [:answered_by_user],
       order_by: [desc: r.inserted_at, desc: r.id],
       limit: ^limit
     )
+    |> visible_to(user_id)
     |> before_cursor(before)
   end
 
@@ -305,14 +360,14 @@ defmodule CodeMySpec.Notifications do
 
   defp deliver_permission(request) do
     # Send Web Push notification to the user
-    notify_user(request.user_id, %{
+    notify_recipients(request, %{
       type: "permission_request",
       title: "#{request.tool_name} needs your approval",
       body: format_tool_summary(request.tool_name, request.tool_input),
       url: permission_url(request)
     })
 
-    broadcast_notifications_changed(request.user_id)
+    broadcast_request_changed(request)
   end
 
   @doc "Create one pending tap-out per agent/task intent, blocking linked work atomically."
@@ -342,31 +397,35 @@ defmodule CodeMySpec.Notifications do
 
         if is_nil(owner), do: Repo.rollback(:owner_not_found)
 
-        case pending_tap_out(owner_key, owner_id, task_id) do
-          nil ->
-            with {:ok, task} <- question_task(owner, task_id),
-                 {:ok, request} <-
-                   insert_permission_request(scope.user.id, %{
-                     Atom.to_string(owner_key) => owner_id,
-                     "task_id" => task_id,
-                     "tool_name" => "tap_out",
-                     "tool_input" => %{"task_id" => task_id, "reason" => reason}
-                   }),
-                 :ok <- block_tap_out_task(scope, owner, task, request, reason) do
-              {request, user_decides?(owner)}
-            else
-              {:error, error} -> Repo.rollback(error)
-            end
-
-          existing ->
-            {existing, false}
-        end
+        open_or_reuse_tap_out(scope, owner, owner_key, owner_id, task_id, reason)
       end)
 
     with {:ok, {request, push?}} <- result do
       if push?, do: deliver_permission(request)
 
       {:ok, request}
+    end
+  end
+
+  defp open_or_reuse_tap_out(scope, owner, owner_key, owner_id, task_id, reason) do
+    case pending_tap_out(owner_key, owner_id, task_id) do
+      nil ->
+        with {:ok, task} <- question_task(owner, task_id),
+             {:ok, request} <-
+               insert_permission_request(scope.user.id, %{
+                 Atom.to_string(owner_key) => owner_id,
+                 "task_id" => task_id,
+                 "tool_name" => "tap_out",
+                 "tool_input" => %{"task_id" => task_id, "reason" => reason}
+               }),
+             :ok <- block_tap_out_task(scope, owner, task, request, reason) do
+          {request, user_decides?(owner)}
+        else
+          {:error, error} -> Repo.rollback(error)
+        end
+
+      existing ->
+        {existing, false}
     end
   end
 
@@ -407,26 +466,23 @@ defmodule CodeMySpec.Notifications do
 
   Broadcasts the decision on PubSub so the waiting SSE connection receives it.
   """
-  def resolve_permission_request(id, decision, answer \\ nil)
+  def resolve_permission_request(id, decision, answer \\ nil, opts \\ [])
 
-  def resolve_permission_request(id, decision, answer) when decision in ~w(allow deny) do
+  def resolve_permission_request(id, decision, answer, opts) when decision in ~w(allow deny) do
+    answered_by_user_id = Keyword.get(opts, :answered_by_user_id)
+
     case Repo.get(PermissionRequest, id) do
       nil ->
         {:error, :not_found}
 
       %{tool_name: "tap_out", agent_id: agent_id} when is_binary(agent_id) ->
-        resolve_tap_out(id, decision, answer)
+        resolve_tap_out(id, decision, answer, answered_by_user_id)
 
       %{tool_name: "tap_out", session_id: session_id} when is_binary(session_id) ->
-        resolve_tap_out(id, decision, answer)
+        resolve_tap_out(id, decision, answer, answered_by_user_id)
 
-      %{status: "pending"} = request ->
-        request
-        |> PermissionRequest.changeset(%{
-          status: decision_to_status(decision),
-          decision: decision
-        })
-        |> Repo.update()
+      %{status: "pending"} ->
+        settle_permission(id, decision, answered_by_user_id)
         |> case do
           {:ok, updated} ->
             Phoenix.PubSub.broadcast(
@@ -435,7 +491,7 @@ defmodule CodeMySpec.Notifications do
               {:permission_decided, %{id: id, decision: decision}}
             )
 
-            broadcast_notifications_changed(updated.user_id)
+            broadcast_request_changed(updated)
             deliver_decision_to_agent(updated)
 
             {:ok, updated}
@@ -449,32 +505,37 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  defp resolve_tap_out(id, decision, answer) do
+  defp settle_permission(id, decision, answered_by_user_id) do
+    Repo.transaction(fn ->
+      case Repo.one(from p in PermissionRequest, where: p.id == ^id, lock: "FOR UPDATE") do
+        nil ->
+          Repo.rollback(:not_found)
+
+        %{status: "pending"} = request ->
+          request
+          |> PermissionRequest.changeset(%{
+            status: decision_to_status(decision),
+            decision: decision,
+            answered_by_user_id: answered_by_user_id
+          })
+          |> Repo.update()
+          |> case do
+            {:ok, updated} -> updated
+            {:error, reason} -> Repo.rollback(reason)
+          end
+
+        %{status: status} ->
+          Repo.rollback({:already_resolved, status})
+      end
+    end)
+  end
+
+  defp resolve_tap_out(id, decision, answer, answered_by_user_id) do
     result =
       Repo.transaction(fn ->
         request = Repo.one(from p in PermissionRequest, where: p.id == ^id, lock: "FOR UPDATE")
 
-        case request do
-          %{status: "pending"} ->
-            with {:ok, updated} <-
-                   request
-                   |> PermissionRequest.changeset(%{
-                     status: decision_to_status(decision),
-                     decision: decision
-                   })
-                   |> Repo.update(),
-                 :ok <- apply_tap_out_decision(updated) do
-              updated
-            else
-              {:error, reason} -> Repo.rollback(reason)
-            end
-
-          nil ->
-            Repo.rollback(:not_found)
-
-          %{status: status} ->
-            Repo.rollback({:already_resolved, status})
-        end
+        decide_tap_out(request, decision, answered_by_user_id)
       end)
 
     with {:ok, updated} <- result do
@@ -484,13 +545,38 @@ defmodule CodeMySpec.Notifications do
         {:permission_decided, %{id: id, decision: decision}}
       )
 
-      broadcast_notifications_changed(updated.user_id)
+      broadcast_request_changed(updated)
       :ok = clear_decline_on_deny(updated)
 
       if settle_tap_out_blocker(updated, answer) == 0,
         do: wake_if_still_in_the_loop(updated, answer)
 
       {:ok, updated}
+    end
+  end
+
+  defp decide_tap_out(request, decision, answered_by_user_id) do
+    case request do
+      %{status: "pending"} ->
+        with {:ok, updated} <-
+               request
+               |> PermissionRequest.changeset(%{
+                 status: decision_to_status(decision),
+                 decision: decision,
+                 answered_by_user_id: answered_by_user_id
+               })
+               |> Repo.update(),
+             :ok <- apply_tap_out_decision(updated) do
+          updated
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      nil ->
+        Repo.rollback(:not_found)
+
+      %{status: status} ->
+        Repo.rollback({:already_resolved, status})
     end
   end
 
@@ -720,7 +806,7 @@ defmodule CodeMySpec.Notifications do
               {:permission_decided, %{id: id, decision: :expired}}
             )
 
-            broadcast_notifications_changed(updated.user_id)
+            broadcast_request_changed(updated)
             deliver_decision_to_agent(updated)
             release_dismissed_tap_out(updated)
 
@@ -864,21 +950,25 @@ defmodule CodeMySpec.Notifications do
       session ->
         result =
           Repo.transaction(fn ->
-            with {:ok, task} <- question_task(session, task_ref),
-                 attrs =
-                   Map.merge(attrs, %{
-                     "task_id" => task && task.id,
-                     "story_id" => task && task.story_id
-                   }),
-                 {:ok, outcome} <- save_or_reuse_question_request(user_id, attrs),
-                 :ok <- block_question_task(scope, session, task, request_from(outcome)) do
-              outcome
-            else
-              {:error, reason} -> Repo.rollback(reason)
-            end
+            save_blocking_session_question(scope, user_id, attrs, task_ref, session)
           end)
 
         deliver_if_new(result)
+    end
+  end
+
+  defp save_blocking_session_question(scope, user_id, attrs, task_ref, session) do
+    with {:ok, task} <- question_task(session, task_ref),
+         attrs =
+           Map.merge(attrs, %{
+             "task_id" => task && task.id,
+             "story_id" => task && task.story_id
+           }),
+         {:ok, outcome} <- save_or_reuse_question_request(user_id, attrs),
+         :ok <- block_question_task(scope, session, task, request_from(outcome)) do
+      outcome
+    else
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 
@@ -994,14 +1084,14 @@ defmodule CodeMySpec.Notifications do
   end
 
   defp deliver_question(request) do
-    notify_user(request.user_id, %{
+    notify_recipients(request, %{
       type: "question_request",
       title: request.title || "A question for you",
       body: first_question_text(request.questions),
       url: question_url(request)
     })
 
-    broadcast_notifications_changed(request.user_id)
+    broadcast_request_changed(request)
   end
 
   @doc """
@@ -1022,7 +1112,7 @@ defmodule CodeMySpec.Notifications do
     answered_by = Keyword.get(opts, :answered_by, "user")
 
     with :ok <- refuse_empty(answers) do
-      settle_and_broadcast(id, answers, answered_by)
+      settle_and_broadcast(id, answers, answered_by, Keyword.get(opts, :answered_by_user_id))
     end
   end
 
@@ -1057,7 +1147,7 @@ defmodule CodeMySpec.Notifications do
       end)
 
     with {:ok, updated} <- result do
-      broadcast_notifications_changed(updated.user_id)
+      broadcast_request_changed(updated)
       {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :withdrawn)
       {:ok, updated, released}
     end
@@ -1089,12 +1179,12 @@ defmodule CodeMySpec.Notifications do
   defp answered?(nil), do: false
   defp answered?(_answer), do: true
 
-  defp settle_and_broadcast(id, answers, answered_by) do
+  defp settle_and_broadcast(id, answers, answered_by, answered_by_user_id) do
     result =
       Repo.transaction(fn ->
         request = Repo.one(from q in QuestionRequest, where: q.id == ^id, lock: "FOR UPDATE")
 
-        case settle_answer(request, answers, answered_by) do
+        case settle_answer(request, answers, answered_by, answered_by_user_id) do
           {:ok, settled} -> settled
           {:error, reason} -> Repo.rollback(reason)
         end
@@ -1107,7 +1197,7 @@ defmodule CodeMySpec.Notifications do
         {:question_answered, %{id: updated.id, answers: answers}}
       )
 
-      broadcast_notifications_changed(updated.user_id)
+      broadcast_request_changed(updated)
 
       # Released and woken through the one path every blocker takes. An
       # override of an answer whose task already moved on releases nothing.
@@ -1234,17 +1324,17 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  defp settle_answer(request, answers, answered_by) do
+  defp settle_answer(request, answers, answered_by, answered_by_user_id) do
     case request do
       nil ->
         {:error, :not_found}
 
       %{status: "pending"} = request ->
-        finish(request, answers, answered_by, false)
+        finish(request, answers, answered_by, false, answered_by_user_id)
 
       %{status: "answered", answered_by: agent} = request
       when agent in ~w(main_agent product_agent) and answered_by == "user" ->
-        finish(request, answers, answered_by, true)
+        finish(request, answers, answered_by, true, answered_by_user_id)
 
       %{status: status} ->
         {:error, {:already_resolved, status}}
@@ -1253,14 +1343,15 @@ defmodule CodeMySpec.Notifications do
 
   # Saving an answer is not delivering it: `check_answer` reads the saved
   # question. Repeats are refused under the row lock. Broadcast and release
-  # happen after commit, in `settle_and_broadcast/3`.
+  # happen after commit, in `settle_and_broadcast/4`.
 
-  defp finish(request, answers, answered_by, overruled) do
+  defp finish(request, answers, answered_by, overruled, answered_by_user_id) do
     request
     |> QuestionRequest.changeset(%{
       status: "answered",
       answers: answers,
       answered_by: answered_by,
+      answered_by_user_id: answered_by_user_id,
       overruled: overruled,
       answer_history: history_with(request, overruled)
     })
@@ -1421,7 +1512,8 @@ defmodule CodeMySpec.Notifications do
   @spec list_pending_question_requests_for_user(integer()) :: [QuestionRequest.t()]
   def list_pending_question_requests_for_user(user_id) when is_integer(user_id) do
     QuestionRequest
-    |> where([q], q.user_id == ^user_id and q.status == "pending")
+    |> visible_to(user_id)
+    |> where([q], q.status == "pending")
     |> order_by([q], asc: q.inserted_at)
     |> Repo.all()
   end

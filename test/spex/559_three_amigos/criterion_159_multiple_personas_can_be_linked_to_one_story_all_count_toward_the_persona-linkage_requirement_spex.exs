@@ -22,8 +22,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
@@ -36,22 +35,24 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
       given_ "a second persona is created and linked to the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, create_response, _frame} =
-          CreatePersona.execute(
+        {:ok, create_response} =
+          ToolLibrary.run(
+            "create_persona",
             %{
               slug: "driver",
               name: "Driver",
               headline: "Fleet driver attempting card transactions"
             },
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         driver_id = extract_persona_id(create_response)
 
-        {:reply, _link_response, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, _link_response} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: driver_id, story_number: context.story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok, context}

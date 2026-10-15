@@ -12,8 +12,7 @@ defmodule CodeMySpec.AppHealth do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Analysis.HarnessRegistry, CodeMySpec.Repo],
-    exports: :all
+    deps: [CodeMySpec.Analysis.HarnessRegistry, CodeMySpec.Repo]
 
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Repo

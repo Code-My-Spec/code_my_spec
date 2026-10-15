@@ -30,8 +30,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.StoryHelpers
 
@@ -48,14 +47,15 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
         # once :persona_exists takes attrs.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, create_response, _frame} =
-          CreatePersona.execute(
+        {:ok, create_response} =
+          ToolLibrary.run(
+            "create_persona",
             %{
               slug: "agency_pm",
               name: "Agency PM",
               headline: "PM at a small agency juggling multiple client products"
             },
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         second_persona_id = extract_persona_id(create_response)
@@ -67,10 +67,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
             acceptance_criteria: ["Second persona links to the project via its own story"]
           )
 
-        {:reply, _link_response, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, _link_response} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: second_persona_id, story_number: second_story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok, Map.put(context, :second_slug, "agency_pm")}

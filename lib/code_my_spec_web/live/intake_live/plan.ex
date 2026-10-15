@@ -150,6 +150,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         light mode (test/.../plan_card_contrast_test.exs guards this).
       --%>
       <.form
+        id="plan-names-form"
         for={@form}
         phx-submit="confirm_names"
         phx-change="validate_names"
