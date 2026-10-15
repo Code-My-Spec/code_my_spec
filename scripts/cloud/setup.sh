@@ -152,15 +152,34 @@ setsid bash -c '
   # Once the harness has joined it installs the project age keys, and then the
   # test env can be decrypted for the analyzers. Waits in the background.
   (
+    umask 077
+    keyring="$HOME/.config/sops/age/keys.txt"
     for _ in $(seq 1 120); do
-      if [ -s "$HOME/.config/sops/age/keys.txt" ]; then
-        for e in dev test; do
-          (umask 077 && sops -d --input-type dotenv --output-type dotenv \
-            "envs/$e.enc.env" > "envs/$e.env") && echo "envs/$e.env decrypted"
-        done
-        break
-      fi
+      [ -s "$keyring" ] && break
       sleep 10
+    done
+    if [ ! -s "$keyring" ]; then
+      echo "ERROR: timed out waiting for the project age keyring at $keyring; the harness must join and install the project keys before dev/test decryption can proceed" >&2
+      exit 1
+    fi
+
+    for e in dev test; do
+      temporary=$(mktemp "envs/.$e.env.XXXXXX") || {
+        echo "ERROR: cannot create temporary output for envs/$e.env; decryption stopped" >&2
+        exit 1
+      }
+      if ! sops -d --input-type dotenv --output-type dotenv \
+          "envs/$e.enc.env" > "$temporary" 2>/dev/null; then
+        rm -f -- "$temporary"
+        echo "ERROR: cannot decrypt envs/$e.enc.env; the required project age key may be missing from $keyring or unusable. The harness installs project keys when it serves the project; decryption stopped" >&2
+        exit 1
+      fi
+      if ! mv -f -- "$temporary" "envs/$e.env"; then
+        rm -f -- "$temporary"
+        echo "ERROR: cannot install envs/$e.env; decryption stopped" >&2
+        exit 1
+      fi
+      echo "envs/$e.env decrypted"
     done
   ) &
 ' _ "$root" "$port" "$server" "$log" </dev/null >>"$log" 2>&1 &
