@@ -1317,6 +1317,50 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  Tell `agent_id` that a promotion it queued landed. Authoritative, and must
+  reach the agent eventually even if it is briefly unreachable right now.
+
+  1d65a84e: every other delivery path here (`dispatch_message/4,5,6`, and
+  `notify/6`'s own `admit_if_allowed/4`) holds, and silently drops, a
+  message its agent cannot currently be woken for -- the one path a landed
+  outcome was lost on, leaving the agent's `promote_issue`/`story_promoted`
+  task stuck open with nothing to act on. This skips that gate and admits
+  the message to the durable mailbox unconditionally first; an immediate
+  delivery attempt is still made, best-effort, but a failed one leaves the
+  entry queued for the agent's next pump (startup, reconnect, or
+  `Mailbox.reconcile_pending/0`) rather than losing it.
+  """
+  @spec notify_landed(Scope.t(), Ecto.UUID.t() | nil, String.t()) :: :ok
+  def notify_landed(_scope, nil, _text), do: :ok
+
+  def notify_landed(%Scope{} = scope, agent_id, text) when is_binary(text) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      ref = Ecto.UUID.generate()
+
+      {:ok, {message, offered}} =
+        Repo.transaction(fn ->
+          {:ok, message} = record_sent(conversation, text, ref, :queued, "promotion-notice")
+          offered = record_offer({:ok, message}, agent, nil)
+          Mailbox.admit(agent, message, :own_reply)
+          {message, offered}
+        end)
+
+      Conversations.broadcast_new_message(conversation, message)
+      Mailbox.publish(message)
+
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        deliver_recorded(agent, :ok, @message_timeout_ms)
+        |> record_dispatch_result(message, offered)
+      end)
+
+      :ok
+    else
+      _ -> :ok
+    end
+  end
+
   defp notify(scope, main, event, text, offer, instruction_offer) do
     ref = Ecto.UUID.generate()
 

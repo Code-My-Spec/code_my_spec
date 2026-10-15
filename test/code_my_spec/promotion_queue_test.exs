@@ -17,11 +17,13 @@ defmodule CodeMySpec.PromotionQueueTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Mailbox
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
@@ -511,6 +513,93 @@ defmodule CodeMySpec.PromotionQueueTest do
     agent_id = agent.id
     assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 10_000
     assert told =~ "was taken out of the queue"
+  end
+
+  # 1d65a84e: the landed notice used the same fire-and-forget, wake-gated
+  # dispatch as every other agent message -- Wake is asked, and can hold,
+  # BEFORE anything is ever recorded (Agents.dispatch_message/4,5,6's own
+  # `with {:ok, agent} <- ..., :ok <- wake(...), ... <- record_admission(...)`
+  # chain), so an agent unreachable at the instant do_land/1 ran lost the one
+  # message its open promote_issue/story_promoted task depended on, with
+  # nothing left to retry it.
+  #
+  # Reproduced deterministically here, not via the original report's
+  # two-sender timing race (confirmed real -- 5 of 8 repeated runs against
+  # the pre-fix code lost the landed dispatch to a second, independently-timed
+  # sender -- but inherently nondeterministic, and not something to leave as
+  # a standing flake in a suite every team's promotions run through): an
+  # agent genuinely unreachable, not a timing window, at the moment its
+  # promotion lands.
+  test "a landed promotion reaches its agent even if it was unreachable at that instant", ctx do
+    RecordingAgentTransport.listen(ctx)
+
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: a.copy.root,
+        working_copy_id: a.copy.id
+      })
+
+    # Deliberately no AgentPresence.present(agent) -- unlike an_agent/2's own
+    # agents, this one is not reachable right now, the exact condition the
+    # old path silently dropped the landed notice on.
+
+    clean_runs_at(ctx, a.commit)
+
+    {:ok, entry} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
+        restart: false,
+        requested_by_agent_id: agent.id
+      })
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+
+    # `settle/1` returns on the entry's own :landed status, broadcast BEFORE
+    # `tell_landed/3` runs -- its own admission (a separate DB write) is not
+    # guaranteed to have landed yet. Poll rather than assert immediately.
+    mailbox_entry = eventually_mailbox_entry(agent.id)
+
+    assert mailbox_entry.state == :queued,
+           "the landed notice was not durably queued for an unreachable agent"
+
+    message = Repo.get!(Message, mailbox_entry.message_id)
+    assert Message.text(message) =~ "landed on main"
+
+    assert message.delivery == :pending,
+           "the landed notice's own record disagrees with having been durably queued"
+
+    # The agent reconnects; its next pump delivers what was waiting for it.
+    AgentPresence.present(agent)
+    assert {:ok, :started} = Mailbox.pump(ctx.scope, agent.id)
+
+    agent_id = agent.id
+    assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 5_000
+    assert told =~ "landed on main"
+  end
+
+  defp eventually_mailbox_entry(agent_id, attempts \\ 50)
+
+  defp eventually_mailbox_entry(agent_id, 0) do
+    Repo.get_by(Mailbox.Entry, agent_id: agent_id) ||
+      raise "no mailbox entry ever appeared for agent #{agent_id}"
+  end
+
+  defp eventually_mailbox_entry(agent_id, attempts) do
+    Repo.get_by(Mailbox.Entry, agent_id: agent_id) || retry_mailbox_entry(agent_id, attempts)
+  end
+
+  defp retry_mailbox_entry(agent_id, attempts) do
+    Process.sleep(10)
+    eventually_mailbox_entry(agent_id, attempts - 1)
   end
 
   defp an_agent(ctx, copy) do
