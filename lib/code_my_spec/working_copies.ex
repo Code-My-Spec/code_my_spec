@@ -54,9 +54,14 @@ defmodule CodeMySpec.WorkingCopies do
   never connected presents `nil` and is minted one, and a checkout that has
   presents its id and is recognised.
 
-  An id that names no harness (a row deleted while the checkout kept its file)
-  is first matched by device and root, then minted, rather than failing: the
-  cost of a new id is a resync, which a join does anyway.
+  An id that names no harness (a row deleted while the checkout kept its
+  file), same as no id at all, is minted rather than failing: the cost of a
+  new id is a resync, which a join does anyway. Minted every time, never
+  matched back by device and root — story 1000's criterion 5 settled that a
+  join with no id is always a new agent, even from a path and device the
+  server has seen, because the alternative merges two different agents that
+  share one. `by_root/2` is the narrower, explicit lookup for a caller that
+  names its own path on purpose.
 
   Refuses a root that is a checkout's own `.code_my_spec/` and, when minting,
   a join that names no device (`{:error, :no_device}`).
@@ -68,7 +73,7 @@ defmodule CodeMySpec.WorkingCopies do
 
     with :ok <- refuse_metadata_dir(opts[:root]) do
       case existing(project_id, working_copy_id) do
-        nil -> recognise_or_create(project_id, label, opts)
+        nil -> create(project_id, label, opts[:device], opts[:working_copy_id])
         harness -> touch(harness, label)
       end
     end
@@ -96,18 +101,6 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   defp refuse_metadata_dir(_root), do: :ok
-
-  # Before minting, recognise a known checkout by `device_id` and `root`
-  # together — one directory on one machine is one checkout. Never root alone:
-  # paths collide across machines. Without a device nothing is recognised.
-  # Otherwise every join whose `.cms_harness.json` could not be read mints a
-  # duplicate row.
-  defp recognise_or_create(project_id, label, opts) do
-    case recognised(project_id, opts[:device], opts[:root]) do
-      nil -> create(project_id, label, opts[:device], opts[:working_copy_id])
-      harness -> touch(harness, label)
-    end
-  end
 
   @doc """
   The checkout at this root on the caller's own machine, or `nil`.

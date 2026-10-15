@@ -153,9 +153,5 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       name: :working_copies_one_main_per_project_index,
       message: "this project already has a main working copy"
     )
-    |> unique_constraint([:project_id, :device_id, :root],
-      name: :working_copies_project_device_root_index,
-      message: "this machine already has a checkout at that path on this project"
-    )
   end
 end
