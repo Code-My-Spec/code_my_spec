@@ -44,6 +44,17 @@ defmodule CmsHarness.Project.AnalysisServer do
   # own internals, guarantees that process dies regardless.
   @cleanup_confirm_deadline :timer.seconds(20)
 
+  # 55379e16 follow-up, per main's direction: `Analysis.tree_state/1` (two
+  # git calls -- `rev-parse HEAD`, `status --porcelain`) runs once before
+  # the analyzer and once after. The kill timer now arms only once the
+  # pre-run call returns (see `:analysis_started`), so a slow git call can
+  # no longer eat into the analyzer's own `harness_analysis_timeout` budget
+  # -- but an unbounded git call could still hang a run indefinitely on its
+  # own, defeating the point of a kill timer entirely. Bounded separately
+  # so a failure here is reported as what it is, not misread as the
+  # analyzer itself having timed out.
+  @git_snapshot_timeout :timer.seconds(10)
+
   # --- Client ---
 
   def start_link(opts) do
@@ -220,9 +231,19 @@ defmodule CmsHarness.Project.AnalysisServer do
     {:noreply, state |> clear_running() |> maybe_start_next()}
   end
 
-  # The commit the analyzer is starting on, for the server to record against
-  # this run and every run tied to it. Guarded on `run_id` like
-  # `:slot_acquired`, so a start from a run already moved past is not reported.
+  # The commit the analyzer is actually starting on, for the server to
+  # record against this run and every run tied to it. Guarded on `run_id`
+  # like `:slot_acquired`, so a start from a run already moved past is not
+  # reported.
+  #
+  # 55379e16 follow-up, per main's direction: this is also where the kill
+  # timer now arms, not `:slot_acquired`. `Analysis.tree_state/1` (two git
+  # calls, run before this message is sent -- see `run_with_slot/3`) sat
+  # between the old arming point and the analyzer actually running; under
+  # load those two git calls could by themselves eat most or all of a short
+  # `harness_analysis_timeout`, so a kill fired before the analyzer had a
+  # real chance to start. Arming here means the analyzer always gets its
+  # full window, counted from when it actually begins.
   def handle_info(
         {:analysis_started, run_id, tree},
         %{running: %{run_id: run_id, source: source} = running} = state
@@ -236,7 +257,8 @@ defmodule CmsHarness.Project.AnalysisServer do
       })
     end
 
-    {:noreply, state}
+    timer = Process.send_after(self(), {:timeout, run_id}, timeout())
+    {:noreply, %{state | timer: timer}}
   end
 
   def handle_info(
@@ -382,10 +404,10 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
-  # Arms the kill timer when the analyzer actually starts, not at dispatch, so
-  # waiting for a machine-wide slot spends none of the run's budget. Guarded on
-  # `run_id` so a message from a run already moved past cannot arm a timer for
-  # the next. Logs how a long wait ended; short waits are not worth a line.
+  # Logs how a long wait for a machine-wide slot ended; short waits are not
+  # worth a line. Guarded on `run_id` so a message from a run already moved
+  # past does not log against the wrong entry. The kill timer no longer arms
+  # here -- see `:analysis_started` below.
   def handle_info(
         {:slot_acquired, run_id, waited_ms},
         %{running: %{run_id: run_id, source: source}} = state
@@ -393,12 +415,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     if waited_ms > 500 do
       Logger.info(
         "[CmsHarness] #{source} run #{run_id} for #{state.project.root} got a machine-wide " <>
-          "slot after waiting #{waited_ms}ms — starting now, kill timer armed from here"
+          "slot after waiting #{waited_ms}ms"
       )
     end
 
-    timer = Process.send_after(self(), {:timeout, run_id}, timeout())
-    {:noreply, %{state | timer: timer}}
+    {:noreply, state}
   end
 
   def handle_info({:slot_acquired, _run_id, _waited_ms}, state), do: {:noreply, state}
@@ -555,6 +576,20 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp maybe_start_next(state), do: state
 
+  # Bounds `Analysis.tree_state/1`'s two git calls to @git_snapshot_timeout,
+  # independent of the analyzer's own timer -- a hung git call must not be
+  # able to hold a slot indefinitely just because it runs before the part
+  # the kill timer watches.
+  defp bounded_tree_state(env) do
+    task = Task.async(fn -> Analysis.tree_state(env) end)
+
+    case Task.yield(task, @git_snapshot_timeout) || Task.shutdown(task, :brutal_kill) do
+      {:ok, tree} -> {:ok, tree}
+      nil -> {:error, "exceeded #{@git_snapshot_timeout}ms"}
+      {:exit, reason} -> {:error, "crashed: #{inspect(reason)}"}
+    end
+  end
+
   # Inside the task, so the slot is held by the process doing the work and is
   # released when it exits, including when the timer kills it.
   # `AnalysisSlots.acquire/1` waits for a slot; `:slot_acquired` is sent only on
@@ -568,11 +603,29 @@ defmodule CmsHarness.Project.AnalysisServer do
         send(parent, {:slot_acquired, entry.run_id, waited_ms})
 
         # The checkout's git state either side of the run, so the server can
-        # record which commit the answer is for.
+        # record which commit the answer is for. Bounded (@git_snapshot_timeout):
+        # the pre-run call must return before the analyzer is given its own
+        # timer and run at all -- a run that cannot even be attributed to a
+        # commit should fail as that, not silently borrow from the
+        # analyzer's own budget.
         env = Environment.new(:local, project.root)
-        send(parent, {:analysis_started, entry.run_id, Analysis.tree_state(env)})
-        result = Analysis.run(project, entry.source, entry.args, entry.run_id)
-        {:ran, result, Analysis.tree_state(env)}
+
+        case bounded_tree_state(env) do
+          {:ok, start_tree} ->
+            send(parent, {:analysis_started, entry.run_id, start_tree})
+            result = Analysis.run(project, entry.source, entry.args, entry.run_id)
+
+            completed_tree =
+              case bounded_tree_state(env) do
+                {:ok, tree} -> tree
+                {:error, _reason} -> nil
+              end
+
+            {:ran, result, completed_tree}
+
+          {:error, reason} ->
+            {:ran, {:error, "git snapshot before the analyzer ran: #{reason}"}, nil}
+        end
 
       :busy ->
         {:ran,

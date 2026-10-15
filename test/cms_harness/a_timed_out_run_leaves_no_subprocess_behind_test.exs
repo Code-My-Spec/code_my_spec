@@ -137,6 +137,59 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     refute_alive(child_pid)
   end
 
+  # 55379e16 follow-up, per main's direction: `Analysis.tree_state/1`'s two
+  # git calls run between `:slot_acquired` and `:analysis_started` in
+  # production (`run_with_slot/3`). A slow one must not eat into the
+  # analyzer's own timeout budget -- the kill timer now arms only once
+  # `:analysis_started` fires, not at `:slot_acquired`. Simulated here with a
+  # real, fixed delay between sending the two messages (what a slow git call
+  # would otherwise insert) rather than a short configured timeout raced
+  # against wall-clock variance: every assertion reads `:sys.get_state/1`
+  # directly, so there is nothing to race.
+  test "a slow pre-run git snapshot does not consume any of the analyzer's own timeout window" do
+    root = "/tmp/a-slow-snapshot-test-#{System.unique_integer([:positive])}"
+    {task, child_pid} = spawn_hanging_task()
+
+    {:ok, _task_sup} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
+    {:ok, server} = AnalysisServer.start_link(project: %{root: root})
+
+    running = %{run_id: 1, source: "exunit", task: task, args: [], tied_run_ids: []}
+    :sys.replace_state(server, fn state -> %{state | running: running} end)
+
+    send(server, {:slot_acquired, 1, 5})
+
+    # The window a slow pre-run git call would occupy. No timer exists yet,
+    # so nothing in the server can fire during it regardless of how long it
+    # runs -- checked directly, not inferred from the absence of a crash.
+    Process.sleep(200)
+    assert :sys.get_state(server).timer == nil
+
+    send(server, {:analysis_started, 1, %{commit: nil, dirty: false}})
+    assert is_reference(:sys.get_state(server).timer)
+
+    # The analyzer's own timeout, now fired directly rather than waited out,
+    # proves the hanging analyzer is still killed once it actually starts.
+    send(server, {:timeout, 1})
+
+    eventually(fn ->
+      state = :sys.get_state(server)
+      state.running == nil and state.pending_cleanups != []
+    end)
+
+    refute_alive(child_pid)
+  end
+
+  defp eventually(check, attempts \\ 300), do: eventually(check.(), check, attempts)
+
+  defp eventually(true, _check, _attempts), do: :ok
+
+  defp eventually(false, check, attempts) when attempts > 0 do
+    Process.sleep(20)
+    eventually(check, attempts - 1)
+  end
+
+  defp eventually(false, _check, _attempts), do: flunk("condition never became true")
+
   test "if the cleanup confirmation never reports back, the analyzer task is killed directly and its bookkeeping clears" do
     root = "/tmp/a-stuck-cleanup-test-#{System.unique_integer([:positive])}"
     {task, _child_pid} = spawn_hanging_task()
