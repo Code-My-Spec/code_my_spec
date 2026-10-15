@@ -17,10 +17,8 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   Returns `{count, latest_change}` for this working copy — a count and the most
   recent `updated_at` across its problems, in a single indexed query.
 
-  Exists for `Hooks.AnalysisAlert`, which runs before every Read, Grep and Bash
-  in the system. Loading problems to decide whether to stay silent would tax
-  every tool call in every session for a message that fires twice a turn, and a
-  check that makes everything feel slow is one somebody switches off.
+  Exists for `Analysis.Alert`, which runs before every tool call: loading
+  problems to decide whether to stay silent would tax every call.
   """
   @spec watermark(Scope.t()) :: {non_neg_integer(), DateTime.t() | nil}
   def watermark(%Scope{active_project_id: project_id} = scope) do
@@ -85,8 +83,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   Severity narrows the scope before the counts are taken, so
   `counts_by_source` and `unfiltered_count` describe the same population the
-  page does. A chip reading 26 above a page that can only ever show errors
-  would be counting a different question than the one asked.
+  page does.
   """
   @spec list_problems_paginated(Scope.t(), keyword()) :: %{
           problems: [Problem.t()],
@@ -232,8 +229,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   @doc """
   Atomically reconcile one source's problems: clear the source over the given
   file scope (`:all` or a path list), then insert the new set — all in a single
-  transaction so an aborted caller can never strand a half-reconciled state
-  (the stop-hook stranded-problems bug).
+  transaction so an aborted caller can never strand a half-reconciled state.
 
   ## Examples
 
@@ -264,29 +260,9 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     end)
   end
 
-  # Two reconciles for the same working copy and source both clear then insert
-  # their own full set, and nothing before this made that pair mutually
-  # exclusive — reported 2026-09-14 as every problem for a source present
-  # exactly twice, 42 rows where 21 existed. Traced to its actual source
-  # rather than locked at the write: a remote harness ties a request for a
-  # busy source onto the one already running instead of starting a second
-  # execution (story 839, `CmsHarness.Project.AnalysisServer.tie_to_queued/4`)
-  # — one real execution, but `deliver/3` reported it once per tied run_id,
-  # and every one of those independently reconciled the identical Problems.
-  # `Analysis.reconcile_or_finish_tied/4` now reconciles only the primary;
-  # every tied run_id gets `Reconciler.finish_tied/3` instead, which closes
-  # its own row without touching Problems at all. With that in place, this
-  # function is never called twice for the same source and working copy at
-  # once — nothing here needs to take turns with anything else, so nothing
-  # here locks.
-  #
-  # A lock was tried twice and cost more than it fixed: a `pg_advisory_xact_lock`
-  # held a database connection for however long a waiter blocked, and on a
-  # box running six-plus harnesses that exhausted Ecto's whole pool; an
-  # in-process `:global.trans/2` replacement shipped with the wrong argument
-  # shape and crashed every call. Both were solving the symptom (two writes
-  # racing) rather than the cause (two writes existing at all for one
-  # execution) — removed once the cause was.
+  # No lock: only a tie's primary run reconciles, so this is never called twice
+  # at once for one source and working copy.
+  # See knowledge/analysis, "Problems".
 
   @doc """
   Atomically replaces problems for specific file paths within a project.
@@ -561,31 +537,10 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     count
   end
 
-  # A reconcile is a wipe-and-replace for one source. Unscoped, one checkout's
-  # analyzer run cleared the other's findings — the same shape as the file
-  # corruption, one layer over. A scope with no harness clears across the
-  # project, which is what a caller holding the project rather than a copy of it
-  # means.
-
-  # A scope that names no working copy means *the project's default one* — the
-  # same thing it already meant on the way in, where `insert_all_problems/2`
-  # sends such writes to `WorkingCopies.ensure_default/1`.
-  #
-  # It used to mean "every working copy" here, and that asymmetry was
-  # destructive rather than merely wrong. `clear_problems_for_source/3` uses
-  # this predicate, so one checkout reconciling credo under a scope with no
-  # harness deleted every *other* checkout's credo problems and inserted its own
-  # under the default. Demonstrated: two harnesses each holding one problem, a
-  # third reconcile of a single problem, and both of the others were gone.
-  #
-  # The aftermath is what gets reported, because it does not look like a
-  # deletion. A harness-scoped read returns nothing while an unscoped one still
-  # shows a live project-wide count, so the stop hook's blocking set and its
-  # advisory count describe different populations in one response — and the
-  # findings it blocks on name files whose rows no longer exist.
-  #
-  # `default_id/1` is a pure function of the project id, so this costs a read
-  # path nothing and creates no row.
+  # A scope that names no working copy means the project's default one, the
+  # same as `insert_all_problems/2` writes to; never "every working copy".
+  # `default_id/1` is pure, so this creates no row.
+  # See knowledge/analysis, "Problems".
   defp scope_to_harness(query, %Scope{active_working_copy_id: nil, active_project_id: project_id})
        when is_binary(project_id),
        do: where(query, [p], p.working_copy_id == ^WorkingCopies.default_id(project_id))
@@ -598,9 +553,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   defp insert_all_problems([], _scope), do: {:ok, []}
 
   defp insert_all_problems(problems, %Scope{active_project_id: project_id} = scope) do
-    # Resolved once rather than per problem: a reconcile inserts hundreds, and
-    # `ensure_default/1` is a write. A writer that named its working copy gets
-    # that one; one that did not shares the project's nil object, same as files.
+    # Resolved once, not per problem: `ensure_default/1` is a write.
     working_copy_id = scope.active_working_copy_id || WorkingCopies.ensure_default(scope)
 
     problems

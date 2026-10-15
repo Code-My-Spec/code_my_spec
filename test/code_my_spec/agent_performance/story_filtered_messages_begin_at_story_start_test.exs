@@ -1,4 +1,4 @@
-defmodule CodeMySpec.AgentPerformance.StoryFilteredNudgesBeginAtStoryStartTest do
+defmodule CodeMySpec.AgentPerformance.StoryFilteredMessagesBeginAtStoryStartTest do
   use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.AgentPerformance.Chart
@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentPerformance.StoryFilteredNudgesBeginAtStoryStartTest d
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  test "story nudges begin at the first task while unfiltered counts retain earlier messages",
+  test "story messages begin at the first task while unfiltered counts retain earlier messages",
        context do
     {:ok, story} =
       Stories.create_story(context.scope, %{
@@ -39,22 +39,22 @@ defmodule CodeMySpec.AgentPerformance.StoryFilteredNudgesBeginAtStoryStartTest d
         agent.id
       )
 
-    add_nudge(conversation, "before start", DateTime.add(started_at, -3600, :second))
-    add_nudge(conversation, "at start", started_at)
-    add_nudge(conversation, "after start", DateTime.add(started_at, 60, :second))
+    add_message(conversation, "before start", DateTime.add(started_at, -3600, :second))
+    add_message(conversation, "at start", started_at)
+    add_message(conversation, "after start", DateTime.add(started_at, 60, :second))
 
     filtered = Interventions.for_scope(context.scope, %{story_id: story.id})
     assert Enum.sort(Enum.map(filtered, & &1.reason)) == ["after start", "at start"]
 
     assert Enum.any?(Interventions.for_scope(context.scope), &(&1.reason == "before start"))
-    assert Chart.detail(context.scope, %{story_id: story.id}).nudges == 2
+    assert Chart.detail(context.scope, %{story_id: story.id}).messages == 2
 
     option = Chart.option(context.scope, %{story_id: story.id})
-    nudges = Enum.find(option["series"], &(&1["name"] == "nudges"))
-    assert Enum.sum(nudges["data"]) == 2
+    messages = Enum.find(option["series"], &(&1["name"] == "messages"))
+    assert Enum.sum(messages["data"]) == 2
   end
 
-  test "the chart includes a newly recorded nudge in its seven-day window", context do
+  test "the chart includes a newly recorded message in its seven-day window", context do
     agent = Fixtures.running_agent(context.scope, role: "coding")
 
     {:ok, conversation} =
@@ -65,18 +65,18 @@ defmodule CodeMySpec.AgentPerformance.StoryFilteredNudgesBeginAtStoryStartTest d
       )
 
     {:ok, _message} =
-      Conversations.add_message(conversation, :operator, "current nudge", "operator")
+      Conversations.add_message(conversation, :operator, "current message", "operator")
 
     option = Chart.option(context.scope, %{agent_id: agent.id})
-    nudges = Enum.find(option["series"], &(&1["name"] == "nudges"))
+    messages = Enum.find(option["series"], &(&1["name"] == "messages"))
 
     assert option["bucket_count"] == 168
     assert length(option["categories"]) == 168
-    assert Chart.detail(context.scope, %{agent_id: agent.id}).nudges == 1
-    assert Enum.sum(nudges["data"]) == 1
+    assert Chart.detail(context.scope, %{agent_id: agent.id}).messages == 1
+    assert Enum.sum(messages["data"]) == 1
   end
 
-  defp add_nudge(conversation, text, at) do
+  defp add_message(conversation, text, at) do
     {:ok, message} = Conversations.add_message(conversation, :operator, text, "operator")
     {:ok, _message} = message |> Ecto.Changeset.change(inserted_at: at) |> Repo.update()
   end

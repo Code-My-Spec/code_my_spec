@@ -39,8 +39,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias Phoenix.PubSub
 
-  # One candidate per batch (John, 2026-10-05): a red batch is the candidate
-  # that was in it, with nothing to work out.
+  # One candidate per batch: a red batch is the candidate that was in it, with
+  # nothing to work out.
   # Still to do: with a cap of 1, `bisect/2`'s split branch is unreachable; remove it.
   @batch_cap 1
   @gate_label "promotion-gate"
@@ -191,11 +191,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   # Candidates main already contains land the moment they are picked: they have
-  # nothing to gate, and batched with others they would ride a gate as no-ops
-  # and could be ejected over another candidate's findings (966ee65a, three
-  # entries, 2026-10-05). Asked in the gate copy, which shares the repository;
-  # one that cannot answer leaves them to the build, which handles them as
-  # before.
+  # nothing to gate, and in a batch they could be ejected over another
+  # candidate's findings. Asked in the gate copy, which shares the repository;
+  # if it cannot answer, the build handles them.
   defp on_main(scope, entries, base) do
     with %WorkingCopy{} = gate <- find_gate_copy(scope),
          {:ok, %{contained: [_ | _] = contained}} <-
@@ -222,9 +220,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # answered there, nothing blocking — is the gate's answer, and no second sweep
   # of the same tree is needed.
   #
-  # Only reused, never run: a gate that starts runs in the requester's copy is
-  # exposed to whoever keeps editing it (Harness, 2026-10-05 — an in-app coder
-  # works on after it promotes). Anything still to run goes to the gate copy.
+  # Only reused, never run: runs started in the requester's copy are exposed
+  # to whoever keeps editing it. Anything still to run goes to the gate copy.
   defp level_with_main(scope, [entry], base) do
     with {:ok, %WorkingCopy{root: root} = copy} when is_binary(root) <-
            WorkingCopies.fetch(entry.working_copy_id),
@@ -255,7 +252,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
              gate.id
            ),
          # Each candidate's analyzers start on databases its own migrations
-         # build: an ejected one left its schema there for the next (2026-10-11).
+         # build, not an ejected predecessor's schema.
          {:ok, _} <- Runner.reset_test_databases(environment, gate.root, gate.id) do
       merged = MapSet.new(built.merged)
       conflicted = MapSet.new(built.conflicted, & &1.commit)
@@ -283,12 +280,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   # The tree and test databases are not swapped under a run still going in the
-  # gate copy: the last batch's exunit hung its full thirty minutes when the
-  # next batch reset them underneath it (2026-10-12). Asked to stop again in
-  # case the first request was lost, then waited for.
-  #
-  # Bounded: a row nothing will ever close
-  # (its harness went and no sweep came) would otherwise hold the queue forever.
+  # gate copy (it hangs to its timeout). Asked to stop again in case the first
+  # request was lost, then waited for — bounded, since a run row nothing will
+  # ever close would otherwise hold the queue forever.
   defp gate_quiet(gate_scope, waiting_since) do
     cond do
       not Analysis.running_on?(gate_scope) ->
@@ -308,9 +302,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  # Read rather than matched: a worker running when this field was added holds
-  # a state without it, and a code reload hands that state to this code
-  # (KeyError, 2026-10-12).
+  # Read rather than matched: a code reload can hand this code a state from
+  # before the field existed.
   defp gate_wait_since(state), do: Map.get(state, :gate_wait_since)
 
   defp waited_out?(nil), do: false
@@ -342,12 +335,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # `gate` is the copy the batch commit is checked out in and certified on:
   # the gate copy, or a lone level candidate's own copy.
-  # A batch whose commit is main's HEAD adds nothing: every candidate in it is
-  # already on main — landed before, or contained in what has landed since. It
-  # is not gated: whatever main's own analysis finds there is no finding against
-  # any of them, and blaming one for it sent an agent to "fix" work that had
-  # already landed (the queue's first live night, 2026-10-05). Each lands as it
-  # is, with what a landing does for its story or issue.
+  # A batch whose commit is main's HEAD adds nothing and is not gated: main's
+  # own findings there are no finding against any candidate. Each lands as it is.
   defp gating(state, entries, _gate, base, base), do: already_on_main(state, entries, base)
 
   defp gating(state, entries, gate, base, head) do
@@ -371,9 +360,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     )
 
     # Asked now, and again on the recheck timer whatever happens to this one:
-    # a batch built at 08:41:43 on 2026-10-05 never gated — its `:gate` went
-    # unanswered, nothing else was due to ask, and the queue sat for over an
-    # hour behind it.
+    # a lost `:gate` must not stall the queue.
     send(self(), :gate)
 
     {:noreply,
@@ -419,15 +406,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  # None of compiler, credo, exunit or spex run the project's asset pipeline,
-  # so a broken JS import landed with every one of them green (issue
-  # 47568b2a: story 1092's own echarts import failed esbuild from the
-  # moment the batch landed, with nothing in the gate having noticed).
-  # Checked here, once the analyzer ledger is already green, rather than
-  # added as a fifth analyzer source: that would mean every Problem/Run/UI
-  # surface that assumes `Run.sources()` learning a new member, which is a
-  # larger decision than this fix (the same reasoning this codebase already
-  # applies to `sobelow`, deliberately left out of that ledger).
+  # No analyzer runs the asset pipeline, so assets are built here once the
+  # ledger is green, rather than as a new `Run.sources()` member every
+  # Problem/Run/UI surface would have to learn.
   defp assets_build(%{batch: batch} = state, swept) do
     environment = WorkingCopies.environment(batch.scope)
 
@@ -440,8 +421,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # A run that failed at the batch commit is red like a finding: the batch's own
   # change may be what stops the analyzer running (a broken mix.exs, a config
   # the suite cannot boot with), and a failure at main too is main's to fix.
-  # Not retried. Runs a harness going away orphaned are not failures here
-  # (3c59be47): every landing restarts the harness.
+  # Not retried. Runs orphaned by a harness going away are not failures here.
   defp failed_runs(batch),
     do:
       Enum.filter(
@@ -583,11 +563,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # -- Land -------------------------------------------------------------------
 
-  # A green batch lands at once. It used to wait up to thirty minutes for runs
-  # in flight on other copies, because landing restarted the harness under
-  # them; a landing now restarts it only when the harness's own code moved
-  # (`after-promote`), and with two teams always running something the wait
-  # held every landing for its full bound (2026-10-13).
+  # A green batch lands at once, without waiting for runs on other copies: a
+  # landing restarts the harness only when its own code moved (`after-promote`).
   defp land(state), do: on_current_main(state, &do_land/1)
 
   # The batch was certified on `base`. If main moved on while it gated —
@@ -644,10 +621,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       {:error, %{landed: true} = reason} ->
         hold_landed(state, batch.entries, batch.head, reason)
 
-      # Only its team can fix this — the QA it needs is not at its commit — so
-      # retrying it changes nothing. Re-queued, it went back to the head of the
-      # queue and was refused again every cycle, holding every candidate behind
-      # it (2026-10-11).
+      # Only its team can fix this (its QA is not at its commit). Ejected, not
+      # requeued: requeued it would head the queue and block everything behind.
       {:error, %{qa_not_current: true} = reason} ->
         Enum.each(batch.entries, &eject(state.scope, &1, reason.reason))
         next(idle(state))

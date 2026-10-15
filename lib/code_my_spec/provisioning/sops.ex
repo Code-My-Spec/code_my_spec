@@ -2,112 +2,19 @@ defmodule CodeMySpec.Provisioning.Sops do
   @moduledoc """
   Age-encrypted environment files committed to the project's own repo.
 
-  Replaces both AWS SSM and Varlock. One key per environment, so holding
-  UAT's key reveals nothing about production.
+  One key per environment, so holding UAT's key reveals nothing about
+  production.
 
-  ## Why this shells out
+  - **Shells out** to the real `sops` and `age`: the server decrypts with the
+    real `sops`, so the format is not ours to approximate. Both must be on
+    PATH; otherwise every function returns `{:error, :sops_unavailable}`.
+  - **Plaintext never reaches disk.** `put_secret/5` uses `sops set`, which
+    edits the encrypted file in place.
+  - **`.sops.yaml` maps each environment's file to its own recipient.**
+  - **The key reaches the server through the deploy** as `SOPS_AGE_KEY`;
+    nothing writes a key file to the host.
 
-  `sops` and `age` are invoked as binaries rather than reimplemented. The
-  files have to be decryptable by the real `sops` on the server at boot, so
-  the format is not ours to approximate — age is X25519 + ChaCha20-Poly1305
-  with bech32 keys wrapped in SOPS's own envelope, and a near-miss
-  reimplementation of a credential path is a worse outcome than a dependency.
-
-  Both binaries must be on PATH. When they are not, every function returns
-  `{:error, :sops_unavailable}` rather than failing somewhere less obvious.
-
-  ## Plaintext never reaches disk
-
-  `put_secret/4` uses `sops set`, which edits the *encrypted* file in place.
-  There is no decrypt-to-tempfile step, so there is no window in which the
-  plaintext exists in the working tree and no scratch file for a `git add` to
-  sweep up. Criterion 7997 asserts exactly this, and it is why `sops set` is
-  used rather than the more obvious decrypt → modify → re-encrypt.
-
-  Verified against the real binaries: after setting a value, the plaintext
-  appears nowhere under the project root.
-
-  ## One key per environment
-
-  `.sops.yaml` maps each environment's file to its own recipient via
-  `creation_rules`. Confirmed with real keys: a UAT private key given
-  production's file fails with "at least one key has to be successful, but
-  none were". That is the blast radius criterion 8053 exists to close — with
-  one project-wide key, whoever can deploy staging can read production.
-
-  ## The key reaches the server through the deploy
-
-  Decryption takes the private key from the `SOPS_AGE_KEY` environment
-  variable, which the deploy tool injects. Nothing writes a key file to the
-  host, so there is no key sitting on a box for someone to find, and rotating
-  is a re-encrypt plus a redeploy rather than a file edit on a server.
-
-  ## Onboarding a legacy app off its own secrets store
-
-  A pre-CodeMySpec app almost always has its own boot-time secrets fetch —
-  AWS SSM Parameter Store, Varlock, a hand-rolled `.env` loader — reading a
-  provider this platform's own `Deploy.script_env/1` has no reason to know
-  about. That mismatch surfaces as the app crashing on boot with a
-  provider-auth error, well after `:server`/`:deploy` have already
-  succeeded: the box, the registry, and the image are all fine, and the
-  container simply can't fetch what it thinks it needs. Confirmed live
-  onboarding `broken_oaths` (its own AWS SSM fetch,
-  `BrokenOaths.Secrets.load!/1`) and planned identically for MarketMySpec.
-
-  Migrating the app onto this module's convention, rather than teaching
-  `Deploy.script_env/1` to carry an arbitrary provider's credentials
-  through Kamal's process env, is the right fix: `SOPS_AGE_KEY` is already
-  the one secret the deploy pipeline delivers to any box that runs it, by
-  design, so there is nothing new to plumb once the app decrypts locally
-  instead of calling out at boot.
-
-  1. **Read the legacy parameter names**, not just their values — the
-     STORE's own path (`/app_name/<env>/*` for SSM) names every key the
-     app's `config/runtime.exs` currently expects via `System.get_env/1`.
-  2. **Split what to bring over from what the platform already generated.**
-     `:secrets` already wrote `SECRET_KEY_BASE`, `DEPLOY_KEY`, and each
-     environment's age key before this ever starts — decrypt the existing
-     file first (`decrypt/3`) and skip any name already present rather than
-     clobbering a value this platform is itself the source of truth for.
-     `DATABASE_URL` is the sharpest version of this: the legacy value
-     points at the *old* box, and copying it verbatim would have the new
-     container migrating and serving against infrastructure nobody meant
-     it to touch. `read_database_url`-shaped functions (`Database.credential/2`
-     `Database.url/1`) already hold the correct one.
-  3. **Everything else migrates verbatim** via `put_secret/4` — API keys,
-     OAuth client credentials, and anything like a Cloak key that existing
-     *data* was encrypted under. A regenerated Cloak key doesn't fail loudly;
-     it just makes every already-encrypted row unreadable.
-  4. **Swap the app's own boot-time fetch for the decrypt-then-exec
-     pattern** `deploy_artifacts.ex` already generates natively
-     (`rel/overlays/bin/boot`: `exec sops exec-env "$ENV_FILE" "<start
-     command>"`) — add the same wrapper to `bin/migrate` if the app has
-     one, since a deploy's migrate phase runs as its own separate `kamal
-     app exec`, outside whatever `bin/boot` does. Carry `envs/` into the
-     release overlay (`COPY envs rel/overlays/envs` before `mix release`)
-     and `sops` itself into the runtime image, mirroring the generator's
-     own Dockerfile — a legacy app never had either. Delete the provider
-     call from `config/runtime.exs`; every other `System.get_env/1` read
-     in that file is already correct unchanged, because decryption now
-     happens before the release process starts rather than inside it.
-  5. **`config/deploy*.yml`'s own `env.secret` list carries the change**:
-     drop the old provider's bootstrap credentials and add `SOPS_AGE_KEY`
-     in their place, matching `.kamal/secrets-common`'s `${SOPS_AGE_KEY}`
-     interpolation — Kamal resolves that from its own process env, which
-     `Deploy.script_env/1` already populates for every deploy this
-     platform runs.
-
-  A production environment not yet deployed through this platform's own
-  pipeline is the one case this doesn't close by itself: its legacy manual
-  deploy script has no route to `SOPS_AGE_KEY` at all until it either
-  moves onto `run_provisioning_step`/`run_devops_setup` or gets a
-  dedicated way to read the key out — the same shape `read_database_url`
-  closed for the database credential. Migrating that environment's secret
-  *values* ahead of time is still worth doing (cheap, and `Deploy`'s own
-  health-check-gated swap means a boot failure from a missing key refuses
-  the deploy rather than taking the running version down) — but do not
-  point that environment's own deploy script at the new image until the
-  key can actually reach it.
+  See knowledge/provisioning, "Secrets (sops)".
   """
 
   alias CodeMySpec.Environments
@@ -131,15 +38,13 @@ defmodule CodeMySpec.Provisioning.Sops do
   Generate a fresh age key pair.
 
   Returns `{public, private}`. The private key is never written to disk by
-  this function — the caller decides where it lives, which for provisioning
-  is `ProjectSecrets`, encrypted at rest.
+  this function; provisioning keeps it in `ProjectSecrets`.
   """
   @spec generate_key() :: {:ok, {String.t(), String.t()}} | error()
   def generate_key do
     with :ok <- ensure_available() do
       # age-keygen writes the public key to stderr and the private key to
-      # stdout. Capture both — otherwise the public key leaks to the console
-      # and parse_key/1 only ever sees half of what it needs.
+      # stdout; capture both.
       case System.cmd("age-keygen", [], stderr_to_stdout: true) do
         {stdout, 0} -> parse_key(stdout)
         {out, status} -> {:error, {:sops_failed, status, out}}
@@ -150,20 +55,16 @@ defmodule CodeMySpec.Provisioning.Sops do
   @doc """
   The public half of a private age key.
 
-  Exists so the two halves of the pair can be compared. `.sops.yaml` is a
-  tracked file naming the public recipient; the private key is a row in the
-  database. Nothing kept them in step, and when they drift `sops` can still
-  encrypt — it only needs the recipient — while nothing can decrypt. Deriving
-  the public key from what is actually stored is the only way to ask whether
-  the pair still works without holding a file it can open.
+  Lets the stored private key be checked against `.sops.yaml`'s public
+  recipient: when they drift, `sops` can still encrypt but nothing can
+  decrypt.
   """
   @spec public_key(String.t()) :: {:ok, String.t()} | error()
   def public_key(private_key) when is_binary(private_key) do
     with :ok <- ensure_available() do
-      # `-y` derives rather than generates. Via a file, not stdin, because
-      # `System.cmd/3` cannot write to a child's stdin — and not via a shell
-      # either, which would put the private key on a command line. Written
-      # 0600 in a directory of its own and removed immediately.
+      # `-y` derives rather than generates. Via a 0600 file in its own
+      # directory, removed immediately: `System.cmd/3` cannot write a child's
+      # stdin, and a shell would put the key on a command line.
       dir = TempFile.dir("cms-age")
       File.mkdir_p!(dir)
       path = Path.join(dir, "key.txt")
@@ -189,8 +90,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   end
 
   # age-keygen prints the public key as a comment and the private key on its
-  # own line. Both are needed: the public one goes in .sops.yaml, the private
-  # one goes to the deploy.
+  # own line: the public one goes in .sops.yaml, the private one to the deploy.
   defp parse_key(output) do
     public = Regex.run(~r/age1[a-z0-9]+/, output)
     private = Regex.run(~r/AGE-SECRET-KEY-[A-Z0-9]+/, output)
@@ -242,12 +142,9 @@ defmodule CodeMySpec.Provisioning.Sops do
   Edits the ciphertext in place — the plaintext is passed as an argument to
   `sops set` and never written to the working tree.
 
-  The environment's **private** key is required, and that is not an
-  implementation detail worth hiding: `sops set` has to decrypt the file's
-  data key before it can add a value, so writing a secret to production means
-  holding production's key. Taking it as an argument makes that visible at
-  every call site rather than depending on an ambient `SOPS_AGE_KEY` that
-  happens to be exported.
+  The environment's **private** key is required: `sops set` decrypts the
+  file's data key first. Taking it as an argument makes that visible rather
+  than depending on an ambient `SOPS_AGE_KEY`.
   """
   @spec put_secret(
           Environments.Environment.t(),
@@ -292,10 +189,8 @@ defmodule CodeMySpec.Provisioning.Sops do
   @doc """
   Recipients recorded in an environment's encrypted file.
 
-  Read from the file itself rather than from `.sops.yaml`, because the file is
-  what actually governs who can decrypt it — a `.sops.yaml` edited after
-  encryption says nothing about existing ciphertext. This is what the status
-  page renders as each environment's key fingerprint.
+  Read from the file itself rather than `.sops.yaml`: the file governs who can
+  decrypt it. The status page renders these as each environment's key.
   """
   @spec recipients(Environments.Environment.t(), env_name()) ::
           {:ok, [String.t()]} | {:error, term()}
@@ -308,26 +203,11 @@ defmodule CodeMySpec.Provisioning.Sops do
   @doc """
   Keys required for boot that the environment's file does not carry.
 
-  Returns the names, so a refusing boot can say which secret is missing
-  instead of failing later on whatever code path needed it (criterion 8000).
+  Returns the names, so a refusing boot can say which secret is missing.
 
-  A file that does not exist yet carries nothing, so everything required is
-  missing. Asking sops to decrypt it instead exits 100 with "cannot operate on
-  non-existent file", and that tuple reached the setup page verbatim on the
-  first deploy of every new project — the one moment the answer is most
-  obviously "you have not set any secrets yet". The state is ordinary rather
-  than exceptional: `secrets` mints the key and writes `.sops.yaml`, and the
-  file itself only appears when a first secret is set.
-
-  A file that exists but was never actually encrypted reads the same way, for
-  the same reason: `cms.new` ships every environment's `.enc.env` as a
-  scaffold — a plain-text comment header explaining how to add values, no
-  sops metadata at all — so a project generated straight from the template
-  and never touched hits `sops decrypt` on real content that was never
-  ciphertext. sops answers "sops metadata not found" (exit 1), which is a
-  different string from the missing-file case and was reaching the setup page
-  the same unhelpful way. Undecryptable and absent mean the same thing here —
-  nothing this step can read is nothing the boot secret has been set.
+  A file that does not exist yet, or exists but was never encrypted (the
+  generator's plain-text scaffold: "sops metadata not found"), carries
+  nothing, so everything required is missing. Neither is an error.
   """
   @spec missing_secrets(Environments.Environment.t(), env_name(), String.t(), [String.t()]) ::
           {:ok, [String.t()]} | error()
@@ -362,23 +242,14 @@ defmodule CodeMySpec.Provisioning.Sops do
     if available?(), do: :ok, else: {:error, :sops_unavailable}
   end
 
-  # `sops set` requires the file to exist and be encrypted already. A fresh
-  # environment has neither, so seed it with a placeholder and encrypt — the
-  # alternative is a special-case first-secret path that behaves differently
-  # from every subsequent one.
+  # `sops set` requires the file to exist and be encrypted already, so a fresh
+  # environment is seeded with a placeholder and encrypted.
   defp ensure_file(env, environment) do
     path = env_file(environment)
 
-    # Encrypted, not merely present. Writing the placeholder and encrypting it
-    # are two steps, so anything that interrupts between them leaves plaintext
-    # sitting at the `.enc.env` path — and trusting the filename accepted that
-    # forever: the step reported done, re-running it changed nothing, and every
-    # deploy failed its pre-flight with "sops metadata not found" while
-    # pointing at the wrong step.
-    #
-    # A file whose name asserts encryption that was never applied is the part
-    # worth refusing to guess about, so this asks sops rather than the
-    # filesystem, and repairs what it finds instead of reporting done over it.
+    # Encrypted, not merely present: an interruption between writing and
+    # encrypting leaves plaintext at the `.enc.env` path, so ask sops and
+    # repair rather than trusting the filename.
     case Environments.file_exists?(env, path) do
       true ->
         ensure_encrypted(env, path)
@@ -390,13 +261,9 @@ defmodule CodeMySpec.Provisioning.Sops do
     end
   end
 
-  # Always attempt the encrypt, and treat sops' own "this is already
-  # encrypted" refusal as success.
-  #
-  # Not `sops decrypt` as the test: that needs the private key, which is not in
-  # scope here, so every encrypted file would read as plaintext and then fail
-  # the re-encrypt for the opposite reason. Asking sops to encrypt answers both
-  # questions with the key it does have — the recipient.
+  # Always attempt the encrypt and treat sops' "already encrypted" refusal as
+  # success. `sops decrypt` cannot be the test: the private key is not in
+  # scope here.
   defp ensure_encrypted(env, path) do
     case sops(env, ["encrypt", "--in-place", path], cd: env.cwd) do
       {_out, 0} ->
@@ -412,18 +279,9 @@ defmodule CodeMySpec.Provisioning.Sops do
       String.contains?(output, "top-level entry called 'sops'")
   end
 
-  # `cd` matters: sops resolves `.sops.yaml` from the process working
-  # directory, not from the file being encrypted. Running from the project
-  # root with relative paths is what makes the creation_rules apply — an
-  # absolute path with the wrong cwd fails with "config file not found, or
-  # has no creation rules".
-  #
-  # Through `Environments.cmd/4` rather than `System.cmd/3`, so this runs
-  # wherever the environment says it runs. Every other command in provisioning
-  # already goes that way; sops was the exception, and the exception was
-  # invisible until a test modelled the shell and watched the real binary run
-  # anyway (15193154). `Local.cmd/4` applies the environment's cwd itself and
-  # passes the rest through, so nothing about the sops semantics changes.
+  # `cd` matters: sops resolves `.sops.yaml` from the working directory, so it
+  # runs from the project root with relative paths. Through
+  # `Environments.cmd/4`, so it runs wherever the environment says.
   defp sops(env, args, opts) do
     Environments.cmd(env, "sops", args, [stderr_to_stdout: true] ++ opts)
   end

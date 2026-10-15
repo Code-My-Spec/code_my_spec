@@ -6,33 +6,16 @@ defmodule CodeMySpec.Provisioning.Deploy do
   `System.cmd/3`, so they execute on whichever device the environment names
   (the harness channel for a remote box) and are recordable in tests.
 
-  ## The ordering is the whole point
+  - `run/3` migrates against the new image *before* any traffic moves, and
+    records a timestamp per phase, so `migrated_at <= swapped_at` is
+    observable rather than assumed.
+  - A failed migration, health check or swap never moves traffic and leaves
+    `live_version: :previous`; the `reason` names the phase. `swapped_at` is
+    the only evidence of a completed deploy.
+  - `probe/2` checks HTTPS on the environment's hostname and follows no
+    redirects: a 301 is not the app answering.
 
-  `run/3` migrates against the new image *before* any traffic moves to it, and
-  records a timestamp for each phase. Criterion 8007 asserts `migrate_at <=
-  swap_at` from those recordings rather than trusting the code's shape, which
-  is the right way round: the ordering is an observable property, not an
-  implementation detail.
-
-  ## Two refusals, and they are not the same
-
-  - **A failed migration** leaves the previous version serving and never
-    swaps (8008). The new image is broken against the schema; promoting it
-    would take the site down.
-  - **A failed health check** likewise never swaps (8009), and the reason
-    names health so the report is actionable rather than "deploy failed".
-
-  Both leave `live_version` as `previous`. `run/3` therefore returns a struct
-  whose `swapped_at` is nil in both cases — a caller cannot mistake a refused
-  deploy for a completed one by checking the wrong field, because there is no
-  field that says "done" independently of the swap having happened.
-
-  ## Health is checked over HTTPS on the environment's own hostname
-
-  `probe/2` follows no redirects deliberately. A 301 to HTTPS is not the app
-  answering — treating it as healthy is how a misconfigured `force_ssl` passes
-  a health check while the proxy's own probe fails (the trap
-  `CodeMySpec.Generators` guards on the other side).
+  See knowledge/provisioning, "Deploy".
   """
 
   require Logger
@@ -100,23 +83,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
     Logger.info("[Deploy] migrating #{environment}")
 
-    # One line per phase, same reason `Builder.Remote.build/4` just grew
-    # them: nothing here logged anything between "started" and "done or
-    # failed", so a slow migrate/health-check/swap and a stuck one looked
-    # identical from the outside.
-    #
-    # With how long each one took, because that is the question nobody can
-    # answer. `Remote.ssh_runner/2` bounds every remote command at 600s per
-    # phase, and that default was calibrated against a run finishing in under
-    # seven minutes; a later run took 20+ (`6f982579`). Whether any single phase
-    # is near the ceiling, or the growth is spread across build, health and
-    # cleanup, has been unanswerable twice — both times the honest conclusion
-    # was "needs profiling data I cannot safely generate", and nothing was
-    # emitting the data.
-    #
-    # It costs two monotonic reads per deploy and makes the next real one the
-    # profiling run, so the timeout can be set from evidence rather than raised
-    # by guess against live deploy infrastructure.
+    # One log line per phase, with its duration, so a slow phase and a stuck
+    # one are distinguishable and the remote timeout can be set from evidence.
     with {:ok, migrate_out, result} <- migrate_with_bootstrap(env, environment, script, now, opts),
          migrated = System.monotonic_time(:millisecond),
          _ =
@@ -138,18 +106,9 @@ defmodule CodeMySpec.Provisioning.Deploy do
       %{result | output: migrate_out, live_version: :new}
     else
       {:error, %Result{} = refused} ->
-        # `reason` names the phase and exit code but never the actual output —
-        # that's what the comment above `migrate/5` calls "collected but never
-        # logged." A refusal with no visible output is unactionable from
-        # web.log alone.
-        #
-        # A blind tail is not enough: `bin/deploy`'s ssh trace keeps emitting
-        # keepalive/channel-close debug lines *after* the real error, so the
-        # last N bytes are noise and the error itself scrolls out of the
-        # window. Anchor on the error marker instead and read forward from
-        # there. Confirmed live against broken_oaths — three refusals in a
-        # row each logged nothing but trailing "sending keepalive"/
-        # "queueing packet" lines before this.
+        # Log an excerpt anchored on the last error marker: `bin/deploy`'s ssh
+        # trace keeps logging keepalives after the real error, so a blind tail
+        # is noise.
         Logger.warning(
           "[Deploy] #{environment} refused at #{refused.failed_phase} after " <>
             "#{took(started, System.monotonic_time(:millisecond))}: #{refused.reason} " <>
@@ -160,21 +119,14 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # How long, to a tenth of a second.
-  #
-  # On the refusal line as well as the success ones, and that is the one that
-  # pays for itself: a phase refusing at almost exactly 600s is a timeout
-  # wearing a command failure's clothes, and `timeout` exits 124 without saying
-  # why. The duration is what tells the two apart at a glance.
+  # To a tenth of a second. A refusal at almost exactly the remote timeout is
+  # a timeout (exit 124) wearing a command failure's clothes.
   defp took(from, to), do: "#{Float.round((to - from) / 1000, 1)}s"
 
   @error_markers ["ERROR (", "Error response from daemon", "error response from daemon"]
 
-  # Anchors on whichever known error marker appears LAST (the trace can retry
-  # internally, and an earlier attempt's marker is not the one that mattered),
-  # then reads forward from there rather than from the very end — the ssh
-  # trace keeps logging keepalives and channel-close lines well past the
-  # actual failure.
+  # Anchors on the last known marker (earlier attempts' markers are not the
+  # one that mattered) and reads forward from it.
   defp error_excerpt(output) when is_binary(output) do
     case last_marker_index(output) do
       nil -> String.slice(output, -1000, 1000)
@@ -197,25 +149,11 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # `kamal app exec` (what `migrate` runs) loads env/roles/<role>.env off the
-  # host, and kamal only ever writes that file as a side effect of booting a
-  # container — never on its own. A host with no successful deploy in its
-  # history has no such file yet, so migrate refuses before the migration
-  # itself ever runs: not a migration failure, there is nothing here yet for
-  # one to run against. Confirmed live against MarketMySpec's uat, the first
-  # environment this pipeline ever reached a genuine first deploy on — every
-  # other project so far already had deploy history before it was onboarded,
-  # so nothing before tonight ever exercised this path.
-  #
-  # `swap` is what boots the app, and booting is what writes the file — so it
-  # runs once, explicitly and logged as its own phase, before migrate is
-  # retried for real. A bad migration has nothing to endanger here: nothing
-  # is serving yet for this pipeline to protect, the same reasoning `health/4`
-  # already applies to skip its own check on a first deploy. Every deploy
-  # after this one finds the file already there and never takes this branch
-  # again — detected live against the real error each time, not remembered
-  # from a flag, because a stale flag saying "already bootstrapped" would be
-  # exactly wrong the one time it matters: right after this exact failure.
+  # `kamal app exec` (migrate) needs `env/roles/<role>.env` on the host, which
+  # kamal writes only when booting a container. On a never-deployed host,
+  # migrate refuses for that reason, so swap runs once as a `:bootstrap`
+  # phase and migrate is retried. Detected from the real error each time, not
+  # a flag. See knowledge/provisioning, "Deploy".
   defp migrate_with_bootstrap(env, environment, script, now, opts) do
     case migrate(env, environment, script, now, opts) do
       {:ok, _migrate_out, _result} = success ->
@@ -249,11 +187,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
             {:ok, migrate_out, %{result | bootstrapped_at: swapped_at}}
 
           {:error, %Result{} = still_refused} ->
-            # The bootstrap already moved traffic — there is no "previous
-            # version" to have stayed on, so the ordinary migrate-failure
-            # wording would be a lie here. Named for what actually happened
-            # instead: an unmigrated version is live because nothing else
-            # could have written the file migrate needed.
+            # The bootstrap already moved traffic, so there is no previous
+            # version to have stayed on; say so.
             {:error,
              %{
                still_refused
@@ -278,17 +213,14 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # `stderr_to_stdout`, because kamal writes its failures there. Without it the
-  # captured output was empty and a failed migration reported only
-  # "Migration failed (exit 1)" — the exit code and nothing else. The reason
-  # was never lost; it was never collected.
+  # `stderr_to_stdout`, because kamal writes its failures there.
   defp migrate(env, environment, script, now, opts) do
     case run_script(env, script, ["migrate", environment], opts) do
       {output, 0} ->
         {:ok, output, %Result{migrated_at: now.()}}
 
       {output, status} ->
-        # 8008: the previous version keeps serving. Nothing swaps.
+        # The previous version keeps serving. Nothing swaps.
         {:error,
          %Result{
            live_version: :previous,
@@ -299,20 +231,9 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # There is nothing to protect on a first deploy, so there is nothing to check.
-  #
-  # This runs *before* the swap, which is deliberate (8009: a failed check
-  # never moves traffic). But the new version has not booted at this point —
-  # `migrate` runs a one-off container and `swap` is what boots the service —
-  # so what this probes is the version already serving. That is a real
-  # protection for an existing site and an impossibility for a new one: with
-  # nothing deployed, the host refuses the connection and the deploy that
-  # would have created the site is refused for the site not existing.
-  #
-  # `bin/deploy` is the only thing that knows, and it says so in its migrate
-  # output. Deploying past this is not skipping a safety check: kamal's own
-  # proxy health check still gates the swap, and there is no previous version
-  # for a bad one to displace.
+  # Skipped on a first deploy. Health runs before the swap and so probes the
+  # version already serving; with nothing deployed, the probe could never
+  # pass. kamal's own proxy health check still gates the swap.
   defp health(result, _opts, _now, true), do: {:ok, result}
 
   defp health(result, opts, now, _first_deploy) do
@@ -325,7 +246,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
         {:ok, %{result | health_ok_at: now.()}}
 
       {:error, reason} ->
-        # 8009: the reason must name health, or the report is unactionable.
+        # The reason must name health, or the report is unactionable.
         {:error,
          %{
            result
@@ -337,38 +258,18 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # Two places print this, and it took a regression to learn why one is not
-  # enough. `bin/deploy` prints it when it finds no env files on the host —
-  # which stopped happening once migrate began decrypting secrets baked into
-  # the image, so a first deploy started *succeeding* and saying nothing.
-  # `Release.migrate/0` now prints it on a database with no migrations
-  # applied: the positive form of the same fact, observable when migrate works.
+  # The generated project prints `first_deploy=1` on a database with no
+  # migrations applied.
   defp first_deploy?(migrate_output) when is_binary(migrate_output),
     do: String.contains?(migrate_output, "first_deploy=1")
 
   defp first_deploy?(_migrate_output), do: false
 
-  # A third, independent signal, and none of the first two are reliable
-  # enough alone. `bootstrapped_at`/`first_deploy?` both infer "nothing to
-  # protect" from a side effect of *this run's own* migrate — kamal writes
-  # `env/roles/<role>.env` as a side effect of any container booting, not of
-  # one succeeding, and never removes it when that boot then crashes or gets
-  # rolled back. A crashed first attempt leaves the file behind, so every
-  # later run reads "not a first deploy" and health-checks a previous version
-  # that was never actually live — refusing to swap forever, since a health
-  # check against nothing can never pass. Confirmed live: broken_oaths'
-  # first UAT boot crashed inside its own secrets loader after kamal had
-  # already written the env file, and every retry after fixing that crash
-  # kept failing health against a host with zero routes ever registered.
-  #
-  # `opts[:environment_previously_deployed]` is the platform's own answer,
-  # set once a deploy for this environment has actually swapped
-  # successfully (`Steps.deploy_environment/3`) — not inferred from any
-  # side effect a partial run can leave behind. Defaulting to `true` when
-  # absent keeps existing behaviour (protect what might be live) for any
-  # caller that does not thread it through, which is the safe direction to
-  # default in: skipping a health check that should have run is worse than
-  # running one that did not strictly need to.
+  # Three independent first-deploy signals; any one skips health. The first
+  # two are side effects of this run's migrate, and a crashed first boot
+  # leaves kamal's env file behind, so `opts[:environment_previously_deployed]`
+  # (the environment's `first_deployed_at`, set only after a real swap) is the
+  # authoritative one. Defaults to `true` (run the check) when absent.
   defp skip_health?(migrate_out, result, opts) do
     first_deploy?(migrate_out) || result.bootstrapped_at != nil ||
       not Keyword.get(opts, :environment_previously_deployed, true)
@@ -383,8 +284,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
         Wait.sleep(Keyword.get(opts, :health_interval_ms, 5_000))
         await_health(probe, host, opts, attempts - 1)
 
-      # The last reason, not a bare "gave up" — what the host was doing on the
-      # final attempt is the whole diagnosis.
+      # The last reason: what the host was doing on the final attempt is the
+      # diagnosis.
       {:error, reason} ->
         {:error, reason}
     end
@@ -407,52 +308,27 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # What setup knows and the checkout cannot.
-  #
-  # The generated `bin/deploy` was written for a human: it pushes, waits for
-  # GitHub Actions to build, and pulls from ghcr.io with `gh auth token`. Setup
-  # has already built the image on its own builder and pushed it to the
-  # project's own registry, so all of that is both redundant and wrong —
-  # criterion 8240 is a deploy that pulls with no GitHub credential at all.
-  #
-  # The host and its IP are here for the same reason. A generated
-  # `config/deploy.uat.yml` carries `<UAT_HOST>` and `<UAT_HOST_IP>`
-  # placeholders, and the IP is not knowable when the file is written: it
-  # belongs to a server that setup creates later, and a different one on every
-  # provision. No committed config can hold it, so it has to arrive at run
-  # time.
-  #
-  # Only values that are actually set are passed. An empty string is worse than
-  # an absent variable — the script cannot tell "not configured" from
-  # "configured to nothing", and would deploy an image called "".
+  # What setup knows and the checkout cannot: the image setup already built
+  # and pushed (so `bin/deploy` pulls with no GitHub credential), and the
+  # host and IP of a server created at run time. Only set values are passed:
+  # the script cannot tell an empty string from "not configured".
   defp script_env(opts) do
     for {name, value} <- [
           {"CMS_IMAGE", Keyword.get(opts, :image)},
           {"CMS_DEPLOY_HOST", Keyword.get(opts, :host)},
           {"CMS_DEPLOY_HOST_IP", Keyword.get(opts, :host_ip)},
-          # The decryption key, straight from `ProjectSecrets` to the script's
-          # environment. `bin/deploy` reads it from `envs/<env>.age.key` when
-          # a human runs it, and setup deliberately never writes that file —
-          # the private half of an age key is the one thing kept out of the
-          # repository. An environment variable carries it without ever
-          # touching the working tree.
+          # The decryption key, straight from `ProjectSecrets`; setup never
+          # writes the private half of an age key to the working tree.
           {"SOPS_AGE_KEY", Keyword.get(opts, :age_key)},
           # kamal will not render a config without a registry password, and
-          # logs in with it before pulling. The registry is the project's own,
-          # on its own private network, and this is its credential.
+          # logs in with it before pulling.
           {"KAMAL_REGISTRY_USERNAME", Keyword.get(opts, :registry_username)},
           {"KAMAL_REGISTRY_PASSWORD", Keyword.get(opts, :registry_password)},
-          # kamal's own SSH offers every identity the agent holds otherwise,
-          # and a box with the default `MaxAuthTries 6` disconnects before
-          # reaching the right one — the same failure the builder's SSH had,
-          # and the same fix.
+          # Without a pinned key, kamal's ssh offers every agent identity and
+          # `MaxAuthTries` disconnects first.
           {"CMS_SSH_KEY_PATH", Keyword.get(opts, :ssh_key_path)},
-          # Unset everywhere a real box is involved, because a real box is on
-          # 22. It exists so the local fleet can be deployed to over a
-          # published loopback port, and the reason that matters is that the
-          # fleet is only worth having if it runs this deploy rather than an
-          # imitation of it — the moment it needs its own path, it stops
-          # answering the question it was built to answer.
+          # Only for the local fleet (published loopback ports); real boxes
+          # are on 22.
           {"CMS_SSH_PORT", port_option(Keyword.get(opts, :ssh_port))}
         ],
         is_binary(value) and value != "" do
@@ -460,9 +336,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # `script_env/1` keeps only binaries, which is what stops an unset value from
-  # reaching the script as "" — a distinction it cannot otherwise make. A port
-  # arrives as an integer, so it has to become one here or be silently dropped.
+  # `script_env/1` keeps only binaries, so an integer port is stringified here.
   defp port_option(nil), do: nil
   defp port_option(port), do: to_string(port)
 
@@ -496,11 +370,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
     case Req.request(req_opts) do
       {:ok, %Req.Response{status: status}} when status in 200..299 -> :ok
       {:ok, %Req.Response{status: status}} -> {:error, "responded #{status}"}
-      # Words, not `inspect/1`. Every caller interpolates this into a sentence a
-      # human reads, and a struct cannot survive that: four drills reported
-      # `%Req.TransportError{reason: :timeout}` on the setup page while the
-      # formatter that exists to prevent exactly this never saw it, because
-      # what reached it was already a binary.
+      # Words, not `inspect/1`: callers interpolate this into a sentence.
       {:error, reason} -> {:error, Transport.describe(reason)}
     end
   end
@@ -536,38 +406,26 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # Relative to the *project*, not to whatever directory the caller happens to
-  # be in. `System.cmd/3` resolves a relative command against the running
-  # process's cwd, not the environment's, so `bin/backup` was looked for beside
-  # the server rather than beside the project and failed with :enoent — an
-  # error that names nothing and reads like the script was never generated.
+  # Relative to the project checkout: `System.cmd/3` resolves a relative
+  # command against the process's cwd.
   defp resolve_script(%{cwd: cwd}, script) when is_binary(cwd) and cwd != "" do
     if Path.type(script) == :absolute, do: script, else: Path.join(cwd, script)
   end
 
   defp resolve_script(_env, script), do: script
 
-  # `opts[:run]` means the checkout lives on a box neither `env` nor this
-  # process can see the path of — `resolve_script/2` would join the caller's
-  # own `cwd` onto a name that only means something on the far end of the SSH
-  # connection `opts[:run]` already is. The relative name travels instead, and
-  # `run_script/4`'s `cd` into `opts[:remote_dir]` is what resolves it there.
+  # With `opts[:run]` the checkout is on the far end of SSH, so the relative
+  # name travels and `remote_command/3`'s `cd` resolves it there.
   defp deploy_script(env, opts) do
     script = Keyword.get(opts, :deploy_script, "bin/deploy")
 
     if Keyword.has_key?(opts, :run), do: script, else: resolve_script(env, script)
   end
 
-  # Where the script runs, which is not always where `env` points. `opts[:run]`
-  # is the same escape hatch `Backups.run_script/4` already has, for the same
-  # reason: kamal is meant to connect *to* the app server over SSH (port 22 is
-  # open for exactly that — see `Hetzner`'s own comment on it), never to run
-  # on the box it is deploying, and never on whichever machine happened to
-  # call this — a harness's environment cannot shell out at all, and even a
-  # real local checkout is the wrong place: `bin/deploy` still runs, but not
-  # as *this* project's own setup, reproducibly, off the platform's own
-  # infrastructure. `Builder` supplies `opts[:run]` bound to the same builder
-  # box and SSH session the image was just built and pushed on.
+  # Where the script runs: `opts[:run]` (supplied by `Builder`, bound to the
+  # builder box and its SSH session), from which kamal connects *to* the app
+  # server. Never on the app box itself, and never the caller's machine (a
+  # harness cannot shell out).
   defp run_script(env, script, args, opts) do
     case Keyword.get(opts, :run) do
       nil ->
@@ -578,11 +436,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # One shell line: seed the box's own trust of the deploy target, cd to the
-  # delivered tree, export what the script reads, run it. The environment
-  # cannot travel as `System.cmd`'s `:env` over ssh, so it is spelled out in
-  # the command — quoted, because a decrypt key or a registry password is not
-  # guaranteed to be shell-safe.
+  # One shell line: diagnostics, seed host trust, deliver the key, cd to the
+  # delivered tree, export what the script reads (quoted), run it.
   defp remote_command(script, args, opts) do
     exports =
       opts
@@ -603,32 +458,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
       "#{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
   end
 
-  # Temporary: every piece of this tested clean in isolation from this
-  # machine (the account key authenticates directly with `IdentitiesOnly`,
-  # kamal's own `kamal config` correctly resolves `keys`/`keys_only` from
-  # `CMS_SSH_KEY_PATH` into `:ssh_options`, and the exact base64 round-trip
-  # `deliver_ssh_key/1` uses reproduces a byte-identical, working key file)
-  # — yet the live deploy still falls back to password on the builder
-  # itself, which none of that can observe. `ls -la` on the delivered
-  # path confirmed live: `root:root`, `600`. `whoami` right after answers
-  # the question that finding actually raises — whether the shell about to
-  # invoke `bin/deploy`/kamal is that same owner (fine) or a different one
-  # entirely (unreadable, `keys_only: true` then has nothing to offer and
-  # net-ssh falls to password) — both in one command string, so it is
-  # necessarily the same session that runs the script right after. No
-  # secret material either way.
-  # The known_hosts key-type dump earns its place here rather than being
-  # guessed at blind: the ed25519/bcrypt_pbkdf fix (`Remote.ensure_kamal/1`)
-  # changes which host-key algorithm Net::SSH is even able to negotiate —
-  # `ssh-ed25519` only joins `KnownHosts::SUPPORTED_TYPE` once that gem
-  # loads, so a builder that previously always fell back to rsa/ecdsa can
-  # now negotiate ed25519 instead. Confirmed live against broken_oaths: a
-  # host-key mismatch recurred immediately after that fix landed, on a
-  # builder that had deployed clean moments earlier on the identical code —
-  # exactly what a keyscan that only ever captured a subset of the server's
-  # algorithms would produce once a *different* one gets negotiated. Printed
-  # types only, never key material, so this is safe to leave on rather than
-  # add and remove per incident.
+  # Diagnostic: prints the delivered key's ownership, the shell's user, and the
+  # known_hosts key types — never key material.
   defp diagnose_key_on_builder(opts) do
     case Keyword.get(opts, :ssh_key_path) do
       path when is_binary(path) ->
@@ -640,39 +471,15 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # `~/.ssh/config` is ours to wipe and control (`restrict_host_key_algorithms/1`
-  # already does); `/etc/ssh/ssh_config` is not — it ships with the image and
-  # net-ssh reads it by default regardless (`Config.default_files` includes
-  # it alongside `~/.ssh/config`, confirmed in source). Worth seeing rather
-  # than assuming empty: net-ssh 7.3.2's `UserKnownHostsFile` handling did
-  # not split a space-separated multi-path value at all (fixed in 7.3.3,
-  # confirmed by diffing the two `config.rb` — the fix adds an explicit
-  # `.split(/\s+/)`), which on the pre-fix version turns Debian/Ubuntu's own
-  # stock `UserKnownHostsFile ~/.ssh/known_hosts ~/.ssh/known_hosts2` line
-  # into one garbled, nonexistent path — silently emptying `host_keys` for
-  # every file that directive would otherwise have covered. Whether that
-  # applies here depends entirely on which net-ssh actually loads, which is
-  # what the version line in each probe below is for.
+  # Diagnostic: shows `/etc/ssh/ssh_config`'s known-hosts and host-key lines,
+  # which net-ssh reads alongside `~/.ssh/config`.
   defp diagnose_system_ssh_config(_opts) do
     "grep -iE 'UserKnownHostsFile|HostKeyAlgorithms' /etc/ssh/ssh_config /etc/ssh_config 2>/dev/null; "
   end
 
-  # Every theory about *which* key or algorithm is wrong has now been
-  # individually confirmed correct and individually ruled out as the cause —
-  # ed25519 first, then rsa, both with an exact independent fingerprint
-  # match, both still raising `HostKeyMismatch`. That is no longer evidence
-  # for an algorithm-specific bug; it is evidence the comparison itself,
-  # inside Net::SSH, is not seeing what our own diagnostics see. Rather than
-  # theorize about kamal's specific invocation from the outside again, this
-  # calls `Net::SSH::KnownHosts.search_for/1` directly — the exact method
-  # `Transport::Session#host_keys` calls internally — against the exact
-  # "host,ip" string Net::SSH itself builds (`host_as_string`, confirmed by
-  # reading `transport/session.rb`) and the exact known_hosts state kamal is
-  # about to see. If this standalone call also fails to find a matching key,
-  # the bug is confirmed inside net-ssh's own lookup, independent of kamal
-  # entirely. If it succeeds, kamal's own process differs from this one in
-  # some way still worth finding — either answer is decisive, unlike another
-  # guess about which algorithm or which file.
+  # Diagnostic: runs `Net::SSH::KnownHosts.search_for/1` against the same
+  # "host,ip" target net-ssh builds.
+  # See knowledge/provisioning, "Kamal host keys".
   defp diagnose_net_ssh_lookup(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
@@ -683,20 +490,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # Every probe so far replicated a *piece* of the mechanism — the
-  # known_hosts lookup — never the full path: a real handshake negotiating
-  # a real host-key algorithm against a real presented key, verified by
-  # whatever `Net::SSH::Verifiers` class kamal's SSHKit backend actually
-  # selects. Two lookup-only probes, before and after `cd`, agreed with
-  # each other and both found the exact key kamal then rejected — proof the
-  # lookup works, not proof the comparison consuming its result does. This
-  # attempts the real thing: an actual `Net::SSH.start` against the same
-  # host with the same delivered key, bypassing kamal and SSHKit entirely.
-  # If bare net-ssh reproduces `HostKeyMismatch` on its own, the bug is
-  # confirmed inside net-ssh's verification path, independent of anything
-  # this codebase or kamal does. If it connects cleanly, something specific
-  # to kamal's or SSHKit's own connection setup is still unaccounted for —
-  # either answer narrows this for real, unlike a fourth lookup-only probe.
+  # Diagnostic: a bare `Net::SSH.start` with the delivered key, bypassing
+  # kamal and SSHKit.
   defp diagnose_real_ssh_connection(opts) do
     case {Keyword.get(opts, :host), Keyword.get(opts, :ssh_key_path)} do
       {host, path} when is_binary(host) and host != "" and is_binary(path) ->
@@ -719,19 +514,9 @@ defmodule CodeMySpec.Provisioning.Deploy do
       "end"
   end
 
-  # A first probe (`diagnose_net_ssh_lookup/1`) called this exact method with
-  # this exact target and found the exact key kamal's own connection then
-  # rejected — same host, same fingerprint, moments apart, in what looked
-  # like the same shell session. It was not: that probe runs before `cd
-  # #{dir}`, kamal runs after. A project with its own Gemfile can carry its
-  # own `net-ssh` — a different version, potentially a buggy one — and a
-  # bundler-aware `kamal` binstub checked into the repo's own `bin/` would
-  # shadow the globally gem-installed one the moment the working directory
-  # changes, with nothing in the deploy's own output naming which one ran.
-  # This repeats the identical probe from inside the tree, alongside `which
-  # kamal` and whatever `Gemfile.lock` says about `net-ssh`, so a mismatch
-  # between the two probes' output points at the version instead of guessing
-  # at Net::SSH internals a third time.
+  # Diagnostic: the lookup probe again from inside the project tree, with
+  # `which kamal` and the lockfile's net-ssh — a project Gemfile or binstub
+  # can change which net-ssh runs.
   defp diagnose_net_ssh_lookup_in_project_dir(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
@@ -756,20 +541,9 @@ defmodule CodeMySpec.Provisioning.Deploy do
       "\#{(Net::SSH::Authentication::PubKeyFingerprint.fingerprint(k.to_blob) rescue 'fp-error')}\"}"
   end
 
-  # `CMS_SSH_KEY_PATH` travels as an env var (`script_env/1`), which is only
-  # ever a path — kamal reads it from `config/deploy.yml`'s own ERB
-  # (`Steps.deploy_config_target_test`'s neighbourhood: `<% if
-  # ENV["CMS_SSH_KEY_PATH"] %> keys_only: true ... <% end %>`) when it runs
-  # *on the builder*, orchestrating a second, independent ssh connection out
-  # to the app host. `with_builder_ssh/2` writes the key's bytes locally, on
-  # whichever machine calls this process — real for the delivery connection
-  # this process makes itself, meaningless for kamal's own outbound
-  # connection, which reads a path on a filesystem the key was never copied
-  # to. Confirmed live: kamal fell through to interactive password auth and
-  # died `Errno::ENOTTY` — no key at the path it was told to trust, so it had
-  # nothing else to offer. Delivered base64-over-the-wire rather than a
-  # heredoc so the key's own newlines and `-----BEGIN...-----` framing need
-  # no quoting at all.
+  # kamal on the builder opens its own ssh to the app host and reads
+  # `CMS_SSH_KEY_PATH` there, so the key bytes have to exist at that path on
+  # the builder. Base64 so the key's newlines need no quoting.
   defp deliver_ssh_key(opts) do
     case Keyword.get(opts, :ssh_key_path) do
       path when is_binary(path) ->
@@ -784,83 +558,10 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # Kamal's own outbound ssh — from wherever `opts[:run]` reaches, to
-  # `opts[:host]` — is the one connection nothing here has already told to
-  # skip host-key checking. `Remote.ssh_args/2` set `StrictHostKeyChecking=no`
-  # for the *delivery* ssh (this process reaching the box `opts[:run]` targets),
-  # which says nothing about a *second*, independent ssh client Kamal starts on
-  # the far end. Net::SSH reads the standard file by default, so seeding it
-  # once here is most of the fix; nothing about Kamal's own config needs to
-  # change to get the same effect the delivery connection already has.
-  #
-  # A full `rm`, not `ssh-keygen -R`: `opts[:run]`'s box is *not* actually
-  # freshly bare here — it boots from a prebuilt image (`[Builder] ... is up
-  # (image ...)`), and whatever was in that image's own `known_hosts` when
-  # it was captured comes back on every single builder booted from it
-  # since. Appending a fresh scan on top of a stale, baked-in entry gives
-  # Net::SSH two disagreeing records for the same host, which reads as
-  # `HostKeyMismatch` even though the server's own key never changed —
-  # confirmed live against broken_oaths, repeatedly. `ssh-keygen -R` (tried
-  # first) removes a matching entry correctly on its own, verified directly
-  # against this exact "host,ip" line shape — but a targeted removal is
-  # only as reliable as the format it expects matching whatever the image
-  # actually baked in, and the mismatch still recurred with it in place, on
-  # a builder that is destroyed after this one build regardless of outcome.
-  # There is nothing else on a disposable box for a stale unrelated
-  # known_hosts entry to protect; the fresh scan is what earns trust here,
-  # not whatever survived from the image it booted from.
-  #
-  # Retried, not a single attempt: `2>/dev/null` was hiding whether
-  # `ssh-keyscan` actually reached the host at all — a wipe followed by a
-  # scan that silently timed out leaves known_hosts empty either way, and
-  # nothing here distinguished "seeded correctly" from "found nothing to
-  # write". Loops until the file is actually non-empty (the wipe guarantees
-  # it starts at zero bytes) rather than trusting one shot at a scan that
-  # may or may not have landed.
-  #
-  # The retry loop alone did *not* clear it live against broken_oaths —
-  # identical `HostKeyMismatch`, identical fingerprint, on every attempt.
-  # Net::SSH doesn't only consult `~/.ssh/known_hosts`: `KnownHosts.hostfiles`
-  # merges keys found across the user files *and* the global
-  # `/etc/ssh/ssh_known_hosts[2]` (net-ssh 7.3.2, `known_hosts.rb`), and
-  # Kamal's own `Ssh#options` never sets `user_known_hosts_file` to narrow
-  # that (`kamal/configuration/ssh.rb` — no such key at all). A stale entry
-  # baked into the builder image's *global* file is exactly as poisonous as
-  # one in the user file, and it's root-owned state our earlier wipe never
-  # touched — which is also why it reproduced with the same fingerprint
-  # every single time rather than flapping: nothing about it was transient.
-  # `opts[:run]` is already confirmed `root` (the `whoami` diagnostic), so
-  # deleting it outright needs no `sudo`; deleting rather than truncating
-  # is enough since `File.readable?` on a missing file short-circuits to no
-  # keys at all instead of an empty-but-present one.
-  # Confirmed root cause, after every other theory was individually ruled
-  # out live against broken_oaths (algorithm, working directory, net-ssh
-  # version, /etc/ssh/ssh_config, and a bare `Net::SSH.start` that verified
-  # cleanly with the exact same key): SSHKit — not net-ssh, not kamal's own
-  # config — ships its own known_hosts reader
-  # (`SSHKit::Backend::Netssh::KnownHostsKeys#keys_for`,
-  # `sshkit/backends/netssh/known_hosts.rb`), installed as `Net::SSH.start`'s
-  # `:known_hosts` option ahead of net-ssh's own `Net::SSH::KnownHosts`. For
-  # a *hashed* entry, that method loops the parsed hash lines and
-  # `return`s on the FIRST one whose HMAC matches the host — discarding
-  # every other key type at that host outright, rather than collecting all
-  # of them the way net-ssh's own `KnownHosts.search_for` does (confirmed
-  # correct by direct standalone probe). Multiple key types in the known
-  # hosts file for one host means only one of them ever reaches
-  # `Verifiers::Always#verify`, in file order — whichever `ssh-keyscan`
-  # happened to write first, which is not a guaranteed order. If the
-  # negotiated algorithm is not that one surviving type, verification
-  # compares a real, correct key against the wrong stored type and raises
-  # `HostKeyMismatch` — explaining both fingerprints seen tonight (ed25519,
-  # then rsa) being independently correct and independently rejected, and
-  # the pattern never repeating the same way twice.
-  #
-  # The fix scans and allows exactly one key type end to end: `ssh-keyscan
-  # -t rsa` writes exactly one hashed line, so there is nothing left for
-  # SSHKit's `return`-on-first-match to discard.
-  # `restrict_host_key_algorithms/1` narrows the algorithms Net::SSH will
-  # even negotiate to that same family, so what gets negotiated and what
-  # got scanned can never disagree.
+  # Seeds known_hosts for kamal's own outbound ssh with exactly one RSA key.
+  # Wipes the user and global known_hosts files first (the box image can carry
+  # stale entries), and retries the scan until the file is non-empty.
+  # See knowledge/provisioning, "Kamal host keys".
   defp trust_host(opts) do
     case Keyword.get(opts, :host) do
       host when is_binary(host) and host != "" ->
@@ -877,37 +578,10 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # The other half of `trust_host/1`'s fix: forces the algorithm Net::SSH
-  # negotiates to be one `ssh-keyscan -t rsa` actually wrote a hashed entry
-  # for. SSHKit's own known_hosts reader
-  # (`SSHKit::Backend::Netssh::KnownHostsKeys#keys_for`) returns only the
-  # FIRST hashed line that matches a host, silently discarding every other
-  # key type stored for it — confirmed by reading `sshkit/backends/netssh/
-  # known_hosts.rb` directly, after net-ssh's own equivalent
-  # (`KnownHosts.search_for`, which correctly collects every type) checked
-  # out clean via a standalone probe against the identical file. With only
-  # one type ever written, there is nothing left for that bug to discard;
-  # restricting negotiation here to the matching family means what gets
-  # negotiated and what got scanned can never disagree. `rsa-sha2-512`/
-  # `rsa-sha2-256` are signature-algorithm variants of the same RSA key,
-  # not separate key types — net-ssh's own `matching?` (`transport/kex/
-  # abstract.rb`) explicitly treats a `ssh-rsa`-typed stored key as
-  # matching either, so including them costs nothing here. Client-key auth
-  # is unaffected — the delivered key stays ed25519; this only narrows
-  # which algorithm the *server's host key* is allowed to use.
-  #
-  # Written to `~/.ssh/config`, not passed as a kamal/Net::SSH option
-  # directly: `Kamal::Configuration::Ssh#options` has no `:host_key` key at
-  # all, so there is no config surface in kamal itself to carry this. But
-  # `Net::SSH.start` defaults `:config` to `true` when the caller does not
-  # set it (`net/ssh.rb`, `options.fetch(:config, true)`) — kamal's own
-  # `.compact` drops the key entirely when unset in `deploy.yml`, so this
-  # reaches Net::SSH already enabled with no config change needed there.
-  # `HostKeyAlgorithms` maps straight to `:host_key`
-  # (`net/ssh/config.rb`) — an explicit allow-list, not `-ssh-ed25519`,
-  # since net-ssh's own config parser is a plain comma-split with none of
-  # OpenSSH's `+`/`-`/`^` modifier support; a negation prefix would be
-  # read as one literal (and invalid) algorithm name.
+  # The other half of `trust_host/1`: restricts negotiated host-key algorithms
+  # to the RSA family that was scanned, via `~/.ssh/config` (kamal has no
+  # option for it; net-ssh reads the config by default). An explicit list:
+  # net-ssh's parser has no `+`/`-` modifiers. Client-key auth is unaffected.
   @safe_host_key_algorithms "ssh-rsa,rsa-sha2-512,rsa-sha2-256"
 
   defp restrict_host_key_algorithms(opts) do

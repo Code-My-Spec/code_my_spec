@@ -2,79 +2,21 @@ defmodule CodeMySpec.Provisioning.Database do
   @moduledoc """
   The database each environment's app talks to.
 
-  Nothing provisioned one before. `backups` ran `pg_dump` against a database
-  that did not exist, the generated `config/deploy*.yml` put the app on a
-  `db_net` network with nothing else on it, and the first deploy to reach
-  kamal would have started a container that could not boot. A whole step was
-  assumed everywhere and implemented nowhere.
+  - **One container per box, shared.** `ensure_container/2` starts
+    `cms-postgres` once per box and never restarts a running one out from
+    under another project's connections.
+  - **One tenant per project and environment.** `serve/3` gives each its own
+    role (`app_<project>`) and database (`app_<project>_<environment>`), and
+    never touches another project's.
+  - **An account-grained administrator** (`AccountSecrets`) creates tenants:
+    the image only creates the role named by `POSTGRES_USER` at first boot.
+  - **The URL is a secret**: passwords live in `ProjectSecrets` and the URL
+    goes into the environment's encrypted env, never the working tree.
+  - **A separate restore role** (`app_<project>_restore`, `CREATEDB` only)
+    makes and drops `bin/backup restore`'s scratch database. The app's own
+    role never gets `CREATEDB`.
 
-  ## One box, shared — one role and one database per project
-
-  The container is a box-wide singleton: whichever project's server step
-  reaches this box first starts it, and every project after that reuses the
-  one already running rather than restarting it out from under whoever else
-  is connected. That is what makes the box shareable across projects at all —
-  an account with two projects on one server is the ordinary case this exists
-  for, not an edge case bolted on afterward.
-
-  What is *not* shared is the tenant inside it: each project gets its own
-  role and its own database per environment, named from the project so two
-  projects' `prod` cannot collide (`app_<project>_<environment>`). Ensuring
-  one project's role exists, or rotating its password, never touches another
-  project's role — the shape `sync_password/2` already had for one project's
-  own environments, extended one grain further.
-
-  ## Bootstrapping a shared container needs an administrator
-
-  The official Postgres image only creates the role and database named by
-  `POSTGRES_USER`/`POSTGRES_DB` at first boot. Every tenant after the first
-  cannot log in to create itself — nothing has granted it anything yet — so
-  the box needs one administrator credential, minted once per account
-  (`AccountSecrets`, the same grain the server access key uses: it opens
-  every box the account owns), used only to create and alter each project's
-  own role and database.
-
-  ## The URL is a secret, and lives where the others do
-
-  The password is generated once into `ProjectSecrets` and the connection URL
-  is written into that environment's encrypted env, so the app reads it the
-  same way it reads everything else. Nothing puts it in the working tree.
-
-  ## A second, narrower role exists only to make and drop scratch databases
-
-  Backup restore-verification needs somewhere throwaway to restore a dump
-  into and prove it — a database created, checked, and dropped, never the
-  live one (`Backups.restore_proof/3`'s whole reason for existing).
-  `deploy_artifacts.ex`'s generated `bin/backup restore` does this by
-  connecting to `postgres` (the default maintenance database every role
-  can already reach) and issuing `CREATE`/`DROP DATABASE` — which only an
-  administrator, or a role with the `CREATEDB` attribute, is allowed to
-  do. Confirmed live: it currently tries this as the app's own role and
-  gets "permission denied to create database", on every project this box
-  has ever served, not a broken_oaths quirk — `serve/3` never granted
-  `CREATEDB` to anything.
-
-  The fix is not granting it to the app's own tenant role. That role is
-  what the running application authenticates with, on every request, and
-  hers is exactly the credential a SQL injection or a dependency
-  vulnerability would first reach — handing it a standing ability to
-  create arbitrary databases turns "the app got compromised" into "the
-  app got compromised *and* can flood the shared box with databases,"
-  for a privilege the running application itself never uses. `bin/backup
-  restore` runs at backup time, not at request time, and a credential it
-  never hands the application is a credential a compromised application
-  was never given.
-
-  `restore_credential/2`/`ensure_restore_role/3` mint a second role
-  instead — `<tenant>_restore`, `CREATEDB` and nothing else, no database
-  of its own to own or lose. It can create databases and drop the ones it
-  owns; it cannot read, alter, or drop a database — including the app's
-  own live one — that it does not own, so this discloses nothing about
-  any other tenant sharing the box, and nothing about this project's own
-  live data either. Its URL travels the same way `DATABASE_URL` does —
-  written into the environment's encrypted env, read by `bin/backup`
-  generically — so nothing new had to be taught to Kamal or the deploy
-  pipeline to deliver it.
+  See knowledge/provisioning, "Database".
   """
 
   require Logger
@@ -89,28 +31,17 @@ defmodule CodeMySpec.Provisioning.Database do
   @network "db_net"
   @volume "cms-postgres-data"
 
-  # `/var/lib/postgresql`, not `/var/lib/postgresql/data` — pg18's official
-  # image moved to a `pg_ctlcluster`-style layout (`PGDATA` under
-  # `/var/lib/postgresql/18/docker`) and now refuses to start at all when it
-  # finds a volume mounted one level too deep, treating the old-style mount
-  # point itself as evidence of a foreign layout rather than checking
-  # whether anything is actually in it. Found live: cms-postgres crash-
-  # looped on a brand new, empty volume — mount depth was the whole
-  # complaint, not any data. docker-library/postgres#1259.
+  # `/var/lib/postgresql`, not `.../data`: pg18's image refuses to start when
+  # a volume is mounted one level too deep (docker-library/postgres#1259).
   @volume_mount "/var/lib/postgresql"
   @port 5432
 
   @admin_username "postgres"
   @admin_password_secret "database_admin_password"
 
-  # Pinned rather than `:latest`, because a database that silently changes
-  # major version between two runs of setup is a data-loss event with a
-  # convenient explanation.
-  #
-  # pgvector, not stock postgres: it is a strict superset (the extension
-  # only matters to a project that creates it) and MarketMySpec's own
-  # database already depends on `vector` — the same box has to be able to
-  # serve either kind of tenant without a special case for which one.
+  # Pinned: a database that silently changes major version between runs is a
+  # data-loss event. pgvector is a strict superset of stock postgres, so one
+  # box serves tenants that need `vector` and tenants that do not.
   @image "pgvector/pgvector:pg18"
 
   @doc "The container the app connects to, and the port it listens on."
@@ -127,11 +58,8 @@ defmodule CodeMySpec.Provisioning.Database do
   @doc """
   This environment's database credential, minted once.
 
-  Per environment, so UAT's password does not open production's — the same
-  separation the age keys have, and for the same reason. Per project too, now
-  that the box behind it can be shared: the role and database are both named
-  from the project, so two projects' `prod` cannot collide or answer to each
-  other's password.
+  Per environment, so UAT's password does not open production's; per
+  project, so two projects' `prod` cannot collide on a shared box.
   """
   @spec credential(Scope.t(), String.t()) ::
           {:ok, %{username: String.t(), password: String.t(), database: String.t()}}
@@ -155,9 +83,8 @@ defmodule CodeMySpec.Provisioning.Database do
   @doc """
   This environment's restore-verification credential, minted once.
 
-  A second role, not the app's own — see the moduledoc. It owns no fixed
-  database, only `CREATEDB`, so there is nothing for it to point `:database`
-  at.
+  A second role, not the app's own. It owns no fixed database, only
+  `CREATEDB`, so there is no `:database`.
   """
   @spec restore_credential(Scope.t(), String.t()) ::
           {:ok, %{username: String.t(), password: String.t()}} | {:error, term()}
@@ -177,10 +104,8 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # The administrator that can create and alter *any* project's role or
-  # database on this box. Account-grained, like the server access key: it has
-  # to open every box the account owns, not just the one the project that
-  # happened to mint it was thinking of.
+  # Can create and alter any project's role or database on the box.
+  # Account-grained, like the server access key.
   defp admin_credential(scope) do
     case AccountSecrets.fetch_value(scope, @admin_password_secret) do
       {:ok, password} when is_binary(password) and password != "" ->
@@ -199,8 +124,7 @@ defmodule CodeMySpec.Provisioning.Database do
   What the app puts in `DATABASE_URL`.
 
   By container name, not by address: the app and the database share a docker
-  network, and an address would be a second thing to keep correct when either
-  is recreated.
+  network, and an address would change when either is recreated.
   """
   @spec url(%{username: String.t(), password: String.t(), database: String.t()}) :: String.t()
   def url(%{username: username, password: password, database: database}) do
@@ -210,10 +134,8 @@ defmodule CodeMySpec.Provisioning.Database do
   @doc """
   The throwaway database `bin/backup restore` proves a dump into.
 
-  Per tenant and environment, like the role that creates it: the box's
-  postgres is shared, and a restore role can only drop a database it owns, so
-  one shared name let the first project to prove a backup lock every later one
-  out with "must be owner of database".
+  Per tenant and environment: a restore role can only drop a database it
+  owns, so one shared name would lock out every project after the first.
   """
   @spec scratch_database(Scope.t(), String.t()) :: String.t()
   def scratch_database(%Scope{} = scope, environment) do
@@ -224,9 +146,8 @@ defmodule CodeMySpec.Provisioning.Database do
   What `bin/backup restore` connects with to create and drop its own
   scratch database.
 
-  Always `postgres`, the default maintenance database — this role does
-  not own a fixed one, so there is no other database name to point at
-  before the scratch one exists.
+  Always `postgres`, the default maintenance database: this role owns no
+  fixed one.
   """
   @spec restore_url(%{username: String.t(), password: String.t()}) :: String.t()
   def restore_url(%{username: username, password: password}) do
@@ -236,12 +157,9 @@ defmodule CodeMySpec.Provisioning.Database do
   @doc """
   Start the box-wide database container, account-side.
 
-  This is the half of what `serve/3` used to do unconditionally that has
-  nothing to do with any one project: the container itself, brought up once
-  per box regardless of which project's environment eventually connects to
-  it, plus the template-level `vector` extension every tenant database
-  inherits at creation. Idempotent — an already-running container is left
-  alone rather than restarted out from under whoever else is connected.
+  Brings up the container once per box, plus the `vector` extension on
+  `template1` that every tenant database inherits. Idempotent — an
+  already-running container is left alone (but its image is checked).
 
   `:run` takes the command and returns `{output, status}`, so what we ask the
   box to do is assertable without a box.
@@ -262,16 +180,12 @@ defmodule CodeMySpec.Provisioning.Database do
   Give this environment its own role and database on an already-running
   shared container.
 
-  Project-side: never starts or touches the container itself — that is
-  `ensure_container/2`'s job, run once for the box regardless of which
-  project asks. Refuses instead of creating one if the container is not up
-  yet, the same shape `Steps.server_creation_gate/3` uses for the server
-  itself — a project's own devops step does not get to stand up shared
-  account infrastructure as a side effect of asking for its own tenant.
+  Never starts the container: refuses with `:database_not_provisioned` if it
+  is not up, so a project's step cannot stand up shared account
+  infrastructure as a side effect.
 
-  Idempotent: this project's own role/database are created only if they are
-  not already there. Re-running setup must not be a way to lose data, or to
-  interrupt someone else's.
+  Idempotent: this project's role and database are created only if absent,
+  and passwords are re-synced every time.
 
   `:run` takes the command and returns `{output, status}`, so what we ask the
   box to do is assertable without a box.
@@ -313,12 +227,8 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # Only touches the container when it is not already there to touch. A box
-  # with a second project on it has this called against an already-running
-  # instance far more often than not, and the destructive form —
-  # `docker rm -f` unconditionally, every run — is exactly what made this box
-  # unshareable: whichever project provisioned second restarted the first
-  # project's database out from under its live connections.
+  # Only creates when not already running: an unconditional `docker rm -f`
+  # would restart another project's database under its live connections.
   defp ensure_container(run, admin, opts) do
     if container_running?(run) do
       check_image(run, opts)
@@ -327,25 +237,10 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # A running container is never assumed to be running the image this box
-  # would create today. Found live: `cms-postgres` on fuellytics-prod was
-  # started on plain `postgres:17` before pgvector became the default here,
-  # and `ensure_container/3` treated "running" as the whole answer — every
-  # run since would have kept reporting the server step done on a database
-  # that could never install `vector`, because nothing re-created here once
-  # a container exists.
-  #
-  # This does not act on the drift. Swapping the image under a running
-  # container whose volume might hold another project's real data is a
-  # deliberate `docker rm -f` plus volume wipe, not something a routine
-  # `serve/3` call gets to decide on its own — the same reason this box
-  # never restarts an already-running container in the first place. It only
-  # makes the drift visible, as a step that fails to verify rather than one
-  # that quietly reports done on a database this run never actually ensured.
-  #
-  # An inspect that cannot be read is not a verdict either way — the same
-  # rule `run_step/3` already applies to a provider that could not be read —
-  # so this proceeds rather than blocking on a transient SSH hiccup.
+  # A running container on a different image is reported as
+  # `:database_image_outdated`, never fixed here: swapping it means wiping a
+  # volume that may hold another project's data. An unreadable inspect
+  # proceeds rather than blocking on an SSH hiccup.
   defp check_image(run, opts) do
     wanted = Keyword.get(opts, :database_image, @image)
 
@@ -371,15 +266,8 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # `docker ps -q` answers with nothing but container ID lines when it
-  # succeeds — but ssh's own "Warning: Permanently added ... to the list of
-  # known hosts" banner merges onto the same stream (`stderr_to_stdout: true`)
-  # on every call, since `UserKnownHostsFile=/dev/null` guarantees ssh never
-  # finds a host already known. Checking "is the output non-empty" answered
-  # that banner, not the container list — confirmed live: it read a fresh box
-  # with nothing on it as already running, and `create_container/3` never ran
-  # at all. `Remote.ssh_args/2` silences the banner at the source; this also
-  # refuses to be fooled by anything else that might land on the same stream.
+  # Counts only container-id lines, so an ssh banner on the same stream cannot
+  # read as "running".
   defp container_running?(run) do
     case run.(["docker ps -q -f name=^/#{@container}$"]) do
       {output, 0} -> output |> container_ids() |> Enum.any?()
@@ -393,15 +281,9 @@ defmodule CodeMySpec.Provisioning.Database do
     |> Enum.filter(&(&1 =~ ~r/^[0-9a-f]{12,64}$/))
   end
 
-  # Bound to the docker network only — never published to a host port. The
-  # firewall would refuse it from outside anyway, and a database that is not
-  # listening on an address is a database that cannot be reached by mistake.
-  #
-  # Bootstrapped with the administrator, not a tenant. The image only creates
-  # the role and database named by `POSTGRES_USER`/`POSTGRES_DB` at first
-  # boot, and the whole point of `ensure_tenant/3` running afterward is that
-  # a second project's role does not exist yet — it cannot have been the one
-  # the container was born with.
+  # Bound to the docker network only, never a host port. Bootstrapped with
+  # the administrator, since later tenants' roles cannot be the one the
+  # container was born with.
   defp create_container(run, admin, opts) do
     image = Keyword.get(opts, :database_image, @image)
 
@@ -423,23 +305,11 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # `docker run -d` returning 0 means the container was created. Postgres takes
-  # seconds more to accept connections, and a migration that arrives first
-  # fails in a way that reads like a broken image rather than an impatient
-  # caller — the same distinction the registry's probe draws.
-  #
-  # Asks the server, not a role: `-U`/`-d` bound this to the one credential
-  # already, but ensuring a *second* project's role and database is `serve/3`'s
-  # next step, not something to have already happened by the time readiness is
-  # checked — pg_isready with neither answers whether Postgres itself is up,
-  # which is the only thing this gate needs to know.
+  # `docker run -d` returning 0 means created, not accepting connections.
+  # Asks the server, not a role, since tenants may not exist yet.
   defp await_ready(run, attempts) do
-    # `-h 127.0.0.1`, so this asks the TCP listener rather than the unix socket.
-    # Without it `pg_isready` answers over the socket, which is up during
-    # Postgres's first-boot phase while TCP still refuses — so `serve/3`
-    # reported ready and the very next connection got
-    # `connection to server at "cms-postgres" ... failed: Connection refused`.
-    # The app connects over TCP, so TCP is what readiness has to mean.
+    # `-h 127.0.0.1`: the unix socket is up during first boot while TCP still
+    # refuses, and the app connects over TCP.
     check = "docker exec #{@container} pg_isready -h 127.0.0.1 > /dev/null"
 
     case run.([check]) do
@@ -456,11 +326,7 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # This project's role and database, created if this is the first time this
-  # project has reached this box. A box shared with another project already
-  # has the container running and someone else's role in it by the time this
-  # runs — creating is not a one-time event the way it was when the box and
-  # the project were the same thing.
+  # This project's role and database, created on its first visit to the box.
   defp ensure_tenant(run, admin, credential) do
     with :ok <- ensure_role(run, admin, credential),
          :ok <- ensure_database(run, admin, credential) do
@@ -478,11 +344,8 @@ defmodule CodeMySpec.Provisioning.Database do
     run_admin_sql(run, admin, sql, :database_role_not_ready)
   end
 
-  # `CREATE DATABASE` cannot run inside the `DO` block above — Postgres
-  # refuses it inside a transaction — so existence is checked first in the
-  # shell rather than left to a database-already-exists error, which would
-  # read as this step failing rather than as the ordinary case of a role
-  # provisioning its second environment.
+  # `CREATE DATABASE` cannot run inside a `DO` block (transaction), so
+  # existence is checked in the shell first.
   defp ensure_database(run, admin, credential) do
     check =
       "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(admin.username)} " <>
@@ -513,17 +376,9 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # pgvector is not a trusted extension — its control file carries no
-  # `trusted = true` — so a tenant role can never install it itself, no
-  # matter that it owns its own database: confirmed live, a plain LOGIN
-  # role got "permission denied to create extension ... Must be superuser"
-  # even as the database's owner. Installed here, once, by the admin the
-  # box already trusts for exactly this reason. `IF NOT EXISTS` is what
-  # then makes it safe for the tenant's own migration to ask for the same
-  # extension again — confirmed live too, the permission check never runs
-  # once the extension already exists, so the app's ordinary
-  # `CREATE EXTENSION IF NOT EXISTS vector` migration succeeds under its own,
-  # unprivileged role.
+  # pgvector is not a trusted extension, so a tenant role cannot install it
+  # even as owner. The admin installs it; the app's own
+  # `CREATE EXTENSION IF NOT EXISTS vector` migration then succeeds.
   defp ensure_vector_extension(run, admin, credential) do
     sql = "CREATE EXTENSION IF NOT EXISTS vector"
 
@@ -537,30 +392,9 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # Same wall as `ensure_vector_extension/3`, one layer deeper: that fix
-  # covers the app's own persistent database, installed once by the admin
-  # right after it is created. It does nothing for backup restore-
-  # verification's scratch database, which does not exist until a restore
-  # actually runs and is dropped again right after — there is no fixed
-  # database to have pre-installed the extension into ahead of time.
-  # Confirmed live against broken_oaths: past the CREATEDB and
-  # database-level-CREATE fixes, its own dump's `CREATE EXTENSION vector`
-  # still failed "must be superuser" — `CREATEDB` and owning a database
-  # are not superuser, and pgvector is not a trusted extension (unlike
-  # `citext`, which the same dump's earlier statement had already
-  # succeeded on for exactly that reason).
-  #
-  # `CREATE DATABASE` clones the *entire* catalog of `template1`, not just
-  # its schema ownership — so an extension installed into `template1`
-  # itself is already present, catalog and all, in every database created
-  # after, including one that will not exist for another six hours and
-  # get dropped five minutes later. Box-wide and unconditional, the same
-  # as `ensure_container/3`: this runs once per `serve/3` call regardless
-  # of which project triggered it, `IF NOT EXISTS` makes every call after
-  # the first a no-op, and the image already carries pgvector for every
-  # tenant on the box (`@image`'s own moduledoc) — this just also makes
-  # it register-able without a superuser once a database exists to
-  # register it in.
+  # The restore's scratch database exists only during a restore, so the
+  # extension is installed into `template1`, which `CREATE DATABASE` clones.
+  # `IF NOT EXISTS` makes every call after the first a no-op.
   defp ensure_template_vector_extension(run, admin) do
     sql = "CREATE EXTENSION IF NOT EXISTS vector"
 
@@ -574,24 +408,11 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # Make the role's password the one `DATABASE_URL` actually carries.
-  #
-  # `POSTGRES_PASSWORD` is read only when Postgres *initialises* a data
-  # directory, and the volume deliberately outlives the container — that is the
-  # point of naming it, so re-running setup is not a way to lose data. The
-  # consequence is that on every serve after the first, the password in the
-  # environment is decoration: the role keeps whatever it was created with.
-  #
-  # So a rotated password left the connection string and the database
-  # disagreeing, with nothing reporting it. `serve/3` returned ready, the server
-  # step recorded done, and the failure surfaced at the deploy as
-  # `FATAL 28P01 password authentication failed for user "app"` — pointing at
-  # the migration rather than at the step that had just certified the database.
-  #
-  # `ALTER USER` is idempotent and costs one exec against a container that is
-  # already up, so it runs every time rather than only when a change is
-  # suspected — detecting the mismatch would mean trying the password, which is
-  # the same round trip for a worse guarantee.
+  # Make the role's password the one `DATABASE_URL` carries.
+  # `POSTGRES_PASSWORD` is read only when the data directory is initialised,
+  # and the named volume outlives the container, so a rotated password would
+  # otherwise surface at deploy as `28P01 password authentication failed`.
+  # Runs every time; checking would cost the same round trip.
   defp sync_password(run, credential) do
     sql = "ALTER USER #{credential.username} WITH PASSWORD #{sql_escape(credential.password)}"
 
@@ -605,11 +426,8 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # Same shape as `ensure_role/3`, and unconditional for the same reason:
-  # a role provisioned before this one existed at all has to pick it up on
-  # an ordinary later `serve/3` run, not only ever get created fresh.
-  # `CREATEDB` here, never in `ensure_role/3` — see the moduledoc for why
-  # this is a second role and not an attribute on the app's own one.
+  # Unconditional, so a role created before `CREATEDB` was granted picks it up
+  # on a later run. `CREATEDB` here, never in `ensure_role/3`.
   defp ensure_restore_role(run, admin, restore) do
     sql =
       "DO $$ BEGIN " <>
@@ -621,9 +439,7 @@ defmodule CodeMySpec.Provisioning.Database do
     run_admin_sql(run, admin, sql, :database_restore_role_not_ready)
   end
 
-  # `sync_password/2`'s own reasoning, restated for a role with no database
-  # of its own to connect through: `-d postgres` rather than `-d
-  # #{credential.database}`, since this role owns nothing fixed to name.
+  # As `sync_password/2`, through `-d postgres`: this role owns no database.
   defp sync_restore_password(run, restore) do
     sql = "ALTER USER #{restore.username} WITH PASSWORD #{sql_escape(restore.password)}"
 
@@ -649,14 +465,9 @@ defmodule CodeMySpec.Provisioning.Database do
     %{username: "app_#{tenant_slug(scope)}_restore", password: password}
   end
 
-  # Postgres identifiers built from the project's own name — `CREATE ROLE`
-  # and `CREATE DATABASE` above interpolate this unquoted, so it is
-  # restricted to what an unquoted identifier accepts rather than trusted to
-  # already be safe. `Repository.default_name/1` already normalises to
-  # lowercase letters, digits and dashes; only the dash needs converting; a
-  # project named entirely with characters that normalise away would be an
-  # empty identifier, so a short deterministic fallback keeps this a real
-  # database name instead of a syntax error.
+  # Interpolated unquoted into `CREATE ROLE`/`CREATE DATABASE`, so restricted
+  # to an unquoted identifier: `Repository.default_name/1`'s output with dashes
+  # converted, or a deterministic fallback when that is empty.
   defp tenant_slug(scope) do
     case scope.active_project |> Repository.default_name() |> String.replace("-", "_") do
       "" -> "project_#{scope.active_project.id |> to_string() |> String.slice(0, 8)}"

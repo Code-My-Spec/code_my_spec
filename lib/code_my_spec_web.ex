@@ -20,6 +20,8 @@ defmodule CodeMySpecWeb do
   use Boundary,
     top_level?: true,
     deps: [
+      # Desktop overview invokes the local, recorded machine setup flow.
+      CmsHarness,
       CodeMySpec,
       CodeMySpec.AgentPerformance,
       CodeMySpec.Agents.Agent,

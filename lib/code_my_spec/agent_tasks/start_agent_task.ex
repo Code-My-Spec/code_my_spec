@@ -1,30 +1,18 @@
-# Every `apply/3` here is the dispatch this module exists to perform, and the
-# reasoning is recorded above `run_bootstrap_task/3`: `resolve_session_type/2`
-# returns one of ~30 task modules whose `command/2` argument shapes genuinely
-# differ, the session type is what decides which comes back, and that
-# correlation is not expressible to the type checker. `apply/3` states plainly
-# that this is dynamic dispatch.
-#
-# Suppressed at file level rather than five times inline because it is one
-# decision, not five. The check stays on everywhere else, where a known arity
-# usually does mean the call could be direct.
+# Every `apply/3` here is the module's dynamic dispatch to a task module's
+# `command/2` (see the note above `run_bootstrap_task/3`). One decision, so
+# suppressed once for the file.
 # credo:disable-for-this-file Credo.Check.Refactor.Apply
 defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @moduledoc """
-  Start an agent task session and generate the initial prompt.
+  Start an agent task session by session type and generate its prompt.
 
-  Creates a filesystem-backed Session with proper configuration,
-  looks up the component if needed, sets virtual fields on the session,
-  and calls the appropriate AgentTask module to generate the prompt.
+  The skill/CLI route, beside the graph route (`start_task`). Except for
+  bootstrap types, finds or creates the Claude Code Session, syncs the project's files incrementally, looks up
+  the component or topic the type needs, and calls the task module's
+  `command/2`. The prompt is prefixed with project context (docs location,
+  decision records, architecture tools).
 
-  ## Usage
-
-  Called by CLI or other interfaces to start agent task sessions.
-  Does not perform any IO - caller is responsible for output.
-
-  ## Output
-
-  Returns `{:ok, prompt}` on success or `{:error, reason}` on failure.
+  Does no IO; returns `{:ok, prompt, sync_result}` or `{:error, reason}`.
   """
 
   alias CodeMySpec.AgentTasks
@@ -39,9 +27,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.TaskOwner
 
   # Maps session type names to AgentTask modules. A function, not a module
-  # attribute: an attribute naming every task module is a compile-time reference
-  # to each of them, which put this module — and the router beyond it — in the
-  # app's compile cycle.
+  # attribute: an attribute would be a compile-time reference to every task
+  # module and put this module in the app's compile cycle.
   def session_type_map do
     %{
       "develop_context" => AgentTasks.DevelopContext,
@@ -76,11 +63,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
       "init" => AgentTasks.Init,
       "issue_fix" => AgentTasks.IssueFix,
       "submit_story_issue" => AgentTasks.SubmitStoryIssue,
-      # Not started through here in practice — `Agents.IssueWork` creates this
-      # task directly once a team's fix is done — but registered for the same
-      # reason `issue_fix` is: `Evaluator.custom_evaluate_modules/0` requires
-      # it, and the consistency test (`ConsistencyTest`) checks every such
-      # module is reachable from here.
+      # Created by `Agents.IssueWork`, not started here, but every module in
+      # `Evaluator.custom_evaluate_modules/0` must be reachable from this map
+      # (`ConsistencyTest`).
       "issue_qa" => AgentTasks.IssueQa,
       # Created by `Agents.IssueWork` once QA passes the fix, like `issue_qa`.
       "issue_promote" => AgentTasks.IssuePromote
@@ -113,18 +98,13 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "fix_issues",
     "spex_boundary_ready",
     "persona_research",
-    # A release is project-wide by definition — it gathers what shipped across
-    # every story. `AgentTasks.Release` has been a registered session type all
-    # along, but was absent from this dispatcher, so a request for one fell
-    # through to the component branch and was refused with "Module name is
-    # required for this task type" — asking for a component that cannot exist.
+    # Project-wide: a release gathers what shipped across every story.
     "release"
   ]
 
-  # Tasks that take a topic name (passed as module_name arg) instead of a component lookup.
-  # `three_amigos` uses the topic slot for the story_id so the skill can
-  # bypass the requirement-graph dispatch and start a session against any
-  # story directly.
+  # Tasks that take a topic (passed as `module_name`) instead of a component.
+  # `qa_story` and `three_amigos` take a story there, so the skill can start
+  # against any story without the graph.
   @topic_tasks ["research_topic", "qa_story", "three_amigos"]
 
   def valid_types, do: Map.keys(session_type_map())
@@ -179,15 +159,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     end
   end
 
-  # Task dispatch goes through `apply/3` rather than `module.command(...)`.
-  #
-  # `resolve_session_type/2` returns one of ~30 task modules, and their
-  # `command/2` argument shapes genuinely differ (`%{component_id: _}` for
-  # component tasks, `%{project_id: _}` for project ones). The session type
-  # decides which module comes back, so the pairing is always correct at
-  # runtime — but that correlation isn't expressible to the type checker,
-  # which sees the whole union and reports every combination it can't rule
-  # out. `apply/3` states plainly that this is dynamic dispatch.
+  # Task dispatch goes through `apply/3`: task modules' `command/2` argument
+  # shapes differ (`%{component_id: _}` vs `%{project_id: _}`), the session
+  # type picks the module, and the type checker cannot see that correlation.
   defp run_bootstrap_task(scope, external_id, session_type) do
     with {:ok, _} <- validate_external_id(external_id),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil) do
@@ -210,16 +184,10 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     end
   end
 
-  # Optional per-task session-state initialization. Task modules that need
-  # to mutate the session before `command/2` runs (e.g. StartImplementation
-  # enabling continuous mode) export `init_session/2` and own the mutation
-  # themselves. This dispatcher keeps the per-task logic in the task module
-  # so MCP tools and CLI entry points share one source of truth.
+  # Task modules that mutate the session before `command/2` (e.g.
+  # StartImplementation enabling continuous mode) export `init_session/2`.
   defp init_session_state(scope, session, agent_task_module) do
-    # Ensure the module is loaded before `function_exported?` — otherwise
-    # the very first call after boot returns false because the BEAM
-    # hasn't pulled in the task module yet, and the session-state hook
-    # silently skips (e.g., StartImplementation never sets continuous).
+    # Load first: `function_exported?` is false for a module not yet loaded.
     Code.ensure_loaded?(agent_task_module)
 
     if Code.ensure_loaded?(agent_task_module) and
@@ -476,11 +444,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     base_dir = env && env.cwd
 
     if base_dir do
-      # `changed_paths` threaded through to `ComponentSync` — this function's
-      # own doc says "incremental only", but without this it forced a full,
-      # non-incremental resync of every component in the project on every
-      # `start_task` call regardless of what actually changed. Same bug as
-      # `GetNextRequirement`, the other end of this loop.
+      # `changed_paths` keeps the component sync incremental.
       with {:ok, file_result} <- FileSync.sync(scope, base_dir: base_dir),
            {:ok, comp_result} <-
              FileComponentSync.sync_from_files(scope,
@@ -491,18 +455,9 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
         {:ok,
          %{components: comp_result.all_components, changed: comp_result.changed_component_ids}}
       else
-        # The environment reports a working copy it cannot walk — the light
-        # harness, where the server holds no tree. Nothing to catch up: the
-        # harness *is* the file watcher for its checkout and syncs by manifest,
-        # which also runs the component projection. This fallback exists for
-        # files changed while nothing was watching, and on a harness that is
-        # never the server's question to answer.
-        #
-        # The guard above tests `base_dir`, which a harness has — it reports its
-        # root — so the real condition is whether the environment can scan, not
-        # whether a path exists. Failing here made every skill that starts a task
-        # return "Sync failed: {:cannot_scan, :not_supported_on_harness}", which
-        # is what `/qa` returned once its routing was fixed.
+        # A light harness reports a root but cannot be scanned from here; it
+        # is the file watcher for its checkout and syncs by manifest, so there
+        # is nothing to catch up.
         {:error, {:cannot_scan, _reason}} ->
           {:ok, %{components: [], changed: []}}
 

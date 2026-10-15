@@ -21,6 +21,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CmsHarness,
       CmsHarness.Agents,
       CmsHarness.Project,
+      # The connected desktop assistance fixture uses the real harness websocket rig.
+      CmsHarnessTest,
       CodeMySpec,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Embeddings,
@@ -35,6 +37,7 @@ defmodule CodeMySpecSpex.Fixtures do
       # `launch_agent/1` names the carried tools the way the channel's launch does.
       CodeMySpec.McpServers,
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,
       CodeMySpec.Architecture,
@@ -130,6 +133,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Reconciler
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Analytics.GoogleAnalytics
@@ -927,6 +931,32 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec mark_present(map()) :: map()
   def mark_present(agent), do: AgentPresence.present(agent)
 
+  @doc """
+  Untrack an agent's presence without ending its process: the lane leaves the
+  harness channel, the thing actually running it does not.
+  """
+  @spec mark_absent(map()) :: :ok
+  def mark_absent(agent), do: AgentPresence.absent(agent)
+
+  @doc """
+  Record the machine's own pid for an agent, the way a harness report does.
+
+  `os_pid` arrives on this project from the machine actually running the
+  agent, not from a decision made here — so a criterion whose premise is
+  "the machine already reported a pid for it" sets it directly rather than
+  standing up the full report round trip to produce the same row.
+  """
+  @spec record_os_pid(CodeMySpec.Agents.Agent.t(), integer()) :: CodeMySpec.Agents.Agent.t()
+  def record_os_pid(%CodeMySpec.Agents.Agent{} = agent, pid) when is_integer(pid) do
+    scope = %Scope{
+      active_account_id: agent.account_id,
+      active_project_id: agent.project_id
+    }
+
+    {:ok, updated} = AgentsRepository.update_agent(scope, agent, %{os_pid: pid})
+    updated
+  end
+
   defp tool_set(role) when is_binary(role),
     do: role |> String.to_existing_atom() |> tool_set()
 
@@ -1167,6 +1197,85 @@ defmodule CodeMySpecSpex.Fixtures do
       ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "spex-placeholder-secret")
 
     ProjectSecrets.put_value(scope, "hetzner_api_token", token)
+  end
+
+  def stop_desktop_fixture_copies(directory) do
+    prefix = Path.expand(directory) <> "/"
+
+    roots =
+      CmsHarness.Projects.list()
+      |> Enum.filter(&String.starts_with?(Path.expand(&1), prefix))
+
+    # Closing the client side's socket does not wait for the matching
+    # server-side HarnessProjectChannel to notice and exit -- that happens on
+    # its own, async, over the local websocket. A channel still mid a
+    # reconcile when this test's Sandbox owner stops next outlives the
+    # connection it was using (add46395, 9d81dfbd). Monitored here, while the
+    # registry entry is still live, and waited out below.
+    refs = Enum.map(desktop_channel_pids(prefix), &Process.monitor/1)
+
+    Enum.each(roots, &CmsHarness.Projects.stop_serving/1)
+
+    Enum.each(refs, &await_desktop_channel_down/1)
+  end
+
+  # `root` is reported to the registry, not an identity it resolves by (see
+  # `HarnessRegistry.register_executor/3`'s own moduledoc) -- so this scans
+  # every entry and filters on it directly, instead of first resolving a
+  # working_copy_id for each root the way an ordinary caller would.
+  defp desktop_channel_pids(prefix) do
+    HarnessRegistry
+    |> Registry.select([{{:"$1", :"$2", {:_, :"$3"}}, [{:is_binary, :"$1"}], [{{:"$2", :"$3"}}]}])
+    |> Enum.filter(fn {_pid, root} -> is_binary(root) and String.starts_with?(Path.expand(root), prefix) end)
+    |> Enum.map(fn {pid, _root} -> pid end)
+  end
+
+  defp await_desktop_channel_down(ref) do
+    receive do
+      {:DOWN, ^ref, :process, _pid, _reason} -> :ok
+    after
+      5_000 -> raise "a desktop harness's server-side channel outlived the client copy that closed on it"
+    end
+  end
+
+  def desktop_setup_main_agent(user) do
+    account = CodeMySpec.AccountsFixtures.account_with_owner_fixture(user)
+    account_scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account)
+    {:ok, _} = UserPreferences.select_active_account(account_scope, account.id)
+    project = CodeMySpec.ProjectsFixtures.project_fixture(account_scope, account_id: account.id)
+    scope = CodeMySpec.UsersFixtures.user_scope_fixture(user, account, project)
+    {:ok, _} = UserPreferences.select_active_project(scope, project.id)
+    context = %{user: user, account: account, project: project, scope: scope}
+
+    :ok = install_recording_agent_transport(context)
+    :ok = designate_main(context.scope, context.scope.active_working_copy_id)
+    agent = running_agent(context.scope, role: "main")
+    Map.put(context, :setup_main_agent, agent)
+  end
+
+  def desktop_setup_connected_harness(scope) do
+    previous = System.get_env("CMS_PROJECT_ID")
+    System.delete_env("CMS_PROJECT_ID")
+    ExUnit.Callbacks.on_exit(fn -> restore_desktop_project_id(previous) end)
+
+    CmsHarnessTest.FakeServer.start()
+    project = CmsHarnessTest.Projects.project_dir(project_id: scope.active_project_id)
+    ExUnit.Callbacks.on_exit(fn -> CmsHarnessTest.Projects.stop_project(project.root) end)
+    {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+    %{connected: true} = CmsHarness.Setup.Connection.observe(project.root)
+    project
+  end
+
+  defp restore_desktop_project_id(nil), do: System.delete_env("CMS_PROJECT_ID")
+  defp restore_desktop_project_id(value), do: System.put_env("CMS_PROJECT_ID", value)
+
+  def desktop_harness_credential(user) do
+    {:ok, token} =
+      ExOauth2Provider.AccessTokens.create_token(user, %{expires_in: 3600},
+        otp_app: :code_my_spec
+      )
+
+    token.token
   end
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)

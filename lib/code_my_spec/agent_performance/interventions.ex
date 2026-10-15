@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentPerformance.Interventions do
   @moduledoc """
-  Manual interventions -- an operator or user nudge, a restart -- counted
+  Manual interventions -- a message from an operator or user, a restart -- counted
   against the story they served, or at project level when no team was
   holding one.
 
@@ -19,6 +19,7 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
   """
 
   alias CodeMySpec.AgentPerformance.CycleTime
+  alias CodeMySpec.AgentPerformance.MessageKind
   alias CodeMySpec.Agents
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Conversation
@@ -30,7 +31,7 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
 
   @large_limit 100_000
 
-  @type intervention :: %{at: DateTime.t(), kind: :nudge | :restart, reason: String.t()}
+  @type intervention :: %{at: DateTime.t(), kind: :message | :restart, reason: String.t()}
 
   @doc "Every intervention recorded on one agent's conversation."
   @spec for_agent(Scope.t(), String.t()) :: [intervention()]
@@ -91,11 +92,15 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
     |> Map.new(fn {agent_id, messages} -> {agent_id, Enum.flat_map(messages, &classify/1)} end)
   end
 
-  defp classify(%{role: :operator, sender_id: "operator"} = message),
-    do: [%{at: message.inserted_at, kind: :nudge, reason: reason_text(message)}]
+  defp classify(%{role: :operator, sender_id: sender} = message)
+       when sender in ["operator", "system:restart"] do
+    text = reason_text(message)
+    kind = MessageKind.of(sender, text)
 
-  defp classify(%{role: :operator, sender_id: "system:restart"} = message),
-    do: [%{at: message.inserted_at, kind: :restart, reason: reason_text(message)}]
+    if MessageKind.intervention?(kind),
+      do: [%{at: message.inserted_at, kind: kind, reason: text}],
+      else: []
+  end
 
   defp classify(_message), do: []
 
@@ -173,7 +178,7 @@ defmodule CodeMySpec.AgentPerformance.Interventions do
 
   # Every narrowing key applies, not just the first whose clause matches: the
   # page offers working copy, story and agent together, and picking an agent
-  # after a copy must count the nudges of that agent on that copy, not all of
+  # after a copy must count the messages to that agent on that copy, not all of
   # the agent's or all of the copy's.
   defp filter_agents(agents, filter) do
     agents

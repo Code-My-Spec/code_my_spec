@@ -3,7 +3,8 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   Behaviour for environment implementations.
 
   Environments define HOW commands execute (not WHAT commands to generate).
-  Each implementation handles execution in its specific context (CLI with tmux, Server, VSCode).
+  Each implementation handles execution in its own context (local filesystem,
+  container, a remote harness, in-memory for tests).
   """
 
   alias CodeMySpec.Environments.Environment
@@ -103,20 +104,15 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   Run a command in the environment and return its output and exit status.
 
   Execution is a property of the environment for the same reason file access
-  is: `mix test` has to run where the working copy lives. Every shell-out in
-  the system goes through here, so moving the code somewhere other than the
-  machine holding the checkout is a matter of adding an implementation rather
-  than of finding and rewriting call sites.
+  is: `mix test` has to run where the working copy lives.
 
   Implementations run in `env.cwd` unless the caller overrides `:cd`. `opts`
   otherwise follows `System.cmd/3`.
 
-  Output is returned with ANSI escapes stripped and invalid UTF-8 scrubbed,
-  because it is bound for a database and a JSON response and neither tolerates
-  raw terminal bytes. It is **not** trimmed: a trailing newline is not a
-  terminal-byte problem, and for column-oriented output — `git status
-  --porcelain` above all — the leading space is data. Callers wanting a
-  trimmed string trim it.
+  Output is returned with ANSI escapes stripped and invalid UTF-8 scrubbed (it
+  is bound for a database and JSON). It is **not** trimmed: for
+  column-oriented output such as `git status --porcelain` the leading space is
+  data.
   """
   @callback cmd(
               env :: Environment.t(),
@@ -129,13 +125,10 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   Whether `path` exists in the filesystem the *shell* sees — the one `cmd/4`
   runs in.
 
-  Usually the same answer as `file_exists?/2`, and deliberately a separate
-  question. `file_exists?/2` reports on the domain's filesystem; this reports
-  on the execution filesystem. The in-memory test environments are where they
-  come apart: they fake the domain filesystem while delegating execution to
-  the real one, so `deps/credo` is present to a spawned `mix` and absent to
-  `read_file/2`. A tool-availability check has to follow `cmd/4`, not
-  `read_file/2`, or it concludes the tool is missing and silently skips it.
+  Usually the same answer as `file_exists?/2`, deliberately a separate
+  question: in-memory test environments fake the domain filesystem while
+  executing on the real one. A tool-availability check must follow `cmd/4`,
+  or it concludes the tool is missing and silently skips it.
 
   Paths resolve against the environment's cwd, as everywhere else.
   """

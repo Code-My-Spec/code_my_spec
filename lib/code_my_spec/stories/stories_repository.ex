@@ -49,12 +49,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   `%{story_id => %{at: DateTime.t() | nil, commit: String.t() | nil}}` for the
   given story ids.
 
-  Display data for a stop-hook refusal (`51e319db`): when and where a
-  `specs_ready` latch was earned, so a reader on a different checkout can tell
-  an old, earned-elsewhere latch from a fresh regression. Narrowed to the
-  requested ids and two columns, the same reasoning as
-  `list_specs_ready_story_ids/1` — this is called from the same blocking-check
-  path, and the caller already knows which ids it needs.
+  Display data for a stop-hook refusal: when and where a `specs_ready` latch
+  was earned, so a reader on a different checkout can tell an earned-elsewhere
+  latch from a fresh regression. Narrow, because it is on the stop path.
   """
   def specs_ready_stamps(%Scope{active_project_id: project_id}, story_ids)
       when is_list(story_ids) do
@@ -68,14 +65,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   @doc """
   `%{story_id => number}` for every story in the project.
 
-  What a page needs to label a story the way the story's own page labels it. A
-  story carries both, and the number is the one that names its spex directory —
-  id 1031 is number 1065, whose specs live in `test/spex/1065_…/`. They coincide
-  on a young project and diverge later (1ab62ffd).
-
-  Narrow for the same reason as `list_specs_ready_story_ids/1`: the caller wants
-  two integers per row, and `list_project_stories/1` would preload `:criteria`
-  and `:tags` for the whole project to produce them.
+  What a page needs to label a story by its number, which names its spex
+  directory; id and number coincide on a young project and diverge later.
+  Narrow: no preloads.
   """
   def story_numbers(%Scope{active_project_id: project_id}) do
     Story
@@ -88,10 +80,8 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   @doc """
   `%{story_id => working_copy_id}` for the project's assigned stories.
 
-  Only the assigned ones. A story missing from this map is in the shared
-  backlog, which is the common case and the one worth keeping cheap — carrying a
-  nil for every unassigned story would make the map the size of the project to
-  say nothing about almost all of it.
+  Only the assigned ones; a story missing from this map is in the shared
+  backlog.
   """
   def list_story_working_copy_ids(%Scope{active_project_id: project_id}) do
     Story
@@ -104,11 +94,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   @doc """
   `%{number => id}` for the project's stories.
 
-  Resolves a spex directory name back to a story. `test/spex/<n>_<slug>/`
-  is named from the durable number, and everything downstream keys on the
-  primary key, so without this map the number was compared against ids
-  directly — a comparison that silently succeeds against the wrong story
-  whenever some other story happens to hold that id.
+  Resolves a spex directory name (`test/spex/<n>_<slug>/`, named from the
+  number) back to a story id. Never compare a number against ids: it silently
+  matches the wrong story.
   """
   def list_story_ids_by_number(%Scope{active_project_id: project_id}) do
     Story
@@ -121,10 +109,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   @doc """
   Every story's working copy, keyed by story id.
 
-  Which checkout owns a story, so a finding about it can be told from a finding
-  about somebody else's work. Spec files are on disk and stories are assigned,
-  and the two drift — a copy that once held an epic keeps its files after the
-  epic moves — so the file's location is not the answer and the assignment is.
+  Which checkout owns a story, so a finding about it can be told from a
+  finding about somebody else's work. The assignment answers this, not where
+  spec files sit: files stay on a copy after its stories move.
   """
   def list_working_copy_ids_by_story(%Scope{active_project_id: project_id}) do
     Story
@@ -213,25 +200,14 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   defp filter_by_readiness(query, _), do: query
 
-  # `without_epic: true` answers the question grouping-into-epics work
-  # actually asks — "which ready story sits outside every epic" — directly,
-  # rather than making a caller diff a story count against the sum of every
-  # epic's own count by hand (67b3bba6).
+  # `without_epic: true`: which stories sit outside every epic.
   defp filter_by_epic_membership(query, true), do: from(s in query, where: is_nil(s.epic_id))
   defp filter_by_epic_membership(query, false), do: from(s in query, where: not is_nil(s.epic_id))
   defp filter_by_epic_membership(query, _), do: query
 
-  # One named epic's stories — the half `without_epic` shipped without.
-  #
-  # "Which stories are in no epic" was answerable and "which stories are in this
-  # epic" was not, so the only route to an epic's contents was `get_story` per
-  # story: `list_epics` reports a count, not the members. The main agent
-  # supplied the answer for the product role three times (cf035b50).
-  #
-  # Slug or id, because `list_epics` prints both and a caller should be able to
-  # paste back either. The cast decides which — a slug is not a UUID, and
-  # comparing a non-UUID against `s.epic_id` is a cast error rather than an
-  # empty result.
+  # One named epic's stories (`list_epics` reports only a count). Slug or id,
+  # since `list_epics` prints both; the UUID cast decides, because comparing a
+  # slug against `s.epic_id` is a cast error, not an empty result.
   defp filter_by_epic(query, epic) when epic in [nil, ""], do: query
 
   defp filter_by_epic(query, epic) do
@@ -249,24 +225,10 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   end
 
   @doc """
-  Ready stories that belong to no epic.
-
-  The reading story 1058 came from: a product agent asked to group ready
-  stories into an epic worked out that one sat outside every one of them, could
-  not name it, and stopped. Nothing exposed this — `list_epics` lists epics and
-  `assign_story_to_epic` writes one, and neither answers a question about
-  absence.
-
-  Ready rather than all, because that is the question people ask. A story
-  nobody has released is not yet anybody's problem, and including them buries
-  the one that is.
-
-  Also excludes anything already promoted (issue b6462c09): `ready_for_dev`
-  is product's approval and stays set after delivery, so a shipped story with
-  nowhere left to go stayed in this set forever — the only ways to clear it
-  were to park delivered work in an epic or propose one of nothing but
-  finished stories. "Ready to build" and "still needs dispatching" are two
-  different questions; only the second belongs here.
+  Ready stories that belong to no epic and are not yet promoted: the stories
+  that still need dispatching. Ready only, because an unreleased story is not
+  yet anybody's problem; unpromoted, because `ready_for_dev` stays set after
+  delivery.
   """
   @spec ready_stories_without_epic(Scope.t()) :: [Story.t()]
   def ready_stories_without_epic(%Scope{active_project_id: project_id}) do
@@ -361,12 +323,8 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   @doc """
   A story by its durable number rather than its id — what a human reads off
-  the page and the URL is expected to carry (1ab62ffd).
-
-  Scoped to the project the same way `get_story/2` is: a number names a
-  position within one project, not a row across all of them, so an unscoped
-  lookup would answer for the wrong project's story the moment two projects'
-  numbering overlaps.
+  the page and the URL is expected to carry. Scoped to the project: numbers
+  are unique per project only.
   """
   def get_story_by_number(%Scope{} = scope, number) do
     case cast_story_id(number) do
@@ -420,17 +378,9 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
-  # A story's durable name, minted above the highest already in the project.
-  #
-  # Not the primary key: `id` is a per-deployment sequence that renumbers on
-  # migration, and spex directories are named from it, so the files stopped
-  # pointing at the stories they were written for. Measured drift here was a
-  # uniform 51.
-  #
-  # Above the max rather than a count, so a number is never reused after a
-  # delete — a reused name would point a file at the wrong story, which is the
-  # failure this exists to end. An explicitly supplied number wins, which is how
-  # migration keeps a story's name across deployments.
+  # A story's durable name, minted above the highest already in the project
+  # (not the per-deployment `id`), so a number is never reused. An explicitly
+  # supplied number wins, which is how migration keeps a story's name.
   defp put_number(changeset, project_id) do
     case Ecto.Changeset.get_field(changeset, :number) do
       nil -> Ecto.Changeset.put_change(changeset, :number, next_number(project_id))
@@ -438,18 +388,10 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     end
   end
 
-  # One above the highest in the project.
-  #
-  # Deliberately not a counter on `projects`: that made every story insert take
-  # a row lock on the project, so story creation and unrelated project updates
-  # blocked each other, and the projects row carried sequence state that has
-  # nothing to do with a project.
-  #
-  # Stories are retired, never deleted, so the highest number is never freed
-  # and a number is never handed out twice.
-  #
-  # The unique index on `(project_id, number)` is what catches a genuine
-  # concurrent collision, rather than a lock preventing one.
+  # One above the highest in the project. Not a counter on `projects`, which
+  # row-locked the project on every insert. Stories are never deleted, so the
+  # max is never freed; the unique index on `(project_id, number)` catches a
+  # concurrent collision.
   defp next_number(project_id) do
     from(s in Story, where: s.project_id == ^project_id, select: max(s.number))
     |> Repo.one()
@@ -728,10 +670,8 @@ defmodule CodeMySpec.Stories.StoriesRepository do
   Release these stories' reservations on this copy.
 
   A team switching or clearing its story frees the old one for another copy to
-  take (John, a31f1cd6): reserving on the way in and never releasing is how a
-  copy came to pin every story it had ever been pointed at — story 1027 stuck on
-  a main checkout on 2026-09-21. The caller leaves out whatever an agent on the
-  copy still holds.
+  take; without it a copy pins every story it was ever pointed at. The caller
+  leaves out whatever an agent on the copy still holds.
   """
   @spec release_stories(Scope.t(), Ecto.UUID.t(), [integer()]) :: non_neg_integer()
   def release_stories(_scope, _copy_id, []), do: 0

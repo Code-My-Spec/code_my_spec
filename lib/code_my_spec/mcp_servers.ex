@@ -14,6 +14,7 @@ defmodule CodeMySpec.McpServers do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.AgentPerformance,
       CodeMySpec.Agents.Agent,
       CodeMySpec.PromotionQueue,
       CodeMySpec.Provisioning.EnvironmentRepository,

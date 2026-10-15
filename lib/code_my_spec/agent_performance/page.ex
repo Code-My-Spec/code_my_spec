@@ -32,6 +32,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
 
   alias CodeMySpec.AgentPerformance.AgentTurn
   alias CodeMySpec.AgentPerformance.CycleTime
+  alias CodeMySpec.AgentPerformance.MessageKind
   alias CodeMySpec.AgentPerformance.OfferHealth
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
@@ -163,7 +164,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
 
   # One read of every agent's own transcript, carrying the agent id from the
   # conversation so nothing downstream needs to look one up again. `:operator`
-  # is the nudges and restarts interventions are counted from; `:tool` is the
+  # is the messages and restarts interventions are counted from; `:tool` is the
   # tool results `ToolFailures` counts.
   #
   # Three raw columns and the id of the agent whose conversation they are --
@@ -298,17 +299,27 @@ defmodule CodeMySpec.AgentPerformance.Page do
       {story_id,
        holders
        |> Enum.flat_map(&Map.get(by_agent, &1.id, []))
-       |> Enum.flat_map(&classify/1)}
+       |> Enum.flat_map(&interventions/1)}
     end)
   end
 
-  defp classify(%{role: :operator, sender_id: "operator"} = message),
-    do: [%{at: message.inserted_at, kind: :nudge, reason: reason_text(message)}]
+  # Every operator-role message by kind. The story and project counts keep
+  # only the interventions; the system's notices are charted by kind beside.
+  defp classify(message) do
+    case kind_of(message) do
+      nil -> []
+      kind -> [%{at: message.inserted_at, kind: kind, reason: reason_text(message)}]
+    end
+  end
 
-  defp classify(%{role: :operator, sender_id: "system:restart"} = message),
-    do: [%{at: message.inserted_at, kind: :restart, reason: reason_text(message)}]
+  defp interventions(message),
+    do: message |> classify() |> Enum.filter(&MessageKind.intervention?(&1.kind))
 
-  defp classify(_message), do: []
+  defp kind_of(%{role: :operator, sender_id: sender} = message)
+       when sender in ["operator", "system:restart"],
+       do: MessageKind.of(sender, reason_text(message))
+
+  defp kind_of(_message), do: nil
 
   defp reason_text(%{content: parts}) do
     parts
@@ -384,6 +395,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
       offer_health: OfferHealth.by_role(scope, nil),
       throughput_by_team: throughput(stories),
       project_level_interventions: project_interventions(scope, agents, messages),
+      message_kinds_by_agent: message_kinds_by_agent(messages),
       project_level_blocked: project_blocked(scope)
     }
   end
@@ -443,7 +455,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
       agents
       |> Enum.filter(&is_nil(&1.story_id))
       |> Enum.flat_map(&Map.get(by_agent, &1.id, []))
-      |> Enum.flat_map(&classify/1)
+      |> Enum.flat_map(&interventions/1)
 
     restarts =
       scope
@@ -453,9 +465,15 @@ defmodule CodeMySpec.AgentPerformance.Page do
     Enum.sort_by(held ++ restarts, & &1.at, DateTime)
   end
 
+  defp message_kinds_by_agent(messages) do
+    messages
+    |> Enum.flat_map(fn message -> Enum.map(classify(message), &{message.agent_id, &1.kind}) end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.new(fn {agent_id, kinds} -> {agent_id, Enum.frequencies(kinds)} end)
+  end
+
   # `BlockedTime.project_level/1` reads the main agent's own open questions --
-  # the same listing `StopDecision.wake/2` obeys, rather than a second opinion
-  # over `question_requests`/`permission_requests`.
+  # rather than a second opinion over `question_requests`/`permission_requests`.
   defp project_blocked(scope) do
     scope
     |> MainAgent.list_open_questions()

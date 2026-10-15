@@ -12,9 +12,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   @completion_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist ready_for_qa story_promoted qa_complete story_issues_triaged)
 
   # `withheld?` drops nodes the caller cannot claim — its own blocked task, or
-  # another agent's at this checkout — before the wave is cut (467310a7).
+  # another agent's at this checkout — before the wave is cut.
   #
-  # `assignment` is whose story this is (a31f1cd6):
+  # `assignment` is whose story this is:
   #
   #   * `{:team, story_id, epic_id}` — the team's story, as `Agents.Work`
   #     resolves it. When that story is complete for the whole team the answer
@@ -22,9 +22,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   #     can move the whole team onto it.
   #   * `:copy` — the story the copy's team holds, read here. For callers below
   #     `Agents` that cannot resolve a team.
-  #   * `{:bound, story_id, epic_id}` — an agent bound to its active story
-  #     (4292518a): as `{:team, …}`, but offered that story's work and nothing
-  #     else, and not clamped by project-level prerequisites — see `seeds/1`.
+  #   * `{:bound, story_id, epic_id}` — an agent bound to its active story: as
+  #     `{:team, …}`, but offered that story's work and nothing else, and not
+  #     clamped by project-level prerequisites — see `seeds/1`.
   #   * `:project` — no story at all. The main agent's: story work happens on
   #     feature copies, never on main.
   def read(
@@ -68,11 +68,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   end
 
   # Every story in the project, for a role that reads them wherever they are
-  # placed (a31f1cd6 step 4d). John: product owns all triage, three amigos and
-  # story design, and it lives on the main copy — whose vantage holds only the
-  # unassigned stories and its own. A story placed on a feature copy has nodes
-  # only at that copy, so its product requirements are read there, at the
-  # verdict that copy's team works against, rather than recomputed here.
+  # placed (product, which lives on the main copy, whose vantage holds only
+  # unassigned stories and its own). A placed story's nodes exist only at its
+  # copy, so they are read there, not recomputed here.
   #
   # Only this role's own requirements are brought across, so a placed story
   # never offers it another role's work and a role-less read of this copy is
@@ -93,46 +91,14 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     {nodes ++ placed_nodes, edges ++ placed_edges, %{ctx | stories: ctx.stories ++ stories}}
   end
 
-  # A story with nothing in it for this role does not hide the project.
-  #
-  # Only when the caller named no story. Asking *for* a story still answers
-  # about that story or refuses — the rule below, and the bug it was written
-  # for, are untouched.
-  #
-  # Admission asks bare, and that is what made this matter. A copy pointed at a
-  # story answered every role "blocked" while the project chain was
-  # unfinished — so the first thing anyone does on a new project, assign a
-  # story, stopped the fleet dead with `list_agent_work` reporting "the graph
-  # holds no work for its role" and nothing naming the story scope as the
-  # reason. Measured on the math project 2026-09-22: four roles idle for an
-  # hour over a ready `spex_boundary_ready`, which ran within seconds of the
-  # story being cleared.
-  #
-  # The story still wins wherever it has work, so selecting one still steers
-  # who does what. It stops being a blindfold, not a preference.
-  #
-  # The fallback is `project_level/5`, not `from_copy/4`, and the difference is
-  # the whole of story 561. Widening to the copy offers *other stories'* work,
-  # which is what "completion is local to the active story" forbids: a finished
-  # story has to answer "complete" rather than quietly pulling its copy onto the
-  # next one. Eight of 561's criteria say so, and they caught this within the
-  # hour. Project-level requirements belong to no story at all, so offering them
-  # takes nothing away from the active one.
-  #
-  # And only when a role asked. `my_role/2` answers a role for an agent and
-  # `nil` for anyone else, so a role-less ask is a person asking about this
-  # copy — that answer stays on the copy's story, which is criterion 3609: QA
-  # fails, an issue is filed against the story, and the reply has to be "your
-  # story is blocked on this" rather than "go triage issues". The issue needing
-  # triage is that story's own. An agent asking what *it* should do is the case
-  # that was broken, and it always names a role.
-  #
-  # Never for an agent bound to its story (John, 4292518a): it is offered its
-  # story's work and nothing else, project-level prerequisites included. A
-  # coding agent on story 1083 fell through here to the project-level
-  # `issues_resolved` — every open issue in the project — and sat on it while
-  # 1083 never started. A finished story stays `:complete`, so `Agents.Work`
-  # moves the team on.
+  # A story with nothing in it for this role does not hide the project: the
+  # caller falls back to project-level work (`project_level/3`), never to other
+  # stories' work, because completion is local to the active story. Only when a
+  # role asked and named no story — a role-less ask is a person, who must hear
+  # "your story is blocked on this". Never for a bound agent: it is offered its
+  # story's work and nothing else, and a finished story stays `:complete` so
+  # `Agents.Work` moves the team on.
+  # See knowledge/requirements_graph/checkers, "Story execution".
   defp story_or_project(story_scoped, {:bound, _id, _epic}, _graph, _role, _requested),
     do: story_scoped
 
@@ -144,13 +110,12 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   defp story_or_project(story_scoped, _assignment, _graph, _role, _requested),
     do: story_scoped
 
-  # Which unsatisfied nodes hold the caller's work back (4292518a: strict and
-  # unclamped). A bound agent is never offered project-level work, so
-  # project-level prerequisites do not clamp its story either: `qa_setup →
-  # component_linked` held every story's chain behind work nobody bound could
-  # take. Nor does another story's work: once the story's members are known the
-  # seeds narrow to its own nodes and its member components' (`story_seeds/3`),
-  # which still order it. Everyone else is clamped as before.
+  # Which unsatisfied nodes hold the caller's work back. A bound agent is never
+  # offered project-level work, so project-level prerequisites do not clamp its
+  # story either (`qa_setup → component_linked` would hold every chain behind
+  # work nobody bound can take), nor does another story's work: the seeds
+  # narrow to its own nodes and its member components' (`story_seeds/3`).
+  # Everyone else is clamped by every unsatisfied node.
   #
   # The same view decides completion: a project-level node upstream of a bound
   # story is not one of its blockers, or a story finished locally would never
@@ -170,14 +135,14 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   @doc """
   Whether `node` is `story`'s work: one of its own requirements or one of its
   member components' (`RequirementGraph.story_component_ids/2`). What an agent
-  bound to `story` may claim (4292518a, d1a69b4e).
+  bound to `story` may claim.
   """
   @spec story_work?(map(), map(), map()) :: boolean()
   def story_work?(story, node, ctx),
     do: member?(node, story.id, RequirementGraph.story_component_ids(story, ctx))
 
   # A bound agent's story that cannot be read here: not ready for development,
-  # or reserved for another checkout. Nothing is offered instead (4292518a).
+  # or reserved for another checkout. Nothing is offered instead.
   defp unavailable_bound(nil, {:bound, id, _epic}),
     do:
       result(
@@ -199,15 +164,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
   # Project-scope work, and nothing else, for a copy whose story holds none.
   #
-  # `entity_type == "project"` is the filter that makes this safe to reach from
-  # a story-scoped ask: those fourteen requirements — `architecture_designed`,
-  # `spex_boundary_ready`, `issues_triaged`, `work_dispatched`, QA's journey
-  # chain — are not in any story, so surfacing them cannot move a copy off the
-  # one it is on. A story node or another story's component never passes it.
-  #
-  # With nothing at project level either, the story's own answer stands. It
-  # already says complete, or blocked and why, and replacing that with a
-  # project-shaped "nothing to do" would lose which story the copy is on.
+  # `entity_type == "project"` makes this safe from a story-scoped ask: those
+  # requirements are in no story, so they cannot move a copy off its own. With
+  # nothing at project level either, the story's own answer stands.
   defp project_level({nodes, edges, ctx}, role, story_scoped) do
     nodes
     |> actionable_nodes(edges, ctx, role)
@@ -231,33 +190,15 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # The story this copy has selected, if it has selected one that is still
   # eligible.
   #
-  # Three answers, not two, and the third is the whole of this. `:none` means
-  # the copy chose nothing and is answered for the project — story 1005's rule,
-  # and the fourteen project-level requirements that belong to no story depend
-  # on it. `{:refused, why}` means the caller named a story that this copy
-  # cannot answer for.
-  #
-  # Those were one answer until dogfooding separated them. A mismatched
-  # `story_id` fell through to `:none` and handed back the entire project:
-  # asking for story 802 while 1020 was active returned `# Story scope, Wave 1,
-  # Remaining 33` — byte-identical to the answer for no selection at all. The
-  # comment here already said that must not happen; only the code disagreed,
-  # and it started disagreeing when `from_copy/5` widened to the whole project
-  # and `:none` quietly acquired a second meaning.
-  #
-  # So the split is by whether the caller named a story, not by what the copy
-  # holds. Asked bare, behaviour is unchanged. Asked for a story, the answer is
-  # about that story or it is a refusal — never the project. `GetNextRequirement`
-  # has always documented it that way: "an explicit story must agree with the
-  # working copy's active assignment".
+  # `:none`: the copy chose nothing and is answered for the project.
+  # `{:refused, why}`: the caller named a story this copy cannot answer for —
+  # asked for a story, the answer is about that story or a refusal, never the
+  # project. `{:unavailable, story}`: a bound agent's ineligible story, since a
+  # bound agent is not offered the project.
   #
   # The team's story must still be reserved for its checkout: the reservation
   # (`stories.working_copy_id`) is where the code lives, and the team's
   # `story_id` is which of the copy's stories it works.
-  #
-  # A bound agent's ineligible story is `{:unavailable, story}`, not `:none`:
-  # `:none` answers for the whole project, which a bound agent is not offered
-  # (4292518a).
   defp selected(scope, copy, nil, assignment) do
     id = assigned_id(copy, assignment)
     story = id && Stories.get_story(scope, id)
@@ -293,9 +234,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   defp eligible?(%{ready_for_dev: true, working_copy_id: id}, %{id: id}), do: true
   defp eligible?(_story, _copy), do: false
 
-  # The story a team whose story is complete takes next (a31f1cd6). John:
-  # "fine for the team to take a new story from the working copy when the team
-  # collectively finishes a story."
+  # The story a team whose story is complete takes next.
   #
   # Candidates are the stories this copy can work — ready for development,
   # reserved here or unassigned, which is what `ctx.stories` already holds —
@@ -346,19 +285,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
       "Story #{requested} is not #{holder} active story (#{active}). Asking for " <>
         "another story does not widen the answer; switch with `set_active_story`."
 
-  # No story selected, which is not the same as nothing to do.
-  #
-  # The copy is answered for the project, which is what it was answered for
-  # before slicing existed. Two things depend on that and neither is inside any
-  # story: the fourteen project-level requirements — `issues_triaged`,
-  # `architecture_designed`, `work_dispatched` and QA's whole journey chain —
-  # and a story that has been released but assigned to nobody yet, which is how
-  # work reaches an idle agent in the first place.
-  #
-  # Story 1005's rule is that work appearing on the graph reaches the agent who
-  # can do it, and stories 1015, 1046, 1047 and 1048 are 33 spex defending it.
-  # Narrowing this to "project requirements plus stories already assigned here"
-  # left a freshly released story waking nobody.
+  # No story selected, which is not the same as nothing to do: the copy is
+  # answered for the project, so project-level work and released, unassigned
+  # stories reach an idle agent.
   defp from_copy(nodes, edges, ctx, role) do
     case actionable_nodes(nodes, edges, ctx, role) do
       [] ->
@@ -376,23 +305,11 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     end
   end
 
-  # Nothing for this role, and whether that is a finished project or somebody
-  # else's queue is a distinction `RequirementsMapper` records at length: a
-  # coding agent once reported "All requirements satisfied" against three
-  # unsatisfied requirements that were product's, which reads as a finished
-  # project to whoever is watching.
-  #
-  # Asked of the *actionable* set rather than the unsatisfied one. A requirement
-  # that is unsatisfied and blocked is nobody's queue right now, and calling that
-  # an unfinished project would make the terminal state unreachable — story
-  # 1015's criterion 2393 is the one that says an agent with nothing to do is
-  # allowed to stop.
-  #
-  # And whether there is a graph at all. Zero requirements means zero
-  # unsatisfied, and `Enum.all?/2` over nothing is true: Metric Flow, with 182
-  # components, 53 stories and 27 failing tests, answered "All requirements
-  # satisfied" because nothing had ever projected it. That sentence is what
-  # decides whether an agent is started, so the empty graph gets its own.
+  # Nothing for this role: a finished project, somebody else's queue, or no
+  # graph at all — three different sentences, because this one decides whether
+  # an agent is started. Asked of the actionable set, not the unsatisfied one,
+  # so an agent with nothing actionable may stop.
+  # See knowledge/requirements_graph/checkers, "Story execution".
   defp empty_reason([], _edges, _ctx), do: no_graph_reason()
 
   defp empty_reason(nodes, edges, ctx) do
@@ -508,16 +425,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     end
   end
 
-  # 56cf5697: this used to block every role unconditionally, which is right
-  # for coding/QA — a story with a red card open is not ready to build or
-  # test — and wrong for product, the one role that owns questions: it left
-  # the block naming no actor, so nothing ever offered the work of clearing
-  # it. Product still blocks here when the seal itself
-  # (`three_amigos_complete`) is not yet satisfied — pre-seal questions
-  # already block sealing via `BddRulesChecker`'s own gate, and there is
-  # nothing product-specific to offer ahead of that. The role's
-  # `RoleProfile.questions_block?` says which. Product's *own* open questions
-  # hold it whole through `Agents.Waiting` instead (step 4c).
+  # An open question blocks roles that build or test (`RoleProfile.questions_block?`),
+  # not product, which owns questions and must be offered the work of clearing
+  # them. Product's own open questions hold it through `Agents.Waiting`.
   defp blocks_on_questions?(questions, role),
     do: questions != [] and RoleProfile.questions_block?(role)
 

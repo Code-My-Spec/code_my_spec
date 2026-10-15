@@ -3,17 +3,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   Computes the full requirement graph — nodes AND edges — from Files and the project's records.
 
   The graph is entity-agnostic: edges represent real dependencies regardless of
-  whether they cross entity boundaries. There are three kinds of edges:
+  whether they cross entity boundaries. There are four kinds of edges:
 
   1. **Same-entity prerequisites**: ordered story and project requirements
   2. **Project → story**: project.qa_setup → story.component_linked (the
      whole-project gate that opens story-level work)
-  2. **Story → component tree**: bdd_specs_exist → component's first req;
+  3. **Story → component tree**: bdd_specs_exist → component's first req;
      component's terminal req → ready_for_qa → qa_complete
-  3. **Stories → project**: each story's qa_complete → qa_journey_plan
-     (project-level fan-in node — gives the requirements graph a structural
-     seam where story state aggregates into project state, which the
-     graph projector uses to lay out late_project nodes at the bottom band)
+  4. **Stories → project**: each story's qa_complete → qa_journey_plan, the
+     project-level fan-in where story state aggregates into project state
+
+  Pure: nothing here writes. `IncrementalGraph` is the writer; see
+  knowledge/requirements_graph, "Writers and readers".
   """
 
   require Logger
@@ -55,37 +56,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # The whole read-and-write path for one computation — `Preloader`, `GraphCache`
-  # and `NodeRepository`/`Projection` — has to agree on one `working_copy_id`, or
-  # a UI publish computes from one identity and stores under another (276c2afe):
-  # `Preloader.load/1` and `GraphCache` both decide "whose view is this" from the
-  # raw `active_working_copy_id` field, while `NodeRepository.upsert_all/2` and
-  # `Projection.load/2` decide it from `Projection.vantage/1`, which resolves a
-  # caller with no checkout to name to the project's default working copy once
-  # one is set. The two coincide until a project gets a default, then a UI
-  # publish blends every checkout's files (`Preloader`, raw nil), caches under
-  # its own row (`GraphCache`, raw nil), and persists under the default
-  # checkout's identity (`NodeRepository`, resolved) — overwriting that
-  # checkout's own accurately-scoped rows with the blended, over-satisfying
-  # verdict.
-  #
-  # Resolving `vantage/1` once, here, before `Preloader.load/1` ever sees the
-  # scope, is what the docs on both `vantage/1` and `Preloader.load/1` already
-  # argued for ("a web view should read the default branch ... At that point
-  # the question 'which harness is the UI showing' stops existing"). Every
-  # downstream call still reads the same raw field it always did; only the
-  # value it finds there is now the resolved one, so nothing else changes.
+  # Why: resolved once, before `Preloader` sees the scope, so the computation
+  # reads and stores under one checkout identity rather than blending every
+  # checkout's files. See knowledge/requirements_graph, "Vantages".
   defp normalize_vantage(%Scope{} = scope),
     do: %{scope | active_working_copy_id: Projection.vantage(scope)}
 
   @doc """
   The edge set over a node set, without computing a verdict.
 
-  `compute_topology/3` answers the same question by computing every node first
-  and is the right call on a cold vantage, where the nodes have to be computed
-  anyway. It is the wrong call when the nodes are already stored: the event
-  path was recomputing every node in the project to rebuild edges after a
-  shape change, which is the one cost the pass no longer pays.
+  `compute_topology/3` answers the same question by computing every node first,
+  which is right on a cold vantage. When the nodes are already stored this
+  rebuilds edges without recomputing them.
 
   `ctx` needs the shape — `Preloader.topology_context/1` is enough — and
   `nodes` are whatever the caller holds for the vantage.
@@ -100,39 +82,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     compute_edges(nodes, ctx, config)
   end
 
-  # Settle whichever writer owns the rows this read is about to serve.
-  #
-  # A read calls this before it answers, and it used to name `GraphWatcher`
-  # outright. That is right while the pass writes `requirements` and wrong the
-  # moment `graph_event_is_source` flips: the projector then owns the table
-  # being read, and a read would settle the pass — now writing the rows — and
-  # be served from rows nothing had settled. It also reaches the projector with
-  # the vantage the reader named, which `GraphWatcher` has always folded into
-  # its next pass as `requested_vantages` and the projector never heard about.
+  # Settle the writer before serving its rows, at the vantage the reader named.
   defp settle_owner(%Scope{active_project_id: project_id} = scope) do
-    # Settled if it is running, exactly as the pass side: `GraphWatcher.settle/1`
-    # answers `:ok` for a project nothing watches, and `ensure_watching/1` is
-    # what starts both writers. A read that started the projector resurrected
-    # it after a scenario's teardown had stopped it — a wake task's read,
-    # drained after `stop_graph_watchers/0` — and the projector then ran its
-    # seed on a sandbox whose owner was gone. So a read starts the writers in
-    # one case only: a project with no rows at all (`start_writers/1`).
+    # Why: a read starts the writer only for a project with no rows at all, or
+    # it would resurrect a projector a test's teardown had stopped.
+    # See knowledge/requirements_graph, "Writers and readers".
     if never_projected?(project_id), do: start_writers(scope)
     IncrementalGraph.settle(project_id, [scope.active_working_copy_id])
   end
 
-  # A project nothing has ever projected has no writer to settle, and a read
-  # served from its rows is served nothing — which `StoryExecution` reported
-  # as "All requirements satisfied" on Metric Flow (182 components, 53 stories,
-  # 3,480 marks queued, 0 rows) until an agent was started there, and none
-  # was, because the answer read as a finished project.
-  #
-  # Writers start with an agent (`Agents`) or at boot for continuous projects
-  # (`Agents.GraphWake.watch_active_projects/0`); a reader is the third door, and
-  # only for a project with no rows at all. That bound is what keeps this from
-  # resurrecting a writer a scenario's teardown stopped: a scenario that read
-  # after computing has rows. Project rows are written by every seed, so their
-  # absence is "never projected" at any vantage.
+  # Why: zero rows must not read as "All requirements satisfied". Every seed
+  # writes project rows, so their absence means never projected at any vantage.
+  # See knowledge/requirements_graph, "Writers and readers".
   @doc "Whether any vantage of this project has ever been projected: its project rows exist."
   @spec projected?(Scope.t()) :: boolean()
   def projected?(%Scope{active_project_id: project_id}) when is_binary(project_id),
@@ -159,17 +120,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # Every template edge in the project, without computing a single node.
-  #
-  # `compute_all_from_ctx/3` produces these as a by-product of instantiation,
-  # and that is the whole reason reusing stored nodes used to mean reusing
-  # stored edges: the only way to learn the shape was to redo the work.
-  #
-  # It never had to be. `build_id_map/3` reads a component's id and its
-  # children's ids; `build_template_edges/3` reads the template and that map.
-  # Neither opens a file, consults a verdict or takes a fingerprint — which is
-  # the same fact `Freshness.topology/2` is built on, applied to the other side
-  # of the question.
+  # Every template edge in the project, without computing a single node: the
+  # id map and the template are shape alone, read no file and no verdict.
   defp template_edges(scope, ctx, config) do
     component_template_edges(ctx, config) ++
       Enum.flat_map(ctx.stories, &story_template_edges(&1, ctx, config)) ++
@@ -194,12 +146,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     build_template_edges(template, id_map) ++ StoryIssueGraph.edges(story, ctx, config)
   end
 
-  # The generators one side at a time, for `Edges`.
-  #
-  # `compute_edges/3` runs every generator and reduces the union. `Edges.over/4`
-  # runs the same generators and reduces each entity's edges against the
-  # component side, so the two can differ only in the reduction — which is
-  # what `edges_derived_per_entity_match_the_pass_test` holds them to.
+  # The generators one side at a time, for `Edges`. `compute_edges/3` reduces
+  # the union; `Edges.over/4` reduces per entity against the component side, so
+  # the two differ only in the reduction (`edges_derived_per_entity_match_the_pass_test`).
 
   @doc """
   The shape with what the story generators read off it — children by parent
@@ -255,9 +204,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec project_side_edges(Scope.t(), map()) :: [edge()]
   def project_side_edges(scope, config), do: project_template_edges(scope, config)
 
-  # The project's own chain. Node-free like the other two, and for the same
-  # reason: `compute_project_nodes/3` builds this `id_map` from the project id
-  # and the template, then runs ten delegate checkers it does not need.
+  # The project's own chain, node-free like the other two.
   defp project_template_edges(scope, config) do
     project = scope.active_project
     template = maybe_filter_devops(RequirementDefinitionData.project_graph(), config)
@@ -266,17 +213,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     build_template_edges(template, id_map)
   end
 
-  # A component and its parent recompute together, or not at all.
-  #
-  # `instantiate_component_graphs/3` runs one template per *family*: a
-  # container's pass instantiates its children's nodes too, and a component
-  # whose parent is absent from the list is treated as top-level and runs a
-  # different template. So narrowing the context to a stale child alone would
-  # not recompute that child — it would compute a different component.
-  #
-  # One level, matching the grouping that function actually does. Grouping a
-  # child under a parent that turns out not to be a container recomputes both
-  # where one would have done, which costs a little and cannot be wrong.
+  # A component and its parent recompute together, or not at all: a template
+  # runs per family, and a child narrowed alone reads as top-level and runs a
+  # different template. Over-grouping costs a little and cannot be wrong.
+  # See knowledge/requirements_graph, "Marks and drains".
   defp expand_component_families(stale, ctx) do
     components = Map.new(ctx.components, &{&1.id, &1})
     children = Enum.group_by(ctx.components, & &1.parent_component_id)
@@ -315,10 +255,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # If that template owner is itself a child of another context, the full pass
-  # does not run its own template. Carry the containing context into the narrow
-  # context as well, recursively, so the same ownership rules apply at every
-  # nested level.
+  # A template owner that is itself a child of another context runs under that
+  # context's template, so the containing context comes along, recursively.
   defp add_context_ancestor_families(covered, id, components, children) do
     add_context_ancestor_families(covered, id, components, children, MapSet.new())
   end
@@ -355,40 +293,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc """
   One entity's requirements, computed on their own.
 
-  The event path's unit of work, and the reason it can exist without a
-  debounce: a pass narrowed to a single entity does the work that entity earned
-  and no more, where the fingerprint pass is whole-project by construction and
-  has to coalesce a burst to stay affordable.
+  The incremental graph's unit of work: the work one entity earned and no more.
+  `reduce_to/2` narrows the lists and leaves the by-id maps whole, so an entity
+  computed alone answers identically to the same entity computed in a larger set.
 
-  `reduce_to/2` is what makes this the same computation the partial recompute
-  already does — it narrows the two lists and leaves the by-id maps whole, so an
-  entity computed alone is hashed and answered identically to the same entity
-  computed inside a larger stale set. That has to hold or the rows-vs-recompute diff would
-  be reporting on this function rather than on the decision it exists to test.
-
-  Project nodes take the whole context deliberately: their checkers read counts
-  across the project, so there is nothing to narrow, and `recompute_stale/4`
-  rebuilds them unconditionally for the same reason.
-
-  ## A component's unit is its family, not itself
-
-  Returns `{covered, nodes}` rather than just nodes, because for a component the
-  two differ. `component_families/1` decides top-level from nested by asking
-  whether each component's parent is *in the set it was given* — so a child
-  narrowed to itself has no parent there, is classified top-level, and runs its
-  own template. Measured on this project: 549 of 1138 components are nested, and
-  every one of them computed alone invents an `implementation_file` node that
-  the whole-project pass never produces.
-
-  `expand_component_families/2` is what keeps the stale path safe from exactly
-  this, and it is why the stale set is always family-closed. The narrow path
-  needs the same closure for the same reason, so it calls the same function.
-
-  This is not the debounce coming back. A family is the domain's own atomic
-  unit — a context's template owns its children's rows, so those rows cannot be
-  produced apart from it — where a debounce window is an arbitrary interval
-  chosen to make a whole-project pass affordable. Two unrelated marks still
-  compute separately.
+  Returns `{covered, nodes}`: for a component the unit is its family (see
+  `expand_component_families/2`), not itself. Project nodes take the whole
+  context, since their checkers read counts across the project.
+  See knowledge/requirements_graph, "Marks and drains".
   """
   @spec compute_entity(Scope.t(), map(), map(), {String.t(), term()}) ::
           {MapSet.t({String.t(), term()}), [Requirement.t()]}
@@ -404,11 +316,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {covered, nodes}
   end
 
-  # Answers with the project's real id whatever the caller asked with. A mark
-  # naming the project carries no id — there is only one — so callers pass
-  # `{"project", nil}`, and handing that back would reach `GraphStore.write/3` as
-  # `n.project_id == nil`, which Ecto refuses. The nodes below already carry
-  # `project.id`; the covered set has to agree with them.
+  # Answers with the project's real id: a mark naming the project carries none,
+  # and `{"project", nil}` would reach `GraphStore.write/3` as a nil project_id.
   def compute_entity(scope, ctx, config, {"project", _id}) do
     {nodes, _} = compute_project_nodes(scope, ctx, config)
     {MapSet.new([{"project", scope.active_project.id}]), nodes}
@@ -418,22 +327,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   The project's whole node set and the edges between them, computed and not
   written.
 
-  Edges cannot be projected one entity at a time, which is why the event path
-  had none. `compute_edges/3` ends in `Topology.transitive_reduction/1`, and a
-  transitive reduction is global by definition: dropping `A → C` requires
-  knowing that `A → B → C` exists, so a node instantiated for an unrelated
-  entity can *remove* an edge here. There is no narrow version of that
-  question.
-
-  What saves it is that edges are a function of the **node set**, not of any
-  verdict. A sweep settles answers with `UPDATE`s and cannot add or remove a
-  node, so a drain that only swept cannot have moved topology. Only a drain
-  that wrote or reaped nodes needs to ask this — which is the same rare set of
-  events that already falls back to a recompute: a component created, retyped
-  or deleted, a story released or parked.
-
-  Separate from `compute_and_publish/4` because that one also publishes, caches
-  and persists. This answers the question and stops.
+  Edges end in a transitive reduction, which is global, so they cannot be
+  computed per entity. They depend on the node set, never on a verdict: only a
+  drain that wrote or reaped nodes needs this. See knowledge/requirements_graph,
+  "Edges".
   """
   @spec compute_topology(Scope.t(), map(), map()) ::
           {[Requirement.t()], [%{from: tuple(), to: tuple()}]}
@@ -446,11 +343,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   The project's whole node set, computed and not written, with the context
   the computation enriched — what `compute_topology/3` does before the edges.
 
-  On its own so a caller settling several vantages can decide about the edges
-  itself: they are a function of the node set and the shape, and every vantage
-  of a project shares the shape, so a seed that computed them ten times was
-  computing the same set ten times. `edges_over/4` draws them when the caller
-  has no set to reuse.
+  On its own so a caller settling several vantages can draw the edges once:
+  every vantage shares the shape. `edges_over/4` draws them when the caller has
+  no set to reuse.
   """
   @spec compute_nodes(Scope.t(), map(), map()) :: {[Requirement.t()], map()}
   def compute_nodes(scope, ctx, config), do: compute_all_from_ctx(scope, ctx, config)
@@ -463,68 +358,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, compute_edges(nodes, enriched_ctx, config)}
   end
 
-  # A cache hit means the rows are current, so a hit is served from the rows.
-  #
-  # `requirement_graphs` used to carry a `payload` — the whole graph as an
-  # Erlang term — and this compared the two and served the rows unless there
-  # were none. That was the retirement plan working: serve the projection,
-  # compare it against the payload on every publish, and keep the payload only
-  # to cover a graph whose rows were never written.
-  #
-  # All three conditions the plan named are met. The round-trip check has run on
-  # every publish since — 828 computations across four rotated logs — and
-  # `the projection does not round-trip` has never appeared, nor has
-  # `projection is empty for a payload`. So the rows are the graph, and the
-  # payload was a second copy of them that could disagree.
-  #
-  # `node_count` outlived it and no longer guards anything, which is worth
-  # saying because the guard is what most of this comment used to describe.
-  #
-  # It was a distrust mechanism: the publish recorded how many nodes it wrote,
-  # a read compared that against what it had loaded, and a short count meant
-  # refuse and recompute. It was earned — `Projection.load/3` rebuilds each row
-  # against the preloaded context and drops whatever `rehydrate/2` cannot place,
-  # so a hit could return a strict subset with nothing amiss in either the write
-  # or the read. Measured on story 1062: 2009 nodes computed, 1844 served,
-  # stable across reads, back to 2009 on the next recompute, all under one
-  # `computed_at` (7a6b92e3) — two graphs wearing one timestamp, which criterion
-  # 3246 forbids and 3358 states directly.
-  #
-  # Reads stopped recomputing, and the comparison went with them. `published_at/2`
-  # is the only thing that still reads the cache row and it takes the timestamp
-  # and discards the count (`{:ok, _nodes, at}`), so nothing anywhere counts the
-  # rows in order to doubt them. Criterion 3422 — "stored requirements are
-  # trusted rather than counted" — is therefore a description of this code
-  # rather than an argument with it, which is how issue `34b3ce00` resolved:
-  # not by choosing a side, but because the vantage alignment that caused the
-  # short reads removed the reason for the guard.
-  #
-  # The measurement that settled it, taken 2026-09-21 across every rotation of
-  # `web.log` and `server.log`: **212 publishes, zero** `the projection does not
-  # round-trip`. The drop the guard existed to catch does not happen any more.
-  #
-  # The count is still written. `GraphCache`'s own doc says why — a reader
-  # finding no rows can tell "nothing to do" from "the write did not land" —
-  # and no reader does that today. Left in place rather than migrated out,
-  # because a column that costs a integer per publish is cheaper than being
-  # wrong about who might want it.
-
   @doc """
-  The published graph when it still matches current inputs, computing and
-  publishing a fresh one when it does not.
+  The graph as the rows hold it, after settling the writer.
 
-  Returns `{{nodes, edges}, computed_at}`, where `computed_at` is `nil` for a
-  graph computed just now and a `DateTime` for one served from the snapshot.
-  Callers are expected to show that distinction rather than hide it.
-
-  The saving is real but bounded: the preloader still runs, because deciding
-  whether the snapshot is current means hashing the inputs. What a hit skips is
-  node and edge computation, which is where the time actually goes — on a
-  3200-component project, 34ms of preload against 4.4 seconds of compute.
-
-  A hit certifies every input the graph is computed from, including what the
-  delegate checkers read — six tables and four sets of working-copy files that
-  the file sync does not track. `compute_and_publish/3` lists them.
+  Returns `{{nodes, edges}, computed_at}`: `computed_at` is the latest row's
+  `checked_at`, or `nil` when this vantage has no rows. Reads compute nothing.
   """
   @spec cached_graph(Scope.t()) :: {{[Requirement.t()], [edge()]}, DateTime.t() | nil}
   def cached_graph(%Scope{} = scope, opts \\ []) do
@@ -543,18 +381,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     * `:settle` — reconcile the watcher's queue before answering. Defaults to
       `true`, and every production reader wants the default.
 
-  Rule `ea5b6838`: a read with observations still pending recomputes before it
-  answers. *Pending* — this waits for work that has already been asked for,
-  which is not the same as re-deriving what nobody asked for. The second is
-  what this function used to do, and it is what made a silent writer invisible:
-  whoever read next repaired the graph, so a writer that announced nothing
-  produced the same answer as one that worked. All eighteen criteria on story
-  1063 passed against seven writers that announce nothing.
-
-  `settle: false` exists for the test that has to see that difference. A read
-  that skips the queue answers from the rows exactly as they stand, so a write
-  that announced nothing is visibly still missing rather than quietly repaired
-  on the way past.
+  A read waits for observations already pending; it never re-derives what
+  nobody announced. `settle: false` answers from the rows as they stand, for the
+  test that must see a write that announced nothing still missing.
+  See knowledge/requirements_graph, "Writers and readers".
   """
   @spec cached_graph_with_actionable(Scope.t(), keyword()) ::
           {{[Requirement.t()], [edge()]}, [Requirement.t()], DateTime.t() | nil}
@@ -573,39 +403,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc """
   The same, with what a reader needs to say where the answer came from.
 
-  For the requirements graph page, which used
-  `compute_graph_with_actionable_metrics/1` — the full recompute, 4.4 seconds on
-  a 3200-component project, on every visit. So the most-looked-at reader of the
-  graph was the one reader that never used the cache, while two stories were
-  written to make the cached answer trustworthy.
-
-  It also had nothing to show about freshness, because it had no cached answer
-  to be fresh or stale. QA on story 1063 went looking for `computed_at` on that
-  page and found it discarded; there was nothing to discard.
-
-  `served_from` is `"cache"` when rows answered this read and `"empty"` when
-  there are none at this vantage.
-
-  It used to say `"computed"` for the second case, which was true when a read
-  computed its own answer on a miss. Reads compute nothing now, so that value
-  described a read that had produced a graph when what had actually happened
-  was the opposite — nothing has ever computed this vantage, and the caller was
-  handed an empty answer. On a diagnostic surface whose whole job is saying
-  whether the graph is current, that is the one word it must not get wrong.
+  For the requirements graph page. `served_from` is `"cache"` when rows
+  answered this read and `"empty"` when this vantage has none — never
+  "computed": reads compute nothing, and on a page that says whether the graph
+  is current that word must not mislead.
   """
   @spec cached_graph_with_actionable_metrics(Scope.t()) ::
           {{[Requirement.t()], [edge()], [Requirement.t()]}, map()}
   def cached_graph_with_actionable_metrics(%Scope{} = scope) do
     scope = normalize_vantage(scope)
 
-    # Settle, like every other read. This went straight to `serve_with_actionable/2`
-    # — the private path, below the settle — and so answered from rows that a
-    # pending observation had already moved past. The requirements graph page is
-    # the most-looked-at reader there is, so it showed a graph one write behind
-    # for a whole debounce window, which reads as the graph being wrong rather
-    # than as the page being early. Ten of story 562's spex caught it: a child
-    # implementation deleted, the sync announcing it, and the page still
-    # rendering the node satisfied.
+    # Settle, like every other read, or the page renders a graph one write behind.
     settle_owner(scope)
 
     {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
@@ -625,34 +433,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {{nodes, edges, actionable}, metrics}
   end
 
-  # A read answers from the rows. It does not recompute.
-  #
-  # It used to do both jobs, and only one of them was ever legitimate. The
-  # honest one is "process what I have been told" — `actionable_count/2` does
-  # it, by calling `GraphWatcher.settle/1` before it reads, and rule
-  # `ea5b6838` is exactly that: a read with observations still pending
-  # recomputes before it answers. *Pending.*
-  #
-  # The other was "re-derive what nobody told me": fingerprint the whole
-  # project, diff every entity, recompute whatever moved. That is what this
-  # function used to do on every render, and it is the reason a writer that
-  # publishes nothing is indistinguishable from one that works. The reader
-  # repaired the graph, then the assertion credited the writer.
-  #
-  # It also made the specs lie. All eighteen of story 1021's scenarios pass
-  # today — "a story being released moves the graph", "a criterion being
-  # added moves the graph" — against writers that provably never announce,
-  # because each scenario writes, reads, and asserts the graph moved. The read
-  # was doing the moving.
-  #
-  # `c228dbdc` is the rule being broken: a domain event is trusted, and the
-  # graph does not re-verify that something really changed. Re-deriving is
-  # re-verification of everything, every time.
-  #
-  # So: load the rows and answer. Freshness comes from
-  # the rows themselves — `checked_at` is per requirement and always has been,
-  # which is the direction story 1020's notes already name: "is this current"
-  # is a per-row question.
+  # A read answers from the rows; it never re-derives what nobody announced, or
+  # a writer that announces nothing would look like one that works. Freshness
+  # is per row (`checked_at`). See knowledge/requirements_graph, "Lessons".
   defp serve_with_actionable(scope, ctx) do
     {nodes, edges} = Projection.load(scope, ctx)
 
@@ -664,14 +447,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc """
   What is served, against every entity recomputed from its inputs now.
 
-  The instrument for the event path. It settles rows from observations and
-  stamps no fingerprint, so `stale_entities_report/1` — which judges a row by
-  the stamp the pass wrote on it — reads every row the event path has touched
-  as stale, for good: 447 of 1,134 components on dev, every one of them
-  right. This asks the only question that outlives the pass: recomputed from
-  the domain this minute, does every requirement and every edge agree with
-  what is being served? Nothing is written. Expensive on purpose — one whole
-  computation, on demand, by one reader.
+  The incremental graph's audit: recomputed from the domain this minute, does
+  every requirement and edge agree with what is served? Nothing is written.
+  Expensive on purpose — one whole computation, on demand.
   """
   @spec served_vs_recomputed(Scope.t()) :: map()
   def served_vs_recomputed(%Scope{} = scope) do
@@ -744,12 +522,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> MapSet.new(&node_key/1)
   end
 
-  # A reader that named only the project id — the dev page — carries neither
-  # the project nor its account, and both are read: the project's own chain is
-  # instantiated from `scope.active_project`, and the checkers read through
-  # the account (`Questions.list_questions_for_story/2` answers nothing to a
-  # scope with none). The first cut carried only the project and reported 19
-  # stories' `questions_answered` as disagreeing with rows that were right.
+  # A reader that named only the project id (the dev page) carries neither the
+  # project nor its account, and both are read: the project chain from
+  # `active_project`, the checkers through the account.
   defp with_project(%Scope{active_project: %{id: _}, active_account_id: account} = scope)
        when not is_nil(account),
        do: scope
@@ -775,12 +550,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   entity type — for stories and the project the whole filtered template, for
   each top-level component type its parent- and self-scoped definitions.
 
-  What `GraphStore.definitions_covered?/2` compares a vantage's rows against: a
-  release that adds or removes a definition leaves rows that no handler can
-  bring in line, since handlers settle rows and never create them. Child-scoped
-  definitions are left out because whether a child carries one depends on the
-  child's type, and a comparison that can be wrong is worse than a narrower one
-  that cannot.
+  What `GraphStore.definitions_covered?/2` compares a vantage's rows against:
+  handlers settle rows and never create them, so a release that changes the
+  definitions needs a reseed. Child-scoped definitions are left out because
+  they depend on the child's type. See knowledge/requirements_graph, "Seeding".
   """
   @spec defined_names(map(), map()) :: %{
           story: MapSet.t(String.t()),
@@ -865,12 +638,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp template_names(template, config),
     do: template |> maybe_filter_devops(config) |> MapSet.new(& &1.name)
 
-  # When the rows were last computed, taken from the rows.
-  #
-  # Replaces a whole-graph `computed_at` read off the cache row behind a
-  # whole-project fingerprint. A single timestamp for 2000 requirements could
-  # only ever answer "did anything anywhere recompute", which is why
-  # `refute after == before` passed for every writer including the silent ones.
+  # When the rows were last computed, taken from the rows: freshness is per row.
   defp last_checked_at(nodes) do
     nodes
     |> Enum.map(& &1.checked_at)
@@ -943,16 +711,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc """
   The same actionable set, computed as one role sees it.
 
-  `actionable_from/3` blocks a node when *any* transitive prerequisite is
-  unsatisfied, whoever it belongs to. That is right inside one entity's chain and
-  wrong across the project: an untriaged issue queue is product's, and it was
-  making every story's coding work unactionable for roles that could not clear
-  it. Measured 2026-09-15: `get_next_requirement` offered TriageIssues and
-  nothing else while five spex criteria sat red on a coding agent's own
-  checkout, and the agent reported "the graph holds no work for its role"
-  throughout.
-
-  So a block still travels, but only where it means something to the role asking:
+  `actionable_from/3` blocks a node behind *any* unsatisfied prerequisite. Here
+  a block travels only where it means something to the role asking, so another
+  role's queue (an untriaged issue backlog, say) cannot hide this role's work:
 
     * **Same entity** — a story's own chain clamps regardless of role.
       `three_amigos_complete` is product's and `bdd_specs_exist` is coding's, and
@@ -960,18 +721,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     * **Same role** — a role's own unfinished work still orders itself, across
       entities as before.
 
-  A prerequisite that is neither orders the work and does not clamp it. Story
-  1005's rule, criterion 3491.
+  A prerequisite that is neither orders the work and does not clamp it.
+  `actionable_from/3`'s other conditions still apply.
 
-  This does not make anything actionable that was unsatisfied on its own merits:
-  `actionable_from/3`'s other conditions are unchanged, so a node still has to be
-  unsatisfied, have a task that can satisfy it, and be tethered.
-
-  `seeds` is which unsatisfied nodes clamp. `:all` is every one. `:local` is
-  story and component nodes only, never a project-level one: the view of an
-  agent bound to its active story (4292518a), which is never offered project
-  work and so is not held behind it. A story's own unsatisfied node still
-  clamps its descendants there. One traversal either way.
+  `seeds` is which unsatisfied nodes clamp: `:all`, or `:local` (story and
+  component nodes only — the view of an agent bound to its active story, which
+  is never offered project work and so is not held behind it).
   """
   @spec actionable_for_role_from([Requirement.t()], [edge()], map(), atom(), :all | :local) ::
           [Requirement.t()]
@@ -1014,11 +769,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   Whether an unsatisfied `node` holds back what it reaches, under `seeds`.
 
     * `:all` — every unsatisfied node does.
-    * `:local` — all but project-level ones (4292518a, unclamped).
+    * `:local` — all but project-level ones.
     * `{:story, story_id, component_ids}` — only the bound story's own nodes
-      and its member components' (`story_component_ids/2`). Another story's
-      unmet `bdd_specs_exist`, reached through a kickoff edge, held story
-      1084's coder on work nobody bound to 1084 could take.
+      and its member components' (`story_component_ids/2`), so another story's
+      unmet prerequisite reached through a kickoff edge cannot hold a bound agent.
   """
   def seed?(%{satisfied: true}, _seeds), do: false
   def seed?(%{entity_type: "project"}, :local), do: false
@@ -1101,11 +855,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # Satisfaction is a local property — each node's `satisfied` field is the
-  # result of its own leaf check, computed once in `compute_all_from_ctx`
-  # and never mutated by graph context. Story 562: locally-truthful state
-  # plus prerequisite-driven actionability replaced the cascading clamp pass.
-  # Upstream gating happens at `actionable_from` time, not on the node.
+  # Satisfaction is local: each node's `satisfied` is its own leaf check, never
+  # mutated by graph context. Upstream gating happens in `actionable_from`.
 
   # -- Edge computation --
 
@@ -1135,12 +886,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         end)
       end)
 
-    # Deduplicate before reducing, not after.
-    #
-    # `NodeRepository.replace_edges/3` already calls `Enum.uniq/1` on these, so
-    # duplicates were known about — they were just being carried through the
-    # expensive step first. A duplicate edge is the same edge: reachability
-    # cannot change, so this is semantics-preserving by construction.
+    # Deduplicate before the expensive reduction; a duplicate cannot change
+    # reachability.
     {dedup_us, unique} = :timer.tc(fn -> Enum.uniq(kept) end)
 
     {reduce_us, reduced} = :timer.tc(fn -> Topology.transitive_reduction(unique) end)
@@ -1151,33 +898,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     reduced
   end
 
-  # Which third of the edge phase actually costs.
-  #
-  # The outer timing said "edges 2500ms" against "nodes 69ms", which was enough
-  # to redirect the optimization effort but not enough to act on: generating
-  # edges, discarding the ones whose endpoints are not nodes, and reducing them
-  # transitively are three different problems with three different fixes.
-  #
-  # `transitive_reduction/1` has been optimized once already — a comment there
-  # records 471ms on a 1045-node graph before the bitset rewrite — so it is the
-  # obvious suspect and therefore exactly the thing not to assume.
-  #
-  # The counts matter as much as the times. A large gap between generated and
-  # kept means the generators are producing edges for nodes that do not exist,
-  # which is work thrown away rather than work needed.
-  # Which generator produces the duplicates.
-  #
-  # 42% of generated edges were duplicates — 32,973 down to 19,132 — and
-  # deduplicating them before the reduction was worth ~370ms. That fixed the
-  # symptom. Producing 13,841 edges in order to throw them away is still work
-  # nobody needs, and the fix belongs in whichever generator emits the same edge
-  # more than once rather than in a wider `uniq` downstream.
-  #
-  # Per-source counts because the generators have genuinely different shapes:
-  # one walks each story's transitive dependency closure, another fans out over
-  # component children. A closure walk that revisits a node by every path that
-  # reaches it produces duplicates proportional to path count, which is the
-  # explanation to confirm or rule out first.
+  # Per-source counts and duplicates, so the generator wasting work is visible.
+  # See knowledge/requirements_graph, "Edges".
   defp log_edge_sources(by_source) do
     detail =
       Enum.map_join(by_source, ", ", fn {name, edges} ->
@@ -1194,17 +916,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     log_duplicate_shape(by_source)
   end
 
-  # How the duplicates are distributed, not just how many there are.
-  #
-  # 13,433 of them come from the component tree, and the count alone does not
-  # say which generator behaviour produces them. Multiplicity does: mostly ×2
-  # means two paths reach the same edge once each — a parent fanning out to a
-  # child that is itself in the closure emitting for itself — while a long tail
-  # of high-multiplicity edges means many stories share one closure and every
-  # one of them re-emits it.
-  #
-  # Those want different fixes, so the distribution is the thing to look at
-  # before changing how the fan-out works.
+  # Duplicate multiplicity: ×2 means two paths to one edge; a long tail means
+  # many stories re-emitting one shared closure. They want different fixes.
   defp log_duplicate_shape(by_source) do
     {_, edges} = Enum.find(by_source, {nil, []}, fn {name, _} -> name == "component tree" end)
 
@@ -1244,33 +957,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     )
   end
 
-  # Cross-entity: story ↔ surface tree.
-  #
-  # Kickoff edges (`bdd_specs_exist → first work item`) span the
-  # surface AND every component in its transitive cross-context
-  # dependency closure. Transitive reduction collapses these to the
-  # deepest dep(s) — the story's outgoing edge ends up at whatever
-  # has to be done first in the dep chain.
-  #
-  # Kickoff targets child implementations for contexts, or the component's
-  # own implementation when there are no implementable children. Live contexts
-  # are containers only. A context's own implementation is its exit; a live
-  # context exits through its children's implementations.
-  # `children_by_parent` is built once here rather than per story.
-  #
-  # `story_components/2` needs it and used to group all of
-  # `ctx.components` on every call — once per story, so 93 × 880 components on
-  # this project to rebuild an identical map 93 times. It depends only on the
-  # context, so the loop was the wrong place for it.
-  #
-  # It is worth almost nothing, and that is the useful part. Generation measured
-  # 571ms before and 563ms after: 81,840 filter-and-group operations cost about
-  # 8ms, so whoever looks here next for the remaining ~560ms should look past
-  # this at `kickoff_edge/4` and `transitive_dep_closure/2`, which between them
-  # produce 31,257 of the 32,973 edges.
-  #
-  # Kept because it is strictly less work for the same result, not because it
-  # fixed anything.
+  # Cross-entity: story ↔ surface tree. Kickoff edges (`bdd_specs_exist → first
+  # work item`) span the surface and its transitive cross-context dependency
+  # closure; transitive reduction collapses them to the deepest dependency.
+  # Kickoff targets child implementations for contexts, or the component's own
+  # implementation when it has no implementable children; a live context exits
+  # through its children's implementations. `children_by_parent` is built once
+  # here rather than per story.
   defp component_tree_edges(ctx, config) do
     ctx =
       ctx
@@ -1289,19 +982,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     List.flatten(edges)
   end
 
-  # Inside the 95%.
-  #
-  # `component_tree_edges/2` produces 31,257 of 32,973 edges and 13,433 of the
-  # duplicates, and generation is ~563ms of a ~1030ms edge phase. Twice tonight
-  # a guess about where that time goes has been wrong — first that node
-  # computation dominated when it was edges, then that rebuilding
-  # `children_by_parent` per story mattered when it was worth 8ms — so this
-  # splits the four things a story chain does instead of guessing a third time.
-  #
-  # `components` is the total kickoff fan-out across stories: the number of
-  # components each story's closure expands to, summed. If that is large
-  # relative to the component count, the closure walk is the shape to attack
-  # rather than the per-edge work.
+  # The component tree's four costs split apart (closure, expand, kickoff,
+  # exit); `components` is the total kickoff fan-out across stories.
   defp log_component_tree_timing(t) do
     ms = &round(&1 / 1000)
 
@@ -1322,13 +1004,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   A story's subgraph: its surface, the surface's descendants, and everything
   those depend on, transitively. The one set of a story's components — kickoff
   gating, priority within a story, what a bound team is offered, and what holds
-  it (4292518a).
+  it.
 
   A dependency context brings its direct children, since a context is
-  implemented through them; nothing recurses further. Expanding every
-  dependency's descendants, and their descendants' dependencies, made story
-  1083 (surface `CodeMySpec.Architecture`) 568 of 1,319 components, phantom
-  modules of retired stories among them (d1a69b4e).
+  implemented through them; nothing recurses further, or one story's set
+  swallows half the project.
   """
   def story_component_ids(story, ctx) do
     story |> story_components(ctx) |> MapSet.new(& &1.id)
@@ -1354,9 +1034,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # A context is implemented through its children (its kickoff targets them),
-  # so depending on one is depending on its direct children too — story 561,
-  # criteria 3590 and 3601. Direct only, and not their dependencies: John, for
-  # d1a69b4e.
+  # so depending on one is depending on its direct children too. Direct only,
+  # and not their dependencies.
   @containers ~w(context live_context)
 
   defp context_children(%{type: type, id: id}, children_by_parent) when type in @containers,
@@ -1364,22 +1043,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp context_children(_component, _children_by_parent), do: []
 
-  # `:discovered` means ComponentSync found this component by scanning a file;
-  # one with none on this project's own Files records cannot be a discovery
-  # here. `prune_unreferenced/2` (Files.ComponentSync) deliberately keeps a
-  # discovered component whose code vanished as long as something still
-  # references it — an authored parent, a dependency, a story — so that
-  # another working copy that still has the file does not lose it. That
-  # design means a component synced into existence by a *different*
-  # checkout's files can sit in this shared, project-wide table indefinitely,
-  # referenced only by its parent context, and `context_children/2` above
-  # has no way to tell that apart from a component this copy genuinely has
-  # not implemented yet (issue 92f5d6ee and its cluster: 6bb47d00, 62a6bd5f,
-  # 0555b8a3). An `:authored` component is never filtered — it is real
-  # architecture regardless of whether its file has landed yet.
-  #
-  # Lightweight topology loads carry checkout-specific file membership;
-  # full loads carry the records. Both must exclude exactly the same ghosts.
+  # A `:discovered` component with no file on this checkout is a phantom: it was
+  # synced from another checkout's files and is kept project-wide while
+  # referenced. `:authored` components are never filtered. Topology loads and
+  # full loads must exclude exactly the same ghosts. See knowledge/requirements_graph, "Edges".
   defp phantom?(%{provenance: :discovered, id: id}, %{file_component_ids: ids}),
     do: not MapSet.member?(ids, id)
 
@@ -1476,22 +1143,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # A child that is itself in the kickoff closure and lands on its own node
-  # emits this exact edge already, so the parent's fan-out to it is the same
-  # edge a second time.
-  #
-  # That is every duplicate the component tree produced: 13,433 of them,
-  # uniformly ×2, none at ×3 or higher. A uniform ×2 is the signature of two
-  # paths reaching one edge once each, which is what this suppresses.
-  #
-  # Both conditions are load-bearing. A child outside the closure is not
-  # emitting anything, and a child whose own first def is `:child`-scoped fans
-  # out to *its* children instead of landing on itself — in either case the
-  # parent's edge is the only one and dropping it would lose it.
-  #
-  # Nothing about the graph changes: the duplicates were exact repeats and
-  # `Enum.uniq/1` already removed them before the transitive reduction. This
-  # stops building what was being thrown away.
+  # A child in the kickoff closure that lands on its own node already emits this
+  # edge, so the parent's fan-out to it would be a duplicate. Both conditions are
+  # load-bearing: otherwise the parent's edge is the only one.
   defp emits_for_itself?(child, name, config, ctx, kickoff_ids) do
     MapSet.member?(kickoff_ids, child.id) and
       case first_def_for(child.type, config, ctx) do
@@ -1517,9 +1171,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #   only the deepest leaf survives.
   #
   # The gate then feeds qa_complete via the intra-story prerequisite
-  # edge, so a story cannot reach a QA sub-agent before its own specs
-  # have gone green. bab2f792 pointed these terminals straight at
-  # qa_complete when the gate was removed; this puts the seam back.
+  # edge, so a story cannot reach QA before its own specs have gone green.
   defp surface_exit_edge(surface, story, ctx, config) do
     own_terminal =
       surface.type
@@ -1590,17 +1242,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # `first_filtered_def/2` keyed by type, computed once per graph.
-  #
-  # It is a pure function of `(type, config)` — a registry lookup and four
-  # config filters — and there are about a dozen component types. It was being
-  # evaluated once per kickoff component: 17,758 times on this project, for a
-  # dozen distinct answers.
-  #
-  # Measured, not guessed: the four-way split put 614ms of a 1,030ms edge phase
-  # inside `kickoff_edge/4`, at ~35µs a call, which is far too slow for building
-  # two-field maps. `direct_children/2` was already a map lookup, leaving this as
-  # the only per-call work that scaled with anything.
+  # `first_filtered_def/2` keyed by type, computed once per graph: a pure
+  # function of `(type, config)` that was the hot spot of kickoff generation.
   defp first_def_by_type(ctx, config) do
     ctx.components
     |> Enum.map(& &1.type)
@@ -1655,10 +1298,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # Cross-entity: story.qa_complete → project.qa_journey_plan.
-  # The project-level fan-in: every story's QA completion gates the
-  # project's QA journey chain. This edge is the structural seam the
-  # graph projector uses to lay late_project nodes against the bottom
-  # band — keep a story→project fan-in even if the target node changes.
+  # The project-level fan-in: every story's QA completion gates the project's QA
+  # journey chain. `GraphProjector` lays out on this seam, so keep a
+  # story→project fan-in even if the target node changes.
   defp story_to_project_edges(ctx) do
     project_id =
       case ctx.stories do
@@ -1764,13 +1406,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # is unsatisfied. Walks the DAG forward from every unsatisfied node and
   # marks every strict descendant as blocked.
   #
-  # This is the single-hop → transitive upgrade that closes the
-  # cross-scope gating gap: when a project-chain requirement reopens,
-  # the unsatisfaction propagates through `project.qa_setup →
-  # story.component_linked → story.bdd_specs_exist → component.first_req`
-  # so component work disappears from the actionable list even though
-  # every locally-satisfied node along the chain still reports
-  # `satisfied: true`.
+  # Transitive, so a reopened project-chain requirement hides component work
+  # even though every locally-satisfied node between them reports satisfied.
   defp compute_blocked_descendants(edges, satisfaction_map) do
     outgoing =
       Enum.reduce(edges, %{}, fn edge, acc ->
@@ -1820,10 +1457,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The template is filtered by the project configuration up front so disabled
   # artifact types (specs, reviews, tests) are stripped from both nodes and edges.
   defp instantiate_component_graphs(scope, ctx, config) do
-    # Stamped here rather than by the caller: this is a function that *hashes*
-    # an entity, and the comparison and the write have to agree exactly or
-    # every row reads stale forever. `Freshness.with_config/2` is idempotent,
-    # so a caller that already stamped pays a map write.
+    # Stamped here, where the entity is hashed; idempotent if the caller did too.
     ctx = Freshness.with_config(ctx, config)
 
     {top_level, children_by_parent} = component_families(ctx)
@@ -1854,20 +1488,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> stamp_component_freshness(ctx)
   end
 
-  # Who runs a template, and for whom.
-  #
-  # Only context-shaped types (templates with :child scope defs) own their
-  # nested components for template purposes. A component nested under a
-  # non-context parent (e.g. a context whose namespace happens to live under an
-  # `infrastructure` umbrella like `MarketMySpec`) is still top-level and must
-  # run its own template — otherwise every component below the umbrella gets
-  # dropped from the requirement graph and the project shows 0/0 everywhere.
-  #
-  # Shared with `barren_components/2` rather than restated there. The question
-  # "which components can produce a row" is answered by exactly this split plus
-  # the config filter, and a second copy of the split would be a second copy
-  # that could drift — with the drift showing up as entities recomputed forever,
-  # which is the failure this whole neighbourhood exists to remove.
+  # Who runs a template, and for whom. Only context-shaped types (templates with
+  # :child defs) own their nested components. A component nested under a
+  # non-context parent is still top-level and runs its own template, or
+  # everything below an umbrella drops out of the graph. The one copy of this
+  # split: `defined_names/2` and the family closure use it too.
   defp component_families(ctx) do
     container_ids =
       ctx.components
@@ -1882,10 +1507,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {top_level, Enum.group_by(children, & &1.parent_component_id)}
   end
 
-  # Stamped after the fact rather than inside the template, because a
-  # container's pass emits its children's nodes as well as its own and each of
-  # them is stale on its own inputs. Keyed off `entity_id`, so a child node
-  # carries the child's fingerprint wherever it was produced.
+  # Stamped after the fact: a container's template emits its children's nodes,
+  # and each carries its own entity's fingerprint wherever it was produced.
   defp stamp_component_freshness({nodes, edges}, ctx) do
     fingerprints = Map.new(ctx.components, &{&1.id, Freshness.component(ctx, &1)})
 
@@ -2111,16 +1734,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp compute_story_nodes(scope, ctx, config) do
-    # Stamped here rather than by the caller: this is a function that *hashes*
-    # an entity, and the comparison and the write have to agree exactly or
-    # every row reads stale forever. `Freshness.with_config/2` is idempotent,
-    # so a caller that already stamped pays a map write.
+    # Stamped here, where the entity is hashed; idempotent if the caller did too.
     ctx = Freshness.with_config(ctx, config)
 
-    # Only the devops filter applies to story templates — the
-    # specs/reviews/tests filters are component-scoped by design
-    # Component and story requirements have distinct templates.
-    # devops: :off drops the deploy requirement from every story.
+    # Only the devops filter applies to story templates: devops: :off drops the
+    # deploy requirement from every story.
     template = maybe_filter_devops(RequirementDefinitionData.story_graph(), config)
     project = scope.active_project
 
@@ -2128,10 +1746,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Enum.flat_map_reduce(ctx.stories, [], fn story, all_edges ->
         files = Map.get(ctx.files_by_story, story.id, [])
 
-        # Stamped once per story rather than once per requirement: every
-        # requirement of a story reads the same slice of the context, so they
-        # go stale together and hashing it seven times would answer the same
-        # question seven ways.
+        # Once per story: its requirements read the same slice of the context.
         fingerprint = story_fingerprint(ctx, story)
 
         nodes =
@@ -2169,26 +1784,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, edges}
   end
 
-  # `nil` when the context says it was not loaded to answer this.
-  #
-  # `Preloader.load_story/3` omits `delegated_inputs` because nothing but
-  # `Freshness` and `GraphFingerprint` read it, and hashing a narrow context
-  # would produce a *plausible* fingerprint that is not the one a whole pass
-  # produces. That is worse than no fingerprint: it looks comparable and is not,
-  # so a later reader could skip a row on the strength of it.
-  #
-  # `nil` already carries the right meaning — `Node`'s `inputs_fingerprint` doc
-  # says it "reads as 'no basis to skip it' rather than as 'unchanged'" — which
-  # is exactly true of a row the event path wrote.
+  # `nil` when the context was loaded narrow: a fingerprint of a narrow context
+  # looks comparable to a whole one and is not. `nil` reads as "no basis to skip".
   defp story_fingerprint(%{skip_fingerprints: true}, _story), do: nil
   defp story_fingerprint(ctx, story), do: Freshness.story(ctx, story)
 
   defp compute_project_nodes(scope, ctx, config) do
     project = scope.active_project
 
-    # Only the devops filter applies to the project template (see
-    # compute_story_nodes) — devops: :off drops devops_setup so the graph
-    # never demands infrastructure work.
+    # Only the devops filter applies to the project template, as for stories.
     template = maybe_filter_devops(RequirementDefinitionData.project_graph(), config)
     files = ctx.files_by_project || []
 
@@ -2214,11 +1818,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           role: definition.role,
           prerequisites: [],
           details: Requirement.normalize_details(result.details),
-          # Stamped like every other entity, so a pass can tell whether the
-          # project's own inputs moved instead of assuming they did. Without
-          # this there is nothing stored to compare and project nodes are
-          # rebuilt unconditionally — ten delegate checkers on every pass,
-          # which is the floor cost of observing anything at all.
+          # Stamped like every other entity.
           inputs_fingerprint: Freshness.project(ctx)
         }
       end)
@@ -2244,23 +1844,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Within a story's chain, graph edges already encode execution order
   # (e.g. bdd_specs_exist before implementation_file).
   #
-  # This restores the tiering from 2d4f928b ("Fix priority: late project
-  # requirements sort after story/component work"), which 3f7be0c9
-  # ("Simplify actionable sorting to story priority only") collapsed into a
-  # single dead-last project tier — burying architecture_designed and
-  # issues_triaged beneath every tethered component requirement.
-  # `issues_resolved` belongs here, with the journey it now gates.
-  #
-  # This set is hardcoded rather than derived from the edges, so moving a
-  # requirement's dependencies moves what it *blocks* and leaves where it
-  # *sorts* untouched. When `issues_resolved` stopped gating `qa_setup` and
-  # started gating `qa_journey_plan`, it kept tier 0 — so it still rendered at
-  # the front of the project band and was still offered ahead of every story and
-  # component, which is the exact complaint that prompted moving it.
-  #
-  # Its prerequisite is still `issues_triaged`, and that is correct: you cannot
-  # resolve what has not been triaged. Prerequisite position and sort tier are
-  # different questions, and only the first is answered by the edges.
+  # The late set is hardcoded, not derived from the edges: moving a requirement's
+  # prerequisites changes what it blocks, not where it sorts, so a requirement
+  # that moves to gate the journey must be added here too.
   @late_project_reqs MapSet.new([
                        "issues_resolved",
                        "qa_journey_plan",
@@ -2323,16 +1909,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # The third term is how far down its own chain the node sits, so a story
-  # already under way outranks a story nobody has started at the same priority.
-  #
-  # It was a hard-coded `0`, which made every story requirement identical to
-  # the sort except for the story's priority — and 32 of Broken Oaths' 61
-  # stories carry no priority at all, so they collapsed into one tie group
-  # resolved by whatever order the graph builder emitted. With three coding
-  # agents on one working copy each taking the next unclaimed node, that is
-  # three stories in flight and none of them finished: specs written across ten
-  # stories, code for none of them. The preferred motion is one story at a time
-  # — specs, then code, then QA — and the sort is where that gets said.
+  # already under way outranks one nobody has started at the same priority: one
+  # story at a time, specs then code then QA. See knowledge/requirements_graph, "Lessons".
   defp priority_sort_key(
          %{entity_type: "story", entity_id: id, name: name},
          story_by_id,
@@ -2370,33 +1948,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # credo:disable-for-next-line ExSlop.Check.Readability.ObviousComment
-  # Build a map of component_id → best (lowest) story priority.
-  # A component inherits priority from:
-  # 1. Stories that directly link to it (story.component_id)
-  # 2. Stories that link to components that depend on it
-  # 3. Parent components (via parent_component_id chain), recursively
-  #    through any parent type. A bounded context's priority cascades
-  #    to *every* descendant — direct children, grandchildren via
-  #    behaviour/schema/module intermediates, the whole tree — so the
-  #    descendants get worked together as one priority cohort. Trees
-  #    rooted at a context with no priority (orphan contexts) yield
-  #    no inheritance, and the untethered filter drops their
-  #    descendants from the wave on that basis.
-  # A story's rank: its priority, then its age. Two stories at the same
-  # priority are not tied — the older one leads — and `min/2` over this pair
-  # gives exactly that, since a lower priority wins and an equal priority falls
-  # through to the smaller timestamp.
-  #
-  # The age used to be missing entirely, so two components inheriting the same
-  # priority produced identical sort keys. `Enum.sort_by/2` is stable, so the
-  # winner was whatever order the nodes arrived in — and that order is
-  # `kept ++ fresh` from `recompute_stale/3`, which depends on which entities
-  # happened to be stale on that pass. The answer to "which story leads" was
-  # therefore decided by recompute bookkeeping, and changed run to run.
-  #
-  # Criterion 5901 is named for the rule this implements: same priority, oldest
-  # created_at wins.
+  # A story's rank: its priority, then its age, so the older of two stories at
+  # one priority leads and `min/2` over the pair is deterministic.
   defp story_rank(story) do
     {story.priority || 999, story_age(story)}
   end
@@ -2408,6 +1961,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp story_age(_story), do: 0
 
+  # component_id → best (lowest) story rank, inherited from stories that link it,
+  # stories whose surface depends on it, and parent components recursively. A
+  # tree rooted at a context with no priority inherits nothing, and the
+  # untethered filter drops it from the wave.
   defp build_component_priority_map(%{execution_component_ids: ids, stories: [story]}) do
     Map.new(ids, &{&1, story_rank(story)})
   end
@@ -2487,16 +2044,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     maybe_filter_devops(definitions, config)
   end
 
-  # `deploy` is back, reading `CodeMySpec.Deploys` rather than a markdown file
-  # the agent wrote for itself — which is why it came out (d207ad38) and what
-  # had to change before it could return.
-  #
-  # `devops: :off` is the default, so for most projects this filter is what
-  # keeps the graph silent about infrastructure (criterion 1970). Absent, not
-  # present-and-skipped: a greyed-out step still reads as part of the run.
-  #
-  # `devops_setup` and `release` remain out. Setup is answered by
-  # `devops_status` against the providers, and release has no read model yet.
+  # `devops: :off` is the default, so this filter keeps most projects' graphs
+  # silent about infrastructure: deployment requirements are absent, not
+  # present-and-skipped, since a greyed-out step still reads as part of the run.
   defp maybe_filter_devops(definitions, config) do
     case ProjectConfiguration.devops_level(config) do
       :off -> Enum.reject(definitions, &(&1.artifact_type == :deployment))

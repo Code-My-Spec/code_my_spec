@@ -39,9 +39,8 @@ defmodule CodeMySpecWeb.Router do
     plug CodeMySpecWeb.Plugs.AgentScope
   end
 
-  # Guided intake (story 990). Its own pipeline because the anonymous plan
-  # token has to be minted before the LiveView mounts — a LiveView cannot
-  # write the session itself.
+  # Guided intake. Its own pipeline: the anonymous plan token must be minted
+  # before the LiveView mounts, which cannot write the session.
   pipeline :intake do
     plug CodeMySpecWeb.Plugs.IntakeSession
   end
@@ -81,9 +80,8 @@ defmodule CodeMySpecWeb.Router do
   end
 
   scope "/", CodeMySpecWeb do
-    # The intake starts on the home page, so the home page needs a session
-    # token to start it against — the same anonymous token /build reads, so a
-    # visitor who begins here and continues there is one plan, not two.
+    # The home page starts intake against the same anonymous token /build reads,
+    # so one visitor is one plan.
     pipe_through [:browser, :intake]
 
     get "/", PageController, :home
@@ -130,8 +128,7 @@ defmodule CodeMySpecWeb.Router do
       live "/author/john-davenport", AuthorLive, :author
     end
 
-    # Tag-filtered index pages (story 713) — 3-segment, declared before the
-    # 2-segment :slug routes for clarity.
+    # Tag-filtered index pages, declared before the `:slug` routes.
     get "/blog/tag/:tag", ContentController, :blog_tag
     get "/pages/tag/:tag", ContentController, :pages_tag
     get "/landing/tag/:tag", ContentController, :landing_tag
@@ -193,40 +190,14 @@ defmodule CodeMySpecWeb.Router do
   scope "/mcp" do
     pipe_through :mcp_protected
 
-    # The harness tools, served from the server rather than from a process on
-    # the developer's machine.
+    # The harness tools. `require_oauth_token` identifies the user and
+    # `ProjectScopeOverride` picks the project from `X-Project-ID`; Anubis copies
+    # `conn.assigns` into the request context. A request without a project is
+    # refused. File-touching tools also need a working copy: `X-Harness-Id`, or an
+    # `X-Agent-Id`'s own copy (`AgentScope`); otherwise `:no_environment`.
     #
-    # Scope arrives the same way it does for every other server-mounted MCP
-    # server: `require_oauth_token` identifies the user and
-    # `ProjectScopeOverride` picks the project from `X-Project-ID`. Anubis
-    # copies `conn.assigns` wholesale into the request context, so the
-    # `current_scope` those plugs build reaches the tools untouched — which is
-    # the same route `working_dir` takes on the local mount.
-    #
-    # `X-Project-ID` alone names a project, not a working copy — it does not
-    # resolve a runtime for file operations. Add `X-Harness-Id` (see
-    # `ProjectScopeOverride`'s moduledoc) to also name the working copy; any
-    # tool here that touches files — `evaluate_task` on a task whose checker
-    # reads the environment, for one — answers `:no_environment` without it.
-    #
-    # `Validators.validate_local_scope/2` already prefers a frame scope that
-    # carries an `active_project_id` and only falls back to resolving one from a
-    # working directory. Here there is no working directory and no fallback: a
-    # request without a project is refused rather than guessed at.
-    #
-    # A file-touching tool also needs a working copy: `X-Harness-Id` names one,
-    # and an `X-Agent-Id` with no harness falls back to that agent's own copy
-    # (`AgentScope`). With neither, such a tool refuses with `:no_environment`.
-    # The library's bare 30s default is shorter than a real provisioning step
-    # against real infrastructure: :deploy alone measures ~167s (RunLock's own
-    # moduledoc), and :server provisioning two environments' Postgres/registry
-    # tenants over real ssh round-trips took over a minute end to end the
-    # first time it ran against fuellytics-prod/market-my-spec-uat, not the
-    # fast local test stubs the suite otherwise exercises it against. The
-    # underlying step kept running to completion regardless — RunLock was
-    # still held when the timed-out caller's retry arrived — so the 30s
-    # ceiling was never protecting anything; it just handed back a false
-    # "Internal error"/"Server unavailable" for calls that were working.
+    # Five-minute timeout: real provisioning steps (:deploy, ~3 minutes) outlast
+    # the 30s default, which returned false errors for calls that were working.
     forward "/harness", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.LocalServer,
       request_timeout: :timer.minutes(5)
@@ -253,7 +224,7 @@ defmodule CodeMySpecWeb.Router do
 
     resources "/issues", IssuesController, only: [:index, :show, :create, :update]
 
-    # One project's authored graph, one request, one transaction (story 991).
+    # One project's authored graph, one request, one transaction.
     post "/migrations", MigrationsController, :create
 
     # Blocks until the connected project's provisioning RunLock is free — see
@@ -331,10 +302,8 @@ defmodule CodeMySpecWeb.Router do
     post "/stripe", StripeWebhookController, :create
   end
 
-  # The one endpoint a deployed app's refresh secret opens. Everything else it
-  # calls takes the short-lived token this returns — story 971's property is
-  # not "the app holds no durable secret" (it holds one) but that what it
-  # holds opens none of the five surfaces.
+  # The one endpoint a deployed app's refresh secret opens; everything else takes
+  # the short-lived token this returns.
   scope "/api", CodeMySpecWeb do
     pipe_through :api
 
@@ -389,15 +358,8 @@ defmodule CodeMySpecWeb.Router do
     get "/socket_token", WidgetSocketTokenController, :show
   end
 
-  # (analytics/event route removed — browser events fire via gtag.js directly)
-
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:code_my_spec, :dev_routes) do
-    # If you want to use the LiveDashboard in production, you should put
-    # it behind authentication and allow only admins to access it.
-    # If your application does not have an admins-only section yet,
-    # you can use Plug.BasicAuth to set up some basic authentication
-    # as long as you are also using SSL (which you should anyway).
     import Phoenix.LiveDashboard.Router
 
     scope "/dev" do
@@ -406,51 +368,25 @@ defmodule CodeMySpecWeb.Router do
       live_dashboard "/dashboard", metrics: CodeMySpecWeb.Telemetry
       forward "/mailbox", Plug.Swoosh.MailboxPreview
 
-      # Live view of `/dev/state`'s own data — every project's working
-      # copies, what the ledger says is running/queued per analyzer source,
-      # and story 839's "current run, next run" ceiling per source. Built
-      # to watch the queue-accumulation investigation live instead of
-      # polling `/dev/state` by hand.
+      # Live view of `/dev/state`: each project's working copies, the analyzer
+      # ledger's running/queued per source, and each source's current/next-run ceiling.
       live "/analysis", CodeMySpecWeb.DevAnalysisLive
 
-      # Whether the requirement graph is recomputing incrementally, read off the
-      # rows. A distinct `checked_at` is a pass and its size is the pass's size,
-      # so "incremental sync works" becomes a column of numbers rather than a
-      # log grep. Read-only by construction — see `DevGraphLive`.
+      # Whether the requirement graph keeps up incrementally. Read-only; see
+      # `DevGraphLive`.
       live "/graph", CodeMySpecWeb.DevGraphLive
     end
 
-    # Reaching an agent that is not on your project, from a terminal.
-    #
-    # `message_agent` resolves inside the caller's project and refuses the rest,
-    # which is a tenant boundary and stays. The cost is that whoever is
-    # debugging a stuck agent cannot ask it anything unless they are already
-    # scoped to it — four hours of watching a QA agent fail on 2026-09-07, with
-    # no way to say a word to it.
-    #
-    # Inside `:dev_routes`, so it is absent from a release rather than disabled
-    # in one. A cross-project message surface is exactly what must not ship by
-    # accident.
+    # Cross-project agent control and QA fixtures. Inside `:dev_routes`, so absent
+    # from a release, not disabled. See `DevAgentController`.
     scope "/dev", CodeMySpecWeb do
       pipe_through :api
 
       get "/agents", DevAgentController, :index
       post "/agents/:agent_id/message", DevAgentController, :message
 
-      # A real session for QA, without the shared mailbox.
-      #
-      # QA drives the browser and so needs a real session; getting one meant
-      # working the magic-link flow by hand every run, against a `/dev/mailbox`
-      # every agent on the box shares — so "the right message" is whichever
-      # login arrived last, and a second agent testing concurrently takes yours.
-      #
-      # These mint the same `"login"` token `deliver_login_instructions/2` puts
-      # in the email, redeemed at the same route by the same controller. QA
-      # exercises the product's real session auth; what it skips is the mailbox,
-      # not the authentication.
-      #
-      # Inside `:dev_routes` for a sharper reason than its neighbours: that one
-      # can message an agent, this one can become a user.
+      # A real session for QA without the shared `/dev/mailbox`: mints the same
+      # "login" token the magic-link email carries, redeemed at the same route.
       post "/sign-in", DevSignInController, :create
       post "/sign-up", DevSignInController, :register
 
@@ -472,71 +408,47 @@ defmodule CodeMySpecWeb.Router do
            DevProvisioningFixtureController,
            :control
 
-      # Thinning a working copy that has collected more agents than it can feed.
-      # Three coding agents on one checkout is three stories in flight and seven
-      # concurrent analyzer runs against one Postgres — observable through
-      # `/dev/agents` and, until this, not fixable from the same place.
       post "/agents/:agent_id/stop", DevAgentController, :stop
 
-      # And back again. Without this the dev tools could only ever remove
-      # agents, which is half a control surface.
       post "/agents/:agent_id/restart", DevAgentController, :restart
 
-      # `stop` turns an agent off, and `restart` refuses one that is off; this is
-      # the explicit way back (39af5611).
+      # `stop` turns an agent off; `restart` refuses an off one; `turn_on` is the
+      # way back.
       post "/agents/:agent_id/turn_on", DevAgentController, :turn_on
 
-      # An agent parked on a question is stopped until somebody answers, and
-      # until this the only thing that could was a person on its conversation
-      # page. These tools could start it, stop it and talk to it, and not clear
-      # the one state that makes it sit still.
+      # Clear an agent parked on a question.
       get "/agents/:agent_id/questions", DevAgentController, :questions
       post "/agents/:agent_id/answer", DevAgentController, :answer
 
-      # Staffing has to happen in the server's own VM. The channel registry
-      # lives here, so a `mix run` script writes three agent rows, delivers an
-      # orchestrator message into the database, and reaches no harness at all —
-      # three agents stuck in `starting` with a menu each and nothing running.
+      # Staffing must run in the server's VM, where the channel registry lives; a
+      # `mix run` script writes rows that reach no harness.
       post "/copies/:working_copy_id/staff", DevAgentController, :staff
 
-      # The loop switch on its own. Staffing turns it on as a side effect, which
-      # is the wrong grain for pausing a copy — that meant stopping every agent
-      # and staffing again.
+      # The continuous switch alone, without restaffing.
       post "/copies/:working_copy_id/continuous", DevAgentController, :continuous
 
-      # What a checkout can drive, written by hand. The harness records this on
-      # every join and nothing else could, so the only way to see a toolless
-      # copy was to break a real machine's MCP client — which four other
-      # projects' checkouts share. A copy with an empty tool list and an agent
-      # on it is what `Machinery.tool_fault/1` reads, and on a project of your
-      # own it is visible to nobody else. The next harness join overwrites it.
+      # A copy's tool list by hand, so QA can produce a toolless copy
+      # (`Machinery.tool_fault/1`) without breaking a shared MCP client. The next
+      # harness join overwrites it.
       post "/copies/:working_copy_id/machine_tools", DevAgentController, :machine_tools
 
-      # Make one caller's world fail without breaking everybody's. Issue
-      # 0fb7bf03 — the criteria about failure handling were the ones QA could
-      # never finish, because every seam was node-global on a shared box.
+      # Per-caller failure injection, so failure criteria are testable on a shared box.
       get "/faults", DevFaultController, :index
       post "/faults", DevFaultController, :create
       delete "/faults", DevFaultController, :delete
 
-      # The key for an intake fault. A visitor's session token is signed into
-      # the Phoenix session, so nobody driving a browser can read the one they
-      # are holding — which is what made every per-session intake seam
-      # unreachable from outside the application.
+      # Intake plan tokens, for intake faults: the session token is signed, so a
+      # browser driver cannot read its own.
       get "/intake/plans", DevFaultController, :plans
 
-      # What the database believes against what the runtime is doing, and the
-      # disagreements between them. Same compile-time gating and the same
-      # reason: it reads across every project.
+      # Database belief versus runtime state, across every project.
       get "/state", DevStateController, :index
 
-      # A GET so it needs nothing but a URL. Not idempotent, and says so in what
-      # it answers: which sources it enqueued and which were already current.
+      # A GET so it needs only a URL. Not idempotent; answers which sources it
+      # enqueued and which were current.
       get "/state/run", DevStateController, :run
 
-      # Are the agents actually working. Six numbers that took six hand-written
-      # queries every ten minutes, and one of them — message volume — is the one
-      # that lies.
+      # Whether the agents are actually working: six fleet numbers.
       get "/fleet", DevStateController, :fleet
     end
   end
@@ -591,27 +503,18 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
 
-      # Account-scoped rather than project-scoped, which is the whole point of
-      # story 994: a box belongs to the account and can serve several
-      # projects. Putting it behind `:project_scoped` would reintroduce the
-      # grain this exists to fix, and would hide Sam's own servers behind
-      # having picked a project first.
+      # Account-scoped: a box belongs to the account and can serve several projects.
       live "/resources", ResourceLive.Index, :index
       live "/servers", ServerLive.Index, :index
 
-      # Account-scoped, not project-scoped: one machine serves checkouts of
-      # several projects, so nesting this under a project would either lie or
-      # repeat itself.
+      # Account-scoped: one machine serves checkouts of several projects.
       live "/devices", DeviceLive.Index, :index
       live "/servers/:name/edit", ServerLive.Index, :edit
       live "/servers/:name", ServerLive.Show, :show
     end
 
-    # Portable UI — named for when a second host (CodeMySpecLocalWeb.Router)
-    # mounted the same LiveViews at the same paths, so the views themselves
-    # stayed app-agnostic. That second host is gone (issue f532f990); the
-    # `layout:`/`on_mount` split stays because nothing here depends on there
-    # being two hosts, only on the scope arriving through `PortableHost`.
+    # Portable UI: scope arrives through `PortableHost`, so the views stay
+    # app-agnostic.
     live_session :portable,
       layout: {CodeMySpecWeb.Layouts, :live},
       on_mount: [
@@ -681,9 +584,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/requirements/stories", RequirementsLive, :stories
       live "/projects/:project_id/requirements/:name", RequirementsLive, :show
 
-      # `:story_show` had a `handle_params` clause and no route to reach it by,
-      # so a story's own requirements were unreachable while every component's
-      # were one click away.
+      # A story's own requirements.
       live "/projects/:project_id/stories/:story_number/requirements",
            RequirementsLive,
            :story_show
@@ -716,14 +617,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/mail", MailLive, :index
       live "/projects/:project_id/mail/:id", MailLive, :show
 
-      # The console (story: provisioning page became the project console,
-      # retiring /provisioning — ProvisioningLive's own routes and sidebar
-      # link are gone; its render tree didn't share ConsoleLive's shape, so
-      # this replaced the page rather than adding live_actions to it).
-      # Credentials, secrets and settings stay project-wide — environment
-      # selection (`?env=`) only scopes resources and deploys, the same
-      # ?param-over-route shape AgentConversationLive already uses for its own
-      # in-page selection.
+      # The project console. `?env=` scopes only resources and deploys.
       live "/projects/:project_id/console", ConsoleLive, :overview
       live "/projects/:project_id/console/resources", ConsoleLive, :resources
       live "/projects/:project_id/console/resources/:key", ConsoleLive, :resource_detail
@@ -736,26 +630,17 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/working-copies/:id", WorkingCopyLive.Show, :show
       live "/projects/:project_id/working-copies/:id/edit", WorkingCopyLive.Form, :edit
       live "/projects/:project_id/working-copies/:id/status", WorkingCopyLive.Status, :status
-      # The cockpit is a *project* page, and which agent you are reading is a
-      # selection within it (`?conversation=<id>`) rather than a different
-      # route. Switching agents is then a patch: the transcript changes and the
-      # panels, preview and pane widths around it stay where they were. Same
-      # shape as `MailLive`, where the mailbox is the page and `?thread=` is the
-      # selection.
+      # The cockpit is a project page; which agent you read is `?conversation=<id>`,
+      # so switching is a patch and the panels stay put.
       live "/projects/:project_id/agent-conversation", AgentConversationLive.Show, :show
 
-      # The shape this page used to have. Web Push notifications already on
-      # somebody's phone carry it, and a notification that 404s is worse than
-      # the navigation it saved — so it still resolves, and sends them to the
-      # canonical URL rather than serving a second one forever.
+      # The old path-style link (push notifications carry it); redirects to the
+      # canonical URL.
       live "/projects/:project_id/agent-conversation/:conversation_id",
            AgentConversationLive.Show,
            :legacy_conversation_path
 
-      # The list. Plural, because the singular is the cockpit above and a
-      # session is a selection within it rather than a page of its own — and
-      # because the singular plus a segment is now the legacy redirect, which
-      # is the other half of the same decision.
+      # The list of agent conversations.
       live "/projects/:project_id/agent-conversations", AgentConversationLive.Index, :index
     end
 

@@ -89,6 +89,17 @@ defmodule CodeMySpec.Requirements.StoryGraph do
     }
   end
 
+  @doc """
+  Satisfied and total across the story's own slice — its requirements, its
+  issues' and its components' — the non-boundary nodes the working copy status
+  page draws. Project gates show there as context and are not counted.
+  """
+  @spec progress(map()) :: {non_neg_integer(), non_neg_integer()}
+  def progress(%{nodes: nodes, story_keys: roots}) do
+    owned = Enum.filter(nodes, &MapSet.member?(roots, key(&1)))
+    {Enum.count(owned, & &1.satisfied), length(owned)}
+  end
+
   defp include_project_gate(%{from: {"project", _, _} = from, to: to}, ids, roots) do
     if MapSet.member?(roots, to), do: MapSet.put(ids, from), else: ids
   end

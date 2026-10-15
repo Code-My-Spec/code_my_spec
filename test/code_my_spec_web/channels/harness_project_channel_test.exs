@@ -130,6 +130,68 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "turn spend" do
+    alias CmsHarness.Project.ChannelClient
+    alias CodeMySpec.AgentPerformance.AgentTurn
+    alias CodeMySpec.Agents.AgentsRepository
+
+    # Alloy's usage reached the harness's turn_ended envelope and stopped there,
+    # so no in-app agent turn was ever recorded and the chart's token line sat
+    # on zero (2026-10-14).
+    test "an in-app agent's turn_ended usage is recorded against the agent and its story",
+         %{scope: scope, topic: topic} do
+      {:ok, agent} =
+        AgentsRepository.create_agent(scope, %{
+          provider: "claude-code",
+          model: "claude-opus-5-5",
+          engine: :alloy,
+          role: "coding",
+          continuous: true,
+          working_copy: "/tmp/spend-#{System.unique_integer([:positive])}",
+          working_copy_id: scope.active_working_copy_id
+        })
+
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      usage = %{
+        input_tokens: 1_200,
+        output_tokens: 300,
+        cache_creation_input_tokens: 40,
+        cache_read_input_tokens: 9_000,
+        estimated_cost_cents: 0
+      }
+
+      event = ChannelClient.encode_turn_event(%{event: :turn_ended, ref: "work-1", usage: usage})
+      ref = push(channel, "agent_turn_event", %{"agent_id" => agent.id, "event" => event})
+      assert_reply ref, :ok
+
+      assert [turn] = Repo.all(from(t in AgentTurn, where: t.agent_id == ^agent.id))
+      assert {turn.input_tokens, turn.output_tokens} == {1_200, 300}
+      assert {turn.cache_read_tokens, turn.cache_write_tokens} == {9_000, 40}
+      assert {turn.provider, turn.model} == {"claude-code", "claude-opus-5-5"}
+    end
+
+    test "a turn that never reached a provider records nothing", %{scope: scope, topic: topic} do
+      {:ok, agent} =
+        AgentsRepository.create_agent(scope, %{
+          provider: "claude-code",
+          engine: :alloy,
+          role: "coding",
+          continuous: true,
+          working_copy: "/tmp/spend-#{System.unique_integer([:positive])}",
+          working_copy_id: scope.active_working_copy_id
+        })
+
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      event = ChannelClient.encode_turn_event(%{event: :turn_ended, ref: "work-1", usage: nil})
+      ref = push(channel, "agent_turn_event", %{"agent_id" => agent.id, "event" => event})
+      assert_reply ref, :ok
+
+      assert Repo.all(from(t in AgentTurn, where: t.agent_id == ^agent.id)) == []
+    end
+  end
+
   describe "head_commit" do
     alias CodeMySpec.PromotionQueue
 

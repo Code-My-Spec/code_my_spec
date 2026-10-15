@@ -100,57 +100,37 @@ defmodule CodeMySpec.Stories.Story do
     # the migration.
     field :ready_for_dev, :boolean, default: false
     # Promoted, with the story's spex green on the certifying run: set only by
-    # promotion (e1174640). Not a graph input; what it decides is whether this
-    # story's red spex block another copy's promote (`Validation.enforceable/2`).
+    # promotion. Decides whether this story's red spex block another copy's
+    # promote (`Validation.enforceable/2`).
     field :specs_ready, :boolean, default: false
 
-    # When and where the latch above was earned — never read to gate
-    # anything, only to tell a reader on a *different* checkout "I broke
-    # this" from "this was already earned somewhere else" (`51e319db`). Set
-    # once, alongside `specs_ready: true`, by whichever checkout ran the
-    # green spex; a live ancestry check against this would need shelling git
-    # on every stop hook everywhere, which is exactly what the stop hook's
-    # own redesign and `20260915220000`'s removal of cached git state both
-    # argue against. This is display data, not enforcement data.
+    # When and where the latch above was earned. Display data only, so a reader
+    # on a different checkout can tell "I broke this" from "earned elsewhere";
+    # never checked for ancestry (that would shell git on every stop).
     field :specs_ready_at, :utc_datetime_usec
     field :specs_ready_commit, :string
 
-    # The ready-for-QA stamp, behind `ready_for_qa` the way `promoted_version`
-    # is behind `story_promoted`: the commit `Promotion.certify/3` passed at.
-    # The graph reads this and nothing about analysis (John, 2026-10-02).
-    # A second latch, not `specs_ready`: it is per copy and pre-merge, and
-    # must not make this story's red spex block other copies' promotes.
+    # The ready-for-QA stamp behind `ready_for_qa`: the commit
+    # `Promotion.certify/3` passed at. Separate from `specs_ready`: it is per
+    # copy and pre-merge, and must not make red spex block other promotes.
     field :qa_ready_commit, :string
     field :qa_ready_at, :utc_datetime_usec
 
     # The certification a QA pass must have reviewed: the stamp itself, or an
-    # earlier one certification carried forward because nothing QA exercises
-    # changed in between (John, 2026-10-11). Without it every test-only commit
-    # after QA cost a QA pass and, until one ran, a promotion the queue
-    # retried forever.
+    # earlier one carried forward because nothing QA exercises changed, so a
+    # test-only commit after QA does not cost another QA pass.
     field :qa_reviewed_commit, :string
     field :qa_reviewed_at, :utc_datetime_usec
 
-    # Latch behind `three_amigos_complete`, in the same shape as `specs_ready`
-    # above. Recomputed, the requirement meant a red card added to a shipped
-    # story quietly un-shipped it; a seal is a statement about a conversation
-    # that happened, and a later question does not unhappen it.
+    # Latch behind `three_amigos_complete`: a seal records a conversation that
+    # happened, and a later question does not undo it.
     field :three_amigos_sealed, :boolean, default: false
 
-    # The version a promotion stamped this story with, or nil.
-    #
-    # Set once, by `CodeMySpec.Promotion` alone, from the version that
-    # promotion originated — never by an ordinary edit, and never read back
-    # from the working copy's live git state. `commits_ahead_of_main`/
-    # `tree_dirty` answer "is this checkout in sync with main right now,"
-    # which is a question about the checkout — restart work on the same
-    # checkout for a *different* story and the answer flips for every story
-    # that checkout ever touched, promoted or not. This answers "did this
-    # story's code reach main," which a later edit to the same checkout
-    # cannot unmake, because it already did.
-    #
-    # Nil is also the invalidation switch: clearing it is how a story gets
-    # sent back through `story_promoted` after its work is revised.
+    # The version a promotion stamped this story with, or nil. Set once, by
+    # `CodeMySpec.Promotion` alone — never by an edit, never from live git
+    # state — so it answers "did this story's code reach main", which later
+    # work on the checkout cannot unmake. Clearing it sends the story back
+    # through `story_promoted`.
     field :promoted_version, :string
     # Historical attribution survives release of the active working-copy assignment.
     field :promoted_working_copy_id, :binary_id
@@ -163,33 +143,16 @@ defmodule CodeMySpec.Stories.Story do
 
     # The durable name for this story, as opposed to `id`, which is a
     # per-deployment sequence that renumbers on migration. Spex directories and
-    # QA folders are named from this, so a file on disk keeps pointing at the
-    # story it was written for.
-    #
-    # Seeded from the numbers already in those directory names, so nothing on
-    # disk had to move: the drift it fixes was a uniform 51 here —
-    # `test/spex/811_user_sees_the_agents_task_queue…` named a real but
-    # unrelated story 811, while the story that owns those spex is 862.
-    #
-    # Unique per project, not globally.
+    # QA folders are named from this. Unique per project, not globally.
     field :number, :integer
 
     # Stories are retired, never deleted, so a number is never freed. A retired
     # story leaves the backlog and the graph and stays readable by id and number.
     field :retired_at, :utc_datetime_usec
     field :acceptance_criteria, {:array, :string}
-    # No `status`. It was a cached projection of the requirement graph that
-    # nothing ever advanced: `:completed` had no writer anywhere, so all 124
-    # stories on this project read `in_progress` including the ones sitting at
-    # 6/6 satisfied. A finished story and an untouched one held the same value,
-    # which is worse than a null — `in_progress` is a positive claim that work
-    # remains, made about work that is done.
-    #
-    # Adding the missing writer would only have created the need for a reverse
-    # edge the first time a spec changed. The requirement graph answers this per
-    # story and is recomputed rather than remembered; `specs_ready` below is the
-    # one latch worth storing, and it is stored precisely because it must *not*
-    # follow the computation back down.
+    # No `status`: the requirement graph answers a story's progress; a cached
+    # copy of it goes stale. Only latches that must not follow the computation
+    # back down are stored.
     field :priority, :integer
     field :locked_at, :utc_datetime
     field :lock_expires_at, :utc_datetime
@@ -197,13 +160,8 @@ defmodule CodeMySpec.Stories.Story do
     field :project_id, :binary_id
     field :account_id, :binary_id
 
-    # Ordered, because "the story's first criterion" is a thing callers say and
-    # an unordered preload does not answer it the same way twice. Postgres
-    # returns heap order, and an UPDATE moves a row to the end of it — so
-    # recording a criterion's `spec_path` silently reorders the list, and a
-    # fixture that wrote a spec for criterion A was followed by a test that
-    # deleted "the first criterion"'s spec and got criterion B. Nothing errored;
-    # the file simply stayed and the requirement stayed satisfied.
+    # Ordered: Postgres returns heap order, and an UPDATE moves a row to the
+    # end, so "the first criterion" would change under an unrelated write.
     #
     # Active criteria only. A retired one keeps its row and number, and is
     # read by number rather than through the story.
@@ -222,18 +180,9 @@ defmodule CodeMySpec.Stories.Story do
     belongs_to :epic, CodeMySpec.Epics.Epic, type: :binary_id
 
     # Which checkout this story is built on, or nil for the shared backlog.
-    #
-    # The grain the requirement graph is already built on, which is the whole
-    # reason the binding is here rather than on the epic: nothing in
-    # `RequirementCalculator` or `Predicates` has any notion of an epic, so a
-    # copy recorded up there could never be consulted when deciding what an
-    # agent is offered.
-    #
-    # Null is a state, not an omission — it means every working copy, not none.
-    # John: *"if a harness is assigned stories, it should get its assigned
-    # stories and all unassigned stories."* Assignment narrows what a copy is
-    # refused for; it never narrows the backlog a copy can see, which is what
-    # lets the column sit empty and change nothing.
+    # On the story, not the epic, because the graph's grain is the story.
+    # Nil means every working copy: a copy sees its own stories and every
+    # unassigned one, never another copy's.
     belongs_to :working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id
 
     timestamps(type: :utc_datetime_usec)
@@ -291,16 +240,9 @@ defmodule CodeMySpec.Stories.Story do
   # `retired_at` keeps the row. Written into `changes` directly because
   # `put_change` would run the relation diff again and re-mark it.
   #
-  # Deliberately not folded into `changeset/2` itself: `phoenix_ecto`'s form
-  # integration hides association entries whose action is `:replace` from
-  # `inputs_for` (`skip_replaced/1`), which is how the live form removes a
-  # dropped row without a page reload. Converting the action to `:update`
-  # here before that filtering happens makes the row still a struct the form
-  # renders, just quietly un-droppable — the row stays on screen and
-  # `inputs_for` re-lists it ahead of the ones still in `criteria_sort`
-  # order, which reads as the rows swapping rather than one disappearing.
-  # Called by the repository only, right before the changeset is actually
-  # persisted, so the live form keeps seeing the native `:replace` action.
+  # Not in `changeset/2`: `inputs_for` hides `:replace` entries, which is how
+  # the live form drops a row, and an `:update` would keep it on screen. Called
+  # by the repository only, right before persisting.
   @doc "Converts a dropped (`:replace`) criterion into a retire-in-place update. Call right before persisting, never from `changeset/2` itself — see comment above."
   def retire_dropped_criteria(changeset) do
     case get_change(changeset, :criteria) do
@@ -324,8 +266,8 @@ defmodule CodeMySpec.Stories.Story do
   # Transitional: `description` and `story` hold the same user-story
   # sentence while both columns exist. New callers write `story`, legacy
   # callers write `description`, and whichever arrives is copied to the
-  # other so all 160-odd existing readers keep working. Delete this once
-  # `description` is dropped.
+  # other so existing readers keep working. Delete this once `description` is
+  # dropped.
   # Keyed on *changes*, not fields: updating only `description` on a story
   # that already has `story` set must move both, or a read returns the stale
   # sentence. When both change, the caller meant what it said.
@@ -345,28 +287,9 @@ defmodule CodeMySpec.Stories.Story do
     end
   end
 
-  # The story sentence is a sentence, and `notes` is where the rest goes.
-  #
-  # Agents were writing prose into `description` — story interviews, Three
-  # Amigos, the architect, ad-hoc `create_story` callers — which makes list
-  # views unreadable and `get_story` hard to scan. `notes` exists for exactly
-  # that content and nothing was steering anyone towards it (823).
-  #
-  # Measured on this project when the caps went in: 141 stories, **0** over 120
-  # characters of title (longest 97), **18** over 600 of story text (longest
-  # 3,167). So the title cap costs nothing today and is there to stop the drift;
-  # the story cap is the one with teeth.
-  #
-  # Grandfathered by construction rather than by a flag. `validate_length/3`
-  # builds on `validate_change/3`, which fires only for fields actually being
-  # changed — so an update that touches `ready_for_dev` on one of those 18
-  # stories passes untouched, and the cap applies the next time somebody
-  # rewrites the sentence. That is the migration path the report asked for,
-  # with no backfill and no cutover.
-  #
-  # `story` and `description` both, because `sync_story_and_description/1`
-  # copies one into the other: capping only one would let the same text in
-  # through the other door.
+  # The story sentence is a sentence; prose goes in `notes`. Caps apply only to
+  # fields being changed, so older long stories pass until rewritten. Both
+  # `story` and `description`, since one is copied into the other.
   @title_max 120
   @story_max 600
 
@@ -391,8 +314,8 @@ defmodule CodeMySpec.Stories.Story do
   # back to the top, and a latch earned on the previous pass says nothing
   # about this one.
   #
-  # Skipped when the same changeset sets `specs_ready` explicitly — that's
-  # the manual override or the specs-passing gate talking, and it wins.
+  # Skipped when the same changeset sets `specs_ready` explicitly; that wins.
+  # Clears the QA stamps too.
   defp clear_specs_ready_on_readiness_change(changeset) do
     cond do
       is_nil(get_change(changeset, :ready_for_dev)) ->

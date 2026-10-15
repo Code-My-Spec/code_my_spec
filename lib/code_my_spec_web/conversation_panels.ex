@@ -54,6 +54,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
   attr :activity, :list, required: true
   attr :waiting, :list, required: true
   attr :copies, :list, required: true
+  attr :scope, :any, default: nil
   attr :project_id, :string, required: true
   attr :conversation_id, :any, required: true
   attr :preview_src, :string, default: nil
@@ -122,6 +123,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           offer={@offer}
           activity={@activity}
           copies={@copies}
+          scope={@scope}
           project_id={@project_id}
           conversation_id={@conversation_id}
           preview_src={@preview_src}
@@ -216,6 +218,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
               dynamic_epics={@dynamic_epics}
               activity={@activity}
               copies={@copies}
+              scope={@scope}
               project_id={@project_id}
               conversation_id={@conversation_id}
               preview_src={@preview_src}
@@ -297,6 +300,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
   attr :offer, :any, default: nil
   attr :activity, :list, required: true
   attr :copies, :list, required: true
+  attr :scope, :any, default: nil
   attr :project_id, :string, required: true
   attr :conversation_id, :any, required: true
   attr :preview_src, :string, default: nil
@@ -542,20 +546,24 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
             <%!-- Siblings of the row link, not inside it: a link in an `<a>` is
             invalid HTML and would fire the patch as well. --%>
-            <.link
+            <button
               :for={item <- a.assigned}
-              navigate={item.path}
+              type="button"
+              phx-click="show_assigned"
+              phx-value-kind={item.kind}
+              phx-value-key={item.key}
               data-test={"team-agent-#{item.kind}"}
               title={item.title}
               class="link link-hover shrink-0 font-mono text-[11px] opacity-70"
             >
               {item.ref}
-            </.link>
+            </button>
             <.live_component
               :for={item <- a.assigned}
               :if={item.kind == :story}
               module={CodeMySpecWeb.StoryProgress}
               id={"story-progress-#{a.agent.id}"}
+              scope={@scope}
               story_id={item.story_id}
               working_copy_id={item.working_copy_id}
             />

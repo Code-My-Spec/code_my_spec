@@ -2,36 +2,30 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   @moduledoc """
   Wakes a project's main agent on an interval, with the digest in hand.
 
-  Story 1059. The cadence is a pull, and that is the whole design: every other
-  way the main agent learns anything needs the agent in trouble to still be
-  working well enough to say so, and the failure worth catching is exactly the
-  one where it is not. One outage was visible only because the affected agent
-  could still call `send_message` — had it lost that too, it would have sat
-  silent indefinitely.
+  The cadence is a pull: every other way the main agent learns anything needs
+  the agent in trouble to still be able to say so, and the failure worth
+  catching is the one where it cannot.
 
   ## Inspect every tick; admit a turn only when needed
 
-  A running continuous main receives a turn only for eligible work or an
-  observed decision/investigation. Empty recovery checks preserve the timer,
-  agent intent and conversations. Existing admission still holds busy,
-  non-continuous or analysis-waiting agents.
+  Each tick builds the digest and calls `MainAgent.cadence_check_in/3`. A
+  running continuous main receives a turn only for eligible work or something
+  needing attention; every other agent gets the recovery check. Empty checks
+  preserve the timer, agent intent and conversations.
 
   ## A floor, not a schedule
 
-  Criterion 3318. The cadence is the longest anything can go unseen, never the
-  soonest: a question raised now is pushed now (story 1053's 3265), and leaning
-  on the next tick would turn a blocked agent's wait into a whole interval.
+  The interval is the longest anything can go unseen, never the soonest: a
+  question raised now is pushed now (`MainAgent.question_raised/2`).
 
-  ## Stopping is a decision, and it does not close the door
+  ## Standing down
 
-  The timer stops when the main agent taps out — criterion 3334 — because a
-  model call every interval to look at a finished fleet is spend with nothing
-  behind it, and a loop that cannot stop is one somebody ends up supervising.
+  A main agent that asks not to be woken stands the project down
+  (`stand_down/1`, through its cadence tool): the timer keeps ticking, but main
+  gets no turn from it. Questions still reach a stood-down main — one that
+  never arrives has no symptom on either side.
 
-  What stops is the timer and only the timer. 3335: an agent's question still
-  reaches a stood-down main agent, because the alternative has no symptom on
-  either side — it is not woken, which is what it asked for, and the question
-  simply never arrives.
+  See knowledge/agents, "The cadence".
   """
 
   use GenServer
@@ -55,14 +49,9 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   @doc """
   How often this project's main agent is woken, in seconds.
 
-  Configured rather than compiled, which is criterion 3331. It is the one number
-  that trades the feature's two costs against each other and the right value is
-  not knowable in advance: too long and a stalled agent burns most of a window
-  before anybody looks, too short and the check-ins cost more than they find on
-  a machine that is also running the agents.
-
-  Twenty minutes is what the person doing this by hand settled on — a starting
-  guess. In code it would be a deploy to change, which in practice means never.
+  A per-project configuration row, not a compiled constant: it trades a
+  stalled agent going unseen against check-ins costing more than they find,
+  and the right value is not knowable in advance.
   """
   @spec interval(Scope.t()) :: pos_integer()
   def interval(%Scope{} = scope), do: Configurations.main_agent_cadence_seconds(scope)
@@ -70,12 +59,8 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   @doc """
   Set how often this project's main agent is woken.
 
-  A row on the project's configuration, beside every other per-project setting.
-  It used to be `Application.put_env/3` — shared mutable state for the whole
-  node, lost on every restart, and reachable without a scope. QA found it: a
-  deliberately set interval silently reverted to the default at the next boot,
-  which is worse than never having offered the setting, because the operator
-  believes it is in force.
+  A row on the project's configuration, so it survives a restart. A running
+  timer is rescheduled.
   """
   @spec set_interval(Scope.t(), pos_integer()) :: :ok | {:error, Ecto.Changeset.t()}
   def set_interval(%Scope{} = scope, seconds) when is_integer(seconds) and seconds > 0 do
@@ -103,14 +88,10 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   with the main agent's decision. A tap-out is a decision; a supervisor restart
   is not, and a decision that a restart silently reverses is one nobody made.
 
-  It answers "has this project stood down", and `check_in/1` is right to branch
-  on it — by the time a check-in runs, the process asking is the timer itself,
-  so existence is not in question there.
-
-  It is **not** the health signal it reads as, and that is how nothing starting
-  the cadence went unnoticed: this answered true for every project that had
-  never stood down, including every project with no timer at all. `alive?/1` is
-  the question about fact.
+  It answers "has this project stood down", which is what
+  `MainAgent.cadence_check_in/3` branches on. It is **not** a health signal: it
+  answers true for a project with no timer at all. `alive?/1` is the question
+  about fact.
   """
   @spec running?(Scope.t()) :: boolean()
   def running?(%Scope{active_project_id: project_id}) do
@@ -170,20 +151,10 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   @doc """
   Start this project's cadence if it is not already running.
 
-  The same shape `GraphWatcher.ensure_watching/1` uses, and for the same reason:
-  a project nobody is working on needs no timer, so one is started on demand
-  rather than one per project at boot.
-
-  QA found this missing entirely — the GenServer was written, and nothing
-  anywhere called `start_link/1`. No `:check_in` message was ever sent, so the
-  story's whole promise — a problem surfacing even when the agent in trouble
-  cannot say so — never happened.
-
-  What hid it is worth keeping: `running?/1` answered **true** throughout,
-  because it reads the stood-down set and no project had stood down. The one
-  signal that looked like health was reporting intent. The spex did not catch it
-  either, because they start the process themselves — which proves the loop
-  works once started and can say nothing about whether anything starts it.
+  Started on demand, like `GraphWatcher.ensure_watching/1`: a project nobody
+  is working on needs no timer. Called when a main agent starts, when
+  continuous mode is switched on, at boot (`wake_active_projects/0`), and from
+  the harness channel and the cadence tool.
   """
   @spec ensure_running(Scope.t()) :: {:ok, pid()} | {:error, term()}
   def ensure_running(%Scope{active_project_id: nil}), do: {:error, :no_project}
@@ -199,10 +170,8 @@ defmodule CodeMySpec.Agents.Main.Cadence do
     end
   end
 
-  # The scope outlives the request that started the timer, so it keeps only what
-  # a check-in needs and none of the caller's session — a cadence holding a
-  # `conn`-shaped scope would be waking on behalf of whoever happened to be
-  # first.
+  # The scope outlives the request that started the timer, so it keeps only
+  # what a check-in needs and none of the caller's session.
   defp cadence_scope(%Scope{} = scope) do
     %Scope{
       user: scope.user,
@@ -223,13 +192,8 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   before the restart would never be looked in on again until somebody happened
   to touch it.
 
-  Seeded from projects with a `main` agent running, not from projects with
-  continuous agents. QA found what the old trigger cost: twelve agents running
-  on this project, one of them `main`, posting real messages minutes apart —
-  and `continuous = false` on every one of them, so `running: no` roughly twenty
-  minutes after a boot that was supposed to have re-established it (`11aea8f5`).
-  "Nothing is in a loop" was standing in for "there is nobody to look in on",
-  and they are not the same statement.
+  Seeded from projects with an on-duty `main` agent — not from continuous
+  agents: "nothing is in a loop" is not "there is nobody to look in on".
   """
   @spec wake_active_projects() :: :ok
   def wake_active_projects do
@@ -281,8 +245,7 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   @doc """
   Which teammates have just stalled, and the stalled set to remember.
 
-  Step 4b (a31f1cd6): main is told on the transition into stalled, once, not
-  every check-in. An agent that recovers leaves the set, so stalling again is a
+  Main is told on the transition into stalled, once, not every check-in. An agent that recovers leaves the set, so stalling again is a
   new transition. A digest that could not be built changes nothing.
   """
   @spec stall_transitions(MapSet.t(String.t()), Digest.t()) ::
@@ -297,7 +260,7 @@ defmodule CodeMySpec.Agents.Main.Cadence do
 
   @doc """
   Tell main about each teammate that has just stalled (`:teammate_stalled`),
-  each recorded as a `:stalled` offer on `{"agent", id}` (criterion 1756).
+  each recorded as a `:stalled` offer on `{"agent", id}`.
   """
   @spec announce_stalls(Scope.t(), [AgentWork.t()]) :: :ok
   def announce_stalls(%Scope{} = scope, entries) do
@@ -335,10 +298,8 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   @doc """
   What the main agent is handed, or why it could not be assembled.
 
-  Every source is read here and a failure in any of them is the digest's
-  failure, not a shorter list. Criterion 3333: an empty digest and an
-  unbuildable one say the same thing to a reader, and only one of them is good
-  news.
+  A failure in any source is the digest's failure, not a shorter list: an
+  empty digest and an unbuildable one read the same, and only one is good news.
   """
   @spec digest(Scope.t()) :: Digest.t()
   def digest(%Scope{} = scope) do
@@ -356,11 +317,9 @@ defmodule CodeMySpec.Agents.Main.Cadence do
     end
   end
 
-  # Questions whose asker is on duty. One an off or retired agent raised waits
-  # on nothing main can move, and the same check-in tells main to leave those
-  # agents off: counting them put "user 18" in every check-in from questions a
-  # month old, and kept a settled fleet reading as needing attention
-  # (2026-10-13). `list_notifications` still lists them all.
+  # Questions whose asker is on duty: one an off or retired agent raised waits
+  # on nothing main can move, and counting it keeps a settled fleet reading as
+  # needing attention. `list_notifications` still lists them all.
   defp on_duty_questions(scope) do
     on_duty = scope |> Agents.list_on_duty() |> MapSet.new(& &1.id)
     scope |> MainAgent.list_open_questions() |> Enum.filter(&MapSet.member?(on_duty, &1.agent_id))

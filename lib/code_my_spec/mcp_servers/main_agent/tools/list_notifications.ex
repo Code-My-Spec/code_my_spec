@@ -10,10 +10,9 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListNotifications do
 
   # Why both kinds, and why one listing
   #
-  # `Notifications.awaiting_answer?/1` — the predicate `StopDecision.wake/2`
-  # consults before it will wake anything — is `pending_question? or
-  # pending_permission?`. A listing that unions only the first half cannot
-  # explain the gate: an agent held off the graph by a pending `tap_out` appears
+  # An agent waits on questions and on permission requests alike
+  # (`Notifications.awaiting_answer?/1`). A listing of only the first half cannot
+  # explain the wait: an agent held off the graph by a pending `tap_out` appears
   # in it as nothing at all. `880c7713` spent seven hours unreachable that way
   # while every other surface reported it running, continuous and idle with 17
   # actionable requirements (`8cb3f626`).

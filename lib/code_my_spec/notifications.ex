@@ -1,6 +1,11 @@
 defmodule CodeMySpec.Notifications do
   @moduledoc """
-  Context for managing push notification subscriptions and sending Web Push notifications.
+  Push subscriptions and Web Push, and the requests that reach a person: question
+  requests (`ask_user_question`) and permission requests (tool approvals and
+  `tap_out`), with their inbox, holders, answers and the task blockers they
+  release.
+
+  See knowledge/agents/coordination, "Notifications".
   """
 
   use Boundary,
@@ -121,18 +126,12 @@ defmodule CodeMySpec.Notifications do
   `:before` asks for the page older than a given position, so the inbox can
   load more as the user scrolls. `:limit` defaults to #{@resolved_limit}.
 
-  Merges two schemas by `inserted_at` rather than querying one after the
-  other: fetching `limit` candidates from *each* and merging guarantees the
-  true top `limit` combined, since neither schema alone can contribute more
-  than `limit` rows to any top-`limit` result.
+  Fetches `limit` candidates from each schema and merges, which yields the
+  true combined top `limit`.
 
-  `:before` is `{inserted_at, seen_ids}`, not a bare timestamp. Both schemas
-  store `inserted_at` at `:utc_datetime` (second) precision, so two requests
-  landing in the same second — ordinary on a box running several agents at
-  once — tie, and a bare `< inserted_at` cursor would silently drop whichever
-  one fell on the older side of that split. `seen_ids` names every row
-  already shown at the boundary second so the next page's tie-break is
-  `inserted_at == before and id not in seen_ids` instead.
+  `:before` is `{inserted_at, seen_ids}`, not a bare timestamp: `inserted_at`
+  has second precision, so requests in the same second tie, and `seen_ids`
+  names the rows already shown at the boundary second.
   """
   def list_resolved_notifications(user_id, opts \\ []) do
     limit = Keyword.get(opts, :limit, @resolved_limit)
@@ -193,32 +192,11 @@ defmodule CodeMySpec.Notifications do
     |> Enum.take(@resolved_limit)
   end
 
-  # A request whose named asker has stopped is not waiting on anybody.
-  #
-  # Answering one resumes nothing: `TaskOwner.resume_task/3` has no live agent to
-  # resume and the answer reaches no process. It is history, and the inbox was
-  # presenting it as work outstanding.
-  #
-  # Measured 2026-09-23: 41 pending questions held by one user, and NOT ONE had a
-  # live asking agent — 35 stopped, 6 with no agent at all. Two questions that
-  # day genuinely blocked the Broken Oaths fleet (the grace-window scope on story
-  # 947, and story 942 released while marked deferred) and both sat in that list.
-  # John: "I cant get them they are hard to find." A queue where nothing is
-  # urgent teaches its reader that nothing is urgent, which is the failure that
-  # costs time when a real one arrives.
-  #
-  # `is_nil(agent_id)` is kept, deliberately. `MainAgent.holder_for/2` sends an
-  # agentless question to the user by design — "a question with no agent came
-  # from Claude Code, which talks to the person directly" — and those are real:
-  # among the six were "Story 1020 has 21 rules — how should we cut it" and a
-  # dark-mode decision. Absent asker and *departed* asker are different states
-  # and only the second one is stale.
-  #
-  # Hidden from the pending list only. `list_notifications/1` still returns these
-  # through `resolved_notifications/1`'s half of the inbox, so nothing is lost —
-  # and a stopped agent can come back, since `start_agent/2` now resumes one that
-  # still holds work. This is a statement about what is waiting, not about what
-  # happened.
+  # A request whose named asker is off or retired is not waiting on anybody, so
+  # it is hidden from the pending list (nothing is deleted). An agentless
+  # request (a Claude Code session's) is kept: absent asker and departed asker
+  # are different states. Pending lists only `holder == "user"` questions.
+  # See knowledge/agents/coordination, "Notifications".
   defp pending_query(schema, user_id) do
     from(r in schema,
       where: r.user_id == ^user_id and r.status == "pending",
@@ -228,20 +206,13 @@ defmodule CodeMySpec.Notifications do
     |> held_by_user(schema)
   end
 
-  # Criteria 2075/2076/2123: a question main or product is still holding, or
-  # handed to each other, is not the user's to see yet — only `holder ==
-  # "user"` rows belong in their inbox. A permission request has no `holder`
-  # column; its own visibility to the user is a separate concern this filter
-  # leaves untouched.
+  # A question main or product still holds is not the user's to see yet. A
+  # permission request has no `holder` column.
   defp held_by_user(query, QuestionRequest), do: where(query, [r], r.holder == "user")
 
-  # Criteria 2073/2074 are specifically about a tap-out: everyone else's is
-  # main's from the moment it is raised, unless escalated or there is no
-  # agent to route through (a Claude Code session tap-out, which is nobody's
-  # teammate's and goes straight to the user the way main's own does). Every
-  # other permission kind (an ordinary tool-call approval) keeps the behavior
-  # this had before 2073/2074 existed: visible to the user immediately,
-  # unconditionally.
+  # A teammate's tap-out is main's until escalated. Main's own, and a Claude
+  # Code session's, go to the user; every other permission kind is visible to
+  # the user immediately.
   defp held_by_user(query, PermissionRequest) do
     where(
       query,
@@ -261,10 +232,8 @@ defmodule CodeMySpec.Notifications do
     from(a in Agent, where: not is_nil(a.off_at) or not is_nil(a.retired_at), select: a.id)
   end
 
-  # Unlike `pending_query`, not filtered by holder: criterion 1197 is exactly
-  # this distinction — removing the interruption while main or product holds
-  # it is not removing the record once it is resolved, so the user's history
-  # always carries what they fielded on their behalf.
+  # Not filtered by holder: the user's history carries what was fielded on
+  # their behalf.
   defp resolved_query(schema, user_id) do
     from(r in schema,
       where: r.user_id == ^user_id and r.status != "pending",
@@ -282,11 +251,8 @@ defmodule CodeMySpec.Notifications do
     |> before_cursor(before)
   end
 
-  # `inserted_at` alone is not a total order at `:utc_datetime` precision —
-  # see `list_resolved_notifications/2`'s doc — so every place that orders by
-  # it for pagination breaks ties on `id` too, database query and in-memory
-  # merge alike, or the two would disagree about which of a tied pair comes
-  # first.
+  # Ties on `inserted_at` break on `id`, in the query and the in-memory merge
+  # alike, so the two agree.
   defp newest_first(a, b) do
     case DateTime.compare(a.inserted_at, b.inserted_at) do
       :eq -> a.id >= b.id
@@ -305,9 +271,7 @@ defmodule CodeMySpec.Notifications do
     )
   end
 
-  # The badge counts what the list shows. Counting every pending row while
-  # `pending_query/2` hides the ones whose asker has stopped would put 41 on the
-  # badge and six in the inbox, which is worse than either number alone.
+  # The badge counts what the list shows.
   defp count_pending(schema, user_id) do
     schema
     |> pending_query(user_id)
@@ -406,7 +370,7 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  # A teammate's tap-out is the main agent's to decide (criterion 2073), so the
+  # A teammate's tap-out is the main agent's to decide, so the
   # person is pushed only for one that is theirs: main's own, or a session's.
   defp user_decides?(%Agent{role: role}), do: role == :main
   defp user_decides?(_session), do: true
@@ -530,11 +494,8 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  # A person saying "go and work" outranks the agent's own last refusal.
-  # `Work` refuses to re-offer work an agent has already declined, which is
-  # what stops it spinning — but this deny IS the answer to that refusal, so
-  # without clearing the mark the wake would be suppressed and the deny would
-  # do nothing at all. Before either wake below, which both run off-process.
+  # A person saying "go and work" outranks the agent's own last refusal: without
+  # clearing the decline the wake below would be damped. Before either wake.
   defp clear_decline_on_deny(%{decision: "deny", agent_id: agent_id}) when is_binary(agent_id) do
     case Repo.get(Agent, agent_id) do
       %Agent{} = agent ->
@@ -547,8 +508,8 @@ defmodule CodeMySpec.Notifications do
 
   defp clear_decline_on_deny(_request), do: :ok
 
-  # The task a tap-out blocked goes through the same release as any blocker
-  # (2200f9e4): denied or dismissed, it is released and its holder woken to
+  # The task a tap-out blocked goes through the same release as any blocker:
+  # denied or dismissed, it is released and its holder woken to
   # resume it, with the denial notice riding in the same turn; approved, the
   # task was already cancelled under the decision's lock, and this only makes
   # sure nothing is left blocked on it. Answers the count released — nothing
@@ -577,23 +538,10 @@ defmodule CodeMySpec.Notifications do
     }
   end
 
-  # Denying a tap-out puts the agent back in the loop, and nothing else was
-  # going to notice. `Work.consider_*` is edge-triggered on a graph change, a
-  # finished task, or continuous being switched on — a person answering a gate
-  # is none of those, so an agent that had work the whole time goes on waiting
-  # for a change that is not coming. Measured on the math project 2026-09-22:
-  # coding sat eligible and idle for eight minutes after its tap-out was denied,
-  # and the four roles behind it waited with it.
-  #
-  # Only on `deny`. `allow` takes the agent out of the loop, which is what it
-  # asked for, and waking it would be answering the opposite question.
-  #
-  # Only when no task was released: a task-scoped denial wakes its holder
-  # through `TaskOwner.blocker_resolved/4`, which carries this same notice.
-  #
-  # In a Task because this is reachable from inside the harness project channel,
-  # and `Transport.Harness` dispatches by calling that channel's own process —
-  # `:calling_self` kills it and cancels every turn on the copy.
+  # A denied tap-out is a wake edge of its own: offering is edge-triggered and
+  # a person answering a gate is no other edge. Only on `deny`, and only when no
+  # task was released (that path wakes its holder with the same notice). In a
+  # Task: reachable from inside the harness channel, which dispatch calls into.
   defp wake_if_still_in_the_loop(%{decision: "deny", agent_id: agent_id} = request, answer)
        when is_binary(agent_id) do
     case Repo.get(CodeMySpec.Agents.Agent, agent_id) do
@@ -604,27 +552,12 @@ defmodule CodeMySpec.Notifications do
           active_working_copy_id: copy_id
         }
 
-        # Told before woken, and that ordering is the whole of it.
-        #
-        # The decision clears the gate on this side; the agent only knows what
-        # is in its own transcript, and the last thing there is its own "I have
-        # asked to leave and am waiting". Woken without being told, it reads
-        # that, concludes it is still waiting, and stops — then the next wake
-        # does it again. Measured on the math project 2026-09-22: the deny
-        # landed, and coding answered "No change. Tap-out request af0dddfd still
-        # pending. Stopping." every three seconds until it was taken out of the
-        # loop by hand. The wake added in this same function is what turned a
-        # silent stall into a spin, so this is its other half rather than a
-        # separate fix.
+        # Told in the same turn it is woken: woken without being told, it reads
+        # its own "waiting on my tap-out" and stops again. The notice is the turn
+        # prompt (`Work.offer_turn_with/5`), not a prior transcript line, which
+        # it would read past.
         notice = tap_out_denied_notice(answer, request)
 
-        # The notice goes in the turn rather than into the transcript ahead of
-        # it. Recorded separately it is history the agent reads beside its own
-        # last conclusion, and its own conclusion wins — measured twice, with
-        # the resolved issue named by id nine seconds before the agent called
-        # that same id unresolved. `offer_turn_with/3` makes the correction the
-        # thing the agent is answering. It records the prompt itself, so the
-        # notice still appears in the transcript exactly once.
         Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
           deliver_denial(scope, agent, copy_id, notice, {"tap_out", request.id})
         end)
@@ -638,11 +571,8 @@ defmodule CodeMySpec.Notifications do
 
   defp wake_if_still_in_the_loop(_request, _answer), do: :ok
 
-  # In the turn when the agent can take one; recorded when it cannot.
-  #
-  # An agent mid-turn, reserved, or holding a task is not admissible, and it
-  # still has to be told — so that case falls back to the old shape rather than
-  # dropping the notice.
+  # Announced for `Agents` to deliver: in a turn when the agent can take one,
+  # recorded when it cannot.
   defp deliver_denial(scope, agent, copy_id, notice, subject) do
     announce(:tap_out_denied, %{
       scope: scope,
@@ -653,19 +583,8 @@ defmodule CodeMySpec.Notifications do
     })
   end
 
-  # The reason carries, when the decider gave one.
-  #
-  # `answer_notification` has always accepted an `answer`, and for a permission
-  # it went nowhere — the agent got this notice and nothing else. That is the
-  # difference between "you are wrong that there is nothing to do" and telling
-  # it *why*, and an agent with only the former re-reads its own transcript,
-  # finds whatever it last concluded, and concludes it again.
-  #
-  # Measured on the math project 2026-09-22: QA's tap-out on a preview outage
-  # was denied with an answer saying the outage was fixed, the URL was back to
-  # 200, and which attempt to invalidate. None of it reached the agent, which
-  # went on reporting the app unreachable — an outage that had ended four
-  # minutes earlier — until it was stopped by hand.
+  # The decider's reason carries: without the why, an agent re-reads its own
+  # transcript and reaches its last conclusion again.
   defp tap_out_denied_notice(answer, request) do
     base = """
     Your request to leave the loop was declined. You are still in it, and there
@@ -681,22 +600,9 @@ defmodule CodeMySpec.Notifications do
     |> append_settled_blockers(request)
   end
 
-  # Name the agent's own claim back to it when that claim has stopped being true.
-  #
-  # A reason is not enough on its own. Measured three times in one session: an
-  # agent was denied with the fixing commit named in the message, and its next
-  # turns still said "nothing has changed" — it re-reads its transcript, finds
-  # its own last conclusion, and reaches it again, because a generic paragraph
-  # does not contradict anything in particular.
-  #
-  # What broke the loop by hand, every time, was naming the specific statement:
-  # "issue X, which your own request named, is now resolved". So the notice does
-  # that itself when it can — the ids are in the reason the agent wrote, and
-  # their status is a lookup.
-  #
-  # Silent when nothing the request named has moved, which is the honest answer:
-  # in that case the agent's conclusion may well still hold, and the notice
-  # should not imply otherwise.
+  # Names the agent's own claim back to it when it stopped being true: issues
+  # its request named that are now resolved. A generic reason contradicts
+  # nothing in particular. Silent when nothing named has moved.
   defp append_settled_blockers(notice, nil), do: notice
 
   defp append_settled_blockers(notice, request) do
@@ -721,11 +627,8 @@ defmodule CodeMySpec.Notifications do
 
   # Ids the agent wrote into its own reason, that are now resolved issues.
   #
-  # By project_id rather than through `Issues.list_issues/1`, which reads
-  # `scope.active_project.id` — the loaded association, not the id — so a scope
-  # assembled from an agent row raises inside the repository and the rescue
-  # below would quietly answer "nothing has changed", which is the exact
-  # failure this function exists to prevent.
+  # By project_id: `Issues.list_issues/1` reads the loaded `active_project`,
+  # which a scope built from an agent row lacks.
   defp settled_blockers(%{agent_id: agent_id, tool_input: input}) when is_binary(agent_id) do
     reason = MapAccess.get(input, :reason) || ""
 
@@ -792,18 +695,11 @@ defmodule CodeMySpec.Notifications do
   @doc """
   Clear a pending permission request without a decision.
 
-  Not what `resolve_permission_request/2` is for — that records a human's
-  actual allow/deny. This is a human's *other* choice: the request no longer
-  matters, and no one is going to look at it. Marks the row `"expired"`
-  rather than `"denied"` so the notifications list can tell "nobody decided"
-  apart from "somebody said no", and still delivers the same "keep going" a
-  decline would to any agent that happens to still be alive — silence would
-  otherwise look identical to a decision nobody has made yet.
-
-  Unlike `QuestionRequest` (deliberately answer-only — story 896: a question
-  disappearing on its own is a choice the user never made vanishing from the
-  one place they would have seen it), this is a human looking at the request
-  and choosing to clear it, one row or many, not a clock sweeping it away.
+  A human's choice that the request no longer matters, distinct from
+  allow/deny (`resolve_permission_request/3`). Marked `"expired"`, not
+  `"denied"`, so the list tells "nobody decided" from "somebody said no"; a
+  live agent still hears the decision. Questions have no dismiss: a question
+  is answered or withdrawn.
   """
   @spec dismiss_permission_request(Ecto.UUID.t()) ::
           {:ok, PermissionRequest.t()} | {:error, term()}
@@ -872,17 +768,8 @@ defmodule CodeMySpec.Notifications do
     end)
   end
 
-  # Tell the agent what was decided.
-  #
-  # A Claude Code request is answered on the SSE connection already waiting on
-  # it — that is what `permission_request:<id>` is broadcast for. An agent we
-  # run has no such connection: it asked, it stopped, and the decision reaches
-  # it as a message or not at all.
-  #
-  # Denied is the case that matters. Approved and the loop ends, which the agent
-  # will notice by not being asked to continue; denied and it must keep going,
-  # and an agent that asked to leave and heard nothing has no way to tell a
-  # refusal from a decision nobody has made yet.
+  # Tell an agent we run what was decided (a Claude Code request is answered on
+  # its waiting SSE connection). Tap-outs are settled on their own path.
   defp deliver_decision_to_agent(%{agent_id: nil}), do: :ok
   defp deliver_decision_to_agent(%{tool_name: "tap_out"}), do: :ok
 
@@ -904,10 +791,8 @@ defmodule CodeMySpec.Notifications do
   @doc """
   The permission/tap-out requests one agent raised, oldest first.
 
-  The permission-request spelling of `list_question_requests_for_agent/1`, for
-  the same reason a conversation needs it: an agent's own transcript shows the
-  agent's own requests, and the lookup is by agent id because an agent we run
-  has no session for a request to live on.
+  The permission-request counterpart of `list_question_requests_for_agent/1`,
+  for an agent's transcript.
   """
   @spec list_permission_requests_for_agent(Ecto.UUID.t() | nil) :: [PermissionRequest.t()]
   def list_permission_requests_for_agent(nil), do: []
@@ -936,14 +821,8 @@ defmodule CodeMySpec.Notifications do
   if it already has one. An agent holds at most one per task and one naming
   none.
 
-  `request_agent_tap_out/2`'s caller must not create a second row while the
-  first is undecided — an agent asks once and is told to stop, not to ask
-  again, but `wake_project_roles/2`'s missing guard (fixed alongside this)
-  handed it a menu with `tap_out` still offered on every unrelated project
-  change while one was already pending, and each call created a fresh row.
-  Measured live: 224 pending tap-out requests behind ten agents, one of them
-  holding 129 — the tool creating a duplicate on every retry, not a human
-  answering slowly.
+  A caller must not create a second row while the first is undecided;
+  `request_agent_tap_out/4` reuses the pending one.
   """
   @spec get_pending_tap_out_request(Ecto.UUID.t(), String.t() | nil) ::
           PermissionRequest.t() | nil
@@ -1034,13 +913,9 @@ defmodule CodeMySpec.Notifications do
     deliver_if_new(result)
   end
 
-  # Issue fe683550: an agent whose wake decided to ask again before the
-  # answer to its last identical question had arrived used to get a brand
-  # new row, a brand new push, and a brand new wait — the exact repro was a
-  # re-ask 58s after the first had already been answered. Reusing an open or
-  # just-answered duplicate instead means the new blocker resolves against an
-  # answer that may already be sitting there, rather than queueing behind one
-  # nobody is going to send twice.
+  # An identical question, pending or answered within the window, on the same
+  # story or task, is reused rather than re-asked: the new blocker resolves
+  # against an answer that may already be there.
   @dedup_window_seconds 120
 
   defp save_or_reuse_question_request(user_id, attrs) do
@@ -1089,23 +964,9 @@ defmodule CodeMySpec.Notifications do
   defp question_task(_owner, nil), do: {:ok, nil}
   defp question_task(owner, :active), do: {:ok, TaskOwner.active_task(owner)}
 
-  # A task an agent may name to `tap_out` or `ask_user_question`.
-  #
-  # `:active` is the ordinary case. `:blocked` is accepted too, and that is the
-  # whole of ce070442: it used to fall through to `{:error, :task_not_active}`,
-  # which left a blocked task unreachable by `tap_out` — and `tap_out` is what
-  # the loop's own refusal text tells an agent to reach for ("block it with
-  # `ask_user_question` or `tap_out`, or `cancel_task`"). The report is that
-  # sequence exactly: a `qa_complete` task blocked on a question, the question
-  # answered, `start_task` refusing to resume it (`:requirement_not_eligible` on
-  # the entity_id bug ab111a52), `tap_out` refusing it as inactive, and nothing
-  # left but `cancel_task`, which discards the attempt rather than asking a
-  # person.
-  #
-  # Re-blocking is not a contradiction. The agent is asking for a person to
-  # decide, and the task is demonstrably not active *because* nobody has decided
-  # the old blocker yet. `TaskOwner.block_task/6` names the new blocker, so
-  # approving it frees exactly this task.
+  # A task an agent may name to `tap_out` or `ask_user_question`: active or
+  # blocked. Re-blocking a blocked task names the new blocker, so deciding it
+  # frees exactly this task; otherwise only `cancel_task` could reach it.
   defp question_task(owner, id) do
     case TaskOwner.find_task(owner, id) do
       %{status: status} = task when status in [:active, :blocked] -> {:ok, task}
@@ -1147,25 +1008,15 @@ defmodule CodeMySpec.Notifications do
   Record answers to a question request and broadcast them so the waiting hook
   receives them. `answers` maps each question's text to the chosen label(s).
 
-  `answered_by` defaults to `"user"` — every existing caller (`QuestionLive`,
-  the conversation page, `QuestionController`) is a person answering, and
-  `MainAgent.settle/4` is the one caller that overrides it.
+  `answered_by` defaults to `"user"`; `Agents.Main` overrides it when main or
+  product answers.
 
-  ## Overruling, and only in this one direction
+  ## Overruling, in one direction only
 
-  A request the main agent already answered can be answered again by the
-  user — that is criterion 3220's whole point, and without it a main agent's
-  wrong answer buries the question forever: `%{status: "answered"}` reads as
-  finished by every ordinary rule, and the user has no route back to it. The
-  new answer replaces the old outright rather than merging with it, and
-  `overruled` is set so the collecting agent is told an earlier answer
-  existed rather than reading this as an ordinary first answer.
-
-  Every other repeat is still refused. A user's answer is the one that
-  stands (3219), so a main agent may never overwrite it, and a user
-  correcting their own answer a second time is not a case any surface
-  offers — `ChatComponents.question/1` drops the form once a user has
-  answered.
+  A request main or product already answered can be answered again by the
+  user: the new answer replaces the old, `overruled` is set, and the old one
+  goes to `answer_history`. Every other repeat is refused — a user's answer is
+  the one that stands.
   """
   def answer_question_request(id, %{} = answers, opts \\ []) do
     answered_by = Keyword.get(opts, :answered_by, "user")
@@ -1176,7 +1027,7 @@ defmodule CodeMySpec.Notifications do
   end
 
   @doc """
-  The asker takes back its own pending question, with a reason (8c91d5bc).
+  The asker takes back its own pending question, with a reason.
 
   A question that went moot otherwise held its task until somebody answered
   something nobody needed answered. Withdrawn closes it everywhere a pending
@@ -1222,25 +1073,9 @@ defmodule CodeMySpec.Notifications do
 
   defp withdraw_locked(%{status: status}, _reason), do: {:error, {:already_resolved, status}}
 
-  # An answer that says nothing is not an answer, and as an override it is
-  # destructive.
-  #
-  # Found by QA on story 1009, 2026-09-20: type a correction into the
-  # "Other..." box without also clicking its radio, press Send, and the page
-  # says "Answer sent" while `answers` is overwritten with `""`, `overruled`
-  # becomes true, and a correct, record-backed main-agent answer stops being
-  # the current value. Recoverable from `answer_history`, but every reader
-  # treats the value as current — `check_answer` handed the asking agent "The
-  # user replied, overruling the main agent's earlier answer:" followed by
-  # nothing.
-  #
-  # Refused here rather than in the form, because the form is one of three
-  # ways in — `QuestionLive`, the conversation page and `QuestionController`
-  # all reach this, and a guard each caller has to remember is one the next
-  # route will not.
-  #
-  # Only when *every* answer is blank. One unanswered question beside an
-  # answered one is a partial reply, which is a person's to give.
+  # An answer that says nothing is refused here, for every route in; as an
+  # override it would erase a good answer. Only when every answer is blank: a
+  # partial reply is a person's to give.
   defp refuse_empty(answers) do
     if Enum.any?(answers, fn {_question, answer} -> answered?(answer) end) do
       :ok
@@ -1274,11 +1109,8 @@ defmodule CodeMySpec.Notifications do
 
       broadcast_notifications_changed(updated.user_id)
 
-      # Released and woken through the one path every blocker takes (2200f9e4).
-      # Only a first answer, or a user's override of a still-waiting one, finds
-      # anything: 3220's override of an answer whose task has already resumed
-      # and re-blocked on a different question releases nothing and wakes
-      # nobody, because nothing in front of the agent changed.
+      # Released and woken through the one path every blocker takes. An
+      # override of an answer whose task already moved on releases nothing.
       {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :answered)
       deliver_answer_content(updated, released > 0)
       tell_escalator(updated)
@@ -1286,39 +1118,15 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  # The answer as content, for an agent that is in the middle of a turn.
-  #
-  # Criterion 3577: a turn in flight is a conversation, and an answer that
-  # lands during one belongs in it — queued behind the turn, never interrupting
-  # it. 3219 is the other side and the reason for the guard: content pushed at
-  # an idle machine *starts* a turn, and a durable question exists so that an
-  # agent which stopped can collect its answer when it comes back rather than
-  # be woken by it.
-  #
-  # Outside the transaction on purpose. `send_to_agent/2` dispatches to the
-  # process holding the working copy, and doing that while still holding the
-  # question's row lock is the shape of the failure John hit — a form
-  # submission waiting out an agent's whole reply.
-  #
-  # A question asked without a task is the exception (9f03455b). It blocked
-  # nothing, so answering it releases nothing, and the graph may have no work
-  # to bring the agent back: metric_flow's coder asked f247789c, it was
-  # answered at 16:18:35, and the coder sat idle until woken by hand. So an
-  # idle continuous asker is offered one turn that opens with the answer —
-  # John, 10-01: "if the agent asked the question and it's continuous it should
-  # get the answer delivered". Whether it may be woken is `Agents.Wake`'s
-  # (`:question_answered`): a non-continuous asker collects it when it comes
-  # back (3219).
-  #
-  # Mid-turn the answer joins the turn whatever the question blocked. A
-  # task-less answer mid-turn used to go nowhere: the turn ended, nothing
-  # offered another, and the answer waited on `check_answer`.
-  #
-  # Idle with a task released: `TaskOwner.blocker_resolved/3` already woke it
-  # with the task named.
+  # The answer as content. Mid-turn it joins the turn (queued, never
+  # interrupting). Idle with nothing released (a task-less question), the asker
+  # is offered a turn opening with the answer, if `Agents.Wake` allows
+  # (`:question_answered`); otherwise it collects it with `check_answer`. Idle
+  # with a task released: `TaskOwner.blocker_resolved/3` already woke it.
+  # Outside the transaction: delivery must not hold the question's row lock.
   defp deliver_answer_content(%{agent_id: nil}, _released?), do: :ok
 
-  # A task-scoped answer that released nothing (3220's override of a task that
+  # A task-scoped answer that released nothing (an override of a task that
   # already moved on) changes nothing in front of the agent, and says nothing.
   defp deliver_answer_content(%{task_id: task_id}, false) when not is_nil(task_id), do: :ok
 
@@ -1345,9 +1153,8 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  # The agent that handed the question up hears the answer too: it escalated
-  # it, and an answer that went only to the asker left product unable to act
-  # on the user's decision or even read it (2026-10-13).
+  # The agent that escalated the question hears the answer too, so it can act
+  # on the user's decision.
   defp tell_escalator(%{escalated_by: by, agent_id: asker_id} = request)
        when is_binary(by) and is_binary(asker_id) do
     case Repo.get(Agent, asker_id) do
@@ -1404,7 +1211,7 @@ defmodule CodeMySpec.Notifications do
     do: "It blocked no task. Carry on with whatever you asked it for."
 
   # The one message a mid-turn asker gets (`TaskOwner` sends none): never a
-  # second active task (story 1080).
+  # second active task.
   defp answer_closing(%{task_id: task_id}, nil) do
     """
     This does not resume task #{task_id}, which it blocked. Pick that back up
@@ -1444,26 +1251,9 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  # Only a committed answer revision reaches this path. Repeated submissions
-  # are refused under the question row lock and cannot enqueue the same answer
-  # again. A user override is a new revision and must carry its corrected text.
-  # An answer is not a delivery.
-  #
-  # This used to `send_to_agent/2` the answer text the moment it was saved,
-  # which made the machine busy and queued content for an agent that had asked
-  # to be left alone. The plan retiring `wake` lists exactly this under what
-  # goes: "task-control `send_to_agent` deliveries".
-  #
-  # Attribution lives on the saved question — `check_answer` reads who answered,
-  # and reads it repeatedly — so nothing about knowing the answer depends on a
-  # message arriving. Criterion 3219 states it as the claim: the originating
-  # agent reads both answers twice while its conversation stays byte-identical
-  # and its engine never takes a turn. 1047 and 1059 assert the same shape for
-  # recovery checks and empty turn boundaries.
-  #
-  # What still happens on answer, once it commits: the question topic is
-  # broadcast for anyone waiting, and the task it blocked is released and its
-  # holder woken to resume it (`settle_and_broadcast/3`).
+  # Saving an answer is not delivering it: `check_answer` reads the saved
+  # question. Repeats are refused under the row lock. Broadcast and release
+  # happen after commit, in `settle_and_broadcast/3`.
 
   defp finish(request, answers, answered_by, overruled) do
     request
@@ -1477,11 +1267,8 @@ defmodule CodeMySpec.Notifications do
     |> Repo.update()
   end
 
-  # The answer this one replaces, kept where the page and the audit can find it.
-  #
-  # Only on an override: an ordinary first answer replaces nothing, and writing
-  # an empty revision for it would make "has a history" stop meaning "was
-  # overruled".
+  # The answer this one replaces, only on an override, so "has a history"
+  # means "was overruled".
   defp history_with(request, false), do: request.answer_history || []
 
   defp history_with(request, true) do
@@ -1494,16 +1281,8 @@ defmodule CodeMySpec.Notifications do
     (request.answer_history || []) ++ [entry]
   end
 
-  # Where tapping the notification lands you.
-  #
-  # `QuestionLive.Show` exists because an *external* agent has no conversation
-  # in this application to render a question into — that is the whole of its
-  # reason, and it is still true for Claude Code and false for an agent we run.
-  # So the rule is: the question belongs in the asker's conversation, and the
-  # standalone page is the fallback for an asker that has not got one.
-  #
-  # Anchored to the question itself, so the page opens with it in view rather
-  # than at the bottom of a fifty-turn transcript.
+  # Where tapping the notification lands: the asker's conversation, anchored to
+  # the question; the standalone page for an asker without one (Claude Code).
   defp question_url(%{agent_id: agent_id, id: id}) when is_binary(agent_id) do
     case conversation_for_agent(agent_id) do
       %{id: conversation_id, project_id: project_id} ->
@@ -1516,11 +1295,8 @@ defmodule CodeMySpec.Notifications do
 
   defp question_url(%{id: id}), do: "/app/questions/#{id}"
 
-  # Same rule as `question_url/1`, for the request an agent raised rather than
-  # asked. No `conversation_message_id` exists on a permission request — there
-  # is no schema for "what turn this happened at" — so the anchor is the
-  # request itself rather than a specific point in the transcript; it renders
-  # unconditionally near the bottom of it either way.
+  # Same rule as `question_url/1`, anchored to the request itself (a permission
+  # request records no message).
   defp permission_url(%{agent_id: agent_id, id: id}) when is_binary(agent_id) do
     case conversation_for_agent(agent_id) do
       %{id: conversation_id, project_id: project_id} ->
@@ -1542,20 +1318,9 @@ defmodule CodeMySpec.Notifications do
     |> Repo.one()
   end
 
-  # Where in the transcript this question was asked.
-  #
-  # The newest message in the asking agent's conversation, resolved now rather
-  # than plumbed through MCP: a tool does not know its own tool-call id, and it
-  # does not need to — it only needs to know which conversation it is in, which
-  # the agent id answers.
-  #
-  # Worst case it anchors to the turn *before* the one that asked, if that
-  # turn's message has not been written yet. That is still beside the work that
-  # prompted it, which is the whole point, and strictly better than the pinned
-  # block it replaces.
-  #
-  # A caller that set it explicitly wins. Nil is left alone — a Claude Code
-  # session has no conversation of ours and renders on `QuestionLive.Show`.
+  # Where in the transcript this question was asked: the newest message in the
+  # asking agent's conversation (at worst the turn before). An explicit value
+  # wins; a Claude Code session has none.
   defp put_anchor(%{"conversation_message_id" => id} = attrs) when not is_nil(id), do: attrs
 
   defp put_anchor(attrs) do
@@ -1580,27 +1345,8 @@ defmodule CodeMySpec.Notifications do
   end
 
   @doc """
-  Is this agent waiting on a human before it should be bothered?
-
-  Asked on every stop decision, which is why the index is on
-  `(agent_id, status)` rather than on `agent_id` alone.
-
-  Two tables, one question. `ask_user_question` writes a `QuestionRequest`;
-  `tap_out`, called by an agent we run, writes a `PermissionRequest` with the
-  same `agent_id` (`request_agent_tap_out/4`). A Claude Code session's tap-out
-  is a row keyed by `session_id` instead, and `Hooks.Stop` reads only the
-  `session.continuous` its approval clears.
-
-  This started covering only `QuestionRequest`, and `StopDecision.wake/2` had
-  no check of either at all — `wake_project_roles/2` fans out to every
-  continuous, running agent on any graph change project-wide, with nothing
-  asking whether the agent it is about to wake asked to stop. An agent with a
-  tap-out pending got "Work of your kind is available" every time anything
-  else in the project changed, at whatever cadence that happens on a shared
-  project several worktrees are editing at once — sometimes under a minute
-  apart — and had to spend a turn saying "still waiting" each time. Both
-  decision points call this now, so a widened definition here reaches both
-  without either drifting from the other.
+  Whether this agent has a pending question or permission request (a tap-out
+  included). Two tables, one question; indexed on `(agent_id, status)`.
   """
   @spec awaiting_answer?(Ecto.UUID.t() | nil) :: boolean()
   def awaiting_answer?(nil), do: false
@@ -1624,9 +1370,7 @@ defmodule CodeMySpec.Notifications do
   @doc """
   Get a question request by ID, or nil.
 
-  Nil for an id that is not a uuid, too. Agents shorten ids in their own notes
-  and call `check_answer` with `34a663ee`; `Repo.get/2` raised on the cast and
-  the tool crashed instead of saying there is no such question (2999a0cb).
+  Nil for an id that is not a uuid, too: agents pass shortened ids.
   """
   def get_question_request(id) do
     case Ecto.UUID.cast(id) do
@@ -1654,17 +1398,9 @@ defmodule CodeMySpec.Notifications do
   @doc """
   The questions one agent asked, oldest first.
 
-  Not the agent-shaped spelling of `list_question_requests_for_session/1` — a
-  different abstraction that happens to answer a similar-looking question. A
-  session is a Claude Code process with an external id; an agent is a row we
-  own. Neither has the other, and a question belongs to exactly one of them.
-
-  This is why the conversation page could not show a question an agent asked.
-  It looked them up by `session_external_id`, and an agent has none: the asking
-  scope carries a working copy and never a session id, so the column stayed
-  empty and the lookup found nothing. The tool call rendered as an ordinary
-  tool block with no form under it — nothing wrong with the rendering, the page
-  was asking the wrong question.
+  A question belongs to a session (a Claude Code process with an external id)
+  or an agent (a row we own), never both; an agent's questions carry no
+  `session_external_id`.
   """
   @spec list_question_requests_for_agent(Ecto.UUID.t() | nil) :: [QuestionRequest.t()]
   def list_question_requests_for_agent(nil), do: []
@@ -1679,14 +1415,8 @@ defmodule CodeMySpec.Notifications do
   @doc """
   Every question this user has waiting, whichever session asked it.
 
-  Separate from `list_question_requests_for_session/1` because the two answer
-  different questions and only one of them is about a conversation. A thread
-  shows what *that* agent asked; the project's own screen has to show what any
-  agent asked, because an agent in a worktree nobody is watching is exactly the
-  one whose question goes unnoticed.
-
-  Pending only. An answered request is history, and history does not block
-  anybody.
+  The project screen's view, so a question from a worktree nobody is watching
+  is still seen. Pending only.
   """
   @spec list_pending_question_requests_for_user(integer()) :: [QuestionRequest.t()]
   def list_pending_question_requests_for_user(user_id) when is_integer(user_id) do
@@ -1699,10 +1429,8 @@ defmodule CodeMySpec.Notifications do
   @doc """
   Turn a submitted form into `%{question text => answer}`.
 
-  Lives here rather than in a LiveView because two of them submit this shape
-  now — the question's own page and the conversation it was asked in — and the
-  "__other__" convention is a property of the form the component renders, not
-  of either host.
+  Here rather than in a LiveView: two hosts submit this shape, and the
+  "__other__" convention belongs to the form component.
   """
   @spec collect_answers([map()], map()) :: map()
   def collect_answers(questions, params) do
@@ -1721,11 +1449,6 @@ defmodule CodeMySpec.Notifications do
   defp resolve_answer(choice, _other) when is_binary(choice), do: choice
 
   # No option chosen, but something typed in "Other..." — which is a choice.
-  #
-  # There is no competing signal to weigh: a radio that *was* checked matches
-  # the clause above and wins, so this only ever sees the case where the box
-  # is the only thing the person touched. Reading it as blank turned a
-  # correction into an erasure.
   defp resolve_answer(nil, other) when is_binary(other), do: other
 
   defp resolve_answer(_choice, _other), do: ""
@@ -1776,7 +1499,7 @@ defmodule CodeMySpec.Notifications do
   end
 
   # What reaches an agent is Agents' to deliver (`Agents.Events`); Notifications
-  # sits below Agents and announces instead of calling up (John, 2026-10-04).
+  # sits below Agents and announces instead of calling up.
   defp announce(event, meta) do
     :telemetry.execute([:code_my_spec, :notifications, event], %{}, meta)
   end

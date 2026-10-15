@@ -2,39 +2,17 @@ defmodule CodeMySpec.AppTokens do
   @moduledoc """
   Short-lived tokens a deployed app exchanges its refresh secret for.
 
-  ## What story 971 is actually claiming
+  The app holds one long-lived secret, the refresh secret, and it opens none
+  of the surfaces: it buys a token and nothing else, so `verify/1` refuses it
+  as a bearer credential.
 
-  Not "the app holds no long-lived secret" — it holds one, the refresh
-  secret, and pretending otherwise would be the kind of security claim that
-  is false in a way nobody notices. The honest property is narrower and more
-  useful: **what the app holds opens none of the five surfaces.** A refresh
-  secret buys a token and nothing else (criterion 8046), so a copy of the
-  deployed environment is not a copy of the app's access (8045).
+  Tokens are signed (`Phoenix.Token`), not stored: each carries its own
+  expiry, so there is nothing to reap. `:expired` and `:invalid` stay distinct
+  — "renew and retry" versus "your credential is wrong, stop retrying".
 
-  That is why `verify/1` refuses a refresh secret outright rather than
-  treating it as a bearer credential. The two are deliberately not
-  interchangeable.
-
-  ## Why Phoenix.Token rather than rows in a table
-
-  A stored token needs issuing, looking up, expiring and reaping, and every
-  one of those is a chance for a token to outlive its window because a
-  cleanup job did not run. A signed token carries its own expiry: nothing
-  issues it a second life, and there is nothing to reap.
-
-  It also answers criterion 8023 exactly. `Phoenix.Token.verify/4`
-  distinguishes a token that was valid and aged out from one that was never
-  ours — `:expired` versus `:invalid` — which is the difference between "renew
-  and retry" and "your credential is wrong, stop retrying". Collapsing them
-  into one refusal is how a client ends up hammering a token endpoint over a
-  typo.
-
-  ## The refresh secret is found by hash
-
-  Same shape as `deploy_key` / `deploy_key_hash`: the secret itself is stored
-  encrypted and useless for lookup, so a digest column carries the lookup.
-  Comparing digests rather than plaintext also means the secret is never
-  queried against, which keeps it out of query logs.
+  The refresh secret is found by its SHA-256 digest
+  (`cms_refresh_secret_hash`), like `deploy_key` / `deploy_key_hash`; the
+  plaintext is never queried against.
   """
 
   use Boundary,
@@ -49,17 +27,11 @@ defmodule CodeMySpec.AppTokens do
 
   @salt "app access token"
 
-  # A separate salt, so a socket token cannot be replayed against the REST
-  # surfaces and an access token cannot open a socket. They are handed to
-  # different holders — the access token stays server-side, the socket token
-  # goes to a browser — and a credential that reaches a browser must not be
-  # able to do what a server-side one can.
+  # A separate salt, so a socket token (handed to a browser) cannot be replayed
+  # against the REST surfaces, nor an access token open a socket.
   @socket_salt "widget socket token"
 
-  # Fifteen minutes. Long enough that renewal is not a hot path, short enough
-  # that a captured token is a nuisance rather than a breach — criterion 8019
-  # asserts the window closes, and a window nobody would notice closing is not
-  # one worth having.
+  # Fifteen minutes.
   @max_age_seconds 900
 
   @type refusal :: :expired | :invalid
@@ -67,10 +39,8 @@ defmodule CodeMySpec.AppTokens do
   @doc """
   Exchange a refresh secret for a short-lived access token.
 
-  Returns `{:ok, token, expires_in}` or `{:error, :invalid}`. There is
-  deliberately no third answer: a caller who cannot exchange has exactly one
-  thing to check, and telling an unauthenticated caller *why* their secret
-  failed tells an attacker the same thing.
+  Returns `{:ok, token, expires_in}` or `{:error, :invalid}` — deliberately
+  no reason, which would tell an attacker the same thing.
   """
   @spec exchange(String.t()) :: {:ok, String.t(), pos_integer()} | {:error, :invalid}
   def exchange(refresh_secret) when is_binary(refresh_secret) and refresh_secret != "" do
@@ -101,8 +71,7 @@ defmodule CodeMySpec.AppTokens do
 
   def verify(_, _max_age), do: {:error, :invalid}
 
-  # Tokens issued before the nonce carried a bare id. Accepting both means a
-  # token in flight when this deployed does not become invalid mid-request.
+  # Also accepts a bare-id payload, the shape before the nonce.
   defp project_from({id, _nonce}), do: project_from(id)
 
   defp project_from(id) when is_binary(id) do
@@ -117,10 +86,9 @@ defmodule CodeMySpec.AppTokens do
   @doc """
   Mint a socket token for the widget to present from a browser.
 
-  The deploy key authenticates the widget socket today and deliberately never
-  reaches the browser — the widget runs in the target app's backend. This is
-  the browser-safe equivalent: short-lived, scoped to a socket, useless
-  against anything else.
+  The deploy key never reaches the browser — the widget runs in the target
+  app's backend. This is the browser-safe equivalent: short-lived, scoped to a
+  socket, useless against anything else.
   """
   @spec issue_socket_token(Project.t()) :: {String.t(), pos_integer()}
   def issue_socket_token(%Project{id: id}) do
@@ -130,10 +98,8 @@ defmodule CodeMySpec.AppTokens do
   @doc """
   The project a socket token belongs to.
 
-  Same expired/invalid distinction as `verify/1`: a visitor mid-conversation
-  whose token aged out needs the socket to re-authenticate in place rather
-  than drop (criterion 8055), and that is only possible if "expired" is
-  distinguishable from "wrong".
+  Same expired/invalid distinction as `verify/1`: a visitor whose token aged
+  out re-authenticates the socket in place rather than dropping.
   """
   @spec verify_socket_token(String.t(), non_neg_integer()) ::
           {:ok, Project.t()} | {:error, refusal()}
@@ -156,9 +122,8 @@ defmodule CodeMySpec.AppTokens do
   @doc """
   The digest a refresh secret is looked up by.
 
-  Public because the project changeset writes it and this module reads it;
-  one definition means they cannot drift into hashing differently, which
-  would fail as "no such secret" rather than as a mismatch.
+  Public so the project changeset and this module share one definition and
+  cannot drift into hashing differently.
   """
   @spec hash(String.t()) :: String.t() | nil
   def hash(secret) when is_binary(secret) and secret != "",
@@ -187,24 +152,16 @@ defmodule CodeMySpec.AppTokens do
     end
   end
 
-  # Signed rather than stored, and carrying only the project id plus a nonce.
-  #
-  # The nonce is not decoration. `Phoenix.Token.sign/4` stamps whole seconds,
-  # so two exchanges inside the same second produce byte-identical tokens —
-  # and a client that renewed would still be holding the one about to lapse,
-  # having been told it was new. Criterion 8020 asserts renewal issues a
-  # genuinely different token, and without this it does not.
-  #
-  # Nothing reads the nonce; its only job is to make each token distinct.
+  # The nonce only makes each token distinct: `Phoenix.Token.sign/4` stamps
+  # whole seconds, so two exchanges in one second would otherwise be identical
+  # and a renewal would hand back the token about to lapse.
   defp issue(%Project{id: id}) do
     Phoenix.Token.sign(secret_base(), @salt, {id, nonce()})
   end
 
   defp nonce, do: 16 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
 
-  # Read from config rather than from the endpoint: a context reaching into
-  # the web layer is a dependency the boundary exists to prevent, and the
-  # signing key is configuration either way.
+  # From config, not the endpoint: a context must not depend on the web layer.
   defp secret_base do
     Application.get_env(:code_my_spec, CodeMySpecWeb.Endpoint)[:secret_key_base] ||
       raise "no secret_key_base configured — app tokens cannot be signed"

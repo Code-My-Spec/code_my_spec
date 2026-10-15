@@ -42,32 +42,22 @@ defmodule CodeMySpec.Projects.Project do
     field :name, :string
     field :description, :string
     field :module_name, :string
-    # A content check `Files` sync cannot answer (it records existence, never
-    # a body — see `CodeMySpec.Generators`) and the server cannot read
-    # directly for a harness-only project (`Environments.read_file/2` has
-    # nowhere real to read from there). The harness reports it instead, the
-    # same way it reports `module_name`. `nil` means "not reported yet", a
-    # different state from either "ok" or "missing".
+    # Harness-reported, like `module_name`: a content check the server cannot
+    # read for a harness-only project. `nil` is "not reported yet", distinct
+    # from "ok" or "missing".
     field :health_route_status, :string
-    # The checkout's own `git rev-parse HEAD` — what `Steps.image_tag/2` tags a
-    # build with. The server cannot run `git` against a harness-only project's
-    # environment (`Environments.cmd/4` has no working directory to run it in
-    # there); the harness runs it locally on every sync and reports it, the
-    # same shape as `module_name`/`health_route_status`.
+    # The checkout's `git rev-parse HEAD`, harness-reported on every sync —
+    # what `Provisioning.Steps.image_tag/2` tags a build with.
     field :head_commit, :string
-    # The fingerprint `Files.Scanner` computed for `mix.lock` the last time
-    # it was successfully read and recorded into `project_dependencies`
-    # (577de9bb step 3). `nil` means never reconciled, not "unchanged" — the
-    # reconciler treats those the same (both mean "read it"), but nothing
-    # downstream should.
+    # `Files.Scanner`'s fingerprint of `mix.lock` when last recorded into
+    # `project_dependencies`. `nil` is never reconciled, not "unchanged".
     field :mix_lock_fingerprint, :string
     field :code_repo, :string
     field :docs_repo, :string
     field :client_api_url, :string
-    # Local-first content publishing (story 712): source dir on disk + the
-    # user's own per-project S3 buckets / CDN host. The user's AWS keys live
-    # here too, encrypted at rest via Cloak — the local CLI is the publisher,
-    # so a published install (no envs/.env) needs them in the project DB.
+    # Local-first content publishing: source dir on disk + the user's own
+    # per-project S3 buckets / CDN host. AWS keys are encrypted at rest; the
+    # local CLI is the publisher, so they live in the project DB.
     field :content_source_path, :string
     field :image_bucket, :string
     field :images_host, :string
@@ -89,8 +79,7 @@ defmodule CodeMySpec.Projects.Project do
     field :deploy_key_hash, :string
 
     # Digest of the refresh secret a deployed app exchanges for short-lived
-    # access tokens (story 971). The secret lives in the project's encrypted
-    # environment; only its digest is here.
+    # access tokens. The secret lives in the project's encrypted environment.
     field :cms_refresh_secret_hash, :string
     field :google_analytics_property_id, :string
     field :setup_error, :string
@@ -115,31 +104,16 @@ defmodule CodeMySpec.Projects.Project do
     # extra", and any other list is exactly what is allowed.
     field :preview_extra_frame_origins, {:array, :string}
 
-    # Which parts of setup this project runs. Stored as strings and read back
-    # through `setup_options/1`, which is where the default lives — a project
-    # that has never chosen gets everything, because setup's job is a working
-    # project and a user who wants less turns it off rather than having to
-    # discover what to turn on.
-    #
-    # `nil` and `[]` are different answers: nil is "never chosen", [] is
-    # "chose none of the optional parts", and the unconditional steps still
-    # run. Collapsing them would make turning everything off indistinguishable
-    # from never having opened the page.
+    # Which parts of setup this project runs, read through
+    # `ProvisioningPlan.setup_options/1`, where the default (everything) lives.
+    # `nil` is "never chosen"; `[]` is "chose none of the optional parts" (the
+    # unconditional steps still run). Never collapse the two.
     field :setup_options, {:array, :string}
 
     # The checkout this project is read from when the reader is not itself a
-    # checkout.
-    #
-    # Requirement satisfaction is per working copy, because it has always been a
-    # statement about what one checkout could see. An agent asks as its own
-    # copy; the UI is not a copy and has to be told which one speaks for the
-    # project. In practice that is the main checkout — the one being pushed to
-    # while agents work in worktrees off it — so reading from it is the
-    # main-branch view without anything having to fetch main.
-    #
-    # Nullable. A project that has not named one has no canonical view, which is
-    # a real state and a visible one, rather than a silent fallback to whichever
-    # checkout answered last.
+    # checkout (the UI): requirement satisfaction is per working copy. In
+    # practice the main checkout. Nullable: no canonical view is a real,
+    # visible state, not a fallback to whichever checkout answered last.
     belongs_to :default_working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id
 
     belongs_to :oauth_application, CodeMySpec.Oauth.Application, type: :id
@@ -159,8 +133,9 @@ defmodule CodeMySpec.Projects.Project do
       ],
       default: :created
 
-    # When this project's components were frozen into records (3aeb66cf).
-    # Historical: the freeze is gone, every project syncs as records now.
+    # When this project's components were frozen into records. Historical:
+    # every project syncs components as records now. Still carried by
+    # `Migration`.
     field :components_authored_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime)
@@ -169,9 +144,8 @@ defmodule CodeMySpec.Projects.Project do
   @doc """
   A fresh deploy key.
 
-  Here rather than in `Projects`, because two callers now mint one — creation
-  and `ensure_deploy_key/2` — and a credential generated two ways eventually
-  gets generated two lengths.
+  One minting function for every caller (creation, `ensure_deploy_key/2`), so
+  keys cannot drift in shape.
   """
   @spec mint_deploy_key() :: String.t()
   def mint_deploy_key,
@@ -255,10 +229,8 @@ defmodule CodeMySpec.Projects.Project do
   True once the project's sending domain has been registered with the mail
   provider — `resend_domain_id` set.
 
-  Not the same question as `domain_verified?/1`, and not implied by it: a
-  project's `domain` field can be set by something other than
-  `Mail.setup_domain/3` (provisioning's own domain step reads it, it does not
-  write it), leaving a domain with no provider registration behind it at all.
+  Not implied by `domain` being set: it can be set without
+  `Mail.setup_domain/3` ever registering it with the provider.
   """
   def domain_registered?(%__MODULE__{resend_domain_id: id}), do: not is_nil(id)
   def domain_registered?(_), do: false
@@ -297,11 +269,8 @@ defmodule CodeMySpec.Projects.Project do
   # The client API URL carries the deploy key (and, through it, the target app's
   # user PII) — so it must be https, never plaintext http.
   #
-  # Loopback excepted, and only loopback. A request to 127.0.0.1 never leaves
-  # the machine, so there is no wire for it to be plaintext on; every browser
-  # and every OAuth spec draws the same line for the same reason. It is what
-  # lets a local site — the fleet's, in the spex — be a real publish target
-  # rather than something recorded.
+  # Loopback excepted, and only loopback: it never leaves the machine, so a
+  # local site can be a real publish target.
   defp validate_client_api_url(changeset) do
     case get_field(changeset, :client_api_url) do
       nil -> changeset

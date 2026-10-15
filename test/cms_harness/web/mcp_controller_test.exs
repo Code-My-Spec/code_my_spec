@@ -400,7 +400,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       message = Jason.decode!(conn.resp_body)["error"]["message"]
       assert message =~ "401"
-      assert message =~ "CMS_DEPLOY_KEY"
+      assert message =~ ".cms_harness.json"
       assert FakeUpstream.last_request().path == "/api/sprite/token"
     end
   end
@@ -432,7 +432,7 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert conn.status == 200
       body = Jason.decode!(conn.resp_body)
       assert body["id"] == 7
-      assert body["error"]["message"] =~ "CMS_DEPLOY_KEY"
+      assert body["error"]["message"] =~ "mix cms.harness.onboard"
       assert FakeUpstream.last_request() == nil
     end
 

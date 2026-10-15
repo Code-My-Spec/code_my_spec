@@ -3,67 +3,23 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
   Cloudflare OAuth provider — delegated access to a user's own Cloudflare
   account for domain registration, DNS and zone management.
 
-  ## Why OAuth rather than an API token
+  Delegated OAuth rather than a pasted API token, so the user can revoke it
+  from Cloudflare's side. PKCE is required (`code_verifier: true`).
 
-  Provisioning acts on Sam's Cloudflare account, not ours. A static API token
-  pasted into config would have to be *his* token, stored by us, with whatever
-  permissions he happened to grant it and no way to revoke it from Cloudflare's
-  side. Delegated access is revocable by him, scoped per-grant, and never gives
-  us a credential he cannot take back.
+  Scopes are dot-separated (`zone.read`), not the API-token colon form, and
+  were each verified against the live authorize endpoint. No scope reads the
+  user (`GET /client/v4/user` answers 403 on a delegated token), so `user_url`
+  is the zone list, which also supplies the account id.
 
-  ## PKCE is required, not optional
-
-  Cloudflare rejects an authorize request without `code_challenge` — verified
-  against the live endpoint, which answers `invalid_request` for a call that
-  omits it. Hence `code_verifier: true`.
-
-  ## Scopes
-
-  Dot-separated (`zone.read`), NOT the colon form that Cloudflare's own
-  API-token permissions use (`zone:read`). Every colon-form scope is rejected
-  with `invalid_scope`, which is an easy hour to lose because the token UI
-  shows the colon form.
-
-  The names are also not derivable from the resource — it is
-  `registrar-domains.admin`, not `registrar.edit`, and `dns.write`, not
-  `dns_records.edit`. The full set below was confirmed against the live
-  authorize endpoint, individually and together.
-
-  There is no `account.read`, and that has a consequence beyond zone creation:
-  `GET /client/v4/user` answers 403 (code 9109, "Unauthorized to access
-  requested resource") on a delegated token, so it cannot serve as the
-  identity endpoint. Confirmed on a real token — the exchange succeeds and
-  only the user fetch fails, which makes it an easy failure to misread as a
-  broken grant.
-
-  `user_url` is therefore `/client/v4/zones`, which `zone.read` covers. The
-  zone list doubles as the account id source that zone creation needs.
-
-  ### Sandbox registrar
-
-  `registrar-sandbox-domains.admin` / `.read` exist alongside the real ones.
-  That is how the domain-registration path gets exercised end to end without
-  spending money on a throwaway domain, which is worth preferring for
-  anything that is not a deliberate production purchase.
-
-  ### Not requested
-
-  `cache.purge` is grantable but nothing here purges cache, so it is left out
-  — an unused scope on a consent screen is a reason for a user to say no.
-
-  ## Redirect URI
-
-  The registered URIs are `https://codemyspec.com/auth/cloudflare/callback`
-  and the `dev.` equivalent — confirmed by probing the authorize endpoint,
-  which names a mismatch explicitly. Localhost is NOT registered, so a local
-  OAuth round-trip has to come back through one of those hosts.
+  The registered redirect URIs are `codemyspec.com` and `dev.codemyspec.com`
+  `/auth/cloudflare/callback`; localhost is not registered.
+  See knowledge/infrastructure, "Cloudflare OAuth".
   """
 
   @behaviour CodeMySpec.Integrations.Providers.Behaviour
 
-  # Every one verified against the live authorize endpoint. An unpermitted
-  # scope fails the whole request rather than degrading, so do not add a
-  # guessed name here — probe it first.
+  # An unpermitted scope fails the whole request, so do not add a guessed name
+  # here — probe the live authorize endpoint first.
   @scopes ~w(
     zone.read
     zone.write
@@ -104,50 +60,11 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
   @doc """
   The scopes this integration requests.
 
-  ## Why `offline_access` is not in the list by default
-
-  Without it Cloudflare issues no refresh token, so the grant dies at its
-  expiry with nothing to renew from — which is what happened to the first
-  connection here: no refresh token stored, and by the time anything needed
-  it the grant was already dead.
-
-  ## How to make a client that allows it
-
-  `offline_access` is not a scope you select — it is not among the 381
-  permission names `GET /oauth/scopes` returns, which is why hunting for it in
-  the dashboard's scope picker finds nothing.
-
-  Cloudflare adds it to a client's scopes *automatically* when the client
-  carries `refresh_token` in its **grant types**. So the setting to change is
-  the grant type, not the scope list:
-
-      grant_types: ["authorization_code", "refresh_token"]
-      -> scopes come back with "offline_access" appended
-
-  Verified 2026-07-31: with `authorization_code` alone the authorize endpoint
-  answers `invalid_scope` — "The OAuth 2.0 Client is not allowed to request
-  scope 'offline_access'" — and with both grant types the same request is
-  accepted. Grant types can be edited on an existing client; a new one is not
-  required.
-
-  It was off by default because Cloudflare rejects it unless the *client
-  registration* carries it, and the original one did not:
-
-      scope=offline_access  → invalid_scope, "The OAuth 2.0 Client is not
-                              allowed to request scope 'offline_access'"
-      scope=offline         → the same
-      scope=<base scopes>   → accepted
-
-  Both were probed against `dash.cloudflare.com/oauth2/auth` directly. The
-  authorization server supports them — its discovery document lists
-  `offline_access`, `offline` and `openid` under `scopes_supported`, and
-  `refresh_token` under `grant_types_supported` — so this is a property of the
-  client, not of Cloudflare.
-
-  Requesting it unconditionally against a client that disallows it makes
-  Cloudflare impossible to connect at all, which is strictly worse than a
-  token that has to be re-granted — so the flag stays, and points at whether
-  the configured client was created with the refresh grant.
+  `offline_access` (needed for a refresh token) is prepended only when
+  `:cloudflare_offline_access` is set: Cloudflare rejects it with
+  `invalid_scope` unless the OAuth client's grant types include
+  `refresh_token`, and requesting it against such a client makes Cloudflare
+  impossible to connect. See knowledge/infrastructure, "Cloudflare OAuth".
   """
   @spec scopes() :: [String.t()]
   def scopes do

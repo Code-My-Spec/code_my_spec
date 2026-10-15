@@ -1,35 +1,18 @@
 defmodule CodeMySpec.Servers do
   @moduledoc """
-  Servers an account owns, whether CodeMySpec created them or Sam did.
+  Servers an account owns, whether CodeMySpec created them or the user did.
 
-  ## Why this is not part of Provisioning
-
-  `Provisioning` is project-scoped, and a server there is two denormalised
-  strings — `server_name` and `ip` — on a `provisioning_environments` row. That
-  grain has three consequences: a box cannot be shared between projects, an
-  existing box cannot be adopted, and nothing owns a server's lifecycle. The
-  third is the root of the environment-removal and dangling-DNS defects, where
-  a destroyed box left a subdomain resolving to a released address.
-
-  Servers belong to the **account**. Linking is a note we make about a box, not
-  something we do to it.
-
-  ## The list is the provider's
+  Servers belong to the **account**, not a project, so a box can be shared
+  and adopted. Linking is a note we make about a box, not something we do to
+  it.
 
   `list/1` reports what the provider says right now, merged with what we have
-  linked — never our record alone. A box resized in the Hetzner console reads
-  correctly here, and one destroyed there is marked `missing` rather than
-  quietly dropped, because things still point at it.
-
-  Unlinked servers are returned too. A box nobody can see is a box that keeps
-  billing, so linking must never become how a server disappears from view.
-
-  ## Availability, not the catalogue
+  linked: a box destroyed at the provider is marked `missing` rather than
+  dropped, and unlinked servers are returned too.
 
   `available_options/1` joins `/datacenters` against `/server_types`, because
-  only the former says what can be created *now*. During QA every ARM type was
-  listed and not deprecated while sold out in all six datacenters. Offering
-  from the catalogue means offering something nobody can buy.
+  only the former says what can be created *now*.
+  See knowledge/infrastructure, "Servers".
   """
 
   use Boundary,
@@ -68,15 +51,9 @@ defmodule CodeMySpec.Servers do
   Returns `{:error, reason, linked}` when the provider cannot be asked, where
   `linked` is every server the account has linked, marked `unverified`.
 
-  Three outcomes, not two, because there are three facts to tell apart. An
-  empty list claims the account has no servers. An error alone claims we know
-  nothing. Neither is true when the provider is unreachable but we still hold
-  our own link records — those are ours, they need no provider call, and
-  dropping them is how a box the account is paying for leaves the screen.
-
-  What we cannot vouch for under an error is the *state* — size, address,
-  whether it is still running. Hence `unverified` rather than a size we last
-  saw and a status we are guessing at.
+  Three outcomes, not two: an empty list claims no servers, an error alone
+  claims we know nothing, and neither is true when the provider is unreachable
+  but our link records remain. Their *state* is unknown, hence `unverified`.
   """
   @spec list(Scope.t()) :: {:ok, [Server.t()]} | {:error, term(), [Server.t()]}
   def list(%Scope{} = scope) do
@@ -92,10 +69,8 @@ defmodule CodeMySpec.Servers do
       |> Server.linked_environments()
       |> Enum.sort()
       |> Enum.map(fn {name, environment} ->
-        # Not `missing` — that is a claim the provider told us it is gone, and
-        # here the provider told us nothing at all. The label survives either
-        # way: it is ours, not the provider's, so it is the one thing we can
-        # still say for certain.
+        # Not `missing`: the provider told us nothing. The label is ours, so
+        # it survives.
         name
         |> Server.placeholder(environment)
         |> Map.put(:missing, false)
@@ -107,9 +82,8 @@ defmodule CodeMySpec.Servers do
   @doc """
   Record a server against the account.
 
-  Touches nothing on the machine. Sam's first use of this is on boxes already
-  serving traffic, and a link that installed, restarted or reconfigured
-  anything would be unusable exactly where it is most wanted.
+  Touches nothing on the machine: linking is used on boxes already serving
+  traffic.
   """
   @spec link(Scope.t(), String.t()) :: {:ok, Server.t()} | {:error, term()}
   def link(%Scope{} = scope, name) when is_binary(name) do
@@ -122,13 +96,10 @@ defmodule CodeMySpec.Servers do
   @doc """
   Create a server in the account's own provider account.
 
-  Arrives already linked: Sam made it here, so asking him to link it
-  afterwards would be asking him to confirm something he just did.
-
-  A size the provider cannot supply is returned as an error naming the size
-  and where it was tried. Never retried at a different size — a silent
-  fallback is how you pay for a machine you did not choose, and if the
-  architecture differs, one your images cannot run on.
+  Arrives already linked. A size the provider cannot supply is returned as an
+  error naming the size and where it was tried — never retried at a different
+  size, which could be a machine nobody chose on an architecture the images
+  cannot run on.
   """
   @spec provision(Scope.t(), map()) :: {:ok, Server.t()} | {:error, term()}
   def provision(%Scope{} = scope, attrs) do
@@ -141,9 +112,8 @@ defmodule CodeMySpec.Servers do
   @doc """
   One server by name, as the list would show it.
 
-  Built from `list/1` so a single server carries exactly what a row does —
-  including `unverified` when the provider could not be asked, which is how a
-  box still appears on its own page during an outage instead of 404ing.
+  Built from `list/1` so a single server carries exactly what a row does,
+  including `unverified` when the provider could not be asked.
   """
   @spec get(Scope.t(), String.t()) :: {:ok, Server.t()} | {:error, :not_found}
   def get(%Scope{} = scope, name) when is_binary(name) do
@@ -166,12 +136,9 @@ defmodule CodeMySpec.Servers do
   Each container carries `service` — the name kamal deploys it under — and the
   `project_id` that service belongs to when this account has one.
 
-  The attribution is exact, on `Repository.default_name/1`, which is the name
-  setup gives a project's repository and therefore its kamal service. A
-  container we cannot place keeps `project_id: nil` rather than being guessed
-  at: a shared box legitimately runs things nobody here deployed, and putting
-  someone else's container under a project would be worse than admitting we do
-  not know whose it is.
+  Attribution is exact, on the derived service names; a container we cannot
+  place keeps `project_id: nil` rather than being guessed at, since a shared
+  box legitimately runs things nobody here deployed.
   """
   @spec containers(Scope.t(), map()) :: {:ok, [map()]} | {:error, term()}
   def containers(%Scope{} = scope, server) do
@@ -185,16 +152,10 @@ defmodule CodeMySpec.Servers do
     Enum.map(containers, &place(&1, by_service))
   end
 
-  # `<app>` in production and `<app>-<environment>` everywhere else, which is
-  # how the generated `deploy.yml` names the service. Both are registered, so a
-  # UAT container lands on the same project as its production twin.
-  #
-  # Two spellings of `<app>`, because two things generate it. `default_name/1`
-  # kebabs the project's *name*, which is what the repository step uses.
-  # Anything scaffolded from the module name gets the underscored form instead
-  # — `MarketMySpec` is `marketmyspec` one way and `market-my-spec` the other,
-  # and the box shows the latter. Both are exact derivations, so registering
-  # both places more containers without guessing at any of them.
+  # `<app>` in production and `<app>-<environment>` elsewhere, as the generated
+  # `deploy.yml` names the service. Two exact spellings of `<app>`: the
+  # project slug and the kebabed module name (`MarketMySpec` ->
+  # `market-my-spec`).
   defp services(scope) do
     for project <- Projects.list_projects(scope),
         app <- app_names(project),
@@ -214,9 +175,7 @@ defmodule CodeMySpec.Servers do
 
   defp module_app_name(_project), do: []
 
-  # What setup builds today, offered so the common answer is one click rather
-  # than something to spell. Suggestions, not options: they seed the list, they
-  # do not bound it, and nothing downstream branches on either value.
+  # Suggestions, not options: they seed the list, they do not bound it.
   @suggested_environments ["prod", "uat"]
 
   defp environment_names(%Scope{} = scope, project) do
@@ -236,9 +195,8 @@ defmodule CodeMySpec.Servers do
     |> Map.put(:project_name, project && project.name)
   end
 
-  # Kamal names a container `<service>-web-<sha>`, and leaves the previous one
-  # behind as `..._replaced_<id>` while a deploy swaps over. Cutting at `-web-`
-  # recovers the service from both.
+  # Kamal names a container `<service>-web-<sha>` (and `..._replaced_<id>`
+  # mid-swap); cutting at `-web-` recovers the service from both.
   defp service_of(%{name: name}) when is_binary(name) do
     case String.split(name, "-web-", parts: 2) do
       [service, _rest] -> service
@@ -251,11 +209,8 @@ defmodule CodeMySpec.Servers do
   @doc """
   Remove the account's link to a server.
 
-  Refused while any project still points at it — retiring is not a way to
-  make "in use" stop being true, and doing it anyway would leave an
-  environment's `server_id`/`server_name` naming a link record that no
-  longer exists. Point the environment somewhere else (or off this server
-  entirely) first if it should stop serving it.
+  Refused while any project still points at it, which would leave an
+  environment naming a link record that no longer exists.
   """
   @spec retire(Scope.t(), String.t()) ::
           :ok | {:error, {:in_use, [String.t()]}} | {:error, :not_found}
@@ -291,10 +246,8 @@ defmodule CodeMySpec.Servers do
   @doc """
   Save what a linked server is for.
 
-  A free string, not a fixed set. `prod` is a value here, never a branch — see
-  `CodeMySpec.Servers.Server` for why an enum would undo what
-  `provisioning_environments` was built to fix. Blank clears the label, which
-  is a real answer: nobody has said what this box is for yet.
+  A free string, not a fixed set: `prod` is a value here, never a branch (see
+  `CodeMySpec.Servers.Server`). Blank clears the label.
   """
   @spec update_server(Server.t(), map()) ::
           {:ok, Server.t()} | {:error, Ecto.Changeset.t()}
@@ -306,9 +259,8 @@ defmodule CodeMySpec.Servers do
   Labels to offer for a server, seeded with what setup currently supports and
   extended by whatever this account already uses.
 
-  Suggestions rather than a fixed set — the field accepts anything, so
-  `qa-story-812` is as valid as `prod`. If it were an enum this list would be
-  the whole world, and a per-story environment would be unrepresentable.
+  Suggestions rather than a fixed set: the field accepts anything, so a
+  per-story environment is as valid as `prod`.
   """
   @spec known_environments(Scope.t()) :: [String.t()]
   def known_environments(%Scope{} = scope) do
@@ -326,13 +278,9 @@ defmodule CodeMySpec.Servers do
   @doc """
   The SSH key a new server gets, uploading one if the account has none.
 
-  Creating a server without a key is refused by `Hetzner.create_server/3`, and
-  rightly: the box would have only a root password Hetzner mails to the account
-  owner, so nothing could reach it afterwards.
-
-  The key is the account's, not the project's, and `ensure_ssh_key/3` matches
-  on fingerprint — so the box created here is the same box a later deploy run
-  can open, whichever project that run belongs to.
+  `Hetzner.create_server/3` refuses a server without a key (nothing could
+  reach it). The key is the account's, and `ensure_ssh_key/3` matches on
+  fingerprint, so any project's later deploy run can open the box.
   """
   @spec access_key(Scope.t()) :: {:ok, [integer()]} | {:error, term()}
   def access_key(%Scope{} = scope) do
@@ -346,11 +294,9 @@ defmodule CodeMySpec.Servers do
   The account's access key, as the text a human would paste into
   `authorized_keys` on a box CodeMySpec did not create.
 
-  Ensures it exists first — same key `access_key/1` uploads to Hetzner for a
-  box this account creates itself, so a box adopted this way and a box built
-  from scratch end up reachable by the identical key. Retrofitting a key onto
-  an already-existing server is not something any provider API here does;
-  this is the value the account owner adds by hand, once, per box.
+  Ensures it exists first; the same key `access_key/1` uploads to Hetzner, so
+  adopted and created boxes are reachable by one key. No provider API here
+  retrofits a key, so the owner adds this by hand, once per box.
   """
   @spec access_public_key(Scope.t()) :: {:ok, String.t()} | {:error, term()}
   def access_public_key(%Scope{} = scope) do
@@ -454,11 +400,8 @@ defmodule CodeMySpec.Servers do
     }
   end
 
-  # Priced for the location being offered, not whichever one Hetzner happened
-  # to list first. 17 of the 25 current types are priced per location, with a
-  # spread up to 272% — taking the head quoted Singapore's cpx42 at Falkenstein
-  # rates, understating it by 34%. A wrong price is worse than none: Sam
-  # consents to a figure the invoice will not match and has no reason to check.
+  # Priced for the location being offered: most types are priced per location,
+  # and a wrong price is worse than none (the user consents to it).
   defp hourly_price(%{"prices" => prices}, location) when is_list(prices) do
     prices
     |> Enum.find(&(&1["location"] == location))
@@ -476,8 +419,7 @@ defmodule CodeMySpec.Servers do
 
   defp hourly_price(_type, _location), do: nil
 
-  # Injectable so a criterion about how servers are displayed does not have to
-  # buy a box to say so. The screen itself is always driven for real.
+  # Injectable so a test of how servers are displayed need not buy a box.
   defp reported(scope) do
     case config(:list) do
       nil ->
@@ -492,11 +434,8 @@ defmodule CodeMySpec.Servers do
     end
   end
 
-  # `server_type`, not `size`. `Hetzner.create_in/4` reads `:server_type`, so
-  # passing `:size` silently dropped the size Sam chose, fell back to the ARM
-  # default — available in none of the six datacenters — and, because
-  # `fallback_for/2` only stands down when `:server_type` is present, armed the
-  # cross-architecture retry this function's docs promise never happens.
+  # `server_type`, not `size`: Hetzner's cross-architecture fallback stands
+  # down only when `:server_type` is present, which `provision/2` promises.
   defp create(scope, attrs) do
     case config(:create) do
       nil ->
@@ -517,8 +456,7 @@ defmodule CodeMySpec.Servers do
 
   defp generated_name, do: "server-#{System.unique_integer([:positive])}"
 
-  # One shape whether it came from the provider's JSON or a test's map, so
-  # nothing downstream has to know which.
+  # One shape whether it came from the provider's JSON or a test's map.
   defp normalise(%{"name" => _} = server) do
     %{
       id: server["id"],
@@ -536,8 +474,7 @@ defmodule CodeMySpec.Servers do
   defp normalise(%{"server" => server}), do: normalise(server)
 
   # A linked server the provider no longer reports is kept and marked, never
-  # dropped. Anything still pointed at it is now pointed at nothing, and this
-  # list is the only place that can say so.
+  # dropped: anything still pointed at it is pointed at nothing.
   defp merge_with_linked(scope, reported) do
     linked = Server.linked_environments(scope)
     reported_names = MapSet.new(reported, & &1.name)
@@ -579,13 +516,9 @@ defmodule CodeMySpec.Servers do
   @doc """
   Every `%{project, environment}` of the account pointed at a named server.
 
-  Two ways an environment ends up pointed at a box, and both have to match.
-  `e.server_name` is what a project's own successful run writes back
-  (`record_environment_server/5`) — the truth once setup has actually reached
-  the provider. `e.server_id` is what linking writes immediately
-  (`LinkServer`/`EnvironmentRepository.put`), before any run has happened at
-  all — a linked-but-not-yet-run environment is real and grantable, so it
-  counts too.
+  Matches both ways an environment points at a box: `server_name`, written
+  back by a successful setup run, and `server_id`, written immediately by
+  linking (`EnvironmentRepository.put/3`) before any run.
   """
   @spec environments_on(Ecto.UUID.t(), String.t()) :: [
           %{project: Project.t(), environment: String.t()}

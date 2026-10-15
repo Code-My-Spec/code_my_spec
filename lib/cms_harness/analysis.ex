@@ -2,41 +2,31 @@ defmodule CmsHarness.Analysis do
   @moduledoc """
   Run one analyzer against the working copy and say what it printed.
 
-  This is the half of analysis that cannot live on the server: it needs the
-  bytes on this disk and a toolchain to run against them. The other half —
-  turning tool output into `Problem` rows, deciding whether they block, and
-  recording that a run happened — is database work and stays there.
-
-  So nothing here knows what a Problem is. It runs `mix`, reads the JSON the
-  tool wrote, and hands back the diagnostics unchanged. The server converts
-  them with the same `ProblemConverter` it has always used, which is what keeps
-  a harness-run analyzer and a server-run analyzer producing identical rows.
-
-  The executors themselves are `CodeMySpec.Compile`, `CodeMySpec.Tests` and
-  `CodeMySpec.BddSpecs.Spex` — the harness and the server compile the same
-  `lib/code_my_spec` modules, so there is nothing to keep in sync — plus
-  `StaticAnalysis.CredoRun`, which is the shell-out half of the server's Credo
-  analyzer.
+  The half of analysis that needs this disk and a toolchain. Nothing here
+  knows what a Problem is: it runs the tool and hands back raw diagnostics; the
+  server converts them (`ProblemConverter`). The executors are the shared
+  `CodeMySpec.Compile`, `CodeMySpec.Tests`, `CodeMySpec.BddSpecs.Spex`,
+  `StaticAnalysis.CredoRun` and `StaticAnalysis.SobelowRun`.
 
   ## The wire shape
 
-  `run/3` answers `{:ok, result}` where result is the map the server's
+  `run/4` answers `{:ok, result}` where result is the map the server's
   `Analysis.Runners.from_raw/2` reads:
 
       %{
-        "source" => "compiler" | "credo" | "exunit" | "spex",
+        "source" => "compiler" | "credo" | "exunit" | "spex" | "sobelow",
         "exit_status" => integer() | nil,
-        "diagnostics" => [map()],       # raw, source-specific
-        "output" => String.t() | nil,   # raw stdout, all four sources
-        "stats" => map() | nil,         # exunit only
-        "partition" => String.t()       # exunit and spex: which database answered
+        "diagnostics" => [map()],          # raw, source-specific
+        "output" => String.t() | nil,      # raw stdout
+        "diagnostics_available" => bool,   # compiler only
+        "execution_status" => String.t(),  # exunit only
+        "stats" => map() | nil,            # exunit only
+        "partition" => String.t()          # exunit and spex: which database answered
       }
 
-  and `{:error, reason}` when the tool did not run. Those two are kept apart on
-  purpose and all the way down: an analyzer that failed to start prints no
-  diagnostics, and an analyzer that ran clean prints no diagnostics, and the
-  entire point of this project is that those must not arrive at the server as
-  the same answer.
+  and `{:error, reason}` when the tool did not run. The two are never merged:
+  "failed to start" and "ran clean" both print no diagnostics, and must not
+  reach the server as the same answer.
   """
 
   require Logger
@@ -63,10 +53,8 @@ defmodule CmsHarness.Analysis do
 
   `args` are the analyzer's own arguments — empty for the stop hook's
   whole-project sweep, paths for a targeted run. `run_id` is the server's
-  ledger row for this execution when the caller has one (every real dispatch
-  does — `AnalysisServer.run_with_slot/3` gets it off the queued `entry`);
-  optional so direct/manual calls (and the existing test suite) still work
-  without inventing one.
+  ledger row for this execution; every real dispatch has one, direct calls
+  may omit it.
   """
   @spec run(map(), String.t(), [String.t()], integer() | nil) ::
           {:ok, map()} | {:error, String.t()}
@@ -89,16 +77,9 @@ defmodule CmsHarness.Analysis do
   end
 
   @doc """
-  Run, and if `mix` refused because `deps/` is behind `mix.lock`, fetch once and
-  run again (fc08e5e2).
-
-  A promote that moves the lock leaves every other checkout unable to run any
-  analyzer until somebody fetches — and the refusal surfaced as a credo "not
-  JSON" parse error and a compiler problem, two gates lost to it in one day.
-  The harness already owns these runs, so it fetches: once, under a lock per
-  checkout (two slots can hit it at once), then the run again. A fetch that
-  fails is reported as that, plainly, rather than as whatever the analyzer made
-  of `mix`'s refusal.
+  Run, and if `mix` refused because `deps/` is behind `mix.lock`, fetch once
+  (under a per-checkout lock) and run again. A failed fetch is reported as
+  that, not as whatever the analyzer made of mix's refusal.
 
   `run` and `fetch` are arguments so the decision is testable without `mix`.
   """
@@ -137,15 +118,13 @@ defmodule CmsHarness.Analysis do
   @doc """
   Run a mix command in `env`'s checkout the way an analyzer run is: if mix
   refused because `deps/` is behind `mix.lock`, fetch once and run it again.
-  For the promotion gate's test-database reset, which a candidate moving the
-  lock wedged (2026-10-12).
+  For the promotion gate's test-database reset.
   """
   @spec heal(Environment.t(), (-> term())) :: term()
   def heal(env, run), do: heal_stale_deps(run, fn -> deps_get(env) end)
 
-  # The checkout's own `deps/`, which every analyzer and the agent share. MIX_ENV
-  # set rather than inherited: the harness runs as `harness`, an env a project's
-  # config need not define, and `deps.get` fetches for every env regardless.
+  # The checkout's own `deps/`. MIX_ENV set: the harness runs as `harness`,
+  # which a project's config need not define.
   defp deps_get(env) do
     serialize_deps_get(env.cwd, fn ->
       case Environments.cmd(env, "mix", ["deps.get"],
@@ -159,9 +138,8 @@ defmodule CmsHarness.Analysis do
   end
 
   @doc "Run `fun` holding the checkout's `deps.get` lock, so concurrent runs fetch one at a time."
-  # A `:global` lock id is `{ResourceId, RequesterId}`; a bare three-tuple
-  # raises `function_clause` in `:global.set_lock`, which killed every analyzer
-  # the first time a tree's deps went stale (fc08e5e2's regression).
+  # A `:global` lock id must be `{ResourceId, RequesterId}`; anything else
+  # raises `function_clause`.
   @spec serialize_deps_get(String.t(), (-> result)) :: result when result: term()
   def serialize_deps_get(cwd, fun),
     do: :global.trans({{__MODULE__, :deps_get, cwd}, self()}, fun)
@@ -204,19 +182,8 @@ defmodule CmsHarness.Analysis do
   @doc """
   What a finished run found, for the line that says it finished.
 
-  The line used to end at the duration, and the `\#{inspect(args)}` before it
-  reads as a result when it is not — `exunit [] in <root> took 418381ms` says
-  the run took no arguments and nothing whatever about what it found. A run
-  that found twelve failures and a run that found none logged identically.
-
-  That is not a cosmetic gap. Tracing a refused promotion on 2026-09-13 I read
-  eight of these as "clean", concluded two checkouts were green, and spent four
-  hours on the wrong theory while one of them carried a regression of mine.
-  `harness.log` is the first place anybody looks and it was the one place that
-  could not answer (`9afcbbdf`).
-
-  Every source's result carries `"diagnostics"` and `"exit_status"`, so there is
-  nothing to compute — only to say.
+  Finding count and exit status, so `harness.log` says what a run found and
+  not just how long it took.
   """
   @spec describe_outcome({:ok, map()} | {:error, term()}) :: String.t()
   def describe_outcome({:ok, %{"diagnostics" => diagnostics} = result})
@@ -224,34 +191,16 @@ defmodule CmsHarness.Analysis do
     "#{length(diagnostics)} finding(s), exit #{Map.get(result, "exit_status", "?")}"
   end
 
-  # A source that reported no diagnostics key at all. Said plainly rather than
-  # rendered as zero: "nothing found" and "nothing reported" are the distinction
-  # `execution_status` exists for, and flattening them here would undo it.
+  # No diagnostics key: "nothing reported" is not "nothing found".
   def describe_outcome({:ok, _result}), do: "no diagnostics reported"
 
   def describe_outcome({:error, reason}) do
     "failed: " <> (reason |> to_string() |> String.slice(0, 160))
   end
 
-  # Which database the suite answered about, carried with the answer.
-  #
-  # A working copy has three test databases and a run uses exactly one, and
-  # nothing said which. Measured twice: 479 spex failures naming a column the
-  # tree had, against a partition five days behind the base (`d86b09cd`); and a
-  # criterion passing in isolation while failing every sweep, because
-  # `working_copies_device_id_fkey` was `CASCADE` on one database and `RESTRICT`
-  # on the other. Both read as broken code and neither was. The second cost
-  # three promotion refusals before anyone thought to ask which database had
-  # answered (`9d4ae2de`).
-  #
-  # Only the two sources that open a connection. The compiler and credo read
-  # files, so naming a partition on their findings would be a true fact about an
-  # irrelevant thing — and a reader who takes it as relevant is worse off than
-  # one who was told nothing.
-  #
-  # Safe to resolve here: every `execute/3` clause has already called
-  # `extra_env/2` for this same environment by the time a result exists, so a
-  # copy whose partition cannot be resolved has raised long before this runs.
+  # Which test database answered, on the two sources that open one: a partition
+  # with a drifted schema otherwise reads as broken code.
+  # See knowledge/harness, "Analysis".
   defp stamp_partition({:ok, result}, env, source) when source in ~w(exunit spex) do
     case List.keyfind(AnalyzerEnv.extra_env(env, source), "MIX_TEST_PARTITION", 0) do
       {_key, partition} -> {:ok, Map.put(result, "partition", partition)}
@@ -272,21 +221,13 @@ defmodule CmsHarness.Analysis do
     {:ok,
      %{
        "source" => "compiler",
-       # Derived from the diagnostics themselves, exactly as credo and
-       # sobelow are below (71d0d979): `mix compile --return-errors` exits 0
-       # on a genuine warning or boundary violation -- that is the flag's
-       # whole purpose, keeping diagnostics flowing to the JSONL file rather
-       # than aborting -- so the shell's own code can never tell "clean" from
-       # "found something" for this tool. `max/2` only ever raises a false 0;
-       # a real crash's own exit code survives.
+       # Derived from the diagnostics: `--return-errors` exits 0 on findings.
        "exit_status" => compiler_exit_status(result),
        "diagnostics" => Enum.map(result.data.compiler_results, &stringify/1),
-       # Whether anything was recording. `mix compile --return-errors` exits 0
-       # even on a compile error, so the exit status cannot tell the server
-       # "clean" from "nobody looked" — only this can.
+       # Whether anything was recording: tells "clean" from "nobody looked".
        "diagnostics_available" => Map.get(result.data, :diagnostics_available, true),
-       # What the compiler actually printed, not a count reformatted from
-       # `diagnostics`. See .code_my_spec/rules/analysis_output_fidelity.md.
+       # What the compiler printed. See
+       # .code_my_spec/rules/analysis_output_fidelity.md.
        "output" => result.output
      }}
   rescue
@@ -301,13 +242,10 @@ defmodule CmsHarness.Analysis do
         {:ok,
          %{
            "source" => "credo",
-           # Credo's own exit code is not carried: the server derives one from
-           # the issue count exactly as `Runners.run/4` does locally, so the
-           # two paths record the same number.
+           # From the issue count, as `Runners.run/4` derives it locally.
            "exit_status" => if(issues == [], do: 0, else: 1),
            "diagnostics" => issues,
-           # What credo actually printed (JSON, per CredoRun's fixed output
-           # flags) — not a count, not a line reformatted from `issues`. See
+           # What credo printed (JSON). See
            # .code_my_spec/rules/analysis_output_fidelity.md.
            "output" => output
          }}
@@ -322,22 +260,7 @@ defmodule CmsHarness.Analysis do
   defp execute("exunit", env, args) do
     extra_env = AnalyzerEnv.extra_env(env, "exunit")
 
-    # No pre-run truncate. There used to be one here, clearing rows that had
-    # "escaped the ExUnit sandbox" — and the escape it cleaned up does not
-    # exist. Its own detector only spoke when it removed something, ran from
-    # 2026-08-10, and stayed silent until the day it started truncating the
-    # wrong database. Both analyzer partitions are empty after real runs.
-    #
-    # What it did instead: `MIX_ENV` was scrubbed out of its child environment,
-    # so `mix` defaulted to dev and it truncated `code_my_spec_dev` — the
-    # database every agent shares — reporting the row count as escaped test
-    # rows. It emptied it three times on 2026-08-13.
-    #
-    # Removed rather than guarded. A routine that truncates every table in
-    # whichever database it happens to reach is worth having only against a
-    # defect that is actually occurring, and this one was inventing its own
-    # evidence. If residue returns it announces itself as phantom exunit
-    # failures, which is a diagnosable symptom; a silent sweeper is not.
+    # No pre-run truncate, deliberately. See knowledge/harness, "Analysis".
 
     case CodeMySpec.Tests.execute(args, environment: env, extra_env: extra_env) do
       {:ok, test_run} ->
@@ -345,12 +268,8 @@ defmodule CmsHarness.Analysis do
          %{
            "source" => "exunit",
            "exit_status" => test_run.exit_code,
-           # The server needs this to tell "the suite ran and failed" from
-           # "the suite never started". It refuses to reconcile the second,
-           # because an empty failure list from a `mix test` that never ran
-           # would clear every real exunit Problem and then report the suite
-           # fresh and passing. That defect is on record; this field is what
-           # stops it happening over a wire as well.
+           # Tells "ran and failed" from "never started"; the server refuses
+           # to reconcile the second, which would clear every exunit Problem.
            "execution_status" => to_string(test_run.execution_status),
            "output" => cap(test_run.raw_output || ""),
            "stats" => stats_map(test_run.stats),
@@ -365,13 +284,8 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("spex", env, args) do
-    # Stand down while a recording session owns this working copy. `5a1f6b9c`:
-    # a replay landing on a cassette mid-rewrite fails on a half-written file
-    # and reports failures that describe nothing about the code, and a second
-    # suite saturating the machine times out the recorder's real DNS waits.
-    #
-    # Before the run rather than inside it, because by the time `mix spex` has
-    # started, the damage this avoids has already been done.
+    # Stand down, before starting, while a recording session owns this copy:
+    # a replay mid-rewrite reads half-written cassettes.
     case CodeMySpec.RecordingLock.skip_reason(env.cwd) do
       nil -> run_spex(env, args)
       reason -> {:error, reason}
@@ -386,9 +300,7 @@ defmodule CmsHarness.Analysis do
         {:ok,
          %{
            "source" => "sobelow",
-           # Sobelow's own exit code is not carried: the server derives one
-           # from the finding count exactly as `Runners.run/4` does locally,
-           # matching credo's shape above.
+           # From the finding count, as for credo.
            "exit_status" => if(findings == [], do: 0, else: 1),
            "diagnostics" => findings,
            "output" => output
@@ -406,9 +318,8 @@ defmodule CmsHarness.Analysis do
   @doc """
   The compiler source's exit_status, derived from its diagnostics rather than
   `mix compile --return-errors`'s own exit code — which stays 0 even on a
-  genuine warning or error, since returning diagnostics instead of raising is
-  the whole point of that flag (71d0d979). Non-zero whenever any diagnostic
-  was found; a genuinely non-zero exit (a real crash) is never lowered.
+  genuine warning or error. Non-zero whenever any diagnostic was found; a
+  genuinely non-zero exit (a real crash) is never lowered.
 
   Public so the convention can be asserted without shelling out to `mix` —
   the same reason `CodeMySpec.Compile.relativize_diagnostics/2` is.
@@ -426,9 +337,8 @@ defmodule CmsHarness.Analysis do
          %{
            "source" => "spex",
            "exit_status" => exit_code,
-           # Carried for the same reason exunit carries it: no failures plus a
-           # nonzero exit means the suite did not run, and the server's refusal
-           # is the only place that reason can still be read.
+           # No failures plus a nonzero exit means the suite did not run; the
+           # output is where the reason can be read.
            "output" => cap(output || ""),
            "diagnostics" => Enum.map(failures, &spex_failure/1)
          }}
@@ -443,10 +353,7 @@ defmodule CmsHarness.Analysis do
     {:error, "#{source} crashed: #{Exception.message(exception)}"}
   end
 
-  # `%TestResult{error: %TestError{}}` reduced to the three fields the server's
-  # converter reads. It rebuilds the struct on the far side so a failure
-  # reported by a harness and one reported locally produce the same Problem,
-  # metadata included.
+  # Reduced to the three fields the server's converter reads.
   defp test_failure(%{error: nil} = failure) do
     %{"file" => nil, "line" => nil, "message" => failure.full_title || failure.title}
   end
@@ -455,20 +362,8 @@ defmodule CmsHarness.Analysis do
     %{"file" => error.file, "line" => error.line, "message" => error.message}
   end
 
-  # Through the shared rule rather than a second copy of it.
-  #
-  # There were two: this one, and `CodeMySpec.Analysis.Runners.run/4` for a
-  # server that has the disk itself. Fixing the location bug in that one changed
-  # nothing here, because a light harness never executes it — the same finding
-  # came back filed against `lib/req_cassette/plug.ex` on the next run, from a
-  # harness that had been restarted specifically to pick the fix up.
-  #
-  # `Runners.spex_location/1` is the one place that decides it now. CmsHarness
-  # may depend on CodeMySpec, so this needs no third home.
+  # Location via the shared `Runners.spex_location/2`, never a second copy.
   @doc "One spex failure as the problem map the server receives, located at its spec file and line."
-  # Public so the harness's own diagnostic can be asserted without a live
-  # `mix spex`. Its absence is why a location fix shipped against the server's
-  # copy and changed nothing here.
   def spex_failure(failure) do
     {file, line} = Runners.spex_location(failure.error, failure.spec_file)
 
@@ -481,10 +376,7 @@ defmodule CmsHarness.Analysis do
     }
   end
 
-  # Compiler diagnostics come off the JSONL with string keys already; the
-  # recovered-from-stdout fallback builds them the same way. This only guards
-  # against an atom-keyed map reaching JSON encoding as something the server
-  # then reads with the wrong key.
+  # Guards against an atom-keyed diagnostic reaching the wire.
   defp stringify(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {to_string(k), v} end)
   end
@@ -501,10 +393,10 @@ defmodule CmsHarness.Analysis do
   defp serialize(value), do: value
 
   @doc """
-  Analyzer output made safe for the channel: invalid UTF-8 scrubbed, then
-  the beginning and end retained within #{@output_cap} bytes, including markers.
-  Both cuts respect character boundaries. The shared server cap is idempotent,
-  so receiving this payload cannot discard its failure tail.
+  Analyzer output made safe for the channel: invalid UTF-8 scrubbed, then the
+  start and end kept within #{@output_cap} bytes (markers included), both cuts
+  on character boundaries. The server's cap is idempotent, so receiving this
+  payload cannot discard its failure tail.
   """
   @spec cap(binary()) :: String.t()
   defdelegate cap(output), to: Runners

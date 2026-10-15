@@ -94,7 +94,6 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
 
   defp tasks_of(owner), do: owner.tasks |> List.wrap() |> Enum.map(&Map.from_struct/1)
 
-
   defp status(%Story{promoted_version: nil}, _tasks), do: :in_flight
   defp status(%Story{}, _tasks), do: :finished
 

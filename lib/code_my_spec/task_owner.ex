@@ -15,38 +15,22 @@ defmodule CodeMySpec.TaskOwner do
   @moduledoc """
   The two things that can hold a task, behind one set of calls.
 
-  A task used to be `embeds_many` on `Session` and nothing else, so it could not
-  exist without one — and an agent we run has no session and no way to get one.
-  It fires no hooks, so nothing injects a `session_id`; `register_session` is
-  not a tool it carries; and its own id was not in its prompt. So it could take
-  turns, call tools, and never claim a piece of work. It said so itself: *"this
-  session must be registered before a task can start, but `register_session` is
-  not available in the provided tools."*
-
-  John: *"we shouldn't need a session to create tasks, dude. You should be
-  keying the tasks to the agent."*
-
-  So an `Agent` holds its own, and this is the seam that keeps that from
-  becoming two of everything. `Hooks.Stop` serves external agents and passes a
-  `Session`; `Agents.StopDecision` serves the ones we run and passes an `Agent`;
-  neither knows about the other's storage.
+  A `Session` (a Claude Code conversation) and an `Agent` (one we run, which
+  has no session) each embed their own tasks. `Hooks.Stop` passes a `Session`;
+  `Agents.StopDecision` passes an `Agent`; neither knows the other's storage.
 
   ## Ownership is the list, not a field
 
-  A task is in exactly one of them because it is stored in one row, so nothing
-  needs a constraint to say who owns it, and `Task.agent_id` stays what it
-  always was — the Claude Code sub-agent a *session's* task was assigned to,
-  a question that does not arise for an agent we run because we do not spawn
-  sub-agents.
+  A task is in exactly one owner's list. `Task.agent_id` means the Claude Code
+  sub-agent a session's task was assigned to; it is unused on an agent's task.
 
   ## Why not a table yet
 
-  Because nothing yet asks a question that names no owner. "What is every agent
-  doing" names them — ten agents, ten short lists. What the embedded form cannot
-  do is *cross-owner* work: every active task on a requirement, or what
-  completed this week, both of which mean scanning jsonb across every row. That
-  is the trigger to promote it, and when it comes this module is where the
-  change lands rather than in fifteen call sites.
+  Nothing yet asks a question that names no owner. Cross-owner queries (every
+  active task on a requirement) would mean scanning jsonb across rows; that is
+  the trigger to promote tasks to a table, and the change lands here.
+
+  See knowledge/agents/coordination, "Task ownership".
   """
 
   alias CodeMySpec.Agents.Agent
@@ -85,14 +69,11 @@ defmodule CodeMySpec.TaskOwner do
   @doc """
   Record that the owner's open promotion task waits on the queue.
 
-  Called by the MCP `promote` tool *after* `PromotionQueue` answers `:queued`,
-  naming the subject the candidate was queued for. This is the push half of
-  issue e515bff3 (story 1091): the wait is written onto the task's own row here,
-  so `allow_activation/2` can read it without asking the queue anything.
-
-  It has to be called from above both boundaries — the MCP layer depends on
-  `Agents` and on `PromotionQueue`, where every enqueuer sits below `Agents` and
-  could only close a cycle (see issue e23a5547 for the four dep lists).
+  Called by the MCP `promote` tool after `PromotionQueue` answers `:queued`,
+  naming the subject the candidate was queued for. The wait is written onto the
+  task's own row, so `allow_activation/2` reads it without asking the queue.
+  Called from the MCP layer because it sits above both `Agents` and
+  `PromotionQueue`.
 
   A no-op when the owner holds no open promotion task: an operator promoting
   from a script has no task to mark, and the queue messages nobody.
@@ -116,7 +97,7 @@ defmodule CodeMySpec.TaskOwner do
     end
   end
 
-  # The tasks whose open state is the queue's, not the agent's (criterion 2021).
+  # The tasks whose open state is the queue's, not the agent's.
   # Kept here rather than read from `Agents.Work`, which holds the same list:
   # `TaskOwner` sits below `Agents`, so the read would close the cycle.
   @promotion_tasks ~w(promote_issue story_promoted)
@@ -131,7 +112,7 @@ defmodule CodeMySpec.TaskOwner do
   def blocked_tasks(owner), do: Enum.filter(tasks(owner), &(&1.status == :blocked))
 
   # Consecutive *identical* feedback is what the count means — a different
-  # message is a different failure and starts over. See criterion 1502.
+  # message is a different failure and starts over.
   defp feedback_count(%Task{evaluation_feedback: same} = task, same),
     do: task.evaluation_feedback_count + 1
 
@@ -196,23 +177,10 @@ defmodule CodeMySpec.TaskOwner do
   An `:active` task is the ordinary case: it becomes `:blocked` on the new
   blocker.
 
-  A task that is already `:blocked` is accepted too, and this is the whole of
-  ce070442. It used to fall through to `{:error, :task_not_active}`, which left
-  a blocked task unreachable by `tap_out` — and `tap_out` is what the loop's own
-  refusal text tells an agent to reach for ("block it with `ask_user_question`
-  or `tap_out`, or `cancel_task`"). The reported sequence is exactly that: a
-  `qa_complete` task blocked on a question, the question answered, `start_task`
-  refusing to resume it (`:requirement_not_eligible` on the entity_id bug
-  ab111a52), `tap_out` refusing it as inactive, and nothing left but
-  `cancel_task` — which discards the attempt instead of asking a person, the
-  opposite of what the agent wanted.
-
-  Re-blocking is not a contradiction. The agent is saying "a person should
-  decide this", and the task is demonstrably not active *because* nobody has
-  decided the old blocker yet. What changes is which blocker it waits on: the
-  new one, so approving it frees exactly this task. `blocker_resolved_at` is
-  cleared for the same reason `block_tap_out_task/5` relies on — a task waiting
-  again is not a task whose blocker is answered.
+  A task that is already `:blocked` is accepted too: it now waits on the new
+  blocker, so deciding that one frees exactly this task (otherwise only
+  `cancel_task` could reach it). `blocker_resolved_at` is cleared — a task
+  waiting again is not one whose blocker is answered.
   """
   @spec block_task(Scope.t(), t(), String.t(), atom(), String.t(), keyword()) ::
           {:ok, t()} | {:error, term()}
@@ -247,12 +215,9 @@ defmodule CodeMySpec.TaskOwner do
   each agent holding one to resume it.
 
   The one path for every blocker a person or another role clears: an issue
-  resolved or dismissed, a question answered, a tap-out denied, dismissed or
-  approved. It was issues only (545653ad). An answered question or a denied
-  tap-out released one task on the asking agent and woke it with the generic
-  work prompt, which named nothing to resume — metric_flow's coder 965c52a9
-  answered "Same nudge, no new information" and went idle holding eight
-  resolved blocks (2200f9e4).
+  resolved or dismissed, a question answered or withdrawn, a tap-out denied,
+  dismissed or approved. The wake names the released task; a generic work
+  prompt names nothing to resume.
 
   Released means `blocker_resolved_at` is set. The task stays `:blocked` until
   its holder resumes it with `start_task`, so nothing is reactivated or
@@ -283,7 +248,7 @@ defmodule CodeMySpec.TaskOwner do
 
   Every door that closes an issue calls this — the tools, the issue page and
   the REST API — so a block clears however its issue was closed. It is how QA
-  waits on the bug it filed instead of tapping out to a person (story 1053).
+  waits on the bug it filed instead of tapping out to a person.
   """
   @spec issue_closed(Scope.t(), %{id: String.t(), status: atom()}) :: {:ok, non_neg_integer()}
   def issue_closed(%Scope{}, %{id: id, status: status})
@@ -309,9 +274,8 @@ defmodule CodeMySpec.TaskOwner do
   Update the project's configuration, freeing what waited on an issue the new
   fix threshold leaves below it.
 
-  Here rather than in `Configurations.update/2`: Configurations is a leaf that
-  `Agents` reaches through `Requirements` and `MainAgent`, so it cannot call
-  back into this module without a cycle. Any write that can change
+  Here rather than in `Configurations.update/2`: Configurations is a leaf below
+  this module and cannot call back into it. Any write that can change
   `fix_issues_min_severity` goes through this.
   """
   @spec update_configuration(Scope.t(), map()) :: {:ok, struct()} | {:error, Ecto.Changeset.t()}
@@ -435,9 +399,8 @@ defmodule CodeMySpec.TaskOwner do
        ),
        do: :ok
 
-  # Busy on another task: resuming now would make it a second active one
-  # (story 1080). Told, not offered; `Work` offers it back once that task is
-  # done.
+  # Busy on another task: resuming now would make it a second active one.
+  # Told, not offered; `Work` offers it back once that task is done.
   defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
     detail = Keyword.get(opts, :detail)
 
@@ -463,7 +426,7 @@ defmodule CodeMySpec.TaskOwner do
 
   defp wake_holder(_scope, %Session{}, _released, _blocker, _opts), do: :ok
 
-  # A denied tap-out is its own kind of offer (criterion 1672); anything else
+  # A denied tap-out is its own kind of offer; anything else
   # releasing a task is an unblocked offer on the task.
   defp offer_subject({:tap_out, id, _outcome}), do: {"tap_out", id}
   defp offer_subject(_blocker), do: nil
@@ -598,9 +561,7 @@ defmodule CodeMySpec.TaskOwner do
   @doc """
   Add a task and return the owner with it.
 
-  `agent_id` is not set for an agent owner and that is deliberate: the list says
-  whose it is, and a field repeating that is one more thing that can disagree
-  with the row holding it.
+  `agent_id` is not set for an agent owner: the list says whose it is.
   """
   @spec add_task(Scope.t(), t(), map()) :: {:ok, t()} | {:error, term()}
   def add_task(%Scope{} = scope, owner, attrs) do
@@ -642,20 +603,8 @@ defmodule CodeMySpec.TaskOwner do
     if claimed?, do: {:error, :task_owned_by_another_agent}, else: :ok
   end
 
-  # An agent with no working copy is not on every checkout — it is on none.
-  #
-  # `agent.working_copy_id == ^nil` is not a comparison Ecto will build: it
-  # raises `ArgumentError` ("comparing with nil is forbidden, use is_nil/1"),
-  # which escaped `start_task` as `Tool execution crashed` rather than as an
-  # ordinary refusal. Every product-role agent on the QA fixture project has a
-  # null copy, so claiming the one requirement actionable there crashed all of
-  # them, and story 896's whole task-claim family was unreachable behind it.
-  # Found live by QA on 2026-09-20.
-  #
-  # Nil matches nil, which is the right scoping rather than a way round the
-  # error: the claim check asks who else could be working the same tree, and
-  # two agents that name no tree are as much each other's neighbours as two
-  # that name the same one.
+  # Nil matches nil (Ecto refuses `== ^nil`): two agents that name no tree are
+  # each other's neighbours, as two that name the same one are.
   defp agents_sharing_this_copy(%{working_copy_id: nil} = owner) do
     from(agent in Agent,
       where:
@@ -690,12 +639,8 @@ defmodule CodeMySpec.TaskOwner do
   defp allow_activation(%Session{}, _task_id), do: :ok
 
   # A promotion task that waits on the queue does not hold the one-task slot:
-  # `promote` only enqueues, and the task stays open until its batch lands.
-  #
-  # Criterion 2017 keeps it open until the landing or the ejection, so the fix is
-  # not to close it early — it keeps its place in the list and stops parking the
-  # agent. The signal is the task's own row, written by `await_promotion/3`; see
-  # `Task.awaiting_subject_id` for why it is not a read of the queue.
+  # it stays open until its batch lands or is ejected, without parking the
+  # agent. The signal is the task's own row, written by `await_promotion/3`.
   defp awaiting_landing?(%Task{awaiting_subject_id: id}) when is_binary(id), do: true
   defp awaiting_landing?(_task), do: false
 

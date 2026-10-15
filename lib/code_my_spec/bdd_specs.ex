@@ -55,9 +55,7 @@ defmodule CodeMySpec.BddSpecs do
   Returns specs linked to a story, by its durable number.
 
   The **number**, not the primary key: a spec's story comes from its
-  directory name, and directories are `<number>_<slug>`. This took an
-  id until the two diverged, at which point it matched nothing and
-  every story read as having no specs.
+  directory name, and directories are `<number>_<slug>`.
 
   ## Examples
 
@@ -204,21 +202,12 @@ defmodule CodeMySpec.BddSpecs do
           Story.t() | %{id: term(), number: integer(), title: String.t()},
           Criterion.t() | %{id: term(), description: String.t()}
         ) :: String.t()
-  # A recorded path wins. Deriving one pins a file on disk to the criterion's id
-  # and a slug of its description, and both move: the id on migration, which
-  # renumbers every story, and the slug the moment somebody edits the words. The
-  # file stayed where it was and the derived path stopped naming it.
-  #
-  # Deriving remains the fallback for criteria authored before the path was
-  # recorded, which is where a file's name still comes from when it is created.
+  # A recorded path wins: a derived path moves when the criterion's id or
+  # wording does, while the file stays put. Deriving is the fallback, and names
+  # a file when it is created.
   def spec_file_path(_story, %{spec_path: path}) when is_binary(path) and path != "", do: path
 
-  # The story's durable number, not its primary key. `id` is a per-deployment
-  # sequence that renumbers on migration — this comment's own warning above —
-  # and the directories named from it stopped pointing at the stories they were
-  # written for. Drift measured here was a uniform 51:
-  # `test/spex/811_user_sees_the_agents_task_queue…` named a real but unrelated
-  # story 811 while the story owning those spex was 862.
+  # The story's durable number, never its per-deployment `id`.
   def spec_file_path(%{number: number, title: title}, %{id: _, description: _} = criterion)
       when is_integer(number) do
     story_dir = "#{number}_#{slugify(title)}"
@@ -228,16 +217,9 @@ defmodule CodeMySpec.BddSpecs do
     Path.join(["test/spex", story_dir, filename])
   end
 
-  # No number, so no path. Falling back to `id` here is what this function used
-  # to do, and it is the failure the number exists to end: `id` and `number`
-  # differ by 51 on this project, so the derived path named a real but unrelated
-  # story's directory, the file was written there, and the evaluator looked
-  # where the number said and reported it missing. Nothing errored — that is the
-  # whole problem, and it cost seven spex before anyone noticed.
-  #
-  # Reached by callers holding a projection of a story rather than a story:
-  # `StoryHelpers.fetch/2` parses `GetStory`'s text, which carries the id and
-  # not the number. They should resolve the row.
+  # No number, so no path: falling back to `id` silently names another story's
+  # directory. Reached by callers holding a parsed projection of a story; they
+  # should resolve the row.
   def spec_file_path(%{id: id, title: title}, %{id: _, description: _}) do
     raise ArgumentError, """
     cannot derive a spex path for story #{inspect(id)} (#{inspect(title)}): it carries no durable :number.

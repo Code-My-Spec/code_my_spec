@@ -1,35 +1,23 @@
 defmodule CodeMySpec.Requirements.BddRulesChecker do
   @moduledoc """
-  Delegate checker for the `three_amigos_complete` requirement on
-  `story_graph`.
-
-  Validates the Three Amigos readiness gate against the active story:
+  Delegate checkers for the story graph's Three Amigos requirements:
+  `three_amigos_complete` reads `sealed?/3`, `questions_answered` reads
+  `questions_answered?/3`, and `complete?/2,3` is the readiness bar
+  `ThreeAmigos.evaluate/2` seals on:
 
     * ≥1 persona linked via `persona_stories`
     * ≥1 Rule (blue card) on the story
-    * `rules < 15` — Example Mapping hard ceiling: too many rules means
-      the story is too big to spec coherently in one session. Raised
-      from 10 once real infrastructure stories (e.g. requirement-graph
-      semantics) showed legitimate complexity past 10 that doesn't
-      split coherently. Past 10 rules emits a non-blocking advisory
-      ("consider whether this story should be split") so the heuristic
-      still nudges without trapping legitimately big stories.
+    * `rules < 15` — the Example Mapping ceiling; from 10 rules on, a
+      non-blocking advisory suggests splitting the story
     * Every Rule has at least one scenario of any kind — agents must not
       fabricate failure-path examples to satisfy a coverage gate when
       the failure surface lives at a different layer
+    * No question (red card) left `:open`
 
   Returns `{boolean(), map()}` per the checker contract (see
-  `IssuesChecker`, `PersonasChecker`). Failure reasons are formatted as
-  a markdown detail string so the stop-hook feedback (or
-  `evaluate_task` response) can direct the next turn surgically.
-
-  Two clauses from the design's full readiness gate are not yet enforced
-  here:
-
-    * `scenarios > questions` — pending the `Questions` context
-    * Domain-language scenarios — explicitly punted to a future review
-      agent (per `rules.md` session note: "Scenario quality is not
-      enforced in real-time")
+  `IssuesChecker`, `PersonasChecker`). Failure reasons are a markdown
+  detail string so stop-hook feedback can direct the next turn.
+  Scenario quality is not checked.
   """
 
   alias CodeMySpec.BddRules
@@ -44,15 +32,9 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   @rule_advisory_threshold 10
 
   @doc """
-  The same verdict, from a preloaded graph context instead of four queries.
-
-  `RequirementGraph` computes every story in one pass, so the four-query form
-  below runs once per story — 304 queries on a 76-story project, inside a graph
-  that is recomputed on every stop hook. The context carries all four
-  collections grouped by story id, so this reads them instead.
-
-  The gaps are computed by the same functions either way. What is preloaded is
-  the input, not the answer.
+  The same verdict, from a preloaded context (the four collections grouped by
+  story id) instead of four queries per story. The gaps are computed by the
+  same functions either way. A missing collection reads as empty.
   """
   @spec complete?(Scope.t(), term(), map()) :: {boolean(), map()}
   def complete?(%Scope{active_account_id: account_id}, %Story{id: story_id} = story, ctx)
@@ -79,13 +61,9 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
     * `sealed?` is the record. Once set it stays set, and a question raised
       afterwards does not unset it.
 
-  Recomputing `complete?` here is what the requirement used to do, and it meant
-  a red card added to a story that shipped months ago quietly un-shipped it —
-  the requirement went false, the story left the graph, and nothing said why.
-  A seal is a statement about a conversation that happened.
-
-  Takes the same three-argument shape as `complete?/3` so the preloaded and
-  querying paths agree; there is nothing to preload for a field on the story.
+  A seal is a statement about a conversation that happened: recomputing the bar
+  here would let a later red card un-ship a shipped story.
+  See knowledge/requirements_graph/checkers, "Three Amigos".
   """
   @spec sealed?(Scope.t(), term(), map()) :: {boolean(), map()}
   def sealed?(scope, entity, _ctx), do: sealed?(scope, entity)
@@ -95,15 +73,8 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
     do: {true, %{status: "Three Amigos sealed"}}
 
   def sealed?(scope, %Story{} = story) do
-    # Re-read before concluding "not sealed", because the struct in hand may
-    # predate the seal. `ThreeAmigos.evaluate/2` seals mid-request and the
-    # response then re-checks this requirement from a story loaded before it —
-    # which reported "ready to seal but has not been sealed" about a story that
-    # had just been sealed one call earlier.
-    #
-    # Only on the negative path, so a sealed story costs nothing and an unsealed
-    # one costs a single read that decides whether it is really unsealed. The
-    # positive clause above already answered from the struct.
+    # Re-read before concluding "not sealed": `ThreeAmigos.evaluate/2` seals
+    # mid-request and then re-checks from a story loaded before the seal.
     case Stories.get_story(scope, story.id) do
       %Story{three_amigos_sealed: true} ->
         {true, %{status: "Three Amigos sealed"}}
@@ -120,20 +91,9 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   Whether every question raised against this story is answered — none left
   `:open`, resolved or deferred.
 
-  Distinct from `sealed?/2`, on purpose. `sealed?` is the one-way latch on the
-  Three Amigos *conversation*, and correctly ignores a question raised or
-  backfilled afterward — recomputing it would silently un-ship a story that
-  shipped months ago (see the prerequisite comment on `three_amigos_complete`
-  in `RequirementDefinitionData`). This is the other half issue 56cf5697
-  found missing: a sealed story's open questions were nothing's problem,
-  because nothing asked this question at all. `questions_answered?` is what
-  `ResolveQuestions` (`AgentTasks.ResolveQuestions`) reads, gated downstream
-  of the seal so it has nothing to do before sealing's own pre-seal gate
-  (`maybe_add_questions_gap/2` below) has already cleared.
-
-  Takes the same three-argument shape as `sealed?/3` so both delegates agree;
-  there is nothing worth preloading here that a direct query does not already
-  answer as cheaply.
+  Distinct from `sealed?/2`, which ignores questions raised after the seal.
+  This makes those questions somebody's work: `questions_answered` reads it,
+  satisfied by `AgentTasks.ResolveQuestions`, downstream of the seal.
   """
   @spec questions_answered?(Scope.t(), term(), map()) :: {boolean(), map()}
   def questions_answered?(scope, entity, _ctx), do: questions_answered?(scope, entity)
@@ -157,16 +117,11 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
   @doc """
   Why a story that is not sealed is not sealed.
 
-  Public for `Requirements.Handlers`, which settles `three_amigos_complete`
-  across every story from one read and so already knows which stories are
-  unsealed — the question `sealed?/2` answers on its way here. What it does not
-  have is this wording, and a second copy of it in the handler is the copy that
-  drifts from the one an agent has been reading.
+  Public for `Requirements.Handlers`, which knows which stories are unsealed
+  and needs this wording without a second copy of it.
 
-  The context is `complete?/3`'s: a story's personas, rules, criteria and
-  questions, grouped by story id. Required rather than defaulted — `complete?/3`
-  reads an empty context as four empty collections rather than as "ask", so a
-  caller with nothing preloaded wants the querying path, not this one.
+  The context is `complete?/3`'s, and required: an empty context reads as four
+  empty collections, not as "ask".
   """
   @spec unsealed_reason(Scope.t(), Story.t(), map()) :: {false, map()}
   def unsealed_reason(scope, story, ctx) when is_map(ctx),
@@ -293,20 +248,9 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
     rule_gaps ++ gaps
   end
 
-  # Every red card answered, not more green than red.
-  #
-  # It used to pass when `scenarios > open questions` — Wynne's Example Mapping
-  # signal, which is a good read on whether a story is *ready to estimate* and a
-  # bad one for whether the conversation is finished. A story with five
-  # scenarios and three open questions satisfied it, and those three questions
-  # were then never asked again by anything. Measured on this project before
-  # changing it: 50 released stories carried unanswered red cards while
-  # reporting Three Amigos complete.
-  #
-  # A red card is a thing nobody knew the answer to. Building on top of one is
-  # the failure Example Mapping exists to prevent, so the gate asks for what the
-  # practice actually asks for: resolve it, or decide it is out of scope and
-  # close it. `scenarios` is still taken so the count can be reported.
+  # Every red card answered, not "more green than red": that rule passed
+  # stories whose open questions nothing asked again.
+  # See knowledge/requirements_graph/checkers, "Three Amigos".
   defp maybe_add_questions_gap(gaps, scenarios, questions) do
     open = Enum.filter(questions, &(&1.status == :open))
 

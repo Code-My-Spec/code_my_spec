@@ -1,13 +1,13 @@
 defmodule CodeMySpec.ContentPublishing do
   @moduledoc """
-  Local-first content publishing (story 712).
+  Local-first content publishing.
 
   Parses markdown the user points at on disk — any directory, no git — into a
   per-project snapshot, rewrites image refs to the project's CDN host, and
   (on publish) uploads images + a content blob + manifest to the user's own S3
   buckets before triggering the deployed client to pull.
 
-  The snapshot is staged in the `content_admin` table, scoped by
+  The snapshot is staged in `content_snapshots`, scoped by
   `scope.active_project_id` (the local scope from `LocalScope.for_local_project/1`
   carries only `active_account_id`/`active_project_id`, not loaded structs —
   so we query by id, never `scope.active_account.id`).
@@ -80,13 +80,13 @@ defmodule CodeMySpec.ContentPublishing do
   end
 
   @doc """
-  Build and ship the published content from the current snapshot (story 712,
-  criteria 6274-6276).
+  Build and ship the published content from the current snapshot.
 
   Refuses if any snapshot row has `parse_status: :error` — naming the offending
   file — writing nothing to S3 and triggering no client. Otherwise writes a
   content blob + integrity manifest to the project's content bucket and POSTs
-  a pull trigger to the deployed client.
+  a pull trigger to the deployed client. A trigger failure still returns the
+  `objects` written, so it reads as "re-trigger", not "re-upload".
   """
   @spec publish(Scope.t()) :: {:ok, map()} | {:error, map()}
   def publish(%Scope{} = scope) do
@@ -108,15 +108,9 @@ defmodule CodeMySpec.ContentPublishing do
     end
   end
 
-  # `do_publish/2` goes straight to `S3Client.put_object/4` with no
-  # precondition of its own, and ExAws raises `RuntimeError` on a `nil`
-  # bucket rather than returning an error tuple — a project whose storage
-  # step hasn't finished (or was never configured) crashed the calling
-  # LiveView's gen_server outright, past the `{:error, %{message:}}`
-  # flash-handling clause entirely. `client_api_url`/`deploy_key` are left
-  # unchecked here on purpose: `trigger_client/2` already fails those
-  # gracefully *after* the S3 write, which is the behaviour criterion 6275
-  # exercises (bucket set, trigger fields blank, blob/manifest still land).
+  # ExAws raises on a `nil` bucket rather than returning an error, which would
+  # crash the calling LiveView. `client_api_url`/`deploy_key` are checked by
+  # `trigger_client/2` after the S3 write, on purpose.
   defp ensure_bucket(%{content_bucket: bucket}) when is_binary(bucket) and bucket != "", do: :ok
 
   defp ensure_bucket(_project) do
@@ -156,20 +150,12 @@ defmodule CodeMySpec.ContentPublishing do
              content_type: "application/json",
              credentials: creds
            ) do
-      # What was written and where. Criterion 8035 is that the published files
-      # are in *Sam's* storage, and that was unanswerable from here: the return
-      # carried the trigger result and counts, so the objects and the bucket —
-      # the only things that answer whose storage they landed in — were known
-      # at this line and dropped.
+      # Returned so the caller can show whose storage the files landed in.
       objects =
         Enum.map(["content.json", "manifest.json"], &%{key: &1, bucket: bucket, owner: "user"})
 
-      # The trigger is handled here rather than as another `with` clause so
-      # `objects` is still in scope when it fails. Both objects are in the
-      # bucket by this point, and folding the failure into the `else` below
-      # reported the publish as though nothing had been written — losing the
-      # one distinction 8058 turns on, that a lost trigger needs re-triggering
-      # and not re-uploading.
+      # Handled outside the `with` so `objects` is in scope: both objects are
+      # written, and a lost trigger needs re-triggering, not re-uploading.
       case trigger_client(project, manifest_url) do
         {:ok, result} ->
           {:ok,
@@ -200,14 +186,9 @@ defmodule CodeMySpec.ContentPublishing do
     end
   end
 
-  # An unconfigured trigger is a failure, not a quiet success. Sync is
-  # trigger-only — no reconciliation pass, no retry sweep, nothing that later
-  # notices the deployed site is stale — so a publish that never triggers does
-  # not converge later. The content sits in the bucket permanently while the
-  # operator has been told it worked. Issue bb956e54; story 972 criterion 8058
-  # ("a lost trigger is reported, not swallowed") covers the same outcome
-  # reached by a trigger that was never attempted rather than one that failed
-  # in flight.
+  # An unconfigured trigger is a failure, not a quiet success: sync is
+  # trigger-only, with no reconciliation, so a publish that never triggers
+  # never converges.
   defp trigger_client(project, _manifest_url) do
     missing =
       [:client_api_url, :deploy_key]
@@ -228,17 +209,8 @@ defmodule CodeMySpec.ContentPublishing do
   # The project's own S3 keys (encrypted at rest), passed per-request to ExAws
   # so a published install signs uploads without a global `:ex_aws` env. Blank
   # entries are dropped so ExAws falls back to its app-env/default config.
-  #
-  # The host is part of that, or the credentials are signed against the wrong
-  # provider. These fields are named `aws_*` but they are just S3 credentials —
-  # any S3-compatible provider works, and provisioning's own storage is Hetzner
-  # throughout. Without an endpoint ExAws defaults to Amazon, so a project set
-  # up entirely through our own flow could not publish to the buckets that flow
-  # had just created for it: valid keys, real bucket, `NoSuchBucket` from a
-  # provider that had never heard of it.
-  #
-  # A project with no endpoint still goes to Amazon, which is what every
-  # existing one is already doing.
+  # `aws_*` fields are any S3-compatible provider's; without `s3_endpoint` ExAws
+  # defaults to Amazon. See knowledge/platform, "Content publishing".
   defp aws_credentials(project) do
     [
       access_key_id: project.aws_access_key_id,
@@ -249,20 +221,9 @@ defmodule CodeMySpec.ContentPublishing do
     |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
   end
 
-  # Where the site can actually fetch these from.
-  #
-  # This was `"https://" <> bucket`, which names a host only if the bucket is
-  # one — and no provider we use works that way. The site resolved
-  # `https://cms-spex-content/manifest.json`, got NXDOMAIN, and the pull aborted:
-  # the trigger was accepted, the objects were in the bucket, and nothing ever
-  # arrived. From outside that is indistinguishable from a publish that never
-  # ran.
-  #
-  # Path-style against the configured endpoint, which is what Hetzner requires
-  # anyway — it is S3-compatible but not S3, and a virtual-host-style request
-  # reaches a bucket that does not exist rather than failing usefully. The old
-  # shape is kept for a project with no endpoint, so nothing that worked before
-  # changes.
+  # Where the site fetches these from: path-style against `s3_endpoint`
+  # (Hetzner needs path-style); `https://<bucket>/<key>` only when no endpoint
+  # is set. See knowledge/platform, "Content publishing".
   defp object_url(project, bucket, key) do
     project
     |> Map.get(:s3_endpoint)
@@ -287,9 +248,7 @@ defmodule CodeMySpec.ContentPublishing do
     "#{String.trim_trailing(base, "/")}/#{bucket}/#{key}"
   end
 
-  # ExAws wants the host on its own, without a scheme — a value pasted as
-  # `https://fsn1.your-objectstorage.com` would otherwise be signed into a URL
-  # with the scheme twice over.
+  # ExAws wants the host without a scheme, or the URL gets the scheme twice.
   defp endpoint_config(endpoint) when is_binary(endpoint) and endpoint != "" do
     uri = URI.parse(endpoint)
 
@@ -335,8 +294,6 @@ defmodule CodeMySpec.ContentPublishing do
     end
   end
 
-  # Ecto hands back the message with its placeholders intact and the values
-  # beside it; substituting them is what makes an error readable.
   defp interpolate_error({msg, opts}) do
     Enum.reduce(opts, msg, fn {key, value}, acc ->
       String.replace(acc, "%{#{key}}", to_string(value))
@@ -420,7 +377,7 @@ defmodule CodeMySpec.ContentPublishing do
     end
   end
 
-  # -- image upload + Cloudflare purge (criteria 6271, 6273) --
+  # -- image upload + Cloudflare purge --
 
   defp sync_images(_scope, _environment, %{image_bucket: bucket}, _source)
        when bucket in [nil, ""] do
@@ -521,9 +478,8 @@ defmodule CodeMySpec.ContentPublishing do
         metadata = build_metadata(meta, filename)
         processed = render_body(body, format, images_host)
 
-        # Validate against the published Content schema now (story 712,
-        # criterion 6269), so a bad field surfaces as a per-file parse error
-        # here rather than silently rolling back the client's atomic persist.
+        # Validated against the published Content schema now, so a bad field is
+        # a per-file parse error here rather than a rolled-back client persist.
         case validate_against_schema(metadata, processed) do
           :ok ->
             Map.merge(base, %{

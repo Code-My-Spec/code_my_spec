@@ -2,10 +2,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
   @moduledoc """
   What each role is, as one data definition per role.
 
-  Role behaviour used to be decided wherever it was needed, by matching on the
-  role atom: the role list alone had seven copies, and each one could drift from
-  the others without anything failing. Every role-conditional site reads its
-  profile here instead, so reshaping a role is editing one entry.
+  Every role-conditional site reads its profile here rather than matching on
+  the role atom, so reshaping a role is editing one entry.
 
   Its own boundary, depending on nothing, because the contexts below `Agents` —
   `Requirements` (which requirements a role is offered), `Validation` (whether
@@ -21,11 +19,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
     * `scope` — what the role works across. `:project` reads its copy's story,
       as a session does. `:story` and `:epic` read the agent's own `story_id`
       and are confined to it until it is complete; only a `:story` role is
-      assigned a story of its epic by claiming its work (a31f1cd6).
+      assigned a story of its epic by claiming its work.
     * `story_vantage` — whose stories its requirements are read on. `:copy`
       reads the stories its checkout can see; `:project` reads every story in
-      the project wherever it is placed, each at its placement copy's verdict
-      (a31f1cd6 step 4d).
+      the project wherever it is placed, each at its placement copy's verdict.
     * `home_copy` — `:main` for the roles that live on the project's main
       checkout, `:feature` for the ones that staff a working copy. Only a
       `:main` role may start on the main copy.
@@ -35,8 +32,8 @@ defmodule CodeMySpec.Agents.RoleProfile do
       (a task it holds with no turn open), `:teammate_question` (questions
       other agents raised that it answers first), `:findings` (analysis
       findings nobody asked it for), `:cadence` (the main agent's check-in
-      timer) and `:teammate_stalled` / `:teammate_died` (a teammate stalled,
-      died or was reaped).
+      timer), `:teammate_stalled` / `:teammate_died` (a teammate stalled,
+      died or was reaped) and `:provisioning_failed`.
     * `waiting_on` — role-specific waits, each with the `Agents.Waiting`
       paths it holds. `:question_pending` is its own unanswered question.
     * `questions_block?` — whether an open question on its story blocks its
@@ -45,6 +42,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     * `tools` — `:all`, or the explicit list it may call.
     * `browses?` — whether its machine's browser tools are added to its list.
     * `holds_problems?` — whether a broken tree holds it (it can fix one).
+    * `claims_any?` — whether it may start a requirement it is not offered.
     * `model_preference` — providers and models, most preferred first.
   """
 
@@ -97,48 +95,16 @@ defmodule CodeMySpec.Agents.RoleProfile do
           model_preference: [{String.t(), String.t()}]
         }
 
-  # Reading, and writing what a QA run produces. Everything a QA agent files
-  # against a story it is testing, and nothing that edits the story itself: a
-  # QA agent that can rewrite a criterion can make a failing run pass without
-  # anybody deciding to.
+  # Reading, and writing what a QA run produces — nothing that edits the story
+  # itself: a QA agent that can rewrite a criterion can make a failing run pass.
   #
-  # `browser` is a capability, not a tool. The machine publishes 85 browser
-  # tools and their names are its business, so the grant is "may drive the
-  # browser" — see `McpServers.CodeMode.browser_capability/0`. Without it a QA
-  # agent's browser sandbox binds nothing, which is what it did until
-  # 2026-09-07: an agent whose whole job is browser testing, with a machine
-  # reporting `ready`, calling into an empty catalog.
-  # `call_mcp_server` is an instrument, not a capability, and that distinction is
-  # the whole reason it is here rather than the three fleet tools a QA session
-  # asked for in `50eac6ab`. Granting the tools under test would have grown this
-  # list once per story and tested each tool's own dispatch rather than the
-  # surface it is mounted on. Granting the client tests the surface as a caller.
-  # John's call, 2026-09-15.
-  #
-  # `read_project_file`/`write_project_file` because all three of QA's own
-  # project requirements are `path_exists` checks on files QA writes:
-  # `qa_setup` wants `.code_my_spec/qa/plan.md`, and `qa_journey_plan` and
-  # `qa_journey_execute` want their two docs beside it. The role carried
-  # no file tool of any kind, so it could not satisfy a single one of them —
-  # `submit_qa_result` files a verdict on a story and writes nothing to disk.
-  #
-  # Found the same day and the same way as `install_credo_checks` above: the
-  # chain reached `qa_setup`, and the only thing standing between the agent and
-  # its own requirement was a tool nobody had given it. Two roles, one bug —
-  # which is the argument for checking every role's set against the
-  # requirements that name it rather than against the last agent that
-  # complained.
-  # The copy's own app runs the branch under test; QA starts it to test there
-  # rather than through its own connection, which is the shared harness on main.
-  # It shares and unshares that app's preview address too: some criteria are
-  # about the tunnel, and only ever the caller's own copy (John, 2026-10-12).
-  # `list_problems` is granted and `clear_problems` is not (`930d9c47`). They are
-  # two different things and one grant used to carry both. A QA agent directed
-  # at Spex failures needs to *see* them -- to report what failed and to tell a
-  # real defect from a broken tree -- and that is a read. What it must not have
-  # is a move to clear them, and what must not happen is it being *held open* by
-  # them; that is `holds_problems?` below, and it stays false: a qa agent once sat
-  # unable to read, clear or stop over 47 findings it had no move for.
+  # `browser` is a capability, not a tool name (see
+  # `McpServers.CodeMode.browser_capability/0`). `call_mcp_server` lets QA test
+  # a tool surface as a caller rather than being granted each tool under test.
+  # File tools because QA's own requirements are files it writes. The copy's own
+  # app (and its preview address) runs the branch under test. `list_problems`
+  # without `clear_problems`: QA reads findings, never clears or is held by them.
+  # See knowledge/agents/coordination, "Role profiles".
   @qa_tools ~w(
     message_agent
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
@@ -161,67 +127,13 @@ defmodule CodeMySpec.Agents.RoleProfile do
   )
 
   # Writing code against a spec, and reading everything that says what the spec
-  # is. No issue *triage* and no QA submission — deciding whether an incoming
-  # issue is real is product's, and a coding agent that can submit a QA result
-  # is grading its own work.
-  #
-  # `resolve_issue` is the exception, and it used to be excluded by the same
-  # sentence. `issues_resolved` is coding's requirement and `FixIssues` tells it
-  # to call `resolve_issue` per issue, so the rule and the graph contradicted
-  # each other and the graph is the one with work hanging off it. John's call,
-  # 2026-09-07.
-  #
-  # It is not self-grading in the way submitting a QA result is: resolving
-  # records "I fixed this", and QA re-tests independently and can invalidate it.
-  # What coding still cannot do is decide an issue was never real — `accept_issue`
-  # and `dismiss_issue` stay product's.
-  #
-  # `create_issue` belongs here for the reverse reason, and has all along: an
-  # agent working one thing finds another, and the choice has to be "write it
-  # down and carry on" rather than "fix it now or lose it". John: "the coding
-  # agent can also find issues that it should report and not fix right that
-  # second."
-  #
-  # `browser` for the same reason QA has it: work on a LiveView is checked by
-  # looking at it, and the `code-writer` agent type has carried browser tools
-  # since before roles existed. Product does not — it writes specs, and a spec
-  # is not verified by driving a page.
-  # `promote` is deliberately NOT in this list, and the mistake is worth
-  # recording because it looked right.
-  #
-  # These lists are the allowlist for *scriptable* tools — `tool_sets_test.exs`
-  # checks every name here against `ScriptableTools`, and a name that matches
-  # nothing "is not a smaller grant, it is a list that reads as bigger than it
-  # is". `promote` is direct-only on `LocalServer`, so adding it here granted
-  # exactly nothing while reading as though it had.
-  #
-  # What an agent in our own BEAM actually carries is the module list in
-  # `CmsHarness.Agents.Engine.tools/1`, and that is where `promote` belongs and
-  # now is. A coding agent spent two rounds reporting `Unknown tool: promote`
-  # between the grant that did nothing and the one that worked.
-  # `install_credo_checks` is coding's because `spex_boundary_ready` is coding's.
-  #
-  # The requirement asks for framework Credo checks on disk and the tool that
-  # installs them was in no role's set at all — registered, reachable by
-  # nobody. A coding agent worked the task properly, read the workflow and the
-  # spex philosophy, called it, and was told "it exists, and this kind of agent
-  # is not given it". It cancelled the task and stopped, which is exactly what
-  # the rules ask of an agent facing a missing tool, and the chain stopped with
-  # it. Measured 2026-09-22 on the math project's first autonomous run.
-  #
-  # The same shape as the `triage_issues` case below: a task prompt naming a
-  # tool the role that receives it cannot call.
-  #
-  # `list_working_copies` (37ba3a69): a coding agent runs in one checkout of a
-  # project that may have several, and it was asked to name its own with no way
-  # to look it up -- the refusal said the tool "belongs to another role", which
-  # is true of staffing and false of this. It is a read of rows the caller is
-  # already scoped to, and the caller is one of them: `active_working_copy_id`
-  # is on the scope `AgentScope` and `DeployKeyOrOAuth` already resolved. So a
-  # coder answers where it is rather than guessing, and the guess is what lands
-  # in a brief or a promotion. Read-only; `create_working_copy`,
-  # `offboard_working_copy` and `set_working_copy_loop` stay off this list --
-  # making and looping copies is main's (John, step 4c).
+  # is. No issue triage and no QA submission (grading its own work).
+  # `resolve_issue` because `issues_resolved` is coding's (QA re-tests it);
+  # `create_issue` so a found problem is written down, not fixed on the spot.
+  # `promote` is a direct (`LocalServer`) tool, not a scriptable one.
+  # `install_credo_checks` because `spex_boundary_ready` is coding's.
+  # `list_working_copies` is read-only; making and looping copies is main's.
+  # See knowledge/agents/coordination, "Role profiles".
   @coding_tools ~w(
     message_agent
     list_stories get_story list_story_titles show_story_requirements get_story_gherkin
@@ -244,32 +156,10 @@ defmodule CodeMySpec.Agents.RoleProfile do
     query_logs get_trace slow_spans error_summary
   )
 
-  # Shaping what gets built, and never building it. The product half of the
-  # graph: stories, criteria, rules, personas, epics.
-  #
-  # Triage *is* shaping: `issues_triaged` is product's own requirement, and an
-  # incoming issue is either work somebody has to plan or noise to throw away.
-  # `accept_issue` and `dismiss_issue` are how that decision is recorded, and
-  # they were missing — while `triage_issues`, which product does carry, hands
-  # back a prompt naming them five times.
-  #
-  # So the agent was told to do a thing with a tool it did not have. It read all
-  # four incoming issues, decided every one of them, and then had to tap out:
-  # "This product agent lacks the required accept/dismiss tools, so I requested
-  # tap-out for a role with triage authority." The work was done and could not
-  # be written down.
-  #
-  # Note what this is not: `resolve_issue` stays off *this* list. Deciding
-  # whether an issue is real is product's; declaring it fixed belongs to whoever
-  # fixed it, which is coding — see the coding comment.
-  #
-  # `delete_component` beside create and update (856b3632): product shapes the
-  # architecture, and a component it decided against had no way out of it.
-  # `add_dependency` and `remove_dependency` for the same reason (3aeb66cf):
-  # the edges are authored records too, not something a spec file has to carry.
-  #
-  # No staffing: making, offboarding and looping working copies is main's
-  # (John, step 4c).
+  # Shaping what gets built, and never building it: stories, criteria, rules,
+  # personas, epics, components and their edges. Triage is shaping
+  # (`accept_issue`, `dismiss_issue`); declaring an issue fixed (`resolve_issue`)
+  # is coding's. No staffing: that is main's.
   @product_tools ~w(
     list_stories get_story list_story_titles create_story update_story retire_story restore_story
     add_criterion retire_criterion restore_criterion get_criterion move_criterion
@@ -294,17 +184,9 @@ defmodule CodeMySpec.Agents.RoleProfile do
   )
 
   # Models, most preferred first; the first whose provider the account holds a
-  # key for wins (story 983, `Agents.Defaults`).
-  #
-  # QA leads with the cheapest thing that can follow instructions, because it
-  # runs constantly and reads more than it reasons. Main leads with the
-  # strongest, because it is the one explaining the project to somebody who
-  # cannot read the code.
-  #
-  # openai-codex is `gpt-6-astra` in both. `gpt-5.4` and `gpt-5.4-mini` are
-  # refused on a ChatGPT-plan account ("not supported when using Codex with a
-  # ChatGPT account", checked against the CLI 2026-10-03), so every turn of a
-  # Codex agent failed.
+  # key for wins (`Agents.Defaults`). QA runs constantly and reads more than it
+  # reasons, so it leads cheap. openai-codex is `gpt-6-astra` in both: the
+  # ChatGPT-plan account refuses the older Codex models.
   @strong [
     {"anthropic", "claude-sonnet-5"},
     {"openai-codex", "gpt-6-astra"},
@@ -322,19 +204,17 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # In role order: `roles/0` is this list's order, and so is every enum built
   # from it.
   @profiles [
-    # The project's own agent. `:main` tools are deliberately everything: its
-    # job is the whole project, so scoping it is scoping the thing that checks
-    # the others.
+    # The project's own agent. Tools are everything: it checks the others.
     %{
       role: :main,
-      # Any requirement no role is named on is main's (John, step 4b).
+      # Any requirement no role is named on is main's.
       requirements: [:tagged, :untagged],
       scope: :project,
       story_vantage: :copy,
       home_copy: :main,
-      # Findings because it fixes code; a teammate stalling or dying because it
-      # is the one who restarts or unsticks it (step 4b). Not widget issues: a
-      # new issue reaches the fleet as `issues_triaged` work (criterion 1755).
+      # A teammate stalling or dying because it is the one who restarts or
+      # unsticks it. Not widget issues: a new issue reaches the fleet as
+      # `issues_triaged` work.
       wake: [
         :work_offer,
         :nudge,
@@ -347,44 +227,44 @@ defmodule CodeMySpec.Agents.RoleProfile do
         :provisioning_failed
       ],
       # Its own question holds the turn-end nudge: it has nothing else to do.
-      # Another role's question blocks only the task it was asked about
-      # (0b324cab, story 1080). Its event wakes and check-in still reach it.
+      # Another role's question blocks only the task it was asked about. Its
+      # event wakes and check-in still reach it.
       waiting_on: [question_pending: [:turn_end]],
       questions_block?: true,
       # Nobody is above it: its question is a decision it could not make.
       questions_to: :user,
       tools: :all,
       browses?: true,
-      # Not held on problems: fixing a broken tree is coding's (John, step 4b).
+      # Not held on problems: fixing a broken tree is coding's.
       holds_problems?: false,
       # Offered only its own work, but may take over any role's by hand to
-      # unstick a teammate (John, 2026-10-01).
+      # unstick a teammate.
       claims_any?: true,
       model_preference: @strong
     },
     # Lives on the main copy beside main and designs an epic there before the
-    # epic goes to a working copy; never holds a story (John, step 4c).
+    # epic goes to a working copy; never holds a story.
     %{
       role: :product,
       requirements: [:tagged],
       scope: :epic,
       # Owns all triage, three amigos and story design, so it sees every story
-      # wherever it is placed — from the main copy, where it lives (step 4d).
+      # wherever it is placed — from the main copy, where it lives.
       story_vantage: :project,
       home_copy: :main,
       # Teammates' questions about criteria and spec are routed to it
-      # (8c91d5bc, `ask_user_question`'s `about: "criteria"`).
+      # (`ask_user_question`'s `about: "criteria"`).
       wake: [:work_offer, :nudge, :resume, :teammate_question],
       # Its own question blocks only the task it was asked about, as coding's
-      # and QA's do (story 1080).
+      # and QA's do.
       waiting_on: [],
       # A story's red cards are not its own questions: it is the actor that
       # clears them (`questions_answered`), so blocking it on them left the
-      # block naming no actor (56cf5697).
+      # block naming no actor.
       questions_block?: false,
       # Nobody is above it either: a question main could settle is the kind
       # product would have answered itself already, and anything left is the
-      # user's call same as main's own (criterion 1990, story 1053).
+      # user's call same as main's own.
       questions_to: :user,
       tools: @product_tools,
       browses?: false,
@@ -538,7 +418,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
 
   @doc """
   Whether an open question on the story blocks this role's story work. `nil`
-  and roles nobody defined are blocked, as every role was before 56cf5697.
+  and roles nobody defined are blocked.
   """
   @spec questions_block?(term()) :: boolean()
   def questions_block?(role) when is_atom(role) do

@@ -25,12 +25,9 @@ defmodule CodeMySpec.Sessions do
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.Users.Scope
 
-  # A session reads as "active" if it was touched within this window — status
-  # alone never goes stale on its own (nothing flips a session back to
-  # inactive when it ends), so recency is what keeps "active" meaning "right
-  # now" rather than "at some point". One constant, so every reader's idea of
-  # "active" moves together — it was shared with the progress view that story
-  # 864 deleted, and 965's timeline derives liveness the same way.
+  # A session reads as "active" if it was touched within this window: nothing
+  # flips a session's status back when it ends, so recency is what keeps
+  # "active" meaning "right now". One constant for every reader.
   @active_window_seconds 300
 
   @doc "The recency window (seconds) a session must be touched within to read as active."
@@ -38,7 +35,7 @@ defmodule CodeMySpec.Sessions do
   def active_window_seconds, do: @active_window_seconds
 
   # ============================================================================
-  # PubSub — session/task lifecycle broadcasts (story 813)
+  # PubSub — session/task lifecycle broadcasts
   # ============================================================================
 
   @doc """
@@ -126,15 +123,9 @@ defmodule CodeMySpec.Sessions do
   @doc """
   The open task an agent is holding, wherever it lives.
 
-  Every other route to a task starts from a session, because that is where a
-  task is embedded and because the caller was a Claude Code hook that arrived
-  carrying a session id. An agent running under Alloy has no session and fires
-  no hooks, so it has no way in — and yet it can hold a task: an orchestrator
-  assigns one naming its `agent_id`, and the task sits on the *orchestrator's*
-  session rather than on anything the agent owns.
-
-  So the lookup is by agent across the project's active sessions. `nil` when
-  the agent holds nothing, which is the common answer and not a failure.
+  For a sub-agent assigned a task on an orchestrator's session (the task's
+  `agent_id`): looked up by agent across the project's active sessions. `nil`
+  when it holds nothing.
   """
   @spec open_task_for_agent(Scope.t(), String.t()) :: Task.t() | nil
   def open_task_for_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
@@ -180,12 +171,8 @@ defmodule CodeMySpec.Sessions do
   Every task an agent is actively working, across the project's active
   sessions.
 
-  `open_task_for_agent/2` answers "does this agent hold anything" with
-  `find_value`, which stops at the first match — right for a yes/no check,
-  wrong for a count. An orchestrator can hand the same agent more than one
-  task across sessions, so this collects every match instead, filtered to
-  `:active` specifically: a `:prepared` task is queued, not underway, and
-  calling it active would claim work is happening before it has started.
+  Every match, unlike `open_task_for_agent/2`; `:active` only (a `:prepared`
+  task is queued, not underway).
   """
   @spec list_active_tasks_for_agent(Scope.t(), String.t()) :: [Task.t()]
   def list_active_tasks_for_agent(%Scope{} = scope, agent_id) when is_binary(agent_id) do
@@ -202,21 +189,12 @@ defmodule CodeMySpec.Sessions do
   Every task ever opened against a story, across every session, finished or
   not.
 
-  A story's own cycle time is a property of the tasks that built it, not of
-  one session — a story moves through several session types (specs, build,
-  QA...) over its life, so this reads every session rather than one. Used by
-  `AgentPerformance` to derive stage times from each task's own
-  `started_at`/`completed_at` and blocked span, rather than a second,
-  separately-maintained clock.
+  For the agent performance page's stage times, read from each task's own
+  timestamps across every session the story passed through.
   """
-  # A component-scoped task (entity_type "component" on start_task) never
-  # carries story_id -- component_id is the only ref it has -- so
-  # component_id is matched too, or a story's build-stage work (almost
-  # always component-scoped) would never be found at all. That fallback is
-  # restricted to tasks with no story_id of their own: a component shared by
-  # several stories (common) otherwise pulls each sibling story's own
-  # story-scoped tasks -- QA rounds, issue fixes -- into every other
-  # sibling's cycle time too (issue 9c2107a6).
+  # Component-scoped tasks carry no story_id, so `component_id` matches too —
+  # but only for tasks with no story_id of their own, or a shared component
+  # pulls sibling stories' tasks into this story's cycle time.
   @spec list_tasks_for_story(Scope.t(), integer(), Ecto.UUID.t() | nil) :: [map()]
   def list_tasks_for_story(%Scope{} = scope, story_id, component_id \\ nil)
       when is_integer(story_id) do
@@ -250,11 +228,8 @@ defmodule CodeMySpec.Sessions do
     |> maybe_prune_orphan_tasks()
   end
 
-  # Self-heal: tasks whose `session_type` references a renamed or
-  # removed agent task module (e.g. legacy `QaPreflight`,
-  # `ContextImplementation`) are stripped from the session and the
-  # pruned tasks list is persisted. Keeps the read path resilient to
-  # historical schema drift without requiring a manual data migration.
+  # Self-heal: tasks whose `session_type` names a renamed or removed agent task
+  # module are stripped and the pruned list persisted.
   defp maybe_prune_orphan_tasks(nil), do: nil
 
   defp maybe_prune_orphan_tasks(%Session{tasks: tasks} = session) when is_list(tasks) do
@@ -310,8 +285,8 @@ defmodule CodeMySpec.Sessions do
   @doc """
   Register (or refresh) a sub-agent on a session.
 
-  Story 704 / Rule 1 + Rule 2. Idempotent on `agent_id`: calling twice
-  for the same id refreshes `last_heartbeat_at` rather than appending.
+  Idempotent on `agent_id`: calling twice for the same id refreshes
+  `last_heartbeat_at` rather than appending.
   """
   @spec register_subagent(Scope.t(), Session.t(), map()) ::
           {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
@@ -335,8 +310,8 @@ defmodule CodeMySpec.Sessions do
   @doc """
   Unregister a sub-agent by `agent_id`.
 
-  Story 704 / Rule 1. Removes the registration from the session's
-  embedded `subagents` list. No-op if the agent was not registered.
+  Removes the registration from the session's embedded `subagents` list.
+  No-op if the agent was not registered.
   """
   @spec unregister_subagent(Scope.t(), Session.t(), String.t()) ::
           {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
@@ -444,8 +419,8 @@ defmodule CodeMySpec.Sessions do
 
   Hashes `feedback` and compares against `session.last_eval_feedback_hash`:
   a match increments `eval_feedback_count`; a miss resets the count to 1
-  and stores the new hash. Story 538 / R8 — the stop hook reads the
-  resulting count to detect a stuck loop.
+  and stores the new hash. The stop hook reads the count to detect a stuck
+  loop.
   """
   @spec record_eval_feedback(Scope.t(), Session.t(), String.t()) ::
           {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
@@ -469,8 +444,8 @@ defmodule CodeMySpec.Sessions do
   @doc """
   Clear the stuck-detection state on a passing evaluation.
 
-  Story 538 / R8 — called from the `{:ok, :valid}` paths so the next
-  failure starts a fresh streak.
+  Called from the `{:ok, :valid}` paths so the next failure starts a fresh
+  streak.
   """
   @spec clear_eval_feedback(Scope.t(), Session.t()) ::
           {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
@@ -488,14 +463,9 @@ defmodule CodeMySpec.Sessions do
   the worktree without going through Write/Edit — a rebase, pull, merge,
   checkout, reset, cherry-pick, or stash pop/apply.
 
-  `Validation.narrow_to_attributed/4` reads this: a small set of mtime-dirty
-  files with no PostToolUse attribution used to be trusted as "written
-  through something other than Write/Edit" (a spex, a direct evaluator). A
-  rebase that pulls in a handful of already-committed files has the identical
-  shape and got the same pass, crediting one session with another session's
-  already-pushed work (f8af8bf2). `git_rewrite_at` after the task's
-  `started_at` is the difference: the dirty set might be inherited history
-  rather than this turn's writes.
+  `Validation` reads this when narrowing dirty files to the session's own
+  writes: after a rewrite since the task started, unattributed dirty files
+  may be inherited history (a rebase), not this session's work.
 
   Fire-and-forget, same as the rest of PostToolUse's bookkeeping — a tool
   call must proceed even when recording this fails.
@@ -513,9 +483,8 @@ defmodule CodeMySpec.Sessions do
   currently carries it (other than `target_task_id`) and set
   `agent_id` on the target task — in a single `Repo.update`.
 
-  Story 704 / Rule 4. Used by `assign_subagent` so a partial-failure
-  scenario can't leave the sub-agent unassigned from their old task
-  while failing to land on the new one.
+  Used by `assign_subagent`, so a partial failure cannot leave the sub-agent
+  off its old task without landing on the new one.
   """
   @spec reassign_agent(Scope.t(), Session.t(), String.t(), String.t()) ::
           {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
@@ -568,10 +537,8 @@ defmodule CodeMySpec.Sessions do
       nil ->
         warn_on_concurrent_agent(scope, external_id)
 
-        # The working copy comes off the scope, which the harness's own
-        # `X-Harness-Id` put there. A recorded model turn arrives knowing only
-        # its harness, so without this there is no way back to the session and
-        # every agent on the machine lands in one conversation.
+        # The working copy comes off the scope (`X-Harness-Id`): a recorded
+        # model turn arrives knowing only its harness, and this is the way back.
         attrs =
           attrs
           |> Map.put(:external_conversation_id, external_id)
@@ -584,14 +551,9 @@ defmodule CodeMySpec.Sessions do
   @doc """
   Claude's own session id for the session running in a working copy, or nil.
 
-  What a recorded model turn needs. The turn arrives addressed to a harness —
-  that is all `/v1/messages` can carry, since nothing sits between Claude Code
-  and the proxy to add more — and a conversation is keyed on Claude's session
-  id. This is the join between the two.
-
-  Newest wins. A working copy can have had several sessions over its life and
-  only the current one is taking turns; ordering by insertion is what makes
-  "the session in this checkout" mean the one running now.
+  The join between a turn addressed to a harness (all `/v1/messages` carries)
+  and a conversation keyed on Claude's session id. Newest wins: only the
+  current session is taking turns.
   """
   @spec external_id_for_harness(Ecto.UUID.t() | nil) :: String.t() | nil
   def external_id_for_harness(nil), do: nil
@@ -611,26 +573,10 @@ defmodule CodeMySpec.Sessions do
   @doc """
   Other active sessions on this project belonging to a different conversation.
 
-  A project is meant to have one agent working it. Two is not a race that
-  resolves badly now and then — it corrupts the record. Observed: a second agent
-  whose own MCP session had failed to register used the *only* session id it
-  could find, which was the first agent's, so every start_task and evaluate_task
-  it performed was attributed to the other agent, including a task it cancelled
-  there. Both also wrote the same files; that composed by luck.
-
-  Detection only. Refusing outright is a policy call — a desktop user and a
-  sprite on one project may be legitimate — and silently proceeding was the
-  thing that hurt, not the concurrency itself.
-
-  `status == :active` alone is not enough — nothing transitions a session
-  away from it when the agent finishes, so on a project with real history
-  every session that ever ran reads as still "active" forever. Measured on
-  this project: 44 rows matched status alone, most of them days to weeks
-  stale; under 10 had been touched in the last two hours. That inflated
-  count is what the warning this function drives actually said, on every
-  call, regardless of how much real concurrency existed — so it's also
-  filtered to sessions touched within `active_window_seconds/0`, the same
-  recency window the deleted progress view used to mean the same thing.
+  Two Claude Code sessions on one project corrupt task attribution (one used
+  the other's session id). Detection only: refusing is a policy call.
+  Filtered to sessions touched within `active_window_seconds/0`, because
+  `status == :active` never goes stale.
   """
   @spec concurrent_sessions(Scope.t(), String.t()) :: [Session.t()]
   def concurrent_sessions(%Scope{active_project_id: project_id}, external_id)

@@ -14,7 +14,6 @@ defmodule CodeMySpecWeb.UserSocket do
   # assign values that can be accessed by your channel topics.
 
   ## Channels
-  channel "vscode:*", CodeMySpecWeb.VSCodeChannel
   channel "session:*", CodeMySpecWeb.SessionChannel
   channel "permission:*", CodeMySpecWeb.PermissionChannel
   channel "issues:*", CodeMySpecWeb.IssuesChannel

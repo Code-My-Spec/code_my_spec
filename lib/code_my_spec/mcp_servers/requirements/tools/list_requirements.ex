@@ -121,11 +121,31 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   # than a second copy of it.
   defp filtered_nodes(params, frame) do
     with {:ok, scope} <- Validators.validate_local_scope(frame) do
-      {nodes, _computed_at} = Requirements.cached_all(scope)
       opts = parse_opts(params)
+      {nodes, _computed_at} = Requirements.cached_all(at_story_copy(scope, opts))
       {:ok, apply_filters(StoryRefs.number_nodes(scope, nodes), opts), opts}
     end
   end
+
+  # Read where the queried story is assigned, not where the caller is. A
+  # story's requirements are computed at its own copy, so a caller filtering
+  # by one story must not read it through its own, possibly different,
+  # active copy's graph -- the same gap `ShowStoryRequirements.at_story_copy/2`
+  # was fixed for (d4d04dd04); this tool was its unfixed sibling (f66cc07a).
+  # `StoryRefs.normalize_args/2` already collapses a caller's `story_number`
+  # into `entity_type: "story"` + `entity_id` before this ever runs, so that
+  # pair is the one signal to gate on.
+  defp at_story_copy(scope, %{entity_type: "story", entity_id: id}) when not is_nil(id) do
+    case StoryRefs.fetch_story(scope, id) do
+      {:ok, %{working_copy_id: copy_id}} when is_binary(copy_id) ->
+        %{scope | active_working_copy_id: copy_id}
+
+      _ ->
+        scope
+    end
+  end
+
+  defp at_story_copy(scope, _opts), do: scope
 
   defp summary_groups(nodes), do: Enum.group_by(nodes, & &1.name)
 

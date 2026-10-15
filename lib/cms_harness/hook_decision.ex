@@ -2,30 +2,17 @@ defmodule CmsHarness.HookDecision do
   @moduledoc """
   What a hook answers when the harness could not ask.
 
-  One module, because the property at stake is a property of the *wording* as
-  much as of the control flow: **"I asked and there is nothing to do" and "I
-  could not ask" must never render the same.** Scattering these strings across
-  controllers is how they converge.
+  One module, so that "I asked and there is nothing to do" and "I could not
+  ask" never render the same.
 
-  Two rules, both learned the hard way:
+  * Name the end that is broken (harness or server), so the reader knows which
+    process to look at.
+  * The stop hook refuses: with no connection it cannot decide.
+  * The one concession to livelock: on `stop_hook_active: true` (a stop already
+    blocked once) the stop is allowed, with a `systemMessage` saying the turn
+    was never verified.
 
-  * **Name the harness, not the server.** An hour went into a failure that read
-    "MCP server is down" while the server was perfectly healthy. Whoever reads
-    one of these strings has to know which process to go and look at.
-  * **The stop hook refuses.** Its job is to decide whether the agent may stop.
-    With no connection it cannot decide, and allowing the stop is the silent
-    green light this whole design exists to prevent.
-
-  ## The one concession to livelock
-
-  A block that repeats forever is its own outage: the agent can neither stop
-  nor do anything useful, and on an unattended run it burns the budget. Claude
-  Code sends `stop_hook_active: true` on a stop that a hook has already
-  blocked, so the second one through is allowed — loudly, with a
-  `systemMessage` saying the turn was never verified.
-
-  Allowed-and-labelled is still distinguishable from verified-and-clean, which
-  is the property that matters. Allowed-and-silent would not be.
+  See knowledge/harness, "Hook decisions".
   """
 
   alias CmsHarness.Channel
@@ -34,10 +21,8 @@ defmodule CmsHarness.HookDecision do
 
   @deciding_hooks ~w(stop subagent-stop)
 
-  # Every shape `explain/2` and `summarize/1` handle. It listed six and six were
-  # already being passed — `{:not_connected, probe}`, `{:unknown_harness, id}`,
-  # `{:server_unreachable, id, reason}` and `:no_harness` all arrive here from
-  # `HooksController` and none of them were declared.
+  # The shapes `explain/3` and `summarize/2` handle (`{:not_onboarded, dir}`
+  # too).
   @type reason ::
           :not_connected
           | {:not_connected, {:http, pos_integer()} | {:error, term()}}
@@ -84,21 +69,9 @@ defmodule CmsHarness.HookDecision do
   @doc """
   One line naming what went wrong, for the log.
 
-  `explain/2` already tells the agent which end is broken. The log did not:
-  every refusal was written with `inspect/1` on the raw reason, so
-  `harness.log` carried 284 lines of
-
-      [CmsHarness] pre-tool-use refused for <dir>: {:not_connected, {:http, 200}}
-
-  which reads as a contradiction — the server answered, and answered 200, and
-  the line calls it not-connected. Both halves are true and the pairing is the
-  useful part (the channel is down *and* the server is up, so restart the
-  harness), but a tuple does not say that, and whoever is reading the log is by
-  definition the person who cannot see the agent's copy.
-
-  So the discriminator that `explain/2` already computes gets rendered here
-  too, short enough for one line. Same clauses, same order; the two must not be
-  able to disagree about which end is broken.
+  The same discrimination `explain/3` makes for the agent, short enough for
+  one log line. Same clauses, same order: the two must never disagree about
+  which end is broken.
   """
   @spec summarize(reason()) :: String.t()
   def summarize(reason), do: summarize(reason, channel_state(reason, nil))
@@ -196,27 +169,10 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  # The channel is down and the server was asked whether it is up, so the
-  # refusal can name which end is broken instead of hedging. It used to say
-  # "the server itself may well be healthy"; the day that mattered, the server
-  # was returning 500 and the hedge sent the reader to the harness.
-  # A harness that holds a joined channel for *something* has a working socket
-  # and a working credential, so neither can be what is wrong here — this copy's
-  # own channel has not come up yet.
-  #
-  # That is a routine state, not a fault. Projects start lazily, on first
-  # contact, so the very first hook in a freshly onboarded copy always arrives
-  # while its channel is still joining; and after a harness restart the copies
-  # the killed process still holds a lease on are refused until it lapses,
-  # measured at 47s. Both landed in the clause below, which told the reader to
-  # go check a credential that /health reports as `true` on the same request.
-  #
-  # Ordered before it so the specific case wins, and only when something is
-  # demonstrably connected — with nothing joined, "cannot hold a socket" is
-  # still the right reading.
-  # A 5xx stays server-side whatever else is joined: an unhealthy server is the
-  # stronger signal, and the channel really will rejoin on its own once it
-  # recovers.
+  # The server was probed, so the refusal names the broken end. A 5xx is
+  # server-side whatever else is joined. Otherwise, if this harness holds a
+  # channel for another copy, socket and credential are fine and this copy's
+  # channel is still joining (first contact, or a restart's lease lapsing).
   defp explain({:not_connected, {:http, status}}, working_dir, _state) when status >= 500 do
     explain_disconnected({:not_connected, {:http, status}}, working_dir)
   end
@@ -234,17 +190,8 @@ defmodule CmsHarness.HookDecision do
     end
   end
 
-  # "Start it" was the whole of this, and starting it is not always enough.
-  #
-  # A build that is stale against the tree takes the server down again on its
-  # first code-reload, with a message that reads as absurd on a server you have
-  # just restarted: "You must restart your server after changing configuration
-  # files". Phoenix treats a changed config as fatal to the reloader and can
-  # never pick up a dependency that was added, so the restart boots, serves one
-  # request, and dies (7e8fd1c6). Seen twice more since that report.
-  #
-  # The order matters and is the part nobody guesses: fetch and compile *before*
-  # `phx.server`, because the failure is the build rather than the boot.
+  # Includes the stale-build remedy: Phoenix cannot reload a changed config or
+  # new dependency, so fetch and compile before `phx.server`.
   defp explain({:not_connected, {:error, reason}}, working_dir, _state) do
     """
     The harness's channel to the CodeMySpec server is down, and the server is not answering at all: #{inspect(reason)}. Start it, or point CMS_SERVER_URL somewhere that is running.
@@ -255,12 +202,9 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  # A hook that named no working copy at all. There is deliberately nothing to
-  # fall back on: resolving it from the directory it fired in is what this
-  # replaced, and that guessed wrong in every way a guess can.
-  #
-  # Hooks are resolved from the payload's `cwd` (`ResolveWorkingCopy`); no
-  # plugin dir is involved, so the remedy is where the agent runs (47a60277).
+  # Neither an id nor a `cwd` inside an onboarded checkout. Hooks resolve from
+  # the payload's `cwd` (`ResolveWorkingCopy`), so the remedy is where the
+  # agent runs.
   defp explain(:no_harness, working_dir, _state) do
     """
     This hook did not say which working copy it is about: it named no harness \
@@ -275,10 +219,8 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  # The server does not recognise the id, or has no location recorded for it.
-  # Distinct from `:no_project`, which is about a directory that cannot say
-  # which project it is — here there is no directory in the question at all,
-  # so telling somebody to edit a config file in one would be nonsense.
+  # The server does not recognise the id, or has no location for it. No
+  # directory is involved, unlike `:no_project`.
   defp explain({:unknown_harness, working_copy_id}, _working_dir, _state) do
     """
     This harness is not serving the working copy #{working_copy_id}.
@@ -290,11 +232,7 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  # The id may be perfectly good — nobody got to check. Says so, because the
-  # clause above used to answer this case too, and "the server does not
-  # recognise your id" sends the reader to re-onboard a config that was never
-  # wrong. Measured: `:4000` was down, the token exchange returned
-  # `econnrefused`, and the refusal blamed the id.
+  # Nobody got to check the id, so it must not be blamed.
   defp explain({:server_unreachable, working_copy_id, reason}, _working_dir, _state) do
     """
     The harness could not reach the CodeMySpec server to find out where \
@@ -326,14 +264,9 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  # The payload said where it fired and that directory is a project — a `.git`
-  # or a `mix.exs` — with no harness config in it. Distinct from `:no_harness`,
-  # where nothing identified the request at all: here the checkout is named, so
-  # the remedy is one command in a directory the reader can see.
-  #
-  # The walk stops at that boundary rather than climbing through it, which is
-  # what keeps an un-onboarded checkout from adopting its parent's identity —
-  # the defect the previous, `mix.exs`-seeking walk was removed for.
+  # The `cwd` is a project (`.git` or `mix.exs`) with no harness config. The
+  # walk stops at that boundary, so a checkout never adopts its parent's
+  # identity.
   defp explain({:not_onboarded, dir}, _working_dir, _state) do
     """
     #{dir} has not been onboarded, so this harness has no identity for it.
@@ -349,18 +282,13 @@ defmodule CmsHarness.HookDecision do
 
   defp explain(:no_credential, _working_dir, _state) do
     """
-    The harness has no credential for the CodeMySpec server, so it never connected. Set CMS_TOKEN (or CMS_DEPLOY_KEY for a sprite) and restart it.
+    The harness has no credential for the CodeMySpec server, so it never connected. Run `mix cms.harness.onboard` in this working copy, which records its deploy key in `.cms_harness.json`, and restart the harness.
     """
     |> String.trim()
   end
 
-  # "The channel is joined" was asserted as evidence the connection was fine. It
-  # is not: a channel that died mid-request is rebuilt in about a second, so by
-  # the time anyone reads this it is joined again — and the request it was
-  # carrying is gone. That reading sent three agents after a network problem
-  # while the server was crashing on every stop, reconnecting, and doing it
-  # again. So say how long the channel has been up, and let a fresh one point at
-  # itself.
+  # Says how long the channel has been up: one rebuilt seconds ago lost the
+  # request when it died.
   defp explain(:no_reply, working_dir, state) do
     """
     The harness asked the CodeMySpec server and got no answer back in time.#{channel_age_note(state.joined_ago)}
@@ -380,17 +308,12 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  # Under a minute is the tell. A channel that has been up for hours really does
-  # point at the server or the network; one that joined seconds ago was almost
-  # certainly rebuilt after dying, which is a server-side crash and is logged as
-  # `[HarnessProject] channel DIED` with the reason.
+  # A channel joined under a minute ago was almost certainly rebuilt after a
+  # server-side death (`[HarnessProject] channel DIED`).
   @recent_join_seconds 60
 
   @doc "Explain whether the channel was absent, recently rebuilt, or established."
-  # Public so the three readings can be asserted without standing up a channel,
-  # the same reason `McpController.error_page_summary/3` is. The message is the
-  # whole of the fix here — the previous one was a correct sentence drawing the
-  # wrong conclusion.
+  # Public so the three readings can be tested without a channel.
   def channel_age_note(joined_ago) do
     case joined_ago do
       nil ->
@@ -408,26 +331,9 @@ defmodule CmsHarness.HookDecision do
     end
   end
 
-  # The server answered — it just did not answer with a decision. Rendering this
-  # as `:no_reply` sent a reader looking at the network for an hour while the
-  # server was replying promptly and saying exactly what was wrong. A refusal
-  # and a silence are different failures with different fixes, and this module
-  # exists to keep failures that read alike from *being* alike.
-  #
-  # The server's own words are quoted rather than summarised, because the shape
-  # that arrives here is by definition one this harness did not anticipate.
-
-  # Naming a cause is worth doing and worth being right about. "A version skew
-  # is the usual cause" was asserted for every refusal, and an `unmatched topic`
-  # is almost never skew — it is the server having no channel on a topic this
-  # harness still believes it holds, which `ChannelClient.maybe_rejoin/2` exists
-  # to correct by reconnecting. Sent as skew, it cost an investigation that
-  # started at versions and had to work backwards through a healthy server, ten
-  # clean joins and no crashes.
-  #
-  # One working copy per line of that story matters too: the topic is keyed on
-  # the *project*, so with several checkouts of one project on this machine the
-  # error names something all of them share.
+  # A refusal is not a silence: the server's words are quoted. `unmatched
+  # topic` is usually a reconnect race (`ChannelClient.maybe_rejoin/2`), not
+  # skew; the topic is keyed on the project, so it cannot name one copy.
   defp likely_cause(%{"reason" => "unmatched topic"}) do
     """
 
@@ -448,30 +354,11 @@ defmodule CmsHarness.HookDecision do
     """
   end
 
-  # Turns that skew hypothesis into a fact where there is one.
-  #
-  # A harness runs the code it booted with, so a checkout that has moved
-  # underneath it — a merge, a rebase, a branch switch — can leave its idea of
-  # the channel contract behind the server's. `7e8fd1c6`: 137 commits merged
-  # mid-session, and every stop afterwards failed with `unmatched topic` until
-  # the harness was restarted. Nothing in the error connected the two, and the
-  # skew line above was the closest thing to a lead.
-  #
-  # Only here, on the failure path. Drift is the normal state of an active
-  # session and most commits do not touch the harness, so saying it proactively
-  # would fire constantly and be ignored.
-  #
-  # Said on the `unmatched topic` clause as well as the generic one, because
-  # drift is the only thing that separates its two causes. A reconnect race
-  # clears itself on the next stop; a harness older than the running server
-  # never does, and both arrive as the same string. Reported across all three
-  # worktrees at once after a server restart, which is the skew case — the
-  # advice to "stop again" was wrong for every one of them.
-  #
-  # Names the command, because the session that notices is the one least able to
-  # act: a harness's command line is only `-S mix run --no-halt`, so its port,
-  # server URL and launch directory are invisible to a peer process, and killing
-  # it without a correct relaunch takes hooks down for every working copy.
+  # Boot drift, on the failure path only (drift is normal; said proactively it
+  # would be ignored). It is what separates a reconnect race from a harness
+  # older than the server. Names the restart command, since a peer cannot see
+  # the harness's port or launch directory.
+  # See knowledge/harness, "Hook decisions".
   defp boot_drift do
     case BootVersion.drift() do
       {:drifted, booted, current} ->
@@ -484,10 +371,7 @@ defmodule CmsHarness.HookDecision do
   end
 
   defp drift_sentence(:behind_upstream, booted, current) do
-    # Restarting is the wrong first move here and the obvious one, so it is
-    # ruled out by name. The harness runs from the main checkout whatever
-    # directory launched it, so an agent in a worktree pushes, the checkout's
-    # HEAD never moves, and a restart relaunches the same commit (9c474a9d).
+    # Restarting alone relaunches the same commit: pull first.
     "\n\n    This harness booted from #{booted} and its checkout is behind its " <>
       "upstream, which is at #{current}. Pull in that checkout first — restarting " <>
       "alone relaunches the same code."
@@ -497,9 +381,7 @@ defmodule CmsHarness.HookDecision do
     "\n\n    This harness booted from #{booted} and its checkout is now at #{current}."
   end
 
-  # The condition answered, rather than handed to the reader. It used to say "if
-  # that range touched the harness or the channel contract" — and the reader who
-  # acted on it ran the `git diff --stat` themselves before believing it.
+  # Answers whether the range touched the contract, rather than asking.
   defp contract_verdict(true) do
     " That range changed `lib/cms_harness` or the channel modules, so this " <>
       "harness is running an older contract than the server and reconnecting " <>
@@ -530,11 +412,8 @@ defmodule CmsHarness.HookDecision do
 
   # Does this harness hold a joined channel for anything at all?
   #
-  # Asked of the registry rather than inferred, and asked defensively: the
-  # registry does not exist in a process that never started the harness
-  # supervisor, and `Registry.select/2` raises there rather than returning
-  # nothing. A raise here would turn a refusal into a crash, in the code whose
-  # entire job is explaining a refusal.
+  # Checks the registry exists first: a raise here would turn a refusal into a
+  # crash.
   defp channel_state({:not_connected, {:http, status}}, _working_dir) when status < 500,
     do: %{holds_channel?: holds_a_channel?()}
 

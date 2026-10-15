@@ -1,3 +1,19 @@
+defmodule CodeMySpec.Intake.InterviewTest.NilInterviewer do
+  @moduledoc """
+  Stands in for a real interviewer that answered a tool call with no
+  `question` field at all — the shape `Interviewer.Llm` now refuses to pass
+  on (918d20e7), but `Interviewer` is a behaviour, and `Interview.ask_next/2`
+  should not depend on every implementation getting that validation right.
+  """
+  @behaviour CodeMySpec.Intake.Interviewer
+
+  @impl true
+  def ask(_plan, _turns), do: {:ok, nil}
+
+  @impl true
+  def derive(_plan, _turns), do: {:ok, []}
+end
+
 defmodule CodeMySpec.Intake.InterviewTest do
   @moduledoc """
   The post-signup interview (`/build/workspace`) writes into its own
@@ -68,5 +84,23 @@ defmodule CodeMySpec.Intake.InterviewTest do
     assert "a booking tool for hair salons" in texts,
            "the interview's own conversation is a second one, not the same thread " <>
              "Intake.convert/2 already opened"
+  end
+
+  test "an interviewer answering with no question is treated as the interview being unavailable, not a crash" do
+    previous_intake = Application.get_env(:code_my_spec, Intake, [])
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Intake,
+      Keyword.put(previous_intake, :interviewer, CodeMySpec.Intake.InterviewTest.NilInterviewer)
+    )
+
+    on_exit(fn -> Application.put_env(:code_my_spec, CodeMySpec.Intake, previous_intake) end)
+
+    plan = converted_plan()
+
+    assert {:error, :interview_unavailable} = Interview.current_turn(plan),
+           "a nil question reached something other than the existing " <>
+             "'interview isn't available right now' branch"
   end
 end

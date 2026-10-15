@@ -3,54 +3,22 @@ defmodule CodeMySpec.Promotion do
   Getting a working copy's finished work onto the checkout the local
   application runs from, so QA tests the code that was written.
 
-  The failure this exists to stop, measured on Broken Oaths 2026-09-09: nine
-  stories reached QA whose implementation had never left the coding agent's
-  worktree. QA failed all nine, correctly, because the code it tested was not
-  the code that had been written — nine defects that were not defects, and nine
-  stories sent back to an agent with nothing to fix.
+  Two independent halves:
 
-  Two halves, and they are independent on purpose:
+    * **A read model.** `running_copy_check/2` / `running_copy_verdicts/2`
+      (in `Promotion.RunningCopy`) answer, per story, whether its files are on
+      the running copy at the content its work produced — a question about
+      state, so an agent working on the running copy satisfies it by arriving.
 
-    * **A read model.** `on_running_copy?/2` answers, per story, whether that
-      story's files are present on the running copy at the content its work
-      produced. This is what the requirement graph consumes, and it is a
-      question about *state* rather than about an act — which is what lets an
-      agent working directly on the running copy satisfy it by arriving, with
-      no branch to merge and no promotion to run.
+    * **An action.** `promote/3` gates, merges, reloads the app (or restarts
+      it — `deployment_plan/2`), and reports what is being served.
 
-    * **An action.** `promote/1` gates, merges, reloads the app (or restarts
-      it, when the change needs that — `deployment_plan/2`), and reports what
-      is being served.
+  Not a deploy (`CodeMySpec.Deploys` is remote infrastructure). The merge is a
+  `--ff-only` merge of the certified commit into the project's main copy, run
+  through the harness; the deployment is the project's `just reload` / restart
+  recipe, dispatched and not awaited.
 
-  Distinct from `CodeMySpec.Deploys`, which is the infrastructure path for
-  remote environments. This is not a deploy: it is how work gets onto the local
-  running dev copy.
-
-  ## Where the merge happens
-
-  In the *running* checkout, merging the promoting copy's branch by name. The
-  two checkouts share an object store — the agent's copy is a worktree of the
-  one the app runs from — so no remote is involved and nothing is pushed.
-
-  One target, taken from the project's designation rather than from the
-  promoting agent: "the running dev copy sits on main; a promotion has exactly
-  one merge target." An agent that could name its target could name the wrong
-  one, and "which branch is the app actually running?" becomes a question with
-  two answers.
-
-  ## Why the deployment is a recipe
-
-  `promote/1` asks the main copy's harness to bring the app current rather
-  than doing it itself, and the harness runs project recipes: `just reload`
-  (migrate, let the code reloader compile, health-check) by default, `just
-  serve` behind a restart. Both are app-specific — deps, migrations, assets,
-  and for this project a harness on a second port — and
-  `CodeMySpec.Workspaces` is not it: that runs a *preview* instance out of
-  `~/.codemyspec/workspaces/<container>/<app>`, a different app in a different
-  directory.
-
-  A recipe is a seam the project owns and can read. A project with no
-  `reload` recipe is restarted, as before.
+  See knowledge/promotion, "Promotion".
   """
 
   use Boundary,
@@ -94,8 +62,8 @@ defmodule CodeMySpec.Promotion do
 
   # ----------------------------------------------------------------- read model
 
-  # The verdict itself lives in `Promotion.RunningCopy`, a leaf the requirement
-  # graph reads too: the graph sits below promotion and must not call it.
+  # The verdict lives in `Promotion.RunningCopy`, a leaf the requirement graph
+  # reads too: the graph sits below promotion and must not call it.
   defdelegate running_copy_check(scope, entity), to: CodeMySpec.Promotion.RunningCopy
   defdelegate running_copy_verdicts(scope, stories), to: CodeMySpec.Promotion.RunningCopy
 
@@ -104,48 +72,29 @@ defmodule CodeMySpec.Promotion do
   @doc """
   Gate, merge, restart, and report what the application is serving.
 
-  Refuses rather than half-finishes. Every refusal names the thing the agent
-  has to act on — the problem holding the gate, the file that conflicts, the
-  work it has not committed — because a refusal an agent cannot act on stops
-  the pipeline just as surely as a bug.
+  Refuses rather than half-finishes, and every refusal names what the agent
+  has to act on (the problem holding the gate, the conflicting file, the
+  uncommitted work).
 
-  One at a time, per project. `Lock.with_lock/2` holds the project's lock for
-  the whole of `promote_into/2` — gate through restart — because a promotion
-  landing between another one's merge and its restart is the same race with
-  its window moved: the surviving build is still decided by timing rather
-  than by either agent, and QA still cannot tell which one it got (db97272b).
-  A second caller is refused outright rather than queued, naming when the
-  first promotion started — a queued promotion whose branch has since moved
-  on would be a merge nobody asked for.
+  One at a time, per project: `Lock.with_lock/2` holds the project's lock over
+  gate and merge (the deployment is dispatched after). A second caller is
+  refused, naming when the first started, never queued.
 
   `notify:` is the agent to tell how the deployment ended — confirmed or
-  failed — after this has answered.
+  failed — after this has answered; the answer goes out when the merge lands,
+  before anyone knows the app came back. `nil` (or omitted) means nobody is
+  waiting and the log is the record.
 
-  The answer goes out as soon as the merge lands, which means it is sent before
-  anybody knows whether the application came back — it says so, but it also
-  says QA can start. When the restart then fails, that earlier message is wrong
-  and the only party who can act on the correction is whoever received it.
-  The `promote` tool is the only caller that knows who that was — the agent id
-  on its frame — so it passes it down rather than the restart path guessing
-  (0060d67d).
+  `story_number` names the story being promoted (main is the only target).
+  That story alone is stamped promoted, and only if all of its spex pass on the
+  promoting copy's certifying run; otherwise the promote is refused naming
+  them. `nil` is non-story work (an issue fix): merged and deployed, nothing
+  stamped.
 
-  `nil`, and a caller that omits it, mean nobody is waiting to be told — a
-  Claude Code session or an operator has no conversation, and the log is the
-  record.
-
-  `story_number` names the story being promoted, not a target (main is the
-  only one). That story alone is latched (`specs_ready`) and stamped
-  (`promoted_version`), and only if all of its spex pass on the promoting
-  copy's certifying run — otherwise the promote is refused naming them
-  (e1174640). `nil` is work that is not a story's — a fix from an issue — and
-  merges and restarts without latching or stamping anything.
-
-  `restart: true` restarts the app instead of reloading it; see
-  `deployment_plan/2` for when a promote restarts on its own.
+  `restart: true` restarts instead of reloading; see `deployment_plan/2`.
 
   `verify_within:`/`verify_every:` (ms) bound how long a restart whose
-  acknowledgement was lost is checked against what the app is serving
-  (08744186).
+  acknowledgement was lost is checked against what the app is serving.
   """
   @spec promote(Scope.t(), integer() | String.t() | nil, keyword()) ::
           {:ok, map()} | {:error, map()}
@@ -172,8 +121,8 @@ defmodule CodeMySpec.Promotion do
   lands), and the story's own spex green on it (`story_spex_pass/3`). With
   `main:`, the copy must also contain main — promotion's one extra check.
 
-  The procedure the ready-for-QA gate and promotion share (John, 2026-10-02):
-  ready-for-QA stamps the commit this answers for, promotion merges it. A
+  The procedure the ready-for-QA gate and promotion share: ready-for-QA
+  stamps the commit this answers for, promotion merges it. A
   promote at a commit already certified finds that commit's runs and starts
   none (`Analysis.answer_at_commit/3`).
   """
@@ -226,11 +175,7 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # Kept from `report_to/3`, which is gone: the log answers "what did it decide"
-  # independently of who received it. That mattered enormously while delivery was
-  # a message to an agent and could fail silently. It still earns its place, now
-  # as a record beside an answer the caller already has rather than instead of
-  # one.
+  # The log records what was decided independently of who received the answer.
   defp log_outcome(result) do
     Logger.info("[Promotion] #{outcome_label(result)}: #{outcome_text(result)}")
     result
@@ -253,21 +198,11 @@ defmodule CodeMySpec.Promotion do
   defp since(%DateTime{} = started_at), do: ", since #{DateTime.to_iso8601(started_at)}"
   defp since(_), do: ""
 
-  # Working on the running copy. There is no branch to merge — the work is
-  # already where a promotion would put it — so a promotion here is the other
-  # half on its own: start what serves it.
-  #
-  # This used to refuse, and the refusal became unreachable-by-design the moment
-  # the gate started requiring the application to answer: an agent on the
-  # running copy with a dead app was told to promote, and promote told it there
-  # was nothing to merge. Neither statement was wrong and there was no way out
-  # of the pair.
-  #
-  # No gate, because nothing crosses. The story is held to the merge path's own
-  # rule, minus the merge (e1174640): its spex must pass on main's certifying
-  # spex run — one at main's HEAD (28d72f8a), started here if there is none —
-  # and it is then latched at that HEAD and stamped with the version main
-  # already carries. Red or missing spex refuse, as a merge would.
+  # Promoting from the running copy: nothing to merge, so this only restarts
+  # the app. It must not refuse — an agent on the running copy with a dead app
+  # has no other way out. No gate, since nothing crosses; the story's spex must
+  # still pass on a spex run at main's HEAD (started here if missing), and it is
+  # stamped with the version main already carries.
   defp promote_into(
          %Scope{active_working_copy_id: id} = scope,
          %WorkingCopy{id: id} = running,
@@ -287,8 +222,8 @@ defmodule CodeMySpec.Promotion do
         reason: "nothing was merged, so there is no change to judge a reload by"
       }
 
-      # `deploy/4` always answers `{:error, %{reason: ...}}` — dispatched, not
-      # awaited (54aa534c) — so this wraps it as the success it is.
+      # `deploy/4` always answers `{:error, %{reason: ...}}` (dispatched, not
+      # awaited), so this wraps it as the success it is.
       {:error, reason} = deploy(scope, running, plan, Keyword.put(opts, :expect, %{to: head}))
 
       {:ok, %{restarted: running.root, serving: %{unconfirmed: reason}, deployment: plan}}
@@ -299,28 +234,11 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # No post-merge check, and no wait for the merge to be *served* — both by
-  # design (54aa534c, phase two, John: "we should guarantee with our
-  # preconditions that the merge will be clean... deployment should follow
-  # async").
-  #
-  # There is nothing left for a post-merge check to find. `gate/3` already
-  # certified the promoting commit clean, and `Runner.merge/4` is
-  # now `--ff-only` — which only ever succeeds by making the running copy's
-  # tree byte-identical to the branch tip that was just certified, never by
-  # combining it with anything else. A tree that cannot differ from what was
-  # already gated has nothing new to carry into it.
-  #
-  # So this returns as soon as the merge lands, and `restart/3` dispatches
-  # the actual deployment — the application restart, with migrations if the
-  # recipe runs them — detached rather than awaited. `Lock.with_lock/2` is
-  # now held for a database read and a git fast-forward: neither one can run
-  # long, and neither one is what used to make a contended promotion cost
-  # sixteen minutes.
-  #
-  # In order (28d72f8a): the copy contains main, its tree is clean, every
-  # analyzer has a clean run at its HEAD (started now, and answered as
-  # pending, where one is missing), and then exactly that commit is merged.
+  # In order: the copy contains main, its tree is clean, every analyzer has a
+  # clean run at its HEAD (started now, answered as pending, where missing),
+  # and then exactly that commit is merged. No post-merge check: the merge is
+  # `--ff-only`, so main's tree is byte-identical to the certified commit.
+  # See knowledge/promotion, "Promotion".
   defp promote_into(%Scope{} = scope, running, story, opts) do
     with {:ok, from} <- promoting_copy(scope, running),
          named = named_copy(from.id),
@@ -357,8 +275,8 @@ defmodule CodeMySpec.Promotion do
   The queue gates a batch of candidates in `from` (its gate checkout) at `head`
   and calls this on green: the same merge, submodule sync, stamping and one
   deployment a direct promotion runs after its gate, under the same lock, for
-  every story in the batch. `stories` carries each story (or nil), its source working copy, and the
-  immutable candidate revision its QA must have reviewed.
+  every story in the batch. `stories` carries each story (or nil), its source
+  working copy, and the candidate revision its QA must have reviewed.
   """
   @spec land(
           Scope.t(),
@@ -422,13 +340,12 @@ defmodule CodeMySpec.Promotion do
             "[Promotion] merged, but the version tag was NOT created: #{version_error}"
           )
 
-      # Not `version`. A no-op merge originates nothing and still has a story to
-      # stamp — see `Steps.current_version/2` for why those are different
-      # questions and what it cost to find out.
+      # Stamp `stamp_version`, not `version`: a no-op merge originates no
+      # version and still has a story to stamp.
+      # See knowledge/promotion, "Versions".
 
-      # `head` and `after` are the same commit now that a promotion tags rather
-      # than commits a version bump; both are read so a result from either
-      # shape works.
+      # `head` and `after` are the same commit (a promotion tags, it does not
+      # commit a bump); both are read so either result shape works.
       expect = %{
         from: Map.get(merge_result, :before),
         to: Map.get(merge_result, :head) || Map.get(merge_result, :after)
@@ -451,11 +368,8 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # `9afcbbdf`: this used to name `running.root` unconditionally — the merge
-  # target, never the copy a `gate/3` refusal is actually about. `gate/3`'s own
-  # reasons now carry `:working_copy`; fall back to the merge target only for
-  # refusals that happen before the gate runs (no working copy on the scope, an
-  # unreported checkout).
+  # Names the copy the refusal is about (`:working_copy`), falling back to the
+  # merge target only for refusals from before the gate runs.
   defp refused(running, %{landed: true} = reason) do
     Logger.error(
       "[Promotion] landed into #{running.root}, but completion is held: #{reason.reason}"
@@ -470,16 +384,10 @@ defmodule CodeMySpec.Promotion do
     )
   end
 
-  # `restart/3` always answers `{:error, %{reason: ...}}` now — dispatched,
-  # never awaited, for every promotion (54aa534c, phase two) — so there is
-  # only the one clause. Kept as its own function, rather than inlined at the
-  # call site, because `restart_acknowledgement_lost?/1` is the part that
-  # still has to be checked: a lost acknowledgement is reported as what it
-  # is — merged, restart unconfirmed — never as a flat failure. The merge
-  # has already happened by the time this runs, so reporting failure here is
-  # not merely confusing, it is false about the part that matters: an agent
-  # told its promotion failed promotes again, and each retry restarts the
-  # shared dev server every other working copy on the box is using.
+  # `deploy/4` always answers `{:error, %{reason: ...}}`. A lost or
+  # not-awaited acknowledgement is reported as merged, restart unconfirmed —
+  # never as failure: the merge happened, and an agent told otherwise promotes
+  # again, restarting the shared dev server for every copy on the box.
   defp merged({:error, reason}, branch, running, swept, untracked, version) do
     reason
     |> restart_acknowledgement_lost?()
@@ -528,21 +436,17 @@ defmodule CodeMySpec.Promotion do
 
   defp with_version_error(result, _reason), do: result
 
-  # The promoted story alone, latched and stamped in one write with the
-  # promote's commit (e1174640). No other story is touched: a project-wide
-  # sweep stamped stories whose code sat unmerged on a different copy. `nil`
-  # (no tag and no `mix.exs` version to count from) latches without stamping.
-  #
-  # A write failure is reported as landed-but-held: the disk merge is real,
-  # while issue completion, promotion stamping and team release remain uncommitted.
-  # The story-side half of criterion 1892's team-free parity with
-  # `IssueAssignment.free/2`: a story finishing by promotion sends main the
-  # same offer kind an issue finishing through QA already does.
+  # Only the landed stories are stamped: a project-wide sweep would stamp
+  # stories whose code sits unmerged on another copy.
   @doc """
-  What a landing does for the stories in it: each is stamped promoted at
-  `version` and `commit`, and its team's freedom is announced. Also for a
-  candidate main already contains (`PromotionQueue`), which has nothing to
-  merge and lands as it is.
+  What a landing does for the stories in it, in one transaction: each story's
+  reviewed QA issues are completed and it is stamped promoted at `version` and
+  `commit`; then its team's freedom is announced (`[:promotion, :team_free]`,
+  the same offer an issue finishing through QA sends). Also for a candidate
+  main already contains (`PromotionQueue`), which lands as it is.
+
+  A write failure answers `{:error, %{landed: true, assignment_held: true}}`:
+  the merge on disk is real, the story-side completion is not.
   """
   @spec record_landed_stories(
           Scope.t(),
@@ -622,12 +526,9 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # All of the promoted story's spex pass on the promoting copy's certifying
-  # run. `gate/3` has already required that run at HEAD; this reads its
-  # problems against the story's own spec files (`files.story_id`, not a
-  # directory name — see `FixBddSpecs.story_spex_problems/2` for what parsing
-  # names cost). A story with no linked spec files has nothing that passed, so
-  # it refuses rather than latching on an empty list.
+  # The story's spex are found by `files.story_id` and by the criterion numbers
+  # they name, never by parsing directory names. A story with no linked spex
+  # refuses: an empty list is not a pass.
   @doc """
   Whether `story`'s own spex all pass on the scope's copy's certifying spex run
   — the check a promotion makes before latching a story. `:ok`, or
@@ -647,8 +548,7 @@ defmodule CodeMySpec.Promotion do
 
   defp story_spex_pass(_scope, nil, _named, _files_scope), do: :ok
 
-  # Every red spex on the story refuses it (John, 2026-10-05): the story's spex
-  # files on the copy, by its own rows and by the criteria they name.
+  # Every red spex on the story refuses it.
   defp story_spex_pass(scope, story, named, files_scope) do
     files_scope = files_scope || scope
     numbers = scope |> AcceptanceCriteria.list_story_criteria(story.id) |> MapSet.new(& &1.number)
@@ -773,24 +673,13 @@ defmodule CodeMySpec.Promotion do
      }}
   end
 
-  # `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as
-  # "the server went away — someone restarted :4000". For every other operation
-  # that reading is right. For this one the restart *is* the operation
-  # succeeding, which is why the shape has to be read against the op that
-  # produced it rather than on its own.
   @doc """
-  Whether a restart failure is the expected shape of a restart that worked.
+  Whether a restart failure is the expected shape of a restart that worked
+  (or of one dispatched and not awaited).
 
-  Public because it is the rule, not an implementation detail: "this error means
-  the opposite of what it says" is exactly the kind of claim that should be
-  written down once and checked, rather than reimplemented by each caller who
-  gets bitten.
-
-  `{:shutdown, :draining}` and `:not_connected` are documented elsewhere as "the
-  server went away — someone restarted :4000", and for every other operation
-  that reading is right. For this one the restart *is* the operation succeeding,
-  so the shape has to be read against the op that produced it rather than on its
-  own.
+  `draining` / `not_connected` elsewhere mean "the server went away"; for a
+  restart, the server going away is the operation succeeding. Public so the
+  rule is written once rather than re-derived by each caller.
   """
   @spec restart_acknowledgement_lost?(term()) :: boolean()
   def restart_acknowledgement_lost?(%{reason: reason}) when is_binary(reason) do
@@ -802,28 +691,8 @@ defmodule CodeMySpec.Promotion do
 
   def restart_acknowledgement_lost?(_), do: false
 
-  # Nothing here is long-running, which is why there is no async variant any more.
-  #
-  # `promote_async/2` wrapped the whole thing in a task because "a promotion
-  # sweeps analyzers before it will call a copy clean, and a sweep is minutes".
-  # That stopped being true at 54aa534c: the gate no longer awaits a sweep, it
-  # reads the runs already on file. What was left is three DB reads, a `git
-  # status`, a `--ff-only` merge, and a restart that is dispatched rather than
-  # awaited. Measured: a full `promote/2` including the merge completes in 0.3s
-  # in `AsyncDeploymentTest`.
-  #
-  # The wrapper outlived its reason and cost more than it saved. Every refusal
-  # was computed in milliseconds and then reported through a channel that only
-  # exists for Alloy agents, so a Claude Code session, a script or curl got
-  # "Promotion started." for a promotion that had already been refused — a false
-  # success, indistinguishable from a slow one. John: "Promotion should return
-  # immediately on failure with a clear reason why... I bet this has been
-  # fucking us for a while." It had: one was silently refused for a stale sweep
-  # and nobody knew for half an hour.
-  #
-  # So `promote/2` is the whole API. The restart stays detached inside it and
-  # `outcome_text/1` says so in the answer, which is the one thing that genuinely
-  # must not be waited on.
+  # `promote/3` is synchronous on purpose: nothing before the dispatched
+  # deployment is long-running. See knowledge/promotion, "Promotion".
 
   defp outcome_label({:ok, %{pending: _}}), do: "pending"
   defp outcome_label({:ok, _}), do: "promoted"
@@ -831,19 +700,9 @@ defmodule CodeMySpec.Promotion do
   defp outcome_label({:error, _}), do: "refused"
   defp outcome_label(_other), do: "returned something unexpected"
 
-  # The standard outcome now, not an edge case (54aa534c, phase two): the
-  # restart is always dispatched, never awaited, so this is what a normal,
-  # successful promotion reports every time — not a fallback for when
-  # something unusual happened to the acknowledgement. Worded as the expected
-  # completion, not as an anomaly needing explanation, for the same reason
-  # `Steps.not_fast_forward/3`'s wording says divergence is routine: this is
-  # about to become the most-read string in the system.
   @doc """
-  What a promotion's result says, in the words the caller reads.
-
-  Public because the caller now receives this. It used to be written only into
-  `web.log` and a message to an agent, which is why a refusal reached nobody
-  without one.
+  What a promotion's result says, in the words the caller reads. "Merged,
+  deployment unconfirmed" is the normal success and is worded as such.
   """
   @spec outcome_text(term()) :: String.t()
   def outcome_text(result), do: base_outcome_text(result) <> version_note(result)
@@ -949,26 +808,15 @@ defmodule CodeMySpec.Promotion do
   defp promoting_copy(%Scope{}, _running),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
 
-  # A read of the ledger, keyed on the commit (28d72f8a), not on fingerprints.
-  #
-  # Fingerprint freshness is what stalled the fleet: two definitions of fresh
-  # (849f8e7a), a tree that moved mid-run (53465/53636), a run started 22s
-  # before the commit it was meant to certify (27c4070c). A run now answers for
-  # a commit only if the harness saw it start on a clean tree at that commit
-  # and finish there (`Run.at_commit?/2`).
-  #
-  # A missing run is started, not waited on: the gate answers "pending" at
-  # once and the result reaches the promoting agent through `requested_by`
-  # when it lands. `Lock.with_lock/2` is still held for reads and a merge only.
-  #
-  # Logged before anything else here runs, so a gate that reads the wrong
-  # copy's problems (`02796b61`) is diagnosable from this log line alone.
+  # Keyed on the commit, never on fingerprints. Logged first, so a gate
+  # reading the wrong copy is diagnosable from this line alone.
+  # See knowledge/promotion, "The gate".
   @doc """
   Whether the promoting copy (`scope.active_working_copy_id`) may merge `head`.
 
   Every analyzer needs a run at `head` (`Analysis.answer_at_commit/3`). The
-  problems those runs recorded must be zero (John, 2026-10-05: every red spex
-  refuses, latched or not). Compiler, credo and exunit findings refuse at
+  problems those runs recorded must be zero (every red spex refuses). Compiler,
+  credo and exunit findings refuse at
   `:error` or `:warning`; `:info` (low-priority credo) is advisory. A spex
   finding with no location is advisory (`Blocking.enforceable/2`).
 
@@ -992,9 +840,8 @@ defmodule CodeMySpec.Promotion do
     )
 
     with {:ok, scope, named} <- gate_copy(scope, working_copy_id) do
-      # Every source, whatever the project's config (c6f54b90): config decides
-      # what the stop hook sweeps, never what promote demands. Narrowing this
-      # would let a project promote a commit `exunit` had never once run against.
+      # Every source, whatever the project's config: config decides what the
+      # stop hook sweeps, never what promote demands.
       {answered, missing} = answers_at(scope, Run.sources(), head)
 
       case blocking_problems(scope, Map.keys(answered)) do
@@ -1005,21 +852,8 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # The copy the gate judges, resolved here rather than left to the read.
-  #
-  # `blocking_problems/2` reads problems through
-  # `ProblemRepository.scope_to_harness/2`, which treats a scope with no
-  # `active_working_copy_id` as "the default copy" (`WorkingCopies.default_id/1`)
-  # because a plain project-wide read has no copy to narrow to. That is right for
-  # a page showing a project-wide count, and wrong here: the gate is judging one
-  # checkout's commit, and with none named there is nothing to judge. Left
-  # unresolved it quietly judged the default copy's problems instead, so a caller
-  # with no working copy was refused over findings on a checkout it had never
-  # named and could not fix (`02796b61`).
-  #
-  # Refused, not narrowed to a copy nobody asked for. `gate/3`'s callers resolve a
-  # copy before they get here (`promoting_copy/2`), so this is the case where
-  # nobody did.
+  # No copy on the scope refuses. The problem read would otherwise fall back to
+  # the project's default copy and judge a checkout the caller never named.
   defp gate_copy(scope, working_copy_id) when is_binary(working_copy_id) do
     {:ok, scope, named_copy(working_copy_id)}
   end
@@ -1108,12 +942,9 @@ defmodule CodeMySpec.Promotion do
     {Map.new(answered), Enum.map(missing, &elem(&1, 0))}
   end
 
-  # One run per missing source, unless one is already running at `head` — a
-  # second would queue behind it and certify the same commit twice.
-  #
-  # A run already running there, or one a start joined, was requested by
-  # somebody else, so the agent in `opts[:notify]` is added as a waiter on it:
-  # told when it lands, and not nudged meanwhile (`awaiting_runs?/3`).
+  # One run per missing source, unless one is already running at `head` (a
+  # second would certify the same commit twice). On a run someone else started,
+  # or one a start joined, the agent in `opts[:notify]` is added as a waiter.
   defp start_missing(scope, missing, head, named, opts) do
     agent_id = Keyword.get(opts, :notify)
     {running, to_start} = Enum.split_with(missing, &running_at?(scope, &1, head, agent_id))
@@ -1164,9 +995,8 @@ defmodule CodeMySpec.Promotion do
      }}
   end
 
-  # `9afcbbdf` ask 1: every refusal names the copy the findings belong to, which
-  # `02796b61` showed can silently be a *different* checkout than the one that
-  # called, so a caller can tell in one read which copy the gate resolved to.
+  # Every refusal names the copy its findings belong to, which may not be the
+  # caller's own.
   defp named_copy(nil), do: "no working copy on this scope"
 
   defp named_copy(working_copy_id) do
@@ -1239,17 +1069,11 @@ defmodule CodeMySpec.Promotion do
      }}
   end
 
-  # Only the sources whose latest run is at the certified commit: a problem
-  # recorded by a run at another commit describes a different tree.
-  #
-  # Credo and compiler findings block whatever the stop hook's mode says: a
-  # warning let through here lands on main and blocks every other copy's
-  # promote until someone cleans it up (v2.0.162's two AliasUsage findings).
-  # Exunit and spex go through `Blocking.enforceable/2`, which drops only spex
-  # findings with no location — the same rule the stop hook uses.
-  #
-  # Whether an advisory finding can block at all is `Validation.blockable/2`'s
-  # answer, shared with task evaluation and the analysis digest.
+  # Only sources whose latest run is at the certified commit: another commit's
+  # problems describe a different tree. Credo and compiler block whatever the
+  # stop hook's mode says (a warning let onto main blocks every copy's
+  # promote); exunit and spex go through `Blocking.enforceable/2`. Whether an
+  # advisory finding can block at all is `Blocking.blockable/2`'s answer.
   @always_block ~w(credo compiler)
 
   defp blocking_problems(%Scope{} = scope, sources) do
@@ -1270,18 +1094,12 @@ defmodule CodeMySpec.Promotion do
   @doc """
   Whether a promote reloads the running app or restarts it, and why.
 
-  Reload by default (John, 2026-10-02): a restart of :4000 kills every
-  in-flight agent turn and analysis run on the box, and the app's own code
-  reloader takes most changes. Restart when `changed` (the merge's paths)
-  touches anything in `BootVersion.restart_paths/0`, when it is `nil` (not
-  readable, so not judged), when the harness cannot reload (`reload_supported:
-  false`), or when the caller asks (`restart: true`). A reload that then fails
-  restarts too, inside the same deployment.
-
-  This replaces "always, never conditionally". The worry behind that rule — a
-  second implementation of the reload rules, wrong and silent — is answered by
-  keeping the list short and in one place, and by the health check: a reload
-  that did not take reports unhealthy and falls back to a restart.
+  Reload by default: a restart of :4000 kills every in-flight agent turn and
+  analysis run on the box. Restart when `changed` (the merge's paths) touches
+  anything in `BootVersion.restart_paths/0`, when it is `nil` (not readable,
+  so not judged), when the harness cannot reload (`reload_supported: false`),
+  or when the caller asks (`restart: true`). A reload that fails restarts
+  inside the same deployment.
   """
   @spec deployment_plan([String.t()] | nil, keyword()) ::
           %{action: :reload | :restart, reason: String.t()}
@@ -1315,57 +1133,20 @@ defmodule CodeMySpec.Promotion do
   defp reload_opts(running, opts),
     do: Keyword.put(opts, :reload_supported, AppTransport.reload_supported?(running.id))
 
-  # Dispatched, never awaited (54aa534c, phase two — John: "the deployment
-  # should follow async"). `promote/1` answers as soon as the merge lands;
-  # the actual deployment — migrations, if the recipe runs them, and the
-  # application coming back up — runs in a detached task this call does not
-  # wait on.
-  #
-  # Not optional for a self-hosted checkout: a restart kills whatever is
-  # listening on :4000, and when that is this very BEAM — the one running the
-  # promotion — running it inline takes the promotion's own Task down with
-  # it, before it can answer. No exception to catch, no `after` block
-  # guaranteed to run: `Promotion.Lock`'s own moduledoc already records that
-  # a server restart comes back with an empty lock table, because nothing
-  # survives to release it. Dispatching detached is what lets this process
-  # answer at all in that case. Doing it unconditionally — for a remote
-  # harness too — means one mechanism rather than a path that waits and a
-  # path that cannot. A reload leaves this BEAM up, but its code reloader
-  # swaps modules under this task, and a failed reload restarts anyway, so a
-  # reload is dispatched the same way.
-  #
-  # Reuses the shape `e721ccf0d` already built for a remote harness's dropped
-  # channel: `merged/5` reads this as "merged, restart unconfirmed" either
-  # way, because that is the same claim to a caller regardless of which
-  # mechanism produced it — do not promote again to find out.
-  #
-  # `preview_status` is claimed "serving" right here, unconditionally, rather
-  # than after a confirmation that no longer arrives. The gate reads
-  # `preview_status`, and the only other writer is the harness on its next
-  # sync — without this claim, an agent refused because its application was
-  # down promoted, and the very next gate read the same stale `down` a sync
-  # had not yet overwritten, asking it to promote again forever. A claim
-  # rather than an observation, deliberately: over-claiming costs one QA
-  # attempt that meets a real failure and reports it; under-claiming costs an
-  # agent that cannot get out of the gate at all.
+  # Dispatched, never awaited: the restart may kill this very BEAM before it
+  # could answer. `merged/6` reads the result as "merged, restart unconfirmed".
+  # `preview_status` is claimed "serving" here, before any confirmation, so the
+  # next gate read does not see a stale `down` and loop the agent.
+  # See knowledge/promotion, "Deployment".
   defp deploy(%Scope{} = scope, %WorkingCopy{root: root} = running, plan, opts) do
     dispatch_deployment(scope, root, running.id, plan, opts)
     {:ok, _} = WorkingCopies.record_preview_status(running, "serving")
     {:error, %{reason: deployment_dispatched_reason(plan)}}
   end
 
-  # Detached rather than linked or awaited: this process may not exist by the
-  # time a restart returns, and it must not need to for the restart to
-  # have happened. `CodeMySpec.TaskSupervisor` is the same one `promote_async/2`
-  # already reports through for the same reason — fire, do not wait.
-  #
-  # `Runner.restart/4`'s own result is logged here rather than discarded,
-  # because dispatched-and-forgotten used to mean exactly that: a `just
-  # restart` failing on the far side of this task — a broken migration, a
-  # compile error the merge itself couldn't have caught since nothing crosses
-  # here that wasn't already gated — had nowhere to go. The caller had already
-  # been told "merged, restart unconfirmed" and moved on; this is the one
-  # place that outcome is ever actually resolved one way or the other.
+  # Detached: this process may not exist by the time a restart returns. The
+  # deployment's outcome is resolved, logged and told to the agent here — the
+  # one place it ever is.
   defp dispatch_deployment(scope, root, working_copy_id, plan, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
@@ -1422,24 +1203,8 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # One reading of the outcome, made once and consulted twice, rather than two
-  # readings that can disagree.
-  #
-  # They did disagree, and the shape of it is the reason this function exists
-  # rather than a comment: `tell_the_agent/4` consulted
-  # `restart_acknowledgement_lost?/1` and correctly said nothing, while
-  # `log_restart_outcome/2` consulted nothing and wrote `restart FAILED` at
-  # error level for that same restart. Both halves were right on their own
-  # terms, so neither looked wrong, and the only witness was a log line
-  # contradicting a decision made three lines below it.
-  #
-  # Only the log has a reader who was not present for the decision, which is
-  # what made the disagreement expensive: six error-level lines claiming the
-  # application was not up, while :4000 answered 200 and served the new
-  # revision, and a quarter of an hour spent believing them.
-  #
-  # A third consumer is now free. It reads the verdict; it cannot re-derive a
-  # different one.
+  # One verdict, read by both the log and the agent message, so they cannot
+  # disagree. See knowledge/promotion, "Lessons".
   defp classify_restart({:ok, %{revision: revision}}), do: {:confirmed, revision}
 
   defp classify_restart({:error, %{reason: reason} = error}) do
@@ -1450,15 +1215,10 @@ defmodule CodeMySpec.Promotion do
 
   defp classify_restart(other), do: {:unexpected, other}
 
-  # 08744186: a lost acknowledgement used to end here, "dispatched, not yet
-  # confirmed", whether the restart happened or the channel died with it. Ask
-  # the app what it is serving, through the same `AppTransport` status path
-  # every copy's app answers, until it reports the merged commit or the bound
-  # runs out — then say which: serving <commit>, or still on <old>.
-  #
-  # Only an app that answered on the wrong commit is a failure. One that never
-  # answered stays unconfirmed: nothing was learned, and calling it failed
-  # tells an agent to fix a restart that may have worked.
+  # A lost acknowledgement is settled by asking the app what it serves
+  # (`AppTransport`) until it reports the merged commit or the bound runs out.
+  # Only an app answering on the wrong commit is a failure; one that never
+  # answered stays unconfirmed.
   @verify_every 2_000
 
   defp verify_unconfirmed({:unconfirmed, _reason}, working_copy_id, opts) do
@@ -1547,26 +1307,11 @@ defmodule CodeMySpec.Promotion do
     outcome
   end
 
-  # Story 1046, criterion 3437 — "a failed deployment is not silence" (0060d67d).
-  #
-  # The log line above is not enough on its own, and it is worth being exact
-  # about why rather than calling it insufficient. The promotion already
-  # answered, seconds ago, with "Promoted ... QA on these stories can start
-  # against the merge". If the restart then fails, that message is wrong and
-  # nothing retracts it: the agent proceeds on the last thing it was told, and
-  # the only record is a line in web.log that nobody who was not already
-  # tailing it will read. From the agent's side that is silence.
-  #
-  # A confirmed restart is told too. It used to be skipped as noise, and an
-  # agent that decided to hold its task until the restart was confirmed then
-  # waited on a confirmation that only ever reached web.log (metric_flow,
-  # 2026-09-27).
-  #
-  # `nil` is the ordinary case rather than an oversight: a Claude Code session
-  # or an operator has no conversation to be told in, and the log is the record
-  # there. Only the tool call knows which agent received the first answer,
-  # which is why this is passed down rather than looked up — guessing the
-  # recipient would mean messaging an agent that never saw the first one.
+  # A failed deployment is not silence: the agent was already told QA can
+  # start, so a failure is sent as a correction. A confirmation is sent too —
+  # an agent may be holding its task for it. `nil` means nobody to tell (a
+  # Claude Code session or operator); the recipient is passed down from the
+  # tool call, never guessed.
   defp tell_the_agent(outcome, _scope, _root, _done, nil), do: outcome
 
   # A batch the promotion queue landed tells everyone whose work was in it.
@@ -1583,12 +1328,8 @@ defmodule CodeMySpec.Promotion do
     outcome
   end
 
-  # A lost acknowledgement is not a failure by itself — see
-  # `restart_acknowledgement_lost?/1`. `verify_unconfirmed/3` settles it
-  # against what the app is serving before this runs, so a correction here is
-  # either a real failure or an app verified still on the old commit — never a
-  # retry over a restart that already worked, which would restart the shared
-  # dev server every other working copy on the box is using.
+  # By here `verify_unconfirmed/3` has settled a lost acknowledgement, so a
+  # correction is a real failure or an app verified still on the old commit.
   defp tell_the_agent({:failed, reason} = outcome, scope, root, _done, agent_id) do
     text =
       "Correction on the promotion I just reported. The merge landed, but the " <>
@@ -1603,8 +1344,7 @@ defmodule CodeMySpec.Promotion do
 
   defp tell_the_agent(outcome, _scope, _root, _done, _agent_id), do: outcome
 
-  # Logged rather than retried, matching `report_to/3`: the agent may already be
-  # acting on the first message, and a delivery loop does not fix that.
+  # Not retried: the agent may already be acting on the first message.
   # Agents delivers it (`Agents.Events`); Promotion sits below Agents.
   defp deliver(scope, agent_id, text, what) do
     :telemetry.execute([:code_my_spec, :promotion, :report], %{}, %{

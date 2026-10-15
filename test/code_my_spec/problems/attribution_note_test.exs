@@ -27,10 +27,9 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
   agent, which writes no project files by nature, hit it on every stop and had
   no action available that would change the answer.
 
-  The note stays, with the opposite content. Silence would be wrong in the
-  other direction: an agent whose findings all became advisory should know why
-  they stopped blocking, and that the reason is a claim about this session
-  rather than a judgment that the findings do not matter.
+  `8ccd19097` then made task evaluation judge the whole copy, so nothing is
+  demoted at all. The note stays and says that: none of these came from this
+  session's edits, they block anyway, and `git log` says whose they are.
 
   Both notes are pinned on their wording, not just their existence, because
   both have been wrong in the field while reading as authoritative. 339725c7
@@ -58,11 +57,15 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
     ProblemRenderer.render_stop_response([problem()], [], session_paths: session_paths)
   end
 
-  test "a session that changed no tracked file is told its findings were demoted" do
+  test "a session that changed no tracked file is told its findings block anyway" do
     text = render(MapSet.new())
 
     assert text =~ "changed no file this project tracks"
-    assert text =~ "demoted to advisory"
+    assert text =~ "They block anyway"
+
+    refute text =~ "demoted",
+           "task evaluation judges the whole copy (8ccd19097); a note announcing a " <>
+             "demotion sat directly under findings that were blocking"
 
     assert text =~ "git log -1 -- <path>",
            "the findings are still someone's — the note stops asking the agent to " <>
@@ -137,9 +140,8 @@ defmodule CodeMySpec.Problems.AttributionNoteTest do
   end
 
   # The note is about the gate having no evidence. With evidence it has already
-  # spoken — the finding either carries "(not edited by this session)" or was
-  # demoted out of the blocking list entirely — and repeating it would be noise
-  # on every ordinary stop.
+  # spoken — the finding carries "(not edited by this session)" or it does not —
+  # and repeating it would be noise on every ordinary stop.
   test "a session with recorded edits gets no note" do
     text = render(MapSet.new(["lib/code_my_spec/validation.ex"]))
 

@@ -78,8 +78,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       key: :deploy_script,
       path: "bin/deploy",
       description: "deploy script",
-      why:
-        "the only supported deploy entry point; enforces migrate-before-swap and refuses to run on a dirty tree"
+      why: "the only supported deploy entry point; enforces migrate-before-swap"
     },
     %{
       key: :backup_script,
@@ -124,21 +123,10 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   Returns any plaintext environment files the project would actually ship or
   push.
 
-  A generated project is meant to be safe to push from its first commit, and
-  a plaintext env file is the way that stops being true — but only if it can
-  actually reach git or the image. One `.gitignore`d and `.dockerignore`d by
-  both, present or not, is a local convenience with no exposure path, not the
-  failure this exists to catch.
-
-  Found live adopting broken_oaths: it keeps a local `.env` for dev-only
-  secrets nothing else here has anywhere to put (`CODEMYSPEC_DEPLOY_KEY`,
-  Google OAuth), already excluded from both git and the built image. There is
-  no `envs/dev.enc.env` equivalent to migrate it to — devops levels only
-  cover uat/prod — so flagging mere presence blocked a real deploy over a
-  file that could never have shipped. Checked against both, not either: a
-  `.dockerignore` entry with no matching `.gitignore` line still reaches git
-  history, and the reverse still reaches the image. Checks use the supplied
-  environment.
+  A file ignored by both `.gitignore` and `.dockerignore` has no exposure path
+  and is not reported (projects keep a local `.env` for dev-only secrets; there
+  is no `envs/dev.enc.env`). Both, not either: one alone still ships it to git
+  history or the image. Checks use the supplied environment.
   """
   @spec plaintext_env_files(Scope.t(), Environment.t() | nil) :: [String.t()]
   def plaintext_env_files(%Scope{} = scope, env) do
@@ -147,18 +135,10 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
     |> Enum.reject(&excluded_from_shipping?(env, &1))
   end
 
-  # No proof of exclusion is not exclusion. A scope with no live checkout, a
-  # git that cannot answer, an unreadable `.dockerignore` — every one of
-  # those falls through to `false` below, same as a file this cannot rule out
-  # ever reaching git or the image at all.
-  #
-  # `cwd` checked before either question is asked, not caught after: a
-  # directoryless (harness-scoped) environment is a real, expected shape —
-  # the caller has no live checkout, only the project's own file-sync record
-  # — and `Environments.cmd/4` raises rather than erroring for exactly that
-  # shape, deliberately, so a caller cannot run a command "wherever it
-  # happens to be" and analyse the wrong project by accident. That guard is
-  # correct; this only has to not run into it.
+  # No proof of exclusion is not exclusion: no checkout, a git that cannot
+  # answer or an unreadable `.dockerignore` all answer `false`. A directoryless
+  # (harness-scoped) environment is checked before running `git`, so no command
+  # runs without a checkout to run in.
   defp excluded_from_shipping?(nil, _path), do: false
 
   defp excluded_from_shipping?(%Environment{cwd: cwd}, _path)
@@ -183,11 +163,8 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
     end
   end
 
-  # `.dockerignore` has no `check-ignore` to ask, so this reads its own
-  # patterns. Simple glob only — `*` and `?` — which is what every real
-  # pattern excluding a dotfile by name actually uses; full gitignore-style
-  # negation and directory-scoped rules are not something `.dockerignore`
-  # itself supports either.
+  # `.dockerignore` has no `check-ignore`, so this reads its patterns: simple
+  # `*` / `?` globs, which is what excluding a dotfile by name uses.
   defp dockerignore_pattern_matches?(line, path) do
     case line |> String.trim() |> String.trim_leading("/") do
       "" -> false
@@ -213,10 +190,9 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   the probe) or when every occurrence excludes a health path. Otherwise returns
   the offending file.
 
-  This is the trap worth encoding: the proxy probes the app port directly over
-  plain HTTP with no forwarded-proto header, so an unexcluded `force_ssl`
-  answers with a 301, the proxy reads that as an unhealthy container, and the
-  swap never completes — a deploy failing for a reason unrelated to the app.
+  The proxy probes the app port over plain HTTP with no forwarded-proto
+  header, so an unexcluded `force_ssl` answers 301, the proxy reads the
+  container as unhealthy, and the swap never completes.
   """
   @spec force_ssl_excludes_health(Environments.Environment.t(), String.t()) ::
           :ok | {:error, {:force_ssl_without_health_exclusion, String.t()}}
@@ -227,15 +203,8 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
     end
   end
 
-  # A `paths:` entry naming the health route, which is the only thing that
-  # actually excludes it.
-  #
-  # This used to accept any `exclude:` list mentioning health, which passed a
-  # flat `exclude: ["/health", "localhost", "127.0.0.1"]` — a form Plug.SSL
-  # does not read at all. Its `:exclude` must be `[hosts: ...]`,
-  # `[paths: ...]` or `[conn: ...]`; a bare list of strings excludes nothing.
-  # So the check said yes, the probe still got a 301, and the deploy failed
-  # with "target failed to become healthy" while this reported the config fine.
+  # Only a `paths:` entry excludes the health route: Plug.SSL reads a bare list
+  # of strings as hosts. See knowledge/infrastructure, "Deploy readiness audit".
   @health_exclusion ~r/paths:\s*\[[^\]]*(health|up)/
 
   defp check_force_ssl(body, path) do
@@ -248,18 +217,8 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
     end
   end
 
-  # Full-line comments dropped before either check runs. `phx.new`'s own
-  # boilerplate ships `force_ssl` commented out in exactly this shape — the
-  # whole line prefixed with `#`, never enabled — and a raw substring match
-  # flagged it as an active, unexcluded redirect it was never going to send.
-  # Found live adopting broken_oaths: the string only ever appeared inside
-  # that inert block, config/runtime.exs configures no force_ssl at all, and
-  # this still refused the deploy.
-  #
-  # Whole lines only, not a trailing `# comment` after real code — mid-line
-  # stripping risks cutting a `#` that is part of a string value (a URL
-  # fragment, say) rather than a comment, and nothing about this check needs
-  # that case to work.
+  # Full-line comments dropped: `phx.new` ships `force_ssl` commented out.
+  # Whole lines only, since a mid-line `#` may be part of a string value.
   defp active_lines(body) do
     body
     |> String.split("\n")
@@ -273,20 +232,10 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   A health route inside `:browser` carries session and CSRF plugs and can fail
   the proxy's probe for reasons unrelated to whether the app is up.
 
-  A route the router never sees at all satisfies this too: found live against
-  MarketMySpec, whose `/health` is a plug in `endpoint.ex` rather than a
-  router route — a stronger guarantee than an unpiped router scope, not a
-  weaker one, since no pipeline exists to run before the router is even
-  reached. Checked as a fallback only, so a project with a real router route
-  still reports on that route's own pipeline placement first. Detection is
-  deliberately loose (does `endpoint.ex` mention the path at all) rather than
-  parsing plug declaration order against the function it names: a plug
-  referenced by atom (`plug :health_check`) is ordinarily implemented by a
-  `defp` further down the same module, so "is the path textually before the
-  router plug line" would reject the exact shape it needs to accept. The
-  ordering guarantee this check exists to protect stays enforced by the
-  router branch above; this branch only answers "does something here appear
-  to handle it."
+  When the router has no `/health` route, an `endpoint.ex` beside it that
+  mentions `"/health"` satisfies it too (a plug before the router runs no
+  pipeline). The fallback is deliberately loose — a textual mention — because
+  an atom plug is usually implemented by a `defp` further down the module.
   """
   @spec health_route_unpiped(Environments.Environment.t(), String.t()) ::
           :ok
@@ -329,10 +278,9 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
 
   `rel/overlays/bin/migrate` runs `./bin/<app> eval <App>.Release.migrate`
   inside the released binary, where Mix is not available to run
-  `mix ecto.migrate`. A project missing this module passes every other check,
-  builds, pushes and boots — and only fails once the migration step runs
-  against a real box, several steps past where the cause is visible. The
-  supplied environment determines where the check reads.
+  `mix ecto.migrate`. Without this module a project passes every other check
+  and fails only at the migration step on a real box. The supplied
+  environment determines where the check reads.
   """
   @spec release_module_exists?(Scope.t(), String.t() | nil, Environment.t() | nil) ::
           :ok | {:error, {:missing_release_module, String.t()}}
@@ -357,27 +305,14 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       else: :ok
   end
 
-  # Live first, the fast and common path: a real checkout answers this
-  # itself and needs nothing else. The `Files` table is the fallback for
-  # exactly one shape of caller — a harness-scoped devops tool, whose scope
-  # carries no working directory to check live at all, but whose checkout
-  # has been continuously syncing file existence into this table the whole
-  # time regardless. Found live against MarketMySpec: `run_provisioning_step
-  # step: "deploy"` reported every one of these artifacts missing — Dockerfile,
-  # .sops.yaml, both encrypted envs, bin/deploy — despite all of them being
-  # real, committed, and pushed, because the only thing this ever asked was a
-  # directoryless environment that could never have answered honestly. It did
-  # not need to ask that at all: the sync this project already runs had the
-  # answer the whole time.
+  # Live first; the synced `Files` table is the fallback for a harness-scoped
+  # caller whose environment has no working directory to check.
+  # See knowledge/infrastructure, "Deploy readiness audit".
   defp present?(%Scope{} = scope, path, env) do
     Environments.file_exists?(env, path) == true or synced?(scope, path)
   end
 
-  # No project to ask the sync table about — `Files.get_by_path/2` refuses
-  # to build `project_id == NULL` at all (Ecto raises rather than silently
-  # matching nothing on an unsafe nil comparison), so this is checked here
-  # first rather than let through to become a crash. A scope with no project
-  # cannot fall back to anything better than the live check already gave.
+  # Checked first: `Files.get_by_path/2` would raise on a nil project id.
   defp synced?(%Scope{active_project_id: nil}, _path), do: false
 
   defp synced?(scope, path) do

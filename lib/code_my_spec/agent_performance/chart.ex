@@ -1,7 +1,8 @@
 defmodule CodeMySpec.AgentPerformance.Chart do
   @moduledoc """
-  The performance page's time-series chart: token spend, nudges, QA
-  first-pass rate and failed turns, bucketed hourly over the last 7 days,
+  The performance page's time-series charts: token spend, messages and failed
+  turns, and beside them offer acceptance and tool-call failure rate --
+  bucketed hourly over the last 7 days,
   with story starts and promotions carried as events rather than chart
   lines (criteria 2029-2031).
 
@@ -16,8 +17,12 @@ defmodule CodeMySpec.AgentPerformance.Chart do
   alias CodeMySpec.AgentPerformance.AgentTurn
   alias CodeMySpec.AgentPerformance.CycleTime
   alias CodeMySpec.AgentPerformance.Interventions
+  alias CodeMySpec.AgentPerformance.OfferHealth
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Conversations.Conversation
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Qa
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
@@ -32,14 +37,14 @@ defmodule CodeMySpec.AgentPerformance.Chart do
           optional(:story_id) => integer(),
           optional(:agent_id) => Ecto.UUID.t()
         }
-  @type detail :: %{tokens_total: non_neg_integer() | :unknown, nudges: non_neg_integer()}
+  @type detail :: %{tokens_total: non_neg_integer() | :unknown, messages: non_neg_integer()}
 
   @doc "The chart option this page hands its EChart hook, as a plain map ready for `Jason.encode!/1`."
   @spec option(Scope.t(), filter()) :: map()
   def option(%Scope{} = scope, filter \\ %{}) do
     until = DateTime.utc_now()
-    since = DateTime.add(until, -@range_days * 24 * 3600, :second)
-    buckets = bucket_starts(since)
+    buckets = bucket_starts(until)
+    since = hd(buckets)
 
     %{
       "range_days" => @range_days,
@@ -50,6 +55,7 @@ defmodule CodeMySpec.AgentPerformance.Chart do
         %{
           "name" => "token_spend",
           "type" => "line",
+          "y_axis" => "tokens",
           "data" =>
             bucket_sums(
               buckets,
@@ -59,19 +65,16 @@ defmodule CodeMySpec.AgentPerformance.Chart do
             )
         },
         %{
-          "name" => "nudges",
+          "name" => "messages",
           "type" => "line",
+          "y_axis" => "count",
           "data" =>
-            bucket_sums(buckets, nudges_for(scope, filter, since, until), & &1.at, fn _ -> 1 end)
-        },
-        %{
-          "name" => "qa_first_pass_rate",
-          "type" => "line",
-          "data" => bucket_rates(buckets, first_attempts_for(scope, filter, since, until))
+            bucket_sums(buckets, messages_for(scope, filter, since, until), & &1.at, fn _ -> 1 end)
         },
         %{
           "name" => "failed_turns",
           "type" => "line",
+          "y_axis" => "count",
           "data" =>
             bucket_sums(buckets, failures_for(scope, filter, since, until), & &1.at, fn _ -> 1 end)
         }
@@ -80,12 +83,73 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     }
   end
 
-  @doc "Tokens spent and nudges served, summarized rather than listed row by row (criterion 2034)."
+  @doc """
+  The rates chart: offer acceptance and tool-call failure rate, hourly over
+  the same 7 days and narrowed by the same filter. Both are fractions, so they
+  share one axis apart from the counts on `option/2`.
+  """
+  @spec rates_option(Scope.t(), filter()) :: map()
+  def rates_option(%Scope{} = scope, filter \\ %{}) do
+    until = DateTime.utc_now()
+    buckets = bucket_starts(until)
+    since = hd(buckets)
+
+    %{
+      "categories" => Enum.map(buckets, &DateTime.to_iso8601/1),
+      "series" => [
+        %{
+          "name" => "offer_acceptance",
+          "type" => "line",
+          "y_axis" => "rate",
+          "connectNulls" => true,
+          "data" => bucket_rates(buckets, offer_outcomes_for(scope, filter, since))
+        },
+        %{
+          "name" => "tool_failure_rate",
+          "type" => "line",
+          "y_axis" => "rate",
+          "connectNulls" => true,
+          "data" => bucket_rates(buckets, tool_results_for(scope, filter, since, until))
+        }
+      ],
+      "events" => []
+    }
+  end
+
+  @doc """
+  QA attempts by outcome, narrowed like the chart: in total for the page's QA
+  ring, and per working copy (through the agent that submitted each) for its
+  teams chart. Every attempt counts, not only a story's first: an hourly
+  first-pass rate was mostly empty hours, so QA is passed against failed
+  rather than a line (John, 2026-10-14).
+  """
+  @spec qa_counts(Scope.t(), filter()) :: %{
+          total: %{atom() => pos_integer()},
+          by_copy: %{Ecto.UUID.t() => %{atom() => pos_integer()}}
+        }
+  def qa_counts(%Scope{} = scope, filter \\ %{}) do
+    agent_copies = scope |> Agents.list_agents() |> Map.new(&{&1.id, &1.working_copy_id})
+
+    attempts =
+      scope
+      |> Qa.list_project_attempts(include_older: true)
+      |> Enum.filter(&matches_attempt?(&1, filter, agent_copies))
+
+    by_copy =
+      attempts
+      |> Enum.group_by(&Map.get(agent_copies, &1.agent_id))
+      |> Map.delete(nil)
+      |> Map.new(fn {copy_id, group} -> {copy_id, Enum.frequencies_by(group, & &1.status)} end)
+
+    %{total: Enum.frequencies_by(attempts, & &1.status), by_copy: by_copy}
+  end
+
+  @doc "Tokens spent and messages sent, summarized rather than listed row by row (criterion 2034)."
   @spec detail(Scope.t(), filter()) :: detail()
   def detail(%Scope{} = scope, filter \\ %{}) do
     %{
       tokens_total: tokens_total(scope, filter),
-      nudges: scope |> Interventions.for_scope(filter) |> Enum.count(&(&1.kind == :nudge))
+      messages: scope |> Interventions.for_scope(filter) |> Enum.count(&(&1.kind == :message))
     }
   end
 
@@ -137,19 +201,28 @@ defmodule CodeMySpec.AgentPerformance.Chart do
 
   defp token_total(%AgentTurn{input_tokens: i, output_tokens: o}), do: (i || 0) + (o || 0)
 
-  defp nudges_for(scope, filter, since, until) do
+  defp messages_for(scope, filter, since, until) do
     scope
     |> Interventions.for_scope(filter)
-    |> Enum.filter(&(&1.kind == :nudge and in_window?(&1.at, since, until)))
+    |> Enum.filter(&(&1.kind == :message and in_window?(&1.at, since, until)))
   end
 
+  # Every "Your last turn failed" notice the harness sent. The agent row keeps
+  # only its latest provider refusal, so charting that showed none at all
+  # while 131 turns failed in a week (2026-10-14).
   defp failures_for(scope, filter, since, until) do
-    scope
-    |> Agents.list_agents()
-    |> filter_agents(filter)
-    |> Enum.filter(&match?(%{provider_refused_at: %DateTime{}}, &1))
-    |> Enum.map(&%{at: &1.provider_refused_at, cause: &1.provider_refusal})
-    |> Enum.filter(&in_window?(&1.at, since, until))
+    Message
+    |> join(:inner, [m], c in Conversation, on: c.id == m.conversation_id)
+    |> where(
+      [m, c],
+      c.account_id == ^scope.active_account_id and c.project_id == ^scope.active_project_id and
+        not is_nil(c.agent_id)
+    )
+    |> where([m], m.role == :operator and m.inserted_at >= ^since and m.inserted_at <= ^until)
+    |> where([m], fragment("ltrim(?->0->>'text') LIKE 'Your last turn failed%'", m.content))
+    |> narrow_to_agents(agent_ids_for(scope, filter))
+    |> select([m], %{at: m.inserted_at})
+    |> Repo.all()
   end
 
   defp filter_agents(agents, filter) do
@@ -164,22 +237,6 @@ defmodule CodeMySpec.AgentPerformance.Chart do
       nil -> items
       value -> Enum.filter(items, &match?.(&1, value))
     end
-  end
-
-  # One QA attempt per story -- its first, win or lose -- the same "first
-  # attempt" QaRounds.team_first_pass_rate/3 counts a team's rate from.
-  defp first_attempts_for(scope, filter, since, until) do
-    agent_copies = scope |> Agents.list_agents() |> Map.new(&{&1.id, &1.working_copy_id})
-
-    scope
-    |> Qa.list_project_attempts(include_older: true, include_invalidated: true)
-    |> Enum.group_by(& &1.story_id)
-    |> Enum.map(fn {_story_id, attempts} ->
-      Enum.min_by(attempts, & &1.submitted_at, DateTime)
-    end)
-    |> Enum.filter(
-      &(matches_attempt?(&1, filter, agent_copies) and in_window?(&1.submitted_at, since, until))
-    )
   end
 
   # The QA attempt is attributed by the agent that submitted it, so an agent
@@ -257,6 +314,7 @@ defmodule CodeMySpec.AgentPerformance.Chart do
           "type" => type,
           "at" => DateTime.to_iso8601(at),
           "story_id" => story.id,
+          "number" => story.number,
           "title" => story.title
         }
         | acc
@@ -271,10 +329,13 @@ defmodule CodeMySpec.AgentPerformance.Chart do
   defp in_window?(at, since, until),
     do: DateTime.compare(at, since) != :lt and DateTime.compare(at, until) != :gt
 
-  defp bucket_starts(since) do
-    # Match the queried rolling window; rounding backward drops recent events
-    # after the last bucket ends at the beginning of the current clock hour.
-    for i <- 0..(@bucket_count - 1), do: DateTime.add(since, i * @bucket_seconds, :second)
+  # The last bucket is the hour `until` falls in. Counted forward from 7 days
+  # back, the current hour sat one past the end and nothing in it was charted.
+  defp bucket_starts(until) do
+    current = %{until | minute: 0, second: 0, microsecond: {0, 0}}
+
+    for i <- (@bucket_count - 1)..0//-1,
+        do: DateTime.add(current, -i * @bucket_seconds, :second)
   end
 
   defp bucket_index([first | _] = buckets, at) do
@@ -293,19 +354,56 @@ defmodule CodeMySpec.AgentPerformance.Chart do
     end)
   end
 
-  defp bucket_rates(buckets, attempts) do
-    groups =
-      attempts
-      |> Enum.group_by(&bucket_index(buckets, &1.submitted_at))
-      |> Map.delete(nil)
+  # Tool results in the window. Tool calls run to hundreds an hour, so an
+  # hourly failure rate has a denominator worth charting. A story filter
+  # narrows to the agents holding that story, as the events do.
+  defp tool_results_for(scope, filter, since, until) do
+    Message
+    |> join(:inner, [m], c in Conversation, on: c.id == m.conversation_id)
+    |> where(
+      [m, c],
+      c.account_id == ^scope.active_account_id and c.project_id == ^scope.active_project_id and
+        not is_nil(c.agent_id)
+    )
+    |> where([m], m.role == :tool and not is_nil(m.tool_call_id))
+    |> where([m], m.inserted_at >= ^since and m.inserted_at <= ^until)
+    |> narrow_to_agents(agent_ids_for(scope, filter))
+    |> select([m], %{at: m.inserted_at, hit: m.tool_failed})
+    |> Repo.all()
+  end
 
-    Enum.with_index(buckets)
-    |> Enum.map(fn {_bucket, idx} ->
+  # Settled offers only -- claimed, ignored or declined -- counted the way
+  # `OfferHealth` counts a claim rate. `failed` is "not claimed", so the
+  # shared bucketing reads it back as the claim rate's complement.
+  defp offer_outcomes_for(scope, filter, since) do
+    agent_ids = agent_ids_for(scope, filter)
+
+    scope
+    |> Offers.list(since: since, limit: 100_000)
+    |> Enum.filter(
+      &(OfferHealth.counted?(&1) and &1.status in [:claimed, :ignored, :declined] and
+          (is_nil(agent_ids) or &1.agent_id in agent_ids))
+    )
+    |> Enum.map(&%{at: &1.inserted_at, hit: &1.status == :claimed})
+  end
+
+  defp agent_ids_for(scope, filter) do
+    if Enum.any?([:story_id, :agent_id, :working_copy_id], &Map.has_key?(filter, &1)),
+      do: scope |> Agents.list_agents() |> filter_agents(filter) |> Enum.map(& &1.id)
+  end
+
+  defp narrow_to_agents(query, nil), do: query
+  defp narrow_to_agents(query, ids), do: where(query, [m, c], c.agent_id in ^ids)
+
+  defp bucket_rates(buckets, results) do
+    groups = results |> Enum.group_by(&bucket_index(buckets, &1.at)) |> Map.delete(nil)
+
+    for idx <- 0..(length(buckets) - 1) do
       case Map.get(groups, idx) do
         nil -> nil
-        list -> Enum.count(list, &(&1.status == :pass)) / length(list)
+        list -> Float.round(Enum.count(list, & &1.hit) / length(list), 4)
       end
-    end)
+    end
   end
 
   defp list_stories(scope) do
