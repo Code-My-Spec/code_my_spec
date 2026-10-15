@@ -4,15 +4,20 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
       idle ─▶ build ─▶ gate ─┬─ green ─▶ land ─▶ idle
                              ├─ pending (analysis running) ─▶ gate again when it lands
-                             └─ red ─▶ bisect: a batch of one is ejected; otherwise
-                                        gate the first half, the rest wait
+                             └─ red ─▶ the candidate is ejected
 
   A batch is built in the project's gate copy: reset to main's HEAD, the
   candidates merged on in queue order. A candidate that conflicts is ejected at
-  once — a conflict is not a gate failure, so there is nothing to bisect. The
+  once, told as a conflict rather than a gate failure. The
   gate is `Promotion.gate/3`, the same clean run of every analyzer at one exact
   commit a direct promotion needs, and a green batch lands through
   `Promotion.land/6`: main is fast-forwarded to the batch commit and tagged.
+
+  Nothing is retried. A candidate is taken only once main and the gate copy
+  can both be read; until then it stays queued and a copy joining wakes the
+  queue. Once taken, anything that stops it landing ejects it with the reason,
+  so one candidate cannot hold the queue by failing the same way forever. Only
+  main moving under a batch rebuilds it, since that is no failure of its own.
 
   Waits on `analysis:<project>` for the gate copy's runs rather than polling,
   with a slow timer behind it in case a message is missed. Every outcome is
@@ -41,12 +46,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # One candidate per batch: a red batch is the candidate that was in it, with
   # nothing to work out.
-  # Still to do: with a cap of 1, `bisect/2`'s split branch is unreachable; remove it.
   @batch_cap 1
   @gate_label "promotion-gate"
   @recheck_ms 120_000
   @gate_wait_ms 15_000
-  @retry_ms 300_000
   @gate_wait_limit_ms 30 * 60_000
 
   @doc false
@@ -156,32 +159,51 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp reserve_next(state) do
-    case Repository.queued(state.project_id, @batch_cap) do
+    with [entry] <- Repository.queued(state.project_id, @batch_cap),
+         {:ok, base} <- ready(state.scope) do
+      reserve_and_build(state, entry, base)
+    else
       [] ->
         {:noreply, idle(state)}
 
-      [entry] ->
-        reserve_and_build(state, entry)
+      {:error, reason} ->
+        Logger.warning(
+          "[PromotionQueue] not taking a candidate: #{describe(reason)}. " <>
+            "It stays queued until a copy joins."
+        )
+
+        {:noreply, idle(state)}
     end
   end
 
-  defp reserve_and_build(state, entry) do
+  # What has to be reachable before a candidate is taken: main, to build on and
+  # land, and the gate copy's checkout. A failure here is nobody's candidate.
+  defp ready(scope) do
+    with {:ok, base} <- main_head(scope),
+         {:ok, gate} <- gate_copy(scope),
+         {:ok, _head} <- head_of(scope, gate, "the gate copy") do
+      {:ok, base}
+    end
+  end
+
+  defp reserve_and_build(state, entry, base) do
     case Repository.move(entry, :gating, %{}) do
-      {:ok, reserved} -> build(%{state | reserved_entries: [reserved]}, [reserved])
-      {:error, :validation_held} -> {:noreply, idle(state)}
-      {:error, :completion_handoff_pending} -> {:noreply, idle(state)}
-      {:error, reason} -> could_not_build(state, reason)
+      {:ok, reserved} ->
+        build_on(%{state | reserved_entries: [reserved]}, [reserved], base)
+
+      {:error, :validation_held} ->
+        {:noreply, idle(state)}
+
+      {:error, :completion_handoff_pending} ->
+        {:noreply, idle(state)}
+
+      {:error, reason} ->
+        Logger.error("[PromotionQueue] could not take #{subject(entry)}: #{describe(reason)}")
+        {:noreply, idle(state)}
     end
   end
 
   defp idle(state), do: %{state | phase: :idle, batch: nil, reserved_entries: []}
-
-  defp build(state, entries) do
-    case main_head(state.scope) do
-      {:ok, base} -> build_on(state, entries, base)
-      {:error, reason} -> could_not_build(state, reason)
-    end
-  end
 
   defp build_on(state, entries, base) do
     case on_main(state.scope, entries, base) do
@@ -267,7 +289,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           # building again at once rebuilds the same batch, silently, forever.
           case Enum.reject(unaccounted, &MapSet.member?(conflicted, &1.commit)) do
             [] -> next(%{state | reserved_entries: []})
-            left -> could_not_build(state, %{reason: unaccounted_reason(left, built)})
+            left -> could_not_gate(state, left, %{reason: unaccounted_reason(left, built)})
           end
 
         {in_batch, _out} ->
@@ -275,7 +297,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       end
     else
       {:error, :gate_busy} -> wait_for_gate(state)
-      {:error, reason} -> could_not_build(state, reason)
+      {:error, reason} -> could_not_gate(state, entries, reason)
     end
   end
 
@@ -369,26 +391,17 @@ defmodule CodeMySpec.PromotionQueue.Worker do
      |> recheck_later()}
   end
 
-  defp could_not_build(state, reason) do
-    requeue(state.reserved_entries)
-    idle_state = %{state | phase: :idle, batch: nil, reserved_entries: []}
+  # Taken, and stopped short of a verdict. Ejected rather than requeued: a
+  # requeued candidate heads the queue again and fails the same way, forever.
+  defp could_not_gate(state, entries, reason) do
+    release_gate(state)
 
-    if main_registering?(reason) do
-      # a3b34f83: main's harness not being registered yet is a reconnect
-      # window (seen right after a promote restarts it), not a build
-      # failure -- it clears on its own on a later tick. Logged at :info
-      # and rechecked soon, rather than :error and the full backoff a
-      # genuine build failure gets.
-      Logger.info(
-        "[PromotionQueue] main's harness is not registered yet (likely still " <>
-          "reconnecting after a restart); waiting rather than failing this tick"
-      )
+    Enum.each(
+      entries,
+      &eject(state.scope, &1, "the queue could not gate it: #{describe(reason)}")
+    )
 
-      {:noreply, retry_later(idle_state, @recheck_ms)}
-    else
-      Logger.error("[PromotionQueue] could not build a batch: #{describe(reason)}; retrying")
-      {:noreply, retry_later(idle_state)}
-    end
+    next(idle(state))
   end
 
   defp unaccounted_reason(entries, built) do
@@ -430,7 +443,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
     case Runner.build_assets(environment, batch.gate.root, batch.gate.id) do
       {:ok, _} -> stories_green(state, swept)
-      {:error, reason} -> bisect(state, reason.reason)
+      {:error, reason} -> eject_batch(state, reason.reason)
     end
   end
 
@@ -449,7 +462,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     why = Enum.map_join(sources, "\n\n", &cannot_run(batch.scope, &1))
     Logger.error("[PromotionQueue] #{Enum.join(sources, ", ")} failed at #{batch.head}.\n#{why}")
 
-    bisect(
+    eject_batch(
       state,
       "#{Enum.join(sources, ", ")} could not run at the batch commit #{batch.head}.\n\n#{why}"
     )
@@ -492,38 +505,19 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     problems = Promotion.blocking_problems_at(batch.scope, batch.head)
 
     if problems == [] do
-      # Not a finding about the code: the gate could not run (an analyzer
-      # would not start, the tree was dirty). Nothing to eject; try again.
-      Logger.error("[PromotionQueue] gate could not run: #{describe(reason)}; retrying")
-      release_gate(state)
-      requeue(batch.entries)
-      {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
+      # No finding about the code: the gate could not run (an analyzer would
+      # not start, the tree was dirty).
+      could_not_gate(state, batch.entries, reason)
     else
-      bisect(state, findings(problems))
+      eject_batch(state, findings(problems))
     end
   end
 
-  # Whose change is red: a batch of one is ejected with `reason`; a larger one
-  # is split until it is.
-  defp bisect(%{batch: %{entries: [single]}} = state, reason) do
+  # A red batch is its one candidate's.
+  defp eject_batch(%{batch: batch} = state, reason) do
     release_gate(state)
-    eject(state.scope, single, reason)
+    Enum.each(batch.entries, &eject(state.scope, &1, reason))
     next(idle(state))
-  end
-
-  # The rest go back to waiting, still ahead of anything enqueued since; the
-  # first half is rebuilt and gated on its own.
-  defp bisect(%{batch: batch} = state, _reason) do
-    {first, _rest} = Enum.split(batch.entries, div(length(batch.entries) + 1, 2))
-
-    Logger.info(
-      "[PromotionQueue] batch at #{batch.head} is red; " <>
-        "gating the first #{length(first)} of #{length(batch.entries)}"
-    )
-
-    release_gate(state)
-    requeue(batch.entries)
-    build(%{state | phase: :idle, batch: nil}, Enum.map(first, &Repository.get(&1.id)))
   end
 
   defp already_on_main(state, entries, head) do
@@ -585,8 +579,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # The batch was certified on `base`. If main moved on while it gated —
   # anything committed to main another way — it cannot land as certified: it
-  # is rebuilt on the new main and gated again, now rather than after a retry
-  # period. Not a failure of the candidates, so none is ejected.
+  # is rebuilt on the new main and gated again at once. Not a failure of the
+  # candidates, so none is ejected.
   defp on_current_main(%{batch: batch} = state, then) do
     case main_head(state.scope) do
       {:ok, head} when head == batch.base ->
@@ -648,11 +642,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         # was refused: nothing landed, so the candidates are gated again on
         # the new main.
         # Main moving in the moment between the check above and the merge is
-        # the same race, and rebuilds at once; anything else waits to retry.
+        # the same race, and rebuilds at once; anything else is ejected.
         on_current_main(state, fn state ->
           Logger.error("[PromotionQueue] landing #{batch.head} failed: #{describe(reason)}")
-          requeue(batch.entries)
-          {:noreply, retry_later(%{state | phase: :idle, batch: nil})}
+          could_not_gate(state, batch.entries, %{reason: "landing failed: #{describe(reason)}"})
         end)
     end
   end
@@ -814,28 +807,17 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # Main's HEAD, read through main's own copy.
   defp main_head(scope) do
     case WorkingCopies.main(scope) do
-      %WorkingCopy{root: root} = main when is_binary(root) ->
-        case Runner.current(WorkingCopies.environment(scope_for(scope, main)), root, main.id) do
-          {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
-          other -> {:error, %{reason: "could not read main's HEAD: #{inspect(other)}"}}
-        end
-
-      _ ->
-        {:error, %{reason: "the project has no main working copy"}}
+      %WorkingCopy{root: root} = main when is_binary(root) -> head_of(scope, main, "main")
+      _ -> {:error, %{reason: "the project has no main working copy"}}
     end
   end
 
-  # a3b34f83: `Runner.decode/1` flattens `{:harness_not_registered, _}` into a
-  # string reason before it ever reaches here, the same way `decode_app_result/1`
-  # flattens a lost restart acknowledgement -- `Promotion.restart_acknowledgement_lost?/1`
-  # already recovers meaning from that flattened text the same way, by
-  # substring-matching the inspected tuple inside it rather than pattern-matching
-  # a shape decode/1 never actually produces.
-  defp main_registering?(%{reason: reason}) when is_binary(reason) do
-    String.contains?(reason, "harness_not_registered")
+  defp head_of(scope, %WorkingCopy{} = copy, name) do
+    case Runner.current(WorkingCopies.environment(scope_for(scope, copy)), copy.root, copy.id) do
+      {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
+      other -> {:error, %{reason: "could not read #{name}'s HEAD: #{inspect(other)}"}}
+    end
   end
-
-  defp main_registering?(_), do: false
 
   # Database calls keep their project scope. Disk operations resolve the
   # environment from this exact copy id; Scope carries identity, not runtime.
@@ -845,11 +827,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp recheck_later(state, message \\ :gate) do
     state = cancel_timer(state)
     %{state | timer: Process.send_after(self(), message, @recheck_ms)}
-  end
-
-  defp retry_later(state, ms \\ @retry_ms) do
-    state = cancel_timer(state)
-    %{state | timer: Process.send_after(self(), :next, ms)}
   end
 
   defp cancel_timer(%{timer: nil} = state), do: state

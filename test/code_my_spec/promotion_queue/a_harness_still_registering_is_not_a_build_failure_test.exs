@@ -2,17 +2,13 @@ defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTe
   @moduledoc """
   Issue a3b34f83: the queue intermittently failed a tick with "could not read
   main's HEAD: harness_not_registered" for the main copy, right after a
-  promote restarts its harness and before it rejoins the channel -- and
-  recovered on its own on a later tick. Nothing was lost, only delayed, but
-  the tick treated it exactly like a genuine build failure (Credo/compiler/
-  spex problems, a real conflict), which backs off for the long retry period
-  -- the wrong signal for a registration window that clears itself in a tick
-  or two.
+  promote restarts its harness and before it rejoins the channel. The tick
+  treated it like a build failure and retried on a timer.
 
-  `could_not_build/2` now tells the two apart: a `harness_not_registered`
-  reason for main's own HEAD read gets the short recheck wait instead of the
-  long retry backoff a genuine build failure gets, and nothing is ejected --
-  the candidate stays queued for the next tick either way.
+  Main being unreachable is nobody's candidate. The queue reads main before it
+  takes one, so the candidate is never taken: it stays queued, nothing is
+  ejected, and no timer is armed. Main's harness rejoining is what wakes the
+  queue (`PromotionQueue.copy_joined/2`).
   """
   use CodeMySpecTest.DataCase, async: false
 
@@ -65,33 +61,19 @@ defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTe
     pid
   end
 
-  test "a build tick against an unregistered main harness gets the short recheck, not the " <>
-         "long build-failure backoff",
+  test "an unreachable main leaves the candidate queued and untaken, with no retry timer",
        ctx do
     :ok = PromotionQueue.ensure_worker(ctx.scope)
-    # Long enough for the worker's own init -> :next -> build -> could_not_build
-    # chain to run and land in :idle with its retry timer armed.
-    Process.sleep(300)
+    # `init/1` sends itself `:next` before this call reaches it.
+    state = :sys.get_state(worker_pid(ctx.scope.active_project_id))
 
-    pid = worker_pid(ctx.scope.active_project_id)
-    state = :sys.get_state(pid)
+    assert state.phase == :idle
+    assert state.timer == nil, "the queue retried on a timer instead of waiting for a join"
 
-    assert state.phase == :idle,
-           "the tick did not settle back to idle after main's HEAD could not be read"
+    assert [waiting] = Repository.queued(ctx.scope.active_project_id, 10)
+    assert waiting.id == ctx.entry.id
 
-    assert is_reference(state.timer), "no retry timer was armed after the failed tick"
-
-    remaining = Process.read_timer(state.timer)
-    assert is_integer(remaining), "the retry timer had already fired or did not exist"
-
-    assert remaining < 200_000,
-           "a harness-registration gap waited close to the 300s build-failure backoff " <>
-             "instead of the 120s recheck. remaining: #{remaining}ms"
-
-    assert [requeued] = Repository.queued(ctx.scope.active_project_id, 10)
-    assert requeued.id == ctx.entry.id
-
-    assert requeued.status == :queued,
-           "the candidate was ejected instead of simply waiting for main's harness to rejoin"
+    assert waiting.status == :queued,
+           "the candidate was taken or ejected over main being unreachable"
   end
 end
