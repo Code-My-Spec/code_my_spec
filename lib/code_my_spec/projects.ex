@@ -222,14 +222,28 @@ defmodule CodeMySpec.Projects do
   Expects the project root (containing `.code_my_spec/config.yml`) - callers
   should resolve subdirectories to the project root before calling this.
 
+  An existing project's `local_path` is repointed at `project_root` unless
+  `sync_local_path: false` is given. Pass that for a caller that is only
+  reading or reporting on a checkout -- a tool invoked with `--root <some
+  worktree>` to inspect it, say -- rather than adopting it as the project's
+  canonical location (c1b2d03a: a dry run from a worktree repointed the
+  project at that worktree, and the operator had to run it again against
+  the main checkout to undo it). Every other field from `config.yml` is
+  still synced either way; those describe the project, not which checkout
+  happened to resolve this call, so there is nothing of this caller's own
+  to clobber.
+
   Returns `{:ok, scope}` or `{:error, reason}`.
 
   Lives here rather than on `Scope` so `Users` need not depend on `Projects`.
   """
-  @spec scope_from_local_config(String.t()) :: {:ok, Scope.t()} | {:error, atom() | String.t()}
-  def scope_from_local_config(project_root) when is_binary(project_root) do
+  @spec scope_from_local_config(String.t(), keyword()) ::
+          {:ok, Scope.t()} | {:error, atom() | String.t()}
+  def scope_from_local_config(project_root, opts \\ [])
+
+  def scope_from_local_config(project_root, opts) when is_binary(project_root) do
     with {:ok, config} <- read_local_config(project_root),
-         {:ok, project} <- get_or_create_project(config, project_root) do
+         {:ok, project} <- get_or_create_project(config, project_root, opts) do
       {:ok,
        %Scope{
          active_account: nil,
@@ -241,7 +255,7 @@ defmodule CodeMySpec.Projects do
     end
   end
 
-  def scope_from_local_config(nil), do: {:error, :no_working_dir}
+  def scope_from_local_config(nil, _opts), do: {:error, :no_working_dir}
 
   # Reads the local config file from the project root directory. Expects a
   # directory containing `.code_my_spec/config.yml`.
@@ -255,7 +269,7 @@ defmodule CodeMySpec.Projects do
     end
   end
 
-  defp get_or_create_project(config, working_dir) do
+  defp get_or_create_project(config, working_dir, opts) do
     case config["project_id"] do
       nil ->
         {:error, :no_project_id}
@@ -263,7 +277,7 @@ defmodule CodeMySpec.Projects do
       project_id ->
         case Repo.get(Project, project_id) do
           %Project{} = project ->
-            sync_project_from_config(project, config, working_dir)
+            sync_project_from_config(project, config, working_dir, opts)
 
           nil ->
             create_project_from_config(config, working_dir)
@@ -271,14 +285,14 @@ defmodule CodeMySpec.Projects do
     end
   end
 
-  defp sync_project_from_config(project, config, working_dir) do
+  defp sync_project_from_config(project, config, working_dir, opts) do
     attrs =
       %{}
       |> maybe_put(:name, config["name"])
       |> maybe_put(:module_name, config["module_name"])
       |> maybe_put(:description, config["description"])
       |> maybe_put(:account_id, config["account_id"])
-      |> maybe_put(:local_path, working_dir)
+      |> maybe_put_local_path(working_dir, Keyword.get(opts, :sync_local_path, true))
 
     if attrs == %{} do
       {:ok, project}
@@ -288,6 +302,9 @@ defmodule CodeMySpec.Projects do
       |> Repo.update()
     end
   end
+
+  defp maybe_put_local_path(map, _working_dir, false), do: map
+  defp maybe_put_local_path(map, working_dir, true), do: maybe_put(map, :local_path, working_dir)
 
   defp create_project_from_config(config, working_dir) do
     attrs = %{

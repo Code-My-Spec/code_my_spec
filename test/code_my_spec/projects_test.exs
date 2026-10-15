@@ -65,6 +65,44 @@ defmodule CodeMySpec.ProjectsTest do
       assert local_scope.user_id == nil
     end
 
+    test "scope_from_local_config/1 repoints an existing project's local_path at the resolving dir" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+      project = project_fixture(scope, %{local_path: "/somewhere/else"})
+      dir = write_config(%{"project_id" => project.id})
+
+      assert {:ok, _local_scope} = Projects.scope_from_local_config(dir)
+      assert {:ok, updated} = Projects.get_project(scope, project.id)
+      assert updated.local_path == dir
+    end
+
+    # c1b2d03a: `mix cms.reconcile_status`/`cms.stamp_spex` resolve a scope
+    # from whatever `--root` names to inspect a checkout, routinely a
+    # worktree -- never that checkout's own canonical location. Without
+    # this, a dry run from a worktree silently repointed the project there,
+    # and the operator had to re-run the task against the main checkout
+    # just to undo a write a *read* made.
+    test "scope_from_local_config/2 with sync_local_path: false leaves an existing project's local_path alone" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+      project = project_fixture(scope, %{local_path: "/somewhere/else"})
+      dir = write_config(%{"project_id" => project.id, "name" => "renamed"})
+
+      assert {:ok, local_scope} = Projects.scope_from_local_config(dir, sync_local_path: false)
+      assert local_scope.active_project_id == project.id
+
+      assert {:ok, updated} = Projects.get_project(scope, project.id)
+      assert updated.local_path == "/somewhere/else",
+             "a read-only resolve wrote local_path despite sync_local_path: false"
+
+      assert updated.name == "renamed",
+             "sync_local_path: false suppressed every field, not just local_path -- the " <>
+               "project's own config fields describe the project, not which checkout " <>
+               "resolved this call, so they have nothing of this caller's own to clobber"
+    end
+
     test "resolve_local_project/1 reads project_id from the project's own config" do
       user = user_fixture()
       account = account_with_owner_fixture(user)

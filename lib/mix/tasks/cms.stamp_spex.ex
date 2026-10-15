@@ -30,12 +30,39 @@ defmodule Mix.Tasks.Cms.StampSpex do
   end
 
   defp run_in(root, apply?) do
-    Mix.Task.run("app.start")
+    start_minimal()
 
-    case Projects.scope_from_local_config(root) do
+    # A dry run reads the graph through a scope resolved from whatever
+    # `--root` names, which is routinely a worktree used only to inspect it --
+    # never that checkout's own canonical location. `sync_local_path: false`
+    # keeps that read from repointing the project there (c1b2d03a).
+    case Projects.scope_from_local_config(root, sync_local_path: false) do
       {:ok, scope} -> stamp(scope, root, apply?)
       {:error, reason} -> Mix.shell().error("Failed to load project scope: #{inspect(reason)}")
     end
+  end
+
+  # `app.config`, not `app.start`: runtime.exs still runs, so the Repo is
+  # configured the way the app would configure it, but nothing is supervised
+  # beyond what this task uses. `app.start` booted the whole application in
+  # this task's BEAM -- background workers included, against the shared
+  # database a dry run has no business touching (c1b2d03a). Same shape as
+  # `Mix.Tasks.Cms.Seed`'s own preamble.
+  defp start_minimal do
+    Mix.Task.run("app.config")
+
+    {:ok, _} = Application.ensure_all_started(:ecto_sql)
+    {:ok, _} = Application.ensure_all_started(:postgrex)
+
+    {:ok, _} = CodeMySpec.Vault.start_link([])
+    {:ok, _} = CodeMySpec.Repo.start_link([])
+
+    # `AcceptanceCriteria.update_criterion/3` broadcasts on write; without the
+    # registry that surfaces mid-apply as `** (ArgumentError) unknown
+    # registry: CodeMySpec.PubSub`, which reads as a broken context rather
+    # than a missing process.
+    {:ok, _} = Application.ensure_all_started(:phoenix_pubsub)
+    {:ok, _} = Phoenix.PubSub.Supervisor.start_link(name: CodeMySpec.PubSub)
   end
 
   defp stamp(scope, root, apply?) do
