@@ -6,6 +6,7 @@ defmodule CmsHarness.AnAppLogIsTrimmedNotGrownForeverTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.AppInstance.LogTrim
+  alias CmsHarness.AppInstance.LogTrimmer
 
   @moduletag :tmp_dir
 
@@ -48,5 +49,17 @@ defmodule CmsHarness.AnAppLogIsTrimmedNotGrownForeverTest do
 
   test "a missing log is not an error", %{tmp_dir: dir} do
     assert LogTrim.trim(Path.join(dir, "absent.log"), 1_000) == :ok
+  end
+
+  test "every instance's log is trimmed on the trimmer's own clock", %{tmp_dir: dir} do
+    for {instance, size} <- [{"busy", 3_000}, {"quiet", 10}] do
+      File.mkdir_p!(Path.join(dir, instance))
+      File.write!(Path.join([dir, instance, "app.log"]), String.duplicate("x", size))
+    end
+
+    LogTrimmer.trim_all(dir, 1_000)
+
+    assert File.read!(Path.join([dir, "busy", "app.log"])) == ""
+    assert File.read!(Path.join([dir, "quiet", "app.log"])) == String.duplicate("x", 10)
   end
 end
