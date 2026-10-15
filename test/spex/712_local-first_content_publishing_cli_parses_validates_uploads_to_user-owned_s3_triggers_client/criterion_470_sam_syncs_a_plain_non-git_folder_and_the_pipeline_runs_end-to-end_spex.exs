@@ -29,7 +29,20 @@ defmodule CodeMySpecSpex.Story712.Criterion6268Spex do
   spex "A plain non-Git folder syncs end-to-end", criterion: 470 do
     scenario "Sam syncs a plain non-Git folder and the pipeline runs end-to-end" do
       given_ "a plain folder with three markdown files and no .git directory", context do
-        env = context.environment
+        original_env = context.environment
+        {:ok, commands} = Agent.start_link(fn -> [] end)
+
+        env =
+          put_in(original_env.ref[:shell], fn command, args, opts ->
+            Agent.update(commands, &[{command, args} | &1])
+            Environments.cmd(original_env, command, args, opts)
+          end)
+
+        CodeMySpecSpex.Fixtures.put_fixture_environment(context.scope, env)
+        :ok = Environments.unregister(context.project.id)
+        :ok = Environments.register(context.project.id, env)
+        :ok = Environments.unregister({:root, env.cwd})
+        :ok = Environments.register({:root, env.cwd}, env)
 
         for slug <- ~w(alpha beta gamma) do
           :ok =
@@ -52,7 +65,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6268Spex do
         |> form("[data-test='content-source-form']", source: %{path: @source})
         |> render_submit()
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, Map.merge(context, %{view: view, commands: commands})}
       end
 
       when_ "Sam runs a content sync", context do
@@ -75,8 +88,13 @@ defmodule CodeMySpecSpex.Story712.Criterion6268Spex do
         assert html =~ "3 success",
                "expected the sync summary to report three successfully parsed files"
 
-        refute html =~ ~r/clone|fetch|pull/i,
-               "a plain folder must sync without any git clone/fetch/pull operation"
+        commands = Agent.get(context.commands, & &1)
+
+        refute Enum.any?(commands, fn {command, args} ->
+                 Path.basename(command) == "git" and
+                   Enum.any?(args, &(&1 in ~w(clone fetch pull)))
+               end),
+               "a plain folder must sync without any git clone/fetch/pull operation: #{inspect(commands)}"
 
         {:ok, context}
       end
