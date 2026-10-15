@@ -171,4 +171,77 @@ defmodule CodeMySpec.CodeMode.AnswerCapTest do
                "the one that trims back to a valid UTF-8 boundary."
     end
   end
+
+  # 41bdee7d: a cut answer's full content was simply gone, with no way back
+  # to it. `cap/2`'s `spill_label` option writes it to disk instead and
+  # points the note at the path, so an agent that needs the whole thing can
+  # go read it.
+  describe "a cut answer with a spill_label" do
+    @describetag :tmp_dir
+
+    setup %{tmp_dir: tmp_dir} do
+      previous = Application.get_env(:code_my_spec, :code_mode_spill_dir)
+      Application.put_env(:code_my_spec, :code_mode_spill_dir, tmp_dir)
+      on_exit(fn -> Application.put_env(:code_my_spec, :code_mode_spill_dir, previous) end)
+      %{dir: tmp_dir}
+    end
+
+    test "writes the full answer to a file and names it in the note", %{dir: dir} do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      capped = CodeMode.cap(text, spill_label: "run_script")
+
+      assert capped =~ dir
+
+      [path] =
+        capped
+        |> String.split("written to ")
+        |> Enum.drop(1)
+        |> Enum.map(&String.trim_trailing(&1, "]"))
+
+      assert File.read!(path) == text
+    end
+
+    test "names the full size, not just the cut one", %{dir: _dir} do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      capped = CodeMode.cap(text, spill_label: "run_script")
+
+      assert capped =~ "(#{byte_size(text)} bytes)"
+    end
+
+    test "a second cut answer gets its own file, not an overwrite", %{dir: dir} do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      first = CodeMode.cap(text, spill_label: "run_script")
+      second = CodeMode.cap(text, spill_label: "run_script")
+
+      assert length(File.ls!(dir)) == 2
+      refute first == second
+    end
+
+    test "an answer within the cap is never spilled", %{dir: dir} do
+      CodeMode.cap("short", spill_label: "run_script")
+
+      assert File.ls!(dir) == []
+    end
+
+    test "a spill that cannot write falls back to the plain note" do
+      Application.put_env(:code_my_spec, :code_mode_spill_dir, "/nonexistent/not/writable")
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      capped = CodeMode.cap(text, spill_label: "run_script")
+
+      assert capped =~ "the answer was longer than"
+      refute capped =~ "written to"
+    end
+  end
+
+  describe "a cut answer with no spill_label" do
+    test "gets today's plain note, unchanged" do
+      text = String.duplicate("x", CodeMode.max_answer_bytes() + 500)
+
+      assert CodeMode.cap(text) =~ "the answer was longer than"
+    end
+  end
 end

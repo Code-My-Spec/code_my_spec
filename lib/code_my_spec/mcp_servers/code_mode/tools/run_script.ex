@@ -168,10 +168,14 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # says the tree is broken, and cutting the answer must not cut that off.
   defp render(%Result{} = result, scope, params) do
     if Result.failed?(result) do
-      text = AgentAlert.append(CodeMode.cap(failure(result)), scope, params)
+      text =
+        AgentAlert.append(CodeMode.cap(failure(result), spill_label: "run_script"), scope, params)
+
       Response.tool() |> Response.error(text)
     else
-      text = AgentAlert.append(CodeMode.cap(success(result)), scope, params)
+      text =
+        AgentAlert.append(CodeMode.cap(success(result), spill_label: "run_script"), scope, params)
+
       Response.tool() |> Response.text(text)
     end
   end
