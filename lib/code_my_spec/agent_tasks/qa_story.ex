@@ -602,13 +602,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       disappeared when your session ended — there's nowhere else for it to
       live. File the issues first, then submit.
     - **`mcp__plugin_codemyspec_local__submit_qa_result` does NOT resolve, and
-      neither does `create_issue` spelled that way.** Story 971 moved them to
-      code mode (`scriptable_tools.ex`), where they are reached by their bare
-      names inside `run_script` and are deliberately not advertised as MCP
-      tools. Searching your tool list for them finds nothing, which looks
-      exactly like a missing binding and is not one — this cost story 1009 a
-      whole QA pass (`4633ba45`). `tool_docs({ names = {"submit_qa_result",
-      "create_issue"} })` gives the arguments.
+      neither does `create_issue` spelled that way.** Both are code mode tools,
+      reached by their bare names inside `run_script` and deliberately not
+      advertised as MCP tools. Searching your tool list for them finds nothing,
+      which looks exactly like a missing binding and is not one.
+      `tool_docs({ names = {"submit_qa_result", "create_issue"} })` gives the
+      arguments.
     - Attribution follows automatically: every `scope: app` issue you file
       from this task carries this story unless you pass a `story_number`.
       `qa`, `docs` and `framework` findings are about the tooling, so they

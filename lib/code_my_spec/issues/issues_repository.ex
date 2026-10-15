@@ -450,41 +450,6 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   end
 
   @doc """
-  Upserts an issue pulled from the remote server.
-
-  Inserts by primary key (the server's UUID is authoritative) and
-  replaces all writable fields on conflict so a subsequent pull
-  rewrites local rows with the server's current view. Sets
-  `synced_from_server: true`. No caller in `lib` uses this, and nothing
-  reads the flag.
-  """
-  def upsert_from_server(%Scope{} = _scope, %Issue{} = remote_issue) do
-    attrs = %{
-      title: remote_issue.title,
-      severity: remote_issue.severity,
-      scope: remote_issue.scope,
-      description: remote_issue.description,
-      status: remote_issue.status,
-      category: remote_issue.category,
-      resolution: remote_issue.resolution,
-      source: remote_issue.source,
-      story_id: remote_issue.story_id,
-      source_path: remote_issue.source_path
-    }
-
-    %Issue{id: remote_issue.id}
-    |> Issue.changeset(attrs)
-    |> Changeset.put_change(:project_id, remote_issue.project_id)
-    |> Changeset.put_change(:account_id, remote_issue.account_id)
-    |> Changeset.put_change(:status, remote_issue.status)
-    |> Changeset.put_change(:synced_from_server, true)
-    |> Repo.insert(
-      on_conflict: {:replace_all_except, [:id, :inserted_at]},
-      conflict_target: :id
-    )
-  end
-
-  @doc """
   Update non-status fields on an existing issue (severity, story_id,
   category, source_path). Goes through the generic `Issue.changeset`
   so the full validation set applies; status transitions stay on

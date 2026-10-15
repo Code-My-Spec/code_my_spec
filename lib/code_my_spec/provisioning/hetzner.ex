@@ -34,7 +34,6 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     exports: :all
 
   alias CodeMySpec.AccountSecrets
-  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
 
@@ -697,19 +696,6 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @spec credential_valid?(Scope.t()) :: boolean()
   def credential_valid?(%Scope{} = scope) do
     match?({:ok, _}, list_servers(scope))
-  end
-
-  @doc """
-  Whether the S3 key pair has been pasted.
-
-  Presence only — there is nothing to call. Checks `hetzner_s3_access_key` /
-  `hetzner_s3_secret_key`, which are not the names `Storage.credentials/2`
-  reads.
-  """
-  @spec s3_credentials_present?(Scope.t()) :: boolean()
-  def s3_credentials_present?(%Scope{} = scope) do
-    ProjectSecrets.has_value?(scope, "hetzner_s3_access_key") and
-      ProjectSecrets.has_value?(scope, "hetzner_s3_secret_key")
   end
 
   ## Internals

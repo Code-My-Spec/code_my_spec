@@ -105,7 +105,9 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # that, so a differing id is now refused rather than honored.
   defp grant_agent_id(frame, params) do
     case frame.assigns[:agent_id] do
-      nil -> {:ok, Map.get(params, :agent_id)}
+      nil ->
+        {:ok, Map.get(params, :agent_id)}
+
       connection_id ->
         case Map.get(params, :agent_id) do
           nil -> {:ok, connection_id}
@@ -144,7 +146,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # this caller does not carry and no script may call.
   #
   # `:all` for the unscoped caller, which is `carried`'s own spelling for "no
-  # restriction" and has to stay distinguishable from "carries nothing" â the
+  # restriction" and has to stay distinguishable from "carries nothing" — the
   # second would put a stub on every tool that exists.
   defp direct_names(nil), do: :all
 

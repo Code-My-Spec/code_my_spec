@@ -142,8 +142,9 @@ defmodule CmsHarness.Project.ChannelClient do
         Logger.error("""
         [CmsHarness] no credential, so this harness is connected to nothing.
 
-        Set CMS_TOKEN (or CMS_DEPLOY_KEY on a sprite) and restart it. Until then
-        every hook will refuse and no file change will be recorded.
+        Run `mix cms.harness.onboard` in the working copy, which records its
+        deploy key in .cms_harness.json, and restart it. Until then every hook
+        will refuse and no file change will be recorded.
         """)
 
         # Recorded so the hook path reports a missing credential rather than
@@ -429,7 +430,8 @@ defmodule CmsHarness.Project.ChannelClient do
   defp credential_note(project) do
     case Credentials.for_working_copy(project.root) do
       {:ok, _token, :configured_deploy_key} ->
-        "This harness presented CMS_DEPLOY_KEY, which is issued per project and " <>
+        "This harness presented its configured deploy key (`:harness_deploy_key` " <>
+          "or `--deploy-key`), which is issued per project and " <>
           "belongs to whatever started the daemon. Give this copy its own:\n\n" <>
           "    cd #{project.root} && mix cms.harness.onboard\n\n" <>
           "which records the project's key in its .cms_harness.json. On a machine " <>
@@ -444,10 +446,10 @@ defmodule CmsHarness.Project.ChannelClient do
           "Save a new one and onboard this copy again."
 
       {:ok, _token, :user_token} ->
-        "This harness presented CMS_TOKEN. A user token reaches every project its " <>
-          "user can access, so a refusal means this user has no access to " <>
-          "#{project.id} — or the token has expired, which it does silently " <>
-          "because a CMS_TOKEN is never refreshed."
+        "This harness presented its configured user token (`:harness_token`). A " <>
+          "user token reaches every project its user can access, so a refusal " <>
+          "means this user has no access to #{project.id} — or the token has " <>
+          "expired, which it does silently because a configured token is never refreshed."
 
       {:error, :no_credential} ->
         "This harness has no credential at all for #{project.root}."

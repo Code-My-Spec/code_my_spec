@@ -103,8 +103,13 @@ defmodule CmsHarness.HookDecisionTest do
     test "a missing credential says so instead of looking like an outage" do
       %{"reason" => reason} = unreachable("stop", :no_credential, @dir)
 
-      assert reason =~ "CMS_TOKEN"
+      assert reason =~ "mix cms.harness.onboard"
       assert reason =~ "never connected"
+
+      # The harness reads neither variable; naming them sent readers after a
+      # setting nothing reads.
+      refute reason =~ "CMS_TOKEN"
+      refute reason =~ "CMS_DEPLOY_KEY"
     end
 
     # "The channel is joined" was asserted as evidence the connection was fine,

@@ -4,15 +4,15 @@ defmodule CodeMySpec.Agents.APromoteInTheQueueDoesNotHoldTheAgentsOnlyTaskSlotTe
   task slot.
 
   A `promote_issue` task whose promotion is already in the queue is
-  legitimately still open â criterion 2017 says so â but an agent holding only
+  legitimately still open — criterion 2017 says so — but an agent holding only
   that task is idle, not busy: the queue messages it when the candidate lands or
   is ejected, and nothing the agent does shortens the wait. Criterion 2021 adds
   the other half: it can still claim other work assigned to it.
 
   Issue bf57fc93 measured the cost of treating it as busy. Agent 6d915491 held
   `promote_issue` on a candidate already re-queued (b8dc441d) and was offered
-  that same requirement three times in twenty seconds â each offer settling
-  `ignored` in the same second its turn ended â then had the work held back and
+  that same requirement three times in twenty seconds — each offer settling
+  `ignored` in the same second its turn ended — then had the work held back and
   escalated to main as "offered 3 times and not taken". The mechanism is here:
   `admit/3` asks `idle?/1`, which asks `Agent.active_task/1`, which counts this
   task; `:busy` follows and no turn is dispatched at all.
@@ -21,7 +21,7 @@ defmodule CodeMySpec.Agents.APromoteInTheQueueDoesNotHoldTheAgentsOnlyTaskSlotTe
   (criterion 2017), and an agent holding a task the queue does *not* have is
   still busy on it.
 
-  The instrument is `Work.admission/3` â `admit/3`'s answer, named. It has to be
+  The instrument is `Work.admission/3` — `admit/3`'s answer, named. It has to be
   that rather than the dispatched turn: `request_turn_if_runnable/4` flattens
   every hold to `{:ok, :not_runnable}`, and a coder bound to an issue is offered
   that issue's work and nothing else (`Work.work_for/4`), so "was a turn sent"
@@ -73,7 +73,7 @@ defmodule CodeMySpec.Agents.APromoteInTheQueueDoesNotHoldTheAgentsOnlyTaskSlotTe
 
   # A second issue on the same copy, accepted and assigned to the team: work the
   # graph holds for the coder that is not the promotion it is waiting on. It is
-  # also the instrument check â an agent holding nothing must be offered a turn
+  # also the instrument check — an agent holding nothing must be offered a turn
   # from exactly this setup.
   defp work_for_the_copy(ctx) do
     other = issue_fixture(ctx.scope)
@@ -84,7 +84,7 @@ defmodule CodeMySpec.Agents.APromoteInTheQueueDoesNotHoldTheAgentsOnlyTaskSlotTe
   end
 
   # The team is bound to the issue and QA has passed it, so the coder's next
-  # turn is `promote_issue` â the state bf57fc93 was measured in. Adds
+  # turn is `promote_issue` — the state bf57fc93 was measured in. Adds
   # `:task_id`.
   defp holds_promote(ctx) do
     issue = issue_fixture(ctx.scope, %{status: :accepted})

@@ -1708,7 +1708,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       instance ->
         " This harness process (instance=#{instance}) serves every working copy it" <>
           " holds, so every other project on it dropped at the same moment — grep" <>
-          " instance=#{instance} across server.log to see them, rather than reading" <>
+          " instance=#{instance} across web.log to see them, rather than reading" <>
           " this one channel as the whole incident."
     end
   end
@@ -1946,10 +1946,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       detail:
         "Two working copies are presenting harness #{harness.id}: this join is for " <>
           "#{inspect(joining_root)} and the id is already held for #{inspect(held_root)}. " <>
-          "A harness id names one checkout, so one of these read its identity from " <>
-          "somewhere other than its own `.cms_harness.json` — most often `CMS_HARNESS_ID` " <>
-          "inherited from the session that started the daemon. Restart the harness from " <>
-          "an environment without it, and check each checkout's `.cms_harness.json`."
+          "A harness id names one checkout, so one `.cms_harness.json` was most likely " <>
+          "copied from the other checkout. In the checkout that should have its own id, " <>
+          "delete `.cms_harness.json` and run `mix cms.harness.onboard` (onboarding " <>
+          "keeps an id the file already holds)."
     }
   end
 

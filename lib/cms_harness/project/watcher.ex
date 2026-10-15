@@ -197,8 +197,8 @@ defmodule CmsHarness.Project.Watcher do
   def handle_info({:file_event, other_pid, _payload}, state) do
     Logger.warning(
       "[CmsHarness] file event from #{inspect(other_pid)}, but this watcher is " <>
-        "following #{inspect(state.fs_pid)} — ignoring it. Sync is running on its " <>
-        "timer alone; the watcher is not delivering."
+        "following #{inspect(state.fs_pid)} — ignoring it. Events are the only sync " <>
+        "trigger, so nothing syncs until the watcher delivers again."
     )
 
     {:noreply, state}
