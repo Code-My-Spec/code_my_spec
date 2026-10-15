@@ -268,12 +268,30 @@ defmodule CodeMySpec.Agents.Assignment do
         WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id)
       )
       |> maybe_put(:epic_id, team_epic_id(copy_id))
+      |> maybe_put(:continuous, retired_seat_continuous(copy_id, role))
     else
       attrs
     end
   end
 
   def inherit(attrs), do: attrs
+
+  # A seat refilled after a retirement keeps the loop its predecessor was in.
+  # Main replaced both teams' Claude agents with Codex ones on 2026-10-15; all
+  # four predecessors were continuous and all four replacements came up out of
+  # the loop, so the graph offered them nothing -- team 4's coder sat 2.5 hours
+  # beside five open tasks. Same role on the same copy only; never turns it off.
+  defp retired_seat_continuous(copy_id, role) do
+    from(a in "agents",
+      where:
+        a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role == ^to_string(role) and
+          not is_nil(a.retired_at),
+      order_by: [desc: a.retired_at],
+      select: a.continuous,
+      limit: 1
+    )
+    |> Repo.one()
+  end
 
   # A seat filled the moment it is vacated finds no *live* teammate to
   # inherit from -- `WorkingCopies.team_story_id/1` excludes a retired row on

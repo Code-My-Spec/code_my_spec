@@ -131,6 +131,35 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
     assert fresh.story_id == story.id
   end
 
+  test "a replacement keeps the loop its predecessor was in", ctx do
+    {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.agent, %{continuous: true})
+    retire(ctx)
+
+    {:ok, fresh} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    assert fresh.continuous,
+           "the replacement came up out of the loop, so the graph offers it no work"
+  end
+
+  test "a replacement for an agent outside the loop stays outside it", ctx do
+    {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.agent, %{continuous: false})
+    retire(ctx)
+
+    {:ok, fresh} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    refute fresh.continuous
+  end
+
   test "a replacement does not inherit a story that has already been promoted", ctx do
     story = story_fixture(ctx.scope)
 
