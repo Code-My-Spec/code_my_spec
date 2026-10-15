@@ -21,7 +21,9 @@ defmodule CodeMySpecTest.FakeWorkspaceRunnerIsolationTest do
 
   setup do
     {:ok, agent} = FakeWorkspaceRunner.start_link(serving: :erroring)
-    on_exit(fn -> if Process.alive?(agent), do: Agent.stop(agent) end)
+    # `Process.exit/2` on an already-dead local pid is a no-op, unlike
+    # `Agent.stop/1` on one -- the first test stops its agent itself, mid-test.
+    on_exit(fn -> Process.exit(agent, :kill) end)
     :ok
   end
 
@@ -66,30 +68,50 @@ defmodule CodeMySpecTest.FakeWorkspaceRunnerIsolationTest do
              "boot watcher is, failed to resolve back to the test that started it"
   end
 
-  test "a process with no fake of its own and no path back to one raises, rather than " <>
-         "silently reading an unrelated test's state" do
+  test "a process with no fake installed, and no $callers path to one, resolves to the " <>
+         "sole fake running -- the same ambient fallback Ecto's own Sandbox gives" do
     parent = self()
 
     # A bare `spawn`, not a `Task` -- `$callers` is a convention `Task` and
     # `Task.Supervisor` set deliberately, not something every child process
     # inherits, so this one has neither its own registration nor a path back
-    # to this test's.
-    pid =
-      spawn(fn ->
-        result =
-          try do
-            {:ok, FakeWorkspaceRunner.serving(7000)}
-          rescue
-            e -> {:raised, e}
-          end
+    # to this test's. This test's `setup` is the only fake installed anywhere
+    # right now, so it still resolves rather than raising.
+    _pid = spawn(fn -> send(parent, {:result, FakeWorkspaceRunner.serving(7000)}) end)
 
-        send(parent, {:result, result})
+    assert_receive {:result, :erroring}
+  end
+
+  test "two fakes installed with no $callers path to either raises, rather than guessing " <>
+         "which one a bare call means" do
+    parent = self()
+
+    owner_pid =
+      spawn(fn ->
+        {:ok, _agent} = FakeWorkspaceRunner.start_link(serving: :down)
+        send(parent, :second_fake_installed)
+
+        receive do
+          :stop -> :ok
+        end
       end)
 
-    ref = Process.monitor(pid)
+    on_exit(fn -> Process.exit(owner_pid, :kill) end)
 
-    assert_receive {:result, {:raised, %RuntimeError{}}}
-    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+    assert_receive :second_fake_installed
+
+    # A bare `spawn` again -- with this test's own fake AND the one just
+    # installed above both live, and no `$callers` chain reaching either,
+    # there are two candidates and nothing says which one a bare call means.
+    #
+    # `spawn_monitor/1`, not `spawn/1` followed by a separate `Process.monitor/1`:
+    # the two-step version races the spawned process's own crash -- if it dies
+    # before `monitor/1` runs, the monitor is set up against an already-dead
+    # pid and Erlang reports `:noproc` instead of the real exit reason.
+    {pid, ref} = spawn_monitor(fn -> FakeWorkspaceRunner.serving(8000) end)
+
+    assert_receive {:DOWN, ^ref, :process, ^pid, {%RuntimeError{message: message}, _stacktrace}}
+    assert message =~ "More than one"
   end
 
   defp container_names(calls), do: Enum.map(calls, fn {name, _app, _port, _env} -> name end)

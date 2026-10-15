@@ -164,15 +164,40 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
 
   defp owner, do: owner([self() | Process.get(:"$callers", [])])
 
-  defp owner([]) do
-    raise "No #{inspect(__MODULE__)} installed for this process, or anything in its " <>
-            "$callers chain -- call CodeMySpecSpex.Fixtures.install_workspace_runner/2 first."
-  end
+  # A process with neither its own registration nor a `$callers` chain back
+  # to one falls back to the sole fake installed right now -- the same
+  # answer Ecto's own Sandbox gives in this exact shape (documented in
+  # `CodeMySpecSpex.Case`'s moduledoc: "Ecto's Sandbox falls back to whatever
+  # the ambient global mode says for any process with no ownership and no
+  # `$callers` chain of its own"). Phoenix's LiveView and Channel processes
+  # are exactly that case -- checked: zero `$callers` references in
+  # `deps/phoenix*/lib/phoenix/{live_view,channel,socket}*.ex` -- and most
+  # test files in this suite are `async: false`, so there is in practice
+  # only ever one fake installed when such a call lands. Two or zero means
+  # this really is ambiguous or missing, and raising is the fail-safe answer
+  # rather than guessing which test's state to hand back.
+  defp owner([]), do: owner_via_sole_entry()
 
   defp owner([pid | rest]) do
     case Registry.lookup(@registry, pid) do
       [{_registrant, agent}] -> agent
       [] -> owner(rest)
+    end
+  end
+
+  defp owner_via_sole_entry do
+    case Registry.select(@registry, [{{:"$1", :"$2", :"$3"}, [], [:"$3"]}]) do
+      [agent] ->
+        agent
+
+      [] ->
+        raise "No #{inspect(__MODULE__)} installed anywhere -- call " <>
+                "CodeMySpecSpex.Fixtures.install_workspace_runner/2 first."
+
+      _many ->
+        raise "More than one #{inspect(__MODULE__)} is installed right now, and this " <>
+                "call has no $callers path back to any of them -- it needs to come from " <>
+                "(or through a Task spawned by) whichever test installed the one it means."
     end
   end
 end
