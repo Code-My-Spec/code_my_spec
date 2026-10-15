@@ -602,6 +602,45 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert told =~ "landed on main"
   end
 
+  # 2026-10-15: 71d28513's fix was ejected while its coder was not running, and
+  # the fire-and-forget notice was dropped; the coder waited 90 minutes.
+  test "an ejected promotion reaches its agent even if it was unreachable at that instant",
+       ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: a.copy.root,
+        working_copy_id: a.copy.id
+      })
+
+    git_dir = git!(ctx.gate_root, ["rev-parse", "--absolute-git-dir"])
+    File.write!(Path.join(git_dir, "index.lock"), "")
+
+    {:ok, entry} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
+        restart: false,
+        requested_by_agent_id: agent.id
+      })
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:ok, %{status: :ejected}} = settle(entry)
+
+    mailbox_entry = eventually_mailbox_entry(agent.id)
+
+    assert mailbox_entry.state == :queued,
+           "the ejection notice was not durably queued for an unreachable agent"
+
+    assert Repo.get!(Message, mailbox_entry.message_id) |> Message.text() =~
+             "taken out of the queue"
+  end
+
   defp eventually_mailbox_entry(agent_id, attempts \\ 50)
 
   defp eventually_mailbox_entry(agent_id, 0) do

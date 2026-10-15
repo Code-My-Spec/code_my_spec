@@ -700,7 +700,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     moved(entry, :ejected, %{batch_id: nil, result: %{"reason" => reason}})
     Logger.info("[PromotionQueue] ejected #{subject(entry)}: #{reason}")
 
-    tell(
+    tell_durably(
       scope,
       entry,
       "Your promotion of #{subject(entry)} was taken out of the queue and nothing of it " <>
@@ -742,15 +742,24 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # fire-and-forget dispatch every other promotion-report text still uses.
   # PromotionQueue may not call Agents directly (Boundary), so this stays a
   # telemetry event like the rest of `tell/2`, only with its own `what`.
-  defp tell_landed(_scope, %Entry{requested_by_agent_id: nil}, text),
+  defp tell_landed(scope, entry, text), do: tell_durably(scope, entry, text, "promotion landed")
+
+  # An ejection is the other outcome an agent waits on: until it hears, it holds
+  # its promote task open. Sent fire-and-forget, it was dropped whenever the
+  # agent was not running -- at 15:11 on 2026-10-15 the same harness restart
+  # that ejected 71d28513's fix also swallowed the notice, and the coder waited
+  # 90 minutes on a result that had already come.
+  defp tell_durably(scope, entry, text, what \\ "promotion ejected")
+
+  defp tell_durably(_scope, %Entry{requested_by_agent_id: nil}, text, _what),
     do: Logger.info("[PromotionQueue] #{text}")
 
-  defp tell_landed(scope, %Entry{requested_by_agent_id: agent_id}, text) do
+  defp tell_durably(scope, %Entry{requested_by_agent_id: agent_id}, text, what) do
     :telemetry.execute([:code_my_spec, :promotion, :report], %{}, %{
       scope: scope,
       agent_id: agent_id,
       text: text,
-      what: "promotion landed"
+      what: what
     })
   end
 
