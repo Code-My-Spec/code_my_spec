@@ -11,14 +11,24 @@ defmodule CmsHarness.Agents.Engine do
   alias CmsHarness.Agents.Engine.Impl
   alias CmsHarness.Agents.Engine.Server
   alias CmsHarness.Agents.Engine.State
+  alias CmsHarness.Channel
 
   defdelegate start(opts), to: Impl
   defdelegate describe_start_failure(agent_id, working_copy, reason), to: Impl
+
   @doc "Execute a claimed mailbox message, optionally waiting for its result."
   def send_message(agent_id, ref, message, timeout \\ 180_000, opts \\ []) do
     await? = Keyword.get(opts, :await, false)
-    call_timeout = if await?, do: timeout + 5_000, else: 5_000
+    # `handle_call({:send, ...})` consumes through `Channel.mailbox/2` before it
+    # replies at all, so waiting less than that round trip raises here on a
+    # consume that was merely slow, not refused -- which crashed the bare task
+    # meant to report the outcome and left a genuinely-started turn answered as
+    # a timeout instead (32185981).
+    admission_timeout = Channel.mailbox_timeout() + 3_000
+    call_timeout = if await?, do: timeout + admission_timeout, else: admission_timeout
     call(agent_id, {:send, ref, message, timeout, await?}, call_timeout)
+  catch
+    :exit, {:timeout, _} -> {:error, :message_timed_out}
   end
 
   def request_work_turn(agent_id, ref, message, timeout \\ 180_000),

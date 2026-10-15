@@ -313,6 +313,26 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
              "this one is offered back to you once it is done."
          ), frame}
 
+      # f7a4b81e: a tap-out denial (or a withdrawn blocker) can tell an agent
+      # to resume a task whose requirement has since stopped being eligible
+      # -- something else claimed the work, or the project state moved on, in
+      # the window between that notice and this call. A bare error here left
+      # the task stuck blocked forever: nothing auto-clears it, and the agent
+      # had no path forward except guessing to call cancel_task itself.
+      # Cancelling it here, the moment resume turns out to be impossible, and
+      # pointing at get_next_requirement is the consistent disposition this
+      # issue's correction asked for, instead of instructing an impossible
+      # resume and leaving the attempt stranded.
+      {:error, :requirement_not_eligible} ->
+        {:ok, _updated} = TaskOwner.complete_task(scope, owner, task.id, :cancelled)
+
+        {:reply,
+         TasksMapper.error(
+           "Task #{task.id} named #{req.name} for #{req.entity_type} #{req.entity_id}, which " <>
+             "is no longer eligible work -- cancelled rather than left stuck blocked. " <>
+             "Call get_next_requirement for what is actionable now."
+         ), frame}
+
       {:error, reason} ->
         {:reply, TasksMapper.error("Cannot resume task #{task.id}: #{inspect(reason)}"), frame}
     end

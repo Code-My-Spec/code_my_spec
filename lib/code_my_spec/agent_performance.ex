@@ -36,6 +36,7 @@ defmodule CodeMySpec.AgentPerformance do
   alias CodeMySpec.AgentPerformance.Page
   alias CodeMySpec.AgentPerformance.QaRounds
   alias CodeMySpec.AgentPerformance.Reliability
+  alias CodeMySpec.AgentPerformance.Report
   alias CodeMySpec.AgentPerformance.Scorecard
   alias CodeMySpec.AgentPerformance.Throughput
   alias CodeMySpec.AgentPerformance.TokenUsage
@@ -190,6 +191,10 @@ defmodule CodeMySpec.AgentPerformance do
       Map.update(totals, status, count, &(&1 + count))
     end)
   end
+
+  @doc "The performance page as Markdown, for an agent to plan improvements from."
+  @spec report(Scope.t(), Chart.filter()) :: String.t()
+  def report(%Scope{} = scope, filter \\ %{}), do: Report.markdown(scope, filter)
 
   @doc "The headline rates this week against last, and the breakdowns behind them."
   @spec scorecard(Scope.t(), Chart.filter()) :: map()

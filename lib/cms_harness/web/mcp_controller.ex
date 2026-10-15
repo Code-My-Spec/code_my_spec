@@ -306,14 +306,15 @@ defmodule CmsHarness.Web.McpController do
   def message(:no_credential),
     do:
       "The CodeMySpec harness has no credential for the server, so it cannot " <>
-        "forward this. Set CMS_DEPLOY_KEY to this project's deploy key, or " <>
-        "CMS_TOKEN if you are signed in on this machine."
+        "forward this. Run `mix cms.harness.onboard` in this working copy, which " <>
+        "records its deploy key in .cms_harness.json, and restart the harness."
 
   def message({:refused, status}),
     do:
       "The server refused this harness's deploy key with #{status}, so there is " <>
-        "no token to forward with. Check CMS_DEPLOY_KEY against the project's " <>
-        "deploy key on #{Config.server_url()}." <> unavailable_hint({:refused, status})
+        "no token to forward with. Check the deploy key in this copy's " <>
+        ".cms_harness.json against the project's deploy key on #{Config.server_url()}." <>
+        unavailable_hint({:refused, status})
 
   def message({:unreachable, reason}),
     do: "The harness could not reach #{Config.server_url()} to get a token: #{inspect(reason)}"

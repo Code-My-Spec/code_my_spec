@@ -261,10 +261,13 @@ defmodule CodeMySpec.Stories do
   @doc """
   Sets or clears the story's specs-ready latch.
 
-  The latch is what the stop hook and the promote gate consult before letting
-  a spex failure block. Only a promote of the story sets it
-  (`mark_story_promoted/4`); rewriting the story's BDD specs,
-  editing its criteria, and the story page's Unenforce clear it.
+  The latch is what the stop hook consults before letting a spex failure
+  block (`Validation.check_blocking_problems/5` — a working copy's own
+  in-progress check). The promote gate does not: every red spex refuses
+  promotion regardless of latch — this flag no longer exempts anything
+  there, only here. Only a promote of the story sets it
+  (`mark_story_promoted/4`); rewriting the story's BDD specs, editing its
+  criteria, and the story page's Unenforce clear it.
 
   Clearing also clears the ready-for-QA stamp (`set_qa_ready/4`): the events
   that unlatch a story are the ones that make its certified commit no longer

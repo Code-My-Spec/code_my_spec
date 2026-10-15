@@ -49,7 +49,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
       assert body["decision"] == "block"
 
-      assert body["reason"] =~ "CMS_TOKEN",
+      assert body["reason"] =~ "mix cms.harness.onboard",
              "a harness with no credential has to name the credential, not the network"
 
       refute body["reason"] =~ "channel to the CodeMySpec server is down",

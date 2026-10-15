@@ -126,6 +126,34 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingTest do
     assert reason =~ path
   end
 
+  # c2975537: bulk-parking (`ready_for_dev` true -> false) clears a story's
+  # specs-ready latch via `Story.clear_specs_ready_on_readiness_change/1`,
+  # and a promotion once read the cleared latch as "this story's spex may
+  # stay red" (fixed, f8d823f7e, before this test existed). This drives the
+  # exact sequence of the 2026-10-03 incident — latched, then parked — rather
+  # than only a story that was never latched, so a regression on parking
+  # specifically would be caught even if some other path still checked the
+  # latch.
+  test "parking a story that was latched does not excuse its red spex", %{scope: scope} do
+    story = story_fixture(scope, %{title: "Shipped, Then Reopened For A Refactor"})
+    {:ok, story} = CodeMySpec.Stories.set_specs_ready(scope, story, true)
+    assert story.specs_ready
+
+    {:ok, story} = CodeMySpec.Stories.update_story(scope, story, %{ready_for_dev: false})
+    refute story.specs_ready,
+           "parking should still clear the latch -- this test is about what " <>
+             "happens next, not about restoring the latch"
+
+    path = red_spec(scope, story)
+
+    assert {:error, %{reason: reason}} = Promotion.gate(scope, @head),
+           "a parked story's red spex let a promotion through — the exact " <>
+             "shape of the 2026-10-03 incident (c2975537)"
+
+    assert reason =~ "1 spex"
+    assert reason =~ path
+  end
+
   # `02796b61`. `gate/3` passes the scope it was handed straight to
   # `blocking_problems/2`, and with no copy on that scope the problem read
   # falls back to `WorkingCopies.default_id/1`. So a caller with no working

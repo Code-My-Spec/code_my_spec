@@ -282,7 +282,7 @@ defmodule CmsHarness.HookDecision do
 
   defp explain(:no_credential, _working_dir, _state) do
     """
-    The harness has no credential for the CodeMySpec server, so it never connected. Set CMS_TOKEN (or CMS_DEPLOY_KEY for a sprite) and restart it.
+    The harness has no credential for the CodeMySpec server, so it never connected. Run `mix cms.harness.onboard` in this working copy, which records its deploy key in `.cms_harness.json`, and restart the harness.
     """
     |> String.trim()
   end

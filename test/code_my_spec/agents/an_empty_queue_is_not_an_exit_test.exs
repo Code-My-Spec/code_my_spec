@@ -9,12 +9,12 @@ defmodule CodeMySpec.Agents.AnEmptyQueueIsNotAnExitTest do
   half that is wrong, and the reason is in the issue's own text: `tap_out`
   publishes a permission request and **exits continuous mode**, so an agent that
   taps out on an empty queue has to be put back by hand before any later work
-  can reach it. `61c87cd5` is the recorded cost â re-staffed after a granted
+  can reach it. `61c87cd5` is the recorded cost — re-staffed after a granted
   tap-out, it re-checked, found nothing had changed, and tapped out again.
 
   So the menu stops making the offer into one:
 
-    * `Menu.render/4` still answers `""` when nothing is live for the role â
+    * `Menu.render/4` still answers `""` when nothing is live for the role —
       that is the loop's terminus, and the agent simply stops;
     * `Menu.tap_out_offer/1` is unchanged for an agent with work in front of it,
       because *there* "continuing is not worth the tokens" is the judgement the

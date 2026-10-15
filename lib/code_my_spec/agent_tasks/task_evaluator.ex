@@ -186,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
 
     This is a framework bug, not something to fix in the project. The checker \
     needs to read the harness's file report (`Files`) rather than the \
-    filesystem — see `AgentTasks.WriteBddSpecs.spec_checker/1` for the shape.
+    filesystem, as `WriteBddSpecs` does with `Files.list_files/1`.
 
     Agents: do not rewrite the work; it is very likely already done. Call \
     `create_issue` with `scope: framework`, naming `#{type_name}`, then ask \

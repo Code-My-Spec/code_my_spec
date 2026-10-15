@@ -99,20 +99,6 @@ defmodule CodeMySpec.Requirements.Freshness do
   end
 
   @doc """
-  Each shared input's stamps, digested separately, so a recompute can name
-  which one moved.
-
-  `delegated_inputs` are project-wide, so one moving changes every fingerprint
-  that hashes them; the per-table digests say which table it was.
-  """
-  @spec delegated_parts(Preloader.context()) :: %{String.t() => String.t()}
-  def delegated_parts(ctx) do
-    ctx
-    |> Map.get(:delegated_inputs, %{})
-    |> Map.new(fn {table, stamps} -> {table, hash(stamps)} end)
-  end
-
-  @doc """
   The topology's inputs, hashed separately, so a reader can say which moved.
 
   `topology/2` is these parts, sorted, and nothing else.

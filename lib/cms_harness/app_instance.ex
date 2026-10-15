@@ -964,7 +964,8 @@ defmodule CmsHarness.AppInstance do
     :sha256 |> :crypto.hash(root) |> Base.encode16(case: :lower) |> binary_part(0, 16)
   end
 
-  defp instances_root do
+  @doc "Where every app instance keeps its state and log, one directory each."
+  def instances_root do
     Application.get_env(
       :code_my_spec,
       :app_instances_root,
