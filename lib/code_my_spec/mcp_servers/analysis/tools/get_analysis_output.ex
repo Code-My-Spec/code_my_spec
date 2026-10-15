@@ -20,10 +20,10 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :run_id, :integer, doc: "Retained run ID. Supply this or source, not both."
-    field :source, :string, doc: "Select the latest compiler, credo, exunit, or spex run."
-    field :offset, :integer, doc: "Zero-based Unicode codepoint offset. Default: 0."
-    field :limit, :integer, doc: "Codepoints to return. Default and maximum: 2000."
+    field :run_id, :integer, description: "Retained run ID. Supply this or source, not both."
+    field :source, :string, description: "Select the latest compiler, credo, exunit, or spex run."
+    field :offset, :integer, description: "Zero-based Unicode codepoint offset. Default: 0."
+    field :limit, :integer, description: "Codepoints to return. Default and maximum: 2000."
   end
 
   @impl true

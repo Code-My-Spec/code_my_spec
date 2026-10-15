@@ -6,8 +6,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.SetActiveIssue do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID"
-    field :working_copy_id, :string, required: true, doc: "Working copy whose priority changes"
+    field :issue_id, :string, required: true, description: "Issue ID"
+    field :working_copy_id, :string, required: true, description: "Working copy whose priority changes"
   end
 
   @impl true

@@ -26,7 +26,7 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :query, :string, required: true, doc: "Words from the question you are handling."
+    field :query, :string, required: true, description: "Words from the question you are handling."
   end
 
   @impl true

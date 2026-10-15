@@ -9,7 +9,7 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.DeleteSite do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact site URL to remove"
+    field :site_url, :string, required: true, description: "Exact site URL to remove"
   end
 
   @impl true

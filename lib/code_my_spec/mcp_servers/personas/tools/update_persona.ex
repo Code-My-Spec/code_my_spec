@@ -13,14 +13,14 @@ defmodule CodeMySpec.McpServers.Personas.Tools.UpdatePersona do
   alias CodeMySpec.Personas
 
   schema do
-    field :persona_id, :string, doc: "UUID of the persona to update. Provide persona_id or slug."
-    field :slug, :string, doc: "Current slug of the persona. Provide persona_id or slug."
-    field :name, :string, doc: "New display name."
-    field :new_slug, :string, doc: "New slug (URL-safe identifier). Optional."
-    field :headline, :string, doc: "New headline."
+    field :persona_id, :string, description: "UUID of the persona to update. Provide persona_id or slug."
+    field :slug, :string, description: "Current slug of the persona. Provide persona_id or slug."
+    field :name, :string, description: "New display name."
+    field :new_slug, :string, description: "New slug (URL-safe identifier). Optional."
+    field :headline, :string, description: "New headline."
 
     field :persona_type, :string,
-      doc:
+      description:
         "New evidence tier: 'proto', 'qualitative', or 'statistical'. Default stays unchanged when omitted."
   end
 

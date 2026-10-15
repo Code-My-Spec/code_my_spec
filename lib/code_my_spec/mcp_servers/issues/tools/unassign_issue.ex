@@ -6,7 +6,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UnassignIssue do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID"
+    field :issue_id, :string, required: true, description: "Issue ID"
   end
 
   @impl true

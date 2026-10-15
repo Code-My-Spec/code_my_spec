@@ -18,18 +18,18 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
   @max_limit 100
 
   schema do
-    field :limit, :integer, doc: "Max stories to return (default: 20, max: 100)"
-    field :offset, :integer, doc: "Stories to skip for pagination (default: 0)"
-    field :search, :string, doc: "Filter by title or description (case-insensitive)"
-    field :tag, :string, doc: "Filter by tag name"
+    field :limit, :integer, description: "Max stories to return (default: 20, max: 100)"
+    field :offset, :integer, description: "Stories to skip for pagination (default: 0)"
+    field :search, :string, description: "Filter by title or description (case-insensitive)"
+    field :tag, :string, description: "Filter by tag name"
 
     field :ready_for_dev, :boolean,
-      doc:
+      description:
         "Filter by readiness. Pass false to see the parked backlog — the " <>
           "stories the development graph hides (optional)"
 
     field :without_epic, :boolean,
-      doc:
+      description:
         "Pass true to see only stories not yet assigned to any epic — " <>
           "useful when grouping stories into epics (optional)"
 
@@ -40,7 +40,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ListStories do
     # for the product role three times, each time smoothly, which is how a gap
     # this ordinary stayed invisible (cf035b50).
     field :epic, :string,
-      doc:
+      description:
         "Filter to one epic, by slug or id as printed by list_epics — the " <>
           "stories that epic contains (optional)"
   end

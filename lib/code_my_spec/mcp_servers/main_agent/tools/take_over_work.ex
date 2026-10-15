@@ -30,8 +30,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.TakeOverWork do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "The agent holding the work."
-    field :task_id, :string, required: true, doc: "The task you want to take on."
+    field :agent_id, :string, required: true, description: "The agent holding the work."
+    field :task_id, :string, required: true, description: "The task you want to take on."
   end
 
   @impl true

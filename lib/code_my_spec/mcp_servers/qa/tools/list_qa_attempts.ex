@@ -25,7 +25,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.ListQaAttempts do
   schema do
     field(:story_number, :integer,
       required: true,
-      doc: "Story number whose QA history you want to read"
+      description: "Story number whose QA history you want to read"
     )
   end
 

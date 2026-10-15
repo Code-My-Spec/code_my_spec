@@ -49,14 +49,14 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
   alias CodeMySpec.TaskOwner
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue ID to update"
+    field :issue_id, :string, required: true, description: "Issue ID to update"
 
-    field :severity, :string, doc: "New severity: critical, high, medium, low, or info"
+    field :severity, :string, description: "New severity: critical, high, medium, low, or info"
 
-    field :story_number, :integer, doc: "Re-link the issue to the story with this number"
+    field :story_number, :integer, description: "Re-link the issue to the story with this number"
 
     field :detach_from_story, :boolean,
-      doc:
+      description:
         "Detach the issue from whatever story it is on, leaving it unattributed. " <>
           "For a report that reached the wrong story — `Issues.attribute_to_story/3` " <>
           "sweeps unattributed :app issues onto whichever story's QA attempt is " <>
@@ -64,12 +64,12 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UpdateIssue do
           "feature story. Sometimes the right story is none."
 
     field :category, :string,
-      doc: "Re-categorize: 'bug' or 'requirements_change' (those two only)"
+      description: "Re-categorize: 'bug' or 'requirements_change' (those two only)"
 
-    field :source_path, :string, doc: "Update the source file path"
+    field :source_path, :string, description: "Update the source file path"
 
     field :append, :string,
-      doc:
+      description:
         "Add a correction or later evidence to the end of the issue body. " <>
           "The original text is kept — use this instead of filing a second issue " <>
           "to correct a first."

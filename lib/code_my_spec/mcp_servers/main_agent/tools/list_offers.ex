@@ -20,18 +20,18 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListOffers do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field(:agent_id, :string, doc: "One agent's offers, from `list_agent_work`.")
+    field(:agent_id, :string, description: "One agent's offers, from `list_agent_work`.")
 
     field(:kind, :string,
-      doc: "work, menu, problems, resume, retry, answer, unblocked, check_in or stalled."
+      description: "work, menu, problems, resume, retry, answer, unblocked, check_in or stalled."
     )
 
     field(:status, :string,
-      doc: "open, claimed, declined, ignored, superseded, expired, n_a or undelivered."
+      description: "open, claimed, declined, ignored, superseded, expired, n_a or undelivered."
     )
 
-    field(:since, :string, doc: "ISO8601 — only offers made at or after this time.")
-    field(:limit, :integer, doc: "How many offers to show, newest first. Defaults to 50.")
+    field(:since, :string, description: "ISO8601 — only offers made at or after this time.")
+    field(:limit, :integer, description: "How many offers to show, newest first. Defaults to 50.")
   end
 
   @impl true

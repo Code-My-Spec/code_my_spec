@@ -14,10 +14,10 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion do
   alias CodeMySpec.Questions
 
   schema do
-    field :question_id, :string, required: true, doc: "UUID of the question to resolve."
+    field :question_id, :string, required: true, description: "UUID of the question to resolve."
 
     field :resolution, :string,
-      doc: "The answer that resolved it — recorded on the record, not just that it was settled."
+      description: "The answer that resolved it — recorded on the record, not just that it was settled."
   end
 
   @impl true

@@ -27,19 +27,19 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion do
     # moduledoc, which nothing pays for.
     field :questions, {:list, :map},
       required: true,
-      doc:
+      description:
         "1-4 objects: question (required), options (required, [{label, description}]), " <>
           "header, multiSelect."
 
-    field :title, :string, doc: "Notification heading."
-    field :task_id, :string, doc: "Task to block; omitted defaults to your active task."
-    field :session_id, :string, doc: "Injected by hook — do not set manually"
+    field :title, :string, description: "Notification heading."
+    field :task_id, :string, description: "Task to block; omitted defaults to your active task."
+    field :session_id, :string, description: "Injected by hook — do not set manually"
 
     field :about, :string,
-      doc: "`criteria` for a story's acceptance criteria or spec: it goes to product."
+      description: "`criteria` for a story's acceptance criteria or spec: it goes to product."
 
     field :to, :string,
-      doc:
+      description:
         "`product` for criteria and spec, `main` for everything else (the default). " <>
           "Either answers, hands it to the other, or takes it to the user."
   end

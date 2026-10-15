@@ -13,11 +13,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponent do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
 
     field :module_name, :string,
       required: true,
-      doc: "Component module name, e.g. \"MyApp.Accounts\""
+      description: "Component module name, e.g. \"MyApp.Accounts\""
   end
 
   @impl true

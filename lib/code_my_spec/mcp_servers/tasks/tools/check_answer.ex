@@ -43,7 +43,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
   schema do
     field :question_id, :string,
       required: true,
-      doc: "The question id returned by `ask_user`."
+      description: "The question id returned by `ask_user`."
   end
 
   @impl true

@@ -9,8 +9,8 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.DeleteSitemap do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, doc: "Exact GSC property URL from list_properties"
-    field :sitemap_url, :string, required: true, doc: "The full URL of the sitemap to delete"
+    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :sitemap_url, :string, required: true, description: "The full URL of the sitemap to delete"
   end
 
   @impl true

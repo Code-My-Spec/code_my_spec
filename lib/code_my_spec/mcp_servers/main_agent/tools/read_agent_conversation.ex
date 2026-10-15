@@ -41,16 +41,16 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation do
 
   schema do
     field(:agent_id, :string,
-      doc: "From `list_agent_work`, or its conversation id. One of this or `agent_ids`."
+      description: "From `list_agent_work`, or its conversation id. One of this or `agent_ids`."
     )
 
-    field(:agent_ids, {:list, :string}, doc: "Several agents, merged onto one timeline.")
-    field(:limit, :integer, doc: "Most recent N turns. Defaults to a page.")
-    field(:since, :string, doc: "ISO8601 — only turns at or after this time.")
-    field(:until, :string, doc: "ISO8601 — only turns at or before this time.")
+    field(:agent_ids, {:list, :string}, description: "Several agents, merged onto one timeline.")
+    field(:limit, :integer, description: "Most recent N turns. Defaults to a page.")
+    field(:since, :string, description: "ISO8601 — only turns at or after this time.")
+    field(:until, :string, description: "ISO8601 — only turns at or before this time.")
 
     field(:last_call_of, :string,
-      doc: "Skip the transcript — answer only the last call to this tool and its result."
+      description: "Skip the transcript — answer only the last call to this tool and its result."
     )
   end
 

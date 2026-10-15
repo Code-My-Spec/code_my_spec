@@ -22,31 +22,31 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
   schema do
     field :story_number, :integer,
       required: true,
-      doc: "Story number (list_story_titles shows them)"
+      description: "Story number (list_story_titles shows them)"
 
-    field :title, :string, doc: "New title (optional)"
+    field :title, :string, description: "New title (optional)"
 
     field :description, :string,
-      doc:
+      description:
         "New description in 'As a [role], I want [goal] so that [value]' format. " <>
           "Role must be a real human, not a system or technical component (optional)"
 
     field :story, :string,
-      doc:
+      description:
         "User-story sentence in 'As a [role], I want [goal] so that [value]' format. " <>
           "Keep it to the sentence — mechanism and caveats belong in `notes` (optional)"
 
-    field :notes, :string, doc: "Working notes — mechanism, dependencies, caveats (optional)"
+    field :notes, :string, description: "Working notes — mechanism, dependencies, caveats (optional)"
 
     field :ready_for_dev, :boolean,
-      doc:
+      description:
         "Release the story for development, or park it. Parked stories produce " <>
           "no requirements in the development graph (optional)"
 
-    field :tags, {:list, :string}, doc: "Replace all tags with these (optional)"
+    field :tags, {:list, :string}, description: "Replace all tags with these (optional)"
 
     field :priority, :integer,
-      doc: "Priority order (1 = highest). Lower numbers are higher priority. (optional)"
+      description: "Priority order (1 = highest). Lower numbers are higher priority. (optional)"
 
     # Declared because it was already reaching the changeset — `execute/2`
     # passes everything but `story_number` straight through, and
@@ -57,7 +57,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateStory do
     # `assign_story_to_epic` remains the usual route — it takes a name and reads
     # better at a call site. This is for a caller that already holds the id.
     field :epic_id, :string,
-      doc:
+      description:
         "Move the story into this epic, or pass null to take it out. " <>
           "Prefer `assign_story_to_epic`, which takes the epic's name (optional)"
   end

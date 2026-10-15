@@ -20,9 +20,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.UpdateEpic do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :epic_name, :string, required: true, doc: "Current epic name or slug"
-    field :name, :string, doc: "New name (optional)"
-    field :description, :string, doc: "New description (optional)"
+    field :epic_name, :string, required: true, description: "Current epic name or slug"
+    field :name, :string, description: "New name (optional)"
+    field :description, :string, description: "New description (optional)"
   end
 
   @impl true

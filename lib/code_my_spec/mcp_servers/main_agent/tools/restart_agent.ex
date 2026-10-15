@@ -24,11 +24,11 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.RestartAgent do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "From `list_agent_work`."
+    field :agent_id, :string, required: true, description: "From `list_agent_work`."
 
     field :reason, :string,
       required: true,
-      doc: "What you are restarting it to fix. Checked against what was already tried."
+      description: "What you are restarting it to fix. Checked against what was already tried."
   end
 
   @impl true

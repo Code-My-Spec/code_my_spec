@@ -8,9 +8,9 @@ defmodule CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field(:issue_id, :string, required: true, doc: "Issue belonging to your assigned story")
-    field(:revision, :string, required: true, doc: "Exact committed revision containing the fix")
-    field(:evidence, :string, required: true, doc: "Fix description and validation evidence")
+    field(:issue_id, :string, required: true, description: "Issue belonging to your assigned story")
+    field(:revision, :string, required: true, description: "Exact committed revision containing the fix")
+    field(:evidence, :string, required: true, description: "Fix description and validation evidence")
   end
 
   @impl true

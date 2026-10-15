@@ -43,7 +43,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.ProvisionAccountServer do
   schema do
     field :name, :string,
       required: true,
-      doc:
+      description:
         "The server's name at the provider — an existing box to adopt as the account's, " <>
           "or a new one to create under this name."
   end

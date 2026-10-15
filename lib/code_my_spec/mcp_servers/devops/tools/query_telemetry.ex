@@ -18,10 +18,10 @@ defmodule CodeMySpec.McpServers.Devops.Tools.QueryTelemetry do
   schema do
     field :environment, :string,
       required: true,
-      doc: "Environment name, e.g. \"prod\" or \"uat\"."
+      description: "Environment name, e.g. \"prod\" or \"uat\"."
 
     field :since_days, :integer,
-      doc:
+      description:
         "How many days back to read. Defaults to the retention window " <>
           "(#{Telemetry.retention_days()} days) -- nothing older could have survived it anyway."
   end

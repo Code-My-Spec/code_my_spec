@@ -19,7 +19,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
 
   schema do
     field :min_severity, :string,
-      doc: "Minimum severity to triage: critical, high, medium (default), low, info"
+      description: "Minimum severity to triage: critical, high, medium (default), low, info"
   end
 
   @impl true

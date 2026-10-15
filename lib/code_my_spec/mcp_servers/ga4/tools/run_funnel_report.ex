@@ -10,13 +10,13 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunFunnelReport do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :property_id, :string, required: true, doc: "Property ID (number or \"properties/123\")"
-    field :funnel_steps, {:list, :map}, required: true, doc: "Steps: each {name, event} or {name, filter_expression}"
-    field :date_ranges, {:list, :map}, doc: "List of {startDate, endDate} objects"
-    field :funnel_breakdown, :map, doc: "{breakdown_dimension: \"deviceCategory\"}"
-    field :funnel_next_action, :map, doc: "{next_action_dimension: \"eventName\", limit: 5}"
-    field :segments, {:list, :map}, doc: "List of Data API Segment objects"
-    field :return_property_quota, :boolean, doc: "Include property quota in the response"
+    field :property_id, :string, required: true, description: "Property ID (number or \"properties/123\")"
+    field :funnel_steps, {:list, :map}, required: true, description: "Steps: each {name, event} or {name, filter_expression}"
+    field :date_ranges, {:list, :map}, description: "List of {startDate, endDate} objects"
+    field :funnel_breakdown, :map, description: "{breakdown_dimension: \"deviceCategory\"}"
+    field :funnel_next_action, :map, description: "{next_action_dimension: \"eventName\", limit: 5}"
+    field :segments, {:list, :map}, description: "List of Data API Segment objects"
+    field :return_property_quota, :boolean, description: "Include property quota in the response"
   end
 
   @impl true

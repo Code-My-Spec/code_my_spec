@@ -40,11 +40,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ShowInPanel do
   schema do
     field :view, :string,
       required: true,
-      doc:
+      description:
         ~s(What the panel should show. "stories" for the project's list, "story" for one, ) <>
           ~s("epics" for the project's epics.)
 
-    field :story_number, :integer, doc: "Which story, when view is \"story\". Ignored otherwise."
+    field :story_number, :integer, description: "Which story, when view is \"story\". Ignored otherwise."
   end
 
   @views ~w(stories story epics)

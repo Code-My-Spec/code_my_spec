@@ -14,8 +14,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ResolveIssue do
   alias CodeMySpec.TaskOwner
 
   schema do
-    field(:issue_id, :string, required: true, doc: "Issue ID to resolve")
-    field(:resolution, :string, required: true, doc: "How the issue was resolved")
+    field(:issue_id, :string, required: true, description: "Issue ID to resolve")
+    field(:resolution, :string, required: true, description: "How the issue was resolved")
   end
 
   @impl true

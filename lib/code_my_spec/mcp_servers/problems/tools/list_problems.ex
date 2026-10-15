@@ -34,15 +34,15 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
 
   schema do
     field :source, :string,
-      doc: "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex` or `qa_validation`."
+      description: "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex` or `qa_validation`."
 
     field :severity, :string,
-      doc: "Filter by severity — `error`, `warning` or `info`. Omit for all."
+      description: "Filter by severity — `error`, `warning` or `info`. Omit for all."
 
-    field :page, :integer, doc: "1-based page number. Default: 1."
+    field :page, :integer, description: "1-based page number. Default: 1."
 
     field :per_page, :integer,
-      doc: "Findings per page. Default: #{@default_per_page}, max #{@max_per_page}."
+      description: "Findings per page. Default: #{@default_per_page}, max #{@max_per_page}."
   end
 
   @impl true

@@ -15,11 +15,11 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetEpicStoriesReady do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :epic_name, :string, required: true, doc: "Epic whose stories to stamp"
+    field :epic_name, :string, required: true, description: "Epic whose stories to stamp"
 
     field :ready_for_dev, :boolean,
       required: true,
-      doc: "true to release the epic's stories for development, false to park them"
+      description: "true to release the epic's stories for development, false to park them"
   end
 
   @impl true
