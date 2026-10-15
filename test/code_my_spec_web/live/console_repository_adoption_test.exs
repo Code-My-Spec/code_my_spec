@@ -17,15 +17,16 @@ defmodule CodeMySpecWeb.ConsoleRepositoryAdoptionTest do
       end
     )
 
-    on_exit(fn ->
-      case previous_opts do
-        {:ok, value} -> Application.put_env(:code_my_spec, :provisioning_step_opts, value)
-        :error -> Application.delete_env(:code_my_spec, :provisioning_step_opts)
-      end
-    end)
+    on_exit(fn -> restore_step_opts(previous_opts) end)
 
     :ok
   end
+
+  defp restore_step_opts({:ok, value}),
+    do: Application.put_env(:code_my_spec, :provisioning_step_opts, value)
+
+  defp restore_step_opts(:error),
+    do: Application.delete_env(:code_my_spec, :provisioning_step_opts)
 
   test "an existing org repository can be named before a collision", %{
     conn: conn,
