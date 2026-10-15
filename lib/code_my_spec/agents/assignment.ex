@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents.Assignment do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Issues
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
@@ -79,15 +80,17 @@ defmodule CodeMySpec.Agents.Assignment do
   # A promoted story whose every requirement is already satisfied at this copy
   # has nothing left for a team to do, and nothing will land for it, so the
   # team-free notice main waits on never comes: team 3 sat idle on story 811
-  # (2026-10-15). A shipped story with a new criterion or open issues has
-  # unsatisfied requirements again, and an unpromoted one still has its landing
-  # to come; both are work. Read before the transaction:
+  # (2026-10-15). A shipped story with a new criterion has unsatisfied
+  # requirements again, an accepted issue on it needs the story held to reach
+  # QA (Metric Flow's five fixes, 2026-10-15), and an unpromoted one still has
+  # its landing to come; all are work. Read before the transaction:
   # the graph can wait on its projector, which must not happen under locks.
   defp work_left(_scope, _copy_id, nil), do: :ok
 
   defp work_left(scope, copy_id, story_id) do
     with %{promoted_version: version} when is_binary(version) <-
            Stories.get_story(scope, story_id),
+         false <- Enum.any?(Issues.list_by_story(scope, story_id), &(&1.status == :accepted)),
          {done, done} when done > 0 <-
            Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id) do
       {:error, :story_done}
