@@ -1,6 +1,16 @@
 import Config
 import Dotenvy
 
+# Spex does not load test_helper.exs. Isolate restart hints before either
+# test runner starts the harness, including each Spex shard.
+if config_env() == :test do
+  served_roots_dir =
+    Path.join(System.tmp_dir!(), "cms_test_served_roots_#{System.pid()}")
+
+  config :code_my_spec, :harness_served_roots_dir, served_roots_dir
+  System.at_exit(fn _ -> File.rm_rf(served_roots_dir) end)
+end
+
 # Load environment variables from .env files
 env_dir_prefix = System.get_env("RELEASE_ROOT") || Path.expand("./envs")
 
@@ -313,8 +323,7 @@ if config_env() == :prod do
   ]
 
   if Enum.all?(burst_box_wg, fn {_key, value} -> is_binary(value) and value != "" end) do
-    config :code_my_spec, CodeMySpec.Provisioning.BurstBox.FlyPeering,
-      peer: Map.new(burst_box_wg)
+    config :code_my_spec, CodeMySpec.Provisioning.BurstBox.FlyPeering, peer: Map.new(burst_box_wg)
   end
 end
 

@@ -290,6 +290,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # `CmsHarness.Token` to answer.
   defp ensure_local_credential(project_id) do
     cond do
+      local_server?(Config.server_url()) ->
+        case local_project_deploy_key(project_id) do
+          key when is_binary(key) and key != "" -> {:ok, key}
+          _ -> :none
+        end
+
       not blank?(System.get_env("CMS_DEPLOY_KEY")) ->
         {:ok, System.get_env("CMS_DEPLOY_KEY")}
 
@@ -306,12 +312,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         ])
 
         :none
-
-      true ->
-        case local_project_deploy_key(project_id) do
-          key when is_binary(key) and key != "" -> {:ok, key}
-          _ -> :none
-        end
     end
   end
 
@@ -321,6 +321,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # is neither.
   defp token_for({:ok, key}), do: Token.access_token_for_key(key)
   defp token_for(:none), do: Token.access_token()
+
+  defp credential_key({:ok, key}), do: key
+  defp credential_key(:none), do: nil
 
   # Does this machine's database back the server being posted to?
   #
@@ -566,8 +569,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     end
   end
 
-  defp recorded_id(%{"working_copy_id" => id}, env, root, project_id) when is_binary(id) and id != "",
-    do: confirm_or_remint(id, env, root, project_id)
+  defp recorded_id(%{"working_copy_id" => id}, env, root, project_id)
+       when is_binary(id) and id != "",
+       do: confirm_or_remint(id, env, root, project_id)
 
   defp recorded_id(%{"harness_id" => id}, env, root, project_id) when is_binary(id) and id != "",
     do: confirm_or_remint(id, env, root, project_id)
@@ -667,7 +671,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       # Both names, matching `HarnessConfig.write/2`. This writes through
       # `Environments` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.
-      body = Jason.encode!(%{working_copy_id: id, harness_id: id, root: root}, pretty: true)
+      body =
+        env
+        |> recorded_config()
+        |> Map.merge(%{"working_copy_id" => id, "harness_id" => id, "root" => root})
+        |> Jason.encode!(pretty: true)
+
       Environments.write_file(env, @harness_config_file, body)
       {:ok, id}
     end
@@ -679,12 +688,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # be served and would never acquire one.
   defp mint(root, project_id) do
     with {:ok, project} <- project_for(root, project_id),
-         {:ok, token} <- token_for(ensure_local_credential(project.id)),
+         credential = ensure_local_credential(project.id),
+         {:ok, token} <- token_for(credential),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
          :ok <-
            HarnessConfig.write(root, %{
              working_copy_id: id,
              project_id: project.id,
+             deploy_key: credential_key(credential),
              # The id is meaningful only to the server that issued it; a later
              # run reads this back rather than defaulting to its own server.
              server_url: Config.server_url(),
@@ -764,11 +775,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         project_id: project.id,
         root: root,
         label: Config.label(root),
-        device_id: device_id()
+        device_id: device_id(token)
       },
       headers: [{"authorization", "Bearer " <> token}],
       retry: false,
-      receive_timeout: to_timeout(second: 15)
+      receive_timeout: to_timeout(second: 15),
+      plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
     )
   end
 
@@ -777,18 +789,22 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # identity (`~/.codemyspec/device.json`), announcing first if it has none.
   # Announcing is idempotent — it presents the id we hold — and the credential
   # is already in hand from `mint/2`.
-  defp device_id do
+  defp device_id(token) do
     case Application.get_env(:code_my_spec, :onboard_device_id) do
       id when is_binary(id) and id != "" -> id
-      _ -> CmsHarness.Device.recorded_id() || announced_id()
+      # Announce even with an id on file: it presents that id, so a machine the
+      # server already knows stays one machine, and one whose first announce
+      # never arrived (it records the id before the round trip) gets registered
+      # instead of being sent as an id the devices table has never seen.
+      _ -> announced_id(token) || CmsHarness.Device.recorded_id()
     end
   end
 
   # `nil` when the announce could not reach the server. It logs its own warning
   # and the mint below will fail on the same unreachable server a moment later,
   # so there is nothing useful to add here.
-  defp announced_id do
-    case CmsHarness.Device.announce() do
+  defp announced_id(token) do
+    case CmsHarness.Device.announce(%{}, token) do
       {:ok, %{device_id: id}} -> id
       {:error, _reason} -> nil
     end
@@ -846,12 +862,21 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # that may be another project's. `nil` is ordinary; `onboard/2` then leaves
   # any recorded key alone.
   defp deploy_key_for(root) do
-    with {:ok, project} <- ProjectIdentity.resolve(root),
-         key when is_binary(key) and key != "" <- local_project_deploy_key(project.id) do
-      key
+    if local_server?(Config.server_url()) do
+      with {:ok, project} <- ProjectIdentity.resolve(root),
+           key when is_binary(key) and key != "" <- local_project_deploy_key(project.id) do
+        key
+      else
+        _ -> nil
+      end
     else
-      _ -> nil
+      remote_exported_key()
     end
+  end
+
+  defp remote_exported_key do
+    key = System.get_env("CMS_DEPLOY_KEY")
+    if not local_server?(Config.server_url()) and not blank?(key), do: key
   end
 
   # `client_utils`' own refusal sentence for malformed JSON is passed through;
