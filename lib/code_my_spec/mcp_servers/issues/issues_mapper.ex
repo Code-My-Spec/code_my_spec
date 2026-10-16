@@ -88,7 +88,10 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     hybrid_response(summary <> submission_summary(issue), issue_data(issue))
   end
 
-  def issues_list_response(issues, filters, total \\ nil) do
+  def issues_list_response(issues, filters, total \\ nil),
+    do: issues_list_response(issues, filters, total, nil)
+
+  def issues_list_response(issues, filters, total, counts) do
     count = length(issues)
 
     filter_text =
@@ -120,8 +123,21 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
       store: store()
     }
 
-    hybrid_response(summary <> store_note(), data)
+    totals = listing_totals(count, total || count, counts)
+    hybrid_response(totals <> summary <> store_note(), data)
   end
+
+  defp listing_totals(returned, matched, %{project_total: project_total, filtered_out: excluded}) do
+    cap =
+      if returned < matched,
+        do: " Result capped; #{matched - returned} more matching issues exist.",
+        else: ""
+
+    "Active project: #{project_total} issues; #{excluded} excluded by the stated filters; " <>
+      "#{matched} matched; #{returned} returned.#{cap}\n\n"
+  end
+
+  defp listing_totals(_returned, _matched, nil), do: ""
 
   defp more_note(count, total) when is_integer(total) and total > count,
     do:

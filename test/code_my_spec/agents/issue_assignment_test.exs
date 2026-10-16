@@ -631,7 +631,7 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       issue_fixture(ctx.scope, %{status: :accepted})
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
-      {:ok, [row]} =
+      {:ok, %{"issues" => [row], "matched" => 1, "returned" => 1}} =
         ListIssues.script_result(
           %{working_copy_id: copy_id, severity: "all"},
           frame
