@@ -39,10 +39,25 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
   Returns {:ok, prompt_text}
   """
-  def command(scope, _task) do
-    project = scope.active_project
+  def command(scope, task) do
+    with {:ok, stories} <- task_stories(scope, task) do
+      build_command(scope, stories)
+    end
+  end
 
-    stories = Stories.list_unsatisfied_stories(scope)
+  # Story numbers are resolved at the tool boundary; task.story_id is the
+  # graph's database ID and must never be interpreted as a story number.
+  defp task_stories(scope, %{story_id: id}) when not is_nil(id) do
+    case Stories.get_story(scope, id) do
+      nil -> {:error, :story_not_found}
+      story -> {:ok, [story]}
+    end
+  end
+
+  defp task_stories(scope, _task), do: {:ok, Stories.list_unsatisfied_stories(scope)}
+
+  defp build_command(scope, stories) do
+    project = scope.active_project
     component_count = Components.count_components(scope)
 
     # The caller's environment or none, never one at this server's directory.
@@ -142,8 +157,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # Other stories are their own tasks, and orphan components are not a gate.
   defp evaluate_patch_mode(scope, %{story_id: story_id}) when not is_nil(story_id) do
     case Stories.get_story(scope, story_id) do
+      nil -> {:error, :story_not_found}
       %{component_id: nil} = story -> {:ok, :invalid, unlinked_story_feedback(story)}
-      _linked_or_gone -> {:ok, :valid}
+      _linked -> {:ok, :valid}
     end
   end
 
