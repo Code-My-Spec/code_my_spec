@@ -8,6 +8,23 @@ defmodule CodeMySpec.Files.ComponentExtract do
   written on Windows the `\r` sits between the value and the line end.
   """
 
+  @doc "Fingerprint a nonempty module body independently of its declared name."
+  def rename_fingerprint(content) do
+    case Code.string_to_quoted(content) do
+      {:ok, {:defmodule, _, [_name, [do: {:__block__, _, []}]]}} ->
+        nil
+
+      {:ok, {:defmodule, _, [_name, [do: body]]}} when not is_nil(body) ->
+        body
+        |> Macro.to_string()
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode16(case: :lower)
+
+      _ ->
+        nil
+    end
+  end
+
   @doc "Line endings the extractors can anchor against."
   def normalize(content), do: String.replace(content, "\r\n", "\n")
 
