@@ -48,6 +48,7 @@ defmodule CmsHarnessTest.FakeServer do
     :persistent_term.put({__MODULE__, :reject_obs}, nil)
     :persistent_term.put({__MODULE__, :reject_analysis}, nil)
     :persistent_term.put({__MODULE__, :channel}, nil)
+    :persistent_term.put({__MODULE__, :expected_harness}, nil)
     refuse_joins(Keyword.get(opts, :refuse, nil))
     hold_joins(Keyword.get(opts, :hold_joins, false))
 
@@ -55,6 +56,12 @@ defmodule CmsHarnessTest.FakeServer do
 
     Application.put_env(:code_my_spec, FakeServer.Endpoint, endpoint_config(port))
     endpoint = start_endpoint()
+
+    # The on_exit callback owns teardown, in endpoint-before-PubSub order.
+    # Links to the test process would start both shutdowns before that
+    # callback runs, allowing channels to outlive their PubSub registry.
+    Process.unlink(endpoint)
+    Process.unlink(pubsub)
 
     # Asked after starting, because until then a requested 0 is not yet a port.
     port = bound_port()
@@ -185,7 +192,22 @@ defmodule CmsHarnessTest.FakeServer do
   def analysis_rejection, do: :persistent_term.get({__MODULE__, :reject_analysis}, nil)
 
   @doc false
-  def channel_joined(pid), do: :persistent_term.put({__MODULE__, :channel}, pid)
+  def channel_joined(pid, harness_id) do
+    expected = :persistent_term.get({__MODULE__, :expected_harness}, nil)
+
+    if is_nil(expected) or expected == harness_id do
+      :persistent_term.put({__MODULE__, :channel}, pid)
+    end
+
+    :ok
+  end
+
+  @doc "Keep commands addressed to this fixture even when an older harness reconnects."
+  def expect_harness(harness_id) do
+    :persistent_term.put({__MODULE__, :expected_harness}, harness_id)
+    :persistent_term.put({__MODULE__, :channel}, nil)
+    :ok
+  end
 
   @doc """
   Ask the harness to run analyzers, the way the real server does when its stop
@@ -281,7 +303,7 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
         # against this line and call `push_app_event/2` finding no channel
         # registered yet, even though the join it had just been told about
         # was the one that was about to register it.
-        FakeServer.channel_joined(self())
+        FakeServer.channel_joined(self(), payload["harness_id"])
         FakeServer.notify({:joined, project_id, payload})
         {:ok, assign(socket, :project_id, project_id)}
 
