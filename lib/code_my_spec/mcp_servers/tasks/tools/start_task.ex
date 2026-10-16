@@ -117,7 +117,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
        when is_binary(name) and is_binary(type) and is_binary(ref) do
     case StoryRefs.entity_id(scope, type, ref) do
       nil -> {:error, "Story #{ref} not found"}
-      id -> resolve_from_graph(scope, name, type, id, owner)
+      id -> resolve_from_graph(scope, name, type, id, owner, ref)
     end
   end
 
@@ -125,7 +125,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
        when is_binary(name) and is_binary(module_name) do
     case Components.get_component_by_module_name(scope, module_name) do
       nil -> {:error, "Component not found: #{module_name}"}
-      component -> resolve_from_graph(scope, name, "component", component.id, owner)
+      component -> resolve_from_graph(scope, name, "component", component.id, owner, component.id)
     end
   end
 
@@ -134,7 +134,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
      "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
   end
 
-  defp resolve_from_graph(scope, name, entity_type, entity_id, owner) do
+  defp resolve_from_graph(scope, name, entity_type, entity_id, owner, entity_ref) do
     {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     found =
@@ -143,7 +143,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       end) || placed(scope, owner, name, entity_type, entity_id)
 
     case found do
-      nil -> {:error, "Requirement #{name} not found for #{entity_type} #{entity_id}"}
+      nil -> {:error, "Requirement #{name} not found for #{entity_type} #{entity_ref}"}
       node -> {:ok, node}
     end
   end
