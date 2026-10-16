@@ -20,6 +20,7 @@ defmodule CodeMySpec.ToolLibrary do
       CodeMySpec.Embeddings,
       CodeMySpec.Knowledge,
       CodeMySpec.Personas,
+      CodeMySpec.Problems.Tools,
       CodeMySpec.Tools
     ]
 
@@ -31,7 +32,8 @@ defmodule CodeMySpec.ToolLibrary do
     do:
       CodeMySpec.Personas.Tools.all() ++
         CodeMySpec.Agents.Tools.all() ++
-        CodeMySpec.Knowledge.Tools.all() ++ CodeMySpec.Embeddings.Tools.all()
+        CodeMySpec.Knowledge.Tools.all() ++
+        CodeMySpec.Embeddings.Tools.all() ++ CodeMySpec.Problems.Tools.all()
 
   @doc "Every tool, described for a surface."
   @spec registrations() :: [map()]

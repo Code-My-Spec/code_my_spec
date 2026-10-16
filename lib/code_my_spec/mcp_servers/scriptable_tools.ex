@@ -61,8 +61,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult)
   component(CodeMySpec.McpServers.Qa.Tools.ListQaAttempts)
   component(CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt)
-  component(CodeMySpec.McpServers.Problems.Tools.ClearProblems)
-  component(CodeMySpec.McpServers.Problems.Tools.ListProblems)
   component(CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput)
   component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
   component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
