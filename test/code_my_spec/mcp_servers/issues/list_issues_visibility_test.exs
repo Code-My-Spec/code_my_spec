@@ -15,10 +15,11 @@ defmodule CodeMySpec.McpServers.Issues.ListIssuesVisibilityTest do
     frame = %Frame{assigns: %{current_scope: scope}}
 
     for issue_scope <- [:app, :qa, :docs, :framework],
-        severity <- [:critical, :high, :medium, :low, :info],
-        status <- [:incoming, :accepted] do
+        severity <- [:critical, :high, :medium, :low, :info] do
+      incoming = issue_fixture(scope, %{scope: issue_scope, severity: severity})
+      assert incoming.status == :incoming
       issue = issue_fixture(scope, %{scope: issue_scope, severity: severity})
-      if status == :accepted, do: Issues.accept_issue(scope, issue)
+      assert {:ok, %{status: :accepted}} = Issues.accept_issue(scope, issue)
     end
 
     closed = issue_fixture(scope)
