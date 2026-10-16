@@ -22,8 +22,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2344Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Problems.Tools.ListProblems
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
 
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
@@ -105,10 +104,10 @@ defmodule CodeMySpecSpex.Story1012.Criterion2344Spex do
       end
 
       then_ "the agent can ask for them", context do
-        {:reply, response, _frame} =
-          ListProblems.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        {:ok, response} =
+          ToolLibrary.run("list_problems", %{}, %{scope: context.scope})
 
-        assert response_text(response) =~ "example_context",
+        assert response =~ "example_context",
                "the detail the alert deliberately withheld was not available on " <>
                  "request. Withholding is only acceptable because asking is cheap; " <>
                  "without the pull the push is censorship."

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsTest do
+defmodule CodeMySpec.Problems.Tools.ListProblemsTest do
   @moduledoc """
   The tool filters by what it says it filtered by.
 
@@ -21,9 +21,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsTest do
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Problems.Tools.ListProblems
+  alias CodeMySpec.ToolLibrary
 
   setup do
     user = user_fixture()
@@ -46,19 +44,19 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsTest do
       message: "prefer a pipeline"
     })
 
-    %{scope: scope, frame: %Frame{assigns: %{current_scope: scope}}}
+    %{scope: scope}
   end
 
-  defp run(params, frame) do
-    assert {:reply, response, ^frame} = ListProblems.execute(params, frame)
-    {response, hd(Response.to_protocol(response)["content"])["text"]}
+  defp run(params, scope) do
+    response = ToolLibrary.run("list_problems", params, %{scope: scope})
+    {response, elem(response, 1)}
   end
 
   describe "severity" do
     test "narrows the list to that severity", ctx do
-      {response, text} = run(%{severity: "error"}, ctx.frame)
+      {response, text} = run(%{severity: "error"}, ctx.scope)
 
-      assert response.isError == false
+      assert response == {:ok, text}
       assert text =~ "lib/broken.ex"
 
       refute text =~ "lib/style.ex",
@@ -67,7 +65,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsTest do
     end
 
     test "narrows the count as well as the page", ctx do
-      {_response, text} = run(%{severity: "error"}, ctx.frame)
+      {_response, text} = run(%{severity: "error"}, ctx.scope)
 
       assert text =~ "(1 of 1)",
              "a total counting findings the filter excludes describes a different " <>
@@ -75,24 +73,23 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsTest do
     end
 
     test "omitting it returns every severity", ctx do
-      {_response, text} = run(%{}, ctx.frame)
+      {_response, text} = run(%{}, ctx.scope)
 
       assert text =~ "lib/broken.ex"
       assert text =~ "lib/style.ex"
     end
 
     test "an unrecognised value is refused, not ignored", ctx do
-      {response, _text} = run(%{severity: "critical"}, ctx.frame)
+      {response, _text} = run(%{severity: "critical"}, ctx.scope)
 
-      assert response.isError,
-             "a filter that quietly does nothing cannot be told apart from one that " <>
-               "matched nothing, which is the whole defect"
+      assert {:error, reason} = response
+      assert reason =~ "Unknown severity"
     end
   end
 
   describe "an empty result" do
     test "names the filters that produced it", ctx do
-      {_response, text} = run(%{severity: "warning"}, ctx.frame)
+      {_response, text} = run(%{severity: "warning"}, ctx.scope)
 
       assert text =~ "severity warning",
              "'No problems recorded for this working copy' under a filter reads as " <>
@@ -101,7 +98,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsTest do
     end
 
     test "says how to widen it", ctx do
-      {_response, text} = run(%{severity: "warning"}, ctx.frame)
+      {_response, text} = run(%{severity: "warning"}, ctx.scope)
 
       assert text =~ "Call without them for all."
     end
