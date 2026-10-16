@@ -212,6 +212,7 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
 
   defp onboard(root) do
     working_copy_id = Ecto.UUID.generate()
+    FakeServer.expect_harness(working_copy_id)
 
     :ok =
       CmsHarness.HarnessConfig.write(root, %{

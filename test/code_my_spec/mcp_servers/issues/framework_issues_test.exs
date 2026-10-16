@@ -113,7 +113,11 @@ defmodule CodeMySpec.McpServers.Issues.FrameworkIssuesTest do
       issue = file(ctx.caller, "Vibium has no per-caller isolation")
 
       {response, _} =
-        run(UpdateIssue, %{issue_id: issue.id, append: "Confirmed by two more agents."}, ctx.caller)
+        run(
+          UpdateIssue,
+          %{issue_id: issue.id, append: "Confirmed by two more agents."},
+          ctx.caller
+        )
 
       refute response.isError
       assert Issues.get_issue(ctx.caller, issue.id).description =~ "Confirmed by two more agents."
@@ -130,14 +134,14 @@ defmodule CodeMySpec.McpServers.Issues.FrameworkIssuesTest do
   end
 
   describe "the vendor" do
-    test "sees framework issues filed in projects it does not own", ctx do
+    test "list_issues stays within the active project even for the vendor", ctx do
       _theirs = file(ctx.caller, "Vibium has no per-caller isolation")
       _ours = file(ctx.vendor, "The stop hook loops")
 
       {response, body} = run(ListIssues, %{scope: "framework"}, ctx.vendor)
 
       refute response.isError
-      assert body =~ "Vibium has no per-caller isolation"
+      refute body =~ "Vibium has no per-caller isolation"
       assert body =~ "The stop hook loops"
     end
 

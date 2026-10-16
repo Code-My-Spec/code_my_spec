@@ -13,8 +13,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssuesTest do
   end
 
   describe "execute/2" do
-    # 6da8e0e5: no filters means open issues at medium or higher.
-    test "with no filters, lists open issues at medium or higher" do
+    # Product decision 006f1c97: open issues across all severities.
+    test "with no filters, lists open issues across all severities" do
       scope = full_scope_fixture()
       issue_fixture(scope, %{title: "Issue A", severity: :high})
       issue_fixture(scope, %{title: "Issue B", severity: :low})
@@ -26,9 +26,10 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssuesTest do
       assert response.isError == false
 
       content = response_text(response)
-      assert content =~ "1 issues"
+      assert content =~ "2 issues"
       assert content =~ "Issue A"
-      refute content =~ "Issue B"
+      assert content =~ "Issue B"
+      assert content =~ "2 matched; 2 returned"
     end
 
     test "filters by status" do
@@ -110,7 +111,11 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssuesTest do
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      assert {:ok, [row]} = ListIssues.script_result(%{}, frame)
+      assert {:ok, result} = ListIssues.script_result(%{}, frame)
+      assert [row] = result["issues"]
+      assert result["matched"] == 1
+      assert result["returned"] == 1
+      refute result["truncated"]
       assert row["title"] == "Issue A"
       assert row["severity"] == "high"
     end
