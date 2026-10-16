@@ -40,7 +40,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
   end
 
   defp respond_with_matches(scope, name, params, frame) do
-    {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
+    {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(at_story_copy(scope, params))
 
     matches =
       nodes
@@ -54,6 +54,21 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowRequirement do
       multiple -> {:reply, list_response(name, multiple), frame}
     end
   end
+
+  # A named story's verdicts live at its assigned copy, independently of
+  # epic membership and the checkout from which the caller asks.
+  defp at_story_copy(scope, %{entity_type: "story", entity_id: number})
+       when not is_nil(number) do
+    case StoryRefs.fetch_story(scope, number) do
+      {:ok, %{working_copy_id: copy_id}} when is_binary(copy_id) ->
+        %{scope | active_working_copy_id: copy_id}
+
+      _ ->
+        scope
+    end
+  end
+
+  defp at_story_copy(scope, _params), do: scope
 
   defp maybe_filter_entity(nodes, %{entity_type: type, entity_id: id}) do
     Enum.filter(nodes, fn n ->
