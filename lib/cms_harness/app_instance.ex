@@ -409,7 +409,9 @@ defmodule CmsHarness.AppInstance do
   end
 
   # The app stays up; the probe decides whether the reload took. A failure
-  # runs no hook — the caller's restart will.
+  # runs no hook — the caller's restart will. Unless the app is down: then the
+  # caller may be that app (:4000 reloading itself), and nobody would restart
+  # it — it sat down from 02:15 to 02:19 on 2026-10-16. It is restarted here.
   defp reload_in_place(state, from, main?, tunnel) do
     Logger.info("[CmsHarness] reload of #{state.root}: running `just reload` on #{state.port}")
 
@@ -419,7 +421,14 @@ defmodule CmsHarness.AppInstance do
 
       {:error, reason} ->
         Logger.warning("[CmsHarness] reload of #{state.root} failed: #{inspect(reason)}")
-        {:reply, {:error, {:reload_failed, reason}}, state, idle_timeout()}
+
+        case probe(state) do
+          %{status: "down"} = down ->
+            restart_instead(down, from, main?, tunnel, "the reload failed and left the app down")
+
+          probed ->
+            {:reply, {:error, {:reload_failed, reason}}, probed, idle_timeout()}
+        end
     end
   end
 
@@ -439,6 +448,9 @@ defmodule CmsHarness.AppInstance do
       main?
     )
   end
+
+  defp reloaded(%__MODULE__{status: "down"} = probed, from, main?, tunnel),
+    do: restart_instead(probed, from, main?, tunnel, "the reload left the app down")
 
   defp reloaded(probed, _from, _main?, _tunnel) do
     Logger.warning(
