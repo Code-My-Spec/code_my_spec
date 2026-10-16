@@ -7,8 +7,6 @@ defmodule CodeMySpecSpex.Story1004.Criterion2217Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
-  alias CodeMySpec.AccountsFixtures
-  alias CodeMySpec.Notifications
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -20,8 +18,8 @@ defmodule CodeMySpecSpex.Story1004.Criterion2217Spex do
       given_ "a project's agent has requests stamped with a plain member", context do
         member = Fixtures.user_fixture()
         outsider = Fixtures.user_fixture()
-        AccountsFixtures.member_fixture(member, context.account, :member)
-        AccountsFixtures.account_with_owner_fixture(outsider)
+        Fixtures.member_fixture(member, context.account, :member)
+        Fixtures.account_with_owner_fixture(outsider)
         agent = Fixtures.running_agent(context.scope)
 
         question =
@@ -59,7 +57,7 @@ defmodule CodeMySpecSpex.Story1004.Criterion2217Spex do
           assert has_element?(context.owner_view, "[data-test='notification'][data-id='#{id}']")
         end
 
-        assert Notifications.count_pending_notifications(context.scope.user.id) == 2
+        assert Fixtures.count_pending_notifications(context.scope.user.id) == 2
         {:ok, context}
       end
 
@@ -68,8 +66,8 @@ defmodule CodeMySpecSpex.Story1004.Criterion2217Spex do
           refute has_element?(view, "[data-test='notification'][data-id='#{id}']")
         end
 
-        assert Notifications.count_pending_notifications(context.member.id) == 0
-        assert Notifications.count_pending_notifications(context.outsider.id) == 0
+        assert Fixtures.count_pending_notifications(context.member.id) == 0
+        assert Fixtures.count_pending_notifications(context.outsider.id) == 0
         {:ok, context}
       end
     end

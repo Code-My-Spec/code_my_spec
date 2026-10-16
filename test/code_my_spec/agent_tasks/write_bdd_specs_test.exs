@@ -322,6 +322,38 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
   # ============================================================================
 
   describe "evaluate/2" do
+    test "a spec written after the initial scan is recognized while an unwritten criterion remains missing",
+         %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      {story, _component} = create_story_with_component(scope)
+      task = task_for_story(story)
+      [first, second] = story.criteria
+
+      FileSync.sync(scope)
+      assert {:ok, :invalid, initial} = WriteBddSpecs.evaluate(scope, task)
+      assert initial =~ "Criterion #{first.number}"
+      assert initial =~ "Criterion #{second.number}"
+
+      path = write_valid_spec!(tmp_dir, story, first)
+      content = File.read!(path) |> String.replace("MyAppSpex.Case", "CodeMySpecSpex.Case")
+      File.write!(path, content)
+      FileSync.sync(scope)
+
+      specs = CodeMySpec.Files.list_files(scope) |> Enum.filter(&(&1.role == :bdd_spec))
+      assert [recorded] = specs
+      assert recorded.valid
+      assert recorded.criterion_number == first.number
+      assert recorded.story_id == story.id
+      assert recorded.working_copy_id == scope.active_working_copy_id
+      assert {:ok, :invalid, feedback} = WriteBddSpecs.evaluate(scope, task)
+      refute feedback =~ "Criterion #{first.number}"
+      assert feedback =~ "Criterion #{second.number}"
+
+      write_valid_spec!(tmp_dir, story, second)
+      FileSync.sync(scope)
+      assert {:ok, :valid} = WriteBddSpecs.evaluate(scope, task)
+    end
+
     test "returns :valid when all specs exist and parse correctly", %{tmp_dir: tmp_dir} do
       scope = scope_with_cwd(tmp_dir)
       {story, _component} = create_story_with_component(scope)

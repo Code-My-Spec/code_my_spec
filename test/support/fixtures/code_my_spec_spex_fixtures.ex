@@ -3443,6 +3443,9 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate device_fixture(scope), to: CodeMySpec.DevicesFixtures
   defdelegate device_fixture(scope, attrs), to: CodeMySpec.DevicesFixtures
 
+  @doc "Count pending notifications through the inbox's visibility rules."
+  defdelegate count_pending_notifications(user_id), to: Notifications
+
   # -- Users --
   defdelegate user_fixture(attrs \\ %{}), to: UsersFixtures
   defdelegate user_scope_fixture(), to: UsersFixtures
