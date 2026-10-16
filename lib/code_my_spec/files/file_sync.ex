@@ -151,6 +151,8 @@ defmodule CodeMySpec.Files.FileSync do
   """
   @spec reconcile(Scope.t(), [map()]) :: map()
   def reconcile(%Scope{} = scope, observations) when is_list(observations) do
+    CodeMySpec.Files.ComponentRenames.reconcile(scope, observations)
+
     # Ownership is decided here, against this server's live domain; whatever the
     # harness worked out is discarded. A harness's read model is fetched once at
     # join and goes stale (a sprite joins before any stories exist, so no spex
