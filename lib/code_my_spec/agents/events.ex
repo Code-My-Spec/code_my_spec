@@ -17,6 +17,7 @@ defmodule CodeMySpec.Agents.Events do
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
   alias CodeMySpec.Requirements
@@ -217,9 +218,19 @@ defmodule CodeMySpec.Agents.Events do
     kind, reason -> log(:answer_reached, kind, reason)
   end
 
+  # Idle: an offered turn. One whose process is not up yet (a restart) gets it
+  # on its thread instead: offer-only recorded the answer nowhere and the asker
+  # waited on an answered question (2026-10-15). One not in the loop still
+  # collects it with `check_answer`.
   def handle_event(@answer_reached, _measurements, meta, _config) do
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
-      Work.offer_turn_with(
+      deliver =
+        case Wake.allow?(meta.scope, meta.agent, :question_answered) do
+          {:hold, :not_running} -> &Work.wake_with_notice/5
+          _ -> &Work.offer_turn_with/5
+        end
+
+      deliver.(
         meta.scope,
         meta.agent,
         meta.text,
