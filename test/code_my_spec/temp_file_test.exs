@@ -59,4 +59,54 @@ defmodule CodeMySpec.TempFileTest do
       refute File.exists?(path)
     end
   end
+
+  describe "sweep_stale/2" do
+    test "removes a prefixed directory older than max_age_ms" do
+      stale = TempFile.dir("sweep-stale-test")
+      File.mkdir_p!(stale)
+      backdate!(stale, :timer.hours(2))
+
+      TempFile.sweep_stale("sweep-stale-test", :timer.hours(1))
+
+      refute File.exists?(stale)
+    end
+
+    test "leaves a prefixed directory that is not stale" do
+      fresh = TempFile.dir("sweep-fresh-test")
+      File.mkdir_p!(fresh)
+
+      TempFile.sweep_stale("sweep-fresh-test", :timer.hours(1))
+
+      assert File.exists?(fresh)
+      File.rm_rf!(fresh)
+    end
+
+    # /tmp is shared by every prefix this module hands out; sweeping one
+    # run's stale backlog must never reach into another's.
+    test "leaves a stale directory carrying a different prefix" do
+      other = TempFile.dir("sweep-other-test")
+      File.mkdir_p!(other)
+      backdate!(other, :timer.hours(2))
+
+      TempFile.sweep_stale("sweep-stale-test", :timer.hours(1))
+
+      assert File.exists?(other)
+      File.rm_rf!(other)
+    end
+
+    test "leaves a stale file carrying the prefix alone" do
+      stale_file = TempFile.path("sweep-file-test")
+      File.write!(stale_file, "")
+      backdate!(stale_file, :timer.hours(2))
+
+      TempFile.sweep_stale("sweep-file-test", :timer.hours(1))
+
+      assert File.exists?(stale_file)
+      File.rm!(stale_file)
+    end
+  end
+
+  defp backdate!(path, age_ms) do
+    File.touch!(path, System.os_time(:second) - div(age_ms, 1000))
+  end
 end

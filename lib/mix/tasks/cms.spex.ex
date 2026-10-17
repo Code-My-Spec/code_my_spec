@@ -30,6 +30,12 @@ defmodule Mix.Tasks.Cms.Spex do
 
   @impl Mix.Task
   def run(args) do
+    # Backstop for stub dirs a killed run never got to clean up itself --
+    # this host's $TMPDIR (System.tmp_dir!/0) is shared by every working
+    # copy that runs this task. 1 hour stays well above
+    # CodeMySpec.Analysis.ProjectServer's own 30-minute @job_timeout, the
+    # ceiling that kills a run before it could still legitimately be here.
+    CodeMySpec.TempFile.sweep_stale("spex", :timer.hours(1))
     Mix.Task.run("compile")
     {files, jsonl, rest} = split_args(args)
 

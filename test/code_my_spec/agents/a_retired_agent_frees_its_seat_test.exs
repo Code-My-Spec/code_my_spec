@@ -146,6 +146,25 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
            "the replacement came up out of the loop, so the graph offers it no work"
   end
 
+  test "a replacement takes the issue still assigned to its copy", ctx do
+    issue = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{status: :accepted})
+
+    Repo.update_all(from(i in CodeMySpec.Issues.Issue, where: i.id == ^issue.id),
+      set: [assigned_working_copy_id: ctx.copy.id]
+    )
+
+    retire(ctx)
+
+    {:ok, fresh} =
+      Agents.start_agent(ctx.scope, %{
+        role: "coding",
+        provider: "anthropic",
+        working_copy_id: ctx.copy.id
+      })
+
+    assert fresh.issue_id == issue.id
+  end
+
   test "a replacement for an agent outside the loop stays outside it", ctx do
     {:ok, _} = AgentsRepository.update_agent(ctx.scope, ctx.agent, %{continuous: false})
     retire(ctx)

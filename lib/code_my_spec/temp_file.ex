@@ -122,6 +122,42 @@ defmodule CodeMySpec.TempFile do
     _ -> :ok
   end
 
+  @doc """
+  Removes `prefix`-tagged directories under the system temp dir that are
+  older than `max_age_ms`.
+
+  The backstop for `dir/1` and `owned_dir/1`: both clean up by running code
+  in the process that asked for the directory, which never gets a turn when
+  that process -- or the host it runs on -- is killed outright rather than
+  exited. `/tmp` is shared by every process on the machine, so this only
+  removes what has clearly outlived any real run rather than anything not
+  immediately recognizable as its own; a directory still legitimately in use
+  is nowhere near `max_age_ms` old. Same shape as
+  `CodeMySpec.Provisioning.BurstBox.Sweep`: list by name, judge each by age,
+  act, needing no cooperation from whatever created it.
+  """
+  @spec sweep_stale(String.t(), non_neg_integer()) :: :ok
+  def sweep_stale(prefix, max_age_ms) do
+    tmp_dir = System.tmp_dir!()
+    cutoff_s = System.os_time(:second) - div(max_age_ms, 1000)
+
+    tmp_dir
+    |> File.ls!()
+    |> Enum.filter(&String.starts_with?(&1, prefix <> "-"))
+    |> Enum.each(&sweep_entry(Path.join(tmp_dir, &1), cutoff_s))
+
+    :ok
+  end
+
+  defp sweep_entry(path, cutoff_s) do
+    with {:ok, %File.Stat{type: :directory, mtime: mtime}} <- File.stat(path, time: :posix),
+         true <- mtime < cutoff_s do
+      File.rm_rf(path)
+    end
+
+    :ok
+  end
+
   # The OS pid makes this unique across processes; `unique_integer` keeps it
   # unique within one; the random suffix covers a recycled pid meeting files an
   # earlier incarnation left behind. Any two of the three would nearly do — all
