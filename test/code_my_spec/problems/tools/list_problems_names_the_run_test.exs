@@ -1,4 +1,4 @@
-defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsNamesTheRunTest do
+defmodule CodeMySpec.Problems.Tools.ListProblemsNamesTheRunTest do
   @moduledoc """
   The findings say which run produced them — which database, and how long it
   took.
@@ -31,10 +31,8 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsNamesTheRunTest do
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.McpServers.Problems.Tools.ListProblems
+  alias CodeMySpec.ToolLibrary
 
   setup do
     scope = full_scope_fixture()
@@ -46,12 +44,12 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsNamesTheRunTest do
       message: "** (EXIT from #PID<0.123.0>) an exception was raised"
     })
 
-    %{scope: scope, frame: %Frame{assigns: %{current_scope: scope}}}
+    %{scope: scope}
   end
 
-  defp text(frame) do
-    assert {:reply, response, ^frame} = ListProblems.execute(%{}, frame)
-    hd(Response.to_protocol(response)["content"])["text"]
+  defp text(scope) do
+    assert {:ok, response} = ToolLibrary.run("list_problems", %{}, %{scope: scope})
+    response
   end
 
   # `finish_run/3` writes `finished_at`; this backdates `started_at` so the run
@@ -70,13 +68,13 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsNamesTheRunTest do
   test "names the database the run opened", ctx do
     finished_run(ctx.scope, %{"partition" => "h789652afa"}, 5)
 
-    assert text(ctx.frame) =~ "exunit ran against the `h789652afa` test database."
+    assert text(ctx.scope) =~ "exunit ran against the `h789652afa` test database."
   end
 
   test "a long run says how long, beside the failures it produced", ctx do
     finished_run(ctx.scope, %{"partition" => "h789652afa"}, 8 * 60 + 13)
 
-    rendered = text(ctx.frame)
+    rendered = text(ctx.scope)
 
     assert rendered =~ "took 8m13s",
            "an EXIT failure from a sweep that ran eight times longer than usual is the " <>
@@ -89,7 +87,7 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsNamesTheRunTest do
   test "an ordinary run says nothing about its duration", ctx do
     finished_run(ctx.scope, %{"partition" => "h789652afa"}, 12)
 
-    rendered = text(ctx.frame)
+    rendered = text(ctx.scope)
 
     assert rendered =~ "h789652afa"
     refute rendered =~ "took"
@@ -98,11 +96,11 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ListProblemsNamesTheRunTest do
   test "a run with no partition still reports a long duration", ctx do
     finished_run(ctx.scope, %{}, 200)
 
-    assert text(ctx.frame) =~ "exunit's run, and took 3m20s."
+    assert text(ctx.scope) =~ "exunit's run, and took 3m20s."
   end
 
   test "no run at all adds nothing", ctx do
-    assert text(ctx.frame) =~ "test/some_test.exs"
-    refute text(ctx.frame) =~ "test database"
+    assert text(ctx.scope) =~ "test/some_test.exs"
+    refute text(ctx.scope) =~ "test database"
   end
 end

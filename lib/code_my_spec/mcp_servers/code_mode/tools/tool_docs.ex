@@ -14,7 +14,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
-  alias CodeMySpec.Agents.ToolSets
+  alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.CodeMode
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.LocalServer
@@ -49,15 +49,17 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # What the caller carries, so a page can say "you have it" or "you do not"
   # rather than asserting one for everyone.
   #
-  #  is the identity  put on the
-  # connection. A caller with no agent (a person, an operator session) gets
-  #  — nothing is scoped away from them, which is what every other tool
-  # in this server already assumes.
+  # The direct surface is the same for every agent we run -- `ToolIndex.carried/1`
+  # builds it from the registry, not from a role's grants, and `launch_request.ex`
+  # hands every such agent that same list regardless of role. An agent_id that
+  # resolves is enough to know that surface applies. A caller with no agent (a
+  # person, an operator session) gets `:all` -- nothing is scoped away from
+  # them, which is what every other tool in this server already assumes.
   defp carried(frame) do
     with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
          scope <- frame.assigns[:current_scope],
-         {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
-      ToolSets.for_role(agent.role) || :all
+         {:ok, _agent} <- Agents.fetch_agent(scope, agent_id) do
+      ToolIndex.carried(%{direct: LocalServer.__components__()})
     else
       _ -> :all
     end
@@ -140,12 +142,14 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # pointing the other way.
   defp direct?(name), do: Enum.any?(LocalServer.registrations(), &(&1.name == name))
 
-  # Whether the caller has it is a fact about the role, and it was assumed
-  # rather than checked: the page told every reader the tool was in its list.
-  # True for Claude Code, which is handed the whole spine; false for one of our
-  # own agents, which carries a role's grants (`e809c0db`). The page says which
-  # it is so an agent that does not carry it stops reaching for it and an agent
-  # that does is not talked out of it.
+  # Whether the caller has it is a fact about identity, not role, and it was
+  # assumed rather than checked: the page told every reader the tool was in
+  # its list (`e809c0db`). True for Claude Code, which is handed the whole
+  # spine; an agent we run instead carries the direct surface every such
+  # agent carries, the same regardless of role -- role only scopes
+  # `run_script` (`ToolSets.for_role`), not this (`73a1ca46`). The page says
+  # which it is so an agent that does not carry it stops reaching for it and
+  # an agent that does is not talked out of it.
   defp direct_page(name, carried) do
     """
     `#{name}` is a tool on this server, but not one `run_script` can call.
@@ -170,7 +174,8 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
       "You carry it directly — call it the way you call `run_script` itself, " <>
         "as a tool of your own."
     else
-      "You do not carry it: it is not one of the tools this role is given. " <>
+      "You do not carry it: it is not part of the direct surface an agent we " <>
+        "run carries. " <>
         "Do not call it — an agent directed at it is refused. If you need what " <>
         "it does, say so rather than working around it."
     end

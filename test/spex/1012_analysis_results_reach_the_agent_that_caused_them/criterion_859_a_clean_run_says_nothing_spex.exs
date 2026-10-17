@@ -20,8 +20,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Problems.Tools.ListProblems
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
 
   @fixture_dir "test/fixtures/validation/pipeline_exunit_failure"
@@ -99,13 +98,14 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
       end
 
       then_ "asking for the problems shows them gone", context do
-        {:reply, response, _frame} =
-          ListProblems.execute(
+        {:ok, response} =
+          ToolLibrary.run(
+            "list_problems",
             %{source: "exunit"},
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
-        refute response_text(response) =~ "example_context_test",
+        refute response =~ "example_context_test",
                "the failing test is still listed after a clean run replaced it. " <>
                  "Silence is only acceptable because asking gives the current answer; " <>
                  "a stale answer on request makes the silence a lie."

@@ -9,8 +9,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5964Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -18,16 +17,14 @@ defmodule CodeMySpecSpex.Story690.Criterion5964Spex do
   spex "list_knowledge returns the entries at a subdirectory", criterion: 409 do
     scenario "Calling list_knowledge with path \"liveview\" returns entries in priv/knowledge/liveview/" do
       when_ ~s(the agent calls list_knowledge with path "liveview"), context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ListKnowledge.execute(%{path: "liveview"}, frame)
+        response =
+          ToolLibrary.run("list_knowledge", %{path: "liveview"}, %{scope: context.scope})
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the response is not an error", context do
-        refute context.response.isError == true,
+        assert {:ok, _text} = context.response,
                "expected list_knowledge to succeed, got: #{inspect(context.response)}"
 
         {:ok, context}

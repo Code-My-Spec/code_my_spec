@@ -48,7 +48,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4651Spex do
           "status" => "ok",
           "app_status" => "serving",
           "app_url" => "http://127.0.0.1:55001",
-          "app_commit" => "cafefeed"
+          "app_commit" => "cafefeed",
+          "app_head" => "cafefeed"
         })
 
         {:reply, response, _frame} = Task.await(context.task)

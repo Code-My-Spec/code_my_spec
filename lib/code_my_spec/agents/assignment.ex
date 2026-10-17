@@ -272,12 +272,26 @@ defmodule CodeMySpec.Agents.Assignment do
       )
       |> maybe_put(:epic_id, team_epic_id(copy_id))
       |> maybe_put(:continuous, retired_seat_continuous(copy_id, role))
+      |> maybe_put(:issue_id, copy_issue_id(copy_id))
     else
       attrs
     end
   end
 
   def inherit(attrs), do: attrs
+
+  # The copy's issue, in bag order (`IssueAssignment.bag/2`). Team 4 was
+  # restaffed on 2026-10-17 and both replacements came up holding nothing
+  # beside ce1cc4a2, still assigned to their copy.
+  defp copy_issue_id(copy_id) do
+    from(i in "issues",
+      where: i.assigned_working_copy_id == type(^copy_id, Ecto.UUID) and i.status == "accepted",
+      order_by: [asc: i.inserted_at, asc: i.id],
+      select: type(i.id, Ecto.UUID),
+      limit: 1
+    )
+    |> Repo.one()
+  end
 
   # A seat refilled after a retirement keeps the loop its predecessor was in.
   # Main replaced both teams' Claude agents with Codex ones on 2026-10-15; all

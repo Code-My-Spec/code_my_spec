@@ -124,7 +124,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       assert text =~ "/tmp/ensure_tool_three_features"
       assert text =~ "e6d1d8fc"
       assert text =~ "bb936fa6"
-      assert text =~ "not restarted when HEAD moves"
+      assert response.isError
+      assert text =~ "Do not test against this app yet"
+      assert text =~ "QA requires matching revisions"
+      assert text =~ "restart_app"
+      refute text =~ "http://127.0.0.1:59302"
     end
 
     for health <- ["down", "erroring"] do

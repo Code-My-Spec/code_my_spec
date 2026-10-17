@@ -4,7 +4,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
   running. A live process is health-checked, not automatically restarted when
   HEAD moves. If it is unhealthy, the error reports the current checkout HEAD,
   the last recorded app revision, and the app log to inspect before recovery.
-  A healthy app may still serve an older revision; the response identifies it.
+  A healthy app whose served revision differs from HEAD, or whose revision
+  cannot be verified, returns an error refusing QA against it. The process
+  stays running; restart_app refreshes it explicitly.
 
   Story 1108's rule: an agent on a copy can start, restart and stop its own
   copy's app. Always the caller's own copy — resolved from the connection's
@@ -62,11 +64,17 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
         # What it serves, which a promote's reload moves past the launch commit.
         serving = Map.get(info, :serving_commit) || commit
 
-        Response.tool()
-        |> Response.text(
-          "#{copy_name(id)} app is serving #{serving || "unknown commit"} at #{url}." <>
-            head_note(serving, Map.get(info, :head))
-        )
+        case AppTransport.qa_revision_check(info) do
+          :ok ->
+            Response.tool()
+            |> Response.text("#{copy_name(id)} app is serving #{serving} at #{url}.")
+
+          {:error, reason} ->
+            Response.tool()
+            |> Response.error(
+              "#{copy_name(id)} app is running but is not verified for QA. " <> reason
+            )
+        end
 
       # A first start that outlasted its inline window: booting, not failed.
       {:ok, %{status: "starting", url: url, commit: commit}} ->
@@ -117,12 +125,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
       {:error, _} -> "Your copy's"
     end
   end
-
-  defp head_note(commit, head) when is_binary(head) and head != commit do
-    " This copy's HEAD is #{head}: the app is not restarted when HEAD moves, only on a promote."
-  end
-
-  defp head_note(_commit, _head), do: ""
 
   defp refusal(:no_working_dir) do
     "This call names no project, so there is no working copy to start an app for."

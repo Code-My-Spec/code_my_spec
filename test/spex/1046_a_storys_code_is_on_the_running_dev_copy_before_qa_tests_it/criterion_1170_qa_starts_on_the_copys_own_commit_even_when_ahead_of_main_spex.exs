@@ -135,7 +135,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
         "status" => "ok",
         "app_status" => "serving",
         "app_url" => "http://127.0.0.1:4100",
-        "app_commit" => "cafef00d"
+        "app_commit" => "cafef00d",
+        "app_head" => "cafef00d"
       })
 
     receive do

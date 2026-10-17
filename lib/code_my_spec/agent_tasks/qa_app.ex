@@ -233,7 +233,11 @@ defmodule CodeMySpec.AgentTasks.QaApp do
 
     Before testing, call `ensure_app_running` (no arguments — it is always
     your own copy, #{project_cwd}). It starts the app if it isn't already
-    serving and answers with the URL to test against.
+    serving and verifies that its served revision matches checkout HEAD before
+    giving you the URL to test against. If revision verification fails, do not
+    test or submit a passing result against that instance. Use `restart_app`
+    for your copy, then verify with `ensure_app_running` again. Do not start
+    another restart while one is running.
 
     Do not start it by hand with `mix phx.server &`: a shell-backgrounded
     server is not tracked anywhere, so nothing stops it when your turn ends.

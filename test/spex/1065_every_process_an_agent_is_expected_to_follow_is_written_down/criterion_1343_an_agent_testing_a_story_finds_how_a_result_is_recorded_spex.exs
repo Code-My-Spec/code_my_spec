@@ -26,8 +26,7 @@ defmodule CodeMySpecSpex.Story1065.Criterion3395Spex do
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -45,15 +44,13 @@ defmodule CodeMySpecSpex.Story1065.Criterion3395Spex do
       end
 
       when_ "it looks for how a pass or a failure is recorded", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} = ReadKnowledge.execute(%{path: @path}, frame)
+        response = ToolLibrary.run("read_knowledge", %{path: @path}, %{scope: context.scope})
 
         {:ok, context |> Map.put(:response, response) |> Map.put(:text, response_text(response))}
       end
 
       then_ "it finds what counts as a valid attempt", context do
-        refute context.response.isError,
+        assert {:ok, _text} = context.response,
                "there is nothing at #{@path}. The per-task QA playbooks describe testing " <>
                  "and not the bookkeeping, so how a result counts is unwritten. " <>
                  "Got:\n#{context.text}"

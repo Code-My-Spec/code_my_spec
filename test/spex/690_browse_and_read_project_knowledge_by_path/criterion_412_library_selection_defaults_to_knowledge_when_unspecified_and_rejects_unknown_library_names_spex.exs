@@ -10,24 +10,22 @@ defmodule CodeMySpecSpex.Story690.Criterion5967Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Library selection defaults to knowledge; unknown libraries are rejected", criterion: 412 do
+  spex "Library selection defaults to knowledge; unknown libraries are rejected",
+    criterion: 412 do
     scenario "Omitting the library parameter defaults to the knowledge library" do
       when_ "the agent calls list_knowledge with no library parameter", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} = ListKnowledge.execute(%{}, frame)
+        response = ToolLibrary.run("list_knowledge", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the call returns the framework Knowledge Base listing", context do
-        refute context.response.isError == true,
+        assert {:ok, _text} = context.response,
                "expected list_knowledge to succeed when library is omitted, got: #{inspect(context.response)}"
 
         body = response_text(context.response)
@@ -41,16 +39,14 @@ defmodule CodeMySpecSpex.Story690.Criterion5967Spex do
 
     scenario "Unknown library names are rejected with a validation error" do
       when_ ~s(the agent calls list_knowledge with library "bogus_library"), context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ListKnowledge.execute(%{library: "bogus_library"}, frame)
+        response =
+          ToolLibrary.run("list_knowledge", %{library: "bogus_library"}, %{scope: context.scope})
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the response is an error naming the rejected library", context do
-        assert context.response.isError == true,
+        assert {:error, _text} = context.response,
                "expected an error response for the unknown library, got: #{inspect(context.response)}"
 
         body = response_text(context.response)
@@ -58,7 +54,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5967Spex do
         assert body =~ "bogus_library",
                "expected the error to name the offending library, got: #{inspect(body)}"
 
-        assert body =~ "knowledge" or body =~ "project_knowledge",
+        assert body =~ "Use 'knowledge' or 'project_knowledge'.",
                "expected the error to instruct using one of the valid libraries"
 
         {:ok, context}

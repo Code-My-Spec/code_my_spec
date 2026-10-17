@@ -1,4 +1,4 @@
-defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblemsTest do
+defmodule CodeMySpec.Problems.Tools.ClearProblemsTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
@@ -6,10 +6,8 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblemsTest do
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.ProblemsFixtures
 
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Problems.Tools.ClearProblems
   alias CodeMySpec.Problems
+  alias CodeMySpec.ToolLibrary
 
   setup do
     user = user_fixture()
@@ -21,18 +19,14 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblemsTest do
     %{scope: scope}
   end
 
-  describe "execute/2" do
+  describe "library execution" do
     test "with no file_paths clears ALL persisted problems for the project", %{scope: scope} do
       problem_fixture(scope, %{file_path: "test/a_test.exs", message: "stale exunit failure"})
       problem_fixture(scope, %{file_path: "lib/b.ex", message: "stale credo warning"})
       assert length(Problems.list_project_problems(scope)) == 2
 
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      assert {:reply, response, ^frame} = ClearProblems.execute(%{}, frame)
-      assert response.type == :tool
-      assert response.isError == false
-      assert response_text(response) =~ "Cleared 2 persisted problem"
+      assert {:ok, response} = ToolLibrary.run("clear_problems", %{}, %{scope: scope})
+      assert response =~ "Cleared 2 persisted problem"
 
       assert Problems.list_project_problems(scope) == []
     end
@@ -41,13 +35,12 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblemsTest do
       problem_fixture(scope, %{file_path: "test/rate_limiter_test.exs", message: "stale"})
       problem_fixture(scope, %{file_path: "lib/keep.ex", message: "still real"})
 
-      frame = %Frame{assigns: %{current_scope: scope}}
+      assert {:ok, response} =
+               ToolLibrary.run("clear_problems", %{file_paths: ["test/rate_limiter_test.exs"]}, %{
+                 scope: scope
+               })
 
-      assert {:reply, response, ^frame} =
-               ClearProblems.execute(%{file_paths: ["test/rate_limiter_test.exs"]}, frame)
-
-      assert response.isError == false
-      assert response_text(response) =~ "test/rate_limiter_test.exs"
+      assert response =~ "test/rate_limiter_test.exs"
 
       remaining = Problems.list_project_problems(scope)
       assert length(remaining) == 1
@@ -57,24 +50,15 @@ defmodule CodeMySpec.McpServers.Problems.Tools.ClearProblemsTest do
     test "empty file_paths list falls back to clearing all", %{scope: scope} do
       problem_fixture(scope, %{file_path: "lib/x.ex", message: "stale"})
 
-      frame = %Frame{assigns: %{current_scope: scope}}
+      assert {:ok, _summary} =
+               ToolLibrary.run("clear_problems", %{file_paths: []}, %{scope: scope})
 
-      assert {:reply, response, ^frame} = ClearProblems.execute(%{file_paths: []}, frame)
-      assert response.isError == false
       assert Problems.list_project_problems(scope) == []
     end
 
     test "errors cleanly when no project scope can be resolved" do
-      frame = %Frame{assigns: %{current_scope: nil, working_dir: nil}}
-
-      assert {:reply, response, ^frame} = ClearProblems.execute(%{}, frame)
-      assert response.isError == true
-      assert response_text(response) =~ "Could not clear problems"
+      assert {:error, response} = ToolLibrary.run("clear_problems", %{}, %{})
+      assert response =~ "Could not clear problems"
     end
-  end
-
-  defp response_text(response) do
-    protocol = Response.to_protocol(response)
-    hd(protocol["content"])["text"]
   end
 end

@@ -19,6 +19,7 @@ defmodule CodeMySpec.Embeddings do
     deps: [
       CodeMySpec.Dependencies,
       CodeMySpec.Repo,
+      CodeMySpec.Tools,
       CodeMySpec.Users.Scope
     ],
     exports: :all
