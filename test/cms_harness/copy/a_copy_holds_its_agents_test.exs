@@ -40,9 +40,19 @@ defmodule CmsHarness.Copy.ACopyHoldsItsAgentsTest do
 
     id = ctx.id
     root = ctx.root
-    # The liveness event is sent after shutdown, which took over a second under
-    # gate load (ejected ff9a042a6).
-    assert_receive {:agent_liveness, :down, ^id, ^root, :shutdown}, 5_000
+
+    # `Copy.stop/1` already blocks until the whole tree -- agent included --
+    # has torn down, so the agent's own `:DOWN` is enqueued in Liveness's
+    # mailbox by the time this line runs. The only thing still async is
+    # Liveness relaying it to subscribers off its own backlog, which a fixed
+    # wall-clock wait guesses at (previously 5s, still too tight under gate
+    # load: ejected ff9a042a6, then c9fec3b0). A synchronous round-trip is
+    # queued behind that already-enqueued `:DOWN` -- GenServer mailboxes are
+    # FIFO -- so it cannot return until Liveness has processed (and relayed)
+    # it, bounding the wait by Liveness's own backlog instead of a constant.
+    Liveness.present(root)
+
+    assert_received {:agent_liveness, :down, ^id, ^root, :shutdown}
     refute Machine.running?(ctx.id)
   end
 

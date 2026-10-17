@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Issues
+  alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
@@ -32,21 +33,22 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
   @copy "/issue-fix/copy"
   @head "7777777777777777777777777777777777777777"
+  @head2 "8888888888888888888888888888888888888888"
 
-  defp clean_shell do
+  defp clean_shell(head \\ @head) do
     test = self()
 
     fn "git", args, opts ->
       send(test, {:git, Keyword.fetch!(opts, :cd), args})
-      clean_answer(args)
+      clean_answer(args, head)
     end
   end
 
-  defp clean_answer(["status" | _]), do: {"", 0}
-  defp clean_answer(["rev-parse", "--abbrev-ref", "HEAD"]), do: {"issue/x\n", 0}
-  defp clean_answer(["rev-parse", "HEAD"]), do: {@head <> "\n", 0}
-  defp clean_answer(["ls-files" | _]), do: {"", 0}
-  defp clean_answer(args), do: {"unscripted: git #{Enum.join(args, " ")}", 1}
+  defp clean_answer(["status" | _], _head), do: {"", 0}
+  defp clean_answer(["rev-parse", "--abbrev-ref", "HEAD"], _head), do: {"issue/x\n", 0}
+  defp clean_answer(["rev-parse", "HEAD"], head), do: {head <> "\n", 0}
+  defp clean_answer(["ls-files" | _], _head), do: {"", 0}
+  defp clean_answer(args, _head), do: {"unscripted: git #{Enum.join(args, " ")}", 1}
 
   # A certifiable copy: a clean tree at a known HEAD, with every analyzer
   # already fresh there, so `IssueFix`'s certification passes on the first
@@ -61,6 +63,16 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     scope = %{scope | active_working_copy_id: copy.id}
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
     %{scope: scope, copy_id: copy.id}
+  end
+
+  # Rework lands at a new commit: a different HEAD from the shell, and fresh
+  # analysis stamped there, so the second certification is a distinct pass
+  # rather than a replay of the first.
+  defp recertify_at(scope, copy_id, head) do
+    {:ok, env} = InMemoryEnvironment.create(shell: clean_shell(head))
+    :ok = CodeMySpec.Environments.unregister({:working_copy, copy_id})
+    :ok = CodeMySpec.Environments.register({:working_copy, copy_id}, env)
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
   end
 
   setup do
@@ -124,6 +136,83 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     {:reply, duplicate, _} = StartTask.execute(params, frame)
     assert duplicate.isError
     assert [%{id: ^task_id, status: :completed}] = reload(coding).tasks
+  end
+
+  # A failed attempt must not leave QA re-offered the same commit it just
+  # failed, and must not leave the coder blocked either -- the two halves of
+  # 4100468a. `send_back_to_coder/2` clears `qa_ready_commit` and flips
+  # `awaiting_role` to `:coding` inside the same transaction as the attempt,
+  # so this exercises the full tool path rather than the domain function
+  # directly: a regression here would be a graph-level discrepancy, not a
+  # unit-level one.
+  test "a failed QA attempt sends the fix back to the coder, not qa_complete again at the same commit; a new certified commit offers QA again (4100468a)",
+       ctx do
+    %{scope: scope, copy_id: copy_id} = certifiable_copy(ctx.scope)
+    coding = agent(scope, :coding, copy_id)
+    qa = agent(scope, :qa, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(scope, ctx.issue.id, copy_id)
+
+    coding_frame = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
+    fix_params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
+
+    {:reply, started, _} = StartTask.execute(fix_params, coding_frame)
+    refute started.isError
+    [fix_task] = reload(coding).tasks
+    {:reply, evaluated, _} = EvaluateTask.execute(%{task_id: fix_task.id}, coding_frame)
+    refute evaluated.isError
+
+    assert Issues.get_issue(scope, ctx.issue.id).awaiting_role == :qa
+    assert Issues.get_issue(scope, ctx.issue.id).qa_ready_commit == @head
+
+    qa_frame = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
+    qa_params = %{requirement_name: "qa_complete", entity_type: "issue", entity_id: ctx.issue.id}
+    {:reply, started_qa, _} = StartTask.execute(qa_params, qa_frame)
+    refute started_qa.isError
+    [qa_task] = reload(qa).tasks
+
+    {:reply, submitted, _} =
+      SubmitIssueQaResult.execute(
+        %{
+          issue_id: ctx.issue.id,
+          task_id: qa_task.id,
+          status: "fail",
+          issue_ids: [ctx.issue.id],
+          scenarios: [%{name: "Delivery", status: "fail", observation: "Still broken"}]
+        },
+        qa_frame
+      )
+
+    refute submitted.isError
+
+    issue = Issues.get_issue(scope, ctx.issue.id)
+    assert issue.awaiting_role == :coding
+    refute issue.qa_ready_commit
+
+    # Same commit: QA is not offered qa_complete again -- the fix is the
+    # coder's turn, not QA's, until a new commit is certified.
+    assert %{status: :blocked, actionable: []} = IssueWork.execution(scope, reload(qa))
+
+    assert [%{name: "fix_issue", entity_id: issue_id}] =
+             IssueWork.execution(scope, reload(coding)).actionable
+
+    assert issue_id == ctx.issue.id
+
+    # The coder reworks it and certifies at a new commit.
+    recertify_at(scope, copy_id, @head2)
+    {:reply, started2, _} = StartTask.execute(fix_params, coding_frame)
+    refute started2.isError
+    rework_task = Enum.find(reload(coding).tasks, &(&1.status != :completed))
+    {:reply, evaluated2, _} = EvaluateTask.execute(%{task_id: rework_task.id}, coding_frame)
+    refute evaluated2.isError
+
+    issue = Issues.get_issue(scope, ctx.issue.id)
+    assert issue.awaiting_role == :qa
+    assert issue.qa_ready_commit == @head2
+
+    assert [%{name: "qa_complete", entity_id: issue_id2}] =
+             IssueWork.execution(scope, reload(qa)).actionable
+
+    assert issue_id2 == ctx.issue.id
   end
 
   test "a missing issue cannot produce a passing fix evaluation", ctx do
