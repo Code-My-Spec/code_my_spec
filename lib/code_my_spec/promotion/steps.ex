@@ -51,7 +51,7 @@ defmodule CodeMySpec.Promotion.Steps do
              "--ignore-submodules=all"
            ]) do
         {"", 0} ->
-          with :ok <- submodule_pointer(env, root, main), do: branch(env, root)
+          clean_checkout(env, root, main)
 
         {dirty, 0} ->
           uncommitted(dirty)
@@ -60,6 +60,10 @@ defmodule CodeMySpec.Promotion.Steps do
           unreadable(out)
       end
     end
+  end
+
+  defp clean_checkout(env, root, main) do
+    with :ok <- submodule_pointer(env, root, main), do: branch(env, root)
   end
 
   # Not under git at all. Said plainly: a vague error led an agent to
@@ -586,13 +590,7 @@ defmodule CodeMySpec.Promotion.Steps do
          # (one a candidate adds reads as a conflict naming no file). Ignored
          # files (`_build`, `deps`) stay.
          {_, 0} <- git(env, root, ["clean", "--quiet", "-d", "--force"]) do
-      {merged, conflicted} =
-        Enum.reduce(commits, {[], []}, fn commit, {merged, conflicted} ->
-          case add_to_batch(env, root, commit) do
-            :ok -> {[commit | merged], conflicted}
-            {:conflict, files} -> {merged, [%{commit: commit, files: files} | conflicted]}
-          end
-        end)
+      {merged, conflicted} = merge_candidates(env, root, commits)
 
       {:ok,
        %{
@@ -605,6 +603,15 @@ defmodule CodeMySpec.Promotion.Steps do
         {:error,
          %{reason: "could not reset the gate checkout #{root} to #{base}: #{String.trim(out)}"}}
     end
+  end
+
+  defp merge_candidates(env, root, commits) do
+    Enum.reduce(commits, {[], []}, fn commit, {merged, conflicted} ->
+      case add_to_batch(env, root, commit) do
+        :ok -> {[commit | merged], conflicted}
+        {:conflict, files} -> {merged, [%{commit: commit, files: files} | conflicted]}
+      end
+    end)
   end
 
   @doc """
@@ -769,7 +776,10 @@ defmodule CodeMySpec.Promotion.Steps do
             _ -> []
           end
 
-        git(env, root, ["merge", "--abort"])
+        # Not `merge --abort`: under `submodule.recurse` it fails on a
+        # conflicting docs pointer and leaves the markers for the next step to
+        # compile (8733d80d8, 2026-10-15). HEAD is still the pre-merge commit.
+        git(env, root, @leave_submodules ++ ["reset", "--quiet", "--hard", "HEAD"])
         {:conflict, files}
     end
   end

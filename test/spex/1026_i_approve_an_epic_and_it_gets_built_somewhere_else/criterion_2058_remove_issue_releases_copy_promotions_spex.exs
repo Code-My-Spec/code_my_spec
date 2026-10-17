@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion2058Spex do
   alias CodeMySpecSpex.PromotionHelpers, as: Promotion
   alias Ecto.Adapters.SQL.Sandbox
 
-  cloud_endpoint()
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

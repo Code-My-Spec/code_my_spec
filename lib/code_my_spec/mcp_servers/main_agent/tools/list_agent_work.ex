@@ -24,6 +24,8 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
   alias CodeMySpec.McpServers.Validators
@@ -33,13 +35,40 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork do
 
   @impl true
   def execute(_params, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        work = MainAgent.list_agent_work(scope)
-        {:reply, AgentWorkMapper.listing(work, MainAgent.list_off_agents(scope)), frame}
-
-      {:error, reason} ->
-        {:reply, AgentWorkMapper.error(reason), frame}
+    case work(frame) do
+      {:ok, work, off_agents} -> {:reply, AgentWorkMapper.listing(work, off_agents), frame}
+      {:error, reason} -> {:reply, AgentWorkMapper.error(reason), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(_params, frame) do
+    with {:ok, work, _off_agents} <- work(frame) do
+      {:ok, Enum.map(work, &row/1)}
+    end
+  end
+
+  defp work(frame) do
+    with {:ok, scope} <- Validators.validate_local_scope(frame) do
+      {:ok, MainAgent.list_agent_work(scope), MainAgent.list_off_agents(scope)}
+    end
+  end
+
+  defp row(w) do
+    %{
+      "agent_id" => w.agent_id,
+      "role" => to_string(w.role),
+      "agent_status" => to_string(w.agent_status),
+      "working_copy_id" => w.working_copy_id,
+      "working_copy_root" => w.working_copy_root,
+      "issue_id" => w.issue_id,
+      "team_free" => w.team_free?,
+      "task_name" => w.task_name,
+      "task_status" => w.task_status && to_string(w.task_status),
+      "story_title" => w.story_title,
+      "idle" => w.idle?,
+      "tapped_out" => w.tapped_out?,
+      "turn_in_flight" => w.turn_in_flight?
+    }
   end
 end

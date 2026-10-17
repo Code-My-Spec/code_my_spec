@@ -50,8 +50,7 @@ defmodule CodeMySpec.Utils.Data do
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope
-    ],
-    exports: :all
+    ]
 
   require Logger
 

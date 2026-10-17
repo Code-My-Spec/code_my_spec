@@ -31,11 +31,11 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "From `list_agent_work`."
+    field :agent_id, :string, required: true, description: "From `list_agent_work`."
 
     field :continuous, :boolean,
       required: true,
-      doc: "True puts it in the loop and wakes it. False lets it stop after its current turn."
+      description: "True puts it in the loop and wakes it. False lets it stop after its current turn."
   end
 
   @impl true

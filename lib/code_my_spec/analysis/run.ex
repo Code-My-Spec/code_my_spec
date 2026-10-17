@@ -5,18 +5,18 @@ defmodule CodeMySpec.Analysis.Run do
   Each row answers "what ran, when, over which inputs, and how it went" for
   one analyzer source (`compiler`, `credo`, `exunit`, `spex`) in one project.
 
-  `sobelow` is a real, working analyzer (`StaticAnalysis.Analyzers.Sobelow`,
-  `Analysis.Runners.run/4`, `CmsHarness.Analysis`) deliberately NOT in this
-  ledger yet. `Promotion.gate/3` requires every member of `Run.sources()` to
-  have a clean run at HEAD before any promotion, unconditionally, by
-  design — the codebase's own comment there rejects config-based exemptions
-  from that list on the grounds that narrowing it "would let a project
-  promote a commit [a source] had never once run against." Adding `sobelow`
-  here makes that same unconditional demand of a security scan, silently
-  answering a question `9a78afa1` explicitly left open: whether a security
-  scan should gate every promotion the same way a test suite does, given the
-  two have different costs and cadences. Wire it in once that's decided, not
-  as a side effect of registering it.
+  Product decided in questions `2b219959` and `4f6303c2`, against story 983
+  criterion 1774: promotion and ready-for-QA require the fixed four sources
+  `compiler`, `credo`, `exunit`, and `spex`. Sobelow does not gate either.
+  Keep it out of `Run.sources()` and controller `@valid_sources` lists.
+  Do not add a per-project switch to include it in the gate.
+
+  Sobelow remains a working analyzer and can report findings as problems
+  without blocking. Adding it to the gate requires a new criterion on
+  story 983 for the user to decide, not a registration change. If a real
+  security finding reaches main because Sobelow did not gate it, file an
+  issue with that finding. This resolves the policy question in `9a78afa1`.
+
   The latest completed `:full` run answers for its source, however old. Which
   commit it answers for is `start_commit`/`completed_commit`, and the promote
   gate reads that (`at_commit?/2`, 28d72f8a) — the one rule for "current".

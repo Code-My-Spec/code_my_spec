@@ -107,7 +107,7 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   # relies on happens here too — a params map with string keys reaching a tool
   # that reads atoms is a failure the real path does not have.
   def call({__MODULE__, session}, tool, arguments) do
-    case Enum.find(LocalServer.__components__(), &(&1.name == tool)) do
+    case Enum.find(LocalServer.registrations(), &(&1.name == tool)) do
       nil -> {:error, "This server has no tool called #{inspect(tool)}."}
       component -> dispatch_component(component, arguments || %{}, session)
     end
@@ -176,16 +176,24 @@ defmodule CodeMySpecTest.InVmMcpTransport do
   defp docs_params(_arguments), do: %{}
 
   defp dispatch_component(%{validate_input: nil} = component, _arguments, session),
-    do: dispatch(component.handler, %{}, session)
+    do: dispatch(component, %{}, session)
 
   defp dispatch_component(component, arguments, session) do
     case component.validate_input.(arguments) do
-      {:ok, params} -> dispatch(component.handler, params, session)
+      {:ok, params} -> dispatch(component, params, session)
       {:error, errors} -> {:error, "#{component.name} was called wrong: #{inspect(errors)}"}
     end
   end
 
-  defp dispatch(tool, params, session) do
+  # A library tool (`LocalServer.library_tools/0`) has no handler: the server
+  # runs it, as it does for a real call.
+  defp run(%{tool: _} = registration, params, frame),
+    do: LocalServer.handle_tool_call(registration.name, params, frame)
+
+  defp run(module, params, frame) when is_atom(module), do: module.execute(params, frame)
+  defp run(component, params, frame), do: component.handler.execute(params, frame)
+
+  defp dispatch(component, params, session) do
     case scope() do
       nil ->
         {:error,
@@ -193,7 +201,7 @@ defmodule CodeMySpecTest.InVmMcpTransport do
            "`:harness_mcp_scope` to the scope this agent runs as."}
 
       scope ->
-        {:reply, response, _frame} = tool.execute(params, frame(scope, session))
+        {:reply, response, _frame} = run(component, params, frame(scope, session))
 
         answer(response)
     end

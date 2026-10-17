@@ -3,7 +3,7 @@ defmodule CodeMySpec.Uploads do
   S3 upload helpers for presigned URLs.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   def presigned_upload_url(key, content_type, opts \\ []) do
     bucket = bucket()

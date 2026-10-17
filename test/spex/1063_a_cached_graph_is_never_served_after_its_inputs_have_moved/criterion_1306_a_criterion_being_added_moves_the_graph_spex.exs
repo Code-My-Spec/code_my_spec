@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.BddRules.Tools.AddRule
   alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.ProjectStateFixtures
 
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
@@ -42,13 +42,12 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
         # surface: persona first, then rules, then scenarios.
         context = ProjectStateFixtures.apply_persona(context)
 
-        {:reply, link_response, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, _} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
-
-        refute link_response.isError, inspect(link_response)
 
         {:reply, rule_response, _frame} =
           AddRule.execute(

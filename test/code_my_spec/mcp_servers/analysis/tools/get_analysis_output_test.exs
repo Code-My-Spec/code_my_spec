@@ -62,6 +62,33 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
     assert second["next_offset"] == nil
   end
 
+  test "a later superseded run does not shadow an earlier one with real output", ctx do
+    run = finished(ctx.scope, "exunit", "the assertion that failed\n", :failed)
+    newer = analysis_run_fixture(ctx.scope, %{source: "exunit", kind: :partial})
+
+    {:ok, _superseded} =
+      RunsRepository.finish_run(newer, :superseded, %{stats: %{"superseded" => "requeued"}})
+
+    result = page(%{source: "exunit"}, ctx.frame)
+
+    assert result["run_id"] == run.id
+    assert result["output"] == "the assertion that failed\n"
+    assert result["output_available"] == true
+  end
+
+  test "a source with nothing but a superseded run still answers with it", ctx do
+    run = analysis_run_fixture(ctx.scope, %{source: "exunit", kind: :partial})
+
+    {:ok, run} =
+      RunsRepository.finish_run(run, :superseded, %{stats: %{"superseded" => "requeued"}})
+
+    result = page(%{source: "exunit"}, ctx.frame)
+
+    assert result["run_id"] == run.id
+    assert result["status"] == "superseded"
+    assert result["output_available"] == false
+  end
+
   test "failed runs expose their retained boot error", ctx do
     run = finished(ctx.scope, "exunit", "** (RuntimeError) missing configuration\n", :failed)
     result = page(%{source: "exunit"}, ctx.frame)
@@ -73,11 +100,24 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
 
   test "running without output is unavailable, not a successful empty result", ctx do
     run = analysis_run_fixture(ctx.scope)
+    run = RunsRepository.record_tree(run, %{"began_at" => DateTime.utc_now()})
     result = page(%{run_id: run.id}, ctx.frame)
 
     assert result["status"] == "running"
     assert result["output_available"] == false
     assert result["exit_status"] == nil
+  end
+
+  # bf627680: a run the harness has not yet reported starting (no `began_at`)
+  # is still `status: :running` in the ledger -- it is waiting for a
+  # machine-wide analyzer slot, not executing. Reading it back as a bare
+  # "running" made that wait indistinguishable from real progress.
+  test "a run waiting for a machine-wide slot reads as queued, not running", ctx do
+    run = analysis_run_fixture(ctx.scope)
+    result = page(%{run_id: run.id}, ctx.frame)
+
+    assert result["status"] == "queued"
+    assert result["output_available"] == false
   end
 
   test "an empty retained result remains available", ctx do

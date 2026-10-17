@@ -33,7 +33,7 @@ defmodule CodeMySpec.TempFile do
   instances of the bug in the first place.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   @doc """
   A temp file path: `<tmp>/<prefix>_<token><suffix>`.

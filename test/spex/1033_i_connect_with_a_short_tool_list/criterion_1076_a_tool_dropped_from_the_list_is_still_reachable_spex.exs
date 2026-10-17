@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion3001Spex do
   spex "I connect with a short tool list", criterion: 1076 do
     scenario "A tool dropped from the list is still reachable" do
       given_ "list_story_titles is no longer in the agent's tool list", context do
-        refute "list_story_titles" in MapSet.new(LocalServer.__components__(), & &1.name)
+        refute "list_story_titles" in MapSet.new(LocalServer.registrations(), & &1.name)
 
         {:ok, Map.put(context, :frame, %Frame{assigns: %{current_scope: context.scope}})}
       end

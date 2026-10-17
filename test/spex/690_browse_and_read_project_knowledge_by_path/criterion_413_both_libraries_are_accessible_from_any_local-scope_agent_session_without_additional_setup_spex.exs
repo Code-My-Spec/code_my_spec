@@ -11,9 +11,8 @@ defmodule CodeMySpecSpex.Story690.Criterion5968Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Knowledge.Tools.ListKnowledge
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,26 +34,24 @@ defmodule CodeMySpecSpex.Story690.Criterion5968Spex do
       end
 
       when_ ~s(the agent calls list_knowledge with library "knowledge"), context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ListKnowledge.execute(%{library: "knowledge"}, frame)
+        response =
+          ToolLibrary.run("list_knowledge", %{library: "knowledge"}, %{scope: context.scope})
 
         {:ok, Map.put(context, :knowledge_response, response)}
       end
 
       and_ ~s(the agent then calls list_knowledge with library "project_knowledge"),
            context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} =
-          ListKnowledge.execute(%{library: "project_knowledge"}, frame)
+        response =
+          ToolLibrary.run("list_knowledge", %{library: "project_knowledge"}, %{
+            scope: context.scope
+          })
 
         {:ok, Map.put(context, :project_knowledge_response, response)}
       end
 
       then_ "the knowledge library call succeeds with the Knowledge Base listing", context do
-        refute context.knowledge_response.isError == true,
+        assert {:ok, _text} = context.knowledge_response,
                "expected `knowledge` library call to succeed, got: #{inspect(context.knowledge_response)}"
 
         body = response_text(context.knowledge_response)
@@ -66,7 +63,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5968Spex do
       end
 
       and_ "the project_knowledge library call also succeeds with its listing", context do
-        refute context.project_knowledge_response.isError == true,
+        assert {:ok, _text} = context.project_knowledge_response,
                "expected `project_knowledge` library call to succeed, got: #{inspect(context.project_knowledge_response)}"
 
         body = response_text(context.project_knowledge_response)

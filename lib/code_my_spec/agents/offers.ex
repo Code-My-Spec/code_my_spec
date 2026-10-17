@@ -785,6 +785,24 @@ defmodule CodeMySpec.Agents.Offers do
     :ok
   end
 
+  @doc """
+  This agent's undelivered instruction offers not yet reported to main --
+  `43cdc022`: a delivery failure settled `:undelivered` the same as a decline
+  settles `:declined`, but only the decline was ever named to main. Preloads
+  the linked message so the caller can read what failed to arrive.
+  """
+  @spec unreported_undelivered_instructions(Ecto.UUID.t()) :: [Offer.t()]
+  def unreported_undelivered_instructions(agent_id) do
+    Offer
+    |> where(
+      [o],
+      o.agent_id == ^agent_id and o.kind == :instruction and o.status == :undelivered and
+        (is_nil(o.note) or o.note != "told_main")
+    )
+    |> preload(messages: :message)
+    |> Repo.all()
+  end
+
   defp settle([], _agent), do: :ok
 
   defp settle([first | _] = open, agent) do

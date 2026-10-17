@@ -6,12 +6,10 @@ defmodule CodeMySpecSpex.HarnessedKnowledgeHelpers do
   disk. Taking the harness down is the offline case.
   """
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   import ExUnit.Assertions
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
 
@@ -109,14 +107,14 @@ defmodule CodeMySpecSpex.HarnessedKnowledgeHelpers do
   @doc "`semantic_search` text for `source`, as an agent on the project gets it."
   @spec search(map(), String.t()) :: String.t()
   def search(%{scope: scope}, source) do
-    {:reply, response, _} =
-      SemanticSearch.execute(
+    {:ok, response} =
+      ToolLibrary.run(
+        "semantic_search",
         %{query: "what we decided", source: source, limit: 50},
-        %Frame{assigns: %{current_scope: scope}}
+        %{scope: scope}
       )
 
-    refute response.isError, response_text(response)
-    response_text(response)
+    response
   end
 
   @doc "The knowledge file names project-knowledge search cites."

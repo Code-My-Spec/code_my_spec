@@ -11,7 +11,7 @@ defmodule CodeMySpec.Logging do
   tree boots — so application logs land in the file from line one.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   alias CodeMySpec.Logging.LogfmtFormatter
 

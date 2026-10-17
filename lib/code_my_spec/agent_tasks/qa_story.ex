@@ -485,8 +485,23 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # a copy id that does not resolve.
   #
   # The harness replies `starting` after a short inline window and keeps
-  # building in the background, so this waits just above that window.
-  @app_start_timeout to_timeout(second: 35)
+  # building in the background -- `AppTransport.first_start_inline_window_ms/0`,
+  # not a guess: a hardcoded 35s here once meant to sit "just above" a 30s
+  # window, but nothing enforced that relationship, and `AppTransport.call/4`
+  # adds its own grace on top of whatever timeout it is given -- so the
+  # effective slack was thinner than it looked and would silently vanish if
+  # either the window or the grace ever changed (cf006764).
+  @app_start_safety_margin_ms to_timeout(second: 10)
+
+  @doc "How long `own_copy_app_url_line/1` waits for a first start's inline reply. Public for testability."
+  @spec app_start_timeout() :: pos_integer()
+  def app_start_timeout do
+    max(
+      AppTransport.first_start_inline_window_ms() + @app_start_safety_margin_ms -
+        AppTransport.call_grace_ms(),
+      to_timeout(second: 5)
+    )
+  end
 
   defp app_url_line(%{active_working_copy_id: id}, endpoint_module)
        when is_binary(id) do
@@ -509,10 +524,18 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   defp own_copy_app_url_line(copy) do
-    case AppTransport.ensure_app_running(copy.id, @app_start_timeout) do
-      {:ok, %{status: "serving", url: url, commit: commit}} ->
-        "**App URL:** #{url} — this working copy's own instance" <>
-          commit_suffix(commit) <> ", not main's. Test against this address."
+    case AppTransport.ensure_app_running(copy.id, app_start_timeout()) do
+      {:ok, %{status: "serving", url: url, commit: commit} = info} ->
+        case AppTransport.qa_revision_check(info) do
+          :ok ->
+            serving = Map.get(info, :serving_commit) || commit
+
+            "**App URL:** #{url} — this working copy's own instance" <>
+              commit_suffix(serving) <> ", not main's. Test against this address."
+
+          {:error, reason} ->
+            "**App verification blocked:** " <> reason
+        end
 
       {:ok, %{status: "starting", commit: commit}} ->
         "**App URL:** this copy's app is still building" <>

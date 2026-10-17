@@ -23,8 +23,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
   alias CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin
   alias CodeMySpec.McpServers.BddRules.Tools.ListQuestions
   alias CodeMySpec.McpServers.BddRules.Tools.ListRules
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -43,22 +42,24 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
             acceptance_criteria: []
           )
 
-        {:reply, persona_response, _frame} =
-          CreatePersona.execute(
+        {:ok, persona_response} =
+          ToolLibrary.run(
+            "create_persona",
             %{
               name: "Workshop Persona",
               slug: "workshop-persona-#{System.unique_integer([:positive])}",
               description: "Persona used to satisfy linkage."
             },
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         persona_id = extract_persona_id(persona_response)
 
-        {:reply, _, _frame} =
-          LinkPersonaToStory.execute(
+        {:ok, _} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{story_number: story.number, persona_id: persona_id},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         rule_statement = "Drivers must have a verified phone number."

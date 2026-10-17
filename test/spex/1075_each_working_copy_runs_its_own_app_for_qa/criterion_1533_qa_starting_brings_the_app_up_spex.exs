@@ -62,7 +62,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4657Spex do
           "status" => "ok",
           "app_status" => "serving",
           "app_url" => "http://127.0.0.1:56002",
-          "app_commit" => "1108c0de"
+          "app_commit" => "1108c0de",
+          "app_head" => "1108c0de"
         })
 
         assert {:ok, prompt} = Task.await(context.command_task)

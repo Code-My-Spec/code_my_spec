@@ -27,11 +27,11 @@ defmodule CodeMySpec.McpServers.Devops.Tools.LinkServer do
   schema do
     field :environment, :string,
       required: true,
-      doc: "Environment name, e.g. \"prod\" or \"uat\"."
+      description: "Environment name, e.g. \"prod\" or \"uat\"."
 
     field :server_name, :string,
       required: true,
-      doc: "Name of a server already linked to this account, e.g. \"fuellytics-prod\"."
+      description: "Name of a server already linked to this account, e.g. \"fuellytics-prod\"."
   end
 
   @impl true

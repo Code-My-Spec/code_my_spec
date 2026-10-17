@@ -18,16 +18,16 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateScenario do
   schema do
     field :criterion_number, :integer,
       required: true,
-      doc: "Criterion number of the scenario to update (from `get_story` or `get_story_gherkin`)."
+      description: "Criterion number of the scenario to update (from `get_story` or `get_story_gherkin`)."
 
     field :title, :string,
-      doc: "New scenario title (one-line, in domain language). Omit to leave unchanged."
+      description: "New scenario title (one-line, in domain language). Omit to leave unchanged."
 
     field :body, :string,
-      doc: "New Given/When/Then body (plain-text Gherkin). Omit to leave unchanged."
+      description: "New Given/When/Then body (plain-text Gherkin). Omit to leave unchanged."
 
     field :kind, :string,
-      doc: "New scenario kind — `happy_path` or `failure_path`. Omit to leave unchanged."
+      description: "New scenario kind — `happy_path` or `failure_path`. Omit to leave unchanged."
   end
 
   @impl true

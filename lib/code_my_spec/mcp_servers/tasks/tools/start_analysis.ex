@@ -38,11 +38,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartAnalysis do
   @sources ~w(spex exunit credo compiler)
 
   schema do
-    field :source, :string, required: true, doc: "spex | exunit | credo | compiler"
+    field :source, :string, required: true, description: "spex | exunit | credo | compiler"
 
     field :paths, {:list, :string},
       default: [],
-      doc:
+      description:
         "Scope the run to these paths (e.g. one test file), instead of the full suite. " <>
           "Empty runs everything. A scoped run is `:partial` and can never satisfy " <>
           "freshness on its own — it covers only what it names."

@@ -49,7 +49,10 @@ defmodule CmsHarness.TestDatabasePartitionTest do
     end
 
     test "refuses a copy with nothing recorded, and names the remedy", %{root: root} do
-      assert_raise RuntimeError, ~r/has not been onboarded.*mix harness\.onboard/s, fn ->
+      # Not `mix harness.onboard` (ba5a1f09) -- that bare form is correct for
+      # a generated application, not this one: CodeMySpec's own task is
+      # namespaced `cms.` and needs the directory as an argument.
+      assert_raise RuntimeError, ~r/has not been onboarded.*mix cms\.harness\.onboard #{root}/s, fn ->
         TestDatabase.partition_for(root)
       end
     end

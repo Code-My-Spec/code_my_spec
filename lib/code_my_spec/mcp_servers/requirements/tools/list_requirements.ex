@@ -38,39 +38,39 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
 
   schema do
     field :status, :string,
-      doc:
+      description:
         "Filter by satisfaction status — `satisfied` or `unsatisfied`. Default: no filter (returns both)."
 
     field :entity_type, :string,
-      doc: "Filter to one entity type — `project`, `story`, or `component`."
+      description: "Filter to one entity type — `project`, `story`, or `component`."
 
     field :story_number, :integer,
-      doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+      description: "A story's number — the same as entity_type `story` with entity_id set to it"
 
     field :entity_id, :string,
-      doc:
+      description:
         "Filter to one entity: a story's number or a component's id, as printed elsewhere. " <>
           "Combine with `entity_type` to disambiguate."
 
     field :requirement_name, :string,
-      doc:
+      description:
         "Exact match on the requirement name (e.g., `bdd_specs_exist`, `ready_for_qa`, " <>
           "`implementation_file`)."
 
     field :module_filter, :string,
-      doc:
+      description:
         "Substring match on the component module name (e.g., `Users.` to scope into a namespace)."
 
     field :summary, :boolean,
-      doc:
+      description:
         "Return aggregate counts by requirement name instead of per-entity rows. Default: `false` (per-entity view, matches the historical tool shape). Pass `true` for a friction breakdown that won't blow the token budget on big projects."
 
     field :limit, :integer,
-      doc:
+      description:
         "Cap number of per-entity rows when `summary` is false. Default: 100. Bounds the response so a 500-component project doesn't return 180k+ chars."
 
     field :diagnostic, :boolean,
-      doc:
+      description:
         "When `summary: true`, break out counts into `locally failing` vs `blocked by prereqs` (clamped). Useful for triage — distinguishes real friction from cascade effects. Default: false."
   end
 

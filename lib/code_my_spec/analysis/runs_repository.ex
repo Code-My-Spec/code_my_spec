@@ -418,14 +418,29 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   def output_run(%Scope{active_working_copy_id: nil}, _selector), do: nil
 
   def output_run(%Scope{} = scope, selector) do
-    Run
-    |> where([r], r.project_id == ^scope.active_project_id)
-    |> where([r], r.working_copy_id == ^scope.active_working_copy_id)
-    |> select_output_run(selector)
-    |> order_by([r], desc: r.started_at, desc: r.id)
-    |> limit(1)
-    |> Repo.one()
+    query =
+      Run
+      |> where([r], r.project_id == ^scope.active_project_id)
+      |> where([r], r.working_copy_id == ^scope.active_working_copy_id)
+      |> select_output_run(selector)
+
+    # d7a8122f: a superseded run never ran, so it has nothing to read. Picking
+    # the newest row of any status let a later, empty superseded placeholder
+    # shadow an earlier run that actually ran and recorded the failure a
+    # promotion was rejected over. An explicit id is an exact lookup and skips
+    # this; a source lookup falls back to the superseded row only when that is
+    # the only run that ever happened.
+    informative(query, selector) || latest_one(query)
   end
+
+  defp informative(_query, {:id, _id}), do: nil
+
+  defp informative(query, {:source, _source}) do
+    query |> where([r], r.status != :superseded) |> latest_one()
+  end
+
+  defp latest_one(query),
+    do: query |> order_by([r], desc: r.started_at, desc: r.id) |> limit(1) |> Repo.one()
 
   defp select_output_run(query, {:id, id}), do: where(query, [r], r.id == ^id)
   defp select_output_run(query, {:source, source}), do: where(query, [r], r.source == ^source)

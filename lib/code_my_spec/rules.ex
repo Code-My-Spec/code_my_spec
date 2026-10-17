@@ -8,7 +8,7 @@ defmodule CodeMySpec.Rules do
   an environment, falls back to direct `File.*` reads in the process cwd.
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec.Environments], exports: :all
+  use Boundary, top_level?: true, deps: [CodeMySpec.Environments]
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment

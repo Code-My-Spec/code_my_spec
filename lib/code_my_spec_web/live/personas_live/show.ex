@@ -25,7 +25,11 @@ defmodule CodeMySpecWeb.PersonasLive.Show do
   end
 
   @impl true
-  def handle_params(%{"slug" => persona_slug} = params, _url, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(
+        %{"slug" => persona_slug} = params,
+        _url,
+        %{assigns: %{scope: %{} = scope}} = socket
+      ) do
     case Personas.get_persona_by_slug(scope, persona_slug) do
       nil ->
         {:noreply,
@@ -73,7 +77,9 @@ defmodule CodeMySpecWeb.PersonasLive.Show do
          socket
          |> put_flash(:info, "Story linked")
          |> load_state(scope, persona)
-         |> push_patch(to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}"))}
+         |> push_patch(
+           to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}")
+         )}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Could not link: #{inspect(reason)}")}
@@ -105,7 +111,9 @@ defmodule CodeMySpecWeb.PersonasLive.Show do
     {:noreply,
      socket
      |> load_state(socket.assigns.scope, persona)
-     |> push_patch(to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}"))}
+     |> push_patch(
+       to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}")
+     )}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -121,168 +129,180 @@ defmodule CodeMySpecWeb.PersonasLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <div :if={!@error && @persona}>
-        <.header>
-          {@persona.name}
-          <:subtitle>
-            <span class="badge badge-sm mr-2">{@persona.persona_type}</span>
-            {@persona.headline || "No headline"}
-          </:subtitle>
-          <:actions>
-            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/personas")} class="btn btn-ghost btn-sm">
-              <.icon name="hero-arrow-left" /> Back
-            </.button>
-            <.button
-              patch={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}/edit")}
-              class="btn btn-primary btn-sm"
-            >
-              <.icon name="hero-pencil-square" /> Edit
-            </.button>
-            <.button
-              patch={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}/link")}
-              class="btn btn-secondary btn-sm"
-            >
-              <.icon name="hero-link" /> Link to story
-            </.button>
-          </:actions>
-        </.header>
+    <div :if={!@error && @persona}>
+      <.header>
+        {@persona.name}
+        <:subtitle>
+          <span class="badge badge-sm mr-2">{@persona.persona_type}</span>
+          {@persona.headline || "No headline"}
+        </:subtitle>
+        <:actions>
+          <.button
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/personas")}
+            class="btn btn-ghost btn-sm"
+          >
+            <.icon name="hero-arrow-left" /> Back
+          </.button>
+          <.button
+            patch={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}/edit")}
+            class="btn btn-primary btn-sm"
+          >
+            <.icon name="hero-pencil-square" /> Edit
+          </.button>
+          <.button
+            patch={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}/link")}
+            class="btn btn-secondary btn-sm"
+          >
+            <.icon name="hero-link" /> Link to story
+          </.button>
+        </:actions>
+      </.header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-          <div class="lg:col-span-2 space-y-4">
-            <div class="card bg-base-100 border border-base-300">
-              <div class="card-body">
-                <h2 class="card-title">Identity</h2>
-                <dl class="grid grid-cols-3 gap-2 text-sm">
-                  <dt class="text-base-content/60">Slug</dt>
-                  <dd class="col-span-2 font-mono">{@persona.slug}</dd>
-                  <dt class="text-base-content/60">Type</dt>
-                  <dd class="col-span-2">{@persona.persona_type}</dd>
-                  <dt class="text-base-content/60">Created</dt>
-                  <dd class="col-span-2">{Calendar.strftime(@persona.inserted_at, "%b %d, %Y")}</dd>
-                </dl>
-              </div>
-            </div>
-
-            <div class="card bg-base-200">
-              <div class="card-body">
-                <h2 class="card-title">Research artifacts</h2>
-                <p class="text-sm">
-                  The full research lives on disk in the local CLI repo:
-                </p>
-                <ul class="list-disc list-inside text-sm font-mono">
-                  <li>.code_my_spec/personas/{@persona.slug}/summary.md</li>
-                  <li>.code_my_spec/personas/{@persona.slug}/sources.md</li>
-                </ul>
-                <p class="text-xs text-base-content/60 mt-2">
-                  Open these in your editor or via <code>read_knowledge</code> in an agent session.
-                </p>
-              </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        <div class="lg:col-span-2 space-y-4">
+          <div class="card bg-base-100 border border-base-300">
+            <div class="card-body">
+              <h2 class="card-title">Identity</h2>
+              <dl class="grid grid-cols-3 gap-2 text-sm">
+                <dt class="text-base-content/60">Slug</dt>
+                <dd class="col-span-2 font-mono">{@persona.slug}</dd>
+                <dt class="text-base-content/60">Type</dt>
+                <dd class="col-span-2">{@persona.persona_type}</dd>
+                <dt class="text-base-content/60">Created</dt>
+                <dd class="col-span-2">{Calendar.strftime(@persona.inserted_at, "%b %d, %Y")}</dd>
+              </dl>
             </div>
           </div>
 
-          <div class="space-y-4">
-            <div class="card bg-base-100 border border-base-300">
-              <div class="card-body">
-                <h2 class="card-title">Linked stories</h2>
-                <p :if={@linked_stories == []} class="text-sm text-base-content/60">
-                  No stories linked yet.
-                </p>
-                <ul :if={@linked_stories != []} class="space-y-2">
-                  <li
-                    :for={story <- @linked_stories}
-                    class="flex items-start justify-between gap-2 text-sm"
-                  >
-                    <span class="flex-1">{story.title}</span>
-                    <button
-                      type="button"
-                      phx-click={show_confirm("confirm-unlink-story-#{story.id}")}
-                      class="btn btn-ghost btn-xs text-error"
-                    >
-                      Unlink
-                    </button>
-                    <.confirm_dialog
-                      id={"confirm-unlink-story-#{story.id}"}
-                      title="Unlink this story?"
-                      message={"\"#{story.title}\" will no longer reference this persona. The story itself isn't deleted."}
-                      confirm_label="Unlink"
-                      on_confirm={JS.push("unlink", value: %{story_id: story.id})}
-                    />
-                  </li>
-                </ul>
-              </div>
+          <div class="card bg-base-200">
+            <div class="card-body">
+              <h2 class="card-title">Research artifacts</h2>
+              <p class="text-sm">
+                The full research lives on disk in the local CLI repo:
+              </p>
+              <ul class="list-disc list-inside text-sm font-mono">
+                <li>.code_my_spec/personas/{@persona.slug}/summary.md</li>
+                <li>.code_my_spec/personas/{@persona.slug}/sources.md</li>
+              </ul>
+              <p class="text-xs text-base-content/60 mt-2">
+                Open these in your editor or via <code>read_knowledge</code> in an agent session.
+              </p>
             </div>
           </div>
         </div>
 
-        <dialog :if={@live_action == :edit} id="persona-form-modal" class="modal modal-open">
-          <div class="modal-box max-w-2xl">
-            <.live_component
-              module={FormComponent}
-              id={@persona.id}
-              action={:edit}
-              persona={@persona}
-              scope={@scope}
-              return_to={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}")}
-            />
-          </div>
-          <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}"))}>
-              close
-            </button>
-          </form>
-        </dialog>
-
-        <dialog :if={@live_action == :link} id="persona-link-modal" class="modal modal-open">
-          <div class="modal-box max-w-2xl">
-            <.header>
-              Link {@persona.name} to a story
-            </.header>
-
-            <div :if={@link_candidates == []} class="alert alert-warning my-4">
-              No stories available — create one first.
-            </div>
-
-            <form :if={@link_candidates != []} phx-change="filter_link_candidates" class="my-3">
-              <input
-                type="text"
-                name="q"
-                value={@link_search}
-                placeholder="Search stories..."
-                class="input input-bordered w-full"
-                autocomplete="off"
-              />
-            </form>
-
-            <ul
-              :if={@link_candidates != []}
-              class="max-h-96 overflow-y-auto divide-y divide-base-300"
-            >
-              <li
-                :for={story <- filter_stories(@link_candidates, @link_search)}
-                class="flex items-center justify-between py-2 gap-2"
-              >
-                <span class="text-sm flex-1">{story.title}</span>
-                <button
-                  phx-click="link"
-                  phx-value-story_id={story.id}
-                  class="btn btn-primary btn-xs"
+        <div class="space-y-4">
+          <div class="card bg-base-100 border border-base-300">
+            <div class="card-body">
+              <h2 class="card-title">Linked stories</h2>
+              <p :if={@linked_stories == []} class="text-sm text-base-content/60">
+                No stories linked yet.
+              </p>
+              <ul :if={@linked_stories != []} class="space-y-2">
+                <li
+                  :for={story <- @linked_stories}
+                  class="flex items-start justify-between gap-2 text-sm"
                 >
-                  Link
-                </button>
-              </li>
-            </ul>
+                  <span class="flex-1">{story.title}</span>
+                  <button
+                    type="button"
+                    phx-click={show_confirm("confirm-unlink-story-#{story.id}")}
+                    class="btn btn-ghost btn-xs text-error"
+                  >
+                    Unlink
+                  </button>
+                  <.confirm_dialog
+                    id={"confirm-unlink-story-#{story.id}"}
+                    title="Unlink this story?"
+                    message={"\"#{story.title}\" will no longer reference this persona. The story itself isn't deleted."}
+                    confirm_label="Unlink"
+                    on_confirm={JS.push("unlink", value: %{story_id: story.id})}
+                  />
+                </li>
+              </ul>
+            </div>
           </div>
-          <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}"))}>
-              close
-            </button>
-          </form>
-        </dialog>
+        </div>
       </div>
+
+      <dialog :if={@live_action == :edit} id="persona-form-modal" class="modal modal-open">
+        <div class="modal-box max-w-2xl">
+          <.live_component
+            module={FormComponent}
+            id={@persona.id}
+            action={:edit}
+            persona={@persona}
+            scope={@scope}
+            return_to={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}")}
+          />
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button phx-click={
+            JS.patch(path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}"))
+          }>
+            close
+          </button>
+        </form>
+      </dialog>
+
+      <dialog :if={@live_action == :link} id="persona-link-modal" class="modal modal-open">
+        <div class="modal-box max-w-2xl">
+          <.header>
+            Link {@persona.name} to a story
+          </.header>
+
+          <div :if={@link_candidates == []} class="alert alert-warning my-4">
+            No stories available — create one first.
+          </div>
+
+          <form
+            :if={@link_candidates != []}
+            id="persona-link-filter"
+            phx-change="filter_link_candidates"
+            class="my-3"
+          >
+            <input
+              type="text"
+              name="q"
+              value={@link_search}
+              placeholder="Search stories..."
+              class="input input-bordered w-full"
+              autocomplete="off"
+            />
+          </form>
+
+          <ul
+            :if={@link_candidates != []}
+            class="max-h-96 overflow-y-auto divide-y divide-base-300"
+          >
+            <li
+              :for={story <- filter_stories(@link_candidates, @link_search)}
+              class="flex items-center justify-between py-2 gap-2"
+            >
+              <span class="text-sm flex-1">{story.title}</span>
+              <button
+                phx-click="link"
+                phx-value-story_id={story.id}
+                class="btn btn-primary btn-xs"
+              >
+                Link
+              </button>
+            </li>
+          </ul>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button phx-click={
+            JS.patch(path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}"))
+          }>
+            close
+          </button>
+        </form>
+      </dialog>
+    </div>
     """
   end
 
@@ -295,5 +315,4 @@ defmodule CodeMySpecWeb.PersonasLive.Show do
       String.contains?(String.downcase(s.title || ""), needle)
     end)
   end
-
 end

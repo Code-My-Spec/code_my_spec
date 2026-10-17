@@ -35,6 +35,8 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
   defp routed(%{"hookSpecificOutput" => %{"updatedInput" => %{"command" => command}}}),
     do: command
 
+  defp reason(%{"hookSpecificOutput" => %{"permissionDecisionReason" => text}}), do: text
+
   test "the test segment is routed and its redirect and pipe are kept" do
     log =
       capture_log(fn ->
@@ -106,6 +108,19 @@ defmodule CodeMySpec.Hooks.ACompoundTestCommandIsRoutedTest do
 
   test "mix compile still routes as a whole command" do
     assert routed(decide("mix compile")) =~ ~S("source":"compiler")
+  end
+
+  # 97b632f5: a routed run shares a machine-wide analyzer slot and can queue
+  # behind other work before it starts -- a timeout on the call does not
+  # mean it is hung. The reason text is the only thing an agent sees before
+  # running it, so it has to name where to check rather than leave that for
+  # a timeout to discover.
+  test "the routed reason names where to check queued/running status" do
+    text = reason(decide("mix test test/a_test.exs"))
+
+    assert text =~ "single-flight"
+    assert text =~ "/dashboard-status"
+    assert text =~ "before assuming it hung or retrying"
   end
 
   test "a test from a subagent's worktree is not routed to the copy" do

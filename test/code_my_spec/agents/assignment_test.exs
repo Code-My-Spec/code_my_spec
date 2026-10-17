@@ -70,6 +70,12 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
   defp placement(story), do: Repo.get!(Story, story.id).working_copy_id
 
+  defp retire(agent) do
+    agent
+    |> Ecto.Changeset.change(retired_at: DateTime.utc_now())
+    |> Repo.update!()
+  end
+
   @tag criterion: 2083
   test "assigning a story clears the issue bag and cancels open issue attempts", ctx do
     first = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{status: :accepted})
@@ -224,7 +230,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
     assert placement(ctx.second) == ctx.scope.active_working_copy_id
     assert Repo.get!(Story, ctx.first.id).promoted_version == "2.0.99"
     assert next(ctx.scope, ctx.coding) =~ "Waiting for main assignment"
-    assert [%{status: :undelivered}] = Agents.Offers.list_for_agent(main.id)
+    assert [%{status: :open}] = Agents.Offers.list_for_agent(main.id)
 
     assert :ok =
              Agents.Assignment.notify_team_free(
@@ -383,6 +389,36 @@ defmodule CodeMySpec.Agents.AssignmentTest do
 
     assert placement(ctx.second) == nil
     assert reload(ctx.coding).story_id == nil
+  end
+
+  # 3f824f74: a reservation (`stories.working_copy_id`) and a team's own
+  # `story_id` drift apart the moment an agent holding it is retired and
+  # replaced -- the replacement's `story_id` is nil, so the reservation can
+  # never again appear in the set a clear computes from the team.
+  test "a reservation orphaned by a retired, replaced agent is still released", ctx do
+    pick(ctx.scope, ctx.first)
+    assert placement(ctx.first) == ctx.scope.active_working_copy_id
+
+    retire(ctx.coding)
+    retire(ctx.qa)
+    _replacement_coding = agent(ctx.scope, :coding)
+    _replacement_qa = agent(ctx.scope, :qa)
+
+    pick(ctx.scope, nil)
+
+    assert placement(ctx.first) == nil
+  end
+
+  test "a teamless copy still releases what it reserves when cleared", ctx do
+    pick(ctx.scope, ctx.first)
+    assert placement(ctx.first) == ctx.scope.active_working_copy_id
+
+    retire(ctx.coding)
+    retire(ctx.qa)
+
+    assert {false, text} = call(SetActiveStory, ctx.scope, %{}, nil)
+    assert text =~ "is free"
+    assert placement(ctx.first) == nil
   end
 
   test "an agent joining the copy inherits the team's story", ctx do

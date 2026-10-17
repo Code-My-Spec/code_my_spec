@@ -15,8 +15,7 @@ defmodule CodeMySpec.Validation.Blocking do
       CodeMySpec.Configurations,
       CodeMySpec.Files,
       CodeMySpec.Users.Scope
-    ],
-    exports: :all
+    ]
 
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations

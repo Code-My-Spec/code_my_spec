@@ -398,15 +398,31 @@ defmodule CodeMySpec.PromotionQueueTest do
     clean_runs_at(ctx, a.commit)
     entry = queue(ctx, a)
 
-    # The gate's checkout is not there yet: the batch cannot be built, and the
-    # worker waits to retry.
+    # The gate's checkout is not there yet: the candidate is not taken, and
+    # waits queued rather than being ejected for something that is not its.
     :ok = PromotionQueue.ensure_worker(ctx.scope)
     assert {:error, :timeout} = PromotionQueue.await(entry, 500)
+    assert Repository.get(entry.id).status == :queued
 
     gate_checkout(ctx.main_root, ctx.gate_root, :now)
     :ok = PromotionQueue.copy_joined(ctx.scope, ctx.gate)
 
     assert {:ok, %{status: :landed}} = settle(entry)
+  end
+
+  # A candidate that stopped short of a verdict used to be requeued, where it
+  # headed the queue again and failed the same way every five minutes, holding
+  # everything behind it. Once taken, it leaves.
+  test "a candidate the gate copy cannot be reset for is ejected, not retried", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    git_dir = git!(ctx.gate_root, ["rev-parse", "--absolute-git-dir"])
+    File.write!(Path.join(git_dir, "index.lock"), "")
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry)
+    assert result["reason"] =~ "could not gate it"
+    assert result["reason"] =~ "index.lock"
   end
 
   # Main moved under a green batch — something committed to it another way.
@@ -584,6 +600,45 @@ defmodule CodeMySpec.PromotionQueueTest do
     agent_id = agent.id
     assert_receive {:agent_dispatch, ^agent_id, _ref, told}, 5_000
     assert told =~ "landed on main"
+  end
+
+  # 2026-10-15: 71d28513's fix was ejected while its coder was not running, and
+  # the fire-and-forget notice was dropped; the coder waited 90 minutes.
+  test "an ejected promotion reaches its agent even if it was unreachable at that instant",
+       ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        working_copy: a.copy.root,
+        working_copy_id: a.copy.id
+      })
+
+    git_dir = git!(ctx.gate_root, ["rev-parse", "--absolute-git-dir"])
+    File.write!(Path.join(git_dir, "index.lock"), "")
+
+    {:ok, entry} =
+      Repository.enqueue(%{
+        project_id: ctx.scope.active_project_id,
+        working_copy_id: a.copy.id,
+        commit: a.commit,
+        restart: false,
+        requested_by_agent_id: agent.id
+      })
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:ok, %{status: :ejected}} = settle(entry)
+
+    mailbox_entry = eventually_mailbox_entry(agent.id)
+
+    assert mailbox_entry.state == :queued,
+           "the ejection notice was not durably queued for an unreachable agent"
+
+    assert Repo.get!(Message, mailbox_entry.message_id) |> Message.text() =~
+             "taken out of the queue"
   end
 
   defp eventually_mailbox_entry(agent_id, attempts \\ 50)

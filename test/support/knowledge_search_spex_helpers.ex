@@ -4,26 +4,21 @@ defmodule CodeMySpecSpex.KnowledgeSearchHelpers do
   `semantic_search` tool, read the way the agent reads it.
   """
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-  import ExUnit.Assertions
-
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.SemanticSearch
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
 
   @doc "The paths `semantic_search` over framework knowledge cites, for this scope."
   @spec knowledge_paths(map()) :: [String.t()]
   def knowledge_paths(scope) do
-    {:reply, response, _} =
-      SemanticSearch.execute(
+    {:ok, response} =
+      ToolLibrary.run(
+        "semantic_search",
         %{query: "framework guidance", source: "knowledge", limit: 50},
-        %Frame{assigns: %{current_scope: scope}}
+        %{scope: scope}
       )
 
-    refute response.isError, response_text(response)
-
     ~r/^\*\*knowledge\/(.+?)\*\* \(chunk \d+\)/m
-    |> Regex.scan(response_text(response), capture: :all_but_first)
+    |> Regex.scan(response, capture: :all_but_first)
     |> List.flatten()
     |> Enum.uniq()
     |> Enum.sort()
@@ -32,13 +27,14 @@ defmodule CodeMySpecSpex.KnowledgeSearchHelpers do
   @doc "The search text an agent gets back for framework knowledge."
   @spec knowledge_text(map()) :: String.t()
   def knowledge_text(scope) do
-    {:reply, response, _} =
-      SemanticSearch.execute(
+    {:ok, response} =
+      ToolLibrary.run(
+        "semantic_search",
         %{query: "framework guidance", source: "knowledge", limit: 50},
-        %Frame{assigns: %{current_scope: scope}}
+        %{scope: scope}
       )
 
-    response_text(response)
+    response
   end
 
   @doc "A second project on the same account, as its own scope."

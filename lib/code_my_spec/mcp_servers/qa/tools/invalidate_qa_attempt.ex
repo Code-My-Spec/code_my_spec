@@ -22,11 +22,11 @@ defmodule CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt do
   schema do
     field :attempt_id, :string,
       required: true,
-      doc: "Id of the QaAttempt to invalidate (from a prior list_qa_attempts or submit_qa_result)"
+      description: "Id of the QaAttempt to invalidate (from a prior list_qa_attempts or submit_qa_result)"
 
     field :reason, :string,
       required: true,
-      doc:
+      description:
         "Non-empty explanation of why this pass is being invalidated " <>
           "(e.g. 'Shallow probe; tools only, no curl' or 'Bypass attempt found')"
   end

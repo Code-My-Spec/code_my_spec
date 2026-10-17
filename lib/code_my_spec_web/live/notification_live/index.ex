@@ -131,6 +131,7 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
       title: r.title || first_question(r.questions),
       body: first_question(r.questions),
       status: r.status,
+      answered_by: answerer_email(r),
       inserted_at: r.inserted_at,
       path: ~p"/app/questions/#{r.id}"
     }
@@ -143,10 +144,14 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
       title: "#{r.tool_name} needs your approval",
       body: tool_summary(r),
       status: r.status,
+      answered_by: answerer_email(r),
       inserted_at: r.inserted_at,
       path: ~p"/app/permissions/#{r.id}"
     }
   end
+
+  defp answerer_email(%{answered_by_user: %{email: email}}), do: email
+  defp answerer_email(_), do: nil
 
   defp first_question([%{"question" => q} | _]) when is_binary(q), do: q
   defp first_question(_), do: "A question for you"
@@ -291,6 +296,9 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
           />
           <div class="min-w-0 flex-1">
             <p class="font-medium truncate">{@item.title}</p>
+            <p :if={@item.answered_by} data-test="notification-answerer" class="text-sm opacity-70">
+              Answered by {@item.answered_by}
+            </p>
             <p :if={@item.body && @item.body != @item.title} class="text-sm opacity-60 truncate">
               {@item.body}
             </p>

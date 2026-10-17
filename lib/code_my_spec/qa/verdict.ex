@@ -15,8 +15,7 @@ defmodule CodeMySpec.Qa.Verdict do
       CodeMySpec.Configurations,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope
-    ],
-    exports: :all
+    ]
 
   import Ecto.Query
 

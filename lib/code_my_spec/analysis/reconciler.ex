@@ -35,16 +35,22 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # A partial run covers only the files it names, so it finishes with output
   # and stats and leaves Problems alone; the wholesale replace below would
   # delete everything it never looked at. `latest_full_run/2` ignores it.
-  def reconcile(%Scope{}, %Run{kind: :partial} = run, result, _opts) do
+  # Its asker is still answered: team 4's QA waited on targeted runs 59901 and
+  # 59902, both clean, that told nobody (2026-10-15).
+  def reconcile(%Scope{} = scope, %Run{kind: :partial} = run, result, _opts) do
     Logger.info(
       "[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched"
     )
 
-    RunsRepository.finish_run(run, :completed, %{
-      output: result.output,
-      exit_status: result.exit_status,
-      stats: result.stats
-    })
+    with {:ok, finished} <-
+           RunsRepository.finish_run(run, :completed, %{
+             output: result.output,
+             exit_status: result.exit_status,
+             stats: result.stats
+           }) do
+      report_tied(scope, run, result)
+      {:ok, finished}
+    end
   end
 
   def reconcile(%Scope{} = scope, %Run{} = run, result, opts) do
@@ -112,21 +118,56 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   The harness ties a request for a busy source onto the one already queued,
   and every tied run_id gets the primary's result. The primary's `reconcile/4`
-  already wrote the Problems; writing again would double every row. This only
-  closes the tied run's ledger entry so its waiter gets a `:completed` answer.
+  already wrote the Problems; writing again would double every row. This
+  closes the tied run's ledger entry and answers whoever asked for it.
   """
   @spec finish_tied(Scope.t(), Run.t(), map()) :: {:ok, Run.t()} | {:error, term()}
-  def finish_tied(%Scope{}, %Run{} = run, result) do
+  def finish_tied(%Scope{} = scope, %Run{} = run, result) do
     Logger.info(
       "[Analysis] run #{run.id} (#{run.source}) tied — output only, Problems untouched" <>
         requested_by_suffix(run)
     )
 
-    RunsRepository.finish_run(run, :completed, %{
-      output: result.output,
-      exit_status: result.exit_status,
-      stats: result.stats
-    })
+    with {:ok, finished} <-
+           RunsRepository.finish_run(run, :completed, %{
+             output: result.output,
+             exit_status: result.exit_status,
+             stats: result.stats
+           }) do
+      report_tied(scope, run, result)
+      {:ok, finished}
+    end
+  end
+
+  # The agent that asked for a tied or partial run waits on its own run's answer. The
+  # primary's report goes only to the primary's askers, so a tied requester
+  # heard nothing and waited on a finished run: team 2's coder sat 40 minutes
+  # on run 59471, which had completed clean (2026-10-15).
+  defp report_tied(scope, run, result) do
+    requester = requesting_agent_id(run)
+    waiters = waiters(run)
+
+    if requester || waiters != [] do
+      problems =
+        result
+        |> Map.get(:problems, [])
+        |> Enum.map(&(&1 |> stamp_project(scope) |> patch_file_path()))
+        |> stamp_component_ids(scope, run.source)
+
+      :telemetry.execute(
+        [:code_my_spec, :analysis, :run_reported],
+        %{},
+        %{
+          scope: scope,
+          source: run.source,
+          problems: problems,
+          requester: requester,
+          waiters: waiters
+        }
+      )
+    end
+
+    :ok
   end
 
   @doc "Mark a run failed (tool crash, skip, or task death) — no problem changes."

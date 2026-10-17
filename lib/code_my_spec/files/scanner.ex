@@ -302,6 +302,7 @@ defmodule CodeMySpec.Files.Scanner do
             "errors" => %{},
             "data" => %{
               "module_name" => ComponentExtract.extract_defmodule(content),
+              "rename_fingerprint" => ComponentExtract.rename_fingerprint(content),
               "ecto_schema" => ComponentExtract.ecto_schema?(content),
               "dependency_evidence" => DependencyEvidence.extract(content)
             }

@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal do
 
   schema do
     field :confirm, :boolean,
-      doc:
+      description:
         "Must be true. Regenerating replaces proposal.md with the current " <>
           "architecture, discarding any unexecuted edits."
   end

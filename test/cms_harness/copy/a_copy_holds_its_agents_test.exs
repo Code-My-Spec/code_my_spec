@@ -40,7 +40,9 @@ defmodule CmsHarness.Copy.ACopyHoldsItsAgentsTest do
 
     id = ctx.id
     root = ctx.root
-    assert_receive {:agent_liveness, :down, ^id, ^root, :shutdown}
+    # The liveness event is sent after shutdown, which took over a second under
+    # gate load (ejected ff9a042a6).
+    assert_receive {:agent_liveness, :down, ^id, ^root, :shutdown}, 5_000
     refute Machine.running?(ctx.id)
   end
 

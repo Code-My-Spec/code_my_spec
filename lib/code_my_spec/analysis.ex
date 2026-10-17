@@ -236,16 +236,28 @@ defmodule CodeMySpec.Analysis do
       {:analysis, _other} ->
         wait_for_remote(scope, run_id, source, deadline)
     after
-      max(remaining, 0) -> {:error, :harness_never_answered}
+      # 8db9e442: the run_id is durable on the retained row even when we give
+      # up waiting on it, so a caller that hits this is never left with
+      # nothing to resume or inspect with -- `=~ "harness_never_answered"`
+      # still matches this tuple, inspected.
+      max(remaining, 0) -> {:error, {:harness_never_answered, run_id}}
     end
   end
 
   defp deadline, do: System.monotonic_time(:millisecond) + remote_await_timeout()
 
-  # Longer than the harness's own analyzer timeout, so a run it kills is
-  # reported as that failure rather than as this giving up first.
+  # 8db9e442: longer than the harness's own full round trip for a run, not
+  # just its analyzer kill timeout alone -- `CmsHarness.Project.AnalysisServer`
+  # only arms that kill timer once `CmsHarness.AnalysisSlots.acquire/1` grants
+  # a machine-wide slot, and `acquire/1` itself waits up to its own
+  # `wait_ceiling/0` first (both 30 minutes as of this writing, so a run can
+  # legitimately take up to an hour and still be the harness working, not an
+  # unresponsive one). Kept as an independent constant, not a call into
+  # `CmsHarness` (undeclared Boundary dep, and a real deployment's harness is
+  # not even the same process): if either of those two change, this needs to
+  # stay ahead of their sum, not just one of them.
   defp remote_await_timeout do
-    Application.get_env(:code_my_spec, :remote_await_timeout, :timer.minutes(31))
+    Application.get_env(:code_my_spec, :remote_await_timeout, :timer.minutes(61))
   end
 
   @doc """

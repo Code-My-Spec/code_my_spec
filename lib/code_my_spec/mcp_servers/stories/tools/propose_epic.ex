@@ -33,7 +33,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ProposeEpic do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :epic_id, :string, required: true, doc: "Id of the epic to send for approval"
+    field :epic_id, :string, required: true, description: "Id of the epic to send for approval"
   end
 
   @impl true

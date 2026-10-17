@@ -40,34 +40,34 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   schema do
     field(:requirement_name, :string,
       required: true,
-      doc: "Name of the requirement (e.g., implementation_file, ready_for_qa)"
+      description: "Name of the requirement (e.g., implementation_file, ready_for_qa)"
     )
 
     field(:entity_type, :string,
       required: true,
-      doc: "Entity type: component, story, or project"
+      description: "Entity type: component, story, or project"
     )
 
     field(:story_number, :integer,
-      doc: "A story's number — the same as entity_type `story` with entity_id set to it"
+      description: "A story's number — the same as entity_type `story` with entity_id set to it"
     )
 
     field(:entity_id, :string,
-      doc:
+      description:
         "The entity that owns this requirement: a story's number, or a component's or project's id"
     )
 
     field(:module_name, :string,
-      doc: "Component module name (alternative to entity_id for component requirements)"
+      description: "Component module name (alternative to entity_id for component requirements)"
     )
 
-    field(:session_id, :string, doc: "Injected by hook — do not set manually")
+    field(:session_id, :string, description: "Injected by hook — do not set manually")
 
-    field(:agent_id, :string, doc: "Your agent identifier — claims ownership of the task")
+    field(:agent_id, :string, description: "Your agent identifier — claims ownership of the task")
 
     # Legacy — kept for backwards compatibility
     field(:requirement_id, :string,
-      doc: "Deprecated: use requirement_name + entity_type + entity_id"
+      description: "Deprecated: use requirement_name + entity_type + entity_id"
     )
   end
 
@@ -117,7 +117,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
        when is_binary(name) and is_binary(type) and is_binary(ref) do
     case StoryRefs.entity_id(scope, type, ref) do
       nil -> {:error, "Story #{ref} not found"}
-      id -> resolve_from_graph(scope, name, type, id, owner)
+      id -> resolve_from_graph(scope, name, type, id, owner, ref)
     end
   end
 
@@ -125,7 +125,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
        when is_binary(name) and is_binary(module_name) do
     case Components.get_component_by_module_name(scope, module_name) do
       nil -> {:error, "Component not found: #{module_name}"}
-      component -> resolve_from_graph(scope, name, "component", component.id, owner)
+      component -> resolve_from_graph(scope, name, "component", component.id, owner, component.id)
     end
   end
 
@@ -134,7 +134,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
      "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
   end
 
-  defp resolve_from_graph(scope, name, entity_type, entity_id, owner) do
+  defp resolve_from_graph(scope, name, entity_type, entity_id, owner, entity_ref) do
     {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
     found =
@@ -143,7 +143,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
       end) || placed(scope, owner, name, entity_type, entity_id)
 
     case found do
-      nil -> {:error, "Requirement #{name} not found for #{entity_type} #{entity_id}"}
+      nil -> {:error, "Requirement #{name} not found for #{entity_type} #{entity_ref}"}
       node -> {:ok, node}
     end
   end

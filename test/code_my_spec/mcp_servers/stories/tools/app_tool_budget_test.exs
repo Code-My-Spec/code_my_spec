@@ -21,6 +21,17 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AppToolBudgetTest do
   in-script — this bounds the wait so the tool *reports* that rather than
   vanishing. Returning on acceptance and reporting the outcome separately, the
   way `promote` and `start_analysis` do, is the follow-up.
+
+  4d727b2c: `script_call_budget/0` below used to subtract `CodeMode`'s own
+  `@machine_call_margin_ms` (2_000, fixed) — but `EnsureAppRunning` and
+  `RestartApp` are plain `ScriptableTools`, reached through `invoker/3`'s
+  direct `execute/2` call, never through `machine_catalog/3`'s wrapper; that
+  margin was never actually enforced on this call path, only borrowed by
+  convention. The real ceiling is `AppTransport.call/4`'s own grace
+  (`AppTransport.call_grace_ms/0`), added on top of whatever timeout
+  `AppTransport.ensure_app_running/2` and `.restart_app/2` are given — so the
+  true deadline a tool's internal wait can reach is `declared_timeout() +
+  call_grace_ms()`, and that is what has to fit under the sandbox clock.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -29,11 +40,13 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AppToolBudgetTest do
   alias CodeMySpec.CodeMode.Sandbox
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.Stories.Tools.{EnsureAppRunning, RestartApp}
+  alias CodeMySpec.WorkingCopies.AppTransport
 
-  # What a script can actually wait for: the sandbox clock less the margin its
-  # machine tools are given.
+  # What a script can actually wait for: the sandbox clock less the grace
+  # `AppTransport.call/4` adds on top of whatever timeout it is given — the
+  # real ceiling these two tools' own `declared_timeout/0` must fit under.
   defp script_call_budget do
-    Sandbox.timeout([]) - 2_000
+    Sandbox.timeout([]) - AppTransport.call_grace_ms()
   end
 
   describe "a script's own machine tools" do

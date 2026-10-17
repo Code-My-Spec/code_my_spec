@@ -77,7 +77,7 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
   end
 
   defp scoped_tool_names do
-    (LocalServer.__components__() ++ ScriptableTools.__components__())
+    (LocalServer.registrations() ++ ScriptableTools.registrations())
     |> MapSet.new(& &1.name)
     |> MapSet.difference(MapSet.new(Catalog.excluded()))
   end
@@ -86,7 +86,7 @@ defmodule CodeMySpec.Agents.AnInstructionNamesToolsItsRoleCarriesTest do
   # schema rather than a copy of it here -- a renamed field is picked up
   # without anybody maintaining this.
   defp declared_arguments do
-    ScriptableTools.__components__()
+    ScriptableTools.registrations()
     |> Map.new(fn component -> {component.name, argument_names(component)} end)
   end
 

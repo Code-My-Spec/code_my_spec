@@ -113,10 +113,12 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
   end
 
   test "main is offered the questions it holds", ctx do
-    assert [%{subject_type: "questions"}] = offers(ctx.main)
-
     id = ctx.main.id
     assert_receive {:work_turn_requested, ^id, _ref, prompt}, 2_000
+
+    # Dispatch follows persistence; await this agent's delivery before reading
+    # its offer, rather than relying on the shared supervisor drain.
+    assert [%{subject_type: "questions"}] = offers(ctx.main)
 
     assert prompt =~ "escalate_question",
            "the offer named answering but not passing a question up"

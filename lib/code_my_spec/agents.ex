@@ -39,6 +39,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Requirements,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
+      CodeMySpec.Tools,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
@@ -144,6 +145,7 @@ defmodule CodeMySpec.Agents do
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
   defdelegate assign_team(scope, copy_id, story_id), to: Assignment
+  defdelegate unassign_story(scope, story_id, opts \\ []), to: Assignment
   defdelegate assign_epic(scope, epic_id, copy_id), to: Assignment
   defdelegate notify_story_team_free(scope, copy_id, story), to: Assignment, as: :notify_team_free
   defdelegate claim_story(scope, agent, story_id), to: Assignment, as: :claim
@@ -1154,15 +1156,15 @@ defmodule CodeMySpec.Agents do
         with {:ok, conversation} <- open_conversation(agent_scope(agent), agent),
              {:ok, {message, offered, admission}} <-
                record_admission(agent, conversation, text, ref, event, opts[:offer]) do
-          result = dispatch_admitted(agent, admission, timeout, message, offered, opts)
-
-          case result do
-            {:ok, disposition, _message} -> {:ok, disposition}
-            error -> error
-          end
+          agent
+          |> dispatch_admitted(admission, timeout, message, offered, opts)
+          |> dispatch_disposition()
         end
     end
   end
+
+  defp dispatch_disposition({:ok, disposition, _message}), do: {:ok, disposition}
+  defp dispatch_disposition(error), do: error
 
   defp dispatch_admitted(agent, :ok, timeout, message, offered, async: true) do
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
@@ -1231,6 +1233,34 @@ defmodule CodeMySpec.Agents do
       :ok = Offers.mark_reported(offer)
     end)
   end
+
+  # 43cdc022: an instruction's delivery failing settles its offer
+  # `:undelivered`, same as a decline settles `:declined` -- but a decline is
+  # already named to main (above) and a failed delivery was not, so an agent
+  # that never saw the instruction and one that saw and ignored it read the
+  # same from main's side. Named with the agent, the text and the failure
+  # time; `mark_reported` makes this idempotent across the two call sites.
+  defp tell_main_undelivered_instructions(scope, agent) do
+    agent.id
+    |> Offers.unreported_undelivered_instructions()
+    |> Enum.sort_by(& &1.id)
+    |> Enum.each(fn offer ->
+      notify_main(
+        scope,
+        :teammate_stalled,
+        "An operator instruction to the #{agent.role} agent #{agent.id} was never delivered " <>
+          "(failed at #{offer.outcome_at}): #{instruction_offer_text(offer)}",
+        offer: {:stalled, {"agent", agent.id}}
+      )
+
+      :ok = Offers.mark_reported(offer)
+    end)
+  end
+
+  defp instruction_offer_text(%{messages: [%{message: %Conversations.Message{} = message} | _]}),
+    do: Conversations.Message.text(message)
+
+  defp instruction_offer_text(_offer), do: "(message text unavailable)"
 
   # A released task is named as this agent's task, so main can cancel or
   # reassign it rather than only reading its id.
@@ -1451,7 +1481,8 @@ defmodule CodeMySpec.Agents do
 
   def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
-    on_copy = scope |> AgentsRepository.list_agents() |> Enum.filter(&(&1.working_copy_id == copy_id))
+    on_copy =
+      scope |> AgentsRepository.list_agents() |> Enum.filter(&(&1.working_copy_id == copy_id))
 
     agents = Enum.reject(on_copy, &Agent.retired?/1)
 
@@ -2111,10 +2142,7 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          true <- agent.working_copy_id == scope.active_working_copy_id,
          {:ok, _} <- Mailbox.ready(scope, agent_id, generation, event["ref"]) do
-      if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do
-        with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent_id),
-             do: broadcast(scope, {:agent_turn, current})
-      end
+      broadcast_unreferenced_ready(scope, agent_id, agent, event)
 
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Mailbox.pump(scope, agent_id)
@@ -2147,6 +2175,7 @@ defmodule CodeMySpec.Agents do
          _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
       :ok = Offers.observe_instruction_turn(agent)
+      tell_main_undelivered_instructions(scope, agent)
       write_turn_event(conversation, agent, event)
     else
       _ -> :ok
@@ -2210,6 +2239,13 @@ defmodule CodeMySpec.Agents do
       # Not ours, or not found: dropped. A transcript under the wrong agent
       # reads as that agent's work.
       _ -> :ok
+    end
+  end
+
+  defp broadcast_unreferenced_ready(scope, agent_id, agent, event) do
+    if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do
+      with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent_id),
+           do: broadcast(scope, {:agent_turn, current})
     end
   end
 
@@ -2453,6 +2489,7 @@ defmodule CodeMySpec.Agents do
         # Settled before the stop menu, which may make new offers of its own.
         :ok = Offers.settle_turn(agent)
         tell_main_held_back(scope, agent)
+        tell_main_undelivered_instructions(scope, agent)
 
         if Mailbox.pending?(agent.id) do
           pump_mailbox(scope, agent.id)

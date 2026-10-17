@@ -1,25 +1,20 @@
 defmodule CodeMySpec.WorkingCopiesUniquenessTest do
   @moduledoc """
-  One checkout per path per machine per project.
+  Device and root, as far as the database constrains a checkout's identity.
 
-  Issue cb01ce40. The page listed several roots more than once, and the copies
-  were byte-for-byte identical — same default label, same path, same "Idle" —
-  so there was no means the page offered of telling them apart, not merely none
-  at a glance. Three rows for this repo, two each for a couple of worktrees.
+  Issue cb01ce40 added a unique index on `{project, device, root}` because the
+  working-copies page listed several rows for one path, byte-for-byte
+  identical and with no means of telling them apart. 45c044d1 (story 1000,
+  criterion 5) removed that index: it backstopped the join-path lookup that
+  criterion 5 forbids, and a join with no id must now succeed at minting a
+  fresh identity even when another row already names its device and root.
+  That reopens cb01ce40's duplicate-row symptom on the page -- a harness that
+  cannot keep its id file produces an indistinguishable row every time it
+  rejoins. Reclaiming those is its own piece of work, not this one.
 
-  The identity of a checkout is `{project, device, root}`: without the device,
-  two boxes at `/workspace/app` are one row, and without the constraint, one box
-  at one path is several. There is a unique index for exactly that triple, and
-  nothing exercised it — the duplicates in production were cleaned up, which
-  leaves no evidence either way about whether they can come back.
-
-  ## The hole Postgres leaves, checked rather than assumed
-
-  A unique index treats NULLs as distinct, so it does not constrain rows with no
-  root — the nil-object `ensure_default/1` mints for a writer with no checkout.
-  Live, that is one row in the entire database and no project has two, so the
-  gap is real and not currently load-bearing. Asserted below so that stops being
-  a thing anyone has to go and check by hand.
+  What is left, and still true: the device is still what tells two machines
+  at the same path apart, and the root is still what tells two checkouts on
+  one machine apart. Neither of those ever depended on the removed index.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -46,21 +41,17 @@ defmodule CodeMySpec.WorkingCopiesUniquenessTest do
     |> Repo.insert()
   end
 
-  test "a second copy at the same path on the same machine is refused", %{
+  test "a second copy at the same path on the same machine is allowed, not refused", %{
     scope: scope,
     device: device
   } do
     assert {:ok, _first} = copy_at(scope, device, "/workspace/app")
 
-    assert {:error, changeset} = copy_at(scope, device, "/workspace/app")
-
-    assert "this machine already has a checkout at that path on this project" in errors_on(
-             changeset
-           ).project_id,
-           "a duplicate was accepted, or refused without saying why. The page cannot " <>
-             "tell two of these apart — same label, same path, same status — so the " <>
-             "refusal is the only thing standing between a list of checkouts and a " <>
-             "list with repeats nobody can resolve."
+    assert {:ok, _second} = copy_at(scope, device, "/workspace/app"),
+           "the unique index this used to hit (working_copies_project_device_root_index) " <>
+             "has to be gone along with the lookup it backstopped -- criterion 5 requires " <>
+             "a join with no id to mint and report its root successfully even when another " <>
+             "row already claims that device and root (45c044d1)"
   end
 
   test "the same path on a different machine is a different checkout", %{
@@ -73,7 +64,7 @@ defmodule CodeMySpec.WorkingCopiesUniquenessTest do
 
     assert {:ok, _} = copy_at(scope, other, "/workspace/app"),
            "two boxes with a checkout at the same path were treated as one. That is " <>
-             "the reason the device is in the key at all — `/workspace/app` is the " <>
+             "the reason the device is in the key at all -- `/workspace/app` is the " <>
              "default path in every container."
   end
 
@@ -83,16 +74,5 @@ defmodule CodeMySpec.WorkingCopiesUniquenessTest do
   } do
     assert {:ok, _} = copy_at(scope, device, "/workspace/app")
     assert {:ok, _} = copy_at(scope, device, "/workspace/app/.claude/worktrees/one")
-  end
-
-  test "rootless rows are not constrained, which is a known gap", %{
-    scope: scope,
-    device: device
-  } do
-    assert {:ok, _} = copy_at(scope, device, nil)
-
-    assert {:ok, _} = copy_at(scope, device, nil),
-           "if this starts failing the index has been given NULLS NOT DISTINCT, which " <>
-             "is an improvement — update this test rather than the index."
   end
 end

@@ -45,16 +45,16 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
   schema do
     field :step, :string,
       required: true,
-      doc: "One of: #{Step.keys() |> Enum.map_join(", ", &to_string/1)}."
+      description: "One of: #{Step.keys() |> Enum.map_join(", ", &to_string/1)}."
 
     field :inbound_probe_to, :string,
-      doc:
+      description:
         "For the \"inbound\" step only: an address on the project's own domain to " <>
           "prove receiving works (e.g. \"sam@example.com\"). Resend accepts mail only " <>
           "to addresses configured for the domain, so this cannot be guessed."
 
     field :confirm_apex_repoint, :boolean,
-      doc:
+      description:
         "For the \"dns\" step only: the apex already resolves somewhere, and this run " <>
           "would repoint it at a server it just created — which takes down whatever is " <>
           "live there today. The step pauses and names the current and new address " <>
@@ -62,7 +62,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
           "actually wanted, and call the step again."
 
     field :confirm_inbound_mx_repoint, :boolean,
-      doc:
+      description:
         "For the \"inbound\" step only: the domain already has an MX record, and " <>
           "publishing Resend's here would replace rather than add to it — which can " <>
           "silently redirect or break mail that already routes through the existing " <>
@@ -71,7 +71,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
           "call the step again."
 
     field :force, :boolean,
-      doc:
+      description:
         "Skip verification and run the step unconditionally, even if the provider " <>
           "already reports it satisfied. A step's own claim of \"satisfied\" can be " <>
           "narrower than everything its run actually does — e.g. \"server\" only checks " <>
@@ -80,7 +80,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep do
           "whenever a step reports done but something it should have set up still isn't."
 
     field :environment, :string,
-      doc:
+      description:
         ~s(Required for the "deploy" step: which environment to deploy \(e.g. "uat"\). ) <>
           "Deploying is a decision about one specific environment, not a batch operation — " <>
           "without this, `Steps.run(:deploy, …)` would deploy every environment the " <>

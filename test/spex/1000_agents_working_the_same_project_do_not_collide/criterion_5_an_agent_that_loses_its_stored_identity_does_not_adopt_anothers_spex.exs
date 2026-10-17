@@ -38,7 +38,15 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
   spex "A checkout with no id is a new agent", criterion: 5 do
     scenario "An agent that loses its stored identity does not adopt another's" do
       given_ "an agent has registered and synced its files", context do
-        {:ok, reply, socket} = join_as(context, nil)
+        # One device for both joins, deliberately: this is the whole trap --
+        # the same machine, at the same root, presenting no id the second time.
+        # Minting a fresh device per join (as this spex once did) meant
+        # recognise_or_create/3's device+root lookup could never fire between
+        # the two joins, so this criterion passed for a reason that had
+        # nothing to do with the behavior it is meant to guard (45c044d1).
+        device = Fixtures.device_fixture(context.scope)
+
+        {:ok, reply, socket} = join_as(context, nil, device)
 
         ref =
           Phoenix.ChannelTest.push(socket, "observations", %{
@@ -47,14 +55,18 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
 
         Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
 
-        {:ok, context |> Map.put(:original, socket) |> Map.put(:original_id, id_of(reply))}
+        {:ok,
+         context
+         |> Map.put(:original, socket)
+         |> Map.put(:original_id, id_of(reply))
+         |> Map.put(:device, device)}
       end
 
       when_ "its stored identity is lost and it registers again", context do
         # The gitignored id file is gone — a fresh clone, a wiped container, a
         # `git clean`. Everything else about the checkout is identical, including
-        # the root, which is the whole trap.
-        {:ok, reply, socket} = join_as(context, nil)
+        # the root AND the device, which is the whole trap.
+        {:ok, reply, socket} = join_as(context, nil, context.device)
 
         {:ok, context |> Map.put(:reregistered, socket) |> Map.put(:new_reply, reply)}
       end
@@ -83,7 +95,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
     end
   end
 
-  defp join_as(context, working_copy_id) do
+  defp join_as(context, working_copy_id, device) do
     UserSocket
     |> socket("harness_forget_#{System.unique_integer([:positive])}", %{scope: context.scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{context.project.id}", %{
@@ -91,7 +103,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
       "harness_id" => working_copy_id,
       "root" => @root,
       "label" => "the harness at #{@root}",
-      "device" => %{"id" => Fixtures.device_fixture(context.scope).id}
+      "device" => %{"id" => device.id}
     })
   end
 

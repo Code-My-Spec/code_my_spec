@@ -13,7 +13,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.GetCriterion do
   alias CodeMySpec.Stories.AcceptanceCriteria
 
   schema do
-    field :criterion_number, :integer, required: true, doc: "Criterion number"
+    field :criterion_number, :integer, required: true, description: "Criterion number"
   end
 
   @impl true

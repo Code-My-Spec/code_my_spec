@@ -39,7 +39,10 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListNotifications do
 
   use Anubis.Server.Component, type: :tool
 
+  @behaviour CodeMySpec.McpServers.ScriptResult
+
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Main.OpenQuestion
   alias CodeMySpec.McpServers.MainAgent.MainAgentMapper
   alias CodeMySpec.McpServers.Validators
 
@@ -48,14 +51,43 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.ListNotifications do
 
   @impl true
   def execute(_params, frame) do
-    case Validators.validate_local_scope(frame) do
-      {:ok, scope} ->
-        {:reply,
-         MainAgentMapper.listing(MainAgent.list_open_questions(scope), mine(scope, frame)), frame}
+    case questions(frame) do
+      {:ok, scope, questions} ->
+        {:reply, MainAgentMapper.listing(questions, mine(scope, frame)), frame}
 
       {:error, reason} ->
         {:reply, MainAgentMapper.error(reason), frame}
     end
+  end
+
+  @impl CodeMySpec.McpServers.ScriptResult
+  def script_result(_params, frame) do
+    with {:ok, _scope, questions} <- questions(frame) do
+      {:ok, Enum.map(questions, &row/1)}
+    end
+  end
+
+  defp questions(frame) do
+    case Validators.validate_local_scope(frame) do
+      {:ok, scope} -> {:ok, scope, MainAgent.list_open_questions(scope)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp row(question) do
+    %{
+      "id" => question.id,
+      "kind" => to_string(question.kind),
+      "title" => question.title,
+      # The title can be generic; without these a scripted caller cannot answer.
+      "questions" => OpenQuestion.texts(question),
+      "holder" => question.holder,
+      "story_id" => question.story_id,
+      "agent_id" => question.agent_id,
+      "agent_role" => question.agent_role && to_string(question.agent_role),
+      "working_copy_id" => question.working_copy_id,
+      "working_copy_label" => question.working_copy_label
+    }
   end
 
   # Product's own are the criteria questions routed to it (8c91d5bc).

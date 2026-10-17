@@ -88,6 +88,24 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResultTest do
     assert text(response) =~ "'pass'|'partial'|'fail'"
   end
 
+  # 6cb860e7: this field's schema uses `field :status, :string, required: true,
+  # doc: "Outcome: 'pass' ..."` -- `doc:` is not a key the vendored component
+  # macro recognizes (only `description:` is), so it was silently dropped
+  # from the JSON Schema before this fix, leaving `status`, `issue_id` and
+  # `task_id` rendered with no text at all. `scenarios` already used
+  # `description:`, which is why the test above alone never caught this.
+  test "tool docs render the status, issue id and task id fields too", ctx do
+    {:reply, response, _} = ToolDocs.execute(%{name: "submit_issue_qa_result"}, ctx.frame)
+    refute response.isError
+
+    body = text(response)
+    assert body =~ "Outcome: 'pass'", "status's own description must survive"
+    assert body =~ "Issue ID being tested", "issue_id's own description must survive"
+
+    assert body =~ "active qa_complete task id",
+           "task_id's own description must survive"
+  end
+
   test "story submission rejects an issue task without crashing or recording an attempt", ctx do
     params =
       ctx.params

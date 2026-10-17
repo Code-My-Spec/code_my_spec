@@ -329,14 +329,25 @@ defmodule CodeMySpec.Hooks.PreToolUse do
       "hookSpecificOutput" => %{
         "hookEventName" => "PreToolUse",
         "permissionDecision" => "allow",
-        "permissionDecisionReason" =>
-          "Routed #{what} through the CodeMySpec analysis service (shared run record, single-flight)",
+        "permissionDecisionReason" => rewrite_reason(what),
         "updatedInput" => %{
           "command" => replacement,
           "timeout" => @rewrite_timeout_ms
         }
       }
     }
+  end
+
+  # 97b632f5: a routed run shares the project's own queue AND a machine-wide
+  # analyzer slot, so it can wait behind other work before it even starts --
+  # a timeout here does not mean it is hung, only that this call gave up
+  # waiting. GET /dashboard-status (unauthenticated, same host) answers
+  # whether it is queued, running, or waiting on the machine-wide slot --
+  # named here so a caller checks that before assuming a hang or retrying.
+  defp rewrite_reason(what) do
+    "Routed #{what} through the CodeMySpec analysis service (shared run record, single-flight). " <>
+      "It can queue behind other work on this machine before it starts. If this call times out, " <>
+      "check GET /dashboard-status for queued/running status before assuming it hung or retrying."
   end
 
   # A test command the scope cannot route (no project, or no working copy id)

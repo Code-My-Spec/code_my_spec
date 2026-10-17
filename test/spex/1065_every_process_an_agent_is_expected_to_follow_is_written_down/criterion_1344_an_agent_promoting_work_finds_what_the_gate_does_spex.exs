@@ -33,8 +33,7 @@ defmodule CodeMySpecSpex.Story1065.Criterion3396Spex do
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -52,16 +51,14 @@ defmodule CodeMySpecSpex.Story1065.Criterion3396Spex do
       end
 
       when_ "it looks for how that happens", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        {:reply, response, _frame} = ReadKnowledge.execute(%{path: @path}, frame)
+        response = ToolLibrary.run("read_knowledge", %{path: @path}, %{scope: context.scope})
 
         {:ok, context |> Map.put(:response, response) |> Map.put(:text, response_text(response))}
       end
 
       then_ "it finds what the gate checks, that a sweep runs, and that the app restarts",
             context do
-        refute context.response.isError,
+        assert {:ok, _text} = context.response,
                "there is nothing at #{@path}, so promotion is learned by doing it wrong. " <>
                  "Got:\n#{context.text}"
 

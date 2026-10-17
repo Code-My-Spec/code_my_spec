@@ -1,0 +1,43 @@
+[
+  {
+    "name": "clear_problems",
+    "description": "Clear stale persisted problems for the current project so a fixed file\nstops blocking the Stop hook.\n\nProblems are cleared per-source-per-file as validators re-run: a run only\nclears problems for the files it re-checks. So when you fix a file but a\nlater run doesn't re-check that exact path, its old problem lingers and the\nStop hook keeps blocking on it even though the code is correct.\n\nUse this tool when you have verified a reported problem is stale — the\nunderlying file is fixed and the failure no longer reproduces — but the\nStop hook keeps replaying it.\n\n- Pass `file_paths` to clear only those files' problems (preferred: targeted,\n  won't wipe unrelated findings).\n- Omit `file_paths` to clear ALL persisted problems for the project (blunt\n  reset — use when the whole stored set is stale).\n\nThis only clears the *stored* problem records the Stop hook reads; it does\nnot modify code or re-run analysis. If the problem is real, it will be\nre-recorded on the next validation run.\n",
+    "input_schema": {
+      "properties": {
+        "file_paths": {
+          "description": "Project-relative file paths whose stale problems should be cleared. Omit to clear ALL persisted problems for the project.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_problems",
+    "description": "The findings behind the alert, for the agent that wants them.\n\n`Hooks.AnalysisAlert` puts a count and an age on every tool call and stops\nthere — a finding list on every call is noise the model learns to skip, which\ncosts the signal a second time and more permanently than never sending it. So\nthe alert pushes the fact and this pulls the detail, and the split only works\nbecause asking is one tool call.\n\n## Paginated, and not optionally\n\nThis working copy holds over 400 credo findings. An unpaginated list would\noverflow the tool-response window for the same reason the alert is counts-only\n— and a tool that dies on a large project is one nobody can rely on when a\nproject gets large, which is exactly when they need it.\n\nDefaults to the first page and to `error` severity, because the common case is\n\"what is blocking me\" rather than \"everything anyone has ever noticed\".\n\nScoped to the working copy, like everything else keyed on the harness: these\nare the findings from *this* checkout's analyzers, not the project's.\n",
+    "input_schema": {
+      "properties": {
+        "page": {
+          "description": "1-based page number. Default: 1.",
+          "type": "integer"
+        },
+        "per_page": {
+          "description": "Findings per page. Default: 25, max 100.",
+          "type": "integer"
+        },
+        "severity": {
+          "description": "Filter by severity — `error`, `warning` or `info`. Omit for all.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex` or `qa_validation`.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  }
+]

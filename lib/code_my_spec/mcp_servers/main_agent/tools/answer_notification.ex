@@ -42,39 +42,39 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :notification_id, :string, required: true, doc: "From `list_notifications`."
+    field :notification_id, :string, required: true, description: "From `list_notifications`."
 
     field :answer, :string,
-      doc:
+      description:
         "What you found, in the agent's terms. For a question, the answer. For a " <>
           "denied tap_out, why it was denied — the agent is told this, and without it " <>
           "all it hears is 'declined', so it re-reads its own transcript and repeats " <>
           "whatever it last concluded."
 
     field :basis, :string,
-      doc: "For a question: `record` (the project records it), `precedent`, or `inspected`."
+      description: "For a question: `record` (the project records it), `precedent`, or `inspected`."
 
-    field :precedent_id, :string, doc: "With basis `precedent`: the question they answered."
+    field :precedent_id, :string, description: "With basis `precedent`: the question they answered."
 
     field :citation, :string,
-      doc:
+      description:
         "With basis `inspected`: the file path, commit, or tool call you actually made in " <>
           "this session — checked against your own turns, so it has to be close to how you " <>
           "actually wrote or called it, not a paraphrase."
 
     field :worked_around, :string,
-      doc: "The capability the asking role lacked, if you covered for one."
+      description: "The capability the asking role lacked, if you covered for one."
 
     field :capability, :string,
-      doc:
+      description:
         "With `worked_around`: a short, stable name for what was missing — the tool name, " <>
           "normalized, not a sentence. Lets the same gap, described differently each time, " <>
           "still count as one."
 
-    field :on_behalf_of, :string, doc: "A role you are acting as. Usually leave this out."
-    field :tool, :string, doc: "A tool you are using on that role's behalf."
+    field :on_behalf_of, :string, description: "A role you are acting as. Usually leave this out."
+    field :tool, :string, description: "A tool you are using on that role's behalf."
 
-    field :decision, :string, doc: "For a permission (e.g. `tap_out`): `allow` or `deny`."
+    field :decision, :string, description: "For a permission (e.g. `tap_out`): `allow` or `deny`."
   end
 
   @impl true

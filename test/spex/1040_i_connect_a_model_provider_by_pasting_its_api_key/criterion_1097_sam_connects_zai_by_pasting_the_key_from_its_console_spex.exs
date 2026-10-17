@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1040.Criterion3022Spex do
 
   use CodeMySpecSpex.Case
 
-  cloud_endpoint()
-
   setup :register_log_in_setup_account
 
   spex "I connect a model provider by pasting its API key", criterion: 1097 do

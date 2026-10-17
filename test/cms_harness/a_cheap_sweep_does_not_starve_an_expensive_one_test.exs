@@ -25,7 +25,8 @@ defmodule CmsHarness.ACheapSweepDoesNotStarveAnExpensiveOneTest do
       project: %{root: "/tmp/a-checkout"},
       running: %{source: "credo", run_id: 1},
       queue: queue,
-      timer: nil
+      timer: nil,
+      pending_cleanups: []
     }
   end
 

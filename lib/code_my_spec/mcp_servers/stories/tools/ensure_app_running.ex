@@ -4,7 +4,9 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
   running. A live process is health-checked, not automatically restarted when
   HEAD moves. If it is unhealthy, the error reports the current checkout HEAD,
   the last recorded app revision, and the app log to inspect before recovery.
-  A healthy app may still serve an older revision; the response identifies it.
+  A healthy app whose served revision differs from HEAD, or whose revision
+  cannot be verified, returns an error refusing QA against it. The process
+  stays running; restart_app refreshes it explicitly.
 
   Story 1108's rule: an agent on a copy can start, restart and stop its own
   copy's app. Always the caller's own copy — resolved from the connection's
@@ -24,16 +26,23 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
 
   # A first boot compiles, which is why this was once three minutes. But a
   # script calling this tool runs under `Sandbox`'s wall clock and is handed
-  # that budget less `@machine_call_margin_ms`, so a three-minute wait
-  # outlasted its caller, the sandbox killed the script, and the caller never
-  # saw `AppTransport`'s `:start_timed_out` (0b1ae6fc). Derived from the
-  # sandbox rather than declared, so the wait always fits inside the script.
-  @machine_call_margin_ms 2_000
+  # that budget less a margin, so a three-minute wait outlasted its caller,
+  # the sandbox killed the script, and the caller never saw `AppTransport`'s
+  # `:start_timed_out` (0b1ae6fc). Derived from the sandbox rather than
+  # declared, so the wait always fits inside the script.
+  #
+  # The margin must cover `AppTransport.call_grace_ms/0` too: `AppTransport`
+  # adds that grace on top of whatever timeout it is given, so a margin
+  # smaller than the grace lets the actual `GenServer.call` deadline land
+  # past the sandbox's own kill time -- the exact failure 0b1ae6fc fixed,
+  # reintroduced one layer down once the grace existed (4d727b2c).
+  @machine_call_safety_ms 500
 
   @doc "How long this tool waits — never longer than the script that calls it."
   @spec declared_timeout() :: pos_integer()
   def declared_timeout do
-    max(Sandbox.timeout([]) - @machine_call_margin_ms, 1_000)
+    margin = AppTransport.call_grace_ms() + @machine_call_safety_ms
+    max(Sandbox.timeout([]) - margin, 1_000)
   end
 
   defp timeout, do: declared_timeout()
@@ -55,11 +64,17 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
         # What it serves, which a promote's reload moves past the launch commit.
         serving = Map.get(info, :serving_commit) || commit
 
-        Response.tool()
-        |> Response.text(
-          "#{copy_name(id)} app is serving #{serving || "unknown commit"} at #{url}." <>
-            head_note(serving, Map.get(info, :head))
-        )
+        case AppTransport.qa_revision_check(info) do
+          :ok ->
+            Response.tool()
+            |> Response.text("#{copy_name(id)} app is serving #{serving} at #{url}.")
+
+          {:error, reason} ->
+            Response.tool()
+            |> Response.error(
+              "#{copy_name(id)} app is running but is not verified for QA. " <> reason
+            )
+        end
 
       # A first start that outlasted its inline window: booting, not failed.
       {:ok, %{status: "starting", url: url, commit: commit}} ->
@@ -110,12 +125,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning do
       {:error, _} -> "Your copy's"
     end
   end
-
-  defp head_note(commit, head) when is_binary(head) and head != commit do
-    " This copy's HEAD is #{head}: the app is not restarted when HEAD moves, only on a promote."
-  end
-
-  defp head_note(_commit, _head), do: ""
 
   defp refusal(:no_working_dir) do
     "This call names no project, so there is no working copy to start an app for."

@@ -1,6 +1,12 @@
 defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   @moduledoc """
-  Lists issues in a project with optional filters.
+  Lists issues in the caller's active project with optional filters.
+
+  Defaults to open issues (incoming and accepted), across all scopes and
+  severities. Results retain the default limit of 50 and disclose truncation.
+  In scripts, the result contains `issues`, `matched`, `returned`, `limit`,
+  `truncated`, `project_total`, `filtered_out`, and `filters`; iterate
+  `result.issues` to read the rows.
 
   Filter by status (incoming, accepted, dismissed, resolved),
   severity (critical, high, medium, low, info), scope (app, qa, docs,
@@ -24,31 +30,28 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
 
   schema do
     field :status, :string,
-      doc:
+      description:
         "open (default: incoming and accepted), all, or one of incoming, accepted, dismissed, resolved"
 
     field :severity, :string,
-      doc: "medium or higher by default; all, or one of critical, high, medium, low, info"
+      description: "All severities by default; all, or one of critical, high, medium, low, info"
 
-    field :scope, :string, doc: "Filter by scope: app, qa, docs, framework"
-    field :story_number, :integer, doc: "Filter by the related story's number"
+    field :scope, :string, description: "Filter by scope: app, qa, docs, framework"
+    field :story_number, :integer, description: "Filter by the related story's number"
 
     field :working_copy_id, :string,
-      doc: "Filter by assigned working copy (use severity all to include the entire bag)"
+      description: "Filter by assigned working copy; all severities are included unless filtered"
 
-    field :query, :string, doc: "Text that the title or description contains (case-insensitive)"
-    field :limit, :integer, doc: "Most issues to return, newest first (default 50)"
+    field :query, :string,
+      description: "Text that the title or description contains (case-insensitive)"
+
+    field :limit, :integer, description: "Most issues to return, newest first (default 50)"
   end
 
-  # 6da8e0e5: the default was every issue, by severity, and the reply is cut at
-  # 24KB. On metric_flow that was 547 issues and about 150 rows shown — critical
-  # and high — so a medium issue John had just filed from the widget never
-  # appeared, and main told him nothing had landed. Open and newest first is
-  # what an agent asking "what is there" means, and the footer says what was
-  # left out and how to reach it. Low and info are left out too unless asked
-  # for — John, 10-01: what an agent needs from a listing is what to act on.
+  # Product decision 006f1c97 for story 709: the only default filter is
+  # open status. Every scope and severity stays within the active project.
+  # Both response paths disclose exclusions and the unchanged result cap.
   @open [:incoming, :accepted]
-  @medium_up [:critical, :high, :medium]
   @default_limit 50
 
   # Atoms, not strings, and that is load-bearing rather than stylistic.
@@ -85,9 +88,11 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   @impl true
   def execute(params, frame) do
     case matching(params, frame) do
-      {:ok, matching, shown} ->
+      {:ok, matching, shown, counts} ->
         issues = Enum.take(matching, limit(params[:limit]))
-        {:reply, IssuesMapper.issues_list_response(issues, shown, length(matching)), frame}
+
+        {:reply, IssuesMapper.issues_list_response(issues, shown, length(matching), counts),
+         frame}
 
       {:error, reason} ->
         {:reply, IssuesMapper.error(error_message(reason)), frame}
@@ -97,8 +102,20 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   @impl CodeMySpec.McpServers.ScriptResult
   def script_result(params, frame) do
     case matching(params, frame) do
-      {:ok, matching, _shown} ->
-        {:ok, matching |> Enum.take(limit(params[:limit])) |> Enum.map(&row/1)}
+      {:ok, matching, shown, counts} ->
+        issues = matching |> Enum.take(limit(params[:limit])) |> Enum.map(&row/1)
+
+        {:ok,
+         %{
+           "issues" => issues,
+           "project_total" => counts.project_total,
+           "filtered_out" => counts.filtered_out,
+           "matched" => length(matching),
+           "returned" => length(issues),
+           "limit" => limit(params[:limit]),
+           "truncated" => length(issues) < length(matching),
+           "filters" => Map.new(shown, fn {key, value} -> {to_string(key), to_string(value)} end)
+         }}
 
       {:error, reason} ->
         {:error, error_message(reason)}
@@ -114,11 +131,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
       {statuses, filters} = Map.pop(filters, :statuses)
       {severities, filters} = Map.pop(filters, :severities)
 
+      project_issues = Issues.list_issues(scope)
+
       matching =
-        scope
-        |> list(maybe_put(filters, :story_id, story_id))
+        project_issues
         |> Enum.filter(
-          &(in?(&1.status, statuses) and in?(&1.severity, severities) and
+          &(matches?(&1.scope, filters[:scope]) and matches?(&1.story_id, story_id) and
+              in?(&1.status, statuses) and in?(&1.severity, severities) and
               contains?(&1, params[:query]) and
               (is_nil(params[:working_copy_id]) or
                  &1.assigned_working_copy_id == params[:working_copy_id]))
@@ -133,7 +152,12 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
         |> maybe_put(:query, params[:query])
         |> maybe_put(:working_copy_id, params[:working_copy_id])
 
-      {:ok, matching, shown}
+      counts = %{
+        project_total: length(project_issues),
+        filtered_out: length(project_issues) - length(matching)
+      }
+
+      {:ok, matching, shown, counts}
     end
   end
 
@@ -157,46 +181,6 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
       "awaiting_role" => to_string(issue.awaiting_role),
       "inserted_at" => issue.inserted_at && DateTime.to_iso8601(issue.inserted_at)
     }
-  end
-
-  # `scope: framework` asked from CodeMySpec's own project is the vendor's
-  # backlog, and it spans every project.
-  #
-  # Framework issues are friction with CodeMySpec, filed by agents working in
-  # other people's projects, and they live where they were filed — one
-  # invariant, no exception on any write. So the one place that crosses a
-  # boundary is this read, and only for the vendor: `list_framework_issues/1`
-  # refuses anyone whose active project is not the configured CodeMySpec one,
-  # and this falls back to the ordinary project-scoped listing when it does.
-  #
-  # That fallback is what makes the filter mean the same thing everywhere. In
-  # any other project, `scope: framework` still lists that project's own
-  # framework issues — the ones it filed — which is exactly what its author
-  # wants to see.
-  defp list(scope, %{scope: :framework} = filters) do
-    case Issues.list_framework_issues(scope) do
-      {:ok, issues} -> apply_local_filters(issues, filters)
-      {:error, :not_the_vendor} -> Issues.list_filtered(scope, filters)
-    end
-  end
-
-  defp list(scope, filters), do: Issues.list_filtered(scope, filters)
-
-  # The vendor query answers one question — every framework issue — so the
-  # other filters are applied here rather than pushed into it. Keeps the
-  # cross-project surface to a single, auditable query.
-  defp apply_local_filters(issues, filters) do
-    issues
-    |> filter_by(:status, filters)
-    |> filter_by(:severity, filters)
-    |> filter_by(:story_id, filters)
-  end
-
-  defp filter_by(issues, key, filters) do
-    case Map.fetch(filters, key) do
-      {:ok, value} -> Enum.filter(issues, &(Map.get(&1, key) == value))
-      :error -> issues
-    end
   end
 
   defp build_filters(params) do
@@ -225,7 +209,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
     end
   end
 
-  defp severities(nil), do: {:ok, @medium_up}
+  defp severities(nil), do: {:ok, nil}
   defp severities("all"), do: {:ok, nil}
 
   defp severities(value) do
@@ -238,11 +222,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
     end
   end
 
+  defp matches?(_value, nil), do: true
+  defp matches?(value, expected), do: value == expected
+
   defp in?(_value, nil), do: true
   defp in?(value, allowed), do: value in allowed
 
   defp severity_label(nil), do: "all"
-  defp severity_label(@medium_up), do: "medium or higher"
   defp severity_label([severity]), do: severity
 
   defp status_label(nil), do: "all"

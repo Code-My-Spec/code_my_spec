@@ -217,13 +217,17 @@ defmodule CodeMySpec.Servers do
   def retire(%Scope{} = scope, name) when is_binary(name) do
     case projects_using(scope, name) do
       [] ->
-        case Server.get_linked(scope, name) do
-          nil -> {:error, :not_found}
-          server -> with {:ok, _} <- Server.delete(server), do: :ok
-        end
+        delete_linked(scope, name)
 
       projects ->
         {:error, {:in_use, projects}}
+    end
+  end
+
+  defp delete_linked(scope, name) do
+    case Server.get_linked(scope, name) do
+      nil -> {:error, :not_found}
+      server -> with {:ok, _} <- Server.delete(server), do: :ok
     end
   end
 

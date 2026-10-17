@@ -12,11 +12,11 @@ defmodule CodeMySpec.McpServers.BddRules.Tools.UpdateRule do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :rule_id, :string, required: true, doc: "UUID of the rule to update."
+    field :rule_id, :string, required: true, description: "UUID of the rule to update."
 
     field :statement, :string,
       required: true,
-      doc:
+      description:
         "The new rule statement in business terms (e.g., 'Suspended cards cannot be used for purchases'). 1–1000 characters."
   end
 

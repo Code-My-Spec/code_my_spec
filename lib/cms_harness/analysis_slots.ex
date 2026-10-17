@@ -98,12 +98,13 @@ defmodule CmsHarness.AnalysisSlots do
       Logger.info(
         "[CmsHarness] an analyzer run is waiting for a machine-wide #{lane} slot: " <>
           "#{map_size(held)} already running (limit #{limit(lane)}), waiting up to " <>
-          "#{wait_ceiling()}ms."
+          "#{wait_ceiling()}ms. held by: #{inspect(Map.values(held))}"
       )
 
       timer_ref = Process.send_after(self(), {:wait_timeout, lane, from}, wait_ceiling())
       {:noreply, put_lane(state, lane, :waiting, :queue.in({from, pid, timer_ref}, waiting))}
     else
+      Logger.info("[CmsHarness] #{inspect(pid)} granted a machine-wide #{lane} slot immediately")
       {:reply, :ok, grant(state, lane, pid)}
     end
   end
@@ -115,9 +116,13 @@ defmodule CmsHarness.AnalysisSlots do
     do: {:reply, :queue.len(state.lanes[lane].waiting), state}
 
   @impl true
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+  def handle_info({:DOWN, ref, :process, pid, reason}, state) do
     case Enum.find(state.lanes, fn {_lane, %{held: held}} -> Map.has_key?(held, ref) end) do
       {lane, %{held: held}} ->
+        Logger.info(
+          "[CmsHarness] #{inspect(pid)} released its machine-wide #{lane} slot (#{inspect(reason)})"
+        )
+
         {:noreply,
          state |> put_lane(lane, :held, Map.delete(held, ref)) |> maybe_grant_next(lane)}
 

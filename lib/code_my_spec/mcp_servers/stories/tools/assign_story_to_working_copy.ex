@@ -8,8 +8,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.AssignStoryToWorkingCopy do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :story_number, :integer, required: true, doc: "Story to add"
-    field :working_copy_id, :string, required: true, doc: "Working copy whose queue to edit"
+    field :story_number, :integer, required: true, description: "Story to add"
+    field :working_copy_id, :string, required: true, description: "Working copy whose queue to edit"
   end
 
   @impl true

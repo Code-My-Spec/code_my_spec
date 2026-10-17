@@ -20,9 +20,9 @@ defmodule CodeMySpec.McpServers.Agents.Tools.TurnOffAgent do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :agent_id, :string, required: true, doc: "Id of the agent to turn off"
+    field :agent_id, :string, required: true, description: "Id of the agent to turn off"
 
-    field :reason, :string, doc: ~s(Optional. Why, e.g. "held until the spec-binding fix lands".)
+    field :reason, :string, description: ~s(Optional. Why, e.g. "held until the spec-binding fix lands".)
   end
 
   @impl true

@@ -372,6 +372,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
     <.header>Agent Performance</.header>
 
     <form
+      id="performance-filter"
       phx-change="filter"
       data-test="performance-filter"
       class="mt-4 flex flex-wrap gap-4 items-end"
@@ -602,7 +603,12 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
       <.heading>Offers</.heading>
       <div class="grid gap-6 md:grid-cols-3">
         <div data-test="offer-health">
-          <form phx-change="offer_role" data-test="offer-role-filter" class="mb-1">
+          <form
+            id="offer-role-filter"
+            phx-change="offer_role"
+            data-test="offer-role-filter"
+            class="mb-1"
+          >
             <label class="sr-only" for="offer-role">Role</label>
             <select id="offer-role" name="role" class="select select-bordered select-xs">
               <option value="">All roles</option>

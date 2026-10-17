@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.GetIssue do
   schema do
     field :issue_id, :string,
       required: true,
-      doc: "Issue ID, full or a unique prefix (use list_issues to find IDs)"
+      description: "Issue ID, full or a unique prefix (use list_issues to find IDs)"
   end
 
   @impl true

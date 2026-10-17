@@ -57,7 +57,7 @@ defmodule CodeMySpec.McpServers.AgentLifecycleIsMainOnlyTest do
   defp params(script, agent_id), do: %{script: script, agent_id: agent_id}
 
   test "none of the five is on the spine or carried directly" do
-    spine = Enum.map(LocalServer.__components__(), & &1.name)
+    spine = Enum.map(LocalServer.registrations(), & &1.name)
     carried = [role: :main] |> Engine.tools() |> Enum.map(& &1.name())
 
     for name <- @lifecycle do

@@ -221,7 +221,10 @@ defmodule CmsHarness.WorkingCopies.Create do
   end
 
   defp remove_worktree(root, target) do
-    case System.cmd("git", ["worktree", "remove", "--force", target], cd: root, stderr_to_stdout: true) do
+    case System.cmd("git", ["worktree", "remove", "--force", target],
+           cd: root,
+           stderr_to_stdout: true
+         ) do
       {_out, 0} ->
         Logger.info("[CmsHarness] removed the unacknowledged working copy at #{target}")
         :ok
@@ -241,22 +244,26 @@ defmodule CmsHarness.WorkingCopies.Create do
   # raises: an unwritable path is an ordinary answer.
   defp add_worktree(root, target, name) do
     with :ok <- make_parent(target) do
-      case recipe(root, name, target) do
-        :ok ->
-          {:ok, :project_recipe}
+      worktree_by_recipe(root, target, name)
+    end
+  end
 
-        :no_recipe ->
-          Logger.warning(
-            "[CmsHarness] #{root} declares no `#{@recipe}` recipe, so #{target} got a " <>
-              "worktree, its submodules, the source's deps/ and links to its dotenv files — " <>
-              "no _build. Add `#{@recipe} name target` to its justfile."
-          )
+  defp worktree_by_recipe(root, target, name) do
+    case recipe(root, name, target) do
+      :ok ->
+        {:ok, :project_recipe}
 
-          with :ok <- plain_worktree(root, target, name), do: {:ok, :bare_worktree}
+      :no_recipe ->
+        Logger.warning(
+          "[CmsHarness] #{root} declares no `#{@recipe}` recipe, so #{target} got a " <>
+            "worktree, its submodules, the source's deps/ and links to its dotenv files — " <>
+            "no _build. Add `#{@recipe} name target` to its justfile."
+        )
 
-        {:error, _} = error ->
-          error
-      end
+        with :ok <- plain_worktree(root, target, name), do: {:ok, :bare_worktree}
+
+      {:error, _} = error ->
+        error
     end
   end
 

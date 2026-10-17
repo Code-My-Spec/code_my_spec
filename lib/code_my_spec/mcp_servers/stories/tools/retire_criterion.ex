@@ -16,7 +16,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.RetireCriterion do
   schema do
     field :criterion_number, :integer,
       required: true,
-      doc: "Criterion number to retire (from get_story)"
+      description: "Criterion number to retire (from get_story)"
   end
 
   @impl true

@@ -96,6 +96,11 @@ defmodule CodeMySpec.Stories do
   def release_stories(scope, copy_id, story_ids),
     do: StoriesRepository.release_stories(scope, copy_id, story_ids)
 
+  @doc "Every story this copy reserves right now. See `StoriesRepository.reserved_story_ids/2`."
+  @spec reserved_story_ids(Scope.t(), Ecto.UUID.t()) :: [integer()]
+  def reserved_story_ids(scope, copy_id),
+    do: StoriesRepository.reserved_story_ids(scope, copy_id)
+
   @doc "Reserve a story for a checkout. See `StoriesRepository.reserve_story/3`."
   @spec reserve_story(Scope.t(), Ecto.UUID.t(), term()) ::
           {:ok, Story.t()} | {:error, :not_found | :story_not_ready | :story_assigned_elsewhere}
@@ -204,6 +209,14 @@ defmodule CodeMySpec.Stories do
   project and diverge later.
   """
   def get_story_by_number(scope, number), do: impl().get_story_by_number(scope, number)
+
+  @doc "The same, as `{:ok, story}` or `{:error, :story_not_found}`."
+  def fetch_story_by_number(scope, number) do
+    case get_story_by_number(scope, number) do
+      nil -> {:error, :story_not_found}
+      story -> {:ok, story}
+    end
+  end
 
   @doc "Unpromoted stories assigned to `working_copy_id` and certified ready for QA, newest first."
   def list_certified_on_copy(scope, working_copy_id),

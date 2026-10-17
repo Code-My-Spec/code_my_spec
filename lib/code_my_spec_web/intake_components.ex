@@ -143,6 +143,7 @@ defmodule CodeMySpecWeb.IntakeComponents do
   def composer(assigns) do
     ~H"""
     <form
+      id="intake-composer"
       data-test="intake-composer"
       phx-submit={@event}
       phx-change={@change}

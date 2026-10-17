@@ -92,6 +92,23 @@ defmodule CmsHarness.AppInstanceReloadTest do
     assert hooks() == 0, "the restart that follows a failed reload runs the hook, not the reload"
   end
 
+  # :4000 reloading itself: the caller that would restart it is the app that
+  # went down, so the harness restarts it (2026-10-16, down 02:15-02:19).
+  test "a failed reload that leaves the app down is restarted here" do
+    %{root: root} = running_app(%{"reload" => true})
+    FakeAppInstanceRunner.put_reload_result({:error, "`just reload` failed (7): refused"})
+    FakeAppInstanceRunner.put_probes([:down])
+    launched = launches()
+
+    result = push_app_event_as_main("reload_app")
+    sync_after_reply(root)
+
+    assert %{"status" => "ok", "app_action" => "restarted", "app_action_reason" => why} = result
+    assert why =~ "left the app down"
+    assert launches() == launched + 1
+    assert hooks() == 1
+  end
+
   test "a reload the app does not survive answers an error" do
     %{root: root} = running_app(%{"reload" => true})
     FakeAppInstanceRunner.put_probe(:erroring)

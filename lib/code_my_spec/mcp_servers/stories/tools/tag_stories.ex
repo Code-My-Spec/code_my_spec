@@ -21,8 +21,8 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TagStories do
   alias CodeMySpec.Tags
 
   schema do
-    field :story_numbers, {:list, :integer}, required: true, doc: "Story numbers to tag"
-    field :tag, :string, required: true, doc: "Tag name to apply to all stories"
+    field :story_numbers, {:list, :integer}, required: true, description: "Story numbers to tag"
+    field :tag, :string, required: true, description: "Tag name to apply to all stories"
   end
 
   @impl true

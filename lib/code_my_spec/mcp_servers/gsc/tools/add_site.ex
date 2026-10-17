@@ -11,7 +11,7 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.AddSite do
   schema do
     field :site_url, :string,
       required: true,
-      doc: "Exact site URL (e.g. https://example.com/ or sc-domain:example.com)"
+      description: "Exact site URL (e.g. https://example.com/ or sc-domain:example.com)"
   end
 
   @impl true

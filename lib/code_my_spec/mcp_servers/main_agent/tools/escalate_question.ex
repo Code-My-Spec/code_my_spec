@@ -27,19 +27,19 @@ defmodule CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :question_id, :string, required: true, doc: "From `list_open_questions`."
+    field :question_id, :string, required: true, description: "From `list_open_questions`."
 
     field :reason, :string,
       required: true,
-      doc: "Why this is the user's call and not yours. They read it."
+      description: "Why this is the user's call and not yours. They read it."
 
     field :to, :string,
-      doc:
+      description:
         "`user` (the default) to escalate; `main` or `product` to hand it to the other " <>
           "answerer instead, without the user seeing it."
 
     field :as, :string,
-      doc:
+      description:
         "The same question as a choice about their product. Put it in their words when " <>
           "the agent's were module names — the original travels with it."
   end

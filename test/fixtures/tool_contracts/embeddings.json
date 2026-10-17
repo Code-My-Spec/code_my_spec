@@ -1,0 +1,26 @@
+[
+  {
+    "name": "semantic_search",
+    "description": "Semantic search across all embedded documentation.\n\nUses vector similarity (cosine distance) to find the most relevant\ndocumentation chunks for a natural language query.\n\nSearches across every embedded source — project knowledge, the\nframework knowledge base, and hex dependency docs — or filters to a\nsingle source.\n\n## Sources\n\n- `knowledge` — framework reference (LiveView, DaisyUI, etc.)\n- `project_knowledge` — project-specific research and decisions\n- `hexdocs` — every embedded hex package (prefix match, `hexdocs:*`)\n- `hexdocs:<package>` — a specific hex package, e.g. `hexdocs:phoenix`\n\nEmbeddings fill in on their own — there is no sync tool and nothing to\nrun. Hex docs appear once the server's reconciler has embedded the\npackage versions this project's `mix.lock` actually pins; framework\nknowledge on server boot; project knowledge once the main copy's harness\nhas reported a change to `.code_my_spec/knowledge`. A query that finds nothing\nfor a package or topic that should exist usually means that embedding\nhasn't landed yet, not that something needs triggering.\n",
+    "input_schema": {
+      "properties": {
+        "limit": {
+          "description": "Max results (default: 10)",
+          "type": "integer"
+        },
+        "query": {
+          "description": "Natural language search query",
+          "type": "string"
+        },
+        "source": {
+          "description": "Filter to a source. One of: 'knowledge', 'project_knowledge', 'hexdocs' (all hex packages), or 'hexdocs:<package>' (one package). Omit to search everything.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  }
+]

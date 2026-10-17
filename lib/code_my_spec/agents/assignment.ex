@@ -41,7 +41,9 @@ defmodule CodeMySpec.Agents.Assignment do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Issues
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
@@ -69,8 +71,31 @@ defmodule CodeMySpec.Agents.Assignment do
   def assign_team(%Scope{}, nil, _story_id), do: {:error, :no_working_copy}
 
   def assign_team(%Scope{} = scope, copy_id, story_id) do
-    with :ok <- feature_copy(scope, copy_id) do
+    with :ok <- feature_copy(scope, copy_id),
+         :ok <- work_left(scope, copy_id, story_id) do
       fan_out(scope, copy_id, story_id)
+    end
+  end
+
+  # A promoted story whose every requirement is already satisfied at this copy
+  # has nothing left for a team to do, and nothing will land for it, so the
+  # team-free notice main waits on never comes: team 3 sat idle on story 811
+  # (2026-10-15). A shipped story with a new criterion has unsatisfied
+  # requirements again, an accepted issue on it needs the story held to reach
+  # QA (Metric Flow's five fixes, 2026-10-15), and an unpromoted one still has
+  # its landing to come; all are work. Read before the transaction:
+  # the graph can wait on its projector, which must not happen under locks.
+  defp work_left(_scope, _copy_id, nil), do: :ok
+
+  defp work_left(scope, copy_id, story_id) do
+    with %{promoted_version: version} when is_binary(version) <-
+           Stories.get_story(scope, story_id),
+         false <- Enum.any?(Issues.list_by_story(scope, story_id), &(&1.status == :accepted)),
+         {done, done} when done > 0 <-
+           Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id) do
+      {:error, :story_done}
+    else
+      _ -> :ok
     end
   end
 
@@ -93,7 +118,11 @@ defmodule CodeMySpec.Agents.Assignment do
       Repo.transaction(fn ->
         lock_project(scope)
         team = lock_team(scope, copy_id)
-        if team == [], do: Repo.rollback(:no_team)
+        # 3f824f74: the guard belongs to *assigning* a story -- there is
+        # nobody to give it to -- not to clearing or releasing one, which a
+        # teamless copy must still be able to do or its reservations can
+        # never come free again.
+        if team == [] and not is_nil(story_id), do: Repo.rollback(:no_team)
 
         story = reserve(scope, copy_id, story_id)
         clear_issue_bag(scope, copy_id, story)
@@ -104,7 +133,12 @@ defmodule CodeMySpec.Agents.Assignment do
         |> Repo.update_all(set: team_attrs(story))
 
         still_held = held_on_copy(scope, copy_id)
-        Stories.release_stories(scope, copy_id, (before -- [new_id]) -- still_held)
+        # Release what the copy actually reserves (`stories.working_copy_id`),
+        # not `before` -- the team's own `story_id` drifts from the
+        # reservation whenever an agent holding one is retired or replaced,
+        # and `before` read only the drifted copy, orphaning the reservation.
+        reserved = Stories.reserved_story_ids(scope, copy_id)
+        Stories.release_stories(scope, copy_id, (reserved -- [new_id]) -- still_held)
 
         {before, new_id}
       end)
@@ -232,14 +266,35 @@ defmodule CodeMySpec.Agents.Assignment do
   def inherit(%{working_copy_id: copy_id, role: role} = attrs) when is_binary(copy_id) do
     if team_member?(role) do
       attrs
-      |> maybe_put(:story_id, WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id))
+      |> maybe_put(
+        :story_id,
+        WorkingCopies.team_story_id(copy_id) || retired_team_story_id(copy_id)
+      )
       |> maybe_put(:epic_id, team_epic_id(copy_id))
+      |> maybe_put(:continuous, retired_seat_continuous(copy_id, role))
     else
       attrs
     end
   end
 
   def inherit(attrs), do: attrs
+
+  # A seat refilled after a retirement keeps the loop its predecessor was in.
+  # Main replaced both teams' Claude agents with Codex ones on 2026-10-15; all
+  # four predecessors were continuous and all four replacements came up out of
+  # the loop, so the graph offered them nothing -- team 4's coder sat 2.5 hours
+  # beside five open tasks. Same role on the same copy only; never turns it off.
+  defp retired_seat_continuous(copy_id, role) do
+    from(a in "agents",
+      where:
+        a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role == ^to_string(role) and
+          not is_nil(a.retired_at),
+      order_by: [desc: a.retired_at],
+      select: a.continuous,
+      limit: 1
+    )
+    |> Repo.one()
+  end
 
   # A seat filled the moment it is vacated finds no *live* teammate to
   # inherit from -- `WorkingCopies.team_story_id/1` excludes a retired row on
@@ -252,13 +307,21 @@ defmodule CodeMySpec.Agents.Assignment do
   # takes the most recently retired team member's story instead of starting
   # unbound -- the shape that left `submit_story_issue` answering
   # `story_not_assigned_to_agent` for work the predecessor had already queued.
+  #
+  # Only a story still to land: the newest retired member *holding a story* can
+  # be weeks back when the one just retired held none, and a promoted story is
+  # history. Team 2's replacement coder took story 1092, promoted at v2.0.440,
+  # and the team then read as busy -- no work offered, no team-free notice --
+  # for as long as the row held it (2026-10-15).
   defp retired_team_story_id(copy_id) do
     roles = team_roles() |> Enum.map(&to_string/1)
 
     from(a in "agents",
+      join: s in "stories",
+      on: s.id == a.story_id,
       where:
         a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role in ^roles and
-          not is_nil(a.retired_at) and not is_nil(a.story_id),
+          not is_nil(a.retired_at) and is_nil(s.promoted_version),
       order_by: [desc: a.retired_at],
       select: a.story_id,
       limit: 1
@@ -500,7 +563,7 @@ defmodule CodeMySpec.Agents.Assignment do
 
   The one-story counterpart of `EpicDispatch.place/3`.
   `Stories.reserve_story/3` only claims an unassigned story, and
-  `WorkingCopies.offboard/2` releases every story a copy holds.
+  `unassign_story/3` releases one without taking it anywhere.
 
   Refuses onto a target with no checkout on disk, and refuses to take a
   story out from under the copy whose team has it as the active story
@@ -531,6 +594,42 @@ defmodule CodeMySpec.Agents.Assignment do
 
         true ->
           Stories.update_story(scope, story, %{working_copy_id: target.id})
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Release a story from whatever working copy holds it, with nothing new to
+  take its place -- the free half of `move_story/4`'s move. 3f824f74: this
+  is the explicit reassign path a refusal from `set_active_story` names
+  ("Reassign it explicitly first") but nothing offered -- freed here, the
+  story can be selected again on any copy with `set_active_story`.
+
+  Same guard as `move_story/4`: refuses to take it out from under the copy
+  whose team has it as the active story (`WorkingCopies.team_story_id/1`)
+  unless `force: true` is given.
+  """
+  @spec unassign_story(Scope.t(), term(), keyword()) ::
+          {:ok, Stories.Story.t()}
+          | {:error, :not_found | :not_assigned | :story_active_elsewhere}
+  def unassign_story(%Scope{active_project_id: project_id} = scope, story_id, opts \\ [])
+      when is_binary(project_id) do
+    force? = Keyword.get(opts, :force, false)
+
+    with {:ok, id} <- Ecto.Type.cast(:id, story_id),
+         %{project_id: ^project_id} = story <- Stories.get_story(scope, id) do
+      cond do
+        is_nil(story.working_copy_id) ->
+          {:error, :not_assigned}
+
+        not force? and WorkingCopies.team_story_id(story.working_copy_id) == story.id ->
+          {:error, :story_active_elsewhere}
+
+        true ->
+          Stories.release_stories(scope, story.working_copy_id, [story.id])
+          {:ok, %{story | working_copy_id: nil}}
       end
     else
       _ -> {:error, :not_found}

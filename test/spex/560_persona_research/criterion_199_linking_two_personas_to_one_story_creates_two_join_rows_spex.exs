@@ -10,8 +10,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Personas.Tools.CreatePersona
-  alias CodeMySpec.McpServers.Personas.Tools.LinkPersonaToStory
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -24,10 +23,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
       given_ "a second persona exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, create_response, _frame} =
-          CreatePersona.execute(
+        {:ok, create_response} =
+          ToolLibrary.run(
+            "create_persona",
             %{slug: "agency_pm", name: "Agency PM", headline: "Agency PM"},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok, Map.put(context, :second_persona_id, extract_persona_id(create_response))}
@@ -47,16 +47,18 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
       when_ "both personas are linked via MCP", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, r1, _} =
-          LinkPersonaToStory.execute(
+        {:ok, r1} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: context.target_story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
-        {:reply, r2, _} =
-          LinkPersonaToStory.execute(
+        {:ok, r2} =
+          ToolLibrary.run(
+            "link_persona_to_story",
             %{persona_id: context.second_persona_id, story_number: context.target_story.number},
-            frame
+            %{scope: frame.assigns.current_scope}
           )
 
         {:ok,

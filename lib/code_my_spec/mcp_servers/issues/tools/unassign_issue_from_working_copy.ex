@@ -8,8 +8,8 @@ defmodule CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :issue_id, :string, required: true, doc: "Issue to remove"
-    field :working_copy_id, :string, required: true, doc: "Copy currently holding the issue"
+    field :issue_id, :string, required: true, description: "Issue to remove"
+    field :working_copy_id, :string, required: true, description: "Copy currently holding the issue"
   end
 
   @impl true

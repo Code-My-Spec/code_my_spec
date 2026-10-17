@@ -243,13 +243,17 @@ defmodule CodeMySpec.Integrations do
 
       case provider_module.strategy().callback(config, callback_params) do
         {:ok, %{user: user, token: token}} ->
-          with {:ok, normalized_user} <- provider_module.normalize_user(user) do
-            {:ok, %{user: normalized_user, token: token}}
-          end
+          normalized_login(provider_module, user, token)
 
         {:error, reason} ->
           {:error, reason}
       end
+    end
+  end
+
+  defp normalized_login(provider_module, user, token) do
+    with {:ok, normalized_user} <- provider_module.normalize_user(user) do
+      {:ok, %{user: normalized_user, token: token}}
     end
   end
 

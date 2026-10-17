@@ -20,10 +20,10 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
   alias CodeMySpec.McpServers.Validators
 
   schema do
-    field :run_id, :integer, doc: "Retained run ID. Supply this or source, not both."
-    field :source, :string, doc: "Select the latest compiler, credo, exunit, or spex run."
-    field :offset, :integer, doc: "Zero-based Unicode codepoint offset. Default: 0."
-    field :limit, :integer, doc: "Codepoints to return. Default and maximum: 2000."
+    field :run_id, :integer, description: "Retained run ID. Supply this or source, not both."
+    field :source, :string, description: "Select the latest compiler, credo, exunit, or spex run."
+    field :offset, :integer, description: "Zero-based Unicode codepoint offset. Default: 0."
+    field :limit, :integer, description: "Codepoints to return. Default and maximum: 2000."
   end
 
   @impl true
@@ -79,7 +79,7 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
        %{
          run_id: run.id,
          source: run.source,
-         status: run.status,
+         status: status_label(run),
          kind: run.kind,
          exit_status: run.exit_status,
          start_commit: run.start_commit,
@@ -94,6 +94,15 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
     else
       {:error, "offset exceeds the retained output length."}
     end
+  end
+
+  # bf627680: `status` alone cannot tell a run waiting on a machine-wide
+  # slot from one actually executing -- both are `:running` in the ledger,
+  # since the row is created at dispatch time, not when the harness reports
+  # the slot granted (`Run.began_at`). `Run.queued?/1` already distinguishes
+  # them; this is the one place that read the raw status instead.
+  defp status_label(run) do
+    if Run.queued?(run), do: "queued", else: to_string(run.status)
   end
 
   defp failure(reason, frame),

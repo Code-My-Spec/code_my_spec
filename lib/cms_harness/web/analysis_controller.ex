@@ -26,8 +26,8 @@ defmodule CmsHarness.Web.AnalysisController do
   alias CmsHarness.Channel
   alias CmsHarness.WorkingCopies
 
-  # "sobelow" deliberately excluded — see the comment on CodeMySpec.Analysis.Run's
-  # @sources for why it isn't in the ledger yet (`9a78afa1`).
+  # Sobelow is excluded by product decision (983/1774, questions 2b219959 and
+  # 4f6303c2). See CodeMySpec.Analysis.Run for the fixed four-source gate policy.
   @valid_sources ~w(compiler credo exunit spex)
 
   def run(conn, %{"harness_id" => working_copy_id} = params) do

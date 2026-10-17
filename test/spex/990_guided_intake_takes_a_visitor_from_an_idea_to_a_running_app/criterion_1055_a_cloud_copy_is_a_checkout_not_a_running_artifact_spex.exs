@@ -31,8 +31,6 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
 
   alias CodeMySpec.Workspaces.PreviewTunnel
 
-  cloud_endpoint()
-
   setup :register_log_in_setup_account
 
   setup do

@@ -6,6 +6,16 @@ defmodule CodeMySpecWeb.DevProvisioningAgentFixture do
 
   @enabled Application.compile_env(:code_my_spec, :dev_routes, false)
 
+  # The dedicated harness reads this straight into `:harness_token`
+  # (`CmsHarness.Credentials.from_user_token/0`), which bypasses the deploy-key
+  # exchange `CmsHarness.Token` otherwise refreshes on expiry -- so once this
+  # token expires, every later MCP session 401s with nothing to recover it
+  # short of preparing a fresh fixture. `qa_963_harness.exs` says to "keep this
+  # process running during QA"; the old 3600s (1h) expiry could not survive an
+  # ordinary manual QA session (c79fb8f9). 12h mirrors `SpriteTokenController`'s
+  # own precedent for exactly this "nothing refreshes it" reasoning.
+  @expires_in 12 * 60 * 60
+
   def prepare(scope, project, server_url)
       when @enabled and is_map(scope) and is_map(project) and is_binary(server_url) do
     uri = URI.parse(server_url)
@@ -48,7 +58,7 @@ defmodule CodeMySpecWeb.DevProvisioningAgentFixture do
          {:ok, token} <-
            ExOauth2Provider.AccessTokens.create_token(
              scope.user,
-             %{expires_in: 3600},
+             %{expires_in: @expires_in},
              otp_app: :code_my_spec
            ) do
       write_private(Path.join(directory, "device.json"), %{device_id: device.id})
@@ -85,7 +95,7 @@ defmodule CodeMySpecWeb.DevProvisioningAgentFixture do
          working_copy_id: copy.id,
          root: root,
          runtime_path: runtime_path,
-         expires_in: 3600
+         expires_in: @expires_in
        }}
     end
   end

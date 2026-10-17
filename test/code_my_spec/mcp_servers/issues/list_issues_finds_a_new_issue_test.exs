@@ -47,16 +47,17 @@ defmodule CodeMySpec.McpServers.Issues.ListIssuesFindsANewIssueTest do
     assert listed(scope, %{status: "all"}) =~ "already dealt with"
   end
 
-  test "low and info are hidden unless asked for, and the reply says so", %{scope: scope} do
+  test "all severities are included unless explicitly filtered", %{scope: scope} do
     file(scope, "a medium one", %{severity: :medium})
     file(scope, "a low one", %{severity: :low})
     file(scope, "an info one", %{severity: :info})
 
     text = listed(scope, %{})
     assert text =~ "a medium one"
-    refute text =~ "a low one"
-    refute text =~ "an info one"
-    assert text =~ "Low and info are hidden"
+    assert text =~ "a low one"
+    assert text =~ "an info one"
+    assert text =~ "3 matched; 3 returned"
+    refute listed(scope, %{severity: "low"}) =~ "an info one"
 
     assert listed(scope, %{severity: "all"}) =~ "an info one"
     assert listed(scope, %{severity: "low"}) =~ "a low one"

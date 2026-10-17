@@ -46,7 +46,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     * `model_preference` — providers and models, most preferred first.
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: []
 
   @enforce_keys [
     :role,
