@@ -653,6 +653,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         Enum.each(batch.entries, &eject(state.scope, &1, reason.reason))
         next(idle(state))
 
+      # `root` is stuck on our own merge commit with no rollback: main moved
+      # because of this attempt, not independently. Asking `on_current_main`
+      # would see exactly that commit, read it as a landing to rebuild on, and
+      # gate it again -- which finds the candidate's commit already an
+      # ancestor of main and lands it `already_on_main`, without ever
+      # fetching the submodule or deploying. Eject at once instead.
+      {:error, %{stuck_on_main: true} = reason} ->
+        Logger.error("[PromotionQueue] landing #{batch.head} failed: #{describe(reason)}")
+        could_not_gate(state, batch.entries, %{reason: "landing failed: #{describe(reason)}"})
+
       {:error, reason} ->
         # Main moved under the batch (a direct promotion landed) or the merge
         # was refused: nothing landed, so the candidates are gated again on

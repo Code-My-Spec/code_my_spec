@@ -58,11 +58,11 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   defp answer(@main, ["ls-tree", @base, "--", ".code_my_spec"]), do: gitlink(@old_pin)
   defp answer(@main, ["ls-tree", @merged, "--", ".code_my_spec"]), do: gitlink(@new_pin)
 
-  defp answer(@main, ["reset", "--keep", @base]), do: {"", 0}
+  defp answer(@main, ["-c", "submodule.recurse=false", "reset", "--keep", @base]), do: {"", 0}
   defp answer(@sub, ["rev-parse", "--show-superproject-working-tree"]), do: {@main <> "\n", 0}
   defp answer(@sub, ["status", "--porcelain"]), do: {"", 0}
   defp answer(@sub, ["cat-file", "-e", @new_pin <> "^{commit}"]), do: fetched?()
-  defp answer(@sub, ["fetch" | _]), do: fetch()
+  defp answer(@sub, ["-c", _cfg, "fetch" | _]), do: fetch()
   defp answer(@sub, ["checkout", "--quiet", @new_pin]), do: checkout()
   defp answer(@sub, ["rev-parse", "HEAD"]), do: {current() <> "\n", 0}
   defp answer(cd, args), do: {"unscripted: git #{Enum.join(args, " ")} in #{cd}", 1}
@@ -149,26 +149,74 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     Promotion.promote(scope, story.number)
   end
 
-  test "a merge that moves the gitlink fetches the pinned commit, checks it out, and restarts" do
+  @fetch_args ["-c", "uploadpack.allowReachableSHA1InWant=true", "fetch", "--quiet",
+               @agent <> "/.code_my_spec", @new_pin]
+
+  # `sub_git/4` wraps a failing command's own output with the command that
+  # produced it, so the reason names what was actually run, not just what it
+  # said.
+  @fetch_failure "`git #{Enum.join(@fetch_args, " ")}` failed: fatal: upload-pack: not our ref #{@new_pin}"
+
+  test "a merge that moves the gitlink fetches the pinned commit by its exact sha, checks it out, and restarts" do
     assert {:ok, %{merged: "story/x"}} = promote(%{})
 
-    assert_received {:git, @sub, ["fetch", "--quiet", @agent <> "/.code_my_spec", "HEAD"]}
+    assert_received {:git, @sub, @fetch_args}
     assert_received {:git, @sub, ["checkout", "--quiet", @new_pin]}
+    assert_receive :restarted, 2_000
+  end
+
+  # 766ee457: a commit missing from the gate copy's submodule HEAD -- because
+  # the gate copy had already moved on to building a later batch -- failed to
+  # fetch under the old "fetch HEAD" call. Asking for the exact sha instead
+  # does not depend on whatever the gate copy's submodule HEAD is right now.
+  test "a commit missing from the gate copy's submodule HEAD is still fetched by its exact sha, and lands" do
+    not_at_head = %{
+      {@sub,
+       ["-c", "uploadpack.allowReachableSHA1InWant=true", "fetch", "--quiet",
+        @agent <> "/.code_my_spec", "HEAD"]} =>
+        {"fatal: upload-pack: not our ref HEAD", 128}
+    }
+
+    assert {:ok, %{merged: "story/x"}} = promote(not_at_head)
+
+    assert_received {:git, @sub, @fetch_args}
     assert_receive :restarted, 2_000
   end
 
   test "a pinned commit that cannot be fetched refuses the promote, rolls back, and never restarts" do
     failing = %{
-      {@sub, ["fetch", "--quiet", @agent <> "/.code_my_spec", "HEAD"]} =>
-        {"fatal: upload-pack: not our ref #{@new_pin}", 128}
+      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128}
     }
 
-    assert {:error, %{reason: reason}} = promote(failing)
+    assert {:error, %{reason: reason, stuck_on_main: false, submodule: submodule}} =
+             promote(failing)
+
+    assert submodule == %{path: ".code_my_spec", wanted: @new_pin, detail: @fetch_failure}
 
     assert reason =~ @new_pin
     assert reason =~ @agent <> "/.code_my_spec"
     assert reason =~ "not our ref"
-    assert_received {:git, @main, ["reset", "--keep", @base]}
+    assert_received {:git, @main, ["-c", "submodule.recurse=false", "reset", "--keep", @base]}
+    refute_received {:git, @sub, ["checkout" | _]}
+    refute_receive :restarted, 200
+  end
+
+  # 766ee457: when the rollback also fails, main is stuck on this merge's own
+  # commit -- not moved by anything else -- so this must still be reported as
+  # a plain failure, never as landed, with enough named in the reason (the
+  # submodule path, the commit it wanted, what the fetch returned) to act on.
+  test "a pinned commit that cannot be fetched and cannot be rolled back is never marked landed, and names why" do
+    stuck = %{
+      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128},
+      {@main, ["-c", "submodule.recurse=false", "reset", "--keep", @base]} =>
+        {"error: Your local changes to '.code_my_spec' would be overwritten by checkout", 1}
+    }
+
+    assert {:error, %{reason: reason, stuck_on_main: true, submodule: submodule}} = promote(stuck)
+
+    assert submodule == %{path: ".code_my_spec", wanted: @new_pin, detail: @fetch_failure}
+
+    assert reason =~ "Rolling the merge back also failed"
     refute_received {:git, @sub, ["checkout" | _]}
     refute_receive :restarted, 200
   end
@@ -178,11 +226,10 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     Process.put(:later_head, @moved)
 
     failing = %{
-      {@sub, ["fetch", "--quiet", @agent <> "/.code_my_spec", "HEAD"]} =>
-        {"fatal: upload-pack: not our ref #{@new_pin}", 128}
+      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128}
     }
 
-    assert {:error, %{reason: reason}} = promote(failing)
+    assert {:error, %{reason: reason, stuck_on_main: false}} = promote(failing)
 
     assert reason =~ "NOT rolled back"
     assert reason =~ @moved
@@ -212,7 +259,7 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     assert reason =~ "qa/1009/brief.md"
     assert reason =~ "uncommitted work"
     refute_received {:git, @sub, ["checkout" | _]}
-    assert_received {:git, @main, ["reset", "--keep", @base]}
+    assert_received {:git, @main, ["-c", "submodule.recurse=false", "reset", "--keep", @base]}
     refute_receive :restarted, 200
   end
 
