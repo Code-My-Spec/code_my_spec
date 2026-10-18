@@ -118,7 +118,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
-    check_answer list_user_questions
+    check_answer list_user_questions tool_docs
     list_problems get_analysis_output
     start_analysis
     web_search web_fetch
@@ -143,7 +143,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_requirements show_requirement
     list_working_copies
     list_rules list_questions withdraw_question ask_user_question tap_out cancel_task
-    check_answer list_user_questions
+    check_answer list_user_questions tool_docs
     list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
@@ -177,7 +177,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     validate_dependency_graph execute_proposal show_namespace_hierarchy get_component
     list_issues get_issue create_issue triage_issues accept_issue dismiss_issue update_issue
     list_notifications answer_notification escalate_question withdraw_question search_answers
-    check_answer list_user_questions
+    check_answer list_user_questions tool_docs
     list_knowledge read_knowledge semantic_search
     web_search web_fetch
     query_logs get_trace slow_spans error_summary

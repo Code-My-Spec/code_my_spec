@@ -8,12 +8,20 @@ defmodule CodeMySpec.Agents.RoleProfilesDirectToolsAgreeWithLocalServerTest do
   call is never gated on `RoleProfile` at all, confirmed in
   `CodeMySpec.McpServers.LibraryTools.call/4`).
 
-  Scoped to exactly these five names and to `coding`/`qa` -- the two roles
-  and the tools this issue and its precedent (`e809c0db`) are about.
-  `promote` and `start_analysis` are deliberately asymmetric between the two
-  roles already (coding carries `promote`, qa carries `start_analysis`, not
-  the reverse) -- a separate, standing design choice this test must not
-  treat as drift.
+  Issue `7d5d486e` (story 1033): `tool_docs` was missing from the same
+  manifest -- `CodeMySpec.Code_mode.Bindings`'s script-exclusion message
+  reads `RoleProfile.carries?/2` to decide whether to tell a caller "call
+  it directly instead", and a QA agent asking about `tool_docs` from a
+  script got told a direct call would also be refused -- untrue; `tool_docs`
+  is one of `LocalServer`'s own `component(...)` registrations, reachable by
+  every connection regardless of role.
+
+  Scoped to exactly these six names and to `coding`/`qa` -- the two roles
+  and the tools these two issues and their precedent (`e809c0db`) are
+  about. `promote` and `start_analysis` are deliberately asymmetric between
+  the two roles already (coding carries `promote`, qa carries
+  `start_analysis`, not the reverse) -- a separate, standing design choice
+  this test must not treat as drift.
   """
 
   use ExUnit.Case, async: true
@@ -22,7 +30,14 @@ defmodule CodeMySpec.Agents.RoleProfilesDirectToolsAgreeWithLocalServerTest do
   alias CodeMySpec.McpServers.LocalServer
 
   @roles [:coding, :qa]
-  @direct_tools ["ask_user_question", "check_answer", "list_user_questions", "tap_out", "cancel_task"]
+  @direct_tools [
+    "ask_user_question",
+    "check_answer",
+    "list_user_questions",
+    "tap_out",
+    "cancel_task",
+    "tool_docs"
+  ]
 
   test "LocalServer still registers every tool this manifest treats as universal" do
     names = LocalServer.registrations() |> Enum.map(& &1.name)
