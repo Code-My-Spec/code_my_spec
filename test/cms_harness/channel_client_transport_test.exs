@@ -462,6 +462,28 @@ defmodule CmsHarness.ChannelClientTransportTest do
     end
   end
 
+  # A topic close used to dial a second connection beside the first. The new
+  # join evicted the old channel, its death came back as another close, and one
+  # harness held 195 sockets with hooks refused every few seconds (2026-10-18).
+  describe "a reconnect while a connection is up" do
+    test "drops that connection instead of dialing beside it" do
+      sock = %{socket(%{joined: false, attempts: 0, pending: %{}}) | channel_pid: self()}
+
+      {:noreply, _out} = ChannelClient.handle_info(:reconnect, sock)
+
+      assert_receive {:transport_disconnect, "harness_project:p1"},
+                     1_000,
+                     "the drop hands the dial to `handle_disconnect/2`, after the old socket is gone"
+    end
+
+    test "a close that lands as a join completes leaves the join alone" do
+      sock = %{socket(%{joined: true, attempts: 0, pending: %{}}) | channel_pid: self()}
+
+      assert {:noreply, ^sock} = ChannelClient.handle_info(:reconnect, sock)
+      refute_received {:transport_disconnect, _}
+    end
+  end
+
   describe "the reconnect backoff survives a join that does not work" do
     # Measured 2026-09-23: four harness instances ran join -> push read_model ->
     # {:error, %{"reason" => "unmatched topic"}} -> disconnect -> backoff(0) =
