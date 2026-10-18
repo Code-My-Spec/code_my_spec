@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
             ToolLibrary.run(
               "message_agent",
               %{agent_id: agent.id, message: reason},
-              Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
           assert match?({:ok, _}, sent), inspect(sent)

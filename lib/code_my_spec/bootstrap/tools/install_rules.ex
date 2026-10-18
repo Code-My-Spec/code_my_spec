@@ -24,7 +24,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallRules do
 
   @impl true
   def call(_params, context) do
-    env = CodeMySpec.WorkingCopies.tool_environment(context.scope)
+    env = CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
 
     case install(env) do
       :ok ->

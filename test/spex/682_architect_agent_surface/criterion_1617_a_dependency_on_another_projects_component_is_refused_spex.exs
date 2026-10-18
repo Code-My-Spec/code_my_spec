@@ -9,9 +9,8 @@ defmodule CodeMySpecSpex.Story682.Criterion1617Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.AddDependency
-  alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
 
@@ -43,21 +42,22 @@ defmodule CodeMySpecSpex.Story682.Criterion1617Spex do
       end
 
       when_ "the agent adds a dependency on the other project's component", context do
-        {:reply, reply, _frame} =
-          AddDependency.execute(
+        reply =
+          ToolLibrary.run(
+            "add_dependency",
             %{source_component_id: context.web.id, target_component_id: context.theirs.id},
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is refused, and nothing is drawn", context do
-        assert context.reply.isError
+        assert match?({:error, _}, context.reply)
         assert response_text(context.reply) =~ "No component #{context.theirs.id} in this project"
 
-        {:reply, architecture, _frame} =
-          ShowArchitecture.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        architecture =
+          ToolLibrary.run("show_architecture", %{}, %{scope: context.scope})
 
         refute response_text(architecture) =~ "-->"
         {:ok, context}

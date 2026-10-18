@@ -11,10 +11,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5918Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Stories.Tools.ListStoryTitles
   alias CodeMySpecSpex.StoryHelpers
 
@@ -34,14 +33,15 @@ defmodule CodeMySpecSpex.Story686.Criterion5918Spex do
             acceptance_criteria: []
           )
 
-        {:reply, response, _frame} =
-          CreateIssue.execute(
+        response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Cosmetic typo in welcome screen",
               severity: "low",
               description: "Trivial duplicate of an earlier report."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         issue_id = extract_issue_id(response)
@@ -57,9 +57,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5918Spex do
           reason: "Duplicate of the earlier welcome-screen report."
         }
 
-        {:reply, response, _frame} = DismissIssue.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "dismiss_issue",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected dismiss_issue to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :dismiss_response, response)}
@@ -77,8 +82,12 @@ defmodule CodeMySpecSpex.Story686.Criterion5918Spex do
       then_ "get_issue reflects the dismissed status and reason", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          GetIssue.execute(%{issue_id: context.issue_id}, frame)
+        response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 

@@ -22,6 +22,8 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IssuesFixtures
@@ -31,9 +33,6 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
-  alias CodeMySpec.McpServers.Issues.Tools.UpdateIssue
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.TaskOwner
@@ -141,11 +140,18 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
     test "resolving it releases the agent's task and wakes the agent to resume", ctx do
       blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
 
-      {:reply, response, _} =
-        ResolveIssue.execute(%{issue_id: ctx.issue.id, resolution: "fixed"}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "resolve_issue",
+          %{issue_id: ctx.issue.id, resolution: "fixed"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      refute response.isError
-      assert_woken(ctx.agent.id, saying: "Your blocker issue #{ctx.issue.id} was resolved; resume")
+      assert match?({:ok, _}, response)
+
+      assert_woken(ctx.agent.id,
+        saying: "Your blocker issue #{ctx.issue.id} was resolved; resume"
+      )
 
       {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
       refute waiting?(fresh, ctx.issue.id), "resolving the issue left its task waiting"
@@ -154,10 +160,14 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
     test "dismissing it releases the agent's task and wakes the agent to resume", ctx do
       blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
 
-      {:reply, response, _} =
-        DismissIssue.execute(%{issue_id: ctx.issue.id, reason: "not a defect"}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "dismiss_issue",
+          %{issue_id: ctx.issue.id, reason: "not a defect"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      refute response.isError
+      assert match?({:ok, _}, response)
 
       {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
 
@@ -169,7 +179,9 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
              clear this block — the task stays refused by `start_task` forever.
              """
 
-      assert_woken(ctx.agent.id, saying: "Your blocker issue #{ctx.issue.id} was dismissed; resume")
+      assert_woken(ctx.agent.id,
+        saying: "Your blocker issue #{ctx.issue.id} was dismissed; resume"
+      )
     end
 
     # Blocked at threshold, then re-triaged below it: nothing offers a fix
@@ -177,10 +189,14 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
     test "downgrading it below the fix threshold releases and wakes the waiter", ctx do
       blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
 
-      {:reply, response, _} =
-        UpdateIssue.execute(%{issue_id: ctx.issue.id, severity: "low"}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "update_issue",
+          %{issue_id: ctx.issue.id, severity: "low"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      refute response.isError
+      assert match?({:ok, _}, response)
 
       {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
       refute waiting?(fresh, ctx.issue.id), "a downgraded issue left its task wedged"
@@ -194,8 +210,12 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
     test "a severity change that stays at the threshold keeps it waiting", ctx do
       blocked_on_issue(ctx.scope, ctx.agent, ctx.issue.id)
 
-      {:reply, _response, _} =
-        UpdateIssue.execute(%{issue_id: ctx.issue.id, severity: "high"}, ctx.frame)
+      _response =
+        ToolLibrary.run(
+          "update_issue",
+          %{issue_id: ctx.issue.id, severity: "high"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
       {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
       assert waiting?(fresh, ctx.issue.id), "an upgrade released a block still owed a fix"
@@ -216,8 +236,12 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
       task = Enum.find(session.tasks, &(&1.status == :active))
       {:ok, _} = TaskOwner.block_task(ctx.scope, session, task.id, :issue, ctx.issue.id)
 
-      {:reply, _response, _} =
-        ResolveIssue.execute(%{issue_id: ctx.issue.id, resolution: "fixed"}, ctx.frame)
+      _response =
+        ToolLibrary.run(
+          "resolve_issue",
+          %{issue_id: ctx.issue.id, resolution: "fixed"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
       fresh = Repo.get!(Session, session.id)
       refute waiting?(fresh, ctx.issue.id), "a session's task stayed blocked on a resolved issue"

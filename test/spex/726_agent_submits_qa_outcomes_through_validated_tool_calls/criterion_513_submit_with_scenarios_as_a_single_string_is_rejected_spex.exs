@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6448Spex do
               scenarios: "marker_freeform_string_scenarios all three passed",
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :submit_response, response)}
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6448Spex do
           ToolLibrary.run(
             "list_qa_attempts",
             %{story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, list_response)

@@ -12,13 +12,13 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -171,8 +171,12 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   end
 
   defp next(scope, agent) do
-    {false, text} = call(GetNextRequirement, scope, agent, %{})
+    {false, text} = call("get_next_requirement", scope, agent, %{})
     text
+  end
+
+  defp call(name, scope, agent, params) when is_binary(name) do
+    name |> ToolLibrary.run(params, %{scope: scope, agent_id: agent.id}) |> flagged()
   end
 
   defp call(tool, scope, agent, params) do
@@ -180,6 +184,9 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
     {:reply, response, _frame} = tool.execute(params, frame)
     {response.isError, hd(Response.to_protocol(response)["content"])["text"]}
   end
+
+  defp flagged({:ok, text}), do: {false, text}
+  defp flagged({:error, text}), do: {true, text}
 
   defp issue_copy(scope) do
     {:ok, copy} =

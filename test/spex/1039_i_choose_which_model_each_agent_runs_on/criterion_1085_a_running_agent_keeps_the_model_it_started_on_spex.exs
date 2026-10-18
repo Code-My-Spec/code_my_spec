@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3010Spex do
       ToolLibrary.run(
         "retire_agent",
         %{"agent_id" => agent_id},
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     assert match?({:ok, _}, reply), response_text(reply)

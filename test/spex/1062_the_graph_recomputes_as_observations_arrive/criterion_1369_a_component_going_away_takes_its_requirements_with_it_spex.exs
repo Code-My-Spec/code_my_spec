@@ -39,11 +39,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3430Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphGivens
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.DeleteComponent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -62,13 +63,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3430Spex do
       when_ "one sibling is deleted, its code removed, and the project syncs", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _} =
-          DeleteComponent.execute(
+        reply =
+          ToolLibrary.run(
+            "delete_component",
             %{component_id: context.sibling_a.id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute reply.isError
+        assert match?({:ok, _}, reply)
         :ok = Fixtures.delete_env_file(context.environment, "lib/catalog/product.ex")
         sync(context)
 

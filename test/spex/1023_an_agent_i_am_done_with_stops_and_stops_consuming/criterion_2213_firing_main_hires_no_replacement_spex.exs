@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2213Spex do
           ToolLibrary.run(
             "retire_agent",
             %{"agent_id" => main.id},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, reply), "firing the main agent itself failed"

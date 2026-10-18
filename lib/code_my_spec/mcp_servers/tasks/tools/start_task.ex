@@ -26,7 +26,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Components
-  alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.McpServers.Tasks.TasksMapper
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Requirements

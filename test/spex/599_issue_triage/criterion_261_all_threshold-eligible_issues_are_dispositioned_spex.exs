@@ -12,9 +12,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5335Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
@@ -66,13 +66,25 @@ defmodule CodeMySpecSpex.Story599.Criterion5335Spex do
       given_ "the agent has accepted 2 as bugs and dismissed 1 with a reason", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _r, _f} = AcceptIssue.execute(%{issue_id: context.issue_a.id}, frame)
-        {:reply, _r, _f} = AcceptIssue.execute(%{issue_id: context.issue_b.id}, frame)
+        _r =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: context.issue_a.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, _r, _f} =
-          DismissIssue.execute(
+        _r =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: context.issue_b.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        _r =
+          ToolLibrary.run(
+            "dismiss_issue",
             %{issue_id: context.issue_c.id, reason: "not reproducible — expected behavior"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}

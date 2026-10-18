@@ -55,7 +55,7 @@ defmodule CodeMySpec.Agents.Tools.TeammatesMessageEachOtherOnTheirCopyTest do
       ToolLibrary.run(
         "message_agent",
         %{agent_id: to.id, message: "fix at abc123"},
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     reply

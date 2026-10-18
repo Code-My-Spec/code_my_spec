@@ -18,7 +18,7 @@ defmodule CmsHarness.AnalysisPathTest do
   import ExUnit.CaptureLog
 
   alias CmsHarness.Channel
-  alias CmsHarness.Project.{AnalysisServer, ChannelClient}
+  alias CmsHarness.Project.{AnalysisServer}
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
 

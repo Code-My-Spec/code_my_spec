@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2891Spex do
           ToolLibrary.run(
             "turn_off_agent",
             %{"agent_id" => done.id},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         refute running?(done.id),

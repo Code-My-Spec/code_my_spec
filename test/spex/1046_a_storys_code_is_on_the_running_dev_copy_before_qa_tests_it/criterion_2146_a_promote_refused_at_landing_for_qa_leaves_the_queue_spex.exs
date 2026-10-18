@@ -11,11 +11,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion2146Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.PromotionHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -64,23 +64,28 @@ defmodule CodeMySpecSpex.Story1046.Criterion2146Spex do
       when_ "a blocking issue is accepted on the story before it lands", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, created, _frame} =
-          CreateIssue.execute(
+        created =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "The war is declared twice",
               severity: "high",
               description: "Declaring war on an empire already at war declares it again.",
               story_number: context.story.number
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         [_, issue_id] = Regex.run(~r/\(ID: ([0-9a-f-]{36})\)/, response_text(created))
 
-        {:reply, accepted, _frame} =
-          AcceptIssue.execute(%{issue_id: issue_id, category: "bug"}, frame)
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: issue_id, category: "bug"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute accepted.isError, response_text(accepted)
+        assert match?({:ok, _}, accepted), response_text(accepted)
 
         the_gate_answers(context)
         {:ok, Map.put(context, :told, what_the_agent_was_told(context))}

@@ -10,12 +10,12 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IssuePromotionHelpers
   import CodeMySpecSpex.PromotionHelpers
 
-  alias CodeMySpec.McpServers.Issues.Tools.{AcceptIssue, AssignIssueToWorkingCopy, CreateIssue}
   alias CodeMySpec.McpServers.MainAgent.Tools.{ListAgentWork, ListOffers}
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -37,24 +37,37 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
           |> a_promotable_project()
           |> an_issue_assigned_to_the_team()
 
-        {:reply, created, _} =
-          CreateIssue.execute(
+        created =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Repair the issue search",
               description: "Repair the issue search",
               severity: "high",
               scope: "framework"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        false = created.isError
+        {:ok, _} = created
         next_issue_id = extract_issue_id!(created)
 
-        {:reply, accepted, _} =
-          AcceptIssue.execute(%{issue_id: next_issue_id}, context.main_frame)
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: next_issue_id},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
 
-        false = accepted.isError
+        {:ok, _} = accepted
 
         context
         |> the_coder_fixes_it("lib/broken_oaths/diplomacy/notify.ex", notify())
@@ -76,7 +89,13 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
       when_ "both teammates ask for work twice without a new main assignment", context do
         responses =
           for _round <- 1..2, frame <- [context.coder_frame, context.qa_frame] do
-            {:reply, response, _} = GetNextRequirement.execute(%{}, frame)
+            response =
+              ToolLibrary.run(
+                "get_next_requirement",
+                %{},
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
+
             response
           end
 
@@ -85,7 +104,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
 
       then_ "neither teammate is offered work and each visibly waits for main", context do
         for response <- context.waiting_responses do
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
           text = response_text(response)
           assert String.downcase(text) =~ "waiting for main assignment"
           refute text =~ "requirement_name=`"
@@ -131,22 +150,38 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
       end
 
       when_ "main assigns the next issue to this team", context do
-        {:reply, response, _} =
-          AssignIssueToWorkingCopy.execute(
+        response =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
             %{
               issue_id: context.next_issue_id,
               working_copy_id: context.scope.active_working_copy_id
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :next_assignment, response)}
       end
 
       then_ "the coder can take the newly assigned issue and the visible wait ends", context do
-        refute context.next_assignment.isError, response_text(context.next_assignment)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, context.coder_frame)
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, context.next_assignment), response_text(context.next_assignment)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         assert response_text(response) =~ "entity_type=`issue`"
         assert response_text(response) =~ "entity_id=`#{context.next_issue_id}`"
         {:reply, work, _} = ListAgentWork.execute(%{}, context.main_frame)

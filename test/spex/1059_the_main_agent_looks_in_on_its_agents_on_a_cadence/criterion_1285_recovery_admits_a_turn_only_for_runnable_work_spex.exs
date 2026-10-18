@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -37,8 +38,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
              context do
         context = given_a_staffed_checkout(context, "spex_3317")
         context = ProjectStateFixtures.apply_project_kickoff(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: true)

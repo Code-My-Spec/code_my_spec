@@ -11,15 +11,12 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
   story.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Issues.Tools.CreateIssue`
+  - `CodeMySpec.Issues.Tools.CreateIssue`
   - `CodeMySpec.Qa.Tools.SubmitQaResult`
-  - `CodeMySpec.McpServers.Issues.Tools.ListIssues`
+  - `CodeMySpec.Issues.Tools.ListIssues`
   """
 
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
@@ -40,8 +37,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, issue_response, _frame} =
-          CreateIssue.execute(
+        issue_response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "QA-found defect from criterion 6443 spex",
               severity: "low",
@@ -49,10 +47,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
               story_number: context.story.number,
               description: "Discovered while probing the agent surface."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute issue_response.isError
+        assert match?({:ok, _}, issue_response)
         issue_id = extract_issue_id!(response_text(issue_response))
 
         submit_response =
@@ -64,7 +62,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
               scenarios: [%{name: "probe", status: "pass", observation: "found one"}],
               issue_ids: [issue_id]
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, submit_response)
@@ -76,10 +74,14 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
       then_ "the issue is queryable on the story via list_issues", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListIssues.execute(%{story_number: context.story.number, severity: "all"}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_issues",
+            %{story_number: context.story.number, severity: "all"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         assert text =~ context.issue_id,

@@ -26,8 +26,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -73,11 +72,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
         # in a fresh fixture is project setup — true, and not what this
         # criterion is about. The claim is about what comes after QA *on this
         # story*.
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(
-            %{story: to_string(context.story.number)},
-            %Frame{assigns: %{current_scope: context.scope}}
-          )
+        response =
+          ToolLibrary.run("show_story_requirements", %{story: to_string(context.story.number)}, %{
+            scope: context.scope
+          })
 
         {:ok, Map.put(context, :next, response_text(response))}
       end

@@ -13,9 +13,9 @@ defmodule CodeMySpecSpex.OfferHelpers do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   import ExUnit.Assertions
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListOffers
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -93,7 +93,14 @@ defmodule CodeMySpecSpex.OfferHelpers do
   @doc "The `start_task` arguments `get_next_requirement` names for this agent."
   @spec next_task(map(), String.t()) :: map()
   def next_task(context, agent_id) do
-    {:reply, response, _} = GetNextRequirement.execute(%{}, agent_frame(context, agent_id))
+    frame = agent_frame(context, agent_id)
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     [_, name, type, id] =
       Regex.run(

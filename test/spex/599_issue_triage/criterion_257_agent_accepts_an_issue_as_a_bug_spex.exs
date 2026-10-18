@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
 
   alias CodeMySpecSpex.Fixtures
 
@@ -33,10 +34,11 @@ defmodule CodeMySpecSpex.Story599.Criterion5331Spex do
       when_ "the agent calls accept_issue with category :bug and the issue's id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AcceptIssue.execute(
+        response =
+          ToolLibrary.run(
+            "accept_issue",
             %{issue_id: context.issue.id, category: "bug"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :accept_response, response)}

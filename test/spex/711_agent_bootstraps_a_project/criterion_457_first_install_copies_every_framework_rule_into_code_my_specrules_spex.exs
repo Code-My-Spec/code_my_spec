@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
           ToolLibrary.run(
             "install_rules",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :install_response, response)}

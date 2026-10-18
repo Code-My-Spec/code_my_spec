@@ -138,7 +138,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
           ToolLibrary.run(
             "list_qa_attempts",
             %{story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         refute response_text(attempts) =~ ~r/\bpass(ed|ing)?\b/i,

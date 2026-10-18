@@ -15,13 +15,13 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
   """
   use CodeMySpecSpex.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -124,8 +124,15 @@ defmodule CodeMySpec.Agents.TheOfferAndTheMenuNameTheSameWorkTest do
 
   defp next_head(scope, agent) do
     frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
-    {:reply, response, _} = GetNextRequirement.execute(%{}, frame)
-    text = hd(Response.to_protocol(response)["content"])["text"]
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    text = elem(response, 1)
 
     ~r/Execution metadata:\n- (\S+) \(/ |> Regex.run(text) |> head_name()
   end

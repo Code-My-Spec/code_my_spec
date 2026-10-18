@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
   - `CodeMySpec.Environments.write_file/3` (write the file)
   - `CodeMySpec.Environments` delete via `write_file` rewrite or
     direct filesystem cleanup helper
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
     (observe satisfaction stays unchanged)
   """
 
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, submit_response)

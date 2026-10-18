@@ -10,8 +10,8 @@ defmodule CodeMySpecSpex.Story682.Criterion1616Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.AddDependency
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
@@ -33,17 +33,18 @@ defmodule CodeMySpecSpex.Story682.Criterion1616Spex do
       end
 
       when_ "the agent adds a dependency of it on itself", context do
-        {:reply, reply, _frame} =
-          AddDependency.execute(
+        reply =
+          ToolLibrary.run(
+            "add_dependency",
             %{source_component_id: context.accounts.id, target_component_id: context.accounts.id},
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is refused, and says why", context do
-        assert context.reply.isError
+        assert match?({:error, _}, context.reply)
         assert response_text(context.reply) =~ "cannot depend on itself"
         {:ok, context}
       end

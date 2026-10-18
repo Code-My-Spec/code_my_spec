@@ -20,7 +20,6 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsPromptTest do
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
-  alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Stories
 

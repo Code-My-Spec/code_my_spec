@@ -7,10 +7,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion2079Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpec.Agents
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -54,13 +53,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion2079Spex do
       end
 
       when_ "the story-linked issue is assigned to that working copy", context do
-        {:reply, assigned, _frame} =
-          AssignIssueToWorkingCopy.execute(
+        assigned =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
             %{issue_id: context.issue_id, working_copy_id: context.scope.active_working_copy_id},
-            %Frame{assigns: %{current_scope: context.main_scope, agent_id: context.main.id}}
+            %{scope: context.main_scope, agent_id: context.main.id}
           )
 
-        refute assigned.isError
+        assert match?({:ok, _}, assigned)
         {:ok, context}
       end
 
@@ -86,12 +86,13 @@ defmodule CodeMySpecSpex.Story1091.Criterion2079Spex do
         assert coder.issue_id == context.issue_id
         assert qa_agent.issue_id == context.issue_id
 
-        {:reply, offer, _frame} =
-          GetNextRequirement.execute(%{}, %Frame{
-            assigns: %{current_scope: context.scope, agent_id: context.coder.id}
+        offer =
+          ToolLibrary.run("get_next_requirement", %{}, %{
+            scope: context.scope,
+            agent_id: context.coder.id
           })
 
-        refute offer.isError
+        assert match?({:ok, _}, offer)
         text = response_text(offer)
         assert text =~ "entity_type=`issue`"
         assert text =~ "entity_id=`#{context.issue_id}`"

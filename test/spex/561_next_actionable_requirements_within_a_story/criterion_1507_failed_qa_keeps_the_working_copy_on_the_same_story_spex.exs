@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3609Spex do
 
       when_ "the agent asks what to work on", context do
         finding =
-          Slice.call(context, CodeMySpec.McpServers.Issues.Tools.CreateIssue, %{
+          Slice.call(context, "create_issue", %{
             title: "Story fails QA",
             severity: "high",
             description: "Reservation is lost after saving",

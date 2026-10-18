@@ -6,9 +6,9 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
@@ -39,7 +39,14 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
           )
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, before_response, _frame} = ListComponents.execute(%{}, frame)
+
+        before_response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         refute response_text(before_response) =~ "ReportsLive"
 
         story =
@@ -78,14 +85,15 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         module_name = "#{context.app}Web.ReportsLive"
 
-        {:reply, create_response, _frame} =
-          CreateComponent.execute(
+        create_response =
+          ToolLibrary.run(
+            "create_component",
             %{name: "Reports", module_name: module_name, type: "liveview"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute create_response.isError,
-               "expected create_component to succeed: #{inspect(create_response.content)}"
+        assert match?({:ok, _}, create_response),
+               "expected create_component to succeed: #{inspect([%{"type" => "text", "text" => elem(create_response, 1)}])}"
 
         {:reply, _response, _frame} =
           SetStoryComponent.execute(
@@ -105,7 +113,13 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
 
       then_ "a new Reports surface component exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listed, _frame} = ListComponents.execute(%{}, frame)
+
+        listed =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(listed) =~ context.module_name
 

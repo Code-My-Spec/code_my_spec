@@ -14,22 +14,31 @@ defmodule CodeMySpecSpex.Story715.Criterion6304Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ContextStatistics
 
   import CodeMySpecSpex.GraphGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "context_statistics returns per-component story + dependency counts, sortable by story_count or dependency_count", criterion: 487 do
+  spex "context_statistics returns per-component story + dependency counts, sortable by story_count or dependency_count",
+    criterion: 487 do
     scenario "Default story_count sort puts components with most stories first" do
       given_ :story_with_liveview_surface
       given_ :orphan_component
 
       when_ "the agent calls context_statistics with no sort_by parameter", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ContextStatistics.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "context_statistics",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 

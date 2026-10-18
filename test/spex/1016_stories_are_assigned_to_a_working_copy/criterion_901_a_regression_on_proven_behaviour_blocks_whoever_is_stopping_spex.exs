@@ -38,6 +38,8 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
@@ -45,7 +47,6 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
   alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
@@ -133,7 +134,13 @@ defmodule CodeMySpecSpex.Story895.Criterion2406Spex do
         # as work in progress. Writing the spec, syncing, and then going green is
         # also the real order of events.
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _synced, _frame} = SyncProject.execute(%{}, frame)
+
+        _synced =
+          ToolLibrary.run(
+            "sync_project",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :spex_path, path)}
       end

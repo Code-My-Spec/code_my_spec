@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.CompactCadenceHelpers do
     case ToolLibrary.run(
            name,
            params,
-           Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
          ) do
       {:ok, text} -> text
       {:error, text} -> flunk("#{name} refused: #{text}")

@@ -37,12 +37,13 @@ defmodule CodeMySpecSpex.Story1062.Criterion3523Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -79,18 +80,19 @@ defmodule CodeMySpecSpex.Story1062.Criterion3523Spex do
       when_ "an observation that moves a requirement is applied", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, filed, _frame} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "something is wrong on this story",
               description: "filed at the severity the graph gates on",
               severity: "medium",
               story_number: context.story_number
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute filed.isError, inspect(filed)
+        assert match?({:ok, _}, filed), inspect(filed)
         :ok = Fixtures.settle_graph(context.scope)
 
         {:ok, Map.put(context, :after, read_graph(context))}

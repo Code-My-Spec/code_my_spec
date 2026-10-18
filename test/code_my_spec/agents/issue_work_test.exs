@@ -181,7 +181,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
           issue_ids: [ctx.issue.id],
           scenarios: [%{name: "Delivery", status: "fail", observation: "Still broken"}]
         },
-        Map.put(qa_frame.assigns, :scope, qa_frame.assigns.current_scope)
+        Map.put(qa_frame.assigns, :scope, qa_frame.assigns[:current_scope])
       )
 
     assert match?({:ok, _}, submitted)

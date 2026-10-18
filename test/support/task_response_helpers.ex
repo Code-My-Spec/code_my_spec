@@ -1,4 +1,6 @@
 defmodule CodeMySpecSpex.TaskResponseHelpers do
+  alias CodeMySpec.ToolLibrary
+
   @moduledoc """
   Helpers for asserting on responses from the Tasks MCP tools
   (`StartTask`, `EvaluateTask`).
@@ -9,8 +11,6 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
   (`extract_task_id/1`). Both are pure observation — they read what
   the agent would see, nothing more.
   """
-
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
 
   @doc """
   Flattens a tool response into a single text string.
@@ -142,14 +142,15 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
   def satisfied_qa_complete_text(scope) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
 
-    {:reply, response, _frame} =
-      ListRequirements.execute(
+    response =
+      ToolLibrary.run(
+        "list_requirements",
         %{
           status: "satisfied",
           entity_type: "story",
           requirement_name: "qa_complete"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response_text(response)

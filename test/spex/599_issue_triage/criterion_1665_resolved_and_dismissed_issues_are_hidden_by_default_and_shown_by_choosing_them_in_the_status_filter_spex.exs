@@ -7,12 +7,11 @@ defmodule CodeMySpecSpex.Story599.Criterion1665Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -30,19 +29,31 @@ defmodule CodeMySpecSpex.Story599.Criterion1665Spex do
         resolved =
           Fixtures.issue_fixture(context.scope, %{title: "was-resolved", severity: :high})
 
-        {:reply, r1, _} =
-          DismissIssue.execute(%{issue_id: dismissed.id, reason: "duplicate"}, frame)
+        r1 =
+          ToolLibrary.run(
+            "dismiss_issue",
+            %{issue_id: dismissed.id, reason: "duplicate"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, accepted, _} =
-          AcceptIssue.execute(%{issue_id: resolved.id, category: "bug"}, frame)
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: resolved.id, category: "bug"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute accepted.isError, inspect(accepted)
+        assert match?({:ok, _}, accepted), inspect(accepted)
 
-        {:reply, r2, _} =
-          ResolveIssue.execute(%{issue_id: resolved.id, resolution: "fixed"}, frame)
+        r2 =
+          ToolLibrary.run(
+            "resolve_issue",
+            %{issue_id: resolved.id, resolution: "fixed"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute r1.isError, inspect(r1)
-        refute r2.isError, inspect(r2)
+        assert match?({:ok, _}, r1), inspect(r1)
+        assert match?({:ok, _}, r2), inspect(r2)
 
         {:ok, context}
       end

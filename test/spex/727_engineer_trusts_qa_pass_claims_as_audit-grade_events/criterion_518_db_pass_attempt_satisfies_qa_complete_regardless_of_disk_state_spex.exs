@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6453Spex do
 
   Surfaces:
   - `CodeMySpec.Qa.Tools.SubmitQaResult` (write)
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
     (observe satisfaction)
   """
 
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6453Spex do
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response)

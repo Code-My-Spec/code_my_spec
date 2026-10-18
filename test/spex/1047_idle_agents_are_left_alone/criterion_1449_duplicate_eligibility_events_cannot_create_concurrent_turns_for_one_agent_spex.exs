@@ -9,13 +9,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -34,8 +35,15 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
       given_ "an idle continuous QA agent has eligible work and no active task", context do
         context = given_a_staffed_checkout(context, "spex_3551")
         context = FullSatisfactionFixtures.apply_without_qa_story(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         agent = Fixtures.running_agent(context.scope, role: "qa", continuous: true)
         assert Fixtures.role_queue_size(context.scope, agent.id) > 0

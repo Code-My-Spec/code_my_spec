@@ -24,12 +24,12 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -173,10 +173,11 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
   defp outstanding(scope), do: requirements(scope, "unsatisfied")
 
   defp requirements(scope, status) do
-    {:reply, response, _frame} =
-      ListRequirements.execute(
+    response =
+      ToolLibrary.run(
+        "list_requirements",
         %{entity_type: "component", status: status, summary: false},
-        %Frame{assigns: %{current_scope: scope}}
+        %{scope: scope}
       )
 
     response_text(response)

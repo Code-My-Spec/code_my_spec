@@ -94,7 +94,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
       ToolLibrary.run(
         "turn_off_agent",
         %{agent_id: ctx.conversation.id},
-        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
       )
 
     assert match?({:ok, _}, response), text(response)
@@ -108,7 +108,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
       ToolLibrary.run(
         "message_agent",
         %{agent_id: ctx.conversation.id, message: "carry on"},
-        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
       )
 
     assert match?({:ok, _}, response), text(response)
@@ -131,7 +131,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
       ToolLibrary.run(
         "turn_off_agent",
         %{agent_id: other_conversation.id},
-        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
       )
 
     assert match?({:error, _}, off)
@@ -147,7 +147,7 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
       ToolLibrary.run(
         "turn_off_agent",
         %{agent_id: missing},
-        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
       )
 
     for response <- [read, off] do

@@ -28,7 +28,7 @@ defmodule CodeMySpec.BddRules.Tools.ResolveQuestionTest do
         ToolLibrary.run(
           "resolve_question",
           %{question_id: question.id, resolution: "A copy whose agents died reads busy forever."},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       content = response_text(response)

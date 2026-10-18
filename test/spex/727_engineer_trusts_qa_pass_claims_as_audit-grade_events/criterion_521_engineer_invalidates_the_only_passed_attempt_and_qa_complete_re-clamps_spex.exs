@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
   Surfaces:
   - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed)
   - `CodeMySpec.Qa.Tools.InvalidateQaAttempt` (the action)
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
     (observe re-clamp)
   - `CodeMySpec.Qa.Tools.ListQaAttempts` (observe
     preservation + invalidation metadata)
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
               scenarios: [%{name: "earlier", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, _} = earlier
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, submit_response)
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
           ToolLibrary.run(
             "invalidate_qa_attempt",
             %{attempt_id: context.attempt_id, reason: "Shallow probe; needs redo"},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, invalidate_response)
@@ -104,7 +104,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
           ToolLibrary.run(
             "list_qa_attempts",
             %{story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, list_response)

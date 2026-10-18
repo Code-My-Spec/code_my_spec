@@ -13,8 +13,9 @@ defmodule CodeMySpecSpex.Story715.Criterion6310Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.OrphanedContexts
 
   import CodeMySpecSpex.GraphGivens
 
@@ -29,7 +30,14 @@ defmodule CodeMySpecSpex.Story715.Criterion6310Spex do
 
       when_ "the agent calls orphaned_contexts", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = OrphanedContexts.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "orphaned_contexts",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 

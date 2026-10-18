@@ -64,21 +64,21 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
           ToolLibrary.run(
             "list_agents",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         stopped =
           ToolLibrary.run(
             "turn_off_agent",
             %{"agent_id" => response_field(context.first, "Agent")},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         after_stop =
           ToolLibrary.run(
             "list_agents",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok,

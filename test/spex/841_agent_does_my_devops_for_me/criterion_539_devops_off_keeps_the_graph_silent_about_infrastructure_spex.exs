@@ -13,8 +13,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1970Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,8 +32,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1970Spex do
       end
 
       when_ "the loop asks for its next work", context do
-        {:reply, response, _frame} =
-          GetNextRequirement.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        response =
+          ToolLibrary.run("get_next_requirement", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :next, response_text(response))}
       end

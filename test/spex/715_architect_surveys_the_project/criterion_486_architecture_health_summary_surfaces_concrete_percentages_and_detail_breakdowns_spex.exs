@@ -17,22 +17,31 @@ defmodule CodeMySpecSpex.Story715.Criterion6303Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary
 
   import CodeMySpecSpex.GraphGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "architecture_health_summary surfaces concrete percentages and detail breakdowns", criterion: 486 do
+  spex "architecture_health_summary surfaces concrete percentages and detail breakdowns",
+    criterion: 486 do
     scenario "architecture_health_summary surfaces concrete percentages and detail breakdowns" do
       given_ :story_with_liveview_surface
       given_ :orphan_component
 
       when_ "the agent calls architecture_health_summary", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ArchitectureHealthSummary.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "architecture_health_summary",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 

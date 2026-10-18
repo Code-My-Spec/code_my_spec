@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
           ToolLibrary.run(
             "list_agents",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         agent_id =
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
           ToolLibrary.run(
             "turn_off_agent",
             %{"agent_id" => agent_id},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context |> Map.put(:reply, reply) |> Map.put(:agent_id, agent_id)}
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
           ToolLibrary.run(
             "list_agents",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         refute response_text(after_stop) =~ context.agent_id,

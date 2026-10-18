@@ -9,11 +9,12 @@ defmodule CodeMySpecSpex.Story1017.Criterion2421Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
@@ -30,8 +31,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion2421Spex do
       given_ "an authenticated coding agent has claimed an active task", context do
         agent = Fixtures.running_agent(context.scope, role: "coding")
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, graph, _} = GetNextRequirement.execute(%{}, frame)
-        refute graph.isError, response_text(graph)
+
+        graph =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, graph), response_text(graph)
 
         {:reply, started, _} =
           StartTask.execute(

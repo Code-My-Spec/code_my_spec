@@ -536,7 +536,7 @@ defmodule CodeMySpecSpex.GraphGivens do
           body:
             "Given the user opens the page\nWhen they take an action\nThen the action succeeds"
         },
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     _r =
@@ -550,7 +550,7 @@ defmodule CodeMySpecSpex.GraphGivens do
           body:
             "Given the user is logged out\nWhen they take an action\nThen they are redirected to login"
         },
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     # Sealed, because `three_amigos_complete` reads the seal now. This helper

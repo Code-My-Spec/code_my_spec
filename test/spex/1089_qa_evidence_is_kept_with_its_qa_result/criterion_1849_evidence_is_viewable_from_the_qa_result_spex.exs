@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1849Spex do
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :attempt_id, extract_attempt_id!(response))}

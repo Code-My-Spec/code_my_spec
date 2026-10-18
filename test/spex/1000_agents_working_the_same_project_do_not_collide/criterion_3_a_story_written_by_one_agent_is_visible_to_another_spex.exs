@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.{CreateStory, ListStories, UpdateStory}
 
@@ -134,11 +136,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
   # backlog, which is the one thing it is meant to detect. Ordering is a
   # rendering decision; "the same authored work" is a claim about the set.
   defp story_requirements(scope) do
-    alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
-
-    {:reply, response, _frame} =
-      ListRequirements.execute(%{entity_type: "story", summary: false}, %Frame{
-        assigns: %{current_scope: scope}
+    response =
+      ToolLibrary.run("list_requirements", %{entity_type: "story", summary: false}, %{
+        scope: scope
       })
 
     ~r/\*\*(\w+)\*\*/

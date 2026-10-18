@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
             ToolLibrary.run(
               "add_rule",
               %{story_number: context.story.number, statement: rule_statement},
-              Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
           for {kind, title, body} <- scenarios do
@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
                   kind: kind,
                   body: body
                 },
-                Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
           end
         end

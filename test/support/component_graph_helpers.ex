@@ -17,16 +17,9 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   import ExUnit.Assertions
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
-  alias CodeMySpec.McpServers.Components.Tools.AddDependency
-  alias CodeMySpec.McpServers.Components.Tools.GetComponent
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
-  alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
-  alias CodeMySpec.McpServers.Components.Tools.UpdateComponent
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowRequirement
-  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
 
@@ -36,7 +29,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   defp frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
 
   defp ok!(reply, what) do
-    refute reply.isError, "#{what} was refused: #{response_text(reply)}"
+    assert match?({:ok, _}, reply), "#{what} was refused: #{response_text(reply)}"
     reply
   end
 
@@ -44,10 +37,11 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "`add_dependency` between two components, by id."
   def depend!(context, source, target) do
-    {:reply, reply, _} =
-      AddDependency.execute(
+    reply =
+      ToolLibrary.run(
+        "add_dependency",
         %{source_component_id: source.id, target_component_id: target.id},
-        frame(context)
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
       )
 
     ok!(reply, "add_dependency #{source.module_name} -> #{target.module_name}")
@@ -173,14 +167,27 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "A full sync, through `sync_project`."
   def sync!(context) do
-    {:reply, reply, _} = SyncProject.execute(%{}, frame(context))
+    reply =
+      ToolLibrary.run(
+        "sync_project",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     ok!(reply, "sync_project")
   end
 
   @doc "Writes `markdown` as the proposal and runs `execute_proposal` on it."
   def execute_proposal!(context, markdown) do
     :ok = Environments.write_file(context.environment, Fixtures.proposal_path(), markdown)
-    {:reply, reply, _} = ExecuteProposal.execute(%{}, frame(context))
+
+    reply =
+      ToolLibrary.run(
+        "execute_proposal",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     ok!(reply, "execute_proposal")
   end
 
@@ -251,7 +258,13 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "`show_architecture`'s Mermaid."
   def architecture(context) do
-    {:reply, reply, _} = ShowArchitecture.execute(%{}, frame(context))
+    reply =
+      ToolLibrary.run(
+        "show_architecture",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     response_text(reply)
   end
 
@@ -264,10 +277,11 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "`show_requirement` for the project's `architecture_designed`, as text."
   def architecture_designed(context) do
-    {:reply, reply, _} =
-      ShowRequirement.execute(
+    reply =
+      ToolLibrary.run(
+        "show_requirement",
         %{name: "architecture_designed", entity_type: "project"},
-        frame(context)
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
       )
 
     response_text(reply)
@@ -276,20 +290,40 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
   @doc "`update_component` to `type` for the component named `module`."
   def retype!(context, module, type) do
     id = Fixtures.get_component_by_module_name(context.scope, module).id
-    {:reply, reply, _} = UpdateComponent.execute(%{component_id: id, type: type}, frame(context))
+
+    reply =
+      ToolLibrary.run(
+        "update_component",
+        %{component_id: id, type: type},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     ok!(reply, "update_component #{module} -> #{type}")
   end
 
   @doc "`list_components`' text."
   def listed(context) do
-    {:reply, reply, _} = ListComponents.execute(%{}, frame(context))
+    reply =
+      ToolLibrary.run(
+        "list_components",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     response_text(reply)
   end
 
   @doc "`get_component` for the component named `module`, decoded."
   def component(context, module) do
     id = Fixtures.get_component_by_module_name(context.scope, module).id
-    {:reply, reply, _} = GetComponent.execute(%{component_id: id}, frame(context))
+
+    reply =
+      ToolLibrary.run(
+        "get_component",
+        %{component_id: id},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     reply |> ok!("get_component #{module}") |> response_text() |> Jason.decode!()
   end
 

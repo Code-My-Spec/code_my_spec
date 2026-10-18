@@ -1,0 +1,316 @@
+[
+  {
+    "name": "accept_issue",
+    "description": "Accepts an incoming issue for triage.\n\nTransitions the issue from incoming → accepted.\n",
+    "input_schema": {
+      "properties": {
+        "category": {
+          "description": "Disposition category: 'bug' (default) or 'requirements_change' (requires story_number)",
+          "type": "string"
+        },
+        "issue_id": {
+          "description": "Issue ID to accept",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Optional number of the story to link this issue to",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "assign_issue_to_working_copy",
+    "description": "Assigns an issue to a working copy's coding and QA team.\n\nAdds an accepted issue to the team's bag without replacing its current\npriority. Assignment clears the team's story assignment and story queue,\neven when the issue itself belongs to a story. The first issue establishes\nthe active priority. Use `set_active_issue`\nto prioritize another member and `unassign_issue` to remove one.\nMoving an issue preserves its workflow stage and transfers its open tasks.\nCoding and QA may work on different eligible issues from the same bag.\n\nMain or the operator can pass `rework: true` and a correction `reason`\nfor an accepted issue awaiting QA on the same copy. With no open issue\ntask, this returns the issue to coding and records the instructions;\ncompleted fix tasks remain completed. Ordinary reassignment preserves\nthe current turn.\n",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue ID to assign",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the issue is moving, or the required correction instructions when rework is true",
+          "type": "string"
+        },
+        "rework": {
+          "description": "Main or the operator requests corrections to a submitted fix on the same copy. Requires a reason and no open issue task; preserves completed task history.",
+          "type": "boolean"
+        },
+        "working_copy_id": {
+          "description": "Working copy whose coding and QA team takes the issue",
+          "type": "string"
+        }
+      },
+      "required": [
+        "working_copy_id",
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "create_issue",
+    "description": "Record an issue against the project (`scope: app`) or against\nCodeMySpec itself (`scope: framework`).\n\nIf you encounter undocumented config, a looping hook, a tool error,\nor contradictory prompts inside CodeMySpec, your FIRST call is\n`create_issue` with `scope: framework` — before asking the human\noperator and before working around the problem. The framework is\nthe system you are operating inside; friction with it is a\nfirst-class issue, not a question to escalate or a workaround to\ninvent.\n\nTrigger examples (use `scope: framework`):\n\n- Confusing or contradictory prompts/instructions\n- Looping stop hooks or stuck workflows\n- Tool or MCP server malfunctions (not an external source returning HTTP 404)\n- Missing, broken, or poorly documented tools\n- Suggestions for improvements to the system\n\nFor project-side bugs and feature gaps (the app under development,\nnot CodeMySpec), use `scope: app` (the default).\n\nSeverity must be critical, high, medium, low, or info. `error` and `warning`\nare analyzer finding levels, not issue severities.\n\nIssues land as `incoming` and are triaged by the human operator. Be\nspecific in your description — include the exact error message, what\nyou were doing, and what you expected to happen.\n",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "description": "Detailed description of the issue including steps to reproduce if applicable",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Issue scope: app (default), qa, docs, or framework",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "severity": {
+          "description": "Issue severity: critical, high, medium, low, or info",
+          "type": "string"
+        },
+        "source_path": {
+          "description": "File path where the issue was found, if applicable",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Number of the related story, if applicable",
+          "type": "integer"
+        },
+        "title": {
+          "description": "Short issue title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "title",
+        "severity"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "dismiss_issue",
+    "description": "Dismisses an incoming issue with a reason.\n\nTransitions the issue from incoming → dismissed.\nRequires a reason explaining why the issue was dismissed.\n",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue ID to dismiss",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Reason for dismissing the issue",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_issue",
+    "description": "Gets a single issue by ID with full details.\n\nAccepts a full id or a unique prefix — the 8-character form every commit\nmessage, comment and issue body in this codebase uses.\n\nUse list_issues to find issue IDs.\n",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue ID, full or a unique prefix (use list_issues to find IDs)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_issues",
+    "description": "Lists issues in the caller's active project with optional filters.\n\nDefaults to open issues (incoming and accepted), across all scopes and\nseverities. Results retain the default limit of 50 and disclose truncation.\nIn scripts, the result contains `issues`, `matched`, `returned`, `limit`,\n`truncated`, `project_total`, `filtered_out`, and `filters`; iterate\n`result.issues` to read the rows.\n\nFilter by status (incoming, accepted, dismissed, resolved),\nseverity (critical, high, medium, low, info), scope (app, qa, docs,\nframework), or story_number.\n\n`framework` used to be excluded here, on the grounds that framework issues\nrouted to the hosted server rather than being stored locally. That stopped\nbeing true when the tools moved onto the server — see `CreateIssue`, which\nwrites every scope the same way — so they were creatable, visible in an\nunfiltered listing, and impossible to filter for.\n",
+    "input_schema": {
+      "properties": {
+        "limit": {
+          "description": "Most issues to return, newest first (default 50)",
+          "type": "integer"
+        },
+        "query": {
+          "description": "Text that the title or description contains (case-insensitive)",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Filter by scope: app, qa, docs, framework",
+          "type": "string"
+        },
+        "severity": {
+          "description": "All severities by default; all, or one of critical, high, medium, low, info",
+          "type": "string"
+        },
+        "status": {
+          "description": "open (default: incoming and accepted), all, or one of incoming, accepted, dismissed, resolved",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Filter by the related story's number",
+          "type": "integer"
+        },
+        "working_copy_id": {
+          "description": "Filter by assigned working copy; all severities are included unless filtered",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "resolve_issue",
+    "description": "Resolves an accepted issue with a resolution description.\n\nTransitions the issue from accepted → resolved.\nRequires a resolution explaining how the issue was fixed.\n",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue ID to resolve",
+          "type": "string"
+        },
+        "resolution": {
+          "description": "How the issue was resolved",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id",
+        "resolution"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "set_active_issue",
+    "description": "Prioritize an accepted issue already assigned to a working copy. This changes the team priority without removing other issues from its bag.",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue ID",
+          "type": "string"
+        },
+        "working_copy_id": {
+          "description": "Working copy whose priority changes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "working_copy_id",
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "submit_story_issue",
+    "description": "Submit a story-owned fix with the exact revision and validation evidence.",
+    "input_schema": {
+      "properties": {
+        "evidence": {
+          "description": "Fix description and validation evidence",
+          "type": "string"
+        },
+        "issue_id": {
+          "description": "Issue belonging to your assigned story",
+          "type": "string"
+        },
+        "revision": {
+          "description": "Exact committed revision containing the fix",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "issue_id",
+        "evidence"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "unassign_issue",
+    "description": "Remove an issue from its working copy bag. Open tasks must be dispositioned first. Other assigned issues remain available.",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue ID",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "unassign_issue_from_working_copy",
+    "description": "Remove an issue from its working copy without resolving it.",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue to remove",
+          "type": "string"
+        },
+        "working_copy_id": {
+          "description": "Copy currently holding the issue",
+          "type": "string"
+        }
+      },
+      "required": [
+        "working_copy_id",
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "update_issue",
+    "description": "Update non-status fields on an existing issue.\n\nUse this for re-triage decisions that don't change the issue's\nstatus — most commonly severity adjustments after a closer look\nat the body, or moving an issue under the right story / category\nafter the original report misclassified it.\n\nStatus transitions (incoming → accepted / dismissed, accepted →\nresolved) go through the dedicated `accept_issue` / `dismiss_issue`\n/ `resolve_issue` tools — those flows enforce transition rules\nthis tool deliberately skips.\n\nAllowed fields: `severity`, `story_number`, `category`, `source_path`,\nand `append`.\n\n## Why `append` and not `description`\n\nAn agent files an issue at the moment it has the evidence, which is\noften before it understands the defect — and that is the right time\nto file, because the evidence is perishable. So reports go stale,\nand until now the only remedy was another issue: `1f60a145` cited\n`server.log` for a stop hook that posts to :4004 and logs to\n`web.log`, which sent its reader to a process that was not involved\nand a log showing no activity. Correcting it took a second issue,\n`b0486568`, and the queue then held two reports of one defect with\nthe first still misleading whoever picked it up.\n\nThis appends rather than replacing, because issue bodies are written\nby whichever agent was there and a later reader needs to see what\nwas originally claimed as well as what turned out to be true. A\ncorrection that quietly rewrites the first account destroys the one\nthing that makes the sequence legible.\n\nStatus transitions still go through `accept_issue` / `dismiss_issue`\n/ `resolve_issue`.\n",
+    "input_schema": {
+      "properties": {
+        "append": {
+          "description": "Add a correction or later evidence to the end of the issue body. The original text is kept — use this instead of filing a second issue to correct a first.",
+          "type": "string"
+        },
+        "category": {
+          "description": "Re-categorize: 'bug' or 'requirements_change' (those two only)",
+          "type": "string"
+        },
+        "detach_from_story": {
+          "description": "Detach the issue from whatever story it is on, leaving it unattributed. For a report that reached the wrong story — `Issues.attribute_to_story/3` sweeps unattributed :app issues onto whichever story's QA attempt is being submitted, so an infrastructure failure can end up gating a feature story. Sometimes the right story is none.",
+          "type": "boolean"
+        },
+        "issue_id": {
+          "description": "Issue ID to update",
+          "type": "string"
+        },
+        "severity": {
+          "description": "New severity: critical, high, medium, low, or info",
+          "type": "string"
+        },
+        "source_path": {
+          "description": "Update the source file path",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Re-link the issue to the story with this number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    }
+  }
+]

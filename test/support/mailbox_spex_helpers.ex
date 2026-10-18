@@ -97,7 +97,7 @@ defmodule CodeMySpecSpex.MailboxHelpers do
       ToolLibrary.run(
         "message_agent",
         %{agent_id: ctx.agent.id, message: text, send_now: Keyword.get(opts, :send_now, false)},
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     assert match?({:ok, _}, response), inspect(response)
@@ -117,7 +117,7 @@ defmodule CodeMySpecSpex.MailboxHelpers do
       ToolLibrary.run(
         "withdraw_message",
         %{agent_id: agent_id, message_id: id},
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response

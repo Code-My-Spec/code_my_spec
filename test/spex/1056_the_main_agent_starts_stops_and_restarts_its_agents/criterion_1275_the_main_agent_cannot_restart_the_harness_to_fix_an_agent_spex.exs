@@ -34,11 +34,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3307Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -113,7 +114,13 @@ defmodule CodeMySpecSpex.Story1056.Criterion3307Spex do
 
       then_ "and the fault is raised for somebody who can act on it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, issues, _frame} = ListIssues.execute(%{}, frame)
+
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(issues) =~ "the harness is holding a dead MCP client",
                """

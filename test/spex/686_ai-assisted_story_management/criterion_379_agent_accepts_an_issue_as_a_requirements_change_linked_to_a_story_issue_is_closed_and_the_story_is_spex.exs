@@ -10,10 +10,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5916Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -32,14 +31,15 @@ defmodule CodeMySpecSpex.Story686.Criterion5916Spex do
             acceptance_criteria: []
           )
 
-        {:reply, issue_response, _frame} =
-          CreateIssue.execute(
+        issue_response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Welcome step omits a confirmation",
               severity: "high",
               description: "Users miss the confirmation message after sign-up."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         issue_id = extract_issue_id(issue_response)
@@ -57,9 +57,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5916Spex do
           category: "requirements_change"
         }
 
-        {:reply, response, _frame} = AcceptIssue.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "accept_issue",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected accept_issue to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :accept_response, response)}
@@ -82,8 +87,12 @@ defmodule CodeMySpecSpex.Story686.Criterion5916Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetIssue.execute(%{issue_id: context.issue_id}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 

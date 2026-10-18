@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
           ToolLibrary.run(
             "install_claude_md",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :install_response, response)}

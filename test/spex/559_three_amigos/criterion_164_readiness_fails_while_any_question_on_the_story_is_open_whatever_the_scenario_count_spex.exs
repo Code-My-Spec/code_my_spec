@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
           ToolLibrary.run(
             "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _happy =
@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen happy outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _failure =
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
               kind: "failure_path",
               body: "Given...\nWhen...\nThen failure outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
                 story_number: context.story.number,
                 text: "Open question number #{n} that nobody can answer right now"
               },
-              Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
           # Loudly fail if question creation didn't succeed —

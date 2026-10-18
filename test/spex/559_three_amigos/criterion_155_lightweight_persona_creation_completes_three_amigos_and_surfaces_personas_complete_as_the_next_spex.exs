@@ -50,7 +50,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.ToolLibrary
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
@@ -115,7 +114,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
               name: "Ops Lead",
               headline: "Operations lead managing fleet driver issues"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :persona_id, extract_persona_id(create_response))}
@@ -128,7 +127,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -146,7 +145,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
               "story_number" => context.story.number,
               "statement" => rule_statement
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _happy_response =
@@ -163,7 +162,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
               Then the purchase is declined
               """
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _failure_response =
@@ -180,7 +179,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
               Then the purchase is declined for safety
               """
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -209,7 +208,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
                "expected no needs-work feedback, got #{inspect(context.evaluate_response)}"
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, list_response, _frame} = ListRequirements.execute(%{}, frame)
+
+        list_response =
+          ToolLibrary.run(
+            "list_requirements",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         list_body = response_text(list_response)
 
         assert list_body =~ ~r/\[ \]\s+\*\*personas_complete\*\*/,

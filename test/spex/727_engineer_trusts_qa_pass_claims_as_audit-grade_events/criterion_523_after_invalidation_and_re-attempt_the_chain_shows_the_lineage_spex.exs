@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
                   scenarios: [%{name: marker, status: "pass", observation: marker}],
                   issue_ids: []
                 },
-                Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
             assert match?({:ok, _}, response)
@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
           ToolLibrary.run(
             "invalidate_qa_attempt",
             %{attempt_id: second_id, reason: "Discovered a missed probe"},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, invalidate_response)
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
               scenarios: [%{name: "third", status: "pass", observation: "third"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response)
@@ -93,7 +93,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
           ToolLibrary.run(
             "list_qa_attempts",
             %{story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response)

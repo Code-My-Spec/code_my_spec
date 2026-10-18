@@ -440,7 +440,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
       ToolLibrary.run(
         "link_persona_to_story",
         %{persona_id: persona_id, story_number: story.number},
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     _response =
@@ -458,7 +458,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
           title: happy_title,
           body: happy_body
         },
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     _response =
@@ -471,7 +471,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
           title: failure_title,
           body: failure_body
         },
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     # And sealed, because that is what `three_amigos_complete` reads now.

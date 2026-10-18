@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
               story_number: context.story.number,
               statement: "The exactly known rule statement"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen..."
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :add_response, response)}

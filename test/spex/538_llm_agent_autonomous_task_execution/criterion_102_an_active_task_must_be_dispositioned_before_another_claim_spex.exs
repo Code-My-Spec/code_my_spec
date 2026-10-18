@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -55,22 +53,30 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, available, _} = GetNextRequirement.execute(%{}, frame)
-        refute available.isError, response_text(available)
+
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
 
         Enum.each([first, second], fn story ->
-          {:reply, requirements, _} =
-            ListRequirements.execute(
+          requirements =
+            ToolLibrary.run(
+              "list_requirements",
               %{
                 entity_type: "story",
                 entity_id: to_string(story.number),
                 requirement_name: "bdd_specs_exist",
                 status: "unsatisfied"
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          refute requirements.isError, response_text(requirements)
+          assert match?({:ok, _}, requirements), response_text(requirements)
           assert response_text(requirements) =~ story.title
           assert response_text(requirements) =~ "[ ] **bdd_specs_exist**"
         end)
@@ -97,7 +103,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
           ToolLibrary.run(
             "list_agents",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, roster), response_text(roster)

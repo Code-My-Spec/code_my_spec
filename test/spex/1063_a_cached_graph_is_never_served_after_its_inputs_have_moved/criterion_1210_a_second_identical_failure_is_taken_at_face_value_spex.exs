@@ -25,8 +25,6 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias CodeMySpecSpex.StorySliceHelpers
 
@@ -53,11 +51,11 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
         # baseline so the assertion isolates the second failed review.
         context = StorySliceHelpers.activate(context)
         coding = Enum.find(context.team, &(&1.role == :coding))
-        StorySliceHelpers.call(context, AcceptIssue, %{issue_id: issue.id, category: "bug"})
+        StorySliceHelpers.call(context, "accept_issue", %{issue_id: issue.id, category: "bug"})
 
         StorySliceHelpers.call(
           context,
-          SubmitStoryIssue,
+          "submit_story_issue",
           %{
             issue_id: issue.id,
             revision: String.duplicate("b", 40),
@@ -122,7 +120,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
           scenarios: [%{name: "smoke", status: status, observation: "the same observation"}],
           issue_ids: [context.issue_id]
         },
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     # A rejected submit would make the whole scenario vacuous — "the graph did

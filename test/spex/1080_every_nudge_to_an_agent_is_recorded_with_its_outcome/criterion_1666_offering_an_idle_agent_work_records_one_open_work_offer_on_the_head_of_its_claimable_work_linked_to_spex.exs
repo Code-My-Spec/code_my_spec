@@ -11,10 +11,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1666Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
 
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -84,7 +85,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1666Spex do
   # What get_next_requirement puts first for this agent: the head of its work.
   defp head_of_work(context, agent_id) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope, agent_id: agent_id}}
-    {:reply, response, _} = GetNextRequirement.execute(%{}, frame)
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     text = CodeMySpecSpex.TaskResponseHelpers.response_text(response)
     [_, name] = Regex.run(~r/^- (\w+) \(/m, text)
     name

@@ -246,12 +246,15 @@ defmodule CodeMySpec.WorkingCopies do
   tool must not touch a filesystem; see `McpServers.Validators.mcp_working_dir/1`
   for why guessing is worse than refusing.
   """
-  @spec tool_environment(Scope.t() | nil) :: Environment.t() | nil
-  def tool_environment(%Scope{active_working_copy_id: id} = scope) when not is_nil(id),
-    do: environment(scope)
+  @spec tool_environment(Scope.t() | nil, String.t() | nil) :: Environment.t() | nil
+  def tool_environment(scope, working_dir \\ nil)
 
-  def tool_environment(_scope) do
-    case configured_working_dir() do
+  def tool_environment(%Scope{active_working_copy_id: id} = scope, _working_dir)
+      when not is_nil(id),
+      do: environment(scope)
+
+  def tool_environment(_scope, working_dir) do
+    case working_dir || configured_working_dir() do
       nil -> nil
       dir -> Environment.new(:local, dir)
     end

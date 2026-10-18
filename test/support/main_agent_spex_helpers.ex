@@ -152,7 +152,7 @@ defmodule CodeMySpecSpex.MainAgentHelpers do
       ToolLibrary.run(
         "retire_agent",
         %{"agent_id" => agent_id},
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     assert match?({:ok, _}, reply), "the stop was refused, so nothing was stopped"

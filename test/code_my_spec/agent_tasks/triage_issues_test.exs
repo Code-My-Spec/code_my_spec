@@ -14,10 +14,9 @@ defmodule CodeMySpec.AgentTasks.TriageIssuesTest do
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.StoriesFixtures
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.TriageIssues
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias CodeMySpec.ToolLibrary
 
   describe "command/2 — story scope" do
     test "names severity explicitly, agreeing with what evaluate/2 grades" do
@@ -39,12 +38,11 @@ defmodule CodeMySpec.AgentTasks.TriageIssuesTest do
       low = issue_fixture(scope, %{severity: :low, scope: :app})
       assert 1 = Issues.attribute_to_story(scope, [low.id], story.id)
 
-      frame = %Frame{assigns: %{current_scope: scope}}
-
       assert {:ok, result} =
-               ListIssues.script_result(
+               ToolLibrary.data(
+                 "list_issues",
                  %{status: "incoming", story_number: story.number, severity: "all"},
-                 frame
+                 %{scope: scope}
                )
 
       assert Enum.any?(result["issues"], &(&1["id"] == low.id))

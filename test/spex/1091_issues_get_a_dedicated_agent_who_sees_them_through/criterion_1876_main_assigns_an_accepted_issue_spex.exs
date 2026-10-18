@@ -11,12 +11,10 @@ defmodule CodeMySpecSpex.Story1091.Criterion1876Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -31,40 +29,53 @@ defmodule CodeMySpecSpex.Story1091.Criterion1876Spex do
           assigns: %{current_scope: context.main_scope, agent_id: context.main.id}
         }
 
-        {:reply, created, _frame} =
-          CreateIssue.execute(
+        created =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "The harness drops an agent notification",
               description: "A delivered notification does not reach the waiting agent.",
               severity: "high",
               scope: "framework"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        false = created.isError
+        {:ok, _} = created
         issue_id = extract_issue_id!(created)
-        {:reply, accepted, _frame} = AcceptIssue.execute(%{issue_id: issue_id}, frame)
-        false = accepted.isError
 
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = accepted
         {:ok, Map.merge(context, %{issue_id: issue_id, main_frame: frame})}
       end
 
       when_ "main assigns the issue to the team's working copy", context do
-        {:reply, response, _frame} =
-          AssignIssueToWorkingCopy.execute(
+        response =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
             %{
               issue_id: context.issue_id,
               working_copy_id: context.scope.active_working_copy_id
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :assignment_response, response)}
       end
 
       then_ "both teammates show the issue as their copy's assignment", context do
-        refute context.assignment_response.isError, response_text(context.assignment_response)
+        assert match?({:ok, _}, context.assignment_response),
+               response_text(context.assignment_response)
 
         {:reply, response, _frame} = ListAgentWork.execute(%{}, context.main_frame)
         refute response.isError, response_text(response)
@@ -90,8 +101,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion1876Spex do
           assigns: %{current_scope: context.scope, agent_id: coder.id}
         }
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         offered_work = response_text(response)
         assert offered_work =~ "entity_type=`issue`"
         assert offered_work =~ "entity_id=`#{context.issue_id}`"

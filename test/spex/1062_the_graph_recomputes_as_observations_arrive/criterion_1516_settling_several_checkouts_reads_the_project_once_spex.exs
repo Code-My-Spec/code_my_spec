@@ -44,12 +44,13 @@ defmodule CodeMySpecSpex.Story1062.Criterion3620Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -186,17 +187,18 @@ defmodule CodeMySpecSpex.Story1062.Criterion3620Spex do
   defp file_an_issue(scope, title) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, filed, _frame} =
-      CreateIssue.execute(
+    filed =
+      ToolLibrary.run(
+        "create_issue",
         %{
           title: title,
           description: "so the drain has something to be about",
           severity: "medium"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute filed.isError, inspect(filed)
+    assert match?({:ok, _}, filed), inspect(filed)
     :ok
   end
 

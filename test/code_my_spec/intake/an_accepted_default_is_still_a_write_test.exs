@@ -23,7 +23,6 @@ defmodule CodeMySpec.Intake.AnAcceptedDefaultIsStillAWriteTest do
   use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Intake
-  alias CodeMySpec.Intake.Plan
 
   defp a_plan_at_the_names_card do
     {:ok, plan} = Intake.start_plan("token-#{System.unique_integer([:positive])}")

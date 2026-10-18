@@ -26,7 +26,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
 
@@ -45,7 +44,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
           ToolLibrary.run(
             "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _happy =
@@ -58,7 +57,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen happy outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _failure =
@@ -71,7 +70,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
               kind: "failure_path",
               body: "Given...\nWhen...\nThen failure outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -100,7 +99,13 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
 
       then_ "list_requirements shows three_amigos_complete unsatisfied for the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListRequirements.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "list_requirements",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
