@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2171Spex do
 
       when_ "it accepts by starting the task, and the harness looks at its work again", context do
         context = start_agent_task(context, context.coder, next_task(context, context.coder))
+        :ok = Fixtures.end_turn(context.scope, context.coder)
         context = put_to_work(context)
         {:ok, context}
       end

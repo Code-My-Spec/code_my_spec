@@ -52,8 +52,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion2172Spex do
       end
 
       when_ "a read-only tool call alone follows, then a write", context do
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.coder)
+
         :ok =
           Fixtures.agent_tool_call(context.scope, %{id: context.coder}, "c1", "list_tasks", %{})
+
+        :ok = HarnessHooks.end_turn(context, context.coder)
 
         refused =
           context
@@ -63,12 +67,15 @@ defmodule CodeMySpecSpex.Story1080.Criterion2172Spex do
         assert [%{status: "open"}] = refused,
                "a read-only call alone accepted the problems offer:\n" <> listing(context)
 
+        :ok = Fixtures.put_agent_mid_turn(context.scope, context.coder)
+
         :ok =
           Fixtures.agent_tool_call(context.scope, %{id: context.coder}, "c2", "write", %{
             "file_path" => "lib/example_context.ex",
             "content" => "defmodule ExampleContext do\nend\n"
           })
 
+        :ok = HarnessHooks.end_turn(context, context.coder)
         {:ok, context}
       end
 

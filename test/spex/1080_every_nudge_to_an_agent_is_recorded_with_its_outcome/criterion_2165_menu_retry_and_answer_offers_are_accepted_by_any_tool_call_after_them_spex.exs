@@ -41,9 +41,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion2165Spex do
         {:ok, Map.put(context, :coder, id)}
       end
 
-      when_ "it makes any tool call after the offer was delivered", context do
+      when_ "it makes any tool call after the offer was delivered, and its turn ends", context do
         id = context.coder
         :ok = Fixtures.agent_tool_call(context.scope, %{id: id}, "c1", "list_tasks", %{})
+        :ok = Fixtures.end_turn(context.scope, id)
         {:ok, context}
       end
 

@@ -28,8 +28,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion2164Spex do
         {:ok, offered_work(context)}
       end
 
-      when_ "it calls start_task on that task", context do
+      when_ "it calls start_task on that task, and its turn ends", context do
         context = start_agent_task(context, context.coder, next_task(context, context.coder))
+        :ok = Fixtures.end_turn(context.scope, context.coder)
         {:ok, context}
       end
 
