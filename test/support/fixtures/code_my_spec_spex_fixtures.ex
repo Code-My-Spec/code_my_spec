@@ -4816,6 +4816,8 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Issues (QA triage / fix scenarios) --
   defdelegate issue_fixture(scope, attrs \\ %{}), to: IssuesFixtures
+  defdelegate resolved_issue_fixture(scope, issue, resolution \\ "Fixed."), to: IssuesFixtures
+  defdelegate retriaged_issue_fixture(scope, issue, story_id), to: IssuesFixtures
 
   # -- QA Attempts --
   defdelegate passed_qa_attempt(scope, opts \\ []), to: QaFixtures

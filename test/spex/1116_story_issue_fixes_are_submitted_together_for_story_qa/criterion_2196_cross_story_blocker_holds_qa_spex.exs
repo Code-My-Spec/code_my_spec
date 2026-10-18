@@ -22,10 +22,15 @@ defmodule CodeMySpecSpex.Story1116.Criterion2196Spex do
           |> Bag.review()
 
         context = Bag.qa_result(context, "partial", [:blocker])
-        other = Fixtures.authored_story(context.scope, "Unrelated story owning the blocker")
 
-        {:ok, _} =
-          CodeMySpec.Issues.update_issue(context.scope, context.blocker, %{story_id: other.id})
+        # The partial verdict cleared this story's own readiness the same way
+        # it does for criterion 2100 -- re-certify it, since nothing else
+        # about this story needs fixing; only the cited issue does, and it is
+        # about to stop being this story's issue at all.
+        context = Bag.ready(context)
+
+        other = Fixtures.authored_story(context.scope, "Unrelated story owning the blocker")
+        Fixtures.retriaged_issue_fixture(context.scope, context.blocker, other.id)
 
         {:ok, Map.put(context, :other_story, other)}
       end
@@ -46,20 +51,11 @@ defmodule CodeMySpecSpex.Story1116.Criterion2196Spex do
       end
 
       when_ "the blocking issue's fix lands", context do
-        # `Issues.resolve_issue/3` itself refuses a story-owned issue with no
-        # working-copy assignment ("must go through shared story QA and
-        # promotion") — correct for the real surface, but re-walking the
-        # other story's own promotion pipeline is criterion 2101's scenario,
-        # not this one. Same direct-write style used elsewhere in this suite
-        # (`StoryIssueBag.certify`) to set background state a fixture owns.
-        context.blocker
-        |> Ecto.Changeset.change(status: :resolved, resolution: "Fixed on the owning story.")
-        |> CodeMySpec.Repo.update!()
-
-        # A direct write bypasses `Issues.resolve_issue/3`'s own announce
-        # (story 1116, criterion 2196: the graph recomputes from events, not
-        # from reading the table on request — see `QaFixtures`).
-        CodeMySpec.Requirements.GraphInputs.announce(context.scope, "Issues", [], :project_wide)
+        Fixtures.resolved_issue_fixture(
+          context.scope,
+          context.blocker,
+          "Fixed on the owning story."
+        )
 
         {:ok, context}
       end
