@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
           )
 
         refute asked.isError, response_text(asked)
-        [_, question_id] = Regex.run(~r/question_id=`([0-9a-f-]{36})`/, response_text(asked))
+        question_id = Fixtures.question_id_from(response_text(asked))
         {:ok, Map.put(context, :question_id, question_id)}
       end
 
@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
 
       then_ "the question moves to the user rather than being answered or reassigned", context do
         refute context.escalated.isError, response_text(context.escalated)
-        assert response_text(context.escalated) =~ "escalat", response_text(context.escalated)
+        assert response_text(context.escalated) =~ "Sent to the user", response_text(context.escalated)
         {:ok, context}
       end
 
