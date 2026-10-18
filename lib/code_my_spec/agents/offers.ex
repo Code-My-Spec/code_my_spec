@@ -622,20 +622,34 @@ defmodule CodeMySpec.Agents.Offers do
   defp laddered?({_key, kind, type, _status}), do: Map.has_key?(@ladders, {kind, type})
 
   # Newest first, up to the last claim. `ignored` is how many settled
-  # ignored offers stand since then, for rung selection; `held?` is a
-  # decline since -- and only that. Per product's ruling on 1ef7cfe3: an
-  # offer ignored past its own ladder is not a decline ("no implicit
-  # decline"), so exhausting a ladder must not hold work back the way
-  # reject_offer does. It stays open and escalates to main (criterion
-  # 2169); the agent keeps being offered it. Each offer is read by the
+  # ignored offers stand since then, for rung selection. Two different
+  # things read this, per product's correction on 3e9a96e9 (which itself
+  # corrects 1ef7cfe3): `held?` is true for EITHER an explicit decline OR
+  # an offer ignored to the end of its own ladder -- both stop this agent
+  # from being pushed the same work again (criterion 1741's throttle,
+  # which a literal reading of 2169 would otherwise reopen). `declined?`
+  # is narrower, an explicit decline alone: only that closes the offer and
+  # holds the work back from `claimable_work` (get_next_requirement,
+  # start_task). An offer merely ignored to its last rung stays open,
+  # escalated to main once (criterion 2169), and a pull still shows and
+  # can claim it -- `held?` must not gate that. Each offer is read by the
   # ladder for its own kind, so two kinds can share a subject key.
   defp streak(settled) do
     recent = Enum.take_while(settled, fn {_kind, _type, status} -> status != :claimed end)
 
     ignored = Enum.count(recent, fn {_kind, _type, status} -> status == :ignored end)
-    held? = Enum.any?(recent, fn {_kind, _type, status} -> status == :declined end)
+    declined? = Enum.any?(recent, fn {_kind, _type, status} -> status == :declined end)
 
-    %{ignored: ignored, held?: held?}
+    exhausted? =
+      Enum.any?(recent, fn {kind, type, status} ->
+        case {status, ladder({kind, type})} do
+          {:ignored, nil} -> false
+          {:ignored, steps} -> ignored >= length(steps)
+          _other -> false
+        end
+      end)
+
+    %{ignored: ignored, held?: declined? or exhausted?, declined?: declined?}
   end
 
   @doc "Every escalation ladder, keyed by `{kind, subject_type}`."

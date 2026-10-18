@@ -58,9 +58,20 @@ defmodule CodeMySpecSpex.Story1080.Criterion2169Spex do
         {:ok, context}
       end
 
-      then_ "the offer is not withdrawn: it stays open on the agent, as escalated", context do
+      # Product's correction on 3e9a96e9 (itself correcting 1ef7cfe3): "stays
+      # open, as escalated" describes the offer record, not a further wake.
+      # Pushes stop past the last rung exactly as they do for a decline --
+      # that is criterion 1741's own throttle, built to stop a measured
+      # runaway loop (197 turns in 3m29s on the math project, 2026-09-22),
+      # and this criterion does not reopen it. What differs from a decline
+      # is that the offer itself is never closed: it stays open, and a pull
+      # (get_next_requirement) still shows and can act on it.
+      then_ "the offer is not withdrawn: it stays open, but is not pushed again", context do
         id = context.coder
-        assert_receive {:work_turn_requested, ^id, _ref, _again}, 2_000
+
+        refute_receive {:work_turn_requested, ^id, _ref, _again}, 1_000,
+                        "work ignored past its last rung was pushed to the agent again"
+
         assert [%{status: "open"} | _] = offers(context, context.coder, %{kind: "work"}),
                listing(context)
 

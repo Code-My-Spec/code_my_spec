@@ -12,11 +12,10 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
   replaces: a requirement offer still takes three ignored offers to reach its
   own last rung, a denial offer takes one.
 
-  `held?` itself is narrower than reaching that last rung (product's ruling on
-  1ef7cfe3, criterion 2169 vs 2160/2163): it is only ever a decline. Ignoring a
-  kind to the end of its own ladder escalates to main
-  (`HeldBackFromAnAgentReachesMainTest`), it does not set `held?` -- these
-  tests check `ignored` reaching each kind's own ladder length, per key.
+  Reaching a kind's own last rung by being ignored sets `held?` (it stops this
+  agent being pushed the same work again, criterion 1741) but not `declined?`
+  (criterion 2169, product's correction on 3e9a96e9) -- that only an explicit
+  decline sets, and only that holds the work back from a pull.
   """
 
   use CodeMySpecSpex.Case, async: true
@@ -79,8 +78,8 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
       key = "r-#{System.unique_integer([:positive])}"
       ignored(ctx, :denial, "tap_out", key, 1)
 
-      assert %{ignored: 1, held?: false} = Offers.standing(ctx.agent.id)[key],
-             "reaching a ladder's last rung by being ignored is not a decline"
+      assert %{ignored: 1, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[key],
+             "reaching a ladder's last rung by being ignored stops the push, but is not a decline"
     end
 
     test "a requirement offer's ignored count climbs toward its three-rung ladder", ctx do
@@ -94,8 +93,8 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
 
       ignored(ctx, :work, "requirement", key, 3)
 
-      assert %{ignored: 3, held?: false} = Offers.standing(ctx.agent.id)[key],
-             "ignored to the end of its ladder, still not a decline (criterion 2169)"
+      assert %{ignored: 3, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[key],
+             "ignored to the end of its ladder: held back from a push, still not a decline"
     end
 
     test "an unblocked task offer reaches its two-rung ladder on the second ignore", ctx do
@@ -105,7 +104,7 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
       assert %{ignored: 1, held?: false} = Offers.standing(ctx.agent.id)[key]
 
       ignored(ctx, :unblocked, "task", key, 2)
-      assert %{ignored: 2, held?: false} = Offers.standing(ctx.agent.id)[key]
+      assert %{ignored: 2, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[key]
     end
 
     test "standing/1 reports the laddered kinds, not one hard-coded pair", ctx do
@@ -116,19 +115,23 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
              "a denial offer's standing is not read: standing/1 filters to work offers"
     end
 
-    test "two kinds under one subject key both stay un-held, merely ignored", ctx do
+    test "two kinds sharing a subject key combine their ignored count", ctx do
       key = "t-#{System.unique_integer([:positive])}"
 
-      # An unblocked task notice (ladder length two) and a tap-out denial
-      # notice (ladder length one) can share a subject key. Neither kind's
-      # own ignore -- however many, however short its own ladder -- is a
-      # decline, so standing/1's held? stays false for the shared key either
-      # way (criterion 2169).
+      # released_subject/1's own comment: a released task's {"task", id} and
+      # a denied tap-out's {"tap_out", blocker_id} are "the same subject the
+      # release recorded, so the two supersede each other". standing/1
+      # groups purely by subject_key, so their ignored counts are meant to
+      # combine into one streak for that one entity, not stay isolated --
+      # neither kind's own ignore is a decline, but the combined streak can
+      # still reach held? via the shorter kind's own ladder length.
       ignored(ctx, :unblocked, "task", key, 1)
-      assert %{held?: false} = Offers.standing(ctx.agent.id)[key]
+      assert %{ignored: 1, held?: false, declined?: false} = Offers.standing(ctx.agent.id)[key]
 
       ignored(ctx, :denial, "tap_out", key, 1)
-      assert %{held?: false} = Offers.standing(ctx.agent.id)[key]
+
+      assert %{ignored: 2, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[key],
+             "the combined streak did not reach the tap-out denial's own one-rung ladder"
     end
   end
 

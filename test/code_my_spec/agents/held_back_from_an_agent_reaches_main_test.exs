@@ -82,10 +82,12 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
 
     offer = Repo.get!(Offer, offer.id)
 
-    # Ignored past its own ladder is not a decline (criterion 2169, no
-    # implicit decline) -- it escalates to main below, but it does not hold
-    # the work back from the agent the way reject_offer does.
-    assert %{held?: false} = Offers.standing(id)[key]
+    # Ignored past its own ladder is not a decline (criterion 2169,
+    # product's correction on 3e9a96e9) -- declined? stays false, so
+    # claimable_work/withheld? does not hold the work back the way
+    # reject_offer does. It still stops this agent being pushed the same
+    # work again (criterion 1741), so held? is true, same as a decline.
+    assert %{held?: true, declined?: false} = Offers.standing(id)[key]
 
     sent = Fixtures.messages_to_agent(ctx.scope, main_id(ctx))
 
@@ -125,11 +127,13 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
            "main heard about the refusal twice"
   end
 
-  # Criteria 2160/2163 vs 2169 (product's ruling on 1ef7cfe3): the two cases
-  # side by side, since one fix (7ae5d2a0) once conflated them under the
-  # same `held?` flag. A decline holds the work back from the agent that
-  # declined it; exhausting a ladder by being ignored does not.
-  test "a decline holds the work back; an exhausted ladder does not", ctx do
+  # Criteria 2160/2163 vs 2169, per product's correction on 3e9a96e9 (which
+  # itself corrects 1ef7cfe3): a decline and a ladder exhausted by ignoring
+  # both stop this agent being pushed the same work again (held? is true
+  # for both, criterion 1741) -- they differ only in whether the work is
+  # held back from a pull. Only an explicit decline (declined?) does that;
+  # an exhausted ladder stays open and claimable until main acts.
+  test "a decline holds the work back from a pull; an exhausted ladder does not", ctx do
     id = ctx.coder.id
     declined_key = "story:1:declined_spec"
     ignored_key = "story:1:ignored_spec"
@@ -142,14 +146,14 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
     end
 
     standing = Offers.standing(id)
-    assert %{held?: true} = standing[declined_key]
-    assert %{held?: false} = standing[ignored_key]
+    assert %{held?: true, declined?: true} = standing[declined_key]
+    assert %{held?: true, declined?: false} = standing[ignored_key]
 
     assert Work.withheld?([ctx.coder], ctx.coder, node_on(declined_key), standing),
-           "a declined offer did not hold its work back from the agent"
+           "a declined offer did not hold its work back from a pull"
 
     refute Work.withheld?([ctx.coder], ctx.coder, node_on(ignored_key), standing),
-           "an offer merely ignored past its ladder held its work back like a decline"
+           "an offer merely ignored past its ladder held its work back from a pull like a decline"
 
     _ = declined
   end
