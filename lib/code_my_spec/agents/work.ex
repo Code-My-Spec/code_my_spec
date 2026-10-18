@@ -705,10 +705,12 @@ defmodule CodeMySpec.Agents.Work do
   # rather than the same sentence again.
   defp offer_prompt_body(scope, agent, {"task", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.id == id))
-    base = "Your blocker was released; #{resume_instruction(scope, tasks)}"
+    # The answer on every rung: this path and TaskOwner's notice race to make
+    # the first one.
+    base = "Your blocker was released; #{resume_instruction(scope, tasks)}" <> answer(tasks)
 
     case rung(agent, :unblocked, "task", id) do
-      :remind -> base <> answer(tasks) <> "\n\n" <> remind()
+      :remind -> base <> "\n\n" <> remind()
       _first -> base
     end
   end
