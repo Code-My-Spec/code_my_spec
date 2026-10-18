@@ -60,6 +60,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
           )
 
         refute filed.isError, response_text(filed)
+
+        # Filing the issue pushes it to product at once (now idle-by-admission,
+        # holding only its blocked task). That push lands off-process, so wait
+        # for it to actually arrive before ageing it: a push landing after the
+        # ageing call would stamp its own, still-recent turn_requested_at.
+        product = context.product
+        assert_receive {:work_turn_requested, ^product, _ref, _}, 2_000
+
+        # The push stands for five minutes before an untaken turn counts toward
+        # a stall (`Offers.in_flight?/1`'s TTL), so ages past it here rather
+        # than waiting on it for real.
+        :ok = Fixtures.age_turn_request(context.scope, product, 301)
         {:ok, context}
       end
 
