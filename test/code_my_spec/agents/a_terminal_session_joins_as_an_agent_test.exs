@@ -122,6 +122,27 @@ defmodule CodeMySpec.Agents.ATerminalSessionJoinsAsAnAgentTest do
     assert reason =~ "No agent is registered for this session"
   end
 
+  # John, 2026-10-18: the terminal main gets main's duties while it is live,
+  # the main we run otherwise.
+  test "a terminal main is the main only while it is live", %{scope: scope, copy: copy} do
+    {:ok, ours} =
+      AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "anthropic",
+        role: :main,
+        working_copy_id: copy.id,
+        working_copy: copy.root
+      })
+
+    {:ok, terminal} = Agents.register_terminal(scope, session_id())
+
+    assert Enum.map(Agents.running_main_agents(scope), & &1.id) == [ours.id]
+
+    CodeMySpecTest.AgentPresence.present(terminal)
+
+    assert Enum.map(Agents.running_main_agents(scope), & &1.id) == [terminal.id, ours.id]
+  end
+
   test "the SessionStart hook registers the agent and tells it who it is", %{scope: scope} do
     session = session_id()
 

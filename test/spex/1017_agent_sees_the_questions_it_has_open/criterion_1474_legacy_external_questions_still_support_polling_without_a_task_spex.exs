@@ -5,7 +5,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
 
   Register an external session through its hook, ask through MCP, answer on
   the question page, and collect the reply through MCP. No question, task,
-  or answer is seeded; both task and durable-agent listings remain empty.
+  or answer is seeded; the task listing stays empty, and the only agent is the
+  one the session itself joined as (story 1122) — none is staffed for it.
   """
   use CodeMySpecSpex.Case
 
@@ -29,14 +30,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
     :ok
   end
 
-  spex "An external session asks and polls without acquiring a task or durable agent",
+  spex "An external session asks and polls without acquiring a task",
     criterion: 1474 do
     scenario "The existing session question round trip survives work-management changes" do
       given_ "a live harness serves the checkout", context do
         {:ok, HarnessHooks.ensure_live_harness(context)}
       end
 
-      given_ "a registered external session has no task or durable agent", context do
+      given_ "a registered external session holds no task and is its own only agent", context do
         session_id = "spex-3576-#{System.unique_integer([:positive])}"
 
         HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
@@ -53,16 +54,16 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
         assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
 
-        agents =
-          ToolLibrary.run(
+        {:ok, agents} =
+          ToolLibrary.data(
             "list_agents",
             %{},
             Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        assert match?({:ok, _}, agents), response_text(agents)
-        assert response_text(agents) == "No agents are running on this project."
-        {:ok, Map.merge(context, %{session_id: session_id, frame: frame})}
+        assert [%{"provider" => "claude-code", "role" => "main"}] = agents, inspect(agents)
+
+        {:ok, Map.merge(context, %{session_id: session_id, frame: frame, agents_before: agents})}
       end
 
       when_ "the session asks without a task link", context do
@@ -150,15 +151,16 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
         assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
 
-        agents =
-          ToolLibrary.run(
+        {:ok, agents} =
+          ToolLibrary.data(
             "list_agents",
             %{},
             Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        assert match?({:ok, _}, agents), response_text(agents)
-        assert response_text(agents) == "No agents are running on this project."
+        assert Enum.map(agents, & &1["id"]) == Enum.map(context.agents_before, & &1["id"]),
+               "answering staffed an agent: #{inspect(agents)}"
+
         {:ok, context}
       end
     end

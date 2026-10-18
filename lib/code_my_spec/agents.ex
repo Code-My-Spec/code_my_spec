@@ -1510,9 +1510,22 @@ defmodule CodeMySpec.Agents do
   @doc """
   The project's on-duty `main` agents (not off, not retired), newest first,
   wherever they run. The one source every "find the main agent" reads.
+
+  A terminal main takes main's duties only while it is live, ahead of the
+  mains we run (John, 2026-10-18); one not live is not asked at all, since
+  nothing reaches it.
   """
   @spec running_main_agents(Scope.t()) :: [Agent.t()]
-  defdelegate running_main_agents(scope), to: AgentsRepository, as: :list_running_main
+  def running_main_agents(%Scope{} = scope) do
+    present = present_ids(scope)
+
+    {terminal, ours} =
+      scope
+      |> AgentsRepository.list_running_main()
+      |> Enum.split_with(&(&1.engine == :claude_code))
+
+    Enum.filter(terminal, &MapSet.member?(present, &1.id)) ++ ours
+  end
 
   @doc """
   The project's own agent, started if it does not exist yet.
