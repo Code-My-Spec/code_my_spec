@@ -50,16 +50,16 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   end
 
   defp call(name, scope, params, agent) when is_binary(name) do
-    case ToolLibrary.run(name, params, Map.put(assigns(scope, agent), :scope, scope)) do
-      {:ok, text} -> {false, text}
-      {:error, text} -> {true, text}
-    end
+    name |> ToolLibrary.run(params, Map.put(assigns(scope, agent), :scope, scope)) |> flagged()
   end
 
   defp call(tool, scope, params, agent) do
     {:reply, response, _frame} = tool.execute(params, %Frame{assigns: assigns(scope, agent)})
     {response.isError, hd(Response.to_protocol(response)["content"])["text"]}
   end
+
+  defp flagged({:ok, text}), do: {false, text}
+  defp flagged({:error, text}), do: {true, text}
 
   defp assigns(scope, nil), do: %{current_scope: scope}
   defp assigns(scope, agent), do: %{current_scope: scope, agent_id: agent.id}
