@@ -88,7 +88,7 @@ defmodule CmsHarness.Agents.Terminal do
       # In-process callers (tests) may answer the mailbox themselves.
       mailbox: Keyword.get(opts, :mailbox, &Channel.mailbox/2),
       report: Keyword.get(opts, :report, &Channel.report_turn_event/3),
-      sessions: Keyword.get(opts, :sessions, &claude_sessions/0)
+      sessions: Keyword.get(opts, :sessions)
     }
 
     case register(state) do
@@ -164,19 +164,35 @@ defmodule CmsHarness.Agents.Terminal do
   # Busy, idle (`false`), or `:gone` — from Claude Code's agent list when it can
   # be read, else from whether the socket answers (idle while it does).
   defp observe(%{session_id: session_id} = state) when is_binary(session_id) do
-    case state.sessions.() do
-      {:ok, sessions} ->
-        case Enum.find(sessions, &(&1["sessionId"] == session_id)) do
-          nil -> :gone
-          session -> session["status"] == "busy"
-        end
-
-      :error ->
-        socket_answers(state)
+    case lookup(state, session_id) do
+      {:ok, status} -> status == "busy"
+      :gone -> :gone
+      :error -> socket_answers(state)
     end
   end
 
   defp observe(state), do: socket_answers(state)
+
+  # A test hands the list in (`:sessions`); the application may name another
+  # source, asked by session id; otherwise `claude` itself.
+  defp lookup(%{sessions: sessions}, session_id) when is_function(sessions, 0),
+    do: sessions |> apply([]) |> find(session_id)
+
+  defp lookup(_state, session_id) do
+    case Application.get_env(:code_my_spec, :claude_sessions) do
+      {module, function, args} -> apply(module, function, args ++ [session_id])
+      nil -> find(claude_sessions(), session_id)
+    end
+  end
+
+  defp find({:ok, sessions}, session_id) do
+    case Enum.find(sessions, &(&1["sessionId"] == session_id)) do
+      nil -> :gone
+      session -> {:ok, session["status"]}
+    end
+  end
+
+  defp find(:error, _session_id), do: :error
 
   defp socket_answers(state) do
     case connect(state.socket) do
@@ -189,8 +205,8 @@ defmodule CmsHarness.Agents.Terminal do
     end
   end
 
-  # A turn starting is the agent's own; one ending clears it through
-  # `mailbox_ready` with no ref in flight, as an idle engine reports.
+  # A turn starting is the agent's own; one ending is `turn_over`, which the
+  # server settles as it settles an engine's turn end.
   defp settle_turn(%{busy?: busy?} = state, busy?), do: state
 
   defp settle_turn(state, true) do
@@ -200,7 +216,7 @@ defmodule CmsHarness.Agents.Terminal do
 
   defp settle_turn(state, false) do
     report_spent(state)
-    report(state, %{event: :mailbox_ready, generation: state.generation, ref: nil})
+    report(state, %{event: :turn_over, generation: state.generation, ref: nil})
     %{state | busy?: false, spent: []}
   end
 

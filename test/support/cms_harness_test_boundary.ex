@@ -12,10 +12,11 @@ defmodule CmsHarnessTest do
   # and `SlotHolder` are the same kind of facade, one per concern a story 839
   # criterion needs (waiting on a real result, a throwaway working copy, the
   # far side of the websocket, a compile step held open, a machine-wide slot
-  # taken directly) — each extracted because more than one spex needed it, per
-  # its own moduledoc. `f2ff4147`: this list undercounted them for as long as
-  # the compiler leg silently discarded its findings, so the export list never
-  # caught up with what spex actually reaches. Anything not listed here is
+  # taken directly, Claude Code's own agent list for a terminal agent) — each
+  # extracted because more than one spex needed it, per its own moduledoc.
+  # `f2ff4147`: this list undercounted them for as long as the compiler leg
+  # silently discarded its findings, so the export list never caught up with
+  # what spex actually reaches. Anything not listed here is
   # genuinely internal to the harness's own unit tests.
   use Boundary,
     top_level?: true,
@@ -38,6 +39,7 @@ defmodule CmsHarnessTest do
       BlockingProject,
       SlotHolder,
       AppInstanceHelpers,
-      FakeAppInstanceRunner
+      FakeAppInstanceRunner,
+      ClaudeSessions
     ]
 end
