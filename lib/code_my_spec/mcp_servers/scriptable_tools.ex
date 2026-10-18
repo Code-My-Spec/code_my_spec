@@ -104,6 +104,8 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # take on what it finds there. Scripted rather than on the spine because the
   # spine is paid by every agent at connect and exactly one role calls these —
   # a coding agent has no use for its colleagues' open questions.
+  component(CodeMySpec.McpServers.MainAgent.Tools.RuntimeDiagnostics)
+
   # The agent lifecycle. Main-only by role grant: `ToolSets` gives no other role
   # any of these.
 
