@@ -450,6 +450,24 @@ defmodule CodeMySpec.Agents.Mailbox do
   end
 
   @doc """
+  Messages a definite refusal settled `:failed` (criterion 2042): said to the
+  agent and never received, each with the refusal as its diagnostic.
+  """
+  def undelivered_messages(conversation) do
+    Repo.all(
+      from m in Message,
+        left_join: e in Entry,
+        on: e.message_id == m.id,
+        where: m.conversation_id == ^conversation.id and m.delivery == :failed,
+        order_by: m.inserted_at,
+        select: {m, e}
+    )
+    |> Enum.map(fn {message, entry} ->
+      %{message | delivery_diagnostic: entry && entry.diagnostic}
+    end)
+  end
+
+  @doc """
   Delivery details for the existing conversation UI, derived from mailbox evidence.
 
   Only what is still on its way: a pending message, or one whose outcome is

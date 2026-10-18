@@ -178,6 +178,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:assigned, assigned_to(scope, conversation))
     |> assign(:main_agent?, main_agent?(scope, conversation))
     |> assign(:pending, pending_for(conversation))
+    |> assign(:undelivered, undelivered_for(conversation))
     |> assign(:waiting, waiting)
     |> assign(:copies, team_status(scope, project, waiting))
     |> with_chat_states()
@@ -561,6 +562,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp pending_for(nil), do: []
   defp pending_for(conversation), do: Agents.Mailbox.waiting_messages(conversation)
 
+  defp undelivered_for(nil), do: []
+  defp undelivered_for(conversation), do: Agents.Mailbox.undelivered_messages(conversation)
+
   # Each pending row, with the run of promotion notices it folds (empty when it
   # is not one). A run is one row; each notice in it can still be taken back.
   defp pending_runs(pending) do
@@ -908,16 +912,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
            :info,
            "Sent. A terminal session reads it at its next tool call — it can't be interrupted."
          )
-         |> assign(:pending, pending_for(socket.assigns.conversation))}
+         |> assign(:pending, pending_for(socket.assigns.conversation))
+         |> assign(:undelivered, undelivered_for(socket.assigns.conversation))}
 
       {:ok, _entry} ->
-        {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
+        {:noreply,
+         socket
+         |> assign(:pending, pending_for(socket.assigns.conversation))
+         |> assign(:undelivered, undelivered_for(socket.assigns.conversation))}
 
       {:error, :already_delivered} ->
         {:noreply,
          socket
          |> put_flash(:info, "The agent already has that message.")
-         |> assign(:pending, pending_for(socket.assigns.conversation))}
+         |> assign(:pending, pending_for(socket.assigns.conversation))
+         |> assign(:undelivered, undelivered_for(socket.assigns.conversation))}
 
       {:error, reason} ->
         {:noreply,
@@ -1403,7 +1412,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp sent({:ok, :started, _message}, socket), do: {:noreply, socket}
 
   defp sent({:ok, :queued, _message}, socket),
-    do: {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
+    do:
+      {:noreply,
+       socket
+       |> assign(:pending, pending_for(socket.assigns.conversation))
+       |> assign(:undelivered, undelivered_for(socket.assigns.conversation))}
 
   # Named reasons: each sends the person somewhere different.
   defp sent({:error, reason}, socket),
@@ -1438,7 +1451,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       {:noreply,
        socket
        |> put_flash(:info, "Too late — the agent has already been given that message.")
-       |> assign(:pending, pending_for(socket.assigns.conversation))}
+       |> assign(:pending, pending_for(socket.assigns.conversation))
+       |> assign(:undelivered, undelivered_for(socket.assigns.conversation))}
 
   defp withdrawn({:error, reason}, socket),
     do:
@@ -1494,6 +1508,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply,
      socket
      |> assign(:pending, pending_for(socket.assigns.conversation))
+     |> assign(:undelivered, undelivered_for(socket.assigns.conversation))
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
@@ -1510,6 +1525,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply,
      socket
      |> assign(:pending, pending_for(socket.assigns.conversation))
+     |> assign(:undelivered, undelivered_for(socket.assigns.conversation))
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
@@ -1856,6 +1872,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           results={@results}
           more_above?={@more_above?}
           pending={@pending}
+          undelivered={@undelivered}
           talkable?={@talkable?}
           analysis_running={@analysis_running}
           working?={@working?}
@@ -1904,6 +1921,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               results={@results}
               more_above?={@more_above?}
               pending={@pending}
+              undelivered={@undelivered}
               talkable?={@talkable?}
               analysis_running={@analysis_running}
               working?={@working?}
@@ -1971,6 +1989,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   attr :results, :any, required: true
   attr :more_above?, :boolean, required: true
   attr :pending, :list, required: true
+  attr :undelivered, :list, default: []
   attr :talkable?, :boolean, required: true
 
   attr :current_scope, :any, required: true
@@ -2338,6 +2357,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <span class="ml-auto text-xs opacity-60">
           the agent is told when it lands
         </span>
+      </div>
+
+      <%!-- Refused outright (criterion 2042): never received, so not in the
+      transcript, and not waiting, so not in the queue below. --%>
+      <div
+        :for={message <- @undelivered}
+        data-test="agent-undelivered-message"
+        class="flex shrink-0 items-center gap-2 pt-3 text-xs text-error px-[max(1rem,calc((100%-48rem)/2))]"
+      >
+        <span class="min-w-0 flex-1 truncate">{Message.text(message)}</span>
+        <span class="opacity-80">Not delivered{if message.delivery_diagnostic,
+          do: ": #{message.delivery_diagnostic}"}</span>
       </div>
 
       <div
