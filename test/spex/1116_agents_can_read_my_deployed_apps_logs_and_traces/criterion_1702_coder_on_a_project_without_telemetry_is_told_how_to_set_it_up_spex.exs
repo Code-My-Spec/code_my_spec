@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1702Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -30,13 +31,13 @@ defmodule CodeMySpecSpex.Story1116.Criterion1702Spex do
 
       when_ "the coder searches its logs", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = QueryLogs.execute(%{}, frame)
+        reply = ToolLibrary.run("query_logs", %{}, %{scope: frame.assigns.current_scope})
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is told plainly that telemetry isn't set up, and where to fix that", context do
-        assert context.reply.isError
+        assert match?({:error, _}, context.reply)
         text = TaskResponseHelpers.response_text(context.reply)
         assert text =~ "telemetry"
         assert text =~ "provisioning"

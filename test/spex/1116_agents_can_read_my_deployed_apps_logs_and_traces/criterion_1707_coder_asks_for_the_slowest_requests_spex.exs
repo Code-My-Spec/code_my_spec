@@ -9,8 +9,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1707Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.SlowSpans
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -37,14 +38,14 @@ defmodule CodeMySpecSpex.Story1116.Criterion1707Spex do
 
       when_ "the coder asks for the slowest requests", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = SlowSpans.execute(%{}, frame)
+        reply = ToolLibrary.run("slow_spans", %{}, %{scope: frame.assigns.current_scope})
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it sees the slow span and how long it took, with no query written", context do
         text = TaskResponseHelpers.response_text(context.reply)
-        refute context.reply.isError, "expected a successful slow-span read: #{text}"
+        assert match?({:ok, _}, context.reply), "expected a successful slow-span read: #{text}"
         assert text =~ "Repo.query"
         assert text =~ "1850ms"
 

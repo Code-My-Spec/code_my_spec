@@ -12,8 +12,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1703Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.ErrorSummary
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -24,11 +25,16 @@ defmodule CodeMySpecSpex.Story1116.Criterion1703Spex do
     scenario "an agent asks error_summary for the prod environment" do
       given_ "prod and uat have different telemetry configured, and prod has a real error",
              context do
-        uat_username = ClickHouseCassetteHelpers.configure!(context.scope, environment: "uat").username
-        prod_username = ClickHouseCassetteHelpers.configure!(context.scope, environment: "prod").username
+        uat_username =
+          ClickHouseCassetteHelpers.configure!(context.scope, environment: "uat").username
+
+        prod_username =
+          ClickHouseCassetteHelpers.configure!(context.scope, environment: "prod").username
 
         ClickHouseCassetteHelpers.stub_rows_by_username(%{
-          prod_username => [%{"message" => "prod is erroring", "count" => "5", "last_seen" => "t"}],
+          prod_username => [
+            %{"message" => "prod is erroring", "count" => "5", "last_seen" => "t"}
+          ],
           uat_username => [%{"message" => "WRONG CONNECTION — this is uat's data, not prod's"}]
         })
 
@@ -37,14 +43,16 @@ defmodule CodeMySpecSpex.Story1116.Criterion1703Spex do
 
       when_ "the agent asks for error_summary in the prod environment", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = ErrorSummary.execute(%{env: "prod"}, frame)
+
+        reply =
+          ToolLibrary.run("error_summary", %{env: "prod"}, %{scope: frame.assigns.current_scope})
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it reads prod's own errors, not uat's", context do
         text = TaskResponseHelpers.response_text(context.reply)
-        refute context.reply.isError, "expected a successful prod read: #{text}"
+        assert match?({:ok, _}, context.reply), "expected a successful prod read: #{text}"
         assert text =~ "prod is erroring"
         refute text =~ "WRONG CONNECTION"
 

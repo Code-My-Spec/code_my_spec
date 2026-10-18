@@ -1,4 +1,4 @@
-defmodule CodeMySpec.McpServers.AwaitAnalysisTombstoneTest do
+defmodule CodeMySpec.Analysis.Tools.AwaitAnalysisTombstoneTest do
   @moduledoc """
   A removed tool that is still in someone's registry has to say so.
 
@@ -18,20 +18,13 @@ defmodule CodeMySpec.McpServers.AwaitAnalysisTombstoneTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Analysis.Tools.AwaitAnalysis
-
   defp call(scope) do
-    frame = %Frame{assigns: %{scope: scope}}
-
-    assert {:reply, response, ^frame} = AwaitAnalysis.execute(%{}, frame)
-    text(response)
-  end
-
-  defp text(%{content: content}) do
-    Enum.map_join(content, "\n", fn %{"text" => t} -> t end)
+    assert {:ok, text} = ToolLibrary.run("await_analysis", %{}, %{scope: scope})
+    text
   end
 
   test "it says the tool is gone and why" do

@@ -1,43 +1,55 @@
-defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
-  @moduledoc """
-  Read retained analyzer stdout/stderr without starting another run.
+defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutput do
+  @moduledoc false
+  @behaviour CodeMySpec.Tools.Tool
 
-  Supply run_id, or source to select its latest run in this working copy
-  (including partial, failed, and running runs). The JSON response identifies
-  the run and carries an unmodified output slice. Continue with that run_id
-  and next_offset, never source, to keep pages tied to the same run.
-
-  Offsets count Unicode codepoints. Concatenating output slices reconstructs
-  the retained text exactly. This cannot recover output discarded before it
-  reached the ledger. output_available distinguishes missing output from an
-  empty string; neither a missing exit status nor missing output means success.
-  """
-  use Anubis.Server.Component, type: :tool
-
-  alias Anubis.Server.Response
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.McpServers.Validators
 
-  schema do
-    field :run_id, :integer, description: "Retained run ID. Supply this or source, not both."
-    field :source, :string, description: "Select the latest compiler, credo, exunit, or spex run."
-    field :offset, :integer, description: "Zero-based Unicode codepoint offset. Default: 0."
-    field :limit, :integer, description: "Codepoints to return. Default and maximum: 2000."
+  @impl true
+  def name, do: "get_analysis_output"
+
+  @impl true
+  def description do
+    """
+    Read retained analyzer stdout/stderr without starting another run.
+
+    Supply run_id, or source to select its latest run in this working copy
+    (including partial, failed, and running runs). The JSON response identifies
+    the run and carries an unmodified output slice. Continue with that run_id
+    and next_offset, never source, to keep pages tied to the same run.
+
+    Offsets count Unicode codepoints. Concatenating output slices reconstructs
+    the retained text exactly. This cannot recover output discarded before it
+    reached the ledger. output_available distinguishes missing output from an
+    empty string; neither a missing exit status nor missing output means success.
+    """
   end
 
   @impl true
-  def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame, params),
+  def params do
+    %{
+      run_id:
+        {:meta, :integer, [description: "Retained run ID. Supply this or source, not both."]},
+      source:
+        {:meta, :string, [description: "Select the latest compiler, credo, exunit, or spex run."]},
+      offset:
+        {:meta, :integer, [description: "Zero-based Unicode codepoint offset. Default: 0."]},
+      limit: {:meta, :integer, [description: "Codepoints to return. Default and maximum: 2000."]}
+    }
+  end
+
+  @impl true
+  def call(params, context) do
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          :ok <- working_copy(scope),
          {:ok, selector} <- selector(params),
          {:ok, offset, limit} <- pagination(params),
          %Run{} = run <- Analysis.output_run(scope, selector),
          {:ok, page} <- output_page(run, offset, limit) do
-      {:reply, Response.tool() |> Response.text(Jason.encode!(page)), frame}
+      {:ok, Jason.encode!(page)}
     else
-      nil -> failure("No retained run matches in this working copy.", frame)
-      {:error, reason} -> failure(to_string(reason), frame)
+      nil -> {:error, "No retained run matches in this working copy."}
+      {:error, reason} -> {:error, to_string(reason)}
     end
   end
 
@@ -59,8 +71,8 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
   end
 
   defp pagination(params) do
-    offset = Map.get(params, :offset, 0)
-    limit = Map.get(params, :limit, 2000)
+    offset = Map.get(params, :offset) || 0
+    limit = Map.get(params, :limit) || 2000
 
     if is_integer(offset) and offset >= 0 and is_integer(limit) and limit in 1..2000,
       do: {:ok, offset, limit},
@@ -96,15 +108,9 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput do
     end
   end
 
-  # bf627680: `status` alone cannot tell a run waiting on a machine-wide
-  # slot from one actually executing -- both are `:running` in the ledger,
-  # since the row is created at dispatch time, not when the harness reports
-  # the slot granted (`Run.began_at`). `Run.queued?/1` already distinguishes
-  # them; this is the one place that read the raw status instead.
+  # A run waiting on a machine-wide slot and one executing are both `:running`
+  # in the ledger; `Run.queued?/1` tells them apart.
   defp status_label(run) do
     if Run.queued?(run), do: "queued", else: to_string(run.status)
   end
-
-  defp failure(reason, frame),
-    do: {:reply, Response.tool() |> Response.error(reason), frame}
 end

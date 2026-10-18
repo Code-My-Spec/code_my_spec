@@ -1,0 +1,23 @@
+[
+  {
+    "name": "agent_performance_report",
+    "description": "The agent performance page as Markdown: the week's rates against last\nweek's, what to change first, and the breakdowns behind them. For an agent\nto read and draft an improvement plan from (John, 2026-10-15).\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Narrow to one agent.",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Narrow to one story.",
+          "type": "integer"
+        },
+        "working_copy_id": {
+          "description": "Narrow to one working copy (team).",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  }
+]

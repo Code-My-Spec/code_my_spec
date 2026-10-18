@@ -1,13 +1,13 @@
-defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
+defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutputTest do
   use CodeMySpecTest.DataCase, async: true
+
+  alias CodeMySpec.ToolLibrary
 
   import CodeMySpec.AnalysisFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutput
 
   setup do
     scope = full_scope_fixture()
@@ -22,15 +22,11 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
     run
   end
 
-  defp response(params, frame) do
-    assert {:reply, response, ^frame} = GetAnalysisOutput.execute(params, frame)
-    response
-  end
+  defp response(params, frame),
+    do: ToolLibrary.run("get_analysis_output", params, %{scope: frame.assigns.current_scope})
 
   defp page(params, frame) do
-    response = response(params, frame)
-    assert response.isError == false
-    [%{"text" => text}] = Response.to_protocol(response)["content"]
+    assert {:ok, text} = response(params, frame)
     Jason.decode!(text)
   end
 
@@ -134,8 +130,8 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
     other = %{ctx.scope | active_working_copy_id: Ecto.UUID.generate()}
     frame = %Frame{assigns: %{current_scope: other}}
 
-    assert response(%{run_id: run.id}, frame).isError
-    assert response(%{source: "exunit"}, frame).isError
+    assert match?({:error, _}, response(%{run_id: run.id}, frame))
+    assert match?({:error, _}, response(%{source: "exunit"}, frame))
   end
 
   test "another project cannot read the run even with its working copy id", ctx do
@@ -143,32 +139,31 @@ defmodule CodeMySpec.McpServers.Analysis.Tools.GetAnalysisOutputTest do
     other = %{full_scope_fixture() | active_working_copy_id: ctx.scope.active_working_copy_id}
     frame = %Frame{assigns: %{current_scope: other}}
 
-    assert response(%{run_id: run.id}, frame).isError
+    assert match?({:error, _}, response(%{run_id: run.id}, frame))
   end
 
   test "a missing working copy never widens the query", ctx do
     run = finished(ctx.scope, "exunit", "private output")
     frame = %Frame{assigns: %{current_scope: %{ctx.scope | active_working_copy_id: nil}}}
 
-    assert response(%{run_id: run.id}, frame).isError
+    assert match?({:error, _}, response(%{run_id: run.id}, frame))
   end
 
   test "rejects ambiguous selectors and invalid pagination", ctx do
     run = finished(ctx.scope, "exunit", "text")
 
-    assert response(%{}, ctx.frame).isError
-    assert response(%{run_id: run.id, source: "exunit"}, ctx.frame).isError
-    assert response(%{source: "unknown"}, ctx.frame).isError
-    assert response(%{run_id: run.id, offset: -1}, ctx.frame).isError
-    assert response(%{run_id: run.id, offset: 5}, ctx.frame).isError
-    assert response(%{run_id: run.id, limit: 2001}, ctx.frame).isError
-    assert response(%{run_id: run.id, limit: 0}, ctx.frame).isError
+    assert match?({:error, _}, response(%{}, ctx.frame))
+    assert match?({:error, _}, response(%{run_id: run.id, source: "exunit"}, ctx.frame))
+    assert match?({:error, _}, response(%{source: "unknown"}, ctx.frame))
+    assert match?({:error, _}, response(%{run_id: run.id, offset: -1}, ctx.frame))
+    assert match?({:error, _}, response(%{run_id: run.id, offset: 5}, ctx.frame))
+    assert match?({:error, _}, response(%{run_id: run.id, limit: 2001}, ctx.frame))
+    assert match?({:error, _}, response(%{run_id: run.id, limit: 0}, ctx.frame))
   end
 
   test "a page fits the script response budget even with escaped controls", ctx do
     run = finished(ctx.scope, "exunit", String.duplicate("\u0001", 4000))
-    response = response(%{run_id: run.id}, ctx.frame)
-    [%{"text" => text}] = Response.to_protocol(response)["content"]
+    {:ok, text} = response(%{run_id: run.id}, ctx.frame)
 
     assert byte_size(text) < CodeMySpec.CodeMode.max_answer_bytes()
     assert Jason.decode!(text)["next_offset"] == 2000

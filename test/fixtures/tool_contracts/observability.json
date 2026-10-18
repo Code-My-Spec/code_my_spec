@@ -1,0 +1,109 @@
+[
+  {
+    "name": "error_summary",
+    "description": "What's going wrong in this project right now, without writing a query:\nerror-level log lines grouped by message, and failed spans grouped by\nname, each with a count and the most recent occurrence.\n",
+    "input_schema": {
+      "properties": {
+        "env": {
+          "description": "'uat' or 'prod'. Default: 'uat'.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max groups per category (default 100, max 1000).",
+          "type": "integer"
+        },
+        "since": {
+          "description": "ISO 8601 timestamp. Default: one hour ago.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_trace",
+    "description": "Follow one request: the full span tree for a trace id, plus every log\nline emitted during it, joined by trace id.\n",
+    "input_schema": {
+      "properties": {
+        "env": {
+          "description": "'uat' or 'prod'. Default: 'uat'.",
+          "type": "string"
+        },
+        "trace_id": {
+          "description": "The trace id to look up.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trace_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "query_logs",
+    "description": "Search this project's own deployed logs.\n\nAlways bounded by a time window (default: the last hour) and a row cap\n(default 100, max 1000) — a capped result says so rather than silently\ndropping lines. There is no `service`/`project` parameter: the connection\nthis tool makes is already scoped to the calling project, and nothing\npassed here can widen that.\n",
+    "input_schema": {
+      "properties": {
+        "env": {
+          "description": "'uat' or 'prod'. Default: 'uat'.",
+          "type": "string"
+        },
+        "level": {
+          "description": "Exact severity match, e.g. 'ERROR'.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max rows (default 100, max 1000).",
+          "type": "integer"
+        },
+        "since": {
+          "description": "ISO 8601 timestamp. Default: one hour ago.",
+          "type": "string"
+        },
+        "text": {
+          "description": "Substring match against the log message.",
+          "type": "string"
+        },
+        "trace_id": {
+          "description": "Only logs emitted during this trace.",
+          "type": "string"
+        },
+        "until": {
+          "description": "ISO 8601 timestamp. Default: now.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "slow_spans",
+    "description": "The slowest spans in this project's own traces, without writing a query.\n\nBounded by a time window (default: the last hour) and a row cap (default\n100, max 1000).\n",
+    "input_schema": {
+      "properties": {
+        "env": {
+          "description": "'uat' or 'prod'. Default: 'uat'.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max rows (default 100, max 1000).",
+          "type": "integer"
+        },
+        "min_duration_ms": {
+          "description": "Only spans at or above this duration.",
+          "type": "integer"
+        },
+        "name_like": {
+          "description": "Substring match against the span name.",
+          "type": "string"
+        },
+        "since": {
+          "description": "ISO 8601 timestamp. Default: one hour ago.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  }
+]

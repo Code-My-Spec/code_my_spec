@@ -1,44 +1,45 @@
-defmodule CodeMySpec.McpServers.Research.Tools.WebFetch do
-  @moduledoc """
-  Read a web page as Markdown.
+defmodule CodeMySpec.Research.Tools.WebFetch do
+  @moduledoc false
+  @behaviour CodeMySpec.Tools.Tool
 
-  Handles the shapes that are worth handling: GitHub file views are read as the
-  raw file rather than the surrounding application, JSON is pretty-printed, and
-  ordinary pages are stripped of navigation and converted to Markdown.
-
-  Reddit is refused rather than fetched — it needs an OAuth app now, and what
-  comes back without one is a login wall that converts to Markdown perfectly
-  and says nothing.
-  """
-
-  use Anubis.Server.Component, type: :tool
-
-  alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Research
+  alias CodeMySpec.Research.Tools
 
-  schema do
-    field :url, :string, required: true, description: "The http(s) URL to read"
+  @impl true
+  def name, do: "web_fetch"
 
-    field :max_output, :integer,
-      description: "Bytes of content to return. Default 100000. Truncation is reported"
+  @impl true
+  def description do
+    """
+    Read a web page as Markdown.
+
+    Handles the shapes that are worth handling: GitHub file views are read as the
+    raw file rather than the surrounding application, JSON is pretty-printed, and
+    ordinary pages are stripped of navigation and converted to Markdown.
+
+    Reddit is refused rather than fetched — it needs an OAuth app now, and what
+    comes back without one is a login wall that converts to Markdown perfectly
+    and says nothing.
+    """
   end
 
   @impl true
-  def execute(%{url: url} = params, frame) do
-    # Scope-gated: this makes the server fetch a URL somebody else chose, so
-    # ungated it is an open proxy — anything the server's network can reach,
-    # reachable by anyone who can reach the server.
-    case Validators.validate_local_scope(frame) do
-      {:ok, _scope} -> {:reply, fetch(url, params), frame}
-      {:error, reason} -> {:reply, error("#{inspect(reason)}"), frame}
-    end
+  def params do
+    %{
+      url: {:required, {:meta, :string, [description: "The http(s) URL to read"]}},
+      max_output:
+        {:meta, :integer,
+         [description: "Bytes of content to return. Default 100000. Truncation is reported"]}
+    }
   end
 
-  defp fetch(url, params) do
-    case Research.fetch(url, opts(params)) do
-      {:ok, page} -> text(format(page))
-      {:error, reason} -> error(message(url, reason))
+  @impl true
+  def call(%{url: url} = params, context) do
+    with {:ok, _scope} <- Tools.scoped(context) do
+      case Research.fetch(url, opts(params)) do
+        {:ok, page} -> {:ok, format(page)}
+        {:error, reason} -> {:error, message(url, reason)}
+      end
     end
   end
 
@@ -55,8 +56,8 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebFetch do
     [
       page.title && "# #{page.title}",
       "Source: #{page.fetched_url}",
-      # Only when it differs, and then it matters: a GitHub blob URL that was
-      # read as a raw file, or a redirect that landed somewhere else entirely.
+      # Only when it differs: a GitHub blob URL read as a raw file, or a
+      # redirect that landed somewhere else.
       page.fetched_url != page.url && "Requested: #{page.url}"
     ]
     |> Enum.filter(&is_binary/1)
@@ -88,7 +89,4 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebFetch do
   defp message(url, {:status, status, detail}), do: "#{url} answered #{status}. #{detail}"
   defp message(url, reason) when is_binary(reason), do: "Could not read #{url}: #{reason}"
   defp message(url, reason), do: "Could not read #{url}: #{inspect(reason)}"
-
-  defp text(content), do: Response.tool() |> Response.text(content)
-  defp error(message), do: Response.tool() |> Response.error(message)
 end

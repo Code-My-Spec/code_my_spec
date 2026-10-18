@@ -16,11 +16,15 @@ defmodule CodeMySpec.ToolLibrary do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.AgentPerformance,
       CodeMySpec.Agents,
+      CodeMySpec.Analysis,
       CodeMySpec.Embeddings,
       CodeMySpec.Knowledge,
+      CodeMySpec.Observability,
       CodeMySpec.Personas,
       CodeMySpec.Problems.Tools,
+      CodeMySpec.Research,
       CodeMySpec.Tools
     ]
 
@@ -33,7 +37,12 @@ defmodule CodeMySpec.ToolLibrary do
       CodeMySpec.Personas.Tools.all() ++
         CodeMySpec.Agents.Tools.all() ++
         CodeMySpec.Knowledge.Tools.all() ++
-        CodeMySpec.Embeddings.Tools.all() ++ CodeMySpec.Problems.Tools.all()
+        CodeMySpec.Embeddings.Tools.all() ++
+        CodeMySpec.Problems.Tools.all() ++
+        CodeMySpec.Observability.Tools.all() ++
+        CodeMySpec.Research.Tools.all() ++
+        CodeMySpec.Analysis.Tools.all() ++
+        CodeMySpec.AgentPerformance.Tools.all()
 
   @doc "Every tool, described for a surface."
   @spec registrations() :: [map()]

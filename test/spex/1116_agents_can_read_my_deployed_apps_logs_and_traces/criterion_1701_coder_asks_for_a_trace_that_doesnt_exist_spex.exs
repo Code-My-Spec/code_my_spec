@@ -10,8 +10,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1701Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.GetTrace
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -30,13 +31,17 @@ defmodule CodeMySpecSpex.Story1116.Criterion1701Spex do
 
       when_ "the coder asks for that trace id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = GetTrace.execute(%{trace_id: "never-happened"}, frame)
+
+        reply =
+          ToolLibrary.run("get_trace", %{trace_id: "never-happened"}, %{
+            scope: frame.assigns.current_scope
+          })
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is told the trace was not found, not handed an empty success", context do
-        assert context.reply.isError
+        assert match?({:error, _}, context.reply)
         assert TaskResponseHelpers.response_text(context.reply) =~ "never-happened"
 
         {:ok, context}

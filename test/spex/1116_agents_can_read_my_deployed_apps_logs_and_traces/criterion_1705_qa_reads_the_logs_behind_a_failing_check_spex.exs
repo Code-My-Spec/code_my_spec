@@ -9,8 +9,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1705Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -35,14 +36,16 @@ defmodule CodeMySpecSpex.Story1116.Criterion1705Spex do
 
       when_ "QA searches the logs for errors", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = QueryLogs.execute(%{level: "ERROR"}, frame)
+
+        reply =
+          ToolLibrary.run("query_logs", %{level: "ERROR"}, %{scope: frame.assigns.current_scope})
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "QA sees the error line behind the failing check", context do
         text = TaskResponseHelpers.response_text(context.reply)
-        refute context.reply.isError, "expected QA's search to succeed: #{text}"
+        assert match?({:ok, _}, context.reply), "expected QA's search to succeed: #{text}"
         assert text =~ "500 rendering /app/overview"
 
         {:ok, context}
