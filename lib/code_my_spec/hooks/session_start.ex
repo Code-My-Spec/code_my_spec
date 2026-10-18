@@ -57,7 +57,8 @@ defmodule CodeMySpec.Hooks.SessionStart do
       additionalContext:
         "You are agent #{agent.id} on this project, registered as its #{agent.role} agent. " <>
           "Main is the default; ask the person which role you should take (main, coding, " <>
-          "qa or product) and set it with `set_my_role` if it is not main." <>
+          "qa or product); if it is not main, set it with `run_script`: " <>
+          "`set_my_role({ role = \"coding\" })`." <>
           reached(messaging)
     })
   end

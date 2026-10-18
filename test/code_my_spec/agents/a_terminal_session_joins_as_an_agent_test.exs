@@ -188,4 +188,29 @@ defmodule CodeMySpec.Agents.ATerminalSessionJoinsAsAnAgentTest do
     assert context =~ agent.id
     assert context =~ "set_my_role"
   end
+
+  # The proof run, 2026-10-18: a terminal turn's usage showed up in its
+  # conversation as "assistant: %{usage: ...}".
+  test "a terminal turn's usage is not written to its conversation as speech", %{scope: scope} do
+    {:ok, agent} = Agents.register_terminal(scope, session_id())
+
+    :ok =
+      Agents.record_turn_event(scope, agent.id, %{
+        "kind" => "turn_usage",
+        "text" => ~s(%{usage: %{"output_tokens" => 629}}),
+        "usage" => %{"output_tokens" => 629}
+      })
+
+    {:ok, conversation} =
+      CodeMySpec.Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent.id
+      )
+
+    refute Enum.any?(
+             CodeMySpec.Conversations.list_messages(conversation),
+             &(CodeMySpec.Conversations.Message.text(&1) =~ "usage")
+           )
+  end
 end
