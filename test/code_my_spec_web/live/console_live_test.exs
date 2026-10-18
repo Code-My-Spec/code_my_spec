@@ -137,6 +137,8 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       {:ok, _view, html} = live(conn, secrets_path(project))
       assert html =~ ~s(data-test="console-secrets")
       assert html =~ ~s(data-test="secret-form")
+      assert html =~ ~s(data-test="secrets-import-form")
+      assert html =~ ~s(data-test="secrets-import-dotenv")
     end
 
     test "credentials", %{conn: conn, project: project} do

@@ -1392,6 +1392,34 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
+  # `SecretsForm`'s bulk-import submit -- the real path to bring an app's
+  # existing secrets into sops rather than retyping them one at a time, or
+  # letting a later step mint fresh ones over values that already exist.
+  def handle_event("import_secrets", %{"import" => params}, socket) do
+    scope = socket.assigns.current_scope
+    environment = params["environment"] || hd(socket.assigns.environments)
+
+    case Steps.import_dotenv(scope, environment, params["dotenv"] || "") do
+      {:ok, keys} ->
+        # The names, never the values.
+        Activity.record(
+          scope,
+          "secret_write",
+          "secrets",
+          "imported #{length(keys)} secret(s): #{Enum.join(keys, ", ")}",
+          environment: environment
+        )
+
+        {:noreply,
+         socket
+         |> assign(:secret_error, nil)
+         |> put_flash(:info, "Imported #{length(keys)} secret(s) into #{environment}.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :secret_error, reason)}
+    end
+  end
+
   # `EnvironmentsForm`'s submit and its confirm dialog's push. `refresh/1`: the
   # plan and environment list change, not the URL.
   def handle_event("add_environment", %{"environment" => %{"name" => name}}, socket) do

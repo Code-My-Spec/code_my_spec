@@ -4353,6 +4353,38 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  @doc """
+  Import every `KEY=value` line of `dotenv` into an environment's encrypted
+  file, one `put_secret/4` call per key.
+
+  The bulk path for an app that already has its own secrets -- its own
+  `.env`, or a value copied from wherever it currently lives -- rather than
+  retyping them one at a time through the form, or letting a later step
+  mint fresh ones over values that already exist (story 967, issue
+  a634ffac: SECRET_KEY_BASE imported this way is on file before the secrets
+  step ever runs, so `seed_secret_key_base/3` finds it present and keeps it).
+
+  Comments and blank lines are skipped, same as `Sops.parse_dotenv/1` does
+  reading a file back. Stops at the first key that fails to write rather
+  than importing a partial set silently.
+  """
+  @spec import_dotenv(Scope.t(), String.t(), String.t()) ::
+          {:ok, [String.t()]} | {:error, String.t()}
+  def import_dotenv(%Scope{} = scope, environment, dotenv) when is_binary(dotenv) do
+    dotenv
+    |> Sops.parse_dotenv()
+    |> Enum.reduce_while({:ok, []}, fn {key, value}, {:ok, acc} ->
+      case put_secret(scope, environment, key, value) do
+        {:ok, _} -> {:cont, {:ok, [key | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+    |> then(fn
+      {:ok, keys} -> {:ok, Enum.reverse(keys)}
+      error -> error
+    end)
+  end
+
   defp put_secret_in(scope, resolved_environment, environment, key, value) do
     with {:ok, private} <- ensure_age_key(scope, resolved_environment, environment),
          :ok <- Sops.put_secret(resolved_environment, environment, key, value, private) do
