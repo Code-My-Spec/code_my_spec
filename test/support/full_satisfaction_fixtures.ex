@@ -264,8 +264,15 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     Map.put(context, :story, story)
   end
 
-  # 10. Three Amigos artifacts: persona linked + rule + scenarios.
-  defp apply_three_amigos_artifacts(context) do
+  @doc """
+  Three Amigos artifacts: persona linked + rule + scenarios, satisfying
+  `three_amigos_complete` without touching anything downstream of it
+  (`bdd_specs_exist` stays actionable). Public so a scenario can claim and
+  hold that requirement itself, the way `apply_without_three_amigos/1` does
+  one stage earlier for `three_amigos_complete`.
+  """
+  @spec apply_three_amigos_artifacts(map()) :: map()
+  def apply_three_amigos_artifacts(context) do
     :ok =
       ProjectStateFixtures.apply_three_amigos_for_story(context.scope, context.story,
         persona_id: context.persona_id,
