@@ -347,6 +347,35 @@ defmodule CodeMySpec.Agents.Mailbox do
     end
   end
 
+  @doc """
+  Hand over everything waiting, through a stop hook instead of a socket
+  (story 1123): a terminal session that cannot take socket messages reads them
+  when it stops. Each entry is settled delivered as it is taken; the texts come
+  back oldest first.
+  """
+  @spec take_for_stop(Scope.t(), Ecto.UUID.t()) :: [String.t()]
+  def take_for_stop(scope, agent_id) do
+    {:ok, texts} =
+      Repo.transaction(fn ->
+        lock_agent!(scope, agent_id)
+        now = DateTime.utc_now()
+
+        from(e in Entry,
+          where: e.agent_id == ^agent_id and e.state in [:queued, :claimed],
+          order_by: [desc_nulls_last: e.send_now, asc: e.id]
+        )
+        |> Repo.all()
+        |> Enum.map(fn entry ->
+          change_entry(entry, %{state: :completed, consumed_at: now, finished_at: now})
+          message = Repo.get!(Message, entry.message_id)
+          {:ok, _} = Conversations.set_delivery(message, :delivered, broadcast: false)
+          Message.text(message)
+        end)
+      end)
+
+    texts
+  end
+
   @doc "Terminal evidence is tied to the consumed ref and engine generation."
   def finish(scope, agent_id, ref, generation, outcome \\ :completed) do
     transition(scope, agent_id, ref, fn

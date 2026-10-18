@@ -23,6 +23,7 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
   alias CodeMySpec.Sessions
+  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
   alias CodeMySpec.AgentTasks.TaskEvaluator
@@ -47,12 +48,32 @@ defmodule CodeMySpec.Hooks.Stop do
 
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
-    session = session_id && Sessions.get_by_external_id(scope, session_id)
-    warn_unresolved_session(scope, session_id, session, req_id)
+    case Agents.take_held_for_stop(scope, session_id) do
+      [] ->
+        session = session_id && Sessions.get_by_external_id(scope, session_id)
+        warn_unresolved_session(scope, session_id, session, req_id)
 
-    active_task = session && Session.active_task(session)
+        active_task = session && Session.active_task(session)
 
-    do_decide(scope, session_id, session, active_task, [], req_id)
+        do_decide(scope, session_id, session, active_task, [], req_id)
+
+      messages ->
+        hand_over(messages, req_id)
+    end
+  end
+
+  # A terminal agent nothing else can reach is told at its stop (story 1123).
+  defp hand_over(messages, req_id) do
+    Logger.info("[StopHook] [#{req_id}] Handing over #{length(messages)} held message(s)",
+      cms_decision: "block"
+    )
+
+    %{
+      "decision" => "block",
+      "reason" =>
+        "Messages for you, held until you stopped because they could not reach this " <>
+          "session directly:\n\n" <> Enum.map_join(messages, "\n\n---\n\n", & &1)
+    }
   end
 
   # Allow is the default (failing closed on its own plumbing would wedge every

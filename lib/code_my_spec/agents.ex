@@ -387,6 +387,25 @@ defmodule CodeMySpec.Agents do
   def terminal_agent_id(_scope, _session_id), do: nil
 
   @doc """
+  What a terminal session's stop hook hands over (story 1123): the messages
+  waiting for its agent when nothing else can reach it — no live socket,
+  because its Claude Code is too old or holds or refuses socket messages.
+  Empty when the agent is live, or the session is not a terminal agent.
+  """
+  @spec take_held_for_stop(Scope.t(), String.t() | nil) :: [String.t()]
+  def take_held_for_stop(%Scope{} = scope, session_id) do
+    case terminal_agent_id(scope, session_id) do
+      nil ->
+        []
+
+      id ->
+        if MapSet.member?(present_ids(scope), id),
+          do: [],
+          else: Mailbox.take_for_stop(scope, id)
+    end
+  end
+
+  @doc """
   A terminal agent taking the role it chose with the person. Agents we start
   keep theirs: their role is their seat.
   """
