@@ -9,17 +9,26 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
   declined, reason: "already satisfied") -- its own comment: "the system
   knows the offer is stale, so it does not wait for the agent to say so."
   The agent never has to call `reject_offer` or `tap_out` for this to happen.
+
+  Per product's ruling: this needs one agent, not a race between two --
+  "who did it doesn't matter to 1870". The work is satisfied directly
+  (`FullSatisfactionFixtures.apply_qa_readiness_transition/1`) before the
+  agent ever acts on it. Three separate `spex` blocks, not three `scenario`s
+  in one: each `spex` gets its own fresh account/project/story, where
+  multiple `scenario`s in one block would share a context and collide on
+  the second's fixture setup (confirmed: "component already exists").
   """
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpec.Agents.Tools.RejectOffer
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -33,27 +42,17 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
 
   spex "Already-done work closes its own offer, without reject_offer or tap_out",
        criterion: 1870 do
-    scenario "a second agent finishes the offered work first" do
+    scenario "the work is satisfied before the coder ever acts on it" do
       given_ "a coder is offered work it has not yet claimed", context do
         context = offered_work(context)
         {:ok, Map.put(context, :work, next_task(context, context.coder))}
       end
 
-      given_ "a second agent claims and finishes that same work first", context do
-        other = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
-        other_work = next_task(context, other.id)
-        context = start_agent_task(context, other.id, other_work)
-        task_id = held_task_id(context, other.id)
-
-        {:reply, evaluated, _} =
-          EvaluateTask.execute(%{task_id: task_id}, agent_frame(context, other.id))
-
-        refute evaluated.isError, response_text(evaluated)
-        {:ok, context}
+      given_ "that work is satisfied, with no agent involved", context do
+        {:ok, FullSatisfactionFixtures.apply_qa_readiness_transition(context)}
       end
 
-      when_ "the originally offered coder calls start_task on that same, now-finished work",
-            context do
+      when_ "the coder calls start_task on that same, now-satisfied work", context do
         {:reply, result, _} = StartTask.execute(context.work, agent_frame(context, context.coder))
         {:ok, Map.put(context, :result, result)}
       end
@@ -72,6 +71,70 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
       then_ "the offer settles declined with that reason, not left open", context do
         assert [%{status: "declined", reason: "already satisfied"}] =
                  offers(context, context.coder, %{kind: "work"}),
+               listing(context)
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "The coder can reject an already-satisfied offer itself, with a reason",
+       criterion: 1870 do
+    scenario "the coder calls reject_offer instead of start_task" do
+      given_ "a coder is offered work it has not yet claimed", context do
+        context = offered_work(context)
+        {:ok, Map.put(context, :work, next_task(context, context.coder))}
+      end
+
+      given_ "that work is satisfied, with no agent involved", context do
+        {:ok, FullSatisfactionFixtures.apply_qa_readiness_transition(context)}
+      end
+
+      when_ "it calls reject_offer with a reason instead of start_task", context do
+        assert {:ok, _text} =
+                 RejectOffer.call(
+                   %{reason: "already satisfied"},
+                   %{agent_id: context.coder, scope: context.scope}
+                 )
+
+        {:ok, context}
+      end
+
+      then_ "the offer settles declined with that reason", context do
+        assert [%{status: "declined", reason: "already satisfied"}] =
+                 offers(context, context.coder, %{kind: "work"}),
+               listing(context)
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "Tapping out instead does not close or decline the already-satisfied offer",
+       criterion: 1870 do
+    scenario "the coder taps out instead of resolving the offer" do
+      given_ "a coder is offered work it has not yet claimed", context do
+        context = offered_work(context)
+        {:ok, Map.put(context, :work, next_task(context, context.coder))}
+      end
+
+      given_ "that work is satisfied, with no agent involved", context do
+        {:ok, FullSatisfactionFixtures.apply_qa_readiness_transition(context)}
+      end
+
+      when_ "it taps out instead of calling start_task, reject_offer, or anything else", context do
+        {:reply, reply, _} =
+          TapOut.execute(
+            %{reason: "I should not be the one to do this"},
+            agent_frame(context, context.coder)
+          )
+
+        refute reply.isError, response_text(reply)
+        {:ok, context}
+      end
+
+      then_ "the offer is not settled as declined or closed; it stays open", context do
+        assert [%{status: "open"}] = offers(context, context.coder, %{kind: "work"}),
                listing(context)
 
         {:ok, context}
