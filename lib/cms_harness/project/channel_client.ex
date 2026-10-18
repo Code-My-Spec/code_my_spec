@@ -1521,7 +1521,7 @@ defmodule CmsHarness.Project.ChannelClient do
     delay = backoff(socket.assigns.attempts)
 
     Logger.warning(
-      "[CmsHarness] disconnected from the CodeMySpec server (#{inspect(reason)}); " <>
+      "[CmsHarness] disconnected from the CodeMySpec server (#{disconnect_summary(reason)}); " <>
         "reconnecting in #{delay}ms. Hooks will refuse and file watching is stopped until then."
     )
 
@@ -1536,6 +1536,29 @@ defmodule CmsHarness.Project.ChannelClient do
     # exits. `:refused` only tells the health endpoint why nothing is served.
     Process.send_after(self(), :reconnect, delay)
     {:ok, update(socket, :attempts, &(&1 + 1))}
+  end
+
+  # Issue 62377cc3: a refused socket upgrade used to log only `inspect(reason)`
+  # -- Mint's own upgrade-failure protocol error, the same for every refusal,
+  # never why the SERVER refused. `UserSocket.handle_connect_error/2` answers
+  # with an `x-connect-refusal-reason` header (Slipstream keeps headers on a
+  # failed upgrade; it discards the response body entirely -- see that
+  # function's own moduledoc); read it back so the log names the actual
+  # cause instead of a Mint-internal message indistinguishable from any
+  # other refusal.
+  defp disconnect_summary({:upgrade_failure, %{status_code: 403, resp_headers: headers}} = reason) do
+    case refusal_reason(headers) do
+      nil -> inspect(reason)
+      why -> "refused by the server: #{why}"
+    end
+  end
+
+  defp disconnect_summary(reason), do: inspect(reason)
+
+  defp refusal_reason(headers) do
+    Enum.find_value(headers, fn {key, value} ->
+      if String.downcase(key) == "x-connect-refusal-reason", do: value
+    end)
   end
 
   @impl Slipstream
