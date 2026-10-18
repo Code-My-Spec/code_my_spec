@@ -62,6 +62,26 @@ defmodule CodeMySpecTest.AgentTransportRouter do
   end
 
   @doc """
+  Route one agent's traffic to `module`, without touching its project's own
+  route.
+
+  `route/2` is the whole project (every agent on it, whichever copy): right
+  for "this project's harness is gone", wrong for "this one agent's machine
+  is unreachable while its teammates' are not" -- production dispatches by
+  the agent's own `working_copy_id` (`Transport.Harness.holder/1`), so two
+  agents on different copies of one project are independently reachable
+  there. This gives a scenario the same granularity: an override checked
+  ahead of the project's route, for calls that name this agent.
+  """
+  @spec route_agent(String.t(), module()) :: :ok
+  def route_agent(agent_id, module) do
+    start()
+    Registry.unregister(__MODULE__, {:agent, agent_id})
+    {:ok, _} = Registry.register(__MODULE__, {:agent, agent_id}, module)
+    :ok
+  end
+
+  @doc """
   Block until every Task started under `CodeMySpec.TaskSupervisor` since
   `before` (a snapshot from `Task.Supervisor.children/1`) has finished, or
   half a second has passed.
@@ -84,7 +104,14 @@ defmodule CodeMySpecTest.AgentTransportRouter do
     end
   end
 
-  defp transport(project_id) do
+  defp transport(project_id, agent_id) do
+    case agent_id && lookup({:agent, agent_id}) do
+      {_pid, module} -> module
+      _ -> project_transport(project_id)
+    end
+  end
+
+  defp project_transport(project_id) do
     case lookup(project_id) do
       {_pid, module} -> module
       nil -> @default
@@ -113,23 +140,23 @@ defmodule CodeMySpecTest.AgentTransportRouter do
 
   @impl true
   def start_agent(copy, agent, timeout),
-    do: transport(agent.project_id).start_agent(copy, agent, timeout)
+    do: transport(agent.project_id, agent.id).start_agent(copy, agent, timeout)
 
   @impl true
   def dispatch_message(copy, agent, ref, message, timeout),
-    do: transport(agent.project_id).dispatch_message(copy, agent, ref, message, timeout)
+    do: transport(agent.project_id, agent.id).dispatch_message(copy, agent, ref, message, timeout)
 
   @impl true
   def request_work_turn(copy, agent, ref, message, timeout),
-    do: transport(agent.project_id).request_work_turn(copy, agent, ref, message, timeout)
+    do: transport(agent.project_id, agent.id).request_work_turn(copy, agent, ref, message, timeout)
 
   @impl true
   def stop_agent(copy, agent, timeout),
-    do: transport(agent.project_id).stop_agent(copy, agent, timeout)
+    do: transport(agent.project_id, agent.id).stop_agent(copy, agent, timeout)
 
   @impl true
   def interrupt_turn(copy, agent) do
-    module = transport(agent.project_id)
+    module = transport(agent.project_id, agent.id)
 
     if function_exported?(module, :interrupt_turn, 2),
       do: module.interrupt_turn(copy, agent),
@@ -138,11 +165,12 @@ defmodule CodeMySpecTest.AgentTransportRouter do
 
   @impl true
   def call_machine_tool(copy, tool, arguments, timeout),
-    do: transport(copy_project_id(copy)).call_machine_tool(copy, tool, arguments, timeout)
+    do: project_transport(copy_project_id(copy)).call_machine_tool(copy, tool, arguments, timeout)
 
   @impl true
   def create_working_copy([first | _] = candidates, request, timeout),
-    do: transport(copy_project_id(first)).create_working_copy(candidates, request, timeout)
+    do:
+      project_transport(copy_project_id(first)).create_working_copy(candidates, request, timeout)
 
   def create_working_copy([], request, timeout),
     do: @default.create_working_copy([], request, timeout)

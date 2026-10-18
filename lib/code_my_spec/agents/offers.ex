@@ -439,6 +439,35 @@ defmodule CodeMySpec.Agents.Offers do
 
   def undelivered(_offer), do: :ok
 
+  @doc """
+  A transport's definite refusal settles one way, regardless of which path
+  noticed it: the conversation message `:failed`, and any still-open offer
+  linked to it `:undelivered`. Shared by `Agents.record_dispatch_result/3`
+  (no `Mailbox.Entry` existed yet) and `Mailbox.reconcile_dispatch/4` (one
+  did, and is moved off `:claimed` separately) -- a missing acknowledgement
+  is not this; only a reason the transport itself reports as final is.
+  """
+  @spec fail_dispatch(Message.t()) :: :ok
+  def fail_dispatch(%Message{} = message) do
+    {:ok, _} = Conversations.set_delivery(message, :failed)
+    undelivered_by_message(message.id)
+  end
+
+  # undelivered/1 by way of the message: fail_dispatch/1's two callers have
+  # a message id in hand, not the Offer struct itself.
+  defp undelivered_by_message(message_id) do
+    now = DateTime.utc_now()
+
+    from(o in Offer,
+      join: link in OfferMessage,
+      on: link.offer_id == o.id,
+      where: link.message_id == ^message_id and o.status == :open
+    )
+    |> Repo.update_all(set: [status: :undelivered, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
   @default_limit 50
 
   @doc """

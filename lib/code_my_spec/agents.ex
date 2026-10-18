@@ -2058,14 +2058,10 @@ defmodule CodeMySpec.Agents do
   defp record_dispatch_result({:error, :message_timed_out} = error, _message, _offered),
     do: error
 
-  defp record_dispatch_result({:error, _reason} = error, message, offered) do
+  defp record_dispatch_result({:error, _reason} = error, message, _offered) do
     case Repo.get_by(Mailbox.Entry, message_id: message.id) do
-      nil ->
-        Offers.undelivered(offered)
-        Conversations.set_delivery(message, :failed)
-
-      _admitted ->
-        :ok
+      nil -> Offers.fail_dispatch(message)
+      _admitted -> :ok
     end
 
     error

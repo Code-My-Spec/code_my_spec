@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2042Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.AgentProcessHelpers, only: [machine_out_of_reach: 1]
+  import CodeMySpecSpex.AgentProcessHelpers, only: [agent_out_of_reach: 1]
   import Phoenix.LiveViewTest
 
   alias CodeMySpec.WorkingCopies
@@ -28,8 +28,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion2042Spex do
   spex "An undelivered operator instruction is reported to main", criterion: 2042 do
     scenario "an operator's message to an unreachable agent is never delivered" do
       given_ "an agent whose machine cannot be reached, and a continuous main", context do
-        :ok = machine_out_of_reach(context)
         agent = Fixtures.running_agent(context.scope, role: "coding")
+        :ok = agent_out_of_reach(agent)
 
         {:ok, _} =
           WorkingCopies.designate_main(context.scope, context.scope.active_working_copy_id)

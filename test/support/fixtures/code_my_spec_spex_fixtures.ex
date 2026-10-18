@@ -3417,6 +3417,11 @@ defmodule CodeMySpecSpex.Fixtures do
   def route_agent_transport(project, transport),
     do: CodeMySpecTest.AgentTransportRouter.route(project, transport)
 
+  @doc "Route one agent's traffic to `transport`, without touching its project's route."
+  @spec route_agent(String.t(), module()) :: :ok
+  def route_agent(agent_id, transport),
+    do: CodeMySpecTest.AgentTransportRouter.route_agent(agent_id, transport)
+
   @doc "Say what this scope's working copy machine can do, as a join would."
   def record_machine_tools(%Scope{active_working_copy_id: id}, names) do
     {:ok, copy} = CodeMySpec.WorkingCopies.fetch(id)

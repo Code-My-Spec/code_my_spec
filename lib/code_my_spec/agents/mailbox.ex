@@ -294,6 +294,39 @@ defmodule CodeMySpec.Agents.Mailbox do
   # Delivery is established by consume/4, never by a transport acknowledgement.
   defp reconcile_dispatch(_scope, _agent_id, _entry, {:ok, :started}), do: {:ok, :started}
 
+  @terminal_dispatch_reason :harness_not_connected
+
+  # A definite transport refusal, not a missing acknowledgement: the harness
+  # itself reported it cannot be reached (Transport.Harness's unreachable/3),
+  # as opposed to a call that simply did not answer in time. Settles the same
+  # way Agents.record_dispatch_result/3's no-entry branch already does for
+  # this case -- Offers.fail_dispatch/1, shared so neither path copies the
+  # other. This entry already exists (Mailbox.admit ran first), so it also
+  # moves off :claimed to the schema's own, previously-unused :failed state.
+  defp reconcile_dispatch(scope, agent_id, entry, {:error, @terminal_dispatch_reason} = error) do
+    case transition(scope, agent_id, entry.delivery_ref, fn
+           %{state: :claimed} = current ->
+             change_entry(current, %{
+               state: :failed,
+               finished_at: DateTime.utc_now(),
+               diagnostic: "Dispatch refused: #{@terminal_dispatch_reason}"
+             })
+
+           current ->
+             current
+         end) do
+      {:ok, %{state: :failed}} ->
+        Offers.fail_dispatch(Repo.get!(Message, entry.message_id))
+        error
+
+      {:ok, %{state: state}} when state in [:consumed, :completed] ->
+        {:ok, :started}
+
+      _other ->
+        error
+    end
+  end
+
   defp reconcile_dispatch(scope, agent_id, entry, {:error, reason} = error) do
     case transition(scope, agent_id, entry.delivery_ref, fn
            %{state: :claimed} = current ->

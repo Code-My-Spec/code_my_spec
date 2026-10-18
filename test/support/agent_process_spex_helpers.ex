@@ -293,6 +293,21 @@ defmodule CodeMySpecSpex.AgentProcessHelpers do
   def machine_out_of_reach(project),
     do: CodeMySpecSpex.Fixtures.route_agent_transport(project, UnreachableMachine)
 
+  @doc """
+  Put one agent's machine out of reach, leaving the rest of its project on
+  whatever transport the scenario already routed.
+
+  `machine_out_of_reach/1` swaps the whole project -- right when nothing on
+  it should be reachable, wrong for a scenario where a teammate (main) must
+  stay reachable while this one agent's machine is not. Production tells
+  them apart by `working_copy_id`; this gives a scenario the same.
+  """
+  @spec agent_out_of_reach(term()) :: :ok
+  def agent_out_of_reach(%{id: agent_id}), do: agent_out_of_reach(agent_id)
+
+  def agent_out_of_reach(agent_id) when is_binary(agent_id),
+    do: CodeMySpecSpex.Fixtures.route_agent(agent_id, UnreachableMachine)
+
   # Somewhere disposable for the agent to be pointed at. It has to exist:
   # starting an agent on a checkout that is not there is refused, which is its
   # own criterion.
