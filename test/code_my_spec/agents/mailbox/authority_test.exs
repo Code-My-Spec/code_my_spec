@@ -145,6 +145,28 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
     assert Repo.get!(Conversations.Message, message.id).delivery == :pending
   end
 
+  defmodule HarnessNotConnectedTransport do
+    def dispatch_message(_copy, _agent, _ref, _text, _timeout),
+      do: {:error, :harness_not_connected}
+  end
+
+  # Criterion 2042: a transport's definite refusal is not a mere missed
+  # acknowledgement -- it settles the entry :failed (not :queued for retry,
+  # the way :busy above leaves it) and carries the message and its offer
+  # down with it, so main can tell an undelivered instruction from one that
+  # was merely slow.
+  test "a harness reporting it cannot be reached settles delivery failed and its offer undelivered",
+       ctx do
+    CodeMySpecTest.AgentTransportRouter.route(ctx, HarnessNotConnectedTransport)
+    {message, _} = admit(ctx, "an instruction")
+    offer = Offers.record_or_link({:ok, message}, ctx.agent, :instruction, {"notice", nil})
+
+    assert {:error, :harness_not_connected} = Mailbox.pump(ctx.scope, ctx.agent.id)
+    assert [%{state: :failed}] = Mailbox.entries(ctx.scope, ctx.agent.id)
+    assert Repo.get!(Conversations.Message, message.id).delivery == :failed
+    assert Repo.reload!(offer).status == :undelivered
+  end
+
   test "FIFO advances only after the consumed turn finishes", ctx do
     {first, _} = admit(ctx, "first")
     {second, _} = admit(ctx, "second")

@@ -9,12 +9,14 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Notifications
   alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -191,7 +193,14 @@ defmodule CodeMySpec.Agents.Work do
         |> Conversations.record_sent_to_agent(notice)
         |> Offers.record_or_link(agent, notice_kind(event, subject), subject)
 
-        if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, event)
+        # Exclude this agent: it was just told directly above, on its own
+        # thread. Without the exclusion, `consider_copy` finds this same
+        # agent idle with this same released-but-still-blocked task still
+        # claimable (`offer/2`'s `released_tasks/2`) and pushes it a second,
+        # detail-less turn on the very offer just opened for it.
+        if agent.working_copy_id,
+          do: consider_copy(scope, agent.working_copy_id, event, agent.id)
+
         :ok
     end
   end
@@ -325,7 +334,8 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   defp unavailable_clause(%{id: id}, _outcome),
-    do: "task #{id} only after inspecting its recorded requirement; entity identity is unavailable"
+    do:
+      "task #{id} only after inspecting its recorded requirement; entity identity is unavailable"
 
   defp start_args(_scope, %{issue_id: issue_id} = task) when is_binary(issue_id),
     do:
@@ -392,7 +402,7 @@ defmodule CodeMySpec.Agents.Work do
          {:ok, {waking, offered}} <-
            admit_turn(scope, current.id, event, {offer_kind(subject), subject}),
          :ok <- still_offered(scope, waking, offered, subject) do
-      turn_prompt = offer_prompt(scope, waking, subject)
+      turn_prompt = offer_prompt(scope, waking, subject, offered)
 
       # Recorded first, then sent: the transport is called directly, and a turn
       # with nothing on the transcript saying why reads as an agent starting
@@ -694,8 +704,11 @@ defmodule CodeMySpec.Agents.Work do
   # Released and still claimable: one the graph no longer offers would be
   # refused by `start_task`, and offering it first would hide the rest.
   #
-  # And not held back: a released task ignored to the end of its ladder, or
-  # declined, is not offered again, as requirement work is not.
+  # And not held back: this is push-subject selection, not `claimable_work`
+  # -- a released task this agent explicitly declined, or ignored to the
+  # end of its own ladder, is not pushed again (criterion 1741's throttle).
+  # Declining still holds the work back from `claimable_work` too; merely
+  # ignoring it does not (see `withheld?/4`).
   defp released_tasks(%Agent{tasks: tasks} = agent, nodes) do
     standing = Offers.standing(agent.id)
 
@@ -716,34 +729,95 @@ defmodule CodeMySpec.Agents.Work do
   defp offer_kind({"task", _id}), do: :unblocked
   defp offer_kind(_subject), do: :work
 
-  # A second offer of a released task carries its own rung's text, `:remind`,
-  # rather than the same sentence again.
-  defp offer_prompt(scope, agent, {"task", id}) do
+  # Criterion 2158: an offer that asks the agent to act names itself and the
+  # way to refuse it, so every body below is followed by the offer's own id
+  # and `reject_offer` -- except a tap-out's own answer, which already says
+  # what happened and is not itself an action request.
+  defp offer_prompt(scope, agent, subject, offer) do
+    scope
+    |> offer_prompt_body(agent, subject)
+    |> append_offer_note(subject, offer)
+  end
+
+  # A released task climbs the work ladder (criterion 2173): its id, then its
+  # requirement's detail, then what else the agent could take.
+  defp offer_prompt_body(scope, agent, {"task", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.id == id))
-    base = "Your blocker was released; #{resume_instruction(scope, tasks)}"
+    # The answer on every rung: this path and TaskOwner's notice race to make
+    # the first one.
+    base = "Your blocker was released; #{resume_instruction(scope, tasks)}" <> answer(tasks)
 
     case rung(agent, :unblocked, "task", id) do
-      :remind -> base <> "\n\n" <> remind()
-      _first -> base
+      :detail ->
+        base <> "\n\n" <> remind() <> task_detail(&detail/3, scope, agent, tasks)
+
+      :alternatives ->
+        base <> "\n\n" <> remind() <> task_detail(&alternatives/3, scope, agent, tasks)
+
+      _first ->
+        base
     end
   end
 
-  defp offer_prompt(scope, agent, {"tap_out", id}) do
+  # Matches TaskOwner.resolved_header/1's own format for {:tap_out, id, :denied}
+  # exactly, so a later rung of the same offer (this path) reads the same as
+  # the first delivery (resume_ready/4, via wake_released/wake_with_notice) --
+  # main's correction on 234810fe: one event, one wording, from one shared
+  # builder, not two copies that happened to say similar things.
+  defp offer_prompt_body(scope, agent, {"tap_out", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.blocker_id == id))
-    "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
+    "Your blocker tap_out #{id} was denied; #{resume_instruction(scope, tasks)}"
   end
 
   # The extra text is chosen by the offer's rung on its kind's ladder: `:remind`
   # for a released task; `:detail` and `:alternatives` for requirement work.
-  defp offer_prompt(scope, agent, {"requirement", key}) do
+  defp offer_prompt_body(scope, agent, {"requirement", key}) do
     case rung(agent, :work, "requirement", key) do
       :detail -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
       :alternatives -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
-      _first -> prompt(agent)
+      _first -> prompt(agent) <> "\n\n" <> offered(key)
     end
   end
 
-  defp offer_prompt(_scope, agent, _subject), do: prompt(agent)
+  defp offer_prompt_body(_scope, agent, _subject), do: prompt(agent)
+
+  # An answer offer's second rung is the answer with the task it unblocks
+  # (criterion 2175): the first said the answer, this repeats it beside the task.
+  defp answer([%{blocker_type: :question, blocker_id: id}]),
+    do: answer_text(Notifications.answer_detail(id))
+
+  defp answer(_tasks), do: ""
+
+  defp task_detail(render, scope, agent, [task]) do
+    scope
+    |> offerable(agent)
+    |> Enum.find(&task_on_node?(task, &1))
+    |> node_detail(render, scope, agent)
+  end
+
+  defp task_detail(_render, _scope, _agent, _tasks), do: ""
+
+  defp node_detail(nil, _render, _scope, _agent), do: ""
+
+  defp node_detail(node, render, scope, agent) do
+    case render.(scope, agent, node_key(agent, node)) do
+      "" -> ""
+      text -> "\n\n" <> text
+    end
+  end
+
+  defp answer_text(nil), do: ""
+  defp answer_text(text), do: "\n\n" <> text
+
+  defp append_offer_note(body, {"tap_out", _id}, _offer), do: body
+
+  defp append_offer_note(body, _subject, %Offer{id: id}) do
+    body <>
+      "\n\n" <>
+      "This is backed by offer `#{id}`. Complete it, or call `reject_offer` with that id and a reason."
+  end
+
+  defp append_offer_note(body, _subject, _offer), do: body
 
   # The way out of a second notice, for a task this agent was already told it
   # could resume. The line above already names it and the call that takes it, so
@@ -755,20 +829,7 @@ defmodule CodeMySpec.Agents.Work do
 
   # The rung the offer being rendered now carries: the rung the last ignored
   # offer wrote. None on a first offer.
-  defp rung(agent, kind, type, key) do
-    case {Offers.ladder({kind, type}), ignored(agent, key)} do
-      {nil, _ignored} -> nil
-      {_steps, 0} -> nil
-      {steps, ignored} -> Enum.at(steps, ignored - 1)
-    end
-  end
-
-  defp ignored(agent, key) do
-    case Offers.standing(agent.id)[key] do
-      %{ignored: n} -> n
-      _none -> 0
-    end
-  end
+  defp rung(agent, kind, type, key), do: Offers.rung(agent.id, kind, type, key)
 
   # The second offer of the same work says more about it.
   defp detail(scope, agent, key) do
@@ -787,6 +848,11 @@ defmodule CodeMySpec.Agents.Work do
         |> String.trim()
     end
   end
+
+  # The first names the work by its id alone (criterion 2167), as `list_offers`
+  # and `reject_offer` know it: what it is and why come with the detail rung,
+  # and the turn still preselects nothing (criterion 1451).
+  defp offered(key), do: "Offered: `requirement:#{key}`."
 
   # The third names what else it could take.
   defp alternatives(scope, agent, key) do
@@ -941,8 +1007,12 @@ defmodule CodeMySpec.Agents.Work do
     |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name})
   end
 
-  # Claimable work less what is held back from this agent (ignored to the end
-  # of its ladder, or declined): a teammate is still offered it.
+  # Claimable work less what this agent is not to be pushed again: this
+  # feeds `graph_work/2`, the push-subject selection `offer/2` and
+  # `admit_turn/4` act on, so it reads the combined `held?` -- a decline
+  # or a ladder exhausted by ignoring both stop the push (criterion 1741).
+  # `claimable_work/2` itself stays open to a pull (`withheld?/4` reads the
+  # narrower `declined?`), so an exhausted offer still shows there.
   defp offerable(scope, agent) do
     standing = Offers.standing(agent.id)
 
@@ -1112,7 +1182,8 @@ defmodule CodeMySpec.Agents.Work do
 
   defp withholding(scope, %Agent{} = agent, opts) do
     owners = Keyword.get(opts, :owners) || AgentsRepository.list_agents(scope)
-    &withheld?(owners, agent, &1)
+    standing = Offers.standing(agent.id)
+    &withheld?(owners, agent, &1, standing)
   end
 
   defp withholding(_scope, _owner, _opts), do: fn _node -> false end
@@ -1129,19 +1200,59 @@ defmodule CodeMySpec.Agents.Work do
     do: actionable(scope, agent.role, agent, owners: owners)
 
   @doc """
-  Whether a task at `agent`'s checkout withholds `node` from it: another
-  agent's live task, or its own blocked on an unresolved blocker.
-
-  Its own active task is not withheld — `start_task` resumes that.
+  What a pull (`get_next_requirement`) would currently show this agent to
+  act on: `{kind, subject}` for the head of its claimable work, the same
+  selection `offer_subject/2` makes for a pushed turn, or nil when there is
+  none. Read-only -- a pull never records an offer (issue e6f18e57, product's
+  ruling on 7371fb26: only pushed work turns climb the ladder).
+  `Agents.reject_offer/4`'s own fallback uses this to decline work that was
+  shown but never backed by an offer.
   """
-  @spec withheld?([Agent.t()], Agent.t(), map()) :: boolean()
-  def withheld?(owners, agent, node) do
-    owners
-    |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
-    |> Enum.any?(fn owner ->
-      mine? = owner.id == agent.id
-      Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
-    end)
+  @spec shown_work(Scope.t(), Agent.t()) :: {Offer.kind(), Offers.subject()} | nil
+  def shown_work(scope, %Agent{} = agent) do
+    case claimable_work(scope, agent) do
+      [] ->
+        nil
+
+      nodes ->
+        subject =
+          offer_subject(agent, Enum.map(nodes, &{&1.entity_type, &1.entity_id, &1.name}))
+
+        {offer_kind(subject), subject}
+    end
+  end
+
+  @doc """
+  Whether a task at `agent`'s checkout withholds `node` from it: another
+  agent's live task, its own blocked on an unresolved blocker, or its own
+  open offer for the same work that `Offers.standing/1` reads as declined.
+
+  The last half is criterion 2163: a declined offer holds the work back
+  from the agent that declined it, alone, until main acts -- reassigns it,
+  gives the agent other work, or offers it again. This reads `standing`'s
+  narrower `declined?`, not `held?` -- `held?` also covers an offer merely
+  ignored to the end of its own ladder, which is not a decline (criterion
+  2169, product's correction on 3e9a96e9, itself correcting 1ef7cfe3).
+  That case stops being pushed (`offerable/2` reads `held?` for that, so
+  criterion 1741's throttle still holds), but it stays open and claimable:
+  a pull (`get_next_requirement`) still shows it, and `start_task` or
+  `reject_offer` still act on it, until main does.
+
+  Its own active task is not withheld -- `start_task` resumes that.
+  """
+  @spec withheld?([Agent.t()], Agent.t(), map(), map()) :: boolean()
+  def withheld?(owners, agent, node, standing \\ %{}) do
+    held_back?(agent, node, standing) or
+      owners
+      |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
+      |> Enum.any?(fn owner ->
+        mine? = owner.id == agent.id
+        Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
+      end)
+  end
+
+  defp held_back?(agent, node, standing) do
+    match?(%{declined?: true}, standing[node_key(agent, node)])
   end
 
   defp holds_node?(task, mine?, node) do

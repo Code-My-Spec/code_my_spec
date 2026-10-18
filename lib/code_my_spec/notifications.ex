@@ -607,10 +607,20 @@ defmodule CodeMySpec.Notifications do
     released
   end
 
+  # On 234810fe, main ruled the task-specific resume notice gets one wording
+  # from one shared builder (TaskOwner.resolved_header/1 + resume_instruction/2,
+  # matched in Work.offer_prompt_body/3) -- the "leave the loop" paragraph
+  # tap_out_denied_notice/2 leads with does not fit a task-specific deny (it
+  # describes the whole-agent continuous-stop case wake_if_still_in_the_loop/2
+  # still uses it for) and no active 1080 criterion asks for that wording
+  # here. But the actual information in that notice -- the decider's own
+  # reason, and any blocker it named that has since resolved -- is real and
+  # stays: tap_out_task_denied_detail/2 carries only that, not the
+  # mismatched lead paragraph.
   defp settle_tap_out_blocker(%{decision: "deny"} = request, answer) do
     {:ok, released} =
       TaskOwner.blocker_resolved(:tap_out, request.id, :denied,
-        detail: tap_out_denied_notice(answer, request)
+        detail: tap_out_task_denied_detail(answer, request)
       )
 
     released
@@ -671,6 +681,17 @@ defmodule CodeMySpec.Notifications do
 
   # The decider's reason carries: without the why, an agent re-reads its own
   # transcript and reaches its last conclusion again.
+  # The reason and settled-blockers reconciliation alone, with no lead
+  # paragraph -- for a task-specific deny, whose own resume text (built by
+  # Work.offer_prompt_body/3, matching TaskOwner.resolved_header/1) already
+  # says what happened.
+  defp tap_out_task_denied_detail(answer, request) do
+    ""
+    |> append_reason(answer)
+    |> append_settled_blockers(request)
+    |> String.trim_leading()
+  end
+
   defp tap_out_denied_notice(answer, request) do
     base = """
     Your request to leave the loop was declined. You are still in it, and there
@@ -1234,7 +1255,10 @@ defmodule CodeMySpec.Notifications do
 
       # Released and woken through the one path every blocker takes. An
       # override of an answer whose task already moved on releases nothing.
-      {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :answered)
+      # The answer rides in the resume notice of a task it releases (2175).
+      {:ok, released} =
+        TaskOwner.blocker_resolved(:question, updated.id, :answered, detail: answered(updated))
+
       deliver_answer_content(updated, released > 0)
       tell_escalator(updated)
       {:ok, updated}
@@ -1314,20 +1338,21 @@ defmodule CodeMySpec.Notifications do
   # What the agent reads mid-turn. Self-contained, because it is arriving in
   # the middle of something else: a reply without its question is a line of
   # dialogue with no idea what it answers.
-  defp answer_message(%{questions: questions, answers: answers} = request, agent) do
-    body =
-      Enum.map_join(questions, "\n\n", fn question ->
-        text = MapAccess.get(question, :question)
-        "Q: #{text}\nA: #{said(answers, text)}"
-      end)
-
+  defp answer_message(request, agent) do
     """
     The user answered your question.
 
-    #{body}
+    #{answer_body(request)}
 
     #{answer_closing(request, TaskOwner.active_task(agent))}
     """
+  end
+
+  defp answer_body(%{questions: questions, answers: answers}) do
+    Enum.map_join(questions, "\n\n", fn question ->
+      text = MapAccess.get(question, :question)
+      "Q: #{text}\nA: #{said(answers, text)}"
+    end)
   end
 
   defp answer_closing(%{task_id: nil}, _active),
@@ -1490,6 +1515,20 @@ defmodule CodeMySpec.Notifications do
     |> where([p], p.agent_id == ^agent_id and p.status == "pending")
     |> Repo.exists?()
   end
+
+  @doc """
+  What the user answered to this question, as its resume notice carries it,
+  or nil when it is not answered. An answer offer's later rung repeats it.
+  """
+  @spec answer_detail(String.t()) :: String.t() | nil
+  def answer_detail(question_id) do
+    case get_question_request(question_id) do
+      %QuestionRequest{answers: answers} = request when not is_nil(answers) -> answered(request)
+      _unanswered -> nil
+    end
+  end
+
+  defp answered(request), do: "The user answered your question.\n\n" <> answer_body(request)
 
   @doc """
   Get a question request by ID, or nil.

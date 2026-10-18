@@ -268,6 +268,12 @@ defmodule CodeMySpec.SpexGivensTest do
   # Story issue-bag builders establish a real staffed story via SetActiveStory,
   # or a real promotable checkout with submitted fixes and captured passing QA.
   # Name only these builders: Bag.evidence/0 and Bag.revision/0 are accessors.
+  #
+  # Story 1080's `declined_offer`, by `main_answers`/`user_answers`'s own
+  # precedent: a wrapped call is invisible to this check, and its whole body
+  # drives the app -- creates a copy and its team, files and accepts a real
+  # issue, assigns it, wakes the team, and declines the resulting offer
+  # through the real reject_offer tool.
   @establishes ~w(
     Bag.team( Bag.promotable( Compact.fleet(
     promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
@@ -309,7 +315,7 @@ defmodule CodeMySpec.SpexGivensTest do
     cloudflare_fails( existing_tunnel( push_app_event_with
     set_idle_timeout install_app_instance_runner
     coding_work_waiting offered_work coder_holding_a_task handed_the_menu
-    team_on_a_story issue_accepted qa_plan_missing
+    team_on_a_story issue_accepted qa_plan_missing declined_offer
     refuse_verify_calls
     ClickHouseCassetteHelpers.
     Activity.record(

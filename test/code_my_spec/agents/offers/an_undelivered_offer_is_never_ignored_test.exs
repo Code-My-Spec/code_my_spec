@@ -99,13 +99,14 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
     assert Repo.get!(Offer, offer.id).status == :undelivered
   end
 
-  defp assert_pending_through_turn_end(scope, agent, kind) do
+  # An unreachable machine is a definite refusal (criterion 2042), not a
+  # missed acknowledgement: the entry fails and the offer is undelivered.
+  defp assert_undelivered_through_turn_end(scope, agent, kind) do
     offer = only(agent, kind)
-    assert %{status: :open, outcome_at: nil} = offer
-    assert [%{state: :claimed, diagnostic: diagnostic}] = Agents.Mailbox.entries(scope, agent.id)
-    assert diagnostic =~ "unconfirmed"
+    assert %{status: :undelivered} = offer
+    assert [%{state: :failed}] = Agents.Mailbox.entries(scope, agent.id)
     end_turn(scope, agent)
-    assert Repo.get!(Offer, offer.id).status == :open
+    assert Repo.get!(Offer, offer.id).status == :undelivered
   end
 
   test "a work prompt whose turn request failed", ctx do
@@ -193,7 +194,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
                  offer: {:answer, {"question", "q-1"}}
                )
 
-      assert_pending_through_turn_end(ctx.scope, agent, :answer)
+      assert_undelivered_through_turn_end(ctx.scope, agent, :answer)
     end
 
     test "a send Wake refuses", ctx do
@@ -224,7 +225,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
       })
 
       await_dispatches()
-      assert_pending_through_turn_end(ctx.scope, agent, :retry)
+      assert_undelivered_through_turn_end(ctx.scope, agent, :retry)
     end
   end
 
@@ -241,7 +242,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
     :ok = StopDecision.deliver(ctx.scope, %{agent | tasks: [task]}, [])
     await_dispatches()
 
-    assert_pending_through_turn_end(ctx.scope, agent, :menu)
+    assert_undelivered_through_turn_end(ctx.scope, agent, :menu)
   end
 
   test "an undelivered offer does not count toward the next attempt", ctx do

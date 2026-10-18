@@ -87,7 +87,10 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
 
       assert {:ok, ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
       id = agent.id
-      assert_received {:work_turn_requested, ^id, ^ref, @work_prompt}
+      assert_received {:work_turn_requested, ^id, ^ref, prompt}
+      # Criterion 2158: a pushed work turn also names its offer id and
+      # reject_offer, after the eligible-work text this test is really about.
+      assert String.starts_with?(prompt, @work_prompt)
 
       assert [offer] = Offers.list_for_agent(agent.id)
       assert offer.kind == :work
@@ -99,7 +102,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       # database id `head.entity_id` carries internally (issue 56a2d806).
       assert offer.subject_key == "#{head.entity_type}:#{ctx.story.number}:#{head.name}"
       assert offer.working_copy_id == ctx.scope.active_working_copy_id
-      assert linked_texts(offer) == [@work_prompt]
+      assert linked_texts(offer) == [prompt]
     end
 
     test "a second offer of the same work supersedes the first", ctx do
@@ -256,13 +259,18 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
   end
 
   describe "a harness restart (f5699eb9)" do
-    test "an idle agent is told nothing and offered nothing", ctx do
+    # Criterion 1801 supersedes 1743's old "sends it nothing": an idle,
+    # continuous agent's restart is now said out loud, the same offer shape
+    # Main.attempt/4's own explicit restart already records
+    # (account_for_interrupted_turn/2, agents.ex).
+    test "an idle agent's restart records a resume offer, said out loud (1801)", ctx do
       agent = agent(ctx.scope)
 
       :ok = Agents.account_for_interrupted_turns(ctx.scope, [agent])
 
-      assert Offers.list_for_agent(agent.id) == [],
-             "a stopped agent lost nothing to a restart and has nothing to resume"
+      assert [offer] = Offers.list_for_agent(agent.id)
+      assert {offer.kind, offer.subject_type, offer.subject_key} == {:resume, "restart", nil}
+      assert linked_texts(offer) == ["The harness restarted."]
     end
 
     test "a mid-turn agent's carry-on records a resume offer linked to it", ctx do
@@ -312,7 +320,6 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       id = agent.id
       assert_receive {:agent_dispatch, ^id, _ref, notice}, 2_000
       assert notice =~ @failure
-      assert notice =~ "Make me a help page."
 
       assert [offer] = Offers.list_for_agent(agent.id)
       assert {offer.kind, offer.subject_type} == {:retry, "failed_turn"}

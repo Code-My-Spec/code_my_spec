@@ -76,14 +76,16 @@ defmodule CodeMySpecSpex.Story1024.Criterion2896Spex do
             ~p"/app/projects/#{context.project.id}/agent-conversation?#{[conversation: context.conversation.id]}"
           )
 
-        pending =
+        # A machine that cannot be reached refuses the message outright
+        # (criterion 2042): it is listed as not delivered, not as waiting.
+        undelivered =
           html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test=agent-pending-message]")
+          |> Floki.find("[data-test=agent-undelivered-message]")
           |> Floki.text()
 
-        assert pending =~ "stop what you are doing"
-        assert pending =~ "Dispatch unconfirmed"
+        assert undelivered =~ "stop what you are doing"
+        assert undelivered =~ "Not delivered"
 
         {:ok, context}
       end

@@ -126,7 +126,33 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
           )
 
         assert match?({:ok, _}, available), response_text(available)
-        assert response_text(available) == context.available_before
+        after_text = response_text(available)
+
+        # Criterion 2158's offer-id note makes every action-requesting
+        # response carry its own offer id, so the two reads are no longer
+        # byte-identical -- what this criterion requires unchanged is the
+        # requirement itself; the offer ids are expected to differ, since
+        # the later push is its own attempt (criterion 1815).
+        [_, before_name, before_type, before_id] =
+          Regex.run(
+            ~r/requirement_name=`(\w+)`, entity_type=`(\w+)`, entity_id=`(\w+)`/,
+            context.available_before
+          )
+
+        [_, after_name, after_type, after_id] =
+          Regex.run(
+            ~r/requirement_name=`(\w+)`, entity_type=`(\w+)`, entity_id=`(\w+)`/,
+            after_text
+          )
+
+        assert {after_name, after_type, after_id} == {before_name, before_type, before_id}
+
+        [_, before_offer_id] =
+          Regex.run(~r/backed by offer `([0-9a-f-]+)`/, context.available_before)
+
+        [_, after_offer_id] = Regex.run(~r/backed by offer `([0-9a-f-]+)`/, after_text)
+
+        refute after_offer_id == before_offer_id
 
         tasks =
           ToolLibrary.run(

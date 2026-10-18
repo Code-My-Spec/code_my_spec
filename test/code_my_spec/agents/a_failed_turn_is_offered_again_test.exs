@@ -47,13 +47,14 @@ defmodule CodeMySpec.Agents.AFailedTurnIsOfferedAgainTest do
     })
   end
 
-  test "the agent is told its turn failed, and given the request back", ctx do
+  # The request comes back on the retry ladder's next rung (criterion 2174).
+  test "the agent is told its turn failed", ctx do
     fail_turn(ctx)
 
     agent_id = ctx.agent.id
     assert_receive {:agent_dispatch, ^agent_id, _ref, notice}, 2_000
     assert notice =~ @failure
-    assert notice =~ "Make me a help page artifact."
+    refute notice =~ "Make me a help page artifact."
   end
 
   test "the failure is not written as the agent speaking", ctx do

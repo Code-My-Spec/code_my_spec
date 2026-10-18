@@ -129,7 +129,11 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       assert settled(offered).status == :ignored
     end
 
-    test "is declined, with the reason, when its task was tapped out", ctx do
+    # Criterion 2162: a tap-out does not decline an offer, and it "stays open
+    # on the agent until it is accepted, refused with reject_offer, or
+    # resolved by main" -- so while it is pending (blocker_resolved_at nil)
+    # it is not settled at all, not even as claimed.
+    test "is left open, not declined, while its task's tap-out is pending", ctx do
       offered = offer(ctx, :work, {"requirement", @node})
       now = DateTime.utc_now()
 
@@ -146,7 +150,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
 
       end_turn(ctx)
 
-      assert %{status: :declined, reason: "this belongs to another story"} = settled(offered)
+      assert %{status: :open} = settled(offered)
     end
   end
 
@@ -366,7 +370,18 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
         end
 
       assert steps == ["detail", "alternatives", "held_back"]
-      assert %{ignored: 3, held?: true} = Offers.standing(ctx.agent.id)[@node]
+
+      # Reaching held_back by being ignored is not a decline (criterion
+      # 2169, product's correction on 3e9a96e9) -- declined? stays false --
+      # but it does stop this agent being pushed the same work again
+      # (criterion 1741), the same as a decline does, so held? is true.
+      #
+      # Main's correction on a01ffadb: the third, held_back offer settles
+      # :open, not :ignored, so streak/1's ignored count no longer includes
+      # it -- 2, not 3, is the number of settled :ignored rows standing
+      # upon. Exhaustion itself is read from that open row's own attempt
+      # reaching the ladder's length, which is what makes held? true here.
+      assert %{ignored: 2, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[@node]
     end
 
     test "a claim starts the ladder over", ctx do

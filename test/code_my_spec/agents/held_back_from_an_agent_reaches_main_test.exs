@@ -20,6 +20,7 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
@@ -81,7 +82,12 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
 
     offer = Repo.get!(Offer, offer.id)
 
-    assert %{held?: true} = Offers.standing(id)[key]
+    # Ignored past its own ladder is not a decline (criterion 2169,
+    # product's correction on 3e9a96e9) -- declined? stays false, so
+    # claimable_work/withheld? does not hold the work back the way
+    # reject_offer does. It still stops this agent being pushed the same
+    # work again (criterion 1741), so held? is true, same as a decline.
+    assert %{held?: true, declined?: false} = Offers.standing(id)[key]
 
     sent = Fixtures.messages_to_agent(ctx.scope, main_id(ctx))
 
@@ -119,6 +125,42 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
 
     assert Fixtures.messages_to_agent(ctx.scope, main_id(ctx)) == sent,
            "main heard about the refusal twice"
+  end
+
+  # Criteria 2160/2163 vs 2169, per product's correction on 3e9a96e9 (which
+  # itself corrects 1ef7cfe3): a decline and a ladder exhausted by ignoring
+  # both stop this agent being pushed the same work again (held? is true
+  # for both, criterion 1741) -- they differ only in whether the work is
+  # held back from a pull. Only an explicit decline (declined?) does that;
+  # an exhausted ladder stays open and claimable until main acts.
+  test "a decline holds the work back from a pull; an exhausted ladder does not", ctx do
+    id = ctx.coder.id
+    declined_key = "story:1:declined_spec"
+    ignored_key = "story:1:ignored_spec"
+    ladder = length(Offers.ladders()[{:work, "requirement"}])
+
+    declined = settled(ctx, :work, "requirement", declined_key, 1, :declined)
+
+    for attempt <- 1..ladder do
+      settled(ctx, :work, "requirement", ignored_key, attempt, :ignored)
+    end
+
+    standing = Offers.standing(id)
+    assert %{held?: true, declined?: true} = standing[declined_key]
+    assert %{held?: true, declined?: false} = standing[ignored_key]
+
+    assert Work.withheld?([ctx.coder], ctx.coder, node_on(declined_key), standing),
+           "a declined offer did not hold its work back from a pull"
+
+    refute Work.withheld?([ctx.coder], ctx.coder, node_on(ignored_key), standing),
+           "an offer merely ignored past its ladder held its work back from a pull like a decline"
+
+    _ = declined
+  end
+
+  defp node_on(key) do
+    [_type, number, name] = String.split(key, ":", parts: 3)
+    %{entity_type: "story", entity_id: number, name: name}
   end
 
   defp settled(ctx, kind, type, key, attempt, status) do

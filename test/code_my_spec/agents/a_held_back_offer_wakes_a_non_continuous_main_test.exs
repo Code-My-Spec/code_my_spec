@@ -140,10 +140,9 @@ defmodule CodeMySpec.Agents.AHeldBackOfferWakesANonContinuousMainTest do
 
   describe "an offer ignored to the end of its ladder (2063)" do
     test "a non-continuous main receives one notice naming how many times", ctx do
-      # A released task's ladder is [:remind, :held_back]: its own two rungs, not
-      # requirement work's three.
+      # A released task climbs requirement work's rungs (criterion 2173).
       ladder = Offers.ladder({:unblocked, "task"})
-      assert ladder == [:remind, :held_back]
+      assert ladder == [:detail, :alternatives, :held_back]
 
       last =
         Enum.reduce(1..length(ladder), nil, fn _, _ ->

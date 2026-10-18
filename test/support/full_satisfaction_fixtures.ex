@@ -150,6 +150,21 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   @spec apply_up_to_analysis(map()) :: map()
   def apply_up_to_analysis(context) do
     context
+    |> apply_without_three_amigos()
+    |> apply_three_amigos_artifacts()
+    |> apply_bdd_spec_file()
+    |> ProjectStateFixtures.apply_journey_artifacts()
+  end
+
+  @doc """
+  Apply every satisfaction layer EXCEPT the story's `three_amigos_complete`
+  artifacts -- the "story created, ready for design" state a scenario needs
+  when it wants to claim and hold `three_amigos_complete` itself (e.g. to
+  block that task on a question) rather than find it already satisfied.
+  """
+  @spec apply_without_three_amigos(map()) :: map()
+  def apply_without_three_amigos(context) do
+    context
     |> ProjectStateFixtures.apply_project_setup_steps()
     |> ProjectStateFixtures.apply_technical_strategy()
     |> ProjectStateFixtures.apply_code_generation()
@@ -161,9 +176,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> ProjectStateFixtures.apply_qa_setup()
     |> ProjectStateFixtures.apply_persona()
     |> apply_story()
-    |> apply_three_amigos_artifacts()
-    |> apply_bdd_spec_file()
-    |> ProjectStateFixtures.apply_journey_artifacts()
   end
 
   @doc """
@@ -238,6 +250,26 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     Map.put(context, :component, component)
   end
 
+  @doc """
+  Two children of the story's component, designed and not yet written: two
+  pieces of coding work open at once on the active story, where everything
+  else here leaves one. Records only, so it runs beside a live harness.
+  """
+  @spec apply_two_components_to_implement(map()) :: map()
+  def apply_two_components_to_implement(context) do
+    parent = context.component.module_name
+
+    for child <- ["Booking", "Slot"],
+        do:
+          ComponentGraphHelpers.design!(context, "#{parent}.#{child}", [],
+            parent: parent,
+            type: "schema"
+          )
+
+    :ok = Fixtures.settle_graph(context.scope)
+    context
+  end
+
   # 9. Story linked to component, with criterion
   defp apply_story(context) do
     story =
@@ -251,8 +283,15 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     Map.put(context, :story, story)
   end
 
-  # 10. Three Amigos artifacts: persona linked + rule + scenarios.
-  defp apply_three_amigos_artifacts(context) do
+  @doc """
+  Three Amigos artifacts: persona linked + rule + scenarios, satisfying
+  `three_amigos_complete` without touching anything downstream of it
+  (`bdd_specs_exist` stays actionable). Public so a scenario can claim and
+  hold that requirement itself, the way `apply_without_three_amigos/1` does
+  one stage earlier for `three_amigos_complete`.
+  """
+  @spec apply_three_amigos_artifacts(map()) :: map()
+  def apply_three_amigos_artifacts(context) do
     :ok =
       ProjectStateFixtures.apply_three_amigos_for_story(context.scope, context.story,
         persona_id: context.persona_id,

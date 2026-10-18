@@ -3,6 +3,7 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Configurations
@@ -55,7 +56,9 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
           |> Work.work_for(agent && agent.role, agent, story_number: requested["story_number"])
           |> then(&CodeMySpec.Requirements.Directives.number_execution(scope, &1))
 
-        RequirementsMapper.story_execution_response(execution, active_subagents)
+        execution
+        |> RequirementsMapper.story_execution_response(active_subagents)
+        |> with_offer_note(ready_offer(agent))
 
       {:error, _reason} ->
         # No project linked — return init checklist so the agent can bootstrap
@@ -85,6 +88,24 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
   # reconciles changed paths, and `FileSync.sync_changed/2` runs in the
   # validation path. The Files page's Sync button remains the
   # deliberate full pass.
+
+  # A pull is a pure read: it never records an offer, only reports one it
+  # already holds (issue e6f18e57, product's ruling: only pushed work turns
+  # climb the ladder). `reject_offer`'s own fallback handles the case this
+  # agent was shown work with no offer behind it at all.
+  defp ready_offer(%{id: agent_id}) when is_binary(agent_id),
+    do: Offers.current_work_offer(agent_id)
+
+  defp ready_offer(_agent), do: nil
+
+  defp with_offer_note(response, nil), do: response
+
+  defp with_offer_note({:ok, text}, offer) do
+    {:ok,
+     text <>
+       "\n\nThis is backed by offer `#{offer.id}`. Complete it, or call " <>
+       "`reject_offer` with that id and a reason."}
+  end
 
   defp my_agent(context, scope) do
     with agent_id when is_binary(agent_id) <- context[:agent_id],

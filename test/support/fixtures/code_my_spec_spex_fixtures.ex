@@ -3387,6 +3387,11 @@ defmodule CodeMySpecSpex.Fixtures do
   def route_agent_transport(project, transport),
     do: CodeMySpecTest.AgentTransportRouter.route(project, transport)
 
+  @doc "Route one agent's traffic to `transport`, without touching its project's route."
+  @spec route_agent(String.t(), module()) :: :ok
+  def route_agent(agent_id, transport),
+    do: CodeMySpecTest.AgentTransportRouter.route_agent(agent_id, transport)
+
   @doc "Say what this scope's working copy machine can do, as a join would."
   def record_machine_tools(%Scope{active_working_copy_id: id}, names) do
     {:ok, copy} = CodeMySpec.WorkingCopies.fetch(id)
@@ -3767,6 +3772,20 @@ defmodule CodeMySpecSpex.Fixtures do
         entity_id: to_string(story.id)
       })
 
+    :ok
+  end
+
+  @doc """
+  Reverses `seal_three_amigos/2`, directly.
+
+  There is no product-facing door to walk back through: `ThreeAmigos.evaluate/2`
+  only ever seals, on a passing check, never unseals. So this writes the field
+  the checker reads (`BddRulesChecker.sealed?/2`) the one way available, the
+  same way `seal_three_amigos/2`'s own doc explains why it does not.
+  """
+  @spec unseal_three_amigos(term(), term()) :: :ok
+  def unseal_three_amigos(scope, story) do
+    {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{three_amigos_sealed: false})
     :ok
   end
 
@@ -4691,19 +4710,27 @@ defmodule CodeMySpecSpex.Fixtures do
 
   A turn offered to an agent stands for five minutes; an agent that never takes
   the turn is offered again once that lapses, and main is told it stalled. Time
-  passing has no surface, so this backdates the open turn request the way
-  `age_agent_messages/3` backdates a transcript.
+  passing has no surface, so this moves the agent's offer history back by
+  `seconds` the way `age_agent_messages/3` backdates a transcript.
+
+  All of it, not just the open request: a stall counts only turns requested
+  after the agent's last settled one (`Offers.unstarted_turn/1`), so a request
+  moved behind a settlement that stayed put reads as no stall at all.
   """
   @spec age_turn_request(Scope.t(), String.t(), number()) :: :ok
   def age_turn_request(%Scope{} = _scope, agent_id, seconds) do
-    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+    secs = round(seconds)
 
     from(o in CodeMySpec.Agents.Offer,
-      where:
-        o.agent_id == type(^agent_id, :binary_id) and o.status == :open and
-          not is_nil(o.turn_requested_at)
+      where: o.agent_id == type(^agent_id, :binary_id),
+      update: [
+        set: [
+          turn_requested_at: fragment("? - make_interval(secs => ?)", o.turn_requested_at, ^secs),
+          outcome_at: fragment("? - make_interval(secs => ?)", o.outcome_at, ^secs)
+        ]
+      ]
     )
-    |> Repo.update_all(set: [turn_requested_at: at])
+    |> Repo.update_all([])
 
     :ok
   end

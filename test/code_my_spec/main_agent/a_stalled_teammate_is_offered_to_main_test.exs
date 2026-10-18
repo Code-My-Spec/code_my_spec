@@ -181,13 +181,14 @@ defmodule CodeMySpec.Agents.Main.AStalledTeammateIsOfferedToMainTest do
     assert [%{status: :undelivered}] = stalled_offers(ctx)
   end
 
-  test "a notice whose acknowledgement failed remains pending", ctx do
+  # An unreachable machine is a definite refusal (criterion 2042).
+  test "a notice main's machine refused is undelivered", ctx do
     CodeMySpecTest.AgentTransportRouter.route(ctx, UnreachableMachine)
     ctx = main(ctx)
     announce(ctx, "a1b2c3d4")
 
-    assert [%{status: :open}] = stalled_offers(ctx)
+    assert [%{status: :undelivered}] = stalled_offers(ctx)
     end_turn(ctx)
-    assert [%{status: :open}] = stalled_offers(ctx)
+    assert [%{status: :undelivered}] = stalled_offers(ctx)
   end
 end

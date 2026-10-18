@@ -13,8 +13,8 @@ defmodule CodeMySpecSpex.OfferHelpers do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   import ExUnit.Assertions
 
-  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -59,10 +59,14 @@ defmodule CodeMySpecSpex.OfferHelpers do
   end
 
   defp block(text) do
+    # `parse/1` split on "offer ", so `text` starts right after it with the
+    # offer's own id -- the one line `OfferMapper` writes with no indent.
+    [_, id] = Regex.run(~r/\A(\S+)/, text)
     [_, kind, subject, attempt] = Regex.run(~r/^  (\w+) on (\S+), attempt (\d+)$/m, text)
     [_, status] = Regex.run(~r/^  status: (\w+)/m, text)
 
     %{
+      id: id,
       kind: kind,
       subject: subject,
       attempt: String.to_integer(attempt),
@@ -200,13 +204,25 @@ defmodule CodeMySpecSpex.OfferHelpers do
   """
   @spec offered_work(map()) :: map()
   def offered_work(context) do
-    context = coding_work_waiting(context)
+    context |> coding_work_waiting() |> push_waiting_work()
+  end
+
+  @doc """
+  Switches a continuous coder on over work a given_ already made to wait
+  (`coding_work_waiting/1`), its turn under way. For a scenario whose own
+  given_ is that precondition: `offered_work/1`'s own call to
+  `coding_work_waiting/1` would run it a second time, and a second scan is
+  `{:error, {:cannot_scan, :not_supported_on_harness}}` on a harness already
+  live. Needs the recording transport installed.
+  """
+  @spec push_waiting_work(map()) :: map()
+  def push_waiting_work(context) do
     coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
     context = context |> start_session() |> put_to_work()
     id = coder.id
-    assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
+    assert_receive {:work_turn_requested, ^id, _ref, prompt}, 2_000
     :ok = Fixtures.put_agent_mid_turn(context.scope, id)
-    Map.put(context, :coder, id)
+    context |> Map.put(:coder, id) |> Map.put(:prompt, prompt)
   end
 
   @doc """

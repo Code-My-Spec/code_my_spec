@@ -28,7 +28,17 @@ defmodule CodeMySpec.Agents.Offer do
     :team_free,
     :instruction
   ]
-  @statuses [:open, :claimed, :declined, :ignored, :superseded, :expired, :n_a, :undelivered]
+  @statuses [
+    :open,
+    :claimed,
+    :declined,
+    :ignored,
+    :superseded,
+    :expired,
+    :n_a,
+    :undelivered,
+    :cancelled
+  ]
 
   @type kind ::
           :work
@@ -52,6 +62,7 @@ defmodule CodeMySpec.Agents.Offer do
           | :expired
           | :n_a
           | :undelivered
+          | :cancelled
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}

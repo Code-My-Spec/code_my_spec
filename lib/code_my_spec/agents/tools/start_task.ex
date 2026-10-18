@@ -6,17 +6,17 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.Tools.TaskResponses, as: TasksMapper
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Components
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Stories.StoryRefs
-  alias CodeMySpec.Agents.Tools.TaskResponses, as: TasksMapper
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Stories
+  alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Utils
 
@@ -289,7 +289,24 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
          :ok <- not_held(scope) do
       create_and_activate(scope, owner, requirement, agent_id, context)
     else
-      {:error, reason} -> TasksMapper.error(reason)
+      # 542e01e7: an answered blocker (or any other stale notice) can send an
+      # agent here for a requirement that stopped being eligible before the
+      # agent got around to it -- the task it was about is already gone
+      # (cancelled, superseded, claimed elsewhere), so there is nothing to
+      # resume or cancel, unlike the :blocked branch above. A bare
+      # `TasksMapper.error(:requirement_not_eligible)` rendered as the raw
+      # atom string with no way forward; this names the requirement and
+      # points at `get_next_requirement`, the same disposition the resume
+      # branch already gives.
+      {:error, :requirement_not_eligible} ->
+        TasksMapper.error(
+          "#{requirement.name} for #{requirement.entity_type} #{requirement.entity_id} is " <>
+            "not eligible work right now -- nothing was claimed. Call get_next_requirement " <>
+            "for what is actionable now."
+        )
+
+      {:error, reason} ->
+        TasksMapper.error(reason)
     end
   end
 
@@ -324,7 +341,14 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
 
     with :ok <- eligible_to_resume(scope, owner, req),
          {:ok, updated} <- TaskOwner.resume_task(scope, owner, task.id) do
-      return_prompt(owner, TaskOwner.find_task(updated, task.id), scope, context)
+      # Read off the task as it was: resuming clears its blocker.
+      return_prompt(
+        owner,
+        TaskOwner.find_task(updated, task.id),
+        scope,
+        context,
+        answered_blocker(task)
+      )
     else
       {:error, :active_task_exists} ->
         TasksMapper.error(
@@ -427,7 +451,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   defp not_already_done(scope, owner, requirement) do
     if Requirements.satisfied_now?(scope, requirement) do
       :ok = Requirements.refresh_entity(scope, {requirement.entity_type, requirement.entity_id})
-      close_stale_offer(owner, requirement)
+      close_stale_offer(scope, owner, requirement)
 
       {:error,
        "`#{requirement.name}` (#{requirement.entity_type} #{entity_label(scope, requirement)}) " <>
@@ -438,14 +462,22 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     end
   end
 
-  defp close_stale_offer(%Agent{id: id}, requirement),
+  # A story's own offer subject is keyed on its public number (the same key
+  # Work.node_key/2 builds), not the database id `requirement.entity_id`
+  # carries -- the same resolution `entity_label/2` below already needs for
+  # the same reason.
+  defp close_stale_offer(scope, %Agent{id: id}, %{entity_type: "story"} = requirement) do
+    Offers.close_stale(id, "story:#{entity_label(scope, requirement)}:#{requirement.name}")
+  end
+
+  defp close_stale_offer(_scope, %Agent{id: id}, requirement),
     do:
       Offers.close_stale(
         id,
         "#{requirement.entity_type}:#{requirement.entity_id}:#{requirement.name}"
       )
 
-  defp close_stale_offer(_owner, _requirement), do: :ok
+  defp close_stale_offer(_scope, _owner, _requirement), do: :ok
 
   defp entity_label(scope, %{entity_type: "story", entity_id: id}) do
     case Stories.get_story(scope, id) do
@@ -496,11 +528,22 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   # task-less tap-out stops holding the agent. Retiring it here, rather
   # than waiting on a second decision, keeps the permission row from
   # outliving the thing it described.
-  defp return_prompt(owner, task, scope, _context) do
+  # A resumed task leads with the question that blocked it and the user's
+  # answer (`answered`), whatever led the agent back to it.
+  defp return_prompt(owner, task, scope, _context, answered \\ "") do
     Notifications.retire_resumed_tap_out(owner)
-    prompt = generate_prompt(task, scope)
+    prompt = answered <> generate_prompt(task, scope)
     TasksMapper.prompt_response(prompt, task)
   end
+
+  defp answered_blocker(%{blocker_type: :question, blocker_id: id}) when is_binary(id) do
+    case Notifications.answer_detail(id) do
+      nil -> ""
+      answer -> "This task was blocked on question #{id}. #{answer}\n\n"
+    end
+  end
+
+  defp answered_blocker(_task), do: ""
 
   defp maybe_assign_agent(scope, %Session{} = session, %{agent_id: nil, id: task_id}, agent_id)
        when is_binary(agent_id) do

@@ -796,9 +796,32 @@ defmodule CodeMySpec.Agents do
   end
 
   # A turn handed to the harness that just died can never start; left open it
-  # would fence the agent out of the join's one sweep.
-  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent),
-    do: Offers.abandon_turns(agent.id)
+  # would fence the agent out of the join's one sweep. Idle, there was no turn
+  # to carry on -- but criterion 1801 still wants the harness's return said
+  # out loud, the same restart offer Main.attempt/4 already sends when it
+  # restarts an agent itself (:own_reply, offer: {:resume, {"restart", nil}}),
+  # here for the harness's own reconnect instead of main's explicit restart.
+  #
+  # Only when there is nothing else to say: a non-continuous agent is not in
+  # the loop to be told anything, and an agent still holding an active task
+  # is about to get the join's separate `agents_present` sweep's own real
+  # turn naming that task -- recording this offer first would open a second
+  # one on top of it, and that real push would refuse as the error criterion
+  # 2170 is for (confirmed: a_restored_holder_is_resumed_test.exs's held-task
+  # cases timed out with this guard absent). Either case still gets its dead
+  # turn cleared by `Offers.abandon_turns/1` above; only the extra word is
+  # conditional.
+  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent) do
+    Offers.abandon_turns(agent.id)
+
+    if agent.continuous && is_nil(Agent.active_task(agent)) do
+      send_to_agent(agent.id, "The harness restarted.", :own_reply,
+        offer: {:resume, {"restart", nil}}
+      )
+    end
+
+    :ok
+  end
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
     AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
@@ -1413,24 +1436,49 @@ defmodule CodeMySpec.Agents do
   this agent, and main is told now (`:offer_held_back`), naming the reason.
   The offer is stamped reported, so the turn-end escalation
   (`tell_main_held_back/2`) does not repeat it.
+
+  A pull (`get_next_requirement`) never records an offer of its own (issue
+  e6f18e57) -- so when there is no open offer and no `offer_id` was named,
+  this declines whatever `Work.shown_work/2` says was shown instead, written
+  declined directly rather than refusing with nothing for the agent to name.
   """
   @spec reject_offer(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, CodeMySpec.Agents.Offer.t()} | {:error, :not_found}
   def reject_offer(%Scope{} = scope, agent_id, offer_id, reason) do
-    with {:ok, offer} <- Offers.reject(agent_id, offer_id, reason) do
-      notify_main(
-        scope,
-        :offer_held_back,
-        "Offer declined by agent #{agent_id}: #{offer.kind} `#{offer.subject_type}:" <>
-          "#{offer.subject_key}`. Reason: #{reason}",
-        offer: {:stalled, {"agent", agent_id}}
-      )
+    case Offers.reject(agent_id, offer_id, reason) do
+      {:ok, offer} ->
+        report_declined(scope, agent_id, offer, reason)
 
-      # This is the one report; the turn-end escalation skips reported offers.
-      :ok = Offers.mark_reported(offer)
-
-      {:ok, offer}
+      {:error, :not_found} = error ->
+        decline_shown(scope, agent_id, offer_id, reason) || error
     end
+  end
+
+  defp decline_shown(scope, agent_id, nil, reason) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {kind, subject} <- Work.shown_work(scope, agent),
+         offer when not is_nil(offer) <- Offers.record_declined(agent, kind, subject, reason) do
+      report_declined(scope, agent_id, offer, reason)
+    else
+      _ -> nil
+    end
+  end
+
+  defp decline_shown(_scope, _agent_id, _offer_id, _reason), do: nil
+
+  defp report_declined(scope, agent_id, offer, reason) do
+    notify_main(
+      scope,
+      :offer_held_back,
+      "Offer declined by agent #{agent_id}: #{offer.kind} `#{offer.subject_type}:" <>
+        "#{offer.subject_key}`. Reason: #{reason}",
+      offer: {:stalled, {"agent", agent_id}}
+    )
+
+    # This is the one report; the turn-end escalation skips reported offers.
+    :ok = Offers.mark_reported(offer)
+
+    {:ok, offer}
   end
 
   @doc """
@@ -2155,14 +2203,10 @@ defmodule CodeMySpec.Agents do
   defp record_dispatch_result({:error, :message_timed_out} = error, _message, _offered),
     do: error
 
-  defp record_dispatch_result({:error, _reason} = error, message, offered) do
+  defp record_dispatch_result({:error, _reason} = error, message, _offered) do
     case Repo.get_by(Mailbox.Entry, message_id: message.id) do
-      nil ->
-        Offers.undelivered(offered)
-        Conversations.set_delivery(message, :failed)
-
-      _admitted ->
-        :ok
+      nil -> Offers.fail_dispatch(message)
+      _admitted -> :ok
     end
 
     error
@@ -2564,6 +2608,7 @@ defmodule CodeMySpec.Agents do
         "(#{agent.working_copy})"
 
   @failed_turn "Your last turn failed: "
+  @carry_on "\n\nPick up where the thread leaves off."
 
   defp reoffer_failed_turn(conversation, agent, failure) do
     request = Conversations.last_request_text(conversation)
@@ -2579,7 +2624,7 @@ defmodule CodeMySpec.Agents do
     else
       send_off_channel(
         agent,
-        failed_turn_notice(failure, request),
+        @failed_turn <> failure <> @carry_on,
         {:retry, {"failed_turn", nil}}
       )
     end
@@ -2587,12 +2632,39 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  defp failed_turn_notice(failure, nil),
-    do: @failed_turn <> failure <> "\n\nPick up where the thread leaves off."
+  # A retry offer's ladder (criterion 2174): the notice first, then the error
+  # with the request it was on, re-sent when a turn ends having ignored it.
+  defp escalate_retry(agent) do
+    agent.id |> Offers.to_escalate(:retry, :detail) |> resend_retry(agent)
+  end
 
-  defp failed_turn_notice(failure, request) do
+  defp resend_retry(nil, _agent), do: :ok
+
+  # Climbs only on the notice itself: a retry that failed again was answered
+  # with "not re-sent" (criterion 1807), which ended that turn too.
+  defp resend_retry(%CodeMySpec.Agents.Offer{messages: [%{message: notice} | _]}, agent) do
+    resend_retry(notice, Conversations.request_since?(notice), agent)
+  end
+
+  defp resend_retry(%CodeMySpec.Agents.Offer{}, _agent), do: :ok
+
+  defp resend_retry(_notice, true, _agent), do: :ok
+
+  defp resend_retry(notice, false, agent) do
+    failure_line = notice |> Conversations.Message.text() |> String.replace_suffix(@carry_on, "")
+
+    send_off_channel(
+      agent,
+      retry_detail(failure_line, Conversations.request_before(notice)),
+      {:retry, {"failed_turn", nil}}
+    )
+  end
+
+  defp retry_detail(failure_line, nil), do: failure_line <> @carry_on
+
+  defp retry_detail(failure_line, request) do
     """
-    #{@failed_turn}#{failure}
+    #{failure_line}
 
     What it did before it failed is above, and may have taken effect; check \
     before redoing any of it. The request was:
@@ -2696,6 +2768,7 @@ defmodule CodeMySpec.Agents do
 
         # Settled before the stop menu, which may make new offers of its own.
         :ok = Offers.settle_turn(agent)
+        :ok = escalate_retry(agent)
         tell_main_held_back(scope, agent)
         tell_main_undelivered_instructions(scope, agent)
 
