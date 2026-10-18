@@ -47,7 +47,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion2174Spex do
 
       then_ "the next rung gives the error and the task it was on", context do
         id = context.agent
-        assert_receive {:agent_dispatch, ^id, _ref, second}, 2_000
+        # Past any repeat of the first rung the mailbox delivers again.
+        second = next_rung(id, "The request was:")
         assert second =~ @failure, second
         assert second =~ "Make me a help page.", second
         {:ok, context}
@@ -68,4 +69,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion2174Spex do
     :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
     agent.id
   end
+
+  defp next_rung(id, needle, deadline \\ System.monotonic_time(:millisecond) + 2_000) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:agent_dispatch, ^id, _ref, text} ->
+        rung(String.contains?(text, needle), text, id, needle, deadline)
+    after
+      remaining -> flunk("no dispatch to #{id} carried #{inspect(needle)}")
+    end
+  end
+
+  defp rung(true, text, _id, _needle, _deadline), do: text
+  defp rung(false, _text, id, needle, deadline), do: next_rung(id, needle, deadline)
 end
