@@ -1676,14 +1676,19 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @impl Slipstream
-  def handle_info(:reconnect, socket) do
-    case Config.socket_url(socket.assigns.project.root) do
-      {:ok, uri} ->
-        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
-        {:noreply, arm_join_deadline(socket)}
+  # One connection at a time. A topic close leaves the connection up, and
+  # dialing beside it leaked a websocket per close: the new join evicted the old
+  # channel, whose death came back here as another close, and so on — 195
+  # sockets from one harness and hooks refused every few seconds (2026-10-18).
+  # So a connected socket is dropped and `handle_disconnect/2` dials once it is
+  # gone, and a reconnect armed before a join that has since landed does nothing.
+  def handle_info(:reconnect, %{assigns: %{joined: true}} = socket), do: {:noreply, socket}
 
-      {:error, _} ->
-        {:noreply, socket}
+  def handle_info(:reconnect, socket) do
+    if Slipstream.Socket.connected?(socket) do
+      {:noreply, transport().disconnect(socket)}
+    else
+      dial(socket)
     end
   end
 
@@ -2266,8 +2271,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   # Upgraded: drop the socket, and `handle_disconnect/2` retries as for any
-  # drop. (A rejoin after a refusal dials with the old socket still up, so this
-  # may drop that one instead; the next dial still recovers.) Not upgraded:
+  # drop. Not upgraded:
   # Slipstream holds no handle to drop and will send no disconnect, so the
   # stalled connection is abandoned and the same retry runs.
   defp abandon_dial(socket) do
@@ -2283,6 +2287,17 @@ defmodule CmsHarness.Project.ChannelClient do
     if Slipstream.Socket.connected?(socket),
       do: "the socket upgraded, the join was never answered",
       else: "the websocket upgrade was never answered"
+  end
+
+  defp dial(socket) do
+    case Config.socket_url(socket.assigns.project.root) do
+      {:ok, uri} ->
+        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
+        {:noreply, arm_join_deadline(socket)}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
   end
 
   defp schedule_rejoin(socket) do
