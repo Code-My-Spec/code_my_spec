@@ -85,23 +85,6 @@ defmodule CmsHarness.Agents do
   def launch(_request), do: {:error, :agent_id_required}
 
   @doc """
-  The direct tools this harness implements, by MCP name: one
-  `CmsHarness.Agents.Tools.<Name>` module each. The server's launch request
-  names which of them an agent carries (`direct_tools`); a harness started
-  without a server, in its own tests, hands an agent these.
-  """
-  @spec implemented_tools() :: [String.t()]
-  def implemented_tools do
-    {:ok, modules} = :application.get_key(:code_my_spec, :modules)
-
-    for module <- modules,
-        String.starts_with?(Atom.to_string(module), "Elixir.CmsHarness.Agents.Tools."),
-        module not in [CmsHarness.Agents.Tools.Bash, CmsHarness.Agents.Tools.Direct],
-        Code.ensure_loaded?(module) and function_exported?(module, :name, 0),
-        do: module.name()
-  end
-
-  @doc """
   Stop one agent, and say whether it was there to stop.
 
   Stops exactly one agent: never a tree, never a match by name.
@@ -137,13 +120,13 @@ defmodule CmsHarness.Agents do
   defdelegate status(agent_id), to: Engine
 
   @doc """
-  What this agent carries.
+  What this agent carries, by tool name.
 
   Asked of the running agent rather than a constant, so the answer describes
   the agent that was actually started.
   """
-  @spec tools(String.t()) :: [module()]
-  defdelegate tools(agent_id), to: Engine, as: :agent_tools
+  @spec tools(String.t()) :: [String.t()]
+  def tools(agent_id), do: agent_id |> Engine.agent_tools() |> Enum.map(&Engine.tool_name/1)
 
   @doc """
   The context this agent's tools are called with.
