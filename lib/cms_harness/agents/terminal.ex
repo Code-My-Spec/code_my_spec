@@ -270,10 +270,28 @@ defmodule CmsHarness.Agents.Terminal do
     |> Path.wildcard()
     |> Enum.find_value(fn path ->
       with {:ok, body} <- File.read(path),
-           {:ok, %{"sessionId" => ^session_id} = record} <- Jason.decode(body),
+           {:ok, %{"sessionId" => ^session_id} = record} <- first_object(body),
            do: record,
            else: (_ -> nil)
     end)
+  end
+
+  # Claude Code 2.1.293 can leave a stray `}` after a session's object (seen
+  # live, 2026-10-18), so the first complete object is the record.
+  defp first_object(body) do
+    case Jason.decode(body) do
+      {:ok, _} = decoded -> decoded
+      {:error, _} -> shortest_object(body, :binary.matches(body, "}"))
+    end
+  end
+
+  defp shortest_object(_body, []), do: :error
+
+  defp shortest_object(body, [{at, 1} | rest]) do
+    case Jason.decode(binary_part(body, 0, at + 1)) do
+      {:ok, %{}} = decoded -> decoded
+      _ -> shortest_object(body, rest)
+    end
   end
 
   defp from_registry(session_id) do
