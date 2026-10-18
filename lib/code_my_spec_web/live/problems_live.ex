@@ -3,9 +3,8 @@ defmodule CodeMySpecWeb.ProblemsLive do
   Persisted Problems viewer.
 
   Sibling surface to `/files` and `/configuration`: lists every Problem row
-  for the project so the engineer can see what each analyzer surfaced last
-  turn — including problems persisted in `:dont_block` mode and advisory
-  problems excluded from the stop block decision.
+  for the project so the engineer can see what each analyzer surfaced. Nothing
+  here blocks a stop; problems gate at promotion.
 
   Read-only. Problems are written by the validation pipeline; this view
   just exposes them.

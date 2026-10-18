@@ -36,12 +36,7 @@ defmodule CodeMySpec.StaticAnalysis.CredoFollowsTheFilesItJudgesTest do
   @credo_readable [:implementation, :test, :test_support, :bdd_spec]
 
   defp analyzers_for(role) do
-    # Every gated analyzer on, so this measures the role map rather than a mode.
-    Pipeline.resolve_analyzers(nil, [%{role: role}], %{
-      credo: :block_all,
-      exunit: :block_all,
-      spex: :block_all
-    })
+    Pipeline.resolve_analyzers(nil, [%{role: role}], %{})
   end
 
   for role <- @credo_readable do

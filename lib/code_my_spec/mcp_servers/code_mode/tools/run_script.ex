@@ -28,7 +28,6 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   alias CodeMySpec.CodeMode
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.CodeMode.Result
-  alias CodeMySpec.McpServers.AgentAlert
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.Validators
@@ -73,7 +72,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
                 direct_names: direct_names(allowed)
               )
 
-            {:reply, render(result, scope, params), frame}
+            {:reply, render(result), frame}
 
           {:error, :agent_id_mismatch} ->
             {:reply,
@@ -161,20 +160,13 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
     end
   end
 
-  # The alert rides the answer, on success and on failure alike. A script that
-  # blew up is exactly when knowing the tree is broken matters most, and an
-  # agent told only on the happy path finds out least often when it counts.
-  # Capped before the alert is appended, not after: the alert is the part that
-  # says the tree is broken, and cutting the answer must not cut that off.
-  defp render(%Result{} = result, scope, params) do
+  defp render(%Result{} = result) do
     if Result.failed?(result) do
-      text =
-        AgentAlert.append(CodeMode.cap(failure(result), spill_label: "run_script"), scope, params)
+      text = CodeMode.cap(failure(result), spill_label: "run_script")
 
       Response.tool() |> Response.error(text)
     else
-      text =
-        AgentAlert.append(CodeMode.cap(success(result), spill_label: "run_script"), scope, params)
+      text = CodeMode.cap(success(result), spill_label: "run_script")
 
       Response.tool() |> Response.text(text)
     end

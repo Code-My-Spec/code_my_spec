@@ -4,7 +4,13 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
 
   One record per project. Controls:
 
-  - Analyzer modes (what runs at stop time and whether it blocks)
+  - whether the QA brief validator runs at a stop
+  - whether architecture drift is checked and reported
+  - whether advisory findings block promotion
+  - the issue-fix threshold, sub-agent TTL, main's cadence and the DevOps level
+
+  Problems gate at promotion only (John, 2026-10-18), on the fixed four
+  sources, so there are no per-analyzer blocking modes.
 
   Lives only in the local DB — never synced to the server. The engineer
   is the only persona who touches this.
@@ -13,27 +19,25 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @analyzer_modes [:off, :block_all, :block_changed, :dont_block]
+  # `:on` going forward; the block modes are legacy values still stored, each
+  # read as on. Only `:off` is ever checked.
+  @switch_modes [:on, :off, :block_all, :block_changed, :dont_block]
   @compile_modes [:block, :dont_block]
   @severities [:critical, :high, :medium, :low, :info]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @type analyzer_mode :: :off | :block_all | :block_changed | :dont_block
+  @type switch_mode :: :on | :off | :block_all | :block_changed | :dont_block
   @type compile_mode :: :block | :dont_block
   @type severity :: :critical | :high | :medium | :low | :info
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           project_id: Ecto.UUID.t() | nil,
-          compile_warnings: compile_mode(),
           advisory_findings: compile_mode(),
-          credo: analyzer_mode(),
-          exunit: analyzer_mode(),
-          spex: analyzer_mode(),
-          qa_validation: analyzer_mode(),
-          architecture: analyzer_mode(),
+          qa_validation: switch_mode(),
+          architecture: switch_mode(),
           fix_issues_min_severity: severity(),
           subagent_ttl_minutes: pos_integer(),
           inserted_at: DateTime.t() | nil,
@@ -43,33 +47,12 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
   schema "project_configurations" do
     field :project_id, :binary_id
 
-    # Analyzer modes
-    field :compile_warnings, Ecto.Enum, values: @compile_modes, default: :block
-    # Whole copy, as promotion judges it (John, 2026-10-04): a finding in a
-    # file the session did not touch still lands on main.
-    field :credo, Ecto.Enum, values: @analyzer_modes, default: :block_all
-    field :exunit, Ecto.Enum, values: @analyzer_modes, default: :block_all
-    # Off for NEW projects, on for existing ones (see the migration that
-    # flips established projects to `:block_all`). A project on its first
-    # day has no story that has ever gone green, so enforcement has
-    # nothing to protect and only adds noise; an established project has
-    # shipped stories worth holding the line on.
-    #
-    # Turning it on later costs nothing, because the mode governs BLOCKING
-    # only — the suite runs either way, since the specs-passing gate needs
-    # a current run to flip a story. So a young project still accumulates
-    # specs-ready stories while the mode is `:off`, and they are already
-    # protected the moment the mode changes.
-    field :spex, Ecto.Enum, values: @analyzer_modes, default: :off
-    field :qa_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
+    # Whether the stop runs the QA brief validator.
+    field :qa_validation, Ecto.Enum, values: @switch_modes, default: :on
 
-    # Story 1085 — whether live code names a dependency nobody planned, a
-    # planned dependency the code never uses, a planned component with no
-    # code, or code with no planned owner. Defaults to `:dont_block`
-    # (criterion 1733): drift is worth reporting the moment a project exists,
-    # but it should never be the thing that stops an agent by default — only
-    # `:block_all`/`:block_changed` turn a finding into a block.
-    field :architecture, Ecto.Enum, values: @analyzer_modes, default: :dont_block
+    # Story 1085 — whether architecture drift is checked; `:off` reports
+    # nothing, even asked directly (criterion 1735). It never blocks.
+    field :architecture, Ecto.Enum, values: @switch_modes, default: :on
 
     # Story 608 — minimum severity for the FixIssues loop. Accepted
     # issues at or above this gate the requirement; anything strictly
@@ -80,7 +63,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     field :fix_issues_min_severity, Ecto.Enum, values: @severities, default: :medium
 
     # Whether an advisory finding (`:info` — low-priority credo, low sobelow)
-    # can block anything: promotion, task evaluation, the stop hook. Advisory
+    # can block promotion. Advisory
     # never blocks by default (John, 2026-10-04); this is the switch if that
     # changes. Read through `Blocking.can_block?/2` everywhere.
     field :advisory_findings, Ecto.Enum, values: @compile_modes, default: :dont_block
@@ -119,11 +102,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     configuration
     |> cast(attrs, [
       :project_id,
-      :compile_warnings,
       :advisory_findings,
-      :credo,
-      :exunit,
-      :spex,
       :qa_validation,
       :architecture,
       :fix_issues_min_severity,

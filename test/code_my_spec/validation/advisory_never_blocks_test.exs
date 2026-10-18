@@ -32,7 +32,6 @@ defmodule CodeMySpec.Validation.AdvisoryNeverBlocksTest do
   describe "an advisory credo finding" do
     setup %{scope: scope} do
       Configurations.get_or_create(scope)
-      {:ok, _} = Configurations.update(scope, %{credo: :block_all})
       problem_fixture(scope, %{source: "credo", severity: :info, file_path: @path})
       fresh_analysis_runs_fixture(scope)
       :ok

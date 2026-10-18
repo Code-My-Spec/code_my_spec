@@ -32,7 +32,6 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
       put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, Environment.new(:local, tmp))
 
     Configurations.get_or_create(scope)
-    {:ok, _} = Configurations.update(scope, %{spex: :block_all})
 
     for path <- [@mine, @spex_path] do
       File.mkdir_p!(Path.join(tmp, Path.dirname(path)))

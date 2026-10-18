@@ -629,9 +629,7 @@ defmodule CodeMySpec.Files.FileSync do
       end
 
     # `changed_paths` reflects files the agent touched this turn (mtime-bumped).
-    # Validation drives analyzer selection and `:block_changed` scope from this
-    # set — a rewrite of byte-identical impl content still needs the runner
-    # analyzers to pick up the corresponding test failures. The fingerprint
+    # Validation drives analyzer selection from this set. The fingerprint
     # diff gates the lockfile reconcile and the specs_ready clear below.
     changed_paths = Enum.map(mtime_changed_entries, & &1.path)
 

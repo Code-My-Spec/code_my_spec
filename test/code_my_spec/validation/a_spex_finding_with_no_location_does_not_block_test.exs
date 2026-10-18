@@ -32,7 +32,6 @@ defmodule CodeMySpec.Validation.ASpexFindingWithNoLocationDoesNotBlockTest do
     :ok = register_working_copy_environment(scope, environment)
 
     Configurations.get_or_create(scope)
-    {:ok, _} = Configurations.update(scope, %{spex: :block_all})
 
     for path <- [@mine, @orphan] do
       File.mkdir_p!(Path.join(tmp, Path.dirname(path)))

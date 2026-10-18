@@ -2,17 +2,18 @@ defmodule CodeMySpecWeb.ConfigurationLive do
   @moduledoc """
   Local quality gate configuration.
 
-  Engineer toggles what's required and what blocks. Changes persist to
-  ProjectConfiguration and take effect immediately — the requirements graph
-  and the stop hook pipeline both read from this record.
+  Changes persist to ProjectConfiguration and take effect immediately. Problems
+  gate at promotion only, on the fixed four sources, so the only analyzer
+  settings are whether the QA brief validator and architecture drift run, and
+  whether advisory findings block promotion.
   """
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.TaskOwner
 
-  @analyzer_modes [:off, :block_all, :block_changed, :dont_block]
-  @compile_modes [:block, :dont_block]
+  @switch [:on, :off]
+  @advisory_modes [:block, :dont_block]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -26,8 +27,8 @@ defmodule CodeMySpecWeb.ConfigurationLive do
     {:noreply,
      assign(socket,
        configuration: configuration,
-       analyzer_modes: @analyzer_modes,
-       compile_modes: @compile_modes,
+       switch: @switch,
+       advisory_modes: @advisory_modes,
        page_title: "#{project.name} — Configuration",
        error: nil
      )}
@@ -68,51 +69,29 @@ defmodule CodeMySpecWeb.ConfigurationLive do
         <section class="card bg-base-200 border border-base-300">
           <div class="card-body">
             <h2 class="card-title text-lg">Analyzer Settings</h2>
-            <p class="text-sm opacity-70">What runs at stop time and whether it blocks.</p>
+            <p class="text-sm opacity-70">
+              Problems never block a stop; promotion is where they gate.
+            </p>
 
             <div class="divider my-1"></div>
 
             <.select_field
-              name="compile_warnings"
-              label="Compile Warnings"
-              value={@configuration.compile_warnings}
-              modes={@compile_modes}
-            />
-            <.select_field
-              name="advisory_findings"
-              label="Advisory Findings (low-priority credo)"
-              value={@configuration.advisory_findings || :dont_block}
-              modes={@compile_modes}
-            />
-            <.select_field
-              name="credo"
-              label="Credo"
-              value={@configuration.credo}
-              modes={@analyzer_modes}
-            />
-            <.select_field
-              name="exunit"
-              label="ExUnit"
-              value={@configuration.exunit}
-              modes={@analyzer_modes}
-            />
-            <.select_field
-              name="spex"
-              label="Spex"
-              value={@configuration.spex}
-              modes={@analyzer_modes}
-            />
-            <.select_field
               name="qa_validation"
-              label="QA Validation"
-              value={@configuration.qa_validation}
-              modes={@analyzer_modes}
+              label="QA Brief Validation"
+              value={if @configuration.qa_validation == :off, do: :off, else: :on}
+              modes={@switch}
             />
             <.select_field
               name="architecture"
-              label="Architecture"
-              value={@configuration.architecture}
-              modes={@analyzer_modes}
+              label="Architecture Drift"
+              value={if @configuration.architecture == :off, do: :off, else: :on}
+              modes={@switch}
+            />
+            <.select_field
+              name="advisory_findings"
+              label="Advisory Findings (low-priority credo) at promotion"
+              value={@configuration.advisory_findings || :dont_block}
+              modes={@advisory_modes}
             />
           </div>
         </section>
@@ -172,8 +151,7 @@ defmodule CodeMySpecWeb.ConfigurationLive do
   defp format_mode(:off), do: "Off"
   defp format_mode(:uat), do: "UAT Only"
   defp format_mode(:prod), do: "Full Promotion (UAT + Prod)"
-  defp format_mode(:block_all), do: "Block All"
-  defp format_mode(:block_changed), do: "Block Changed"
+  defp format_mode(:on), do: "On"
   defp format_mode(:dont_block), do: "Don't Block"
   defp format_mode(:block), do: "Block"
 end

@@ -197,8 +197,6 @@ defmodule CodeMySpec.Agents.AWaitingAgentIsNeitherNudgedNorWokenTest do
     @impl_path "lib/example_context.ex"
 
     setup ctx do
-      Fixtures.set_analyzer_mode(ctx.scope, :credo, :block_all)
-
       :ok =
         Environments.write_file(ctx.environment, @impl_path, "defmodule ExampleContext do\nend\n")
 

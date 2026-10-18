@@ -39,10 +39,8 @@ defmodule CodeMySpec.Architecture.Tools.CheckArchitecture do
     end
   end
 
-  # `:off` reports nothing (criterion 1735) — the mode gates this tool's own
-  # report, not only the stop hook's blocking decision, so an engineer who
-  # turned checking off is not shown findings a moment later by asking
-  # directly.
+  # `:off` reports nothing (criterion 1735), so an engineer who turned checking
+  # off is not shown findings a moment later by asking directly.
   defp drift_for(scope) do
     case Configurations.get_or_create(scope).architecture do
       :off -> :off
