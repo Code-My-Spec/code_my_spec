@@ -4740,19 +4740,27 @@ defmodule CodeMySpecSpex.Fixtures do
 
   A turn offered to an agent stands for five minutes; an agent that never takes
   the turn is offered again once that lapses, and main is told it stalled. Time
-  passing has no surface, so this backdates the open turn request the way
-  `age_agent_messages/3` backdates a transcript.
+  passing has no surface, so this moves the agent's offer history back by
+  `seconds` the way `age_agent_messages/3` backdates a transcript.
+
+  All of it, not just the open request: a stall counts only turns requested
+  after the agent's last settled one (`Offers.unstarted_turn/1`), so a request
+  moved behind a settlement that stayed put reads as no stall at all.
   """
   @spec age_turn_request(Scope.t(), String.t(), number()) :: :ok
   def age_turn_request(%Scope{} = _scope, agent_id, seconds) do
-    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+    secs = round(seconds)
 
     from(o in CodeMySpec.Agents.Offer,
-      where:
-        o.agent_id == type(^agent_id, :binary_id) and o.status == :open and
-          not is_nil(o.turn_requested_at)
+      where: o.agent_id == type(^agent_id, :binary_id),
+      update: [
+        set: [
+          turn_requested_at: fragment("? - make_interval(secs => ?)", o.turn_requested_at, ^secs),
+          outcome_at: fragment("? - make_interval(secs => ?)", o.outcome_at, ^secs)
+        ]
+      ]
     )
-    |> Repo.update_all(set: [turn_requested_at: at])
+    |> Repo.update_all([])
 
     :ok
   end

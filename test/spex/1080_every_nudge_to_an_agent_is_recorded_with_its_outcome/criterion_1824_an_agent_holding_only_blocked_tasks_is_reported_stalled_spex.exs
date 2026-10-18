@@ -68,6 +68,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
         product = context.product
         assert_receive {:work_turn_requested, ^product, _ref, _}, 2_000
 
+        # The first push may be the one product's own turn end made; the issue's
+        # re-offer comes off the graph recompute. Both stand before the ageing.
+        :ok = Fixtures.settle_graph(context.scope)
+        :ok = Fixtures.drain_background_work()
+
         # The push stands for five minutes before an untaken turn counts toward
         # a stall (`Offers.in_flight?/1`'s TTL), so ages past it here rather
         # than waiting on it for real.
