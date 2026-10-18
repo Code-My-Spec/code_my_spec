@@ -24,6 +24,13 @@ defmodule CodeMySpec.Stories.Tools.ListStories do
   @impl true
   def params do
     %{
+      project_id:
+        {:meta, :string,
+         [
+           description:
+             "Must match this connection's own project, or the call is refused — " <>
+               "a session's tools cannot read a different project's stories (79873d5a)"
+         ]},
       offset: {:meta, :integer, [description: "Stories to skip for pagination (default: 0)"]},
       tag: {:meta, :string, [description: "Filter by tag name"]},
       search:
@@ -76,7 +83,8 @@ defmodule CodeMySpec.Stories.Tools.ListStories do
 
   # Lifted out of `execute/2` so both paths run the same query.
   defp stories(params, context) do
-    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context) do
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+         :ok <- CodeMySpec.Tools.reject_other_project(scope, params) do
       limit = (params[:limit] || @default_limit) |> max(0) |> min(@max_limit)
       offset = max(params[:offset] || 0, 0)
       opts = build_opts(params, limit, offset)
