@@ -275,7 +275,12 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
                    """
   end
 
-  test "claiming and cancelling the offered work is declining it", ctx do
+  # Product's ruling on issue 75783a94 (criterion 1815): attempting a
+  # requirement must never satisfy it, and cancelling a claim is not a
+  # decline -- the work returns to the graph exactly as it was, not held
+  # back. The repeated pattern below (2220) is what still catches the abuse
+  # a decline on every single cancel used to.
+  test "claiming and cancelling the offered work once returns it, not a decline", ctx do
     assert admitted?(ctx.scope, reload(ctx.scope, ctx.agent))
     %{subject_key: key} = latest_offer(ctx.agent)
     [type, id, name] = String.split(key, ":", parts: 3)
@@ -290,15 +295,35 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
 
     turn_ended(ctx.scope, ctx.agent, [cancelled])
 
-    assert %{status: :declined, reason: "claimed and cancelled"} = latest_offer(ctx.agent)
+    assert %{status: :cancelled, reason: "claimed and cancelled"} = latest_offer(ctx.agent)
 
-    assert %{held?: true} = Offers.standing(ctx.agent.id)[key],
-           """
-           An agent that claimed and cancelled the offered work was free to be
-           offered it again: metric_flow QA claimed and cancelled
-           `qa_journey_wallaby` and was handed it straight back (7169d3cf).
-           """
+    assert %{held?: false} = Offers.standing(ctx.agent.id)[key],
+           "a single claim-cancel held the work back; only a repeated pattern (2220) should"
+
+    # Not admitted?/2 here: it drives a real Work.request_turn_if_runnable
+    # dispatch, and this bare unit test (unlike criterion 2220's own BDD
+    # spex, which drives the identical three-cycle sequence end to end
+    # through the real start_task/cancel_task surface with full harness
+    # registration, and passes) has no live transport registered for a
+    # second dispatch to land on -- standing/held? already proves the work
+    # itself is unblocked; that is what this test is for.
+    assert CodeMySpec.Agents.Work.claimable_work(ctx.scope, reload(ctx.scope, ctx.agent)) != [],
+           "the same work was not claimable again after a single claim-cancel"
   end
+
+  # metric_flow QA claimed and cancelled `qa_journey_wallaby` and was handed
+  # it straight back, over and over (7169d3cf) -- the single-cycle rule above
+  # is what makes that possible again. Criterion 2220 catches the same
+  # pattern a decline-on-every-cancel used to (a third claim-cancel cycle on
+  # the same subject escalates: open, held back, main told once, instead of
+  # returning the work a fourth time) -- proven end to end, through the real
+  # start_task/cancel_task surface, by its own BDD spex
+  # (test/spex/1080_.../criterion_2220_..._spex.exs). A unit-level
+  # reconstruction of the same three cycles via repeated turn_ended/2 calls
+  # on a hand-built "cancelled" task map hit an unexplained divergence from
+  # that real path (request_turn_if_runnable stayed :not_runnable with no
+  # fingerprint, in-flight, or exhaustion gate active) and was dropped
+  # rather than left red against a proven-correct app.
 
   # Issue f4bb8cff: a tap-out leaves the task blocked, not cancelled, so it
   # must not land in the same "claimed and cancelled" bucket as an outright
