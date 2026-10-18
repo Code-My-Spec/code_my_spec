@@ -16,12 +16,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -36,14 +35,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
         for n <- 1..15 do
           statement = "Rule number #{n}"
 
-          {:reply, _add_rule, _frame} =
-            AddRule.execute(
+          _add_rule =
+            ToolLibrary.run(
+              "add_rule",
               %{story_number: context.story.number, statement: statement},
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          {:reply, _happy, _frame} =
-            AddScenario.execute(
+          _happy =
+            ToolLibrary.run(
+              "add_scenario",
               %{
                 story_number: context.story.number,
                 rule_statement: statement,
@@ -51,11 +52,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
                 kind: "happy_path",
                 body: "Given context\nWhen action\nThen happy outcome"
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          {:reply, _failure, _frame} =
-            AddScenario.execute(
+          _failure =
+            ToolLibrary.run(
+              "add_scenario",
               %{
                 story_number: context.story.number,
                 rule_statement: statement,
@@ -63,7 +65,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
                 kind: "failure_path",
                 body: "Given context\nWhen action\nThen failure outcome"
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
         end
 
@@ -75,10 +77,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
       when_ "the agent calls evaluate_task on the Three Amigos task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}

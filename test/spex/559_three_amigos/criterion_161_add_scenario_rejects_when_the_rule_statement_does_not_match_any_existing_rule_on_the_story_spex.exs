@@ -17,11 +17,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,13 +34,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
       given_ "one rule exists on the story with a known statement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _add_rule, _frame} =
-          AddRule.execute(
+        _add_rule =
+          ToolLibrary.run(
+            "add_rule",
             %{
               story_number: context.story.number,
               statement: "The exactly known rule statement"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -49,8 +50,9 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
       when_ "the agent calls add_scenario with a non-matching rule_statement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AddScenario.execute(
+        response =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: "Some rule that was never added",
@@ -58,7 +60,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen..."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :add_response, response)}
@@ -66,7 +68,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5894Spex do
 
       then_ "the MCP response is flagged as an error and mentions the rule lookup",
             context do
-        assert context.add_response.isError == true,
+        assert match?({:error, _}, context.add_response),
                "expected the response to be flagged as an error, got #{inspect(context.add_response)}"
 
         body = response_text(context.add_response)

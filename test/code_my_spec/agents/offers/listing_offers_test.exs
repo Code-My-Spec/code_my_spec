@@ -7,7 +7,7 @@ defmodule CodeMySpec.Agents.Offers.ListingOffersTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
-  alias CodeMySpec.McpServers.MainAgent.OfferMapper
+  alias CodeMySpec.Agents.Tools.OfferResponses, as: OfferMapper
 
   setup do
     scope = full_scope_fixture()

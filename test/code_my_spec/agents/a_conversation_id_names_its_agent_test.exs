@@ -9,6 +9,8 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures
@@ -18,9 +20,6 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
-  alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.Repo
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -29,7 +28,6 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   @project_mismatch ~r/(another|different|other) project/i
 
   setup do
-
     {scope, agent, conversation} = agent_with_conversation("the coding agent's own words")
 
     %{
@@ -76,32 +74,47 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
     {scope, agent, conversation}
   end
 
+  defp text({_status, text}) when is_binary(text), do: text
+
   defp text(response) do
     response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")
   end
 
   test "read_agent_conversation given a conversation id reads that agent's conversation", ctx do
-    {:reply, response, _} =
-      ReadAgentConversation.execute(%{agent_id: ctx.conversation.id}, ctx.frame)
+    response =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: ctx.conversation.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    refute response.isError, text(response)
+    assert match?({:ok, _}, response), text(response)
     assert text(response) =~ "the coding agent's own words"
   end
 
   test "turn_off_agent given a conversation id turns off its agent", ctx do
-    {:reply, response, _} = TurnOffAgent.execute(%{agent_id: ctx.conversation.id}, ctx.frame)
+    response =
+      ToolLibrary.run(
+        "turn_off_agent",
+        %{agent_id: ctx.conversation.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    refute response.isError, text(response)
+    assert match?({:ok, _}, response), text(response)
     assert Agent.off?(Repo.get(Agent, ctx.agent.id))
   end
 
   test "message_agent given a conversation id reaches its agent", ctx do
     agent_id = ctx.agent.id
 
-    {:reply, response, _} =
-      MessageAgent.execute(%{agent_id: ctx.conversation.id, message: "carry on"}, ctx.frame)
+    response =
+      ToolLibrary.run(
+        "message_agent",
+        %{agent_id: ctx.conversation.id, message: "carry on"},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    refute response.isError, text(response)
+    assert match?({:ok, _}, response), text(response)
     assert_received {:agent_dispatch, ^agent_id, ref, "carry on"}
     assert is_binary(ref)
     assert text(response) =~ "Queued"
@@ -111,28 +124,52 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   test "a conversation from another account is not found", ctx do
     {_other_scope, other_agent, other_conversation} = agent_with_conversation("not yours")
 
-    {:reply, read, _} =
-      ReadAgentConversation.execute(%{agent_id: other_conversation.id}, ctx.frame)
+    read =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: other_conversation.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    assert read.isError
+    assert match?({:error, _}, read)
     refute text(read) =~ "not yours"
 
-    {:reply, off, _} = TurnOffAgent.execute(%{agent_id: other_conversation.id}, ctx.frame)
+    off =
+      ToolLibrary.run(
+        "turn_off_agent",
+        %{agent_id: other_conversation.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    assert off.isError
+    assert match?({:error, _}, off)
     refute Agent.off?(Repo.get(Agent, other_agent.id))
   end
 
   test "not-found says plainly that nothing has that id, not that it is elsewhere", ctx do
     missing = Ecto.UUID.generate()
 
-    {:reply, read, _} = ReadAgentConversation.execute(%{agent_id: missing}, ctx.frame)
-    {:reply, off, _} = TurnOffAgent.execute(%{agent_id: missing}, ctx.frame)
+    read =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: missing},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    off =
+      ToolLibrary.run(
+        "turn_off_agent",
+        %{agent_id: missing},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
     for response <- [read, off] do
-      assert response.isError
+      assert refused?(response)
       assert text(response) =~ @plain_not_found
       refute text(response) =~ @project_mismatch
     end
   end
+
+  # `read` is still an MCP component's reply; `off` is a library tool's.
+  defp refused?({status, _text}), do: status == :error
+  defp refused?(%{isError: error?}), do: error?
 end

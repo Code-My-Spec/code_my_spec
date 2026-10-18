@@ -27,10 +27,9 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
 
   import ExUnit.Assertions
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
@@ -80,7 +79,12 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
         switch_on.()
     end
 
-    {:reply, _next, _frame} = GetNextRequirement.execute(%{}, frame)
+    _next =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     context
   end
@@ -105,12 +109,17 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
   def start_agent_task(context, agent_id, attrs) do
     frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent_id}}
 
-    {:reply, response, _frame} = StartTask.execute(attrs, frame)
+    response =
+      ToolLibrary.run(
+        "start_task",
+        attrs,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     # Asserted here, not by each caller: a refused start leaves the agent
     # holding nothing, and a scenario about what a task-holding agent hears
     # then passes against silence.
-    refute response.isError,
+    assert match?({:ok, _}, response),
            "start_task was refused, so the agent holds no task: " <>
              CodeMySpecSpex.TaskResponseHelpers.response_text(response)
 

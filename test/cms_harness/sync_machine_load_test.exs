@@ -19,7 +19,6 @@ defmodule CmsHarness.SyncMachineLoadTest do
   use ExUnit.Case, async: true
   use ExCliVcr
 
-  alias CmsHarness.Channel
   alias CmsHarness.Sync
 
   setup do

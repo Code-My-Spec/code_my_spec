@@ -6,16 +6,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,8 +39,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(main.id)
-        {:reply, tasks, _} = ListTasks.execute(%{}, main_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
 
         {:ok,
@@ -56,8 +61,9 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
       end
 
       when_ "the coding agent asks before the next check-in", context do
-        {:reply, response, _} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.task_id,
               questions: [
@@ -67,18 +73,32 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
                 }
               ]
             },
-            context.coding_frame
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
           )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(response))
         _ = HeldProvider.await_request()
         {:ok, Map.put(context, :question_id, question_id)}
       end
 
       then_ "the question is durably visible and a turn has arrived without a tick", context do
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.main_frame)
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(inbox) =~ context.question_id
         assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
         assert length(HeldProvider.seen()) == 1
@@ -86,8 +106,18 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
       end
 
       when_ "recovery runs while the admitted turn is still in flight", context do
-        {:reply, response, _} = CheckIn.execute(%{}, context.main_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         {:ok, context}
       end
 
@@ -98,8 +128,19 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
         prompt = Jason.decode!(request)["messages"] |> Jason.encode!()
         assert prompt =~ "start_task"
         refute prompt =~ "The first is:"
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.main_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3222Spex do
 
         reply = main_answers(context, id, wrong_answer)
 
-        refute reply.isError,
+        assert match?({:ok, _}, reply),
                "the premise is an answered question:\n#{response_text(reply)}"
 
         {:ok, context |> Map.put(:question_id, id) |> Map.put(:wrong_answer, wrong_answer)}

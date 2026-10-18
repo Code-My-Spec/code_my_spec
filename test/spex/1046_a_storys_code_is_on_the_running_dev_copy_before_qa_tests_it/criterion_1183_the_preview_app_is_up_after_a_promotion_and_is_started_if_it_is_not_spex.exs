@@ -26,6 +26,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
@@ -33,7 +35,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
@@ -261,7 +262,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   defp ask_for_next_work(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     response_text(response)
   end
 

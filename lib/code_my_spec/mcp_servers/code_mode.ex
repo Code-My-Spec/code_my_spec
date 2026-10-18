@@ -33,7 +33,7 @@ defmodule CodeMySpec.McpServers.CodeMode do
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpec.McpServers.ScriptResult
-  alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.Users.Scope
 
   @doc "The catalog of tools a script may call, acting as `scope`."
@@ -267,12 +267,18 @@ defmodule CodeMySpec.McpServers.CodeMode do
   defp execute(%{tool: tool}, params, frame) do
     context =
       frame.assigns
-      |> Map.take([:session_id, :agent_id])
+      |> Map.take([:session_id, :agent_id, :working_dir])
       |> Map.put(:scope, frame.assigns.current_scope)
 
-    if function_exported?(Code.ensure_loaded!(tool), :script_result, 2),
-      do: tool.script_result(params, context),
-      else: tool.call(params, context)
+    result =
+      if function_exported?(Code.ensure_loaded!(tool), :script_result, 2),
+        do: tool.script_result(params, context),
+        else: tool.call(params, context)
+
+    case result do
+      {:error, reason} -> {:error, describe(reason)}
+      ok -> ok
+    end
   end
 
   defp execute(tool, params, frame) do

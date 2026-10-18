@@ -1,0 +1,193 @@
+defmodule CodeMySpec.Agents.Tools.CheckAnswerInProcessTest do
+  @moduledoc """
+  `check_answer` reads the question row directly, with no HTTP hop.
+
+  It was the last of the three question tools still going through
+  `QuestionClient`: `ask_user` moved in-process for story 896 and
+  `list_user_questions` was written that way, which left the half of the
+  exchange that *collects* the answer as the only step no spex could drive.
+  They were verified to reach the same database, so nothing was broken — it was
+  a round trip and a blind spot rather than a split brain (issue `f2739ae7`).
+
+  This asserts the two answers that matter and, by running at all, the thing the
+  issue was really about: the tool is now reachable from a test.
+  """
+  use ExUnit.Case, async: true
+
+  alias CodeMySpec.ToolLibrary
+
+  import CodeMySpec.UsersFixtures
+
+  alias CodeMySpec.Agents.Main.QuestionsRepository
+  alias CodeMySpec.Notifications
+  alias Ecto.Adapters.SQL.Sandbox
+
+  setup do
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
+    scope = full_scope_fixture()
+    {:ok, user_id: scope.user.id, scope: scope}
+  end
+
+  defp frame(scope), do: %Anubis.Server.Frame{assigns: %{current_scope: scope}}
+
+  defp text({_status, text}) when is_binary(text), do: text
+
+  defp text(response) do
+    response.content |> Enum.map_join("\n", &Map.get(&1, "text", ""))
+  end
+
+  test "an answered question returns what the user said", %{user_id: user_id, scope: scope} do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "title" => "Claude has a message",
+        "questions" => [%{"question" => "Which storage backend?"}]
+      })
+
+    {:ok, _} =
+      Notifications.answer_question_request(request.id, %{
+        "Which storage backend?" => "S3"
+      })
+
+    response =
+      ToolLibrary.run(
+        "check_answer",
+        %{question_id: request.id},
+        Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response)
+    assert text(response) =~ "S3"
+  end
+
+  test "an unanswered question reports pending rather than failing", %{
+    user_id: user_id,
+    scope: scope
+  } do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "title" => "Claude has a message",
+        "questions" => [%{"question" => "Which storage backend?"}]
+      })
+
+    response =
+      ToolLibrary.run(
+        "check_answer",
+        %{question_id: request.id},
+        Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response),
+           "pending is an ordinary result — an agent that reads it as an error " <>
+             "either re-asks, queueing a duplicate for the user, or gives up"
+
+    assert text(response) =~ "Still waiting"
+  end
+
+  test "another user's scope cannot collect the answer", %{user_id: user_id} do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "questions" => [%{"question" => "Private decision?"}]
+      })
+
+    {:ok, _} =
+      Notifications.answer_question_request(request.id, %{"Private decision?" => "secret"})
+
+    response =
+      ToolLibrary.run(
+        "check_answer",
+        %{question_id: request.id},
+        Map.put(
+          frame(full_scope_fixture()).assigns,
+          :scope,
+          frame(full_scope_fixture()).assigns[:current_scope]
+        )
+      )
+
+    assert match?({:error, _}, response)
+    refute text(response) =~ "secret"
+  end
+
+  # Issue `2999a0cb`: an agent wrote its question as `34a663ee` in its own
+  # notes, then called `check_answer` with that. `Repo.get/2` raised casting it
+  # to a uuid, Anubis answered "Tool execution crashed", and the agent learned
+  # nothing about why.
+  test "a shortened id is refused in words, not crashed on", %{user_id: user_id, scope: scope} do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "questions" => [%{"question" => "Which store?"}]
+      })
+
+    short = String.slice(request.id, 0, 8)
+
+    response =
+      ToolLibrary.run(
+        "check_answer",
+        %{question_id: short},
+        Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
+      )
+
+    assert match?({:error, _}, response)
+    assert text(response) =~ short
+    assert text(response) =~ "list_user_questions"
+  end
+
+  test "a malformed id finds no question", %{scope: scope} do
+    assert Notifications.get_question_request("34a663ee") == nil
+    assert QuestionsRepository.fetch_answered(scope, "34a663ee") == nil
+  end
+
+  test "an answer event completes an in-flight check", %{user_id: user_id, scope: scope} do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "questions" => [%{"question" => "Which store?"}]
+      })
+
+    waiter =
+      Task.async(fn ->
+        receive do
+          :check ->
+            ToolLibrary.run(
+              "check_answer",
+              %{question_id: request.id},
+              Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
+            )
+        end
+      end)
+
+    Sandbox.allow(CodeMySpec.Repo, self(), waiter.pid)
+    handler = "answer-wait-#{request.id}"
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:code_my_spec, :repo, :query],
+        &__MODULE__.question_read/4,
+        {self(), waiter.pid}
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    send(waiter.pid, :check)
+    assert :question_read = await_question_read()
+    assert :question_read = await_question_read()
+    {:ok, _} = Notifications.answer_question_request(request.id, %{"Which store?" => "S3"})
+    assert {:ok, text} = Task.await(waiter, :infinity)
+    assert text =~ "S3"
+    assert_received :question_read
+    refute_received :question_read
+  end
+
+  # ExUnit's test deadline bounds a stalled worker; scheduling latency does not.
+  defp await_question_read do
+    receive do
+      :question_read -> :question_read
+    end
+  end
+
+  def question_read(_event, _measurements, %{source: "question_requests"}, {listener, waiter})
+      when self() == waiter do
+    send(listener, :question_read)
+  end
+
+  def question_read(_event, _measurements, _metadata, _config), do: :ok
+end

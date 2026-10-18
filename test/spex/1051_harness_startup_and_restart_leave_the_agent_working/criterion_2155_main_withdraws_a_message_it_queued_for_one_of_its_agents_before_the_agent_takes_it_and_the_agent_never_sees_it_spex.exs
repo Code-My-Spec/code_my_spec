@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2155Spex do
       end
 
       then_ "the withdrawal is confirmed and the agent never sees the message", ctx do
-        refute ctx.response.isError, H.text_of(ctx.response)
+        assert match?({:ok, _}, ctx.response), H.text_of(ctx.response)
         refute Enum.any?(HeldProvider.seen(), &(&1 =~ "NEVER-MIND-THIS"))
         {:ok, ctx}
       end

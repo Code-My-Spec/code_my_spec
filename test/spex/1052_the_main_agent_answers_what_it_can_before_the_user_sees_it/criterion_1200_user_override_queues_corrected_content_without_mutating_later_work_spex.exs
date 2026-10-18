@@ -6,6 +6,8 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -13,11 +15,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -66,12 +63,19 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
           requirement_name: "bdd_specs_exist"
         }
 
-        {:reply, started, _} = StartTask.execute(claim, frame)
-        refute started.isError, response_text(started)
+        started =
+          ToolLibrary.run(
+            "start_task",
+            claim,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: task_id,
               questions: [
@@ -81,26 +85,35 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
                 }
               ]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         old_id = Fixtures.question_id_from(response_text(asked))
         earlier_answer = "Allow refunds on working copy #{context.scope.active_working_copy_id}"
 
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{notification_id: old_id, answer: earlier_answer, basis: "record"},
-            main_frame
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
           )
 
-        refute answered.isError, response_text(answered)
-        {:reply, resumed, _} = StartTask.execute(claim, frame)
-        refute resumed.isError, response_text(resumed)
+        assert match?({:ok, _}, answered), response_text(answered)
+
+        resumed =
+          ToolLibrary.run(
+            "start_task",
+            claim,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, resumed), response_text(resumed)
         assert extract_task_id!(resumed) == task_id
 
-        {:reply, later, _} =
-          AskUserQuestion.execute(
+        later =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: task_id,
               questions: [
@@ -110,13 +123,20 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
                 }
               ]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute later.isError, response_text(later)
+        assert match?({:ok, _}, later), response_text(later)
         new_id = Fixtures.question_id_from(response_text(later))
-        {:reply, tasks, _} = ListTasks.execute(%{}, frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         base_url = HeldProvider.start()
         HeldProvider.hold()
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
@@ -151,8 +171,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
 
       then_ "the saved answer identifies the override and retains the earlier answer for audit",
             context do
-        {:reply, answer, _} = CheckAnswer.execute(%{question_id: context.old_id}, context.frame)
-        refute answer.isError, response_text(answer)
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.old_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ "Refuse"
         assert response_text(answer) =~ ~r/user.*overrul/i
         {:ok, view, _} = live(context.conn, "/app/questions/#{context.old_id}")
@@ -163,16 +189,36 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
 
       then_ "the newer blocker and task state are unchanged and no interrupt is queued",
             context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         assert response_text(tasks) =~ "[blocked]"
         assert response_text(tasks) =~ context.task_id
-        {:reply, pending, _} = CheckAnswer.execute(%{question_id: context.new_id}, context.frame)
-        refute pending.isError, response_text(pending)
+
+        pending =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.new_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, pending), response_text(pending)
         assert response_text(pending) =~ ~r/still waiting/i
-        {:reply, refused, _} = StartTask.execute(context.claim, context.frame)
-        assert refused.isError, response_text(refused)
+
+        refused =
+          ToolLibrary.run(
+            "start_task",
+            context.claim,
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:error, _}, refused), response_text(refused)
         assert response_text(refused) =~ ~r/block|answer/i
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         [request] = HeldProvider.seen()

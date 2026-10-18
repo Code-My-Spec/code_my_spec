@@ -28,8 +28,9 @@ defmodule CodeMySpecSpex.Story841.Criterion1968Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -74,15 +75,19 @@ defmodule CodeMySpecSpex.Story841.Criterion1968Spex do
         # about, so the run that would put them there has to actually happen.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        _response =
+          ToolLibrary.run(
+            "run_devops_setup",
+            %{project_id: to_string(context.project.id)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :frame, frame)}
       end
 
       when_ "the agent asks what infrastructure exists", context do
-        {:reply, response, _frame} =
-          DevopsStatus.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        response =
+          ToolLibrary.run("devops_status", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

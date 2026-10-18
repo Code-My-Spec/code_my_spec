@@ -43,14 +43,10 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   import ExUnit.Assertions
   import Phoenix.ChannelTest, only: [subscribe_and_join: 4]
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -231,7 +227,13 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec stop(map(), String.t()) :: :ok
   def stop(context, agent_id) do
-    {:reply, _response, _} = RetireAgent.execute(%{agent_id: agent_id}, frame(context))
+    _response =
+      ToolLibrary.run(
+        "retire_agent",
+        %{agent_id: agent_id},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     :ok
   end
 
@@ -335,12 +337,16 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec request_turn(map(), String.t()) :: String.t()
   def request_turn(context, agent_id) do
-    {:reply, response, _} =
-      SetAgentContinuous.execute(%{agent_id: agent_id, continuous: true}, frame(context))
+    response =
+      ToolLibrary.run(
+        "set_agent_continuous",
+        %{agent_id: agent_id, continuous: true},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
 
     said = text(response)
 
-    refute response.isError,
+    assert match?({:ok, _}, response),
            """
            The agent could not be put in the loop, so it never took a turn and
            this run measures nothing about its conduct.
@@ -514,10 +520,14 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec conversation(map(), String.t()) :: String.t()
   def conversation(context, agent_id) do
-    {:reply, response, _} =
-      ReadAgentConversation.execute(%{agent_id: agent_id, limit: 100}, frame(context))
+    response =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: agent_id, limit: 100},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
 
-    refute response.isError,
+    assert match?({:ok, _}, response),
            """
            The agent's conversation could not be read, so nothing here is
            evidence about what it called.
@@ -583,7 +593,13 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec issues_filed(map(), map()) :: String.t()
   def issues_filed(context, opts \\ %{}) do
-    {:reply, response, _} = ListIssues.execute(opts, frame(context))
+    response =
+      ToolLibrary.run(
+        "list_issues",
+        opts,
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     text(response)
   end
 
@@ -625,8 +641,14 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   end
 
   defp issue_has_evidence?(context, id, tool, error_pattern) do
-    {:reply, response, _} = GetIssue.execute(%{issue_id: id}, frame(context))
-    refute response.isError, text(response)
+    response =
+      ToolLibrary.run(
+        "get_issue",
+        %{issue_id: id},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response), text(response)
     body = text(response)
     String.contains?(body, tool) and Regex.match?(error_pattern, body)
   end
@@ -900,6 +922,8 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   @doc "A frame carrying this scope, as a connected agent's call arrives with."
   @spec frame(map()) :: Frame.t()
   def frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
+
+  defp text({_status, text}) when is_binary(text), do: text
 
   defp text(response) do
     response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")

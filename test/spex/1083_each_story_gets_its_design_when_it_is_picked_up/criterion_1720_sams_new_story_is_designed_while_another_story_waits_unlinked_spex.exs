@@ -6,11 +6,11 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
@@ -66,15 +66,16 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
       given_ "a task is started for story A's component_linked requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "component_linked",
               entity_type: "story",
               entity_id: to_string(context.story_a.number),
               session_id: context.session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(response_text(response))
@@ -95,10 +96,11 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
             frame
           )
 
-        {:reply, evaluate_response, _frame} =
-          EvaluateTask.execute(
+        evaluate_response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, evaluate_response)}

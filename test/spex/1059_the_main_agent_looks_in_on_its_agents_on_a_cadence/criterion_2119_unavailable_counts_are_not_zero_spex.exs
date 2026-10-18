@@ -1,8 +1,9 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2119Spex do
   @moduledoc "Unavailable evidence is a failure rather than invented zero progress"
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -23,12 +24,22 @@ defmodule CodeMySpecSpex.Story1059.Criterion2119Spex do
       end
 
       when_ "main requests the report", context do
-        {:reply, result, _} = CheckIn.execute(%{}, Compact.frame(context))
+        result =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(
+              Compact.frame(context).assigns,
+              :scope,
+              Compact.frame(context).assigns[:current_scope]
+            )
+          )
+
         {:ok, Map.put(context, :result, result)}
       end
 
       then_ "failure stays visible and no counts or healthy verdict are fabricated", context do
-        assert context.result.isError
+        assert match?({:error, _}, context.result)
         text = response_text(context.result)
         assert text =~ "could not be assembled"
         refute text =~ "0/0"

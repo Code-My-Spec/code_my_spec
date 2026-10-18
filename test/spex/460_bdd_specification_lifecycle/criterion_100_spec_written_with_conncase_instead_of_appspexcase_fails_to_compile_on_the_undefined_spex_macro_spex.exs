@@ -23,18 +23,20 @@ defmodule CodeMySpecSpex.Story460.Criterion5557Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Spec using ConnCase (no SpexCase) → compile diagnostic on undefined `spex` macro", criterion: 100 do
+  spex "Spec using ConnCase (no SpexCase) → compile diagnostic on undefined `spex` macro",
+    criterion: 100 do
     scenario "ConnCase-only spec → evaluator surfaces undefined-spex compile error" do
       given_ :synced_liveview_component
 
@@ -69,10 +71,11 @@ defmodule CodeMySpecSpex.Story460.Criterion5557Spex do
       when_ "the agent calls evaluate_task on the active task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}

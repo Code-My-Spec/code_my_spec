@@ -9,8 +9,9 @@ defmodule CodeMySpecSpex.Story1055.Criterion3286Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -18,13 +19,15 @@ defmodule CodeMySpecSpex.Story1055.Criterion3286Spex do
 
   spex "A time range narrows a conversation to the incident", criterion: 1256 do
     scenario "A time range narrows a conversation to the incident" do
-      given_ "the main agent is looking into something that happened in a known window", context do
+      given_ "the main agent is looking into something that happened in a known window",
+             context do
         agent = Fixtures.running_agent(context.scope, role: "coding")
 
         :ok = Fixtures.agent_said(context.scope, agent, "Before the incident: routine sync")
         :ok = Fixtures.age_agent_messages(context.scope, agent, 2 * 24 * 3600)
 
-        :ok = Fixtures.agent_said(context.scope, agent, "During the incident: ledger write failed")
+        :ok =
+          Fixtures.agent_said(context.scope, agent, "During the incident: ledger write failed")
 
         window_start = DateTime.add(DateTime.utc_now(), -3600, :second)
         window_end = DateTime.add(DateTime.utc_now(), 3600, :second)
@@ -39,21 +42,22 @@ defmodule CodeMySpecSpex.Story1055.Criterion3286Spex do
       when_ "it asks for that agent's turns within that window", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ReadAgentConversation.execute(
+        response =
+          ToolLibrary.run(
+            "read_agent_conversation",
             %{
               "agent_id" => context.agent.id,
               "since" => DateTime.to_iso8601(context.window_start),
               "until" => DateTime.to_iso8601(context.window_end)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it gets only the turns from that window", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "expected a windowed read, got: #{inspect(context.response)}"
 
         body = response_text(context.response)

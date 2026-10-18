@@ -13,8 +13,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7953Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account
@@ -57,12 +58,16 @@ defmodule CodeMySpecSpex.Story958.Criterion7953Spex do
       then_ "its first offered requirement is a linked surface component", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: @title}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: @title},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected show_story_requirements to succeed, got: #{inspect(response)}"
 
         assert body =~ "component_linked",

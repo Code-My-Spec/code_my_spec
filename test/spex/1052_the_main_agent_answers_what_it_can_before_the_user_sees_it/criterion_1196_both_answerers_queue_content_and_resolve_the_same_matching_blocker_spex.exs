@@ -6,6 +6,8 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -13,11 +15,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -68,12 +65,19 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
               requirement_name: "bdd_specs_exist"
             }
 
-            {:reply, started, _} = StartTask.execute(claim, frame)
-            refute started.isError, response_text(started)
+            started =
+              ToolLibrary.run(
+                "start_task",
+                claim,
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
+
+            assert match?({:ok, _}, started), response_text(started)
             task_id = extract_task_id!(started)
 
-            {:reply, asked, _} =
-              AskUserQuestion.execute(
+            asked =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   task_id: task_id,
                   questions: [
@@ -83,10 +87,10 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
                     }
                   ]
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute asked.isError, response_text(asked)
+            assert match?({:ok, _}, asked), response_text(asked)
 
             %{
               id: task_id,
@@ -132,18 +136,29 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
 
       then_ "the answer is readable and both attempts remain blocked without a wake turn",
             context do
-        {:reply, answer, _} =
-          CheckAnswer.execute(
+        answer =
+          ToolLibrary.run(
+            "check_answer",
             %{question_id: context.original.question_id},
-            context.original.frame
+            Map.put(
+              context.original.frame.assigns,
+              :scope,
+              context.original.frame.assigns[:current_scope]
+            )
           )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ context.answer
 
         for task <- [context.original, context.neighbor] do
-          {:reply, tasks, _} = ListTasks.execute(%{}, task.frame)
-          refute tasks.isError, response_text(tasks)
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{},
+              Map.put(task.frame.assigns, :scope, task.frame.assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) =~ task.id
           assert response_text(tasks) =~ "[blocked]"
           refute response_text(tasks) =~ "[active]"
@@ -156,21 +171,63 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
       end
 
       when_ "each owner deliberately attempts to resume", context do
-        {:reply, refused, _} = StartTask.execute(context.neighbor.claim, context.neighbor.frame)
-        assert refused.isError, response_text(refused)
+        refused =
+          ToolLibrary.run(
+            "start_task",
+            context.neighbor.claim,
+            Map.put(
+              context.neighbor.frame.assigns,
+              :scope,
+              context.neighbor.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:error, _}, refused), response_text(refused)
         assert response_text(refused) =~ ~r/block|answer/i
-        {:reply, resumed, _} = StartTask.execute(context.original.claim, context.original.frame)
-        refute resumed.isError, response_text(resumed)
+
+        resumed =
+          ToolLibrary.run(
+            "start_task",
+            context.original.claim,
+            Map.put(
+              context.original.frame.assigns,
+              :scope,
+              context.original.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, resumed), response_text(resumed)
         assert extract_task_id!(resumed) == context.original.id
         {:ok, context}
       end
 
       then_ "only the answered attempt becomes active, with the same UUID", context do
-        {:reply, active, _} = ListTasks.execute(%{status: "active"}, context.original.frame)
-        refute active.isError, response_text(active)
+        active =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.original.frame.assigns,
+              :scope,
+              context.original.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, active), response_text(active)
         assert response_text(active) =~ context.original.id
-        {:reply, blocked, _} = ListTasks.execute(%{status: "blocked"}, context.neighbor.frame)
-        refute blocked.isError, response_text(blocked)
+
+        blocked =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "blocked"},
+            Map.put(
+              context.neighbor.frame.assigns,
+              :scope,
+              context.neighbor.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, blocked), response_text(blocked)
         assert response_text(blocked) =~ context.neighbor.id
         {:ok, context}
       end
@@ -213,12 +270,19 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
               requirement_name: "bdd_specs_exist"
             }
 
-            {:reply, started, _} = StartTask.execute(claim, frame)
-            refute started.isError, response_text(started)
+            started =
+              ToolLibrary.run(
+                "start_task",
+                claim,
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
+
+            assert match?({:ok, _}, started), response_text(started)
             task_id = extract_task_id!(started)
 
-            {:reply, asked, _} =
-              AskUserQuestion.execute(
+            asked =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   task_id: task_id,
                   questions: [
@@ -228,10 +292,10 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
                     }
                   ]
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute asked.isError, response_text(asked)
+            assert match?({:ok, _}, asked), response_text(asked)
 
             %{
               id: task_id,
@@ -265,35 +329,51 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
 
       when_ "the main agent answers the original question through its supported surface",
             context do
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.original.question_id,
               answer: context.answer,
               basis: "record"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute answered.isError, response_text(answered)
+        assert match?({:ok, _}, answered), response_text(answered)
 
         {:ok, context}
       end
 
       then_ "the answer is readable and both attempts remain blocked without a wake turn",
             context do
-        {:reply, answer, _} =
-          CheckAnswer.execute(
+        answer =
+          ToolLibrary.run(
+            "check_answer",
             %{question_id: context.original.question_id},
-            context.original.frame
+            Map.put(
+              context.original.frame.assigns,
+              :scope,
+              context.original.frame.assigns[:current_scope]
+            )
           )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ context.answer
 
         for task <- [context.original, context.neighbor] do
-          {:reply, tasks, _} = ListTasks.execute(%{}, task.frame)
-          refute tasks.isError, response_text(tasks)
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{},
+              Map.put(task.frame.assigns, :scope, task.frame.assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) =~ task.id
           assert response_text(tasks) =~ "[blocked]"
           refute response_text(tasks) =~ "[active]"
@@ -306,21 +386,63 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
       end
 
       when_ "each owner deliberately attempts to resume", context do
-        {:reply, refused, _} = StartTask.execute(context.neighbor.claim, context.neighbor.frame)
-        assert refused.isError, response_text(refused)
+        refused =
+          ToolLibrary.run(
+            "start_task",
+            context.neighbor.claim,
+            Map.put(
+              context.neighbor.frame.assigns,
+              :scope,
+              context.neighbor.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:error, _}, refused), response_text(refused)
         assert response_text(refused) =~ ~r/block|answer/i
-        {:reply, resumed, _} = StartTask.execute(context.original.claim, context.original.frame)
-        refute resumed.isError, response_text(resumed)
+
+        resumed =
+          ToolLibrary.run(
+            "start_task",
+            context.original.claim,
+            Map.put(
+              context.original.frame.assigns,
+              :scope,
+              context.original.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, resumed), response_text(resumed)
         assert extract_task_id!(resumed) == context.original.id
         {:ok, context}
       end
 
       then_ "only the answered attempt becomes active, with the same UUID", context do
-        {:reply, active, _} = ListTasks.execute(%{status: "active"}, context.original.frame)
-        refute active.isError, response_text(active)
+        active =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.original.frame.assigns,
+              :scope,
+              context.original.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, active), response_text(active)
         assert response_text(active) =~ context.original.id
-        {:reply, blocked, _} = ListTasks.execute(%{status: "blocked"}, context.neighbor.frame)
-        refute blocked.isError, response_text(blocked)
+
+        blocked =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "blocked"},
+            Map.put(
+              context.neighbor.frame.assigns,
+              :scope,
+              context.neighbor.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, blocked), response_text(blocked)
         assert response_text(blocked) =~ context.neighbor.id
         {:ok, context}
       end

@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2118Spex do
   @moduledoc "Requirement progress agrees with the full project graph"
   use CodeMySpecSpex.Case
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -27,7 +27,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion2118Spex do
 
       then_ "the report agrees with the unfiltered project summary without listing nodes",
             context do
-        {:ok, groups} = ListRequirements.script_result(%{summary: true}, Compact.frame(context))
+        frame = Compact.frame(context)
+
+        {:ok, groups} =
+          ToolLibrary.data(
+            "list_requirements",
+            %{summary: true},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         total = Enum.sum(Enum.map(groups, & &1["count"]))
         failing = Enum.sum(Enum.map(groups, & &1["locally_failing"]))
         assert total > 0

@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story538.Criterion1498Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -16,10 +18,6 @@ defmodule CodeMySpecSpex.Story538.Criterion1498Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -67,20 +65,28 @@ defmodule CodeMySpecSpex.Story538.Criterion1498Spex do
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            agent_frame
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
-        {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "[active]"
         assert response_text(tasks) =~ task_id
@@ -103,10 +109,18 @@ defmodule CodeMySpecSpex.Story538.Criterion1498Spex do
       when_ "the agent explicitly evaluates the same unfinished task five times", context do
         evaluations =
           Enum.map(1..5, fn _ ->
-            {:reply, response, _} =
-              EvaluateTask.execute(%{task_id: context.task_id}, context.agent_frame)
+            response =
+              ToolLibrary.run(
+                "evaluate_task",
+                %{task_id: context.task_id},
+                Map.put(
+                  context.agent_frame.assigns,
+                  :scope,
+                  context.agent_frame.assigns[:current_scope]
+                )
+              )
 
-            refute response.isError, response_text(response)
+            assert match?({:ok, _}, response), response_text(response)
             assert response_text(response) =~ "Needs work"
             response_text(response)
           end)
@@ -117,8 +131,18 @@ defmodule CodeMySpecSpex.Story538.Criterion1498Spex do
 
       then_ "the same task stays active and no new task or automatic model turn is admitted",
             context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
@@ -132,8 +156,18 @@ defmodule CodeMySpecSpex.Story538.Criterion1498Spex do
 
       then_ "continuous remains enabled and the original attempt is still the only task",
             context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")
@@ -142,10 +176,14 @@ defmodule CodeMySpecSpex.Story538.Criterion1498Spex do
 
       then_ "the latest stop feedback identifies the active task and its repeated failure",
             context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id, limit: 1}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id, limit: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         text = response_text(conversation)
         assert text =~ context.task_id
         assert text =~ ~r/repeat|same feedback|same failure|five.*fail|5.*fail/i

@@ -33,12 +33,12 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.HarnessHooks
 
   @calls ~w(evaluate_task get_next_requirement)
@@ -65,10 +65,10 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
         # warmed here is stale by the time the menu renders. On any stop that
         # follows work — nearly all of them — requirements is unknowable without
         # the recompute that deadlocks.
-        {:reply, response, _frame} =
-          GetNextRequirement.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        response =
+          ToolLibrary.run("get_next_requirement", %{}, %{scope: context.scope})
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the graph must compute for requirements to be a live class at all"
 
         {:ok, context}

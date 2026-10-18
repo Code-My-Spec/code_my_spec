@@ -33,9 +33,8 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
-  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpecSpex.Fixtures
 
@@ -142,8 +141,8 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   end
 
   @doc "Retire one agent through the operator's tool, freeing its seat for a successor (39af5611)."
-  @spec retire_agent(map(), String.t()) :: struct()
-  def retire_agent(context, agent_id), do: call(RetireAgent, %{agent_id: agent_id}, context)
+  @spec retire_agent(map(), String.t()) :: term()
+  def retire_agent(context, agent_id), do: call("retire_agent", %{agent_id: agent_id}, context)
 
   @doc """
   What the project reports is running, as text.
@@ -154,7 +153,7 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   criterion 3211 is about.
   """
   @spec listing(map()) :: String.t()
-  def listing(context), do: ListAgents |> call(%{}, context) |> response_text()
+  def listing(context), do: "list_agents" |> call(%{}, context) |> response_text()
 
   @doc "The frame a tool call from this scope is made in."
   @spec frame(map()) :: Frame.t()
@@ -240,6 +239,12 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
       [_, id] -> id
       nil -> nil
     end
+  end
+
+  # A library tool by name (`ToolLibrary`); an MCP component by module.
+  defp call(name, params, context) when is_binary(name) do
+    frame = frame(context)
+    ToolLibrary.run(name, params, Map.put(frame.assigns, :scope, frame.assigns[:current_scope]))
   end
 
   defp call(tool, params, context) do

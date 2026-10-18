@@ -1102,6 +1102,8 @@ defmodule CodeMySpecSpex.Fixtures do
   # orchestrator action carries its sentence plus optional count, tool and kind
   # parts. There is no flat `body`, and reading one raises `KeyError` at exactly
   # the moment the feature starts working, which reads as the feature failing.
+  defp message_text({_status, text}) when is_binary(text), do: text
+
   defp message_text(%{content: parts}) when is_list(parts) do
     # Every part that carries text, not only the ones typed "text". An
     # orchestrator action puts its sentence in one part and the call it wants

@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3609Spex do
 
       when_ "the agent asks what to work on", context do
         finding =
-          Slice.call(context, CodeMySpec.McpServers.Issues.Tools.CreateIssue, %{
+          Slice.call(context, "create_issue", %{
             title: "Story fails QA",
             severity: "high",
             description: "Reservation is lost after saving",
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3609Spex do
           Regex.run(~r/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/, finding)
 
         result =
-          Slice.call(context, CodeMySpec.McpServers.Qa.Tools.SubmitQaResult, %{
+          Slice.call(context, "submit_qa_result", %{
             task_id: context.qa_task_id,
             status: "fail",
             issue_ids: [issue_id],

@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story1055.Criterion3287Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -37,14 +38,18 @@ defmodule CodeMySpecSpex.Story1055.Criterion3287Spex do
       when_ "the query is answered", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ReadAgentConversation.execute(%{"agent_id" => context.agent.id}, frame)
+        response =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the result is cut to the limit", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "expected a truncated read, got: #{inspect(context.response)}"
 
         body = response_text(context.response)

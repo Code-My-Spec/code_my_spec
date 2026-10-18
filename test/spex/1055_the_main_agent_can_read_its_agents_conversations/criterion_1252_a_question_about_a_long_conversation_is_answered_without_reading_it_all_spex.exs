@@ -15,14 +15,16 @@ defmodule CodeMySpecSpex.Story1055.Criterion3282Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "A question about a long conversation is answered without reading it all", criterion: 1252 do
+  spex "A question about a long conversation is answered without reading it all",
+    criterion: 1252 do
     scenario "A question about a long conversation is answered without reading it all" do
       given_ "an agent has a conversation with many turns", context do
         agent = Fixtures.running_agent(context.scope, role: "coding")
@@ -32,9 +34,15 @@ defmodule CodeMySpecSpex.Story1055.Criterion3282Spex do
         end
 
         :ok =
-          Fixtures.agent_tool_call(context.scope, agent, "call-provision", "run_provisioning_step", %{
-            "step" => "dns"
-          })
+          Fixtures.agent_tool_call(
+            context.scope,
+            agent,
+            "call-provision",
+            "run_provisioning_step",
+            %{
+              "step" => "dns"
+            }
+          )
 
         :ok =
           Fixtures.agent_tool_result(
@@ -55,17 +63,18 @@ defmodule CodeMySpecSpex.Story1055.Criterion3282Spex do
       when_ "the main agent asks when that agent last called a particular tool", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ReadAgentConversation.execute(
+        response =
+          ToolLibrary.run(
+            "read_agent_conversation",
             %{"agent_id" => context.agent.id, "last_call_of" => "run_provisioning_step"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it gets that answer", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "expected an answer for #{context.agent.id}, got: #{inspect(context.response)}"
 
         body = response_text(context.response)

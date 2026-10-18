@@ -11,16 +11,16 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
   per rule aa9a29e6 (story 726).
 
   Surfaces:
-  - `CodeMySpec.McpServers.Issues.Tools.CreateIssue` (seed an issue per non-pass attempt)
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (seed three attempts at different timestamps)
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts` (read-back)
+  - `CodeMySpec.Issues.Tools.CreateIssue` (seed an issue per non-pass attempt)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed three attempts at different timestamps)
+  - `CodeMySpec.Qa.Tools.ListQaAttempts` (read-back)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,18 +35,19 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
         Enum.each(["fail", "partial", "pass"], fn status ->
           issue_ids = file_issue_for_non_pass(status, context, frame)
 
-          {:reply, response, _frame} =
-            SubmitQaResult.execute(
+          response =
+            ToolLibrary.run(
+              "submit_qa_result",
               %{
                 task_id: context.task_id,
                 status: status,
                 scenarios: [%{name: "scenario_#{status}", status: status, observation: "marker"}],
                 issue_ids: issue_ids
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          refute response.isError
+          assert match?({:ok, _}, response)
         end)
 
         {:ok, context}
@@ -55,10 +56,14 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
       when_ "the engineer calls list_qa_attempts for the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         {:ok, Map.put(context, :list_response, response)}
       end
 
@@ -89,8 +94,9 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
   defp file_issue_for_non_pass("pass", _context, _frame), do: []
 
   defp file_issue_for_non_pass(status, context, frame) do
-    {:reply, issue_response, _frame} =
-      CreateIssue.execute(
+    issue_response =
+      ToolLibrary.run(
+        "create_issue",
         %{
           title: "QA-found #{status} finding from criterion 6455 spex",
           severity: "low",
@@ -98,10 +104,10 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
           story_number: context.story.number,
           description: "Seeded during list_qa_attempts test setup."
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute issue_response.isError
+    assert match?({:ok, _}, issue_response)
     [extract_issue_id(response_text(issue_response))]
   end
 

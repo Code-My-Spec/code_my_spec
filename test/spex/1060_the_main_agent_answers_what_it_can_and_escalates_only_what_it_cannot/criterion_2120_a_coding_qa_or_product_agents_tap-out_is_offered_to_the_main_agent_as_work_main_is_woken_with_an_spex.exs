@@ -10,14 +10,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Offers
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -38,23 +37,24 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
     {coder, task} = Fixtures.agent_task_fixture(scope, coder, story_id: 1060)
     asking = %Frame{assigns: %{current_scope: scope, agent_id: coder.id}}
 
-    {:reply, tapped, _frame} =
-      TapOut.execute(
+    tapped =
+      ToolLibrary.run(
+        "tap_out",
         %{
           task_id: task.id,
           reason: "the component this task would have built was already removed"
         },
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
       )
 
-    refute tapped.isError, inspect(tapped)
+    assert match?({:ok, _}, tapped), inspect(tapped)
     [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
     %{scope: scope, main: main, coder: coder, task: task, permission_id: permission_id}
   end
 
   spex "The main agent is woken with an offer naming the agent, its task and the reason",
-       criterion: 2120 do
+    criterion: 2120 do
     scenario "a coding agent with an active task taps out" do
       given_ "a coding agent with an active task", context do
         # given: already true — `tapped_out_coder/2` calls `TapOut.execute/2`.
@@ -69,7 +69,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
       then_ "the main agent's own waiting work names the agent, its task and the reason",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         text = response_text(listing)
 
         assert text =~ context.coder.id and text =~ context.task.id and
@@ -89,7 +96,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
   end
 
   spex "The main agent settles a tap-out it was woken for with answer_notification",
-       criterion: 2120 do
+    criterion: 2120 do
     scenario "the main agent decides a coding agent's tap-out" do
       given_ "a coding agent's tap-out, raised while the main agent is running", context do
         # given: already true — `tapped_out_coder/2` calls `TapOut.execute/2`.
@@ -100,21 +107,22 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
       when_ "the main agent settles it with answer_notification", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, decided, _frame} =
-          AnswerNotification.execute(
+        decided =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.permission_id,
               decision: "deny",
               answer: "the component this task would have built was already removed"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :decided, decided)}
       end
 
       then_ "it is settled, not left pending", context do
-        refute context.decided.isError,
+        assert match?({:ok, _}, context.decided),
                """
                The main agent could not settle a tap-out it was woken for with
                answer_notification.
@@ -124,7 +132,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2120Spex do
                """
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(listing) =~ context.permission_id,
                """

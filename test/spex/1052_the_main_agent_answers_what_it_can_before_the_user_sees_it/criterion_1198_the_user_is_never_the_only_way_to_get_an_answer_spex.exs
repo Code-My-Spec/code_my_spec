@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3218Spex do
 
         reply = main_answers(context, context.question_id, context.story.title)
 
-        refute reply.isError,
+        assert match?({:ok, _}, reply),
                """
                The main agent could not answer a question the project records
                the answer to.

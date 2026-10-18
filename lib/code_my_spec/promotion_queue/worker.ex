@@ -281,7 +281,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
       for %{commit: commit, files: files} <- built.conflicted,
           entry <- Enum.filter(entries, &(&1.commit == commit)),
-          do: eject(state.scope, entry, conflict_reason(files))
+          do: eject(state.scope, entry, conflict_reason(commit, base, files))
 
       case Enum.split_with(entries, &MapSet.member?(merged, &1.commit)) do
         {[], unaccounted} ->
@@ -426,8 +426,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       ": #{inspect(Map.take(built, [:merged, :conflicted]))}"
   end
 
-  defp conflict_reason(files) do
-    "it conflicts with main or with a candidate ahead of it in the queue" <>
+  # 41644862: the gate compiled this candidate's own conflict markers and
+  # reported "could not reset the gate's test database" -- the database
+  # error was real, but the candidate and the commit it conflicted with were
+  # never said, so nothing pointed at what to actually do. Names both.
+  defp conflict_reason(commit, base, files) do
+    "#{String.slice(commit, 0, 12)} conflicts merging onto main (#{String.slice(base, 0, 12)}) " <>
+      "or a candidate ahead of it in the queue" <>
       if(files == [], do: ".", else: ", in #{Enum.join(files, ", ")}.") <>
       " Merge main into your branch, resolve it, and promote again."
   end

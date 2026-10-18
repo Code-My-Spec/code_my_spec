@@ -36,12 +36,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3292Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
   @reason "it stopped answering after its last turn"
@@ -86,8 +86,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3292Spex do
         frame = %Frame{assigns: %{current_scope: scope}}
 
         for _attempt <- 1..3 do
-          {:reply, response, _frame} =
-            RestartAgent.execute(%{agent_id: agent.id, reason: @reason}, frame)
+          response =
+            ToolLibrary.run(
+              "restart_agent",
+              %{agent_id: agent.id, reason: @reason},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
 
           response
         end
@@ -98,14 +102,18 @@ defmodule CodeMySpecSpex.Story1056.Criterion3292Spex do
       when_ "the main agent considers restarting it again", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(%{agent_id: context.agent.id, reason: @reason}, frame)
+        response =
+          ToolLibrary.run(
+            "restart_agent",
+            %{agent_id: context.agent.id, reason: @reason},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it does not", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                """
                A fourth restart went ahead for a reason three restarts have
                already failed to fix.
@@ -124,7 +132,13 @@ defmodule CodeMySpecSpex.Story1056.Criterion3292Spex do
 
       then_ "and the situation is raised instead", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, issues, _frame} = ListIssues.execute(%{}, frame)
+
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(issues) =~ @reason,
                """

@@ -1,0 +1,167 @@
+defmodule CodeMySpec.Issues.Tools.ListIssuesTest do
+  use ExUnit.Case, async: true
+
+  alias CodeMySpec.ToolLibrary
+  import CodeMySpec.UsersFixtures
+  import CodeMySpec.IssuesFixtures
+
+  alias Anubis.Server.Frame
+  alias Ecto.Adapters.SQL.Sandbox
+
+  setup do
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
+  end
+
+  describe "execute/2" do
+    # Product decision 006f1c97: open issues across all severities.
+    test "with no filters, lists open issues across all severities" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Issue A", severity: :high})
+      issue_fixture(scope, %{title: "Issue B", severity: :low})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_issues",
+          %{},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      assert {_, _} = response
+      assert match?({:ok, _}, response)
+
+      content = response_text(response)
+      assert content =~ "2 issues"
+      assert content =~ "Issue A"
+      assert content =~ "Issue B"
+      assert content =~ "2 matched; 2 returned"
+    end
+
+    test "filters by status" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope, %{title: "Accepted One"})
+      CodeMySpec.Issues.accept_issue(scope, issue)
+      issue_fixture(scope, %{title: "Incoming One"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_issues",
+          %{status: "accepted"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      content = response_text(response)
+      assert content =~ "Accepted One"
+      refute content =~ "Incoming One"
+    end
+
+    test "filters by severity" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Critical Bug", severity: :critical})
+      issue_fixture(scope, %{title: "Minor Thing", severity: :info})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_issues",
+          %{severity: "critical"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      content = response_text(response)
+      assert content =~ "Critical Bug"
+      refute content =~ "Minor Thing"
+    end
+
+    test "returns empty state when no issues" do
+      scope = full_scope_fixture()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_issues",
+          %{},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      content = response_text(response)
+      assert content =~ "No issues found"
+    end
+
+    # `framework` was refused here, on the grounds that framework issues routed
+    # to the hosted server rather than being stored locally. `CreateIssue`
+    # records that this stopped being true when the tools moved onto the
+    # server — it writes every scope the same way — so framework issues were
+    # creatable, visible in an unfiltered listing, and impossible to filter
+    # for. An agent asked to work the framework backlog got
+    # `Invalid scope: "framework". Allowed: app, qa, docs.` while the issues
+    # sat in the unfiltered list above it.
+    test "filters by framework scope, which is stored locally like every other" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Harness Friction", scope: :framework})
+      issue_fixture(scope, %{title: "Ordinary App Bug", scope: :app})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_issues",
+          %{scope: "framework"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      content = response_text(response)
+
+      assert content =~ "Harness Friction"
+      refute content =~ "Ordinary App Bug"
+    end
+
+    test "an unfiltered listing already showed them, which is what made the refusal wrong" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Harness Friction", scope: :framework})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_issues",
+          %{},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      assert response_text(response) =~ "Harness Friction"
+    end
+  end
+
+  # 8c1e192c: `run_script` handed every list tool's rendered text straight to
+  # Lua, so a script iterating it with `ipairs` got "table expected, got
+  # string" instead of rows.
+  describe "script_result/2" do
+    test "returns issue rows as data rather than rendered text" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Issue A", severity: :high})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:ok, result} =
+               ToolLibrary.data(
+                 "list_issues",
+                 %{},
+                 Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+               )
+
+      assert [row] = result["issues"]
+      assert result["matched"] == 1
+      assert result["returned"] == 1
+      refute result["truncated"]
+      assert row["title"] == "Issue A"
+      assert row["severity"] == "high"
+    end
+  end
+
+  defp response_text({_status, text}), do: text
+end

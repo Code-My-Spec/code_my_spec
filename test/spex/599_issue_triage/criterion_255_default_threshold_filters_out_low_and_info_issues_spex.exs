@@ -17,9 +17,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
   alias CodeMySpecSpex.Fixtures
@@ -72,15 +72,16 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
       when_ "the operator starts a triage task without overriding the threshold", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "issues_triaged",
               entity_type: "project",
               entity_id: to_string(context.project.id),
               session_id: context.session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :triage_prompt, response_text(response))}
@@ -89,11 +90,19 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
       when_ "the agent calls list_issues for the high and medium severities", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, high_response, _} =
-          ListIssues.execute(%{status: "incoming", severity: "high"}, frame)
+        high_response =
+          ToolLibrary.run(
+            "list_issues",
+            %{status: "incoming", severity: "high"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, medium_response, _} =
-          ListIssues.execute(%{status: "incoming", severity: "medium"}, frame)
+        medium_response =
+          ToolLibrary.run(
+            "list_issues",
+            %{status: "incoming", severity: "medium"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          context

@@ -78,29 +78,8 @@ defmodule CodeMySpec.McpServers.Validators do
     end
   end
 
-  @doc """
-  The project a devops tool acts on — always the one this call is already
-  scoped to, never one a caller names.
-
-  `validate_local_scope/2` already resolves the right project before a tool
-  ever runs: the harness's own `X-Project-ID` header for HTTP, or the
-  configured project for stdio. A devops tool that *also* accepted an
-  explicit `project_id` parameter was trusting that parameter over the
-  connection's own identity — `find_project/2`-style lookups only checked
-  "is this project somewhere in the caller's account", not "is it the one
-  this call is actually connected to". A caller (or a wrong parameter from
-  an agent) could act on a *different* project in the same account than the
-  one its own harness names, silently. This is the fix: the only project a
-  devops tool can ever act on is the one already on the scope.
-  """
-  @spec devops_project(CodeMySpec.Users.Scope.t()) :: {:ok, struct()} | {:error, String.t()}
-  def devops_project(%{active_project: %{} = project}), do: {:ok, project}
-
-  def devops_project(_scope),
-    do:
-      {:error,
-       "no project is connected to this call — this tool acts on whichever project the " <>
-         "connection itself identifies, not one named in a parameter"}
+  @doc "The project a devops tool acts on; see `CodeMySpec.Tools.connected_project/1`."
+  defdelegate devops_project(scope), to: CodeMySpec.Tools, as: :connected_project
 
   defp configured_scope(nil), do: {:error, :no_working_dir}
 
@@ -199,16 +178,5 @@ defmodule CodeMySpec.McpServers.Validators do
   rather than only what failed.
   """
   @spec no_working_copy_message(String.t()) :: String.t()
-  def no_working_copy_message(tool) do
-    """
-    `#{tool}` needs the project's files, and this server does not have them.
-
-    The working copy lives on the harness — that is the design, not a \
-    misconfiguration. Write the file there yourself; the harness syncs it back \
-    and the requirement will clear on the next evaluation.
-
-    (If you expected this server to hold the project, it was started without \
-    CMS_MCP_WORKING_DIR.)\
-    """
-  end
+  defdelegate no_working_copy_message(tool), to: CodeMySpec.Tools
 end

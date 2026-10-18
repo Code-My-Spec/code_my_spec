@@ -1,12 +1,6 @@
 defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
   @moduledoc "Explicit issue fixes retain scope, reviewable evidence and regression guidance."
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.UpdateIssue
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -31,7 +25,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
 
             Slice.call(
               main_context,
-              AssignIssueToWorkingCopy,
+              "assign_issue_to_working_copy",
               %{issue_id: issue.id, working_copy_id: context.scope.active_working_copy_id},
               %{agent_id: context.main.id}
             )
@@ -44,7 +38,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
         prompt =
           Slice.call(
             context,
-            StartTask,
+            "start_task",
             %{requirement_name: "fix_issue", entity_type: "issue", entity_id: issue.id},
             %{agent_id: coder.id}
           )
@@ -67,7 +61,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
 
         for issue <- context.issues do
           text =
-            Slice.call(context, GetIssue, %{issue_id: issue.id}, %{agent_id: context.coder.id})
+            Slice.call(context, "get_issue", %{issue_id: issue.id}, %{agent_id: context.coder.id})
 
           assert text =~ "**Scope:** #{issue.scope}"
         end
@@ -79,11 +73,11 @@ defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
         evidence =
           "Fixed missing delivery. Files: lib/example.ex. Verification: mix test passes, including regression coverage."
 
-        Slice.call(context, UpdateIssue, %{issue_id: context.issue.id, append: evidence}, %{
+        Slice.call(context, "update_issue", %{issue_id: context.issue.id, append: evidence}, %{
           agent_id: context.coder.id
         })
 
-        Slice.call(context, EvaluateTask, %{task_id: context.task_id}, %{
+        Slice.call(context, "evaluate_task", %{task_id: context.task_id}, %{
           agent_id: context.coder.id
         })
 
@@ -93,7 +87,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
       then_ "QA can read the change files and verification without a premature resolution",
             context do
         text =
-          Slice.call(context, GetIssue, %{issue_id: context.issue.id}, %{
+          Slice.call(context, "get_issue", %{issue_id: context.issue.id}, %{
             agent_id: context.coder.id
           })
 

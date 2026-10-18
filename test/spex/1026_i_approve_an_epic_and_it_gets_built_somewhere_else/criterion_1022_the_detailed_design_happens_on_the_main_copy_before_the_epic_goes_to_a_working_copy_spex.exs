@@ -15,12 +15,13 @@ defmodule CodeMySpecSpex.Story964.Criterion2935Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.EpicHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.MainAgentHelpers
@@ -61,7 +62,13 @@ defmodule CodeMySpecSpex.Story964.Criterion2935Spex do
           assigns: %{current_scope: context.main_scope, agent_id: context.product.id}
         }
 
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :answer, response_text(response))}
       end
 

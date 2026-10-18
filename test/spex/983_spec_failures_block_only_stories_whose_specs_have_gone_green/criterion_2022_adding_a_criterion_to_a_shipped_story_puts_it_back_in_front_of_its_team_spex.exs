@@ -18,12 +18,13 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.PromotionHelpers
   import CodeMySpecSpex.ReadyForQaHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
@@ -129,7 +130,12 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
       then_ "the finished team waits for Main — nothing is offered to it", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 
@@ -149,7 +155,12 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
       then_ "the story no longer reads as complete", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 

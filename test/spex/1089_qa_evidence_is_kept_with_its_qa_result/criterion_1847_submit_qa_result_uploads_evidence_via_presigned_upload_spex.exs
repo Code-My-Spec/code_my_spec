@@ -14,15 +14,16 @@ defmodule CodeMySpecSpex.Story1089.Criterion1847Spex do
   case, covered by `Uploads.configured?/0`'s own tests — not re-proven
   here.
 
-  Surface: `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`, driving
+  Surface: `CodeMySpec.Qa.Tools.SubmitQaResult`, driving
   `CodeMySpec.Qa.EvidenceUpload`.
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -51,15 +52,16 @@ defmodule CodeMySpecSpex.Story1089.Criterion1847Spex do
       when_ "the agent submits a passing result", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :submit_response, response)}

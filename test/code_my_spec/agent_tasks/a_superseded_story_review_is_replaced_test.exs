@@ -1,11 +1,12 @@
 defmodule CodeMySpec.AgentTasks.ASupersededStoryReviewIsReplacedTest do
   use CodeMySpecSpex.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Qa
   alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
@@ -46,13 +47,20 @@ defmodule CodeMySpec.AgentTasks.ASupersededStoryReviewIsReplacedTest do
     }
 
     frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.qa.id}}
-    {:reply, result, _} = StartTask.execute(params, frame)
+
+    result =
+      ToolLibrary.run(
+        "start_task",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     result
   end
 
   test "healthy review retains its task; changed submission cancels it until recertification",
        context do
-    refute start(context).isError
+    assert {:ok, _} = start(context)
     {:ok, before} = Agents.fetch_agent(context.scope, context.qa.id)
     assert TaskOwner.active_task(before).id == context.old_task.id
 
@@ -66,14 +74,14 @@ defmodule CodeMySpec.AgentTasks.ASupersededStoryReviewIsReplacedTest do
     {:ok, _} =
       Issues.submit_story_issue(context.scope, issue, %{revision: "new-fix", evidence: "tested"})
 
-    assert start(context).isError
+    assert {:error, _} = start(context)
     {:ok, blocked} = Agents.fetch_agent(context.scope, context.qa.id)
     assert TaskOwner.find_task(blocked, context.old_task.id).status == :cancelled
     assert TaskOwner.active_task(blocked) == nil
 
     story = Stories.get_story!(context.scope, context.story.id)
     {:ok, _} = Stories.set_qa_ready(context.scope, story, "new-fix")
-    refute start(context).isError
+    assert {:ok, _} = start(context)
     {:ok, restarted} = Agents.fetch_agent(context.scope, context.qa.id)
     refute TaskOwner.active_task(restarted).id == context.old_task.id
   end

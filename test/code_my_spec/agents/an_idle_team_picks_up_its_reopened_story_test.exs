@@ -15,7 +15,6 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -64,7 +63,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
   defp start(ctx, agent, issue) do
     Slice.call(
       ctx,
-      StartTask,
+      "start_task",
       %{requirement_name: "submitted", entity_type: "issue", entity_id: issue.id},
       %{agent_id: agent.id}
     )

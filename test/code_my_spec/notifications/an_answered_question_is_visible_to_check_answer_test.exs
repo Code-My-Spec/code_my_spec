@@ -17,12 +17,13 @@ defmodule CodeMySpec.Notifications.AnAnsweredQuestionIsVisibleToCheckAnswerTest 
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpec.Notifications
   alias CodeMySpecTest.AgentPresence
 
@@ -85,10 +86,14 @@ defmodule CodeMySpec.Notifications.AnAnsweredQuestionIsVisibleToCheckAnswerTest 
 
     assert answered.status == "answered"
 
-    {:reply, checked, _frame} =
-      CheckAnswer.execute(%{question_id: request.id}, ctx.asker_frame)
+    checked =
+      ToolLibrary.run(
+        "check_answer",
+        %{question_id: request.id},
+        Map.put(ctx.asker_frame.assigns, :scope, ctx.asker_frame.assigns[:current_scope])
+      )
 
-    text = checked.content |> List.first() |> Map.get("text", "")
+    {:ok, text} = checked
 
     refute text =~ ~r/still (waiting|pending)/i,
            """

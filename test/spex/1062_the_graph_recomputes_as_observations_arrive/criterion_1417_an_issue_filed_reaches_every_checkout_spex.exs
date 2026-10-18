@@ -36,13 +36,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.{AcceptIssue, CreateIssue}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -98,26 +99,28 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
       when_ "an issue is filed against it from one checkout and accepted", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, filed, _frame} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "something is wrong on this story",
               description: "filed from one checkout, true from all of them",
               severity: "high",
               story_number: context.story_number
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute filed.isError, inspect(filed)
+        assert match?({:ok, _}, filed), inspect(filed)
 
-        {:reply, accepted, _frame} =
-          AcceptIssue.execute(
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
             %{issue_id: issue_id(filed), story_number: context.story_number},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute accepted.isError, inspect(accepted)
+        assert match?({:ok, _}, accepted), inspect(accepted)
 
         {:ok,
          context
@@ -161,8 +164,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3505Spex do
   # carries string keys, so `Map.get(part, :text)` silently answers nil.
   defp issue_id(reply) do
     reply
-    |> Map.get(:content, [])
-    |> Enum.map_join(" ", &Map.get(&1, "text", ""))
+    |> response_text()
     |> then(&Regex.run(~r/[0-9a-f]{8}-[0-9a-f-]{27,}/, &1))
     |> List.first()
   end

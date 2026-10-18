@@ -29,13 +29,14 @@ defmodule CodeMySpecSpex.Story1056.Criterion3291Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   # The conversation is a cloud-app surface; the case defaults to the local app.
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -76,16 +77,17 @@ defmodule CodeMySpecSpex.Story1056.Criterion3291Spex do
       when_ "the main agent restarts it for that reason", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(
+        response =
+          ToolLibrary.run(
+            "restart_agent",
             %{
               agent_id: context.agent.id,
               reason: "it stopped answering after its last turn"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, context}
       end

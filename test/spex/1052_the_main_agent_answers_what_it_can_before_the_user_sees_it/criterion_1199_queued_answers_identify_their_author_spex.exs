@@ -6,16 +6,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -45,8 +43,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
               {"Should exports include archived receipts?", "Include archived receipts"}
             ],
             fn {question, choice} ->
-              {:reply, asked, _} =
-                AskUserQuestion.execute(
+              asked =
+                ToolLibrary.run(
+                  "ask_user_question",
                   %{
                     questions: [
                       %{
@@ -55,10 +54,10 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
                       }
                     ]
                   },
-                  frame
+                  Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
                 )
 
-              refute asked.isError, response_text(asked)
+              assert match?({:ok, _}, asked), response_text(asked)
               Fixtures.question_id_from(response_text(asked))
             end
           )
@@ -69,10 +68,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id}, main_frame)
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -88,17 +91,22 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
 
       when_ "main answers the technical question and the user answers the product decision",
             context do
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.technical_id,
               answer: context.recorded_answer,
               basis: "record"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute answered.isError, response_text(answered)
+        assert match?({:ok, _}, answered), response_text(answered)
         {:ok, view, _} = live(context.conn, "/app/questions/#{context.product_id}")
 
         view
@@ -111,18 +119,26 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
 
       then_ "repeated question reads preserve the answer text and the actual author", context do
         for _ <- 1..2 do
-          {:reply, technical, _} =
-            CheckAnswer.execute(%{question_id: context.technical_id}, context.frame)
+          technical =
+            ToolLibrary.run(
+              "check_answer",
+              %{question_id: context.technical_id},
+              Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+            )
 
-          refute technical.isError, response_text(technical)
+          assert match?({:ok, _}, technical), response_text(technical)
           assert response_text(technical) =~ context.recorded_answer
           assert response_text(technical) =~ ~r/main agent replied/i
           refute response_text(technical) =~ ~r/user replied/i
 
-          {:reply, product, _} =
-            CheckAnswer.execute(%{question_id: context.product_id}, context.frame)
+          product =
+            ToolLibrary.run(
+              "check_answer",
+              %{question_id: context.product_id},
+              Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+            )
 
-          refute product.isError, response_text(product)
+          assert match?({:ok, _}, product), response_text(product)
           assert response_text(product) =~ "Include archived receipts"
           assert response_text(product) =~ ~r/user replied/i
           refute response_text(product) =~ ~r/main agent replied/i
@@ -135,10 +151,18 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
         assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, context.main_frame)
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         {:ok, context}
       end

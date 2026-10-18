@@ -1,0 +1,356 @@
+[
+  {
+    "name": "ask_user_question",
+    "description": "Ask the user a question with the answers written out for them.\n\nOne to four questions with choices, or one free-text question with options: [].\nA linked task is blocked atomically; omitted task_id uses your active task.\nYou may continue unrelated work. Collect answers with check_answer, then\nexplicitly resume the blocked task after its blocker has been resolved.\n",
+    "input_schema": {
+      "properties": {
+        "about": {
+          "description": "`criteria` for a story's acceptance criteria or spec: it goes to product.",
+          "type": "string"
+        },
+        "questions": {
+          "description": "1-4 objects: question (required), options (required, [{label, description}]), header, multiSelect.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Task to block; omitted defaults to your active task.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Notification heading.",
+          "type": "string"
+        },
+        "to": {
+          "description": "`product` for criteria and spec, `main` for everything else (the default). Either answers, hands it to the other, or takes it to the user.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "questions"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "assign_subagent",
+    "description": "Assign a registered sub-agent to an open task (Story 704 / Rule 4).\n\nAtomically updates `Task.agent_id`: if the sub-agent currently owns a\ndifferent task on this session, that task's `agent_id` is cleared and\nthe target task's `agent_id` is set in the **same** `Repo.update` —\nno partial-failure window where the sub-agent ends up unassigned\nfrom their old task while not landing on the new one.\n\nErrors when:\n- the `agent_id` is not currently active in `session.subagents`\n  (filtered through `Session.active_subagents/2`, so TTL-expired\n  registrations are rejected the same way a fully unknown id is)\n- the `task_id` is not on the session\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Registered sub-agent id",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Target task id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "task_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "assign_task",
+    "description": "Assign an existing task to a subagent.\n\nThe main agent uses this to claim a task on behalf of a subagent\nbefore spawning it. Pass the `agent_id` that the subagent will use\nso it appears on the task record immediately.\n\nReturns the work prompt so the main agent can forward it to the subagent.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Subagent identifier to assign to the task",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "ID of the task to assign",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "task_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "cancel_task",
+    "description": "Cancel a task on the current session (Story 704 / Rule 4).\n\nTransitions the task to `:cancelled` without going through\n`evaluate_task`. Used to unstick the loop when a task can't make\nprogress and the agent wants to move on. No PermissionSocket\ninvolvement — routine admin owned by the agent.\n",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Task to cancel",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "check_answer",
+    "description": "Fetch the reply to a question raised by `ask_user`.\n\nThe other half of a deliberately two-step exchange. `ask_user` delivers the\nquestion and returns; this collects the answer whenever the agent gets round\nto asking for it.\n\nIt waits briefly for an answer event — long enough that a user looking at the question\nanswers within one call, short enough that the MCP transport never times out.\nAnswering takes as long as it takes, so `pending` is an ordinary result rather\nthan a failure: stop, let the stop hook bring you back, and check again.\n\n## Why this no longer goes over HTTP\n\nThe same reason `ask_user` stopped, in its own words: this runs *in* the cloud\napp, in the same process as `Notifications` and against the same database, so\nthe request left the VM and came back to call the function that was already in\nscope.\n\nStory 896 moved `ask_user` and added `list_user_questions` in-process, and left\nthis one on `QuestionClient` — so the half of the exchange that *collects* the\nanswer was the half no spex could drive, and the only untested step in a flow\nbuilt to be tested. They were verified to reach the same database, so nothing\nwas broken; it was a round trip and a blind spot rather than a split brain.\n\n`QuestionClient` is gone entirely — 3b038c842 removed it with the rest of the\narbitrage path. This paragraph said it \"stays for the CLI\", which was true when\nwritten and outlived the module by two days.\n",
+    "input_schema": {
+      "properties": {
+        "question_id": {
+          "description": "The question id returned by `ask_user`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "evaluate_task",
+    "description": "Evaluate a task's work and get pass/fail feedback.\n\nCall this when you've completed the work for a task with manual validation.\nThe task's module evaluates your work against its criteria.\n\nOn pass: the task is marked completed and the requirement is rechecked.\nOn fail: you receive feedback describing what needs fixing.\n\nTasks with automatic validation are evaluated by the stop hook — you don't\nneed to call this for those.\n\nThe `session_id` is injected automatically by the PreToolUse hook.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Whose task to close. An agent we run carries it on the connection and omits this.",
+          "type": "string"
+        },
+        "artifact_sha": {
+          "type": "string"
+        },
+        "handoff_id": {
+          "description": "Report assigned artifact completion instead of evaluating; does not close the task or launch validation.",
+          "type": "string"
+        },
+        "parent_commit": {
+          "type": "string"
+        },
+        "parent_gitlink": {
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Task ID to evaluate",
+          "type": "string"
+        },
+        "verification": {
+          "description": "Observed artifact and parent-gitlink verification; never a QA verdict.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_session_subagents",
+    "description": "List all registered sub-agents on the current session, filtered by\nthe configured TTL (Story 704 / Rule 3).\n\nReturns each sub-agent's identity, when they registered, and their\nassignment status — idle (no Task in this session carries their\nagent_id) or the task they own (via Task.agent_id match).\n\nTTL-expired registrations are filtered out (lazy prune from Rule 2);\ncallers see the same truth the engineer's session detail page renders.\n",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_tasks",
+    "description": "List tasks — your own, or a named agent's.\n\nReturns task status, agent assignment, component, and requirement\nso the main agent can track subagent progress.\n\nPass `agent_id` to read that agent's queue instead of your own. Without it\nthis answers about the caller, which is what every agent means when it asks\nwhat it is holding.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Whose tasks to list. Omit for your own; name an agent to read its queue.",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "status": {
+          "description": "Filter by status: active, completed, failed, cancelled (optional)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_user_questions",
+    "description": "Your unanswered questions, oldest first, with their linked task IDs.\n\nRecovers what you asked before a compaction, or lets you check whether a\nquestion is still open before asking another. Internal callers see their\nown durable agent's questions across restarts; external callers see their\nsession's. Answered questions are not listed -- `check_answer` hands back\na reply once it lands, and there is no expiry: an unanswered question\nstays listed until it is.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "register_session",
+    "description": "Register this conversation as a session on the server.\n\nEvery task tool hangs off a session, and normally the SessionStart hook\ncreates it — the agent never thinks about it. That hook posts to the harness\non localhost, so a server the harness is not reporting to has no session for\nthe conversation, and every task tool dead-ends on `No session_id available`\nwith nothing the agent can do about it.\n\nDeliberately explicit rather than implicit. A tool that silently invents a\nsession on first use hides which server the work is being recorded against,\nand that is exactly the thing worth being sure of when two of them are\nreachable. The task tools name this one in their error instead.\n",
+    "input_schema": {
+      "properties": {
+        "session_id": {
+          "description": "This conversation's id — Claude Code exposes it as CLAUDE_SESSION_ID",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "show_in_panel",
+    "description": "Put something in front of the person watching, beside the conversation —\nnever the page, so it never costs them the transcript or composer.\n\nCall it when you start on a story, instead of describing where to look. It\nnever interrupts: it applies at once on a screen with room, or waits\nbehind a tap on a narrow one. There is no screen argument and no \"was this\nseen\" answer — the view resolves that, and neither is something you act on.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Which story, when view is \"story\". Ignored otherwise.",
+          "type": "integer"
+        },
+        "view": {
+          "description": "What the panel should show. \"stories\" for the project's list, \"story\" for one, \"epics\" for the project's epics.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "view"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "start_analysis",
+    "description": "Start an analyzer run and return immediately.\n\nSources: `spex`, `exunit`, `credo`, `compiler`. Returns as soon as the run is\nopened — it does not wait, and you should not wait for it.\n\n`paths` scopes the run to specific files, the same way the PreToolUse hook's\nown `mix test test/foo_test.exs` rewrite does. Scoped runs can never satisfy\nfreshness — they cover only what they name — so use this for a focused\nvalidation, not as a substitute for the full sweep `ready_for_qa` reads.\n\nAn agent running inside our own BEAM is sent the result as a message when the\nrun lands, so the thing to do after calling this is stop. A Claude Code\nsession collects it on its next tool call instead.\n",
+    "input_schema": {
+      "properties": {
+        "paths": {
+          "description": "Scope the run to these paths (e.g. one test file), instead of the full suite. Empty runs everything. A scoped run is `:partial` and can never satisfy freshness on its own — it covers only what it names.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "source": {
+          "description": "spex | exunit | credo | compiler",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "start_task",
+    "description": "Start working on a requirement.\n\nTakes a requirement (`requirement_name` + `entity_type` + `entity_id`, or\n`requirement_name` + `module_name`, as `get_next_requirement` offers it),\ncreates and activates a task on its owner in one step, and returns the work\nprompt.\n\nThe owner is the agent on the connection when there is one, otherwise the\nClaude Code session whose `session_id` the PreToolUse hook injects. `agent_id`\nmay also carry a sub-agent label, which owns tasks on the caller's session.\n\nIf the owner already holds an open task for this requirement, it returns\nthat task's prompt (resuming a blocked one whose blocker is resolved)\nwithout creating a duplicate.\n\nSee knowledge/tools, \"start_task\".\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Your agent identifier — claims ownership of the task",
+          "type": "string"
+        },
+        "entity_id": {
+          "description": "The entity that owns this requirement: a story's number, or a component's or project's id",
+          "type": "string"
+        },
+        "entity_type": {
+          "description": "Entity type: component, story, or project",
+          "type": "string"
+        },
+        "module_name": {
+          "description": "Component module name (alternative to entity_id for component requirements)",
+          "type": "string"
+        },
+        "requirement_id": {
+          "description": "Deprecated: use requirement_name + entity_type + entity_id",
+          "type": "string"
+        },
+        "requirement_name": {
+          "description": "Name of the requirement (e.g., implementation_file, ready_for_qa)",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "A story's number — the same as entity_type `story` with entity_id set to it",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "requirement_name",
+        "entity_type"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "tap_out",
+    "description": "Voluntary tap-out of continuous mode (Story 704 / Rule 5; consumer of\n538/5124).\n\nWrites a `PermissionRequest` the person sees in their notifications inbox,\nkeyed to the agent we run or to the Claude Code session that asked. Returns\nimmediately; the caller does not wait. On approve, continuous clears (or the\nlinked task is cancelled). On reject, it stays on.\n",
+    "input_schema": {
+      "properties": {
+        "reason": {
+          "description": "Why this work should stop.",
+          "type": "string"
+        },
+        "session_id": {
+          "description": "Injected by hook — do not set manually",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Task to block; omit for whole-agent continuous stop approval.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "withdraw_question",
+    "description": "Take back your own pending question once it is moot, with the reason. The\ntask it blocked is released; resume it with start_task.\n",
+    "input_schema": {
+      "properties": {
+        "question_id": {
+          "description": "The id `ask_user_question` returned.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why it no longer needs an answer.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "question_id"
+      ],
+      "type": "object"
+    }
+  }
+]

@@ -24,11 +24,12 @@ defmodule CodeMySpecSpex.Story1054.Criterion3300Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -78,9 +79,15 @@ defmodule CodeMySpecSpex.Story1054.Criterion3300Spex do
 
       when_ "the main agent looks at the agent on the clean copy", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListAgentWork.execute(%{}, frame)
 
-        refute response.isError, inspect(response)
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :view, entry_for(response_text(response), context.clean_agent.id))}
       end

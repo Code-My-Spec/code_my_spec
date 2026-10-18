@@ -11,12 +11,13 @@ defmodule CodeMySpecSpex.Story682.Criterion1653Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.ComponentGraphHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Components.Tools.DeleteComponent
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,9 +36,14 @@ defmodule CodeMySpecSpex.Story682.Criterion1653Spex do
       when_ "the architect deletes Accounts", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _} = DeleteComponent.execute(%{component_id: context.accounts.id}, frame)
+        reply =
+          ToolLibrary.run(
+            "delete_component",
+            %{component_id: context.accounts.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, Map.put(context, :said, response_text(reply))}
       end
 

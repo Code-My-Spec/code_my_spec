@@ -6,10 +6,11 @@ defmodule CodeMySpecSpex.Story704.Criterion3584Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -52,8 +53,14 @@ defmodule CodeMySpecSpex.Story704.Criterion3584Spex do
 
         ids =
           Enum.map(requests, fn {frame, task_id} ->
-            {:reply, response, _} = TapOut.execute(%{task_id: task_id}, frame)
-            refute response.isError, response_text(response)
+            response =
+              ToolLibrary.run(
+                "tap_out",
+                %{task_id: task_id},
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
+
+            assert match?({:ok, _}, response), response_text(response)
             [_, id] = Regex.run(~r/request_id=`([a-f0-9-]+)`/, response_text(response))
             id
           end)

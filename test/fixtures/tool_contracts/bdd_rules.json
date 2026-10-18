@@ -1,0 +1,213 @@
+[
+  {
+    "name": "add_question",
+    "description": "Adds a Question (red card) to a story during a Three Amigos session.\n\nUse when neither the agent nor the PM can answer something in the\nmoment — park it, don't let it derail the conversation. Open\nquestions count against the readiness gate (`scenarios > questions`);\ncall `resolve_question` when the answer is found.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        },
+        "text": {
+          "description": "The open question in plain language (e.g., 'Does suspension affect mid-transaction cards or only new transactions?'). 1–2000 characters.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "add_rule",
+    "description": "Adds a Rule (blue card) to a story during a Three Amigos session.\n\nRejects when the target story has no personas linked — Three Amigos\nenforces persona linkage before any rules or scenarios can land. The\nagent should call `create_persona` (and `link_persona_to_story` if\nneeded) before retrying.\n",
+    "input_schema": {
+      "properties": {
+        "statement": {
+          "description": "The rule statement in business terms (e.g., 'Suspended cards cannot be used for purchases'). 1–1000 characters.",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number",
+        "statement"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "add_scenario",
+    "description": "Adds a Scenario (green card) to a story during a Three Amigos session.\n\nEach scenario is a Criterion record carrying both the title (one-line\ndescription in domain terms) and the Given/When/Then body (plain\nGherkin), linked to a Rule via `rule_id`. Rules and scenarios are\ncreated together as a single atom — there is no two-stage \"title now,\nbody later\" split.\n\nThe scenario's `kind` distinguishes happy-path from failure-path\ncoverage. `kind` is metadata for UI grouping and Gherkin rendering;\nthe readiness gate only requires ≥1 scenario per rule of any kind.\n",
+    "input_schema": {
+      "properties": {
+        "body": {
+          "description": "Plain-text Gherkin Given/When/Then body for the scenario.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "`happy_path` or `failure_path`. Use `happy_path` for the normal flow; add `failure_path` only when a genuine failure surface exists for this rule.",
+          "type": "string"
+        },
+        "rule_statement": {
+          "description": "The exact statement of the Rule this scenario illustrates. The Rule must already exist on the story.",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        },
+        "title": {
+          "description": "Scenario title (one-line, in domain language; names the persona with relevant context).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "kind",
+        "story_number",
+        "rule_statement"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "delete_rule",
+    "description": "Deletes a Rule (blue card) from a Three Amigos story. Cascade-removes any\nlinked scenarios (Criteria linked via `rule_id`) in the same transaction.\nUse this for PM-side cleanup of bogus or superseded rules.\n",
+    "input_schema": {
+      "properties": {
+        "rule_id": {
+          "description": "UUID of the rule to delete.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_story_gherkin",
+    "description": "Renders a story's Three Amigos artifacts as a plain-text Gherkin\n`.feature` document.\n\nThe DB is the source of truth; this tool assembles the view on demand.\nUsed by downstream consumers (SexySpex generation, the local web UI's\nfeature preview, codegen) — none of which read a `.feature` file from\ndisk.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_questions",
+    "description": "Lists every Question on a given story (open, resolved, and deferred),\nordered by insertion time (oldest first).\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_rules",
+    "description": "Lists every Rule on a given story, ordered by insertion time\n(oldest first).\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "resolve_question",
+    "description": "Marks a Question (red card) as resolved.\n\nOnce resolved, the question no longer counts against the readiness\ngate's `scenarios > questions` clause — the record stays for\nhistorical context but doesn't block the session.\n",
+    "input_schema": {
+      "properties": {
+        "question_id": {
+          "description": "UUID of the question to resolve.",
+          "type": "string"
+        },
+        "resolution": {
+          "description": "The answer that resolved it — recorded on the record, not just that it was settled.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "question_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "update_rule",
+    "description": "Updates a Rule's (blue card) statement during a Three Amigos session.\nUse this for PM-side wording fixes on an existing rule without\nre-creating it or losing its linked scenarios.\n",
+    "input_schema": {
+      "properties": {
+        "rule_id": {
+          "description": "UUID of the rule to update.",
+          "type": "string"
+        },
+        "statement": {
+          "description": "The new rule statement in business terms (e.g., 'Suspended cards cannot be used for purchases'). 1–1000 characters.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "statement"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "update_scenario",
+    "description": "Updates an existing Scenario (green card) — the Given/When/Then body,\ntitle, and/or kind. Unlike `add_scenario` this never re-links to a\ndifferent rule; use `retire_criterion` + `add_scenario` if the\nscenario belongs under a different Rule.\n\nRefuses to edit verified (locked) scenarios — once a criterion has\nbeen marked verified, the wording is part of the audit trail.\n",
+    "input_schema": {
+      "properties": {
+        "body": {
+          "description": "New Given/When/Then body (plain-text Gherkin). Omit to leave unchanged.",
+          "type": "string"
+        },
+        "criterion_number": {
+          "description": "Criterion number of the scenario to update (from `get_story` or `get_story_gherkin`).",
+          "type": "integer"
+        },
+        "kind": {
+          "description": "New scenario kind — `happy_path` or `failure_path`. Omit to leave unchanged.",
+          "type": "string"
+        },
+        "title": {
+          "description": "New scenario title (one-line, in domain language). Omit to leave unchanged.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_number"
+      ],
+      "type": "object"
+    }
+  }
+]

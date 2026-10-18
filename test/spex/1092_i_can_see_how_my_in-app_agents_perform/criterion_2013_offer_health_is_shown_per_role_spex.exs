@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -18,8 +20,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
@@ -79,22 +79,29 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
         {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
         refute resp.isError, inspect(resp)
 
-        {:reply, started, _frame} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id:
                 Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
             },
-            first_frame
+            Map.put(first_frame.assigns, :scope, first_frame.assigns[:current_scope])
           )
 
-        refute started.isError, inspect(started)
+        assert match?({:ok, _}, started), inspect(started)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))
 
-        {:reply, cancelled, _frame} = CancelTask.execute(%{task_id: task_id}, first_frame)
-        refute cancelled.isError, inspect(cancelled)
+        cancelled =
+          ToolLibrary.run(
+            "cancel_task",
+            %{task_id: task_id},
+            Map.put(first_frame.assigns, :scope, first_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, cancelled), inspect(cancelled)
 
         second =
           Fixtures.running_agent(scope,
@@ -111,18 +118,19 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
         {:ok, _ref} =
           Work.request_turn_if_runnable(scope, second, "a teammate's task freed up")
 
-        {:reply, claimed, _frame} =
-          StartTask.execute(
+        claimed =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id:
                 Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2013").id
             },
-            second_frame
+            Map.put(second_frame.assigns, :scope, second_frame.assigns[:current_scope])
           )
 
-        refute claimed.isError, inspect(claimed)
+        assert match?({:ok, _}, claimed), inspect(claimed)
 
         {:ok, context |> Map.put(:scope, scope)}
       end

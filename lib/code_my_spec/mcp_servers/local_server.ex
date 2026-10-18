@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.LibraryTools
   alias CodeMySpec.McpServers.ScriptableTools
-  alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.ToolLibrary
 
   use Anubis.Server,
@@ -57,24 +57,14 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # A tool is here for one of two reasons, and only those two.
 
   # The loop every session walks, in order. Direct because putting Lua ceremony
-  # on the most-walked path in the product buys nothing.
-  component(CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement)
-  component(CodeMySpec.McpServers.Requirements.Tools.SyncProject)
-  component(CodeMySpec.McpServers.Tasks.Tools.StartTask)
-  component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
-  component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
+  # on the most-walked path in the product buys nothing. These are library
+  # tools, listed in `@spine` below.
 
   # Tools a script may not call. `CodeMode.Catalog` refuses to bind these —
   # `ask_user` waits on a person, `start_analysis` spawns — and a tool excluded
   # from scripts *and* absent from here would be reachable by no route at all.
-  component(CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion)
-  component(CodeMySpec.McpServers.Tasks.Tools.StartAnalysis)
-  component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
-  component(CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions)
-  component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
-  component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
+  # The library ones are in `@unscriptable` below.
   component(CodeMySpec.McpServers.Health.Tools.Health)
-  component(CodeMySpec.McpServers.Tasks.Tools.ShowInPanel)
 
   # Both promotion doors, and neither can be a script.
   #
@@ -101,10 +91,13 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # made.
   component(CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript)
 
-  # Domain tools on this list (`CodeMySpec.ToolLibrary`), by the same rule as
-  # the components above: `reject_offer` is a script exclusion. Registered on
-  # each session's frame at `init/2`; see `LibraryTools`.
-  @library_tools ~w(reject_offer)
+  # Domain tools on this list (`CodeMySpec.ToolLibrary`), by the same rules as
+  # the components above: the spine, and script exclusions. Registered on each
+  # session's frame at `init/2`; see `LibraryTools`.
+  @spine ~w(get_next_requirement start_task evaluate_task cancel_task sync_project reject_offer)
+  @unscriptable ~w(ask_user_question start_analysis check_answer list_user_questions
+                   assign_subagent tap_out show_in_panel)
+  @library_tools @spine ++ @unscriptable
 
   @doc "The library tools this server lists."
   def library_tools, do: Enum.filter(ToolLibrary.tools(), &(&1.name() in @library_tools))

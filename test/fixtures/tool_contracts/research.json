@@ -1,0 +1,46 @@
+[
+  {
+    "name": "web_fetch",
+    "description": "Read a web page as Markdown.\n\nHandles the shapes that are worth handling: GitHub file views are read as the\nraw file rather than the surrounding application, JSON is pretty-printed, and\nordinary pages are stripped of navigation and converted to Markdown.\n\nReddit is refused rather than fetched — it needs an OAuth app now, and what\ncomes back without one is a login wall that converts to Markdown perfectly\nand says nothing.\n",
+    "input_schema": {
+      "properties": {
+        "max_output": {
+          "description": "Bytes of content to return. Default 100000. Truncation is reported",
+          "type": "integer"
+        },
+        "url": {
+          "description": "The http(s) URL to read",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "web_search",
+    "description": "Search the web.\n\nUse this when the answer is not in the repository and not in the knowledge\nlibrary: a library's current API, a provider's error codes, whether a\nworkaround is still needed. Follow up with `web_fetch` on the results worth\nreading — the snippets are a way to choose a page, not a substitute for one.\n",
+    "input_schema": {
+      "properties": {
+        "num_results": {
+          "description": "How many results to return. Default 5, maximum 20",
+          "type": "integer"
+        },
+        "query": {
+          "description": "What to search for",
+          "type": "string"
+        },
+        "recency": {
+          "description": "Restrict to results from the last 'day', 'week', 'month' or 'year'. Omit for no restriction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  }
+]

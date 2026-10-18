@@ -9,15 +9,15 @@ defmodule CodeMySpecSpex.Story1048.Criterion3552Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -89,10 +89,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3552Spex do
             assert {:ok, _} = Machine.start_agent(agent.id, copy.copy, base_url: base_url)
             on_exit(fn -> Machine.stop_agent(agent.id) end)
 
-            {:reply, conversation, _} =
-              ReadAgentConversation.execute(%{agent_id: agent.id}, frame(copy))
+            conversation =
+              ToolLibrary.run(
+                "read_agent_conversation",
+                %{agent_id: agent.id},
+                Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
+              )
 
-            refute conversation.isError, response_text(conversation)
+            assert match?({:ok, _}, conversation), response_text(conversation)
             {agent.id, response_text(conversation)}
           end)
 
@@ -116,17 +120,27 @@ defmodule CodeMySpecSpex.Story1048.Criterion3552Spex do
         assert {:ok, %{busy?: true}} = Machine.status(context.coding_id)
 
         for {agent, copy} <- context.agents, agent.id != context.coding_id do
-          {:reply, conversation, _} =
-            ReadAgentConversation.execute(%{agent_id: agent.id}, frame(copy))
+          conversation =
+            ToolLibrary.run(
+              "read_agent_conversation",
+              %{agent_id: agent.id},
+              Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
+            )
 
-          refute conversation.isError, response_text(conversation)
+          assert match?({:ok, _}, conversation), response_text(conversation)
           assert response_text(conversation) == context.conversations[agent.id]
           assert {:ok, %{busy?: false}} = Machine.status(agent.id)
         end
 
         for {agent, copy} <- context.agents do
-          {:reply, tasks, _} = ListTasks.execute(%{agent_id: agent.id}, frame(copy))
-          refute tasks.isError, response_text(tasks)
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{agent_id: agent.id},
+              Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) =~ "No tasks"
         end
 

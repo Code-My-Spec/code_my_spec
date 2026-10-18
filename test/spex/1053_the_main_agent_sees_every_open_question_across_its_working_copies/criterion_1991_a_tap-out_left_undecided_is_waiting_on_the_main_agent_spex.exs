@@ -15,6 +15,8 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -22,8 +24,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Agents.Main.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -52,13 +52,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
 
         coding_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coding.id}}
 
-        {:reply, tapped, _} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{reason: "this task's work should not exist — the component was already removed"},
-            coding_frame
+            Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
           )
 
-        refute tapped.isError, response_text(tapped)
+        assert match?({:ok, _}, tapped), response_text(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         :ok =
@@ -79,8 +80,18 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
       end
 
       when_ "the main agent looks at what is waiting", context do
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.main_frame)
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         {:ok, Map.put(context, :listing, response_text(inbox))}
       end
 

@@ -1,7 +1,6 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2117Spex do
   @moduledoc "A quiet check-in is one line without a model turn"
   use CodeMySpecSpex.Case
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -20,7 +19,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion2117Spex do
         context = Compact.fleet(context, 1)
         [agent] = context.agents
         assert Fixtures.role_queue_size(context.scope, agent.id) == 0
-        before = Compact.call(context, ReadAgentConversation, %{agent_id: agent.id})
+        before = Compact.call(context, "read_agent_conversation", %{agent_id: agent.id})
         {:ok, Map.put(context, :before, before)}
       end
 
@@ -33,7 +32,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion2117Spex do
         assert context.report =~ "Nothing needs you"
         [agent] = context.agents
 
-        assert Compact.call(context, ReadAgentConversation, %{agent_id: agent.id}) ==
+        assert Compact.call(context, "read_agent_conversation", %{agent_id: agent.id}) ==
                  context.before
 
         refute_received {:work_turn_requested, _, _, _}

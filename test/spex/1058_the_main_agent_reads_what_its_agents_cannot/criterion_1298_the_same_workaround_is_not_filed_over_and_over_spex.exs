@@ -46,14 +46,12 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -94,7 +92,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
         work_around(context.scope, context.agent)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, issues, _frame} = ListIssues.execute(%{scope: "framework"}, frame)
+
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{scope: "framework"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :issues, response_text(issues))}
       end
@@ -124,7 +128,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
 
       then_ "and the existing issue says it has happened again", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, issue, _frame} = GetIssue.execute(%{issue_id: issue_id(context.issues)}, frame)
+
+        issue =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: issue_id(context.issues)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(issue) =~ ~r/3 times/,
                """
@@ -155,8 +165,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
   defp work_around(scope, agent) do
     asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-    {:reply, asked, _frame} =
-      AskUserQuestion.execute(
+    asked =
+      ToolLibrary.run(
+        "ask_user_question",
         %{
           title: "cannot see epic membership",
           questions: [
@@ -166,20 +177,21 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
             }
           ]
         },
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
       )
 
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, _answered, _frame} =
-      AnswerNotification.execute(
+    _answered =
+      ToolLibrary.run(
+        "answer_notification",
         %{
           notification_id: Fixtures.question_id_from(response_text(asked)),
           answer: "Dunning emails go out",
           basis: "record",
           worked_around: @gap
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     :ok

@@ -35,6 +35,7 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Repo,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
+      CodeMySpec.Tools,
       CodeMySpec.Users.Scope,
       CodeMySpec.Validation.Blocking
     ],

@@ -22,10 +22,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -44,10 +45,14 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
       when_ "the agent asks what the story needs", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: to_string(context.story.number)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected show_story_requirements to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :requirements_body, response_text(response))}

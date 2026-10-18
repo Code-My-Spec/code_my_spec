@@ -9,7 +9,7 @@ defmodule CodeMySpec.Agents.Main.MainSeesWhatProductIsDesigningTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
-  alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
+  alias CodeMySpec.Agents.Tools.AgentWorkResponses, as: AgentWorkMapper
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport

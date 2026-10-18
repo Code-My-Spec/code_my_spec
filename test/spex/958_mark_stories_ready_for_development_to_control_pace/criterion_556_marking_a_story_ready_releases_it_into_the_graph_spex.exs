@@ -12,8 +12,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7942Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account
@@ -44,8 +45,12 @@ defmodule CodeMySpecSpex.Story958.Criterion7942Spex do
       and_ "the development graph offers no requirements for it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: @title}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: @title},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
@@ -70,12 +75,16 @@ defmodule CodeMySpecSpex.Story958.Criterion7942Spex do
       then_ "the development graph serves requirements for that story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: @title}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: @title},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected show_story_requirements to succeed, got: #{inspect(response)}"
 
         assert body =~ "component_linked",

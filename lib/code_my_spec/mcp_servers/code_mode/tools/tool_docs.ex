@@ -59,7 +59,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
     with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
          scope <- frame.assigns[:current_scope],
          {:ok, _agent} <- Agents.fetch_agent(scope, agent_id) do
-      ToolIndex.carried(%{direct: LocalServer.__components__()})
+      ToolIndex.carried(%{direct: LocalServer.registrations()})
     else
       _ -> :all
     end

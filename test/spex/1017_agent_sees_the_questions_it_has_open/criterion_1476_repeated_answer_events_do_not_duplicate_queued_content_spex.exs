@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -16,10 +18,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -60,20 +58,22 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(started)
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: task_id,
               questions: [
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
                 }
               ]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
@@ -122,10 +122,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
       end
 
       then_ "the answer is saved and queued without a concurrent turn", context do
-        {:reply, answer, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ "Keep existing"
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert [_answer] = Fixtures.queued_agent_messages(context.scope, context.agent_id)
@@ -137,8 +141,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
       end
 
       then_ "the task still needs deliberate resumption", context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ context.task_id
         assert response_text(tasks) =~ "[blocked]"
         refute response_text(tasks) =~ "[active]"

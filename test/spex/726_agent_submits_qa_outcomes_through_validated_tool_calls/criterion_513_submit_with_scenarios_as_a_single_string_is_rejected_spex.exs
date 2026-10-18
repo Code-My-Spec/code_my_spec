@@ -10,15 +10,16 @@ defmodule CodeMySpecSpex.Story726.Criterion6448Spex do
   expected list-of-objects shape. No attempt is recorded.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (rejection)
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts` (observe
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (rejection)
+  - `CodeMySpec.Qa.Tools.ListQaAttempts` (observe
     nothing was recorded)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -38,22 +39,23 @@ defmodule CodeMySpecSpex.Story726.Criterion6448Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: "marker_freeform_string_scenarios all three passed",
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :submit_response, response)}
       end
 
       then_ "the tool returns a structured error naming the expected shape", context do
-        assert context.submit_response.isError,
+        assert match?({:error, _}, context.submit_response),
                "expected error response, got: #{inspect(context.submit_response)}"
 
         text = response_text(context.submit_response)
@@ -67,10 +69,14 @@ defmodule CodeMySpecSpex.Story726.Criterion6448Spex do
       and_ "no attempt record was created", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         refute text =~ "marker_freeform_string_scenarios",

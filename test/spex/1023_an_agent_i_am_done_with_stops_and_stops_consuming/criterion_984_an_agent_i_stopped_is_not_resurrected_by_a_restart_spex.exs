@@ -23,10 +23,11 @@ defmodule CodeMySpecSpex.Story1023.Criterion2891Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
 
@@ -46,7 +47,13 @@ defmodule CodeMySpecSpex.Story1023.Criterion2891Spex do
         start_agent(done.id, working_copy: copy)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _reply, _frame} = TurnOffAgent.execute(%{"agent_id" => done.id}, frame)
+
+        _reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => done.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute running?(done.id),
                "the premise is an agent that was actually stopped; without that " <>

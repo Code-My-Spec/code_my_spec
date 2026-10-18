@@ -6,7 +6,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects

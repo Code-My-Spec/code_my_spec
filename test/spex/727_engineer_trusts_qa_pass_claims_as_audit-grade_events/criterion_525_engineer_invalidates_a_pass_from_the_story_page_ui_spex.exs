@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
   chain after submission.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (seed)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed)
   - `CodeMySpecLocalWeb.StoryLive` at
     `/projects/:project_name/stories/:id` (the action surface)
   - The `<.confirm_dialog>` component for the reason prompt
@@ -19,8 +19,9 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,32 +33,34 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, earlier, _} =
-          SubmitQaResult.execute(
+        earlier =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "earlier", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        false = earlier.isError
+        {:ok, _} = earlier
         earlier_id = extract_attempt_id!(response_text(earlier))
 
-        {:reply, submit_response, _frame} =
-          SubmitQaResult.execute(
+        submit_response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute submit_response.isError
+        assert match?({:ok, _}, submit_response)
         attempt_id = extract_attempt_id!(response_text(submit_response))
 
         {:ok, view, _html} =

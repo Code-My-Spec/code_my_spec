@@ -11,6 +11,8 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.MainAgentHelpers
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -51,7 +53,6 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
 
       when_ "an agent in another working copy asks a question and stops", context do
         alias Anubis.Server.Frame
-        alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
 
         # Genuinely another copy, not this one wearing a different name. The
         # criterion is about a thread that is *not* the one being read, and
@@ -70,16 +71,17 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
           }
         }
 
-        {:reply, response, _frame} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{questions: [%{question: "Which deploy key should I use?", options: []}]},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         # Checked, because the tool answers a bad call with an error *response*
         # rather than a raise. Ignoring it means the question was never asked and
         # the assertions below fail against a screen that is behaving correctly.
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the agent's question was refused, so nothing was ever waiting: " <>
                  inspect(response)
 

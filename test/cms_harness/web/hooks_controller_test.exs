@@ -9,7 +9,6 @@ defmodule CmsHarness.Web.HooksControllerTest do
   use CmsHarnessTest.ConnCase, async: false
 
   alias CmsHarness.Channel
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
 

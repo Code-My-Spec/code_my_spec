@@ -11,14 +11,15 @@ defmodule CodeMySpecSpex.Story1089.Criterion1846Spex do
   `submit_qa_result`'s response, on any outcome, tells anyone to add a
   screenshot to git.
 
-  Surface: `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`.
+  Surface: `CodeMySpec.Qa.Tools.SubmitQaResult`.
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -38,22 +39,23 @@ defmodule CodeMySpecSpex.Story1089.Criterion1846Spex do
       when_ "the agent submits a passing result", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :submit_response, response)}
       end
 
       then_ "nothing in the response asks for a git command", context do
-        refute context.submit_response.isError,
+        assert match?({:ok, _}, context.submit_response),
                "expected success, got error: #{inspect(context.submit_response)}"
 
         text = response_text(context.submit_response)

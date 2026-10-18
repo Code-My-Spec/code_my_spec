@@ -131,10 +131,7 @@ defmodule CodeMySpecSpex.SharedGivens do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.ToolLibrary
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -222,16 +219,19 @@ defmodule CodeMySpecSpex.SharedGivens do
       ToolLibrary.run(
         "link_persona_to_story",
         %{persona_id: context.persona_id, story_number: story.number},
-        %{scope: frame.assigns.current_scope}
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     rule_statement = "Example context behaves as expected"
 
-    {:reply, _response, _frame} =
-      AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
+    _response =
+      ToolLibrary.run("add_rule", %{story_number: story.number, statement: rule_statement}, %{
+        scope: frame.assigns.current_scope
+      })
 
-    {:reply, _response, _frame} =
-      AddScenario.execute(
+    _response =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -240,11 +240,12 @@ defmodule CodeMySpecSpex.SharedGivens do
           body:
             "Given the user opens the page\nWhen they click the button\nThen the action succeeds"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    {:reply, _response, _frame} =
-      AddScenario.execute(
+    _response =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -253,7 +254,7 @@ defmodule CodeMySpecSpex.SharedGivens do
           body:
             "Given the user is logged out\nWhen they click the button\nThen they are redirected to login"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     # Sealed, because `three_amigos_complete` reads the seal now. Third copy of
@@ -418,15 +419,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, _response, _frame} =
-      StartTask.execute(
+    _response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: to_string(context.component.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     {:ok, Map.put(context, :session_id, session_id)}
@@ -440,15 +442,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     {context, session_id} = HarnessHooks.open_session(context)
 
-    {:reply, _response, _frame} =
-      StartTask.execute(
+    {:ok, _response} =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: to_string(unbuilt.id),
           session_id: session_id
         },
-        %Frame{assigns: %{current_scope: context.scope}}
+        %{scope: context.scope}
       )
 
     {:ok, Map.put(context, :session_id, session_id)}
@@ -466,15 +469,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "bdd_specs_exist",
           entity_type: "story",
           entity_id: to_string(context.story.number),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt = flatten_tool_response(response)
@@ -517,7 +521,7 @@ defmodule CodeMySpecSpex.SharedGivens do
           name: "Founder #{unique}",
           headline: "Solo founder shipping a product without hiring"
         },
-        %{scope: frame.assigns.current_scope}
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     persona_id = extract_persona_id(create_response)
@@ -565,7 +569,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       ToolLibrary.run(
         "link_persona_to_story",
         %{persona_id: persona_id, story_number: story.number},
-        %{scope: frame.assigns.current_scope}
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     {:ok,
@@ -588,15 +592,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "personas_complete",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     {:ok, Map.merge(context, %{session_id: session_id, task_id: extract_task_id(response)})}
@@ -611,15 +616,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "personas_complete",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt =
@@ -649,15 +655,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "technical_strategy",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt = flatten_tool_response(response)
@@ -680,15 +687,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "code_generation",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt = flatten_tool_response(response)
@@ -711,15 +719,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "three_amigos_complete",
           entity_type: "story",
           entity_id: to_string(context.story.number),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     {:ok, Map.merge(context, %{session_id: session_id, task_id: extract_task_id(response)})}
@@ -735,15 +744,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "issues_resolved",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt = flatten_tool_response(response)
@@ -768,15 +778,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "qa_setup",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt = flatten_tool_response(response)
@@ -800,15 +811,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "qa_integration_plan",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt = flatten_tool_response(response)
@@ -832,15 +844,16 @@ defmodule CodeMySpecSpex.SharedGivens do
 
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "spex_boundary_ready",
           entity_type: "project",
           entity_id: to_string(context.project.id),
           session_id: session_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     prompt = flatten_tool_response(response)
@@ -959,6 +972,8 @@ defmodule CodeMySpecSpex.SharedGivens do
       _ -> raise "could not extract magic-link URL from email body: #{inspect(body)}"
     end
   end
+
+  defp flatten_tool_response({_status, text}) when is_binary(text), do: text
 
   defp flatten_tool_response(%{content: parts}) when is_list(parts) do
     Enum.map_join(parts, "\n", fn

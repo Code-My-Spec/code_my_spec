@@ -14,12 +14,12 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IssuePromotionHelpers
   import CodeMySpecSpex.PromotionHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOffers
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias Ecto.Adapters.SQL.Sandbox
@@ -74,15 +74,13 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
         :ok = Fixtures.put_agent_mid_turn(context.scope, context.main.id)
         :ok = Fixtures.end_turn(context.scope, context.main.id)
 
-        {:reply, next, _} =
-          GetNextRequirement.execute(
-            %{},
-            %Frame{
-              assigns: %{current_scope: context.team_a.scope, agent_id: context.team_a.agent_id}
-            }
-          )
+        next =
+          ToolLibrary.run("get_next_requirement", %{}, %{
+            scope: context.team_a.scope,
+            agent_id: context.team_a.agent_id
+          })
 
-        refute next.isError
+        assert match?({:ok, _}, next)
         assert String.downcase(response_text(next)) =~ "waiting for main assignment"
         {:ok, Map.merge(context, %{promote_response: response, story_notice: story_notice})}
       end
@@ -108,10 +106,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
         assert Enum.any?(notices, &(&1 =~ context.issue_id))
         :ok = Fixtures.drain_background_work()
 
-        {:reply, response, _frame} =
-          ListOffers.execute(%{agent_id: context.main.id, kind: "team_free"}, context.main_frame)
+        response =
+          ToolLibrary.run(
+            "list_offers",
+            %{agent_id: context.main.id, kind: "team_free"},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         offers = OfferHelpers.parse(response_text(response))
 
         assert length(offers) == 2,

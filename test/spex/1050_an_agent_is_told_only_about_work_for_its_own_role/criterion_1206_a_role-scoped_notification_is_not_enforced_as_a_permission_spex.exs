@@ -24,12 +24,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3226Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -58,18 +56,19 @@ defmodule CodeMySpecSpex.Story1050.Criterion3226Spex do
         Fixtures.running_agent(context.scope, role: "qa")
         context = context |> start_session() |> put_to_work()
 
-        {:reply, filed, _frame} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "the ledger rounds the wrong way on refunds",
               description: "found while testing the refund path",
               severity: "medium",
               scope: "qa"
             },
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute filed.isError, "the premise is a finding that exists"
+        assert match?({:ok, _}, filed), "the premise is a finding that exists"
 
         refute_told_anything(
           context,
@@ -82,7 +81,12 @@ defmodule CodeMySpecSpex.Story1050.Criterion3226Spex do
       end
 
       when_ "it tries to read or act on that finding", context do
-        {:reply, listed, _frame} = ListIssues.execute(%{}, frame(context))
+        listed =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
         read = read_issue(issue_id_in(response_text(listed)), listed, context)
 
@@ -94,10 +98,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3226Spex do
       end
 
       then_ "nothing refuses it on the grounds of its role", context do
-        refute context.listed.isError,
+        assert match?({:ok, _}, context.listed),
                "the coding agent cannot list findings at all: #{response_text(context.listed)}"
 
-        refute context.read.isError,
+        assert match?({:ok, _}, context.read),
                "the coding agent cannot read a finding: #{response_text(context.read)}"
 
         assert context.text =~ "the ledger rounds the wrong way on refunds",
@@ -143,7 +147,13 @@ defmodule CodeMySpecSpex.Story1050.Criterion3226Spex do
   defp read_issue(nil, listed, _context), do: listed
 
   defp read_issue(id, _listed, context) do
-    {:reply, reply, _frame} = GetIssue.execute(%{issue_id: id}, frame(context))
+    reply =
+      ToolLibrary.run(
+        "get_issue",
+        %{issue_id: id},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     reply
   end
 

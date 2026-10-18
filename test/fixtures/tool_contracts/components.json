@@ -1,0 +1,222 @@
+[
+  {
+    "name": "add_dependency",
+    "description": "Records that one component depends on another.\n\nComponents are authored as records (3aeb66cf), and their dependencies with\nthem. Until this tool an edge could only arrive by a spec file's\n`## Dependencies` being synced, so an architecture designed through the tools\nhad no way to say what depended on what.\n",
+    "input_schema": {
+      "properties": {
+        "source_component_id": {
+          "description": "The component that depends on the other",
+          "type": "string"
+        },
+        "target_component_id": {
+          "description": "The component it depends on",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_component_id",
+        "target_component_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "architecture_health_summary",
+    "description": "Provides a comprehensive health overview of the system architecture including:\n- Story coverage: assigned/unassigned component counts\n- Context distribution: components grouped by story count (1, 2-6, 7+)\n- Dependency issues: missing references, high fan-out contexts\n- Data quality: duplicate stories and other consistency issues\n\nThis gives LLMs and developers a quick health assessment of the entire architecture.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "context_statistics",
+    "description": "Provides statistical overview of each component context including:\n- Story count per component\n- Dependency in/out counts per component\n- Results sorted by story count or dependency count\n- Raw numbers for LLM analysis\n",
+    "input_schema": {
+      "properties": {
+        "sort_by": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "create_component",
+    "description": "Creates a single component, as a record marked `:authored`.\n\nThe patch-mode alternative to rewriting the full architecture proposal: the\narchitect adds one component at a time during incremental design. It used to\nwrite a stub spec file too, which was then the only way the component's\ndependencies could be recorded; `add_dependency` does that now, and no file\nis written (3aeb66cf, step 2).\n",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "module_name": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent_component_id": {
+          "type": "string"
+        },
+        "type": {
+          "description": "Component type: context, coordination_context, live_context, schema, behaviour, json, liveview, liveview_component, controller, module, infrastructure.",
+          "enum": [
+            "context",
+            "coordination_context",
+            "live_context",
+            "schema",
+            "behaviour",
+            "json",
+            "liveview",
+            "liveview_component",
+            "controller",
+            "module",
+            "infrastructure"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "module_name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "delete_component",
+    "description": "Deletes a component. Its files are left alone; while live code still names\nthe module, the next sync discovers it again.\n",
+    "input_schema": {
+      "properties": {
+        "component_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_component",
+    "description": "One component as its record describes it: type, description, provenance,\nparent, what it depends on (each marked planned and/or in code) and the\nfiles that belong to it. By id or by module name. Components are records\n(3aeb66cf); this is how an agent reads one without listing the whole\narchitecture.\n",
+    "input_schema": {
+      "properties": {
+        "component_id": {
+          "description": "The component's id.",
+          "type": "string"
+        },
+        "module_name": {
+          "description": "Or its module name, e.g. MyApp.Accounts.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_components",
+    "description": "Lists all components in a project",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "orphaned_contexts",
+    "description": "Lists all contexts with no user story and no dependencies",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "remove_dependency",
+    "description": "Removes one component's dependency on another. The other half of\n`AddDependency`.\n",
+    "input_schema": {
+      "properties": {
+        "source_component_id": {
+          "description": "The component that depends on the other",
+          "type": "string"
+        },
+        "target_component_id": {
+          "description": "The component it should no longer depend on",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_component_id",
+        "target_component_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "review_context_design",
+    "description": "Reviews current context design against best practices and provides architectural feedback",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "show_architecture",
+    "description": "Renders the project's component dependency graph as a Mermaid flowchart.\n\nReturns plain text — a `flowchart TD` followed by node and edge lines for\nevery context, liveview, live_context, controller, and channel in the\nproject. Dependencies declared on child components are rolled up to the\ncontaining surface, so the graph stays at the architecture level the\narchitect cares about, not raw module-to-module.\n\nMermaid was picked over JSON for two reasons: it's far less verbose for\nthe same information, and it renders directly in any markdown-aware\nreader the agent or human is using.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "start_context_design",
+    "description": "Initiates guided context design session",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "update_component",
+    "description": "Updates a component.\nInclude all fields in the input that you want to update.\nThey will be persisted exactly as you send them.\n",
+    "input_schema": {
+      "properties": {
+        "component_id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "module_name": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "parent_component_id": {
+          "description": "The component this one belongs under, e.g. its context",
+          "type": "string"
+        },
+        "type": {
+          "description": "Component type: context, coordination_context, live_context, schema, behaviour, json, liveview, liveview_component, controller, module, infrastructure.",
+          "enum": [
+            "context",
+            "coordination_context",
+            "live_context",
+            "schema",
+            "behaviour",
+            "json",
+            "liveview",
+            "liveview_component",
+            "controller",
+            "module",
+            "infrastructure"
+          ]
+        }
+      },
+      "required": [
+        "component_id"
+      ],
+      "type": "object"
+    }
+  }
+]

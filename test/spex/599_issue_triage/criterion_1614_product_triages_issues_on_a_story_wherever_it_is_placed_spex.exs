@@ -10,14 +10,13 @@ defmodule CodeMySpecSpex.Story599.Criterion1614Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -65,18 +64,19 @@ defmodule CodeMySpecSpex.Story599.Criterion1614Spex do
       end
 
       given_ "an issue filed on that story, not yet triaged", context do
-        {:reply, filed, _} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Refunds round the wrong way",
               description: "Found while testing the refund path",
               severity: "high",
               story_number: context.story.number
             },
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
-        refute filed.isError, response_text(filed)
+        assert match?({:ok, _}, filed), response_text(filed)
         {:ok, context}
       end
 
@@ -85,23 +85,29 @@ defmodule CodeMySpecSpex.Story599.Criterion1614Spex do
           assigns: %{current_scope: context.main_scope, agent_id: context.product.id}
         }
 
-        {:reply, _next, _} = GetNextRequirement.execute(%{}, frame)
+        _next =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "story_issues_triaged",
               entity_type: "story",
               entity_id: to_string(context.story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :started, started)}
       end
 
       then_ "product holds the triage of that story", context do
-        refute context.started.isError,
+        assert match?({:ok, _}, context.started),
                "product on the main copy could not triage a story placed elsewhere: " <>
                  response_text(context.started)
 

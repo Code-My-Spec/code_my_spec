@@ -17,12 +17,6 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin
-  alias CodeMySpec.McpServers.BddRules.Tools.ListQuestions
-  alias CodeMySpec.McpServers.BddRules.Tools.ListRules
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.StoryHelpers
 
@@ -50,7 +44,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
               slug: "workshop-persona-#{System.unique_integer([:positive])}",
               description: "Persona used to satisfy linkage."
             },
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         persona_id = extract_persona_id(persona_response)
@@ -59,16 +53,19 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{story_number: story.number, persona_id: persona_id},
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         rule_statement = "Drivers must have a verified phone number."
 
-        {:reply, _, _frame} =
-          AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
+        _ =
+          ToolLibrary.run("add_rule", %{story_number: story.number, statement: rule_statement}, %{
+            scope: frame.assigns.current_scope
+          })
 
-        {:reply, _, _frame} =
-          AddScenario.execute(
+        _ =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: story.number,
               rule_statement: rule_statement,
@@ -80,7 +77,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
               Then the account is marked verified
               """
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.merge(context, %{story: story, rule_statement: rule_statement})}
@@ -89,16 +86,17 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
       when_ "the agent parks a question on the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AddQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "add_question",
             %{
               story_number: context.story.number,
               text: "Does verification time out after 24 hours?"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected add_question to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :question_response, response)}
@@ -107,8 +105,10 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
       then_ "list_rules returns the rule statement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListRules.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run("list_rules", %{story_number: context.story.number}, %{
+            scope: frame.assigns.current_scope
+          })
 
         body = response_text(response)
 
@@ -121,8 +121,10 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
       then_ "list_questions returns the parked question", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListQuestions.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run("list_questions", %{story_number: context.story.number}, %{
+            scope: frame.assigns.current_scope
+          })
 
         body = response_text(response)
 
@@ -135,8 +137,10 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
       then_ "get_story_gherkin renders the rule and scenario body", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          GetStoryGherkin.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run("get_story_gherkin", %{story_number: context.story.number}, %{
+            scope: frame.assigns.current_scope
+          })
 
         body = response_text(response)
 

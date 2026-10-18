@@ -29,10 +29,11 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpec.TempFile
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
@@ -70,7 +71,14 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
 
       when_ "I stop it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :reply, reply)}
       end
 
@@ -84,7 +92,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2884Spex do
       end
 
       then_ "and the commit it was making is complete when its process ends", context do
-        refute context.reply.isError
+        assert match?({:ok, _}, context.reply)
 
         refute running?(context.agent.id),
                "the agent finished its work and is still running, so the stop " <>

@@ -17,8 +17,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion1773Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   import ExUnit.CaptureLog
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecWeb.Plugs.AgentScope
 
   setup :register_log_in_setup_account
@@ -36,8 +35,12 @@ defmodule CodeMySpecSpex.Story1016.Criterion1773Spex do
       |> Plug.Conn.put_req_header("x-agent-id", agent.id)
       |> AgentScope.call([])
 
-    {:reply, reply, _frame} =
-      RegenerateProposal.execute(%{confirm: true}, %Frame{assigns: conn.assigns})
+    reply =
+      ToolLibrary.run(
+        "regenerate_proposal",
+        %{confirm: true},
+        Map.put(conn.assigns, :scope, conn.assigns[:current_scope])
+      )
 
     {response_text(reply), conn.assigns.current_scope}
   end

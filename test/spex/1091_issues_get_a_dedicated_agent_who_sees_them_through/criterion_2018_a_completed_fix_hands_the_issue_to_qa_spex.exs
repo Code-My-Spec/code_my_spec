@@ -2,13 +2,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
   @moduledoc "A completed fix hands the issue to QA without permitting a duplicate coding task."
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -29,35 +25,58 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
         coder_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coder.id}}
         qa_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: qa.id}}
 
-        {:reply, created, _} =
-          CreateIssue.execute(
+        created =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "A notification is lost",
               description: "Restore notification delivery.",
               severity: "high",
               scope: "framework"
             },
-            main_frame
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
           )
 
-        false = created.isError
+        {:ok, _} = created
         issue_id = extract_issue_id!(created)
-        {:reply, accepted, _} = AcceptIssue.execute(%{issue_id: issue_id}, main_frame)
-        false = accepted.isError
 
-        {:reply, assigned, _} =
-          AssignIssueToWorkingCopy.execute(
-            %{issue_id: issue_id, working_copy_id: context.scope.active_working_copy_id},
-            main_frame
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: issue_id},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
           )
 
-        false = assigned.isError
-        {:reply, offered, _} = GetNextRequirement.execute(%{}, coder_frame)
-        false = offered.isError
+        {:ok, _} = accepted
+
+        assigned =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
+            %{issue_id: issue_id, working_copy_id: context.scope.active_working_copy_id},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = assigned
+
+        offered =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = offered
         true = response_text(offered) =~ "requirement_name=`fix_issue`"
         params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: issue_id}
-        {:reply, started, _} = StartTask.execute(params, coder_frame)
-        false = started.isError
+
+        started =
+          ToolLibrary.run(
+            "start_task",
+            params,
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = started
 
         {:ok,
          Map.merge(context, %{
@@ -72,35 +91,71 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
       when_ "the coder evaluates its fix successfully", context do
         Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-        {:reply, evaluated, _} =
-          EvaluateTask.execute(%{task_id: context.task_id}, context.coder_frame)
+        evaluated =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: context.task_id},
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
 
-        refute evaluated.isError, response_text(evaluated)
+        assert match?({:ok, _}, evaluated), response_text(evaluated)
         {:ok, context}
       end
 
       then_ "the coder has no fix offer and a repeated claim is refused", context do
-        {:reply, offered, _} = GetNextRequirement.execute(%{}, context.coder_frame)
-        refute offered.isError, response_text(offered)
+        offered =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, offered), response_text(offered)
         refute response_text(offered) =~ "requirement_name=`fix_issue`"
-        {:reply, duplicate, _} = StartTask.execute(context.params, context.coder_frame)
-        assert duplicate.isError, response_text(duplicate)
+
+        duplicate =
+          ToolLibrary.run(
+            "start_task",
+            context.params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:error, _}, duplicate), response_text(duplicate)
         {:ok, context}
       end
 
       then_ "QA is offered and can claim the submitted issue", context do
-        {:reply, offered, _} = GetNextRequirement.execute(%{}, context.qa_frame)
-        refute offered.isError, response_text(offered)
+        offered =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(context.qa_frame.assigns, :scope, context.qa_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, offered), response_text(offered)
         assert response_text(offered) =~ "requirement_name=`qa_complete`"
         assert response_text(offered) =~ "entity_id=`#{context.issue_id}`"
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{requirement_name: "qa_complete", entity_type: "issue", entity_id: context.issue_id},
-            context.qa_frame
+            Map.put(context.qa_frame.assigns, :scope, context.qa_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         {:ok, context}
       end
     end

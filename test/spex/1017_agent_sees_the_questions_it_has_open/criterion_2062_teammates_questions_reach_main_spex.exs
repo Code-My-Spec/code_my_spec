@@ -11,12 +11,12 @@ defmodule CodeMySpecSpex.Story1017.Criterion2062Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -56,17 +56,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion2062Spex do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         coder_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coder.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            coder_frame
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
         {:ok,
          Map.merge(context, %{
@@ -77,8 +78,9 @@ defmodule CodeMySpecSpex.Story1017.Criterion2062Spex do
       end
 
       when_ "the coder asks a question about something other than a story's criteria", context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.coder_task,
               questions: [
@@ -88,10 +90,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2062Spex do
                 }
               ]
             },
-            context.coder_frame
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         {:ok, context}
       end
 

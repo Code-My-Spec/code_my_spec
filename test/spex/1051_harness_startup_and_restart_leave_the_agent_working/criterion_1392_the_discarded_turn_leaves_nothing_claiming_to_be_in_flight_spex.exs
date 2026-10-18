@@ -28,11 +28,10 @@ defmodule CodeMySpecSpex.Story1051.Criterion3469Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -44,7 +43,8 @@ defmodule CodeMySpecSpex.Story1051.Criterion3469Spex do
     :ok
   end
 
-  spex "A turn in progress is discarded on restart; the agent picks up from the turns already recorded", criterion: 1392 do
+  spex "A turn in progress is discarded on restart; the agent picks up from the turns already recorded",
+    criterion: 1392 do
     scenario "The discarded turn leaves nothing claiming to be in flight" do
       given_ "an agent restarted part-way through a turn", context do
         context = given_a_feature_checkout(context, "spex_3469")
@@ -52,7 +52,12 @@ defmodule CodeMySpecSpex.Story1051.Criterion3469Spex do
 
         :ok = Fixtures.start_turn(context.scope, agent_id)
 
-        {:reply, view, _frame} = ListAgentWork.execute(%{}, frame(context))
+        view =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
         assert entry_for(response_text(view), agent_id) =~ "has not finished",
                """
@@ -62,19 +67,25 @@ defmodule CodeMySpecSpex.Story1051.Criterion3469Spex do
                #{response_text(view)}
                """
 
-        {:reply, reply, _frame} =
-          RestartAgent.execute(
+        reply =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: agent_id, reason: "the harness went underneath it"},
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute reply.isError, "the premise is an agent that was restarted"
+        assert match?({:ok, _}, reply), "the premise is an agent that was restarted"
 
         {:ok, Map.put(context, :agent_id, agent_id)}
       end
 
       when_ "anything asks what that agent is working on", context do
-        {:reply, view, _frame} = ListAgentWork.execute(%{}, frame(context))
+        view =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :view, response_text(view))}
       end

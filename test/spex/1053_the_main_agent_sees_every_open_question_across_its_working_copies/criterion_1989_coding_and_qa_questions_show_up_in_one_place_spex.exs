@@ -10,12 +10,12 @@ defmodule CodeMySpecSpex.Story1053.Criterion1989Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,8 +39,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion1989Spex do
         coding_frame = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
         qa_frame = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
 
-        {:reply, coding_asked, _} =
-          AskUserQuestion.execute(
+        coding_asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -49,13 +50,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion1989Spex do
                 }
               ]
             },
-            coding_frame
+            Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
           )
 
-        refute coding_asked.isError, response_text(coding_asked)
+        assert match?({:ok, _}, coding_asked), response_text(coding_asked)
 
-        {:reply, qa_asked, _} =
-          AskUserQuestion.execute(
+        qa_asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -64,10 +66,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion1989Spex do
                 }
               ]
             },
-            qa_frame
+            Map.put(qa_frame.assigns, :scope, qa_frame.assigns[:current_scope])
           )
 
-        refute qa_asked.isError, response_text(qa_asked)
+        assert match?({:ok, _}, qa_asked), response_text(qa_asked)
 
         {:ok,
          context
@@ -80,8 +82,15 @@ defmodule CodeMySpecSpex.Story1053.Criterion1989Spex do
 
       when_ "the main agent looks at what is waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame)
-        refute inbox.isError, response_text(inbox)
+
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         {:ok, Map.put(context, :listing, response_text(inbox))}
       end
 

@@ -22,24 +22,28 @@ defmodule CodeMySpec.McpServers.AQuestionThatReachedAPersonSaysSoTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
+
+  defp text({_status, text}) when is_binary(text), do: text
 
   defp text(response) do
     response |> Response.to_protocol() |> Map.get("content") |> hd() |> Map.get("text")
   end
 
   defp ask(frame) do
-    {:reply, response, _frame} =
-      AskUserQuestion.execute(
+    response =
+      ToolLibrary.run(
+        "ask_user_question",
         %{
           title: "A question",
           questions: [%{"question" => "Which way?", "options" => ["left", "right"]}]
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     text(response)

@@ -13,10 +13,11 @@ defmodule CodeMySpecSpex.Story1052.Criterion1987Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.OfferHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -57,9 +58,15 @@ defmodule CodeMySpecSpex.Story1052.Criterion1987Spex do
         }
 
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.product_id}}
-        {:reply, reply, _frame} = AskUserQuestion.execute(params, frame)
 
-        refute reply.isError,
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, reply),
                "the premise is a question that was raised, and this one was refused:\n" <>
                  response_text(reply)
 

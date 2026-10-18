@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.ReleaseStoryFromWorkingCopy do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.McpServers.Validators
 
   schema do

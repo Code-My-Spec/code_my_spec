@@ -6,6 +6,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import Phoenix.ChannelTest
@@ -14,12 +16,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
@@ -120,10 +117,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
     refute sas_resp.isError, inspect(sas_resp)
 
     Enum.each(rounds, fn round ->
-      {:reply, started, _frame} =
+      started =
         start_qa(asking, story, context.copy_socket)
 
-      refute started.isError, inspect(started)
+      assert match?({:ok, _}, started), inspect(started)
       [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))
       submit_round(asking, coding, story, task_id, round)
     end)
@@ -132,56 +129,66 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   end
 
   defp submit_round(asking, _coding, _story, task_id, %{status: "pass", note: note}) do
-    {:reply, response, _frame} =
-      SubmitQaResult.execute(
+    response =
+      ToolLibrary.run(
+        "submit_qa_result",
         %{
           task_id: task_id,
           status: "pass",
           scenarios: [%{name: "it works", status: "pass", observation: note}],
           issue_ids: []
         },
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
       )
 
-    refute response.isError, inspect(response)
+    assert match?({:ok, _}, response), inspect(response)
   end
 
   defp submit_round(asking, coding, story, task_id, %{status: "fail", note: note}) do
-    {:reply, issue, _frame} =
-      CreateIssue.execute(
+    issue =
+      ToolLibrary.run(
+        "create_issue",
         %{title: note, severity: "high", description: note, story_number: story.number},
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
       )
 
     [_, issue_id] = Regex.run(~r/\(ID: ([0-9a-f-]{36})\)/, response_text(issue))
 
-    {:reply, response, _frame} =
-      SubmitQaResult.execute(
+    response =
+      ToolLibrary.run(
+        "submit_qa_result",
         %{
           task_id: task_id,
           status: "fail",
           scenarios: [%{name: "it works", status: "fail", observation: note}],
           issue_ids: [issue_id]
         },
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
       )
 
-    refute response.isError, inspect(response)
+    assert match?({:ok, _}, response), inspect(response)
 
-    {:reply, accepted, _} = AcceptIssue.execute(%{issue_id: issue_id, category: "bug"}, asking)
-    refute accepted.isError, inspect(accepted)
+    accepted =
+      ToolLibrary.run(
+        "accept_issue",
+        %{issue_id: issue_id, category: "bug"},
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
+      )
 
-    {:reply, submitted, _} =
-      SubmitStoryIssue.execute(
+    assert match?({:ok, _}, accepted), inspect(accepted)
+
+    submitted =
+      ToolLibrary.run(
+        "submit_story_issue",
         %{
           issue_id: issue_id,
           revision: String.duplicate("b", 40),
           evidence: "Fixed the reported save failure; regression test passes."
         },
-        coding
+        Map.put(coding.assigns, :scope, coding.assigns[:current_scope])
       )
 
-    refute submitted.isError, inspect(submitted)
+    assert match?({:ok, _}, submitted), inspect(submitted)
     scope = asking.assigns.current_scope
 
     {:ok, _} =
@@ -191,13 +198,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   defp start_qa(asking, story, socket) do
     task =
       Task.async(fn ->
-        StartTask.execute(
+        ToolLibrary.run(
+          "start_task",
           %{
             requirement_name: "qa_complete",
             entity_type: "story",
             entity_id: to_string(story.number)
           },
-          asking
+          Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
         )
       end)
 

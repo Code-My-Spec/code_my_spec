@@ -39,8 +39,6 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.Setup
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -442,14 +440,17 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
       ToolLibrary.run(
         "link_persona_to_story",
         %{persona_id: persona_id, story_number: story.number},
-        %{scope: frame.assigns.current_scope}
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    {:reply, _response, _frame} =
-      AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
+    _response =
+      ToolLibrary.run("add_rule", %{story_number: story.number, statement: rule_statement}, %{
+        scope: frame.assigns.current_scope
+      })
 
-    {:reply, _response, _frame} =
-      AddScenario.execute(
+    _response =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -457,11 +458,12 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
           title: happy_title,
           body: happy_body
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    {:reply, _response, _frame} =
-      AddScenario.execute(
+    _response =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -469,7 +471,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
           title: failure_title,
           body: failure_body
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     # And sealed, because that is what `three_amigos_complete` reads now.

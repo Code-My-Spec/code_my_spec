@@ -11,12 +11,9 @@ defmodule CodeMySpecSpex.Story709.Criterion6214Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,9 +30,14 @@ defmodule CodeMySpecSpex.Story709.Criterion6214Spex do
           description: "Spinner re-mounts twice when navigating to the dashboard."
         }
 
-        {:reply, response, _frame} = CreateIssue.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "create_issue",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected create_issue to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :create_response, response)}
@@ -65,9 +67,15 @@ defmodule CodeMySpecSpex.Story709.Criterion6214Spex do
           description: "Save button stays disabled after editing the API key."
         }
 
-        {:reply, response, _frame} = CreateIssue.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "create_issue",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError, "expected create_issue to succeed, got: #{inspect(response)}"
+        assert match?({:ok, _}, response),
+               "expected create_issue to succeed, got: #{inspect(response)}"
 
         issue_id = extract_issue_id(response)
 
@@ -77,32 +85,44 @@ defmodule CodeMySpecSpex.Story709.Criterion6214Spex do
       when_ "the agent runs list → get → accept → resolve in order", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} = ListIssues.execute(%{}, frame)
-        refute list_response.isError, "expected list_issues to succeed"
-
-        {:reply, get_response, _frame} =
-          GetIssue.execute(%{issue_id: context.issue_id}, frame)
-
-        refute get_response.isError, "expected get_issue to succeed"
-
-        {:reply, accept_response, _frame} =
-          AcceptIssue.execute(
-            %{issue_id: context.issue_id, category: "bug"},
-            frame
+        list_response =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute accept_response.isError, "expected accept_issue to succeed"
+        assert match?({:ok, _}, list_response), "expected list_issues to succeed"
 
-        {:reply, resolve_response, _frame} =
-          ResolveIssue.execute(
+        get_response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, get_response), "expected get_issue to succeed"
+
+        accept_response =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: context.issue_id, category: "bug"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, accept_response), "expected accept_issue to succeed"
+
+        resolve_response =
+          ToolLibrary.run(
+            "resolve_issue",
             %{
               issue_id: context.issue_id,
               resolution: "Re-enabled save button after key changes; covered by a test."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute resolve_response.isError, "expected resolve_issue to succeed"
+        assert match?({:ok, _}, resolve_response), "expected resolve_issue to succeed"
 
         {:ok,
          Map.merge(context, %{
@@ -162,8 +182,12 @@ defmodule CodeMySpecSpex.Story709.Criterion6214Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, final, _frame} =
-          GetIssue.execute(%{issue_id: context.issue_id}, frame)
+        final =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(final)
 

@@ -21,11 +21,12 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
 
@@ -44,8 +45,16 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
         start_agent(agent.id, working_copy: copy)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => agent.id}, frame)
-        refute reply.isError, "the premise is an agent that stopped, and stopping errored"
+
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, reply),
+               "the premise is an agent that stopped, and stopping errored"
 
         {:ok, context |> Map.put(:agent, agent)}
       end

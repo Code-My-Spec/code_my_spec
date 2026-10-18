@@ -8,8 +8,6 @@ defmodule CodeMySpecSpex.Story1016.Criterion1597Spex do
   on (a31f1cd6 step 3, John 2026-10-01).
   """
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -27,7 +25,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion1597Spex do
         {error?, text} =
           Slice.attempt(
             context,
-            StartTask,
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",

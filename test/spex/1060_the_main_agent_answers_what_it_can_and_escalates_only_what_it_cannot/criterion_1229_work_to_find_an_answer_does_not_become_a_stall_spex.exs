@@ -32,15 +32,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -63,8 +62,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3259")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "needs a policy nobody has written down",
               questions: [
@@ -74,10 +74,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -91,9 +91,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
 
         # Exactly what criterion 3255 asks for: go and look. The project does
         # not hold this one.
-        {:reply, found, _frame} = SearchAnswers.execute(%{query: "retention"}, frame)
+        found =
+          ToolLibrary.run(
+            "search_answers",
+            %{query: "retention"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute found.isError, inspect(found)
+        assert match?({:ok, _}, found), inspect(found)
 
         refute response_text(found) =~ ~r/7 years|30 days/,
                "the premise is a search that finds nothing:\n" <> response_text(found)
@@ -126,7 +131,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
       then_ "and the asking agent is not waiting on work that will not conclude",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(listing) =~ ~r/waiting on the user/i,
                """

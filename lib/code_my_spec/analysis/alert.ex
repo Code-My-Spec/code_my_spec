@@ -2,9 +2,9 @@ defmodule CodeMySpec.Analysis.Alert do
   @moduledoc """
   Tells an agent, on its next tool call, that an analyzer run has landed.
 
-  Rendered here, not in `Hooks`, because two transports deliver it: the
-  post-tool-use hook (via the `Hooks.AnalysisAlert` shim) and
-  `McpServers.AgentAlert` for agents under Alloy, which fire no hooks.
+  Delivered by `McpServers.AgentAlert` to agents under Alloy, on their tool
+  results. Claude Code sessions are not annotated: problems are information
+  that gates at promotion (John, 2026-10-18).
 
   Push the fact, pull the detail: the alert names sources, counts and age;
   `list_problems` has the rest. Scoped to the working copy, never to a session

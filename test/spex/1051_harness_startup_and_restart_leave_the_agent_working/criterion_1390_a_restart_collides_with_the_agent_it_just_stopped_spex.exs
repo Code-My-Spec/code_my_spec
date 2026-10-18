@@ -25,11 +25,11 @@ defmodule CodeMySpecSpex.Story1051.Criterion3467Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers, only: [running?: 1]
   import CodeMySpecSpex.HarnessLifecycleHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -49,10 +49,11 @@ defmodule CodeMySpecSpex.Story1051.Criterion3467Spex do
       end
 
       when_ "the relaunch runs against the stopped agent's own registrations", context do
-        {:reply, reply, _frame} =
-          RestartAgent.execute(
+        reply =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.agent_id, reason: "it stopped answering"},
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
         {:ok,
@@ -63,7 +64,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3467Spex do
       end
 
       then_ "the caller is never told success while the agent stays down", context do
-        assert context.reply.isError or context.running,
+        assert match?({:error, _}, context.reply) or context.running,
                """
                The restart reported success and the agent is not running.
 
@@ -83,7 +84,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion3467Spex do
       end
 
       then_ "and a failed restart says so in terms the caller can act on", context do
-        assert_report_matches_outcome(context.reply.isError, context)
+        assert_report_matches_outcome(match?({:error, _}, context.reply), context)
 
         {:ok, context}
       end

@@ -6,9 +6,10 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
-  alias CodeMySpec.McpServers.Devops.Tools.{LinkServer, RunProvisioningStep}
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
@@ -20,7 +21,8 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
   # connection to a TEST-NET address and hang.
   setup :fake_working_directory
 
-  spex "A linked server that has vanished from the provider is not silently rebuilt", criterion: 1144 do
+  spex "A linked server that has vanished from the provider is not silently rebuilt",
+    criterion: 1144 do
     scenario "the environment's server step pauses rather than recreating it under a guessed name" do
       given_ "the project's prod environment is linked to a server that once existed",
              context do
@@ -46,13 +48,26 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _link_response, _frame} =
-          LinkServer.execute(%{environment: "prod", server_name: "now-gone-box"}, frame)
+        _link_response =
+          ToolLibrary.run(
+            "link_server",
+            %{environment: "prod", server_name: "now-gone-box"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, _link_response, _frame} =
-          LinkServer.execute(%{environment: "uat", server_name: "steady-uat-box"}, frame)
+        _link_response =
+          ToolLibrary.run(
+            "link_server",
+            %{environment: "uat", server_name: "steady-uat-box"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, first_response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+        first_response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          context |> Map.put(:first_response, first_response) |> Map.put(:hetzner_state, state)}
@@ -62,7 +77,13 @@ defmodule CodeMySpecSpex.Story1045.Criterion3072Spex do
         Agent.update(context.hetzner_state, fn _ -> false end)
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+
+        response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end

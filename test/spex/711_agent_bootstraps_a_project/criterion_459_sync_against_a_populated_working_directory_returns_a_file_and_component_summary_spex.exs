@@ -14,16 +14,18 @@ defmodule CodeMySpecSpex.Story711.Criterion6245Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
 
   @impl_path "lib/example_bootstrap.ex"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "sync_project rebuilds the requirement graph and returns a file/component summary", criterion: 459 do
+  spex "sync_project rebuilds the requirement graph and returns a file/component summary",
+    criterion: 459 do
     scenario "Sync against a populated working directory returns a file and component summary" do
       given_ "the working directory has at least one tracked source file under lib/", context do
         :ok = Environments.write_file(context.environment, @impl_path, impl_content())
@@ -32,7 +34,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6245Spex do
 
       when_ "the agent calls sync_project", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = SyncProject.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "sync_project",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :sync_response, response)}
       end
 

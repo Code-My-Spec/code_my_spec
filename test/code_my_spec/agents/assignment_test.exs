@@ -9,13 +9,13 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
@@ -49,10 +49,17 @@ defmodule CodeMySpec.Agents.AssignmentTest do
     agent
   end
 
+  defp call(name, scope, params, agent) when is_binary(name) do
+    name |> ToolLibrary.run(params, Map.put(assigns(scope, agent), :scope, scope)) |> flagged()
+  end
+
   defp call(tool, scope, params, agent) do
     {:reply, response, _frame} = tool.execute(params, %Frame{assigns: assigns(scope, agent)})
     {response.isError, hd(Response.to_protocol(response)["content"])["text"]}
   end
+
+  defp flagged({:ok, text}), do: {false, text}
+  defp flagged({:error, text}), do: {true, text}
 
   defp assigns(scope, nil), do: %{current_scope: scope}
   defp assigns(scope, agent), do: %{current_scope: scope, agent_id: agent.id}
@@ -63,7 +70,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   end
 
   defp next(scope, agent \\ nil) do
-    {false, text} = call(GetNextRequirement, scope, %{}, agent)
+    {false, text} = call("get_next_requirement", scope, %{}, agent)
     text
   end
 

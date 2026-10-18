@@ -12,10 +12,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
   alias CodeMySpecSpex.Fixtures
@@ -46,15 +45,16 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "issues_triaged",
               entity_type: "project",
               entity_id: to_string(context.project.id),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(response_text(response))
@@ -64,7 +64,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
       given_ "the agent has dispositioned only 1 of the 2 issues", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _r, _f} = AcceptIssue.execute(%{issue_id: context.issue_a.id}, frame)
+        _r =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: context.issue_a.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         # issue_b is intentionally left :incoming
         {:ok, context}
@@ -73,10 +78,11 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
       when_ "the operator calls evaluate_task on the triage task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}

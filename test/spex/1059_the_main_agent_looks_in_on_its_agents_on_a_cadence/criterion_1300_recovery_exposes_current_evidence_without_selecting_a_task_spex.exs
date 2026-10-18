@@ -9,20 +9,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -41,8 +35,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
              context do
         context = given_a_staffed_checkout(context, "spex_3332")
         context = ProjectStateFixtures.apply_project_kickoff(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
@@ -50,8 +51,9 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
         assert Fixtures.role_queue_size(context.scope, coding.id) == 0
         coding_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coding.id}}
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -60,10 +62,10 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
                 }
               ]
             },
-            coding_frame
+            Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
 
         base_url = HeldProvider.start()
@@ -75,10 +77,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
           assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: coding.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: coding.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -91,25 +97,51 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
       end
 
       when_ "the recovery check inspects the existing fleet", context do
-        {:reply, response, _} = CheckIn.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         HeldProvider.await_request()
         {:ok, context}
       end
 
       then_ "current work, question and machinery evidence can be inspected", context do
-        {:reply, work, _} = ListAgentWork.execute(%{}, frame(context))
-        refute work.isError, response_text(work)
+        work =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, work), response_text(work)
         assert response_text(work) =~ context.main_id
         assert response_text(work) =~ context.coding_id
         assert response_text(work) =~ ~r/no task|nothing to do|in flight/i
-        {:reply, questions, _} = ListNotifications.execute(%{}, frame(context))
-        refute questions.isError, response_text(questions)
+
+        questions =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, questions), response_text(questions)
         assert response_text(questions) =~ context.question_id
         assert response_text(questions) =~ "Which retention policy applies?"
-        {:reply, machinery, _} = CheckMachinery.execute(%{}, frame(context))
-        refute machinery.isError, response_text(machinery)
+
+        machinery =
+          ToolLibrary.run(
+            "check_machinery",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, machinery), response_text(machinery)
         assert response_text(machinery) =~ ~r/working|healthy|answering/i
         {:ok, context}
       end
@@ -124,17 +156,21 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
         refute prompt =~ "The first is:"
 
         for id <- [context.main_id, context.coding_id] do
-          {:reply, tasks, _} =
-            ListTasks.execute(%{}, %Frame{assigns: %{current_scope: context.scope, agent_id: id}})
+          tasks =
+            ToolLibrary.run("list_tasks", %{}, %{scope: context.scope, agent_id: id})
 
-          refute tasks.isError, response_text(tasks)
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.coding_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.coding_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.coding_conversation
         {:ok, context}
       end

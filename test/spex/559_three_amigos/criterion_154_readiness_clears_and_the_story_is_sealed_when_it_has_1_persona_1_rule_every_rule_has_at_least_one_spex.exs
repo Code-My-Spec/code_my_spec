@@ -30,12 +30,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -48,17 +47,19 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
       given_ "one rule with a happy and a failure scenario exists for the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _add_rule_response, _frame} =
-          AddRule.execute(
+        _add_rule_response =
+          ToolLibrary.run(
+            "add_rule",
             %{
               "story_number" => context.story.number,
               "statement" => "Suspended cards cannot be used for purchases"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _happy_response, _frame} =
-          AddScenario.execute(
+        _happy_response =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               "story_number" => context.story.number,
               "rule_statement" => "Suspended cards cannot be used for purchases",
@@ -70,11 +71,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
               Then the purchase is declined
               """
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _failure_response, _frame} =
-          AddScenario.execute(
+        _failure_response =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               "story_number" => context.story.number,
               "rule_statement" => "Suspended cards cannot be used for purchases",
@@ -86,7 +88,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
               Then the purchase is declined for safety
               """
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -114,7 +116,13 @@ defmodule CodeMySpecSpex.Story559.Criterion5887Spex do
 
       then_ "the next requirement is no longer three_amigos_complete for this story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 

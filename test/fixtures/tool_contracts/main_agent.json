@@ -1,0 +1,465 @@
+[
+  {
+    "name": "answer_notification",
+    "description": "Settle one entry from `list_notifications`, whichever kind it is.\n\nA question takes `answer` and `basis`. A permission — a `tap_out`, or an\nagent asking to call something — takes `decision`: `allow` or `deny`.\n\n`basis` says what an answer rests on and is checked: `record` means the\nproject records it, `precedent` means the user already decided it and takes\n`precedent_id`, `inspected` means you read it yourself and takes `citation`\n— a file path, commit, or tool call you actually made in this session, close\nenough to your own wording that it is checkable there. An answer with none\nof these is a guess and is refused — say what you found it in, or escalate.\n\nSay `worked_around` when you had to supply something the asking role should\nhave been able to find itself; that gets counted as a gap in that role's\ntools. Say `capability` alongside it: a short, stable name for what was\nmissing (usually the tool name), not a sentence. `worked_around` is written\nfresh each time and rarely matches word for word between occurrences of the\nsame gap, so without `capability` the same gap can get filed as several\nissues instead of one counted repeatedly.\n",
+    "input_schema": {
+      "properties": {
+        "answer": {
+          "description": "What you found, in the agent's terms. For a question, the answer. For a denied tap_out, why it was denied — the agent is told this, and without it all it hears is 'declined', so it re-reads its own transcript and repeats whatever it last concluded.",
+          "type": "string"
+        },
+        "basis": {
+          "description": "For a question: `record` (the project records it), `precedent`, or `inspected`.",
+          "type": "string"
+        },
+        "capability": {
+          "description": "With `worked_around`: a short, stable name for what was missing — the tool name, normalized, not a sentence. Lets the same gap, described differently each time, still count as one.",
+          "type": "string"
+        },
+        "citation": {
+          "description": "With basis `inspected`: the file path, commit, or tool call you actually made in this session — checked against your own turns, so it has to be close to how you actually wrote or called it, not a paraphrase.",
+          "type": "string"
+        },
+        "decision": {
+          "description": "For a permission (e.g. `tap_out`): `allow` or `deny`.",
+          "type": "string"
+        },
+        "notification_id": {
+          "description": "From `list_notifications`.",
+          "type": "string"
+        },
+        "on_behalf_of": {
+          "description": "A role you are acting as. Usually leave this out.",
+          "type": "string"
+        },
+        "precedent_id": {
+          "description": "With basis `precedent`: the question they answered.",
+          "type": "string"
+        },
+        "tool": {
+          "description": "A tool you are using on that role's behalf.",
+          "type": "string"
+        },
+        "worked_around": {
+          "description": "The capability the asking role lacked, if you covered for one.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "notification_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "cadence",
+    "description": "How often you are woken to look in on your agents, and whether you are being\nwoken at all.\n\nCalled with no arguments it reports; `seconds` sets the interval and `woken`\nturns the waking on or off. Twenty minutes is the starting default and it was a guess — it is\nthe one number trading the feature's two costs against each other, and the\nright value is not knowable in advance. Too long and a stalled agent burns\nmost of a window before anybody looks; too short and the check-ins cost more\nthan they find on a machine that is also running the agents.\n\nReports two separate things, because they are separate and conflating them is\nhow a broken cadence stayed invisible:\n\n  * **woken** — whether this project is meant to be woken at all, or has stood\n    down. A decision, and it survives a restart.\n  * **running** — whether a timer actually exists right now. A fact.\n\nThey disagree in exactly the case worth catching: meant to be woken, and\nnothing there to wake it.\n",
+    "input_schema": {
+      "properties": {
+        "seconds": {
+          "description": "Set the interval to this many seconds. Omit to report without changing it.",
+          "type": "integer"
+        },
+        "woken": {
+          "description": "false stands this project down so nothing wakes it; true resumes. Omit to leave it alone.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "check_in",
+    "description": "Look in on your agents now, without waiting for the next scheduled wake-up.\n\nThe same digest the cadence delivers — what every agent is working on, the\nhealth of the machinery under them, and every question waiting on somebody.\nAssembled from all three, so a failure in any one of them is reported as a\nfailure rather than as a shorter list: an empty digest and an unbuildable one\nread identically, and only one of them is good news.\n\nThe cadence is a floor, never a schedule — the longest anything can go unseen.\nNothing here waits for it: a question raised now is pushed now, and this is\nhow you look when you have a reason to rather than when the timer says so.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "check_machinery",
+    "description": "Whether the things your agents depend on are working: the harness, the tool\nsurface, the preview, the analyzers and the machine itself.\n\nAsk it when an agent misbehaves, before restarting anything. A fault every\nagent shares is one fault underneath them and restarting them will not reach\nit; a fault one agent has while its neighbours work is that agent's.\n\nHealthy is reported as well as broken, so you can rule the machinery out.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "completion_handoff",
+    "description": "Assign reviewed artifact preservation, inspect completions, and explicitly acknowledge their next action. No action certifies QA or starts promotion.",
+    "input_schema": {
+      "properties": {
+        "acknowledgement": {
+          "type": "string"
+        },
+        "action": {
+          "description": "list, assign, acknowledge or redeliver",
+          "type": "string"
+        },
+        "artifact_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "authorship": {
+          "type": "string"
+        },
+        "handoff_id": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "next_action": {
+          "type": "string"
+        },
+        "owner_agent_id": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "reviewed_base": {
+          "type": "string"
+        },
+        "reviewed_diff": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "working_copy_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "escalate_question",
+    "description": "Hand one of your agents' questions to the user, with why you could not answer.\n\nUse it when the decision is theirs — what to build, what it is worth, which\nway the product goes. Not for anything the project already records: look that\nup and answer it.\n\nThe question stays open and stays in your listing, marked as waiting on them.\n",
+    "input_schema": {
+      "properties": {
+        "as": {
+          "description": "The same question as a choice about their product. Put it in their words when the agent's were module names — the original travels with it.",
+          "type": "string"
+        },
+        "question_id": {
+          "description": "From `list_open_questions`.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why this is the user's call and not yours. They read it.",
+          "type": "string"
+        },
+        "to": {
+          "description": "`user` (the default) to escalate; `main` or `product` to hand it to the other answerer instead, without the user seeing it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "question_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_agent_work",
+    "description": "What every agent on this project is doing, across all its working copies.\n\nFor each: the task it holds and the story behind it, when it last said\nanything, whether a turn is still running, what it is waiting on, and what is\nwrong on its checkout.\n\nFacts, not a verdict — whether an agent is stuck is your call to make from\nthem.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_notifications",
+    "description": "Everything the agents on this project are waiting on, in one place.\n\nQuestions and permissions together — a `tap_out` stops an agent exactly as an\nunanswered question does. Grouped by who holds each one: yours to answer, or\nalready sent up and waiting on the user. `kind` says whether it takes an\nanswer or a decision. Settle any of them with `answer_notification`.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_offers",
+    "description": "Every nudge the harness sent this project's agents, as offers with outcomes.\n\nA kind × status count table, then the newest offers (default 50) with their\nsubject, attempt, status and the messages they were sent as. `undelivered`\nnever reached the agent. Filters: `agent_id`, `kind`, `status`, `since`\n(ISO8601), `limit`.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "One agent's offers, from `list_agent_work`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "work, menu, problems, resume, retry, answer, unblocked, check_in or stalled.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "How many offers to show, newest first. Defaults to 50.",
+          "type": "integer"
+        },
+        "since": {
+          "description": "ISO8601 — only offers made at or after this time.",
+          "type": "string"
+        },
+        "status": {
+          "description": "open, claimed, declined, ignored, superseded, expired, n_a or undelivered.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_agent_conversation",
+    "description": "Read what one or more of your agents has said, most recent turns last.\n\nFor finding out what a stuck agent was doing without spending its turn on\nthe question. `agent_id` reads one agent; `agent_ids` merges several onto\none timeline. `limit` bounds how many turns come back; a read that would\nbe too large is cut to the recent end and says so. `since`/`until` (ISO8601)\nnarrow to a window. `last_call_of` skips the transcript and answers only\nthe last call to that tool and what it returned.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "From `list_agent_work`, or its conversation id. One of this or `agent_ids`.",
+          "type": "string"
+        },
+        "agent_ids": {
+          "description": "Several agents, merged onto one timeline.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "last_call_of": {
+          "description": "Skip the transcript — answer only the last call to this tool and its result.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Most recent N turns. Defaults to a page.",
+          "type": "integer"
+        },
+        "since": {
+          "description": "ISO8601 — only turns at or after this time.",
+          "type": "string"
+        },
+        "until": {
+          "description": "ISO8601 — only turns at or before this time.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "ready_stories_without_epic",
+    "description": "Ready stories that belong to no epic.\n\nThe reading that lets you answer \"which ready story is outside every epic\" —\nwhich nothing else exposes. `list_epics` lists epics and `assign_story_to_epic`\nwrites one; neither says which stories are in none of them.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "reset_doc_packages",
+    "description": "Puts failed hex doc packages back in the queue: `failed` markers become\n`pending` with no attempts, and the next sweep tries them again. For\nfailures whose cause has been fixed. Narrow with `packages`, `except` or\n`error_like`; with none, every failed package is reset. Returns the count.\n",
+    "input_schema": {
+      "properties": {
+        "error_like": {
+          "description": "Only failures whose error contains this text, e.g. unique_violation.",
+          "type": "string"
+        },
+        "except": {
+          "description": "Not these package names.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "packages": {
+          "description": "Only these package names.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "restart_agent",
+    "description": "Restart one of your agents, saying why.\n\nThe reason is not a label: it is checked against what has already been tried.\nA restart for a reason that has been tried and did not work is refused and\nraised as an issue instead, because restarting something restarting does not\nfix is a loop with a cost.\n\nRestarts one agent. Not the harness — that would kill in-flight work on every\ncheckout on the machine, other projects included.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "From `list_agent_work`.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "What you are restarting it to fix. Checked against what was already tried.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "agent_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "resume_issue_qa",
+    "description": "Authorize audited QA resumption after an operational partial. Preserves historical attempts; does not certify QA or launch execution.",
+    "input_schema": {
+      "properties": {
+        "attempt_id": {
+          "description": "Latest immutable partial QA attempt being resumed",
+          "type": "string"
+        },
+        "candidate_sha": {
+          "description": "Full preserved candidate SHA independently verified by main",
+          "type": "string"
+        },
+        "coding_agent_id": {
+          "type": "string"
+        },
+        "coding_task_id": {
+          "description": "Existing completed fix_issue task",
+          "type": "string"
+        },
+        "issue_id": {
+          "type": "string"
+        },
+        "operational_only": {
+          "description": "Explicit main attestation of operational interruption rather than implementation failure",
+          "type": "boolean"
+        },
+        "reason": {
+          "description": "Operational prerequisite and evidence that it is now cleared",
+          "type": "string"
+        },
+        "working_copy_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "working_copy_id",
+        "issue_id",
+        "attempt_id",
+        "coding_agent_id",
+        "candidate_sha",
+        "coding_task_id",
+        "operational_only"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "search_answers",
+    "description": "Decisions the user has already made, matching some words.\n\nLook here before escalating. A question they have answered before does not\nneed asking again — pass the id to `answer_question` as `precedent_id` with\nbasis `precedent`.\n\nAnswered questions only. An open one matching the same words is the opposite\nof a precedent: evidence that this has been asked and not decided.\n",
+    "input_schema": {
+      "properties": {
+        "query": {
+          "description": "Words from the question you are handling.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "set_agent_continuous",
+    "description": "Put one of your agents in the loop, or let it leave.\n\nStarting an agent and putting it to work are different acts, and only the\nfirst had a tool. An agent that is started but not continuous takes one turn\nand stops, so a fleet could be started and still do nothing — which is what\n\"my agents are not running\" turns out to mean most times it is said.\n\nAnswers what actually happened, because switching on is not one outcome. The\nflag alone marks an agent willing and leaves it where it was: an agent is a\nsupervised process that acts when messaged, and nothing polls. So this rings\nits bell too, and says whether the bell reached something.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "From `list_agent_work`.",
+          "type": "string"
+        },
+        "continuous": {
+          "description": "True puts it in the loop and wakes it. False lets it stop after its current turn.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "agent_id",
+        "continuous"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "take_over_work",
+    "description": "Ask to take a task off an agent. **This always refuses.**\n\nIt exists to say no, and the no is the feature. Your wider scope is for what a\nrole cannot do, not for what you would rather not wait for — including when an\nagent is being slow. Each individual takeover is defensible; the end state is\none agent doing everything with three idle, decided by nobody.\n\nWhere you legitimately act past a role's reach, act directly rather than\nconfiscating its task — `ready_stories_without_epic` is the worked example, and\nthat already works.\n\nSaid plainly here because the refusal reads like an assessment of the task and\nis not one: `task_id` is accepted and never consulted, so the answer is the\nsame whatever you pass. Nothing specifies when a takeover should succeed, so\nnothing does.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "The agent holding the work.",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "The task you want to take on.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "task_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "validation_hold",
+    "description": "Record, authorize and hand off serial validation. Listing includes terminal and unknown execution evidence; no action launches a run.",
+    "input_schema": {
+      "properties": {
+        "action": {
+          "description": "list, create, authorize, release or confirm_termination",
+          "type": "string"
+        },
+        "affected_copy_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "authorized_copy_id": {
+          "type": "string"
+        },
+        "hold_id": {
+          "type": "string"
+        },
+        "next_agent_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "run_id": {
+          "description": "On create, adopt this project's existing active run rather than start another.",
+          "type": "integer"
+        },
+        "source": {
+          "type": "string"
+        },
+        "termination_evidence": {
+          "description": "Verified terminal evidence for confirm_termination; never a guess or timeout alone.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  }
+]

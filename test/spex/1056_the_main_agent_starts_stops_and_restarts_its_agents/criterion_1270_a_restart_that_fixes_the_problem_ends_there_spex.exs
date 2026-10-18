@@ -29,11 +29,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3302Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
   @reason "it stopped answering after its last turn"
@@ -71,10 +72,14 @@ defmodule CodeMySpecSpex.Story1056.Criterion3302Spex do
         CodeMySpecSpex.Fixtures.record_machine_tools(scope, ["Read", "Write", "Bash"])
 
         for recurrence <- 1..3 do
-          {:reply, response, _frame} =
-            RestartAgent.execute(%{agent_id: agent.id, reason: @reason}, frame)
+          response =
+            ToolLibrary.run(
+              "restart_agent",
+              %{agent_id: agent.id, reason: @reason},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
 
-          refute response.isError, inspect(response)
+          assert match?({:ok, _}, response), inspect(response)
 
           # It worked: the agent spoke again. That is what closes the reason, and
           # the difference between this scenario and 3292's.
@@ -96,14 +101,18 @@ defmodule CodeMySpecSpex.Story1056.Criterion3302Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(%{agent_id: context.agent.id, reason: @reason}, frame)
+        response =
+          ToolLibrary.run(
+            "restart_agent",
+            %{agent_id: context.agent.id, reason: @reason},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the restart is allowed, because every earlier one worked", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                """
                An agent is being refused a restart because of a history of
                remedies that all worked.

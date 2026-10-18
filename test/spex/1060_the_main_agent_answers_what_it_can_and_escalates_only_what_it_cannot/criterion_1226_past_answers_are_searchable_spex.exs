@@ -27,11 +27,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion3256Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -92,10 +93,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion3256Spex do
       when_ "the main agent searches those earlier questions", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SearchAnswers.execute(%{query: "deleting a customer"}, frame)
+        response =
+          ToolLibrary.run(
+            "search_answers",
+            %{query: "deleting a customer"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :results, response_text(response))}
       end

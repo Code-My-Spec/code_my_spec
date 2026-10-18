@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.Main.AnEmptyAnswerSaysWhyItIsEmptyTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.MainAgent.MainAgentMapper
+  alias CodeMySpec.Agents.Tools.MainAgentResponses, as: MainAgentMapper
 
   defp text(response), do: CodeMySpecSpex.TaskResponseHelpers.response_text(response)
 

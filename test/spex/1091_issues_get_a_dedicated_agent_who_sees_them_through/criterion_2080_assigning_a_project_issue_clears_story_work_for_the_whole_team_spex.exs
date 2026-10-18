@@ -7,10 +7,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion2080Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpec.Agents
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -53,13 +52,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion2080Spex do
 
       when_ "the project-level issue, unlinked to any story, is assigned to that working copy",
             context do
-        {:reply, assigned, _frame} =
-          AssignIssueToWorkingCopy.execute(
+        assigned =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
             %{issue_id: context.issue_id, working_copy_id: context.scope.active_working_copy_id},
-            %Frame{assigns: %{current_scope: context.main_scope, agent_id: context.main.id}}
+            %{scope: context.main_scope, agent_id: context.main.id}
           )
 
-        refute assigned.isError
+        assert match?({:ok, _}, assigned)
         {:ok, context}
       end
 
@@ -79,17 +79,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion2080Spex do
 
       then_ "the issue is assigned to the copy and becomes the whole team's active issue",
             context do
-        {:reply, bag, _frame} =
-          ListIssues.execute(
+        bag =
+          ToolLibrary.run(
+            "list_issues",
             %{
               working_copy_id: context.scope.active_working_copy_id,
               status: "all",
               severity: "all"
             },
-            %Frame{assigns: %{current_scope: context.main_scope, agent_id: context.main.id}}
+            %{scope: context.main_scope, agent_id: context.main.id}
           )
 
-        refute bag.isError
+        assert match?({:ok, _}, bag)
         assert response_text(bag) =~ context.issue_id
 
         agents = Agents.list_agents(context.scope)

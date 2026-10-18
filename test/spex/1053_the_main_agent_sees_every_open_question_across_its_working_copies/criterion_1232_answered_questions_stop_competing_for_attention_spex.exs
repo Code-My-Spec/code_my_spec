@@ -21,12 +21,12 @@ defmodule CodeMySpecSpex.Story1053.Criterion3262Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -54,8 +54,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion3262Spex do
 
             frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-            {:reply, response, _frame} =
-              AskUserQuestion.execute(
+            response =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   title: "#{role} needs a decision",
                   questions: [
@@ -65,10 +66,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion3262Spex do
                     }
                   ]
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute response.isError, inspect(response)
+            assert match?({:ok, _}, response), inspect(response)
 
             {role, response_text(response)}
           end
@@ -86,9 +87,15 @@ defmodule CodeMySpecSpex.Story1053.Criterion3262Spex do
 
       when_ "the main agent looks at what is waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
 
-        refute response.isError, inspect(response)
+        response =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :listing, response_text(response))}
       end

@@ -2,13 +2,10 @@ defmodule CodeMySpecSpex.Story1091.Criterion2082Spex do
   @moduledoc "The final landed, QA-passed issue empties the bag and delivers Main's handoff."
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IssuePromotionHelpers
   import CodeMySpecSpex.PromotionHelpers
-
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.OfferHelpers
 
@@ -25,32 +22,41 @@ defmodule CodeMySpecSpex.Story1091.Criterion2082Spex do
       given_ "a team has two accepted project issues in its bag", ctx do
         ctx = ctx |> a_promotable_project() |> an_issue_assigned_to_the_team()
 
-        {:reply, created, _} =
-          CreateIssue.execute(
+        created =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Repair the second notification",
               description: "Preserve the second assignment",
               severity: "high",
               scope: "framework"
             },
-            ctx.main_frame
+            Map.put(ctx.main_frame.assigns, :scope, ctx.main_frame.assigns[:current_scope])
           )
 
-        refute created.isError
+        assert match?({:ok, _}, created)
         second = extract_issue_id!(created)
-        {:reply, accepted, _} = AcceptIssue.execute(%{issue_id: second}, ctx.main_frame)
-        refute accepted.isError
 
-        {:reply, assigned, _} =
-          AssignIssueToWorkingCopy.execute(
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: second},
+            Map.put(ctx.main_frame.assigns, :scope, ctx.main_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, accepted)
+
+        assigned =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
             %{
               issue_id: second,
               working_copy_id: ctx.scope.active_working_copy_id
             },
-            ctx.main_frame
+            Map.put(ctx.main_frame.assigns, :scope, ctx.main_frame.assigns[:current_scope])
           )
 
-        refute assigned.isError
+        assert match?({:ok, _}, assigned)
         {:ok, Map.put(ctx, :second_issue_id, second)}
       end
 
@@ -111,17 +117,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion2082Spex do
   end
 
   defp bag_text(ctx) do
-    {:reply, response, _} =
-      ListIssues.execute(
+    response =
+      ToolLibrary.run(
+        "list_issues",
         %{
           working_copy_id: ctx.scope.active_working_copy_id,
           status: "all",
           severity: "all"
         },
-        ctx.main_frame
+        Map.put(ctx.main_frame.assigns, :scope, ctx.main_frame.assigns[:current_scope])
       )
 
-    refute response.isError
+    assert match?({:ok, _}, response)
     response_text(response)
   end
 end

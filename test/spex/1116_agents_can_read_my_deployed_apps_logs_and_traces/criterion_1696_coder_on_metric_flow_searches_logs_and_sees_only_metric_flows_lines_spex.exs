@@ -15,8 +15,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1696Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -27,8 +28,13 @@ defmodule CodeMySpecSpex.Story1116.Criterion1696Spex do
     scenario "metric_flow's coder searches and sees its own lines" do
       given_ "metric_flow has telemetry configured, with a log line on record", context do
         conn = ClickHouseCassetteHelpers.configure!(context.scope)
+
         ClickHouseCassetteHelpers.stub_rows_for_username(conn.username, [
-          %{"Timestamp" => "2026-10-02 08:00:00", "SeverityText" => "INFO", "Body" => "GET /app 200"}
+          %{
+            "Timestamp" => "2026-10-02 08:00:00",
+            "SeverityText" => "INFO",
+            "Body" => "GET /app 200"
+          }
         ])
 
         {:ok, context}
@@ -36,13 +42,19 @@ defmodule CodeMySpecSpex.Story1116.Criterion1696Spex do
 
       when_ "the coder searches its logs", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = QueryLogs.execute(%{}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "query_logs",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it sees its own log line", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                "expected a successful search, got: #{TaskResponseHelpers.response_text(context.reply)}"
 
         assert TaskResponseHelpers.response_text(context.reply) =~ "GET /app 200"

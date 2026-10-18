@@ -21,9 +21,10 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks
 
   @framework_check ".code_my_spec/credo_checks/framework/spex_denied_calls.ex"
   @custom_marker "# PROJECT EDIT — do not overwrite\n"
@@ -42,7 +43,14 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
 
       when_ "the agent calls install_credo_checks again", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = InstallCredoChecks.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "install_credo_checks",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :install_response, response)}
       end
 
