@@ -38,6 +38,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1869Spex do
         refute reply.isError, response_text(reply)
         [_, request_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(reply))
 
+        # Having asked to leave, its turn ends; main answers while it is idle.
+        :ok = Fixtures.end_turn(context.scope, context.coder)
+
         {:reply, denied, _} =
           AnswerNotification.execute(
             %{notification_id: request_id, decision: "deny", answer: "There is work: take it."},
