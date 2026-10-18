@@ -58,8 +58,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
         {:ok, Map.put(context, :sent, turn_prompt(context))}
       end
 
-      then_ "an unblocked offer on the task, linked to the resume prompt", context do
-        assert_unblocked_offer(context, "task:#{context.task_id}")
+      then_ "exactly one unblocked offer on the task, linked to the resume prompt", context do
+        assert_offer(context, "unblocked", "task:#{context.task_id}")
       end
 
       then_ "the task is not also offered as a second active task", context do
@@ -73,7 +73,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
     end
   end
 
-  spex "Denying a tap-out is also an unblocked offer", criterion: 1799 do
+  # Product's correction on bed5e0d7 (rewriting 1799's own text): "unblocked"
+  # in the one-line criterion was loose wording, not a requirement that a
+  # denied tap-out share the unblocked kind. Releasing a blocked task is one
+  # unblocked offer; denying a tap-out is one denial offer, whose prompt
+  # tells the agent its tap-out was declined and to resume (criterion 1869
+  # depends on that, and the denial kind's own one-rung ladder stays).
+  spex "Denying a tap-out records exactly one denial offer", criterion: 1799 do
     scenario "main denies a task's tap-out" do
       given_ "a continuous coder asked to tap out of its task", context do
         context = coder_holding_a_task(context)
@@ -103,8 +109,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
         {:ok, Map.put(context, :sent, turn_prompt(context))}
       end
 
-      then_ "an unblocked offer on the task, linked to the resume prompt", context do
-        assert_unblocked_offer(context, "task:#{context.task_id}")
+      then_ "exactly one denial offer on the task, linked to the resume prompt", context do
+        assert_offer(context, "denial", "task:#{context.task_id}")
       end
 
       then_ "the task is not also offered as a second active task", context do
@@ -124,14 +130,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
     %Frame{assigns: %{current_scope: context.scope, agent_id: context.coder}}
   end
 
-  defp assert_unblocked_offer(context, subject) do
+  defp assert_offer(context, kind, subject) do
     assert context.sent =~ "resume task #{context.task_id}",
            "the agent was not told to resume its task: #{context.sent}"
 
-    recorded = offers(context, context.coder, %{kind: "unblocked"})
+    recorded = offers(context, context.coder, %{kind: kind})
 
     assert Enum.any?(recorded, &(excerpt(context.sent) in &1.messages)),
-           "the turn the agent got is not recorded as an unblocked offer:\n" <> listing(context)
+           "the turn the agent got is not recorded as a #{kind} offer:\n" <> listing(context)
 
     assert Enum.all?(recorded, &(&1.subject == subject)), listing(context)
     assert [_one] = Enum.filter(recorded, &(&1.status == "open")), listing(context)
