@@ -47,7 +47,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion2169Spex do
       when_ "it ignores every rung of that offer", context do
         id = context.coder
 
-        Enum.each(1..3, fn _ ->
+        # given_ already secured the first push (rung "id"). The ladder for
+        # work/requirement is three rungs long: two more ignores climb to
+        # "detail" and "alternatives" and are each followed by a push; the
+        # third ignore reaches "held_back" -- the point past the last rung
+        # this criterion is about -- and is not followed by one (criterion
+        # 1741's own throttle). That third ignore is the standalone end_turn
+        # below, with no assert_receive after it.
+        Enum.each(1..2, fn _ ->
           :ok = Fixtures.put_agent_mid_turn(context.scope, id)
           :ok = Fixtures.end_turn(context.scope, id)
           assert_receive {:work_turn_requested, ^id, _ref, _rung}, 2_000
