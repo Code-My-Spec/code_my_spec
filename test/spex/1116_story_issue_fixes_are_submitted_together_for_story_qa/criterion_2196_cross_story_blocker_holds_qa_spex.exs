@@ -56,6 +56,11 @@ defmodule CodeMySpecSpex.Story1116.Criterion2196Spex do
         |> Ecto.Changeset.change(status: :resolved, resolution: "Fixed on the owning story.")
         |> CodeMySpec.Repo.update!()
 
+        # A direct write bypasses `Issues.resolve_issue/3`'s own announce
+        # (story 1116, criterion 2196: the graph recomputes from events, not
+        # from reading the table on request — see `QaFixtures`).
+        CodeMySpec.Requirements.GraphInputs.announce(context.scope, "Issues", [], :project_wide)
+
         {:ok, context}
       end
 
