@@ -36,7 +36,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -287,7 +286,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   # the id.
   defp activate(context, story_number) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, _response, _frame} = SetActiveStory.execute(%{story_number: story_number}, frame)
+
+    _response =
+      ToolLibrary.run(
+        "set_active_story",
+        %{story_number: story_number},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     context
   end
 

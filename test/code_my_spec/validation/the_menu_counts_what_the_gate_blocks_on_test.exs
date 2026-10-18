@@ -2,7 +2,7 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
   @moduledoc """
   The problems the menu advertises are the problems the gate would enforce.
 
-  `Validation.enforceable/2` is public for this reason and says so: "two copies
+  `Blocking.enforceable/2` is public for this reason and says so: "two copies
   of what counts as enforceable drift, and the drift is silent." The menu was
   the third copy, and it drifted furthest — it counted every recorded error in
   the project.
@@ -21,9 +21,11 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
+  alias CodeMySpec.Sessions.Task
   alias CodeMySpec.Problems
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
 
   import CodeMySpec.ProblemsFixtures
   import CodeMySpec.StoriesFixtures
@@ -59,20 +61,25 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
     })
   end
 
-  defp problem_count(scope) do
-    scope
-    |> Menu.live(:coding, nil)
-    |> Keyword.get(:problems, 0)
+  # The count rides beside a class, so the owner holds an open task.
+  defp problem_note(scope) do
+    owner = %Agent{
+      tasks: [
+        %Task{id: Ecto.UUID.generate(), status: :active, requirement_name: "implementation_file"}
+      ]
+    }
+
+    Menu.render(scope, false, :coding, owner)
   end
 
-  # Every red spex blocks (John, 2026-10-05), so the menu advertises it.
+  # Every red spex blocks promotion (John, 2026-10-05), so the menu counts it.
   test "a red spec is advertised, whatever its story's state", %{scope: scope} do
     story = story_fixture(scope, %{title: "Not Built Yet"})
     red_spec_for(scope, story)
 
     problems = Problems.list_project_problems(scope, severity: :error)
 
-    assert length(Validation.enforceable(scope, problems)) == 1
-    assert problem_count(scope) == 1
+    assert length(Blocking.enforceable(scope, problems)) == 1
+    assert problem_note(scope) =~ "For information: 1 problem is recorded"
   end
 end

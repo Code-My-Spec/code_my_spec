@@ -13,7 +13,6 @@ defmodule CodeMySpec.Validation.AdvisoryNeverBlocksTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Promotion
-  alias CodeMySpec.Validation
 
   @path "lib/my_app/accounts.ex"
 
@@ -30,15 +29,6 @@ defmodule CodeMySpec.Validation.AdvisoryNeverBlocksTest do
     %{scope: scope}
   end
 
-  test "a credo warning in a file nobody touched this turn blocks, by default", %{scope: scope} do
-    problem_fixture(scope, %{source: "credo", severity: :warning, file_path: @path})
-    fresh_analysis_runs_fixture(scope)
-
-    assert {:error, _reason, _key} = Validation.validate_stop(scope, nil),
-           "task evaluation judged only changed files, so a finding promotion " <>
-             "would refuse was let through"
-  end
-
   describe "an advisory credo finding" do
     setup %{scope: scope} do
       Configurations.get_or_create(scope)
@@ -48,19 +38,8 @@ defmodule CodeMySpec.Validation.AdvisoryNeverBlocksTest do
       :ok
     end
 
-    test "does not block task evaluation by default", %{scope: scope} do
-      assert {:ok, _} = Validation.validate_stop(scope, nil)
-    end
-
     test "does not block promotion by default", %{scope: scope} do
       assert Promotion.blocking_problems(scope) == []
-    end
-
-    test "blocks both when the project says advisory findings block", %{scope: scope} do
-      {:ok, _} = Configurations.update(scope, %{advisory_findings: :block})
-
-      assert {:error, _reason, _key} = Validation.validate_stop(scope, nil)
-      assert [%{severity: :info}] = Promotion.blocking_problems(scope)
     end
   end
 end

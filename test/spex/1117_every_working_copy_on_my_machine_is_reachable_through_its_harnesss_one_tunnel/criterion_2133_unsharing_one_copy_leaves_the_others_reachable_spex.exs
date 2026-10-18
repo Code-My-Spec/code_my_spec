@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2133Spex do
         for copy <- [first, second] do
           response = turn_on(context, copy)
 
-          refute response.isError,
+          assert match?({:ok, _}, response),
                  "setup failed to give #{copy.root} an address: " <> response_text(response)
         end
 
@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2133Spex do
       end
 
       then_ "the other copy's address still answers", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
         carried = context.cf |> routes(@dev_tunnel) |> Enum.map(&elem(&1, 0))
 

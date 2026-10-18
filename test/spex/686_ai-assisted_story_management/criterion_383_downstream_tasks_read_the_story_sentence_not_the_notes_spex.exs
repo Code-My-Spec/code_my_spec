@@ -12,9 +12,9 @@ defmodule CodeMySpecSpex.Story686.Criterion7949Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,23 +27,30 @@ defmodule CodeMySpecSpex.Story686.Criterion7949Spex do
       given_ "a story carrying both a user-story sentence and working notes", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{title: "Driver onboarding", story: @story, notes: @notes},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, "expected create_story to succeed, got: #{inspect(response)}"
+        assert match?({:ok, _}, response),
+               "expected create_story to succeed, got: #{inspect(response)}"
 
         {:ok,
          context |> Map.put(:frame, frame) |> Map.put(:story_number, story_number!(response))}
       end
 
       when_ "a downstream task reads that story", context do
-        {:reply, response, _frame} =
-          GetStory.execute(%{story_number: context.story_number}, context.frame)
+        response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_number},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute response.isError, "expected get_story to succeed, got: #{inspect(response)}"
+        assert match?({:ok, _}, response),
+               "expected get_story to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :story_body, response_text(response))}
       end

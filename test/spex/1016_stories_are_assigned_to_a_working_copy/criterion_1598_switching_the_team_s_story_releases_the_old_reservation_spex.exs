@@ -8,8 +8,6 @@ defmodule CodeMySpecSpex.Story1016.Criterion1598Spex do
   on (a31f1cd6 step 3, John 2026-10-01).
   """
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -26,13 +24,13 @@ defmodule CodeMySpecSpex.Story1016.Criterion1598Spex do
       end
 
       when_ "the team switches to story B", context do
-        Slice.call(context, SetActiveStory, %{story_number: context.waiting.number})
+        Slice.call(context, "set_active_story", %{story_number: context.waiting.number})
         {:ok, context}
       end
 
       then_ "story A is free for the other copy's team to take", context do
         {error?, text} =
-          Slice.attempt(context.other, SetActiveStory, %{story_number: context.story.number})
+          Slice.attempt(context.other, "set_active_story", %{story_number: context.story.number})
 
         refute error?, "the story the team moved off is still held by its old copy. Got:\n#{text}"
         [agent | _] = context.other.team

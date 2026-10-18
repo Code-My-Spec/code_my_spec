@@ -17,6 +17,8 @@ defmodule CodeMySpecSpex.Story967.Criterion2960Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.MainAgentHelpers
 
@@ -70,14 +72,17 @@ defmodule CodeMySpecSpex.Story967.Criterion2960Spex do
         # Through the tool an agent would actually use to retire one, rather
         # than reaching past it into the context. There is no delete.
         alias Anubis.Server.Frame
-        alias CodeMySpec.McpServers.Stories.Tools.RetireStory
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RetireStory.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run(
+            "retire_story",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the story was not retired, so what follows tests nothing: " <>
                  inspect(response)
 

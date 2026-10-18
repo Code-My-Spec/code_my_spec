@@ -9,8 +9,6 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
@@ -80,10 +78,11 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
       when_ "the architect designs a story that adds a field to the Billing page", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          SetStoryComponent.execute(
+        _response =
+          ToolLibrary.run(
+            "set_story_component",
             %{story_number: context.story.number, module_name: context.billing.module_name},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         evaluate_response =
@@ -99,8 +98,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
       then_ "the story is linked to the existing Billing component", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story_response, _frame} =
-          GetStory.execute(%{story_number: context.story.number}, frame)
+        story_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(story_response) =~ "**Component:** #{context.billing.module_name}"
 

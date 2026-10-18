@@ -32,10 +32,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion3099Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpec.WorkingCopies
 
   setup :register_log_in_setup_account
@@ -57,8 +58,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion3099Spex do
       when_ "a working copy is created", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateWorkingCopy.execute(%{label: "on the harness's own disk"}, frame)
+        response =
+          ToolLibrary.run(
+            "create_working_copy",
+            %{label: "on the harness's own disk"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          context

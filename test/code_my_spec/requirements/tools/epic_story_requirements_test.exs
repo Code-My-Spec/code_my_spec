@@ -5,10 +5,8 @@ defmodule CodeMySpec.Requirements.Tools.EpicStoryRequirementsTest do
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.ToolLibrary
-  alias Anubis.Server.{Frame, Response}
+  alias Anubis.Server.{Frame}
   alias CodeMySpec.{Epics, Requirements, Stories}
-
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
 
   test "epic assignment preserves every per-story requirement read" do
     scope = CodeMySpec.ConfigurationsFixtures.ensure_configuration!(full_scope_fixture())
@@ -33,7 +31,7 @@ defmodule CodeMySpec.Requirements.Tools.EpicStoryRequirementsTest do
         {row["name"], call("show_requirement", Map.put(params, :name, row["name"]), frame)}
       end)
 
-    call(AssignStoryToEpic, %{story_number: story.number, epic_name: epic.name}, frame)
+    call("assign_story_to_epic", %{story_number: story.number, epic_name: epic.name}, frame)
     assert Stories.get_story_by_number(scope, story.number).epic_id == epic.id
 
     assert {:ok, after_rows} =
@@ -84,7 +82,7 @@ defmodule CodeMySpec.Requirements.Tools.EpicStoryRequirementsTest do
         {row["name"], call("show_requirement", Map.put(params, :name, row["name"]), frame)}
       end)
 
-    call(AssignStoryToEpic, %{story_number: story.number, epic_name: epic.name}, frame)
+    call("assign_story_to_epic", %{story_number: story.number, epic_name: epic.name}, frame)
     assert Stories.get_story_by_number(scope, story.number).epic_id == epic.id
 
     assert {:ok, after_rows} =
@@ -104,16 +102,9 @@ defmodule CodeMySpec.Requirements.Tools.EpicStoryRequirementsTest do
     end
   end
 
-  defp call(name, params, frame) when is_binary(name) do
+  defp call(name, params, frame) do
     context = Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
     assert {:ok, text} = ToolLibrary.run(name, params, context)
-    text
-  end
-
-  defp call(tool, params, frame) do
-    assert {:reply, response, _} = tool.execute(params, frame)
-    text = hd(Response.to_protocol(response)["content"])["text"]
-    refute response.isError, text
     text
   end
 end

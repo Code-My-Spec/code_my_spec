@@ -209,14 +209,6 @@ defmodule CodeMySpec.Agents.AWaitingAgentIsNeitherNudgedNorWokenTest do
       :ok
     end
 
-    # Instrument check: with nothing to wait on this tree does produce a decision.
-    test "names the finding to an agent waiting on nothing", ctx do
-      StopDecision.deliver(ctx.scope, ctx.agent, [])
-
-      assert_receive {:agent_dispatch, _id, _ref, message}, 2_000
-      assert message =~ "credo"
-    end
-
     test "says nothing while its provisioning step runs", ctx do
       run = hold_run(ctx.scope.active_project_id, ctx.agent.id)
 

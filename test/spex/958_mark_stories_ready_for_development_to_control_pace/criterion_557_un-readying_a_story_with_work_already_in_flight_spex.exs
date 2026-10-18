@@ -17,9 +17,6 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
 
   import CodeMySpecSpex.SharedGivens
 
@@ -35,17 +32,18 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
       given_ "the story \"#{@title}\" is ready for development", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @title,
               description:
                 "As the game world, I want each player to sit in one age so that age gaps drive politics."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, "expected create_story to succeed"
+        assert match?({:ok, _}, response), "expected create_story to succeed"
 
         {:ok, index_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/stories")
@@ -60,13 +58,14 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
       and_ "it is partway through implementation", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SetStoryComponent.execute(
+        response =
+          ToolLibrary.run(
+            "set_story_component",
             %{story_number: context.story_number, module_name: context.component.module_name},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected the story to be linked to a component, got: #{inspect(response)}"
 
         {:ok, context}
@@ -105,12 +104,16 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
       and_ "the work already completed on it is preserved", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          GetStory.execute(%{story_number: context.story_number}, frame)
+        response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected the parked story to still be readable, got: #{inspect(response)}"
 
         assert body =~ @title,

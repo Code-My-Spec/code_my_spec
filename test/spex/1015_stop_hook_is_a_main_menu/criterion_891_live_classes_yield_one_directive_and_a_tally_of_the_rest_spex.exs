@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
   @moduledoc """
   Story 894 — Stop hook is a main menu
-  Criterion 2390 — Three live classes yield one directive and a two-item tally.
+  Criterion 2390 — Live classes yield one directive and a tally of the rest.
 
   The rule:
 
@@ -22,19 +22,14 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
 
   ## The situation this reproduces
 
-  Three classes live at once — a problem, an issue, and unsatisfied
-  requirements. That is not hypothetical: it is the state this working copy was
-  in for most of 2026-08-15/16, and the class the hook shouted about was the one
-  the agent could not act on.
+  Both classes live at once — an unfinished task and unsatisfied requirements.
+  Problems were a class until 2026-10-18, when they stopped blocking a stop and
+  became a line of information; issues stopped being one on 2026-09-05.
 
   ## Surface
 
-  `POST /api/hooks/stop`, routed by `x-harness-id`, with a genuine compile
-  failure via story 555's `pipeline_compile_error` fixtures. The issue is
-  created through the real `create_issue` MCP tool rather than seeded, so the
-  count the hook reports is a count of something that actually exists.
-
-  Expected red: nothing renders a directive or a tally today.
+  `POST /api/hooks/stop`, routed by `x-harness-id`, with an unfinished
+  implementation task, the refusal a stop has now that problems never block.
   """
 
   use CodeMySpecSpex.Case
@@ -44,44 +39,17 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
   alias CodeMySpecSpex.HarnessHooks
 
-  @impl_path "lib/example_context.ex"
-  @fixture_dir "test/fixtures/validation/pipeline_compile_error"
-  @calls ~w(get_next_requirement list_issues list_problems ask_user)
+  @calls ~w(evaluate_task get_next_requirement)
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "One class is named as next and the rest are tallied", criterion: 891 do
-    scenario "problems, issues and requirements are all live" do
+    scenario "an unfinished task and requirements are both live" do
       given_ :synced_context_component
-      given_ :context_implementation_task_started
-
-      given_ "a problem is outstanding", context do
-        :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
-        :ok = record_edit(context, @impl_path)
-        {:ok, context}
-      end
-
-      given_ "an issue is outstanding", context do
-        response =
-          ToolLibrary.run(
-            "create_issue",
-            %{
-              title: "A second class of work is live",
-              description: "Filed so the stop hook has more than one class to report.",
-              severity: "medium"
-            },
-            %{scope: context.scope}
-          )
-
-        assert match?({:ok, _}, response),
-               "the issue must really exist for its count to mean anything"
-
-        {:ok, context}
-      end
+      given_ :unfinished_implementation_task_started
 
       given_ "the agent has asked for its next requirement, so the graph is computed",
              context do
@@ -107,8 +75,6 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
       end
 
       when_ "the agent attempts to stop", context do
-        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
-
         response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
@@ -119,8 +85,8 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
         named = Enum.filter(@calls, &String.contains?(directive(reason), &1))
 
         assert length(named) == 1,
-               "a stop with three classes live must point at one of them. Naming none " <>
-                 "leaves the agent to guess; naming all four is the menu that hides the " <>
+               "a stop with two classes live must point at one of them. Naming none " <>
+                 "leaves the agent to guess; naming both is the menu that hides the " <>
                  "important item in the easy ones. Named: #{inspect(named)}. Got:\n#{reason}"
 
         {:ok, context}
@@ -152,14 +118,5 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
     reason
     |> String.split("\n")
     |> Enum.find("", &(&1 =~ ~r/\bnext\b/i))
-  end
-
-  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
-
-  defp broken_impl do
-    """
-    defmodule ExampleContext do
-      # missing `end`
-    """
   end
 end

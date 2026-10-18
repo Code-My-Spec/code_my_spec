@@ -10,10 +10,9 @@ defmodule CodeMySpecSpex.Story686.Criterion7954Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,34 +24,44 @@ defmodule CodeMySpecSpex.Story686.Criterion7954Spex do
       given_ "the story \"#{@title}\" is ready for development", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, create_response, _frame} =
-          CreateStory.execute(
+        create_response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @title,
               description:
                 "As the game world, I want each player to sit in one age so that age gaps drive politics."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute create_response.isError, "expected create_story to succeed"
+        assert match?({:ok, _}, create_response), "expected create_story to succeed"
 
         story_number = story_number!(create_response)
 
-        {:reply, update_response, _frame} =
-          UpdateStory.execute(%{story_number: story_number, ready_for_dev: true}, frame)
+        update_response =
+          ToolLibrary.run(
+            "update_story",
+            %{story_number: story_number, ready_for_dev: true},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute update_response.isError,
+        assert match?({:ok, _}, update_response),
                "expected update_story to accept ready_for_dev, got: #{inspect(update_response)}"
 
         {:ok, context |> Map.put(:frame, frame) |> Map.put(:story_number, story_number)}
       end
 
       when_ "the agent reads that story", context do
-        {:reply, response, _frame} =
-          GetStory.execute(%{story_number: context.story_number}, context.frame)
+        response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_number},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute response.isError, "expected get_story to succeed, got: #{inspect(response)}"
+        assert match?({:ok, _}, response),
+               "expected get_story to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :story_body, response_text(response))}
       end

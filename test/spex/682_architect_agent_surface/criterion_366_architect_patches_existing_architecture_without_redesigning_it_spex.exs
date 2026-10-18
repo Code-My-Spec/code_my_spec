@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphReadHelpers
   alias CodeMySpecSpex.StoryHelpers
@@ -132,9 +131,14 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
           module_name: "MyApp.NewFeature"
         }
 
-        {:reply, response, _frame} = SetStoryComponent.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "set_story_component",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected set_story_component to succeed, got: #{inspect(response)}"
 
         {:ok, context}

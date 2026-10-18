@@ -7,6 +7,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2031Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.AgentPerformanceHelpers
@@ -14,7 +16,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2031Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -36,8 +37,15 @@ defmodule CodeMySpecSpex.Story1092.Criterion2031Spex do
         Fixtures.running_agent(context.scope, role: "coding", working_copy: context.agent_root)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-        refute resp.isError, inspect(resp)
+
+        resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, resp), inspect(resp)
 
         context = analyzers_are_current(context)
 

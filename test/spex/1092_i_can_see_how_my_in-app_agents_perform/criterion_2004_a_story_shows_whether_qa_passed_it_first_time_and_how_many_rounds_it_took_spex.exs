@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
@@ -86,8 +85,15 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
         asking = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
 
         frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-        refute resp.isError, inspect(resp)
+
+        resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, resp), inspect(resp)
 
         started =
           start_qa(asking, story, socket)

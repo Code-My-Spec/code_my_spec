@@ -15,7 +15,7 @@ defmodule CodeMySpec.McpServers.StoryNumberNamesAStoryTest do
 
   defp tools do
     (LocalServer.registrations() ++
-       ScriptableTools.registrations() ++ ComponentsServer.__components__())
+       ScriptableTools.registrations() ++ ComponentsServer.registrations())
     |> Enum.uniq_by(& &1.name)
   end
 

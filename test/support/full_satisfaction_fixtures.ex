@@ -49,7 +49,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   """
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content

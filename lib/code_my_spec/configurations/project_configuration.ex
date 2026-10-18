@@ -82,7 +82,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # Whether an advisory finding (`:info` — low-priority credo, low sobelow)
     # can block anything: promotion, task evaluation, the stop hook. Advisory
     # never blocks by default (John, 2026-10-04); this is the switch if that
-    # changes. Read through `Validation.can_block?/2` everywhere.
+    # changes. Read through `Blocking.can_block?/2` everywhere.
     field :advisory_findings, Ecto.Enum, values: @compile_modes, default: :dont_block
 
     # Story 704 — TTL for sub-agent registrations (Session.active_subagents/2

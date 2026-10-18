@@ -17,10 +17,11 @@ defmodule CodeMySpecSpex.Story1063.Criterion3340Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   # `Fixtures.story_fixture/2` is deliberately private: it was a plain wrapper
   # around `Stories.create_story/2` with no MCP layer to it, and spex create a
@@ -62,13 +63,14 @@ defmodule CodeMySpecSpex.Story1063.Criterion3340Spex do
       when_ "the story is released for development", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          UpdateStory.execute(
+        response =
+          ToolLibrary.run(
+            "update_story",
             %{story_number: context.new_story.number, ready_for_dev: true},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the story must really be released for this to mean anything:\n" <>
                  inspect(response)
 

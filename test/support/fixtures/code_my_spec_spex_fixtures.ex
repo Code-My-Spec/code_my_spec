@@ -2906,23 +2906,6 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
-  @doc "The stop hook's blocking decision, as the hook itself asks for it."
-  # Drops the block key. `validate_stop/3` returns `{:error, reason, key}` — the
-  # key is R8's repeat identity for the finding set, not something a spec has an
-  # opinion about, and every one of these asserts on the reason.
-  #
-  # A stop never starts or ingests analysis (John, 2026-10-04). Recorded outputs
-  # in `opts` (`:compile_output_file` and friends) are landed as a completed run
-  # first, by `land_outputs/2`, and the stop then reads what that run persisted.
-  def validate_stop(scope, opts \\ [])
-
-  def validate_stop(%Scope{} = scope, opts) do
-    case CodeMySpec.Validation.validate_stop(scope, nil, land_outputs(scope, opts)) do
-      {:error, reason, _key} -> {:error, reason}
-      other -> other
-    end
-  end
-
   @output_file_sources [
     compile_output_file: "compiler",
     credo_output_file: "credo",

@@ -35,30 +35,18 @@ defmodule CodeMySpecSpex.Story1015.Criterion2413Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
   alias CodeMySpecSpex.HarnessHooks
-
-  @impl_path "lib/example_context.ex"
-  @fixture_dir "test/fixtures/validation/pipeline_compile_error"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "An interactive agent is not told to quit a loop it is not in", criterion: 906 do
-    scenario "continuous mode is off and the stop is refused on problems" do
+    scenario "continuous mode is off and the stop is refused on an unfinished task" do
       given_ :synced_context_component
-      given_ :context_implementation_task_started
-
-      given_ "a problem is outstanding", context do
-        # No `start_continuous_mode` here, and that absence is the scenario.
-        :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
-        :ok = record_edit(context, @impl_path)
-        {:ok, context}
-      end
+      # No `start_continuous_mode` here, and that absence is the scenario.
+      given_ :unfinished_implementation_task_started
 
       when_ "the agent attempts to stop", context do
-        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
-
         response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
@@ -77,9 +65,11 @@ defmodule CodeMySpecSpex.Story1015.Criterion2413Spex do
       then_ "leaving the loop is not offered", context do
         reason = context.response["reason"] || ""
 
-        refute reason =~ "tap_out",
-               "there is no loop to leave, and naming the tool reads as an " <>
-                 "instruction to use one that would refuse. Got:\n#{reason}"
+        # The loop offer, not the tool name: an unfinished task's directive names
+        # `tap_out` as one way to block that task, which is not leaving a loop.
+        refute reason =~ "asks to leave it",
+               "there is no loop to leave, and offering to leave one reads as an " <>
+                 "instruction to use a tool that would refuse. Got:\n#{reason}"
 
         {:ok, context}
       end
@@ -95,14 +85,5 @@ defmodule CodeMySpecSpex.Story1015.Criterion2413Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
-
-  defp broken_impl do
-    """
-    defmodule ExampleContext do
-      # missing `end`
-    """
   end
 end

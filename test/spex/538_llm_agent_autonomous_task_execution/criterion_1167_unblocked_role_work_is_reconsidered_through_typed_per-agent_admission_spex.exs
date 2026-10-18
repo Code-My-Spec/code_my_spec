@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -67,13 +66,14 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
 
         assert match?({:ok, _}, started), response_text(started)
 
-        {:reply, parked, _} =
-          UpdateStory.execute(
+        parked =
+          ToolLibrary.run(
+            "update_story",
             %{story_number: story.number, ready_for_dev: false},
-            product_frame
+            Map.put(product_frame.assigns, :scope, product_frame.assigns[:current_scope])
           )
 
-        refute parked.isError, response_text(parked)
+        assert match?({:ok, _}, parked), response_text(parked)
 
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         qa = Fixtures.running_agent(context.scope, role: "qa", continuous: true)
@@ -119,13 +119,18 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
         assert match?({:ok, _}, evaluated), response_text(evaluated)
         assert response_text(evaluated) =~ "Passed"
 
-        {:reply, released, _} =
-          UpdateStory.execute(
+        released =
+          ToolLibrary.run(
+            "update_story",
             %{story_number: context.story.number, ready_for_dev: true},
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute released.isError, response_text(released)
+        assert match?({:ok, _}, released), response_text(released)
         :ok = Fixtures.settle_graph(context.scope)
         HeldProvider.await_request()
         {:ok, context}

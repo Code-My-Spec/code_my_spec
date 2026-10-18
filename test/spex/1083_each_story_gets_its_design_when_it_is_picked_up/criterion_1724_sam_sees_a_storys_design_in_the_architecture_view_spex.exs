@@ -10,7 +10,6 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpec.Paths
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
@@ -61,10 +60,11 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
 
         task_id = extract_task_id!(response_text(task_response))
 
-        {:reply, _response, _frame} =
-          SetStoryComponent.execute(
+        _response =
+          ToolLibrary.run(
+            "set_story_component",
             %{story_number: story.number, module_name: component.module_name},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _evaluate_response =

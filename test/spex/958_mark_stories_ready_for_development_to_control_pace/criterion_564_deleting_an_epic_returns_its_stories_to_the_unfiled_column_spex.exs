@@ -14,13 +14,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.ListEpics
-  alias CodeMySpec.McpServers.Stories.Tools.ListStories
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,18 +30,26 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, epic_response, _frame} =
-          CreateEpic.execute(%{name: "Stone Age", description: "Earliest age."}, frame)
+        epic_response =
+          ToolLibrary.run(
+            "create_epic",
+            %{name: "Stone Age", description: "Earliest age."},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute epic_response.isError, "expected create_epic to succeed"
+        assert match?({:ok, _}, epic_response), "expected create_epic to succeed"
 
         released = file_story(frame, @released, "Stone Age")
         _parked = file_story(frame, @parked, "Stone Age")
 
-        {:reply, update_response, _frame} =
-          UpdateStory.execute(%{story_number: released, ready_for_dev: true}, frame)
+        update_response =
+          ToolLibrary.run(
+            "update_story",
+            %{story_number: released, ready_for_dev: true},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute update_response.isError, "expected the released story to be released"
+        assert match?({:ok, _}, update_response), "expected the released story to be released"
 
         {:ok, context |> Map.put(:frame, frame) |> Map.put(:epic_id, epic_id!(epic_response))}
       end
@@ -71,7 +75,13 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
         # not the board's LiveView), so this independently confirms the
         # delete reached the database rather than trusting the same view
         # that reported success to also report absence correctly.
-        {:reply, epics_response, _frame} = ListEpics.execute(%{}, context.frame)
+        epics_response =
+          ToolLibrary.run(
+            "list_epics",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
         remaining = response_text(epics_response)
 
         refute remaining =~ context.epic_id,
@@ -88,8 +98,12 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
       end
 
       and_ "each story keeps the readiness it had before the delete", context do
-        {:reply, response, _frame} =
-          ListStories.execute(%{ready_for_dev: true, limit: 100}, context.frame)
+        response =
+          ToolLibrary.run(
+            "list_stories",
+            %{ready_for_dev: true, limit: 100},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
         ready = response_text(response)
 
@@ -119,20 +133,25 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
     do: raise("unfiled dropzone not found on the board: #{html}")
 
   defp file_story(frame, title, epic_name) do
-    {:reply, response, _frame} =
-      CreateStory.execute(
+    response =
+      ToolLibrary.run(
+        "create_story",
         %{title: title, story: "As a player, I want #{title} so that the age feels alive."},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute response.isError, "expected create_story to succeed for #{title}"
+    assert match?({:ok, _}, response), "expected create_story to succeed for #{title}"
 
     story_number = story_number!(response)
 
-    {:reply, assign_response, _frame} =
-      AssignStoryToEpic.execute(%{story_number: story_number, epic_name: epic_name}, frame)
+    assign_response =
+      ToolLibrary.run(
+        "assign_story_to_epic",
+        %{story_number: story_number, epic_name: epic_name},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
-    refute assign_response.isError, "expected #{title} to be filed into #{epic_name}"
+    assert match?({:ok, _}, assign_response), "expected #{title} to be filed into #{epic_name}"
 
     story_number
   end

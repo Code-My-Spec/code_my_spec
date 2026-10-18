@@ -111,29 +111,12 @@ defmodule CodeMySpec.Hooks.Stop do
         agent_id: agent_id
       })
 
-    case Validation.validate_stop(scope, active_task, opts) do
-      # Persisted problems block. `key` (`Validation.blocking_key/1`, the
-      # finding set) feeds stuck-detection on this path.
-      {:error, reason, key} ->
-        maybe_terminate_stuck(scope, session_id, reason, req_id, key)
-
-      {:ok, result} ->
-        scope
-        |> evaluate_and_decide(session_id, session, req_id)
-        |> note_assignment(result)
-    end
+    # Problems never block a stop; promotion is where they gate (John,
+    # 2026-10-18). Validation still syncs files and runs the in-process
+    # validators.
+    {:ok, _result} = Validation.validate_stop(scope, active_task, opts)
+    evaluate_and_decide(scope, session_id, session, req_id)
   end
-
-  # An allowed stop names findings that are not its problem: assignment
-  # decides whose stop a finding refuses, never whether anybody hears about it.
-  # Only on an allow; a block already carries the note in its reason.
-  defp note_assignment(%{"decision" => "block"} = response, _result), do: response
-
-  defp note_assignment(response, %{advisory_note: note}) when is_binary(note) do
-    Map.update(response, "systemMessage", note, &(&1 <> "\n\n" <> note))
-  end
-
-  defp note_assignment(response, _result), do: response
 
   defp evaluate_and_decide(scope, session_id, session, req_id) do
     case maybe_evaluate(scope, session_id, session) do
@@ -144,7 +127,7 @@ defmodule CodeMySpec.Hooks.Stop do
       # it twice would advance the streak two per stop and trip the escape at
       # half the intended threshold.
       {:error, reason} ->
-        maybe_terminate_stuck(scope, session_id, reason, req_id, nil)
+        maybe_terminate_stuck(scope, session_id, reason, req_id)
     end
   end
 
@@ -185,27 +168,25 @@ defmodule CodeMySpec.Hooks.Stop do
     Map.merge(%{"systemMessage" => message}, terminus_retrospective())
   end
 
-  defp maybe_terminate_stuck(scope, nil, reason, req_id, _key),
+  defp maybe_terminate_stuck(scope, nil, reason, req_id),
     do: block_with_reason(scope, reason, req_id)
 
-  defp maybe_terminate_stuck(scope, session_id, reason, req_id, key) do
+  defp maybe_terminate_stuck(scope, session_id, reason, req_id) do
     case Sessions.get_by_external_id(scope, session_id) do
       nil ->
         block_with_reason(scope, reason, req_id)
 
       session ->
-        session = record_block(scope, session, key)
-
-        cond do
-          continuous_mode?(session) and stuck_threshold_hit?(session) ->
+        case {stuck_threshold_hit?(session), continuous_mode?(session)} do
+          {true, true} ->
             terminate_stuck(scope, session, req_id)
 
           # A non-continuous session gets the same escape: a block that
           # repeats forever is its own outage. Allow, saying nothing was fixed.
-          stuck_threshold_hit?(session) ->
+          {true, false} ->
             allow_stuck(session, req_id)
 
-          true ->
+          {false, _continuous} ->
             block_with_reason(scope, reason, req_id, session)
         end
     end
@@ -225,18 +206,6 @@ defmodule CodeMySpec.Hooks.Stop do
           "the findings are still recorded and will block again. If they are real but " <>
           "not yours to fix, file them with `create_issue` and tell the user."
     }
-  end
-
-  # A block on problems counts like a repeated task-evaluation failure, keyed
-  # on the finding set: the same set advances the streak, a changed one resets
-  # it.
-  defp record_block(_scope, session, nil), do: session
-
-  defp record_block(scope, session, key) do
-    case Sessions.record_eval_feedback(scope, session, key) do
-      {:ok, updated} -> updated
-      _ -> session
-    end
   end
 
   defp block_with_reason(scope, reason, req_id, owner \\ nil) do

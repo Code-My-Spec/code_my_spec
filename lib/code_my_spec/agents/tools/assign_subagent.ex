@@ -74,7 +74,7 @@ defmodule CodeMySpec.Agents.Tools.AssignSubagent do
   # restriction only announced itself in a refusal the assigner never sees.
   @doc false
   # Public only so the wording can be asserted without standing up a task
-  # through `StartTask`, the same reason `Validation.blocking_key/1` is. The
+  # through `StartTask`. The
   # wiring is covered by story 704's spex, which run this tool for real.
   @spec git_note() :: String.t()
   def git_note do

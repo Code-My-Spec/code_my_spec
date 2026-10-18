@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2126Spex do
 
       then_ "every copy is given an address", context do
         for response <- context.responses do
-          refute response.isError,
+          assert match?({:ok, _}, response),
                  "a serving copy was refused an address: " <> response_text(response)
         end
 

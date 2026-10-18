@@ -1,0 +1,262 @@
+defmodule CodeMySpec.Stories.Tools.ListStoriesTest do
+  use ExUnit.Case, async: true
+
+  alias CodeMySpec.ToolLibrary
+  import CodeMySpec.UsersFixtures
+  import CodeMySpec.StoriesFixtures
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.Tags
+  alias Ecto.Adapters.SQL.Sandbox
+
+  setup do
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
+  end
+
+  describe "ListStories tool" do
+    test "returns paginated results with default limit" do
+      scope = full_scope_fixture()
+      # Create 25 stories to test pagination
+      for i <- 1..25, do: story_fixture(scope, %{title: "Story #{i}"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      # Check response contains pagination info
+      {_, content} = response
+
+      assert content =~ "Showing 1-20 of 25 stories"
+      assert content =~ "Use offset: 20 to see more"
+    end
+
+    test "respects limit parameter" do
+      scope = full_scope_fixture()
+      for i <- 1..10, do: story_fixture(scope, %{title: "Story #{i}"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{limit: 3},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Showing 1-3 of 10 stories"
+    end
+
+    test "respects offset parameter" do
+      scope = full_scope_fixture()
+      for i <- 1..10, do: story_fixture(scope, %{title: "Story #{i}"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{limit: 3, offset: 5},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Showing 6-8 of 10 stories"
+    end
+
+    test "filters by search term" do
+      scope = full_scope_fixture()
+      story_fixture(scope, %{title: "User Login Feature"})
+      story_fixture(scope, %{title: "User Registration"})
+      story_fixture(scope, %{title: "Admin Dashboard"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{search: "User"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Showing 1-2 of 2 stories"
+      assert content =~ "User Login Feature"
+      assert content =~ "User Registration"
+      refute content =~ "Admin Dashboard"
+    end
+
+    test "enforces max limit of 100" do
+      scope = full_scope_fixture()
+      for i <- 1..150, do: story_fixture(scope, %{title: "Story #{i}"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{limit: 500},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Showing 1-100 of 150"
+    end
+
+    test "returns empty state message when no stories" do
+      scope = full_scope_fixture()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "No stories found"
+    end
+
+    test "filters by tag" do
+      scope = full_scope_fixture()
+      story1 = story_fixture(scope, %{title: "Tagged Story 1"})
+      story2 = story_fixture(scope, %{title: "Tagged Story 2"})
+      _story3 = story_fixture(scope, %{title: "Untagged Story"})
+
+      # Tag only first two stories
+      Tags.add_tag(scope, story1, "my-tag")
+      Tags.add_tag(scope, story2, "my-tag")
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{tag: "my-tag"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Showing 1-2 of 2 stories"
+      assert content =~ "Tagged Story 1"
+      assert content =~ "Tagged Story 2"
+      refute content =~ "Untagged Story"
+    end
+
+    test "without_epic filters to stories not assigned to any epic" do
+      scope = full_scope_fixture()
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Onboarding"})
+      filed = story_fixture(scope, %{title: "Filed Story"})
+      {:ok, _filed} = CodeMySpec.Stories.update_story(scope, filed, %{epic_id: epic.id})
+      _unfiled = story_fixture(scope, %{title: "Unfiled Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{without_epic: true},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Showing 1-1 of 1 stories"
+      assert content =~ "Unfiled Story"
+      refute content =~ "Filed Story"
+    end
+
+    # The other half of `without_epic`. It shipped alone, so "which stories are
+    # in no epic" was answerable and "which stories are in this one" was not —
+    # `list_epics` gives a count, not the members, and the only route to an
+    # epic's contents was `get_story` per story. The main agent supplied the
+    # answer for the product role three times, smoothly, which is why nobody
+    # filed it for so long (cf035b50).
+    test "epic filters to the stories that epic contains, by slug" do
+      scope = full_scope_fixture()
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Onboarding"})
+      filed = story_fixture(scope, %{title: "Filed Story"})
+      {:ok, _filed} = CodeMySpec.Stories.update_story(scope, filed, %{epic_id: epic.id})
+      _unfiled = story_fixture(scope, %{title: "Unfiled Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{epic: epic.slug},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Showing 1-1 of 1 stories"
+      assert content =~ "Filed Story"
+      refute content =~ "Unfiled Story"
+    end
+
+    # `list_epics` prints both spellings, so a caller should be able to paste
+    # back either. The id path is separate code: a slug is not a UUID, and
+    # comparing one against `epic_id` is a cast error rather than an empty list.
+    test "epic accepts the id as well as the slug" do
+      scope = full_scope_fixture()
+      {:ok, epic} = CodeMySpec.Epics.create_epic(scope, %{name: "Onboarding"})
+      filed = story_fixture(scope, %{title: "Filed Story"})
+      {:ok, _filed} = CodeMySpec.Stories.update_story(scope, filed, %{epic_id: epic.id})
+      _unfiled = story_fixture(scope, %{title: "Unfiled Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{epic: epic.id},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "Filed Story"
+      refute content =~ "Unfiled Story"
+    end
+
+    # Anubis drops a parameter the schema does not declare, silently — the
+    # defect behind `update_story`'s epic_id earlier today. A filter that is
+    # dropped returns every story, which reads as "this epic contains
+    # everything" rather than as an error.
+    test "the epic filter is declared in the schema, so it survives the transport" do
+      assert %{"epic" => _} =
+               CodeMySpec.Tools.input_schema(CodeMySpec.Stories.Tools.ListStories)["properties"]
+    end
+
+    test "returns empty when tag has no stories" do
+      scope = full_scope_fixture()
+      _story = story_fixture(scope, %{title: "Some Story"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{tag: "nonexistent-tag"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "No stories found"
+    end
+  end
+end

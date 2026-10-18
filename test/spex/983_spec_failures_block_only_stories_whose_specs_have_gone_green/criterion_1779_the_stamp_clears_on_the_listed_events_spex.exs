@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1779Spex do
 
       when_ "a criterion is added to the story", context do
         response = add_criterion(context, context.story, "It also works on Tuesdays")
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
         {:ok, context}
       end
 

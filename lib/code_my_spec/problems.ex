@@ -52,7 +52,5 @@ defmodule CodeMySpec.Problems do
   defdelegate from_test_failure(test_error), to: ProblemConverter
 
   # Renderer functions
-  defdelegate render_stop_response(blocking, advisory, opts \\ []), to: ProblemRenderer
-  defdelegate advisory_assignment_note(advisory, assignment), to: ProblemRenderer
   defdelegate truncate_to_cap(text, opts \\ []), to: ProblemRenderer
 end

@@ -11,10 +11,9 @@ defmodule CodeMySpecSpex.Story686.Criterion7955Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.ListStories
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,46 +26,54 @@ defmodule CodeMySpecSpex.Story686.Criterion7955Spex do
       given_ "the project has both ready and not-ready stories", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, released_response, _frame} =
-          CreateStory.execute(
+        released_response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @released,
               description: "As a player, I want released work so that the queue moves."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute released_response.isError,
+        assert match?({:ok, _}, released_response),
                "expected create_story to succeed for the released story"
 
-        {:reply, update_response, _frame} =
-          UpdateStory.execute(
+        update_response =
+          ToolLibrary.run(
+            "update_story",
             %{story_number: story_number!(released_response), ready_for_dev: true},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute update_response.isError,
+        assert match?({:ok, _}, update_response),
                "expected update_story to accept ready_for_dev, got: #{inspect(update_response)}"
 
-        {:reply, parked_response, _frame} =
-          CreateStory.execute(
+        parked_response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @parked,
               description: "As a player, I want parked work so that the backlog has depth."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute parked_response.isError, "expected create_story to succeed for the parked story"
+        assert match?({:ok, _}, parked_response),
+               "expected create_story to succeed for the parked story"
 
         {:ok, Map.put(context, :frame, frame)}
       end
 
       when_ "the agent lists stories filtered to not ready for development", context do
-        {:reply, response, _frame} =
-          ListStories.execute(%{ready_for_dev: false}, context.frame)
+        response =
+          ToolLibrary.run(
+            "list_stories",
+            %{ready_for_dev: false},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected list_stories to accept a ready_for_dev filter, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :list_body, response_text(response))}

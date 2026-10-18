@@ -10,11 +10,11 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
   The stop exercised here validates a QA brief the session wrote. The cloud has
   no disk: it knows the brief changed from the harness's manifest and the
   session's `post-tool-use`, and it can only judge the brief's content by asking
-  the harness to read it. So the same stop is asserted twice — refused naming
-  the sections the written brief lacks, then let through once the brief is
-  complete — and the verdict has to follow what is on disk. A cut `fs_request`
-  path reads as "could not read, nothing to report" and lets the first stop
-  through.
+  the harness to read it. So the same stop runs twice — first recording a
+  problem naming the sections the written brief lacks, then clearing it once the
+  brief is complete — and the record has to follow what is on disk. A cut
+  `fs_request` path reads as "could not read, nothing to report" and records
+  nothing the first time. Neither stop blocks: problems gate at promotion.
 
   Driven from two async test modules below, so the two run at once (ExUnit
   runs one module's tests in sequence, and modules side by side): two projects,
@@ -75,28 +75,28 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
            "session-start should open the session in the cloud; got #{inspect(started)}"
 
     write_brief(ctx, session_id, brief, @incomplete_brief)
-    refused = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})
+    first = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})
 
-    assert refused["decision"] == "block",
-           "expected the incomplete brief to block: #{inspect(refused)}"
+    refute first["decision"] == "block", "problems never block a stop: #{inspect(first)}"
 
-    assert refused["reason"] =~ brief
+    assert [problem] = brief_problems(ctx, brief),
+           "the incomplete brief, read over the channel, should be recorded as a problem"
 
-    assert refused["reason"] =~
-             "Missing required sections: auth, seeds, what to test, result path"
+    assert problem.message =~ "Missing required sections: auth, seeds, what to test, result path"
 
     write_brief(ctx, session_id, brief, @complete_brief)
-    allowed = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})
+    second = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})
 
-    # Checked against the stale-content marker, not the bare path: the path
-    # alone would also appear in an honest read-failure message (a83cb226),
-    # which is a different, real problem that refute allowed["decision"] ==
-    # "block" below already catches on its own terms.
-    refute (allowed["reason"] || "") =~ "Missing required sections",
-           "the brief on disk is complete, so a stop still citing missing sections never re-read it: " <>
-             inspect(allowed)
+    refute second["decision"] == "block", "expected the stop through: #{inspect(second)}"
 
-    refute allowed["decision"] == "block", "expected the stop through: #{inspect(allowed)}"
+    assert brief_problems(ctx, brief) == [],
+           "the brief on disk is complete, so a problem still standing means it was never re-read"
+  end
+
+  defp brief_problems(ctx, brief) do
+    ctx.scope
+    |> CodeMySpec.Problems.list_project_problems(source: "qa_validation")
+    |> Enum.filter(&(&1.file_path == brief))
   end
 
   # The agent's `Write`, and the `post-tool-use` Claude Code sends after it —

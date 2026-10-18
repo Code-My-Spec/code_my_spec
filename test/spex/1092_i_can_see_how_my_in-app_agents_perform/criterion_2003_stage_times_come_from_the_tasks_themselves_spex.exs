@@ -19,7 +19,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -58,7 +57,12 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
             acceptance_criteria: ["It works"]
           )
 
-        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
+        _resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         :ok = Fixtures.age_story(scope, story.id, 7200)
 

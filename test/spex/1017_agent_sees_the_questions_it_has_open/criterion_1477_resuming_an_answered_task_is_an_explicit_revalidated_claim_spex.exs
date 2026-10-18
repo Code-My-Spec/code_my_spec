@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -286,13 +285,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
       end
 
       given_ "the story has been withdrawn from development after the answer", context do
-        {:reply, updated, _} =
-          UpdateStory.execute(
+        updated =
+          ToolLibrary.run(
+            "update_story",
             %{story_number: context.story_number, ready_for_dev: false},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute updated.isError, response_text(updated)
+        assert match?({:ok, _}, updated), response_text(updated)
 
         graph =
           ToolLibrary.run(

@@ -45,12 +45,13 @@ defmodule CodeMySpecSpex.Story964.Criterion3085Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpecSpex.EpicHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -62,7 +63,8 @@ defmodule CodeMySpecSpex.Story964.Criterion3085Spex do
     :ok
   end
 
-  spex "The main agent chooses whether an epic goes to a working copy that already exists or to a new one", criterion: 1148 do
+  spex "The main agent chooses whether an epic goes to a working copy that already exists or to a new one",
+    criterion: 1148 do
     scenario "An epic goes where the context already is" do
       given_ :synced_context_component
 
@@ -74,10 +76,11 @@ defmodule CodeMySpecSpex.Story964.Criterion3085Spex do
         first = EpicHelpers.propose(context, "Harness work, part one", stories: 1)
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          AssignEpicToWorkingCopy.execute(
+        _response =
+          ToolLibrary.run(
+            "assign_epic_to_working_copy",
             %{epic_id: first, working_copy_id: copy.working_copy_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :carrying, copy.working_copy_id)}

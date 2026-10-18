@@ -16,7 +16,7 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Stories.AcceptanceCriteria
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
 
   @dir "test/spex/agency-white-label-configuration-781a555e"
 
@@ -57,7 +57,7 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
 
     problems = red(scope, "#{@dir}/criterion_4152_renumbered_spex.exs")
 
-    assert length(Validation.enforceable(scope, problems)) == 1
+    assert length(Blocking.enforceable(scope, problems)) == 1
   end
 
   test "a directory two stories record into answers nothing, so it still blocks" do
@@ -67,6 +67,6 @@ defmodule CodeMySpec.Validation.ALegacySpexDirectoryBelongsToItsStoryTest do
 
     problems = red(scope, "#{@dir}/criterion_4152_renumbered_spex.exs")
 
-    assert length(Validation.enforceable(scope, problems)) == 1
+    assert length(Blocking.enforceable(scope, problems)) == 1
   end
 end

@@ -16,6 +16,8 @@ defmodule CodeMySpec.ToolLibrary do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.WorkingCopies.Tools,
+      CodeMySpec.Stories.Tools,
       CodeMySpec.Provisioning.Tools,
       CodeMySpec.Components.Tools,
       CodeMySpec.Issues.Tools,
@@ -51,6 +53,8 @@ defmodule CodeMySpec.ToolLibrary do
         CodeMySpec.Research.Tools.all() ++
         CodeMySpec.Analysis.Tools.all() ++
         CodeMySpec.AgentPerformance.Tools.all() ++
+        CodeMySpec.WorkingCopies.Tools.all() ++
+        CodeMySpec.Stories.Tools.all() ++
         CodeMySpec.Provisioning.Tools.all() ++
         CodeMySpec.Components.Tools.all() ++
         CodeMySpec.Issues.Tools.all() ++

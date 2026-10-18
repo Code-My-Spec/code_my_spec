@@ -7,13 +7,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2033Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -53,10 +54,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2033Spex do
 
         earlier_frame = %Frame{assigns: %{current_scope: scope}}
 
-        {:reply, resp, _frame} =
-          SetActiveStory.execute(%{story_number: earlier.number}, earlier_frame)
+        resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: earlier.number},
+            Map.put(earlier_frame.assigns, :scope, earlier_frame.assigns[:current_scope])
+          )
 
-        refute resp.isError, inspect(resp)
+        assert match?({:ok, _}, resp), inspect(resp)
 
         :ok =
           Fixtures.record_turn(
@@ -80,10 +85,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2033Spex do
 
         target_frame = %Frame{assigns: %{current_scope: scope}}
 
-        {:reply, resp2, _frame} =
-          SetActiveStory.execute(%{story_number: target.number}, target_frame)
+        resp2 =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: target.number},
+            Map.put(target_frame.assigns, :scope, target_frame.assigns[:current_scope])
+          )
 
-        refute resp2.isError, inspect(resp2)
+        assert match?({:ok, _}, resp2), inspect(resp2)
 
         :ok =
           Fixtures.record_turn(

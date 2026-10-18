@@ -10,10 +10,11 @@ defmodule CodeMySpecSpex.Story1033.Criterion3001Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
   alias CodeMySpec.McpServers.LocalServer
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,13 +28,14 @@ defmodule CodeMySpecSpex.Story1033.Criterion3001Spex do
       end
 
       given_ "the project has a story", context do
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{title: "Still reachable", story: "As an agent, I want to reach it."},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
 
         {:ok, context}
       end

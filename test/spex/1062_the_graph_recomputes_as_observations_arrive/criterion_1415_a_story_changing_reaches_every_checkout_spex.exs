@@ -38,13 +38,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -100,13 +101,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3503Spex do
       when_ "the story is linked to a component from one checkout", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _frame} =
-          SetStoryComponent.execute(
+        reply =
+          ToolLibrary.run(
+            "set_story_component",
             %{story_number: context.story_number, module_name: "ExampleContext"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute reply.isError, inspect(reply)
+        assert match?({:ok, _}, reply), inspect(reply)
 
         {:ok,
          context

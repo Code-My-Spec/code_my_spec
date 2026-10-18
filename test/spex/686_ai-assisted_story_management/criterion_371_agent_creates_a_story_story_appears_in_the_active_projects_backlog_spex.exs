@@ -9,9 +9,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5907Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.ListStoryTitles
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,9 +27,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5907Spex do
           acceptance_criteria: []
         }
 
-        {:reply, response, _frame} = CreateStory.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "create_story",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected create_story to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :create_response, response)}
@@ -38,7 +43,13 @@ defmodule CodeMySpecSpex.Story686.Criterion5907Spex do
       then_ "list_story_titles includes the new story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} = ListStoryTitles.execute(%{}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_story_titles",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(list_response)
 
         assert body =~ "Driver onboarding",
