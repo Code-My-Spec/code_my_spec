@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion2177Spex do
 
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.OfferHelpers
-  import CodeMySpecSpex.QuestionRoutingHelpers, only: [frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
