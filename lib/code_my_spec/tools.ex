@@ -86,6 +86,27 @@ defmodule CodeMySpec.Tools do
          "connection itself identifies, not one named in a parameter"}
 
   @doc """
+  Refuses a `project_id` argument naming a project other than the one this
+  call is already scoped to, instead of silently answering for the bound
+  project anyway (79873d5a). `nil` — not passed, or passed matching the
+  connection's own project — is not a refusal.
+
+  A tool opts into this by declaring `project_id` in its own params (Peri
+  drops an undeclared key before `call/2` ever sees it); this is the check
+  to run once it has.
+  """
+  @spec reject_other_project(Scope.t(), map()) :: :ok | {:error, String.t()}
+  def reject_other_project(%Scope{active_project_id: id}, %{project_id: project_id})
+      when is_binary(project_id) and project_id != id do
+    {:error,
+     "project_id `#{project_id}` is not this connection's project (`#{id}`). " <>
+       "This tool only ever reads the project its connection is scoped to; there is " <>
+       "no way to read a different project's data through it."}
+  end
+
+  def reject_other_project(_scope, _params), do: :ok
+
+  @doc """
   The reply a tool that needs the project's files gives when this machine has
   none, saying what to do instead rather than only what failed.
   """

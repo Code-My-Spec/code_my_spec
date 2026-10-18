@@ -100,6 +100,24 @@ defmodule CodeMySpec.Agents.ToolIndex do
   end
 
   @doc """
+  The `carried/1` tools as the harness builds them: name, description and
+  input schema, read from the registration the server lists, so the engine's
+  copy of a tool cannot drift from the one every other client sees.
+  """
+  @spec carried_definitions(registry()) :: [map()]
+  def carried_definitions(%{direct: direct} = registry) do
+    names = carried(registry)
+
+    for %{name: name} = tool <- Enum.sort_by(direct, & &1.name), name in names do
+      %{
+        "name" => name,
+        "description" => tool.description,
+        "input_schema" => tool.input_schema
+      }
+    end
+  end
+
+  @doc """
   What this agent can reach from `run_script`, and what exists that it cannot.
 
   The data the index's scriptable section renders from, sent to the harness so a

@@ -48,6 +48,8 @@ defmodule CodeMySpec.Analysis do
 
   alias CodeMySpec.Analysis.{
     Execution,
+    FleetHold,
+    FleetHolds,
     HarnessRegistry,
     ProjectServer,
     Reconciler,
@@ -138,14 +140,24 @@ defmodule CodeMySpec.Analysis do
   @spec start_run(Scope.t(), String.t(), [String.t()], keyword()) ::
           {:ok, :started | :joined | :skipped, integer()} | {:error, term()}
   def start_run(%Scope{} = scope, source, args, opts \\ []) when is_list(args) do
-    job = build_job(source, args, opts)
+    # 783f3709: checked here, before anything is admitted, so a hold reaches
+    # an agent already mid-run at its very next admission attempt rather than
+    # only at its next turn boundary. Never touches a run already open --
+    # that one finishes on its own.
+    case FleetHolds.active(scope) do
+      %FleetHold{} = hold ->
+        {:error, {:held, hold}}
 
-    case remote_executor(scope) do
-      {:ok, channel} ->
-        dispatch_remote(scope, job, channel)
+      nil ->
+        job = build_job(source, args, opts)
 
-      :none ->
-        start_local(scope, job, mode())
+        case remote_executor(scope) do
+          {:ok, channel} ->
+            dispatch_remote(scope, job, channel)
+
+          :none ->
+            start_local(scope, job, mode())
+        end
     end
   end
 
@@ -175,13 +187,22 @@ defmodule CodeMySpec.Analysis do
   @spec await_run(Scope.t(), String.t(), [String.t()], keyword()) ::
           {:ok, Run.t()} | {:error, term()}
   def await_run(%Scope{} = scope, source, args, opts \\ []) when is_list(args) do
-    job = build_job(source, args, Keyword.put(opts, :notify, false))
+    # 783f3709: the agent's own `mix test`/`mix spex` rewrite calls this, so
+    # the same hold check as `start_run/4` belongs here too -- otherwise that
+    # path would reach admission unchecked.
+    case FleetHolds.active(scope) do
+      %FleetHold{} = hold ->
+        {:error, {:held, hold}}
 
-    # Remote when a harness holds the copy, or the analyzer would run against
-    # the server's disk instead of the agent's working copy.
-    case remote_executor(scope) do
-      {:ok, channel} -> await_remote(scope, job, channel)
-      :none -> await_local(scope, job)
+      nil ->
+        job = build_job(source, args, Keyword.put(opts, :notify, false))
+
+        # Remote when a harness holds the copy, or the analyzer would run against
+        # the server's disk instead of the agent's working copy.
+        case remote_executor(scope) do
+          {:ok, channel} -> await_remote(scope, job, channel)
+          :none -> await_local(scope, job)
+        end
     end
   end
 

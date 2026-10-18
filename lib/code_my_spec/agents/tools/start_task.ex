@@ -7,7 +7,9 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Components
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.Agents.Tools.TaskResponses, as: TasksMapper
   alias CodeMySpec.Requirements
@@ -266,6 +268,13 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     end)
   end
 
+  defp not_held(scope) do
+    case FleetHolds.active(scope) do
+      nil -> :ok
+      hold -> {:error, FleetHolds.refusal(hold)}
+    end
+  end
+
   defp handle_existing(nil, scope, owner, requirement, agent_id, context) do
     # Whose work it is first: a claim outside the caller's role, story or team
     # is refused for that, whatever state the work is in.
@@ -273,7 +282,11 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
          :ok <- story_may_claim(scope, owner, requirement),
          :ok <- team_may_claim(scope, owner, requirement),
          :ok <- not_already_done(scope, owner, requirement),
-         :ok <- qa_eligible_to_start(scope, owner, requirement) do
+         :ok <- qa_eligible_to_start(scope, owner, requirement),
+         # 783f3709: only a NEW claim reaches this clause (the `nil` match
+         # above) -- resuming a task the owner already holds matches
+         # `handle_existing/6` further down and never checks the hold.
+         :ok <- not_held(scope) do
       create_and_activate(scope, owner, requirement, agent_id, context)
     else
       {:error, reason} -> TasksMapper.error(reason)
@@ -282,13 +295,13 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
 
   defp handle_existing(%{status: :active} = task, scope, owner, _req, agent_id, context) do
     maybe_assign_agent(scope, owner, task, agent_id)
-    return_prompt(task, scope, context)
+    return_prompt(owner, task, scope, context)
   end
 
   defp handle_existing(%{status: :prepared} = task, scope, owner, _req, agent_id, context) do
     case TaskOwner.activate_task(scope, owner, task.id, agent_id) do
       {:ok, _updated} ->
-        return_prompt(task, scope, context)
+        return_prompt(owner, task, scope, context)
 
       {:error, reason} ->
         TasksMapper.error(claim_error(reason))
@@ -311,7 +324,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
 
     with :ok <- eligible_to_resume(scope, owner, req),
          {:ok, updated} <- TaskOwner.resume_task(scope, owner, task.id) do
-      return_prompt(TaskOwner.find_task(updated, task.id), scope, context)
+      return_prompt(owner, TaskOwner.find_task(updated, task.id), scope, context)
     else
       {:error, :active_task_exists} ->
         TasksMapper.error(
@@ -478,7 +491,13 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     if eligible?, do: :ok, else: {:error, :requirement_not_eligible}
   end
 
-  defp return_prompt(task, scope, _context) do
+  # d2044280: a task handed back here is the same signal `Agents.Waiting`
+  # already reads as "holding something, not idle" -- the moment a
+  # task-less tap-out stops holding the agent. Retiring it here, rather
+  # than waiting on a second decision, keeps the permission row from
+  # outliving the thing it described.
+  defp return_prompt(owner, task, scope, _context) do
+    Notifications.retire_resumed_tap_out(owner)
     prompt = generate_prompt(task, scope)
     TasksMapper.prompt_response(prompt, task)
   end
@@ -497,7 +516,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     with {:ok, updated_owner} <- TaskOwner.add_task(scope, owner, task_attrs),
          task = TaskOwner.find_task(updated_owner, task_attrs.id),
          {:ok, task} <- review_new_task(scope, updated_owner, task) do
-      return_prompt(task, scope, context)
+      return_prompt(owner, task, scope, context)
     else
       {:error, reason} -> TasksMapper.error(claim_error(reason))
     end

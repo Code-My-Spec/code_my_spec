@@ -20,6 +20,11 @@ defmodule CodeMySpec.Agents.Tools.AssignSubagent do
     no partial-failure window where the sub-agent ends up unassigned
     from their old task while not landing on the new one.
 
+    `agent_id` is the Task tool's own result from spawning that sub-agent,
+    not something to go look up — 50ddc827: `list_session_subagents` (the
+    tool that *would* answer "who is registered") is not every role's to
+    call, and the id is already yours from the spawn, every time.
+
     Errors when:
     - the `agent_id` is not currently active in `session.subagents`
       (filtered through `Session.active_subagents/2`, so TTL-expired
@@ -32,7 +37,14 @@ defmodule CodeMySpec.Agents.Tools.AssignSubagent do
   def params do
     %{
       session_id: {:meta, :string, [description: "Injected by hook — do not set manually"]},
-      agent_id: {:required, {:meta, :string, [description: "Registered sub-agent id"]}},
+      agent_id:
+        {:required,
+         {:meta, :string,
+          [
+            description:
+              "The sub-agent's id, from the Task tool's own result when you spawned it " <>
+                "— not something to look up elsewhere"
+          ]}},
       task_id: {:required, {:meta, :string, [description: "Target task id"]}}
     }
   end
@@ -108,7 +120,11 @@ defmodule CodeMySpec.Agents.Tools.AssignSubagent do
     if Enum.any?(Session.active_subagents(session, ttl), &(&1.agent_id == agent_id)) do
       :ok
     else
-      {:error, "agent_id `#{agent_id}` is not an active registered sub-agent on this session"}
+      {:error,
+       "agent_id `#{agent_id}` is not an active registered sub-agent on this session — " <>
+         "it should be the id the Task tool handed back when you spawned it (or that " <>
+         "registration has since expired past its TTL). There is no lookup to retry " <>
+         "against; an id you did not get from your own spawn is not yours to assign."}
     end
   end
 

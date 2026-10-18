@@ -400,7 +400,7 @@ defmodule CodeMySpec.TaskOwner do
 
   # Busy on another task: resuming now would make it a second active one.
   # Told, not offered; `Work` offers it back once that task is done.
-  defp wake_holder(scope, %Agent{} = agent, released, blocker, opts) do
+  defp wake_holder(scope, %Agent{} = agent, released, {_type, _id, outcome} = blocker, opts) do
     detail = Keyword.get(opts, :detail)
 
     # Agents answers this (`Agents.Events`); TaskOwner sits below Agents.
@@ -413,7 +413,12 @@ defmodule CodeMySpec.TaskOwner do
             released: released,
             header: resolved_header(blocker),
             detail: detail,
-            subject: offer_subject(blocker)
+            subject: offer_subject(blocker),
+            # 6f2d593e: only the immediate resume wording turns this into a
+            # flat command (`Work.resume_ready/4`); the deferred "offered
+            # back once you're done" notice is already a heads-up, not an
+            # order, so it does not need the outcome.
+            outcome: outcome
           }
 
         _active ->
