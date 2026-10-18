@@ -89,20 +89,42 @@ defmodule CodeMySpecSpex.TerminalAgentHelpers do
   defp line({:error, _}, _conn, _test), do: :ok
 
   @doc """
-  A session opening with its messaging socket named, as the plugin's HTTP
-  SessionStart hook sends it. `:status` is what Claude Code's own agent list
-  says of the session (default `idle`); `:transcript` the path its transcript
-  is written to.
+  A session opening with an inbox socket, as Claude Code runs one: it writes
+  its session registry file (`<pid>.json`, naming the socket) and fires the
+  plugin's SessionStart command hook, which carries only the session id.
+  `:status` is what Claude Code says of the session (default `idle`);
+  `:transcript` the path its transcript is written to.
   """
   @spec start_session_on_socket(map(), String.t(), String.t(), keyword()) :: map()
   def start_session_on_socket(context, session_id, socket, opts \\ []) do
-    ClaudeSessions.put(session_id, Keyword.get(opts, :status, "idle"))
+    status = Keyword.get(opts, :status, "idle")
+    ClaudeSessions.put(session_id, status)
+    register_session(session_id, socket, status)
 
     payload =
       %{"session_id" => session_id, "source" => "startup", "permission_mode" => "default"}
       |> put_present("transcript_path", Keyword.get(opts, :transcript))
 
-    HarnessHooks.post_hook(context, "session-start", payload, [{"x-messaging-socket", socket}])
+    HarnessHooks.post_hook(context, "session-start", payload)
+  end
+
+  # Claude Code's own session registry, in the directory the test config names.
+  defp register_session(session_id, socket, status) do
+    dir = Path.join(Application.fetch_env!(:code_my_spec, :claude_config_dir), "sessions")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "#{System.unique_integer([:positive])}.json")
+
+    File.write!(
+      path,
+      Jason.encode!(%{
+        "sessionId" => session_id,
+        "status" => status,
+        "messagingSocketPath" => socket,
+        "version" => "2.1.302"
+      })
+    )
+
+    ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
   end
 
   defp put_present(map, _key, nil), do: map
