@@ -8,13 +8,14 @@ defmodule CodeMySpecSpex.Story1122.Criterion2237Spex do
   import CodeMySpecSpex.TerminalAgentHelpers
 
   alias CodeMySpecSpex.HarnessHooks
+  alias Ecto.Adapters.SQL.Sandbox
   alias Phoenix.ConnTest
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
@@ -24,12 +25,7 @@ defmodule CodeMySpecSpex.Story1122.Criterion2237Spex do
              context do
         context = HarnessHooks.ensure_live_harness(context)
 
-        elsewhere =
-          Path.join(System.tmp_dir!(), "not-a-checkout-#{System.unique_integer([:positive])}")
-
-        File.mkdir_p!(elsewhere)
-        on_exit(fn -> File.rm_rf!(elsewhere) end)
-        {:ok, Map.put(context, :elsewhere, elsewhere)}
+        {:ok, Map.put(context, :elsewhere, not_a_checkout())}
       end
 
       when_ "the plugin's SessionStart hook runs there", context do

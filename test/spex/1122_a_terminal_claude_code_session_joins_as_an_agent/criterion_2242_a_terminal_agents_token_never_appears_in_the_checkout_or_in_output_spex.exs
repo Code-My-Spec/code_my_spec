@@ -9,12 +9,13 @@ defmodule CodeMySpecSpex.Story1122.Criterion2242Spex do
 
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
@@ -49,8 +50,7 @@ defmodule CodeMySpecSpex.Story1122.Criterion2242Spex do
 
       then_ "no file in the checkout, and nothing the server answers, names its socket or a token",
             context do
-        files = Path.wildcard(Path.join(context.harness.root, "**/*"), match_dot: true)
-        refute Enum.any?(files, &(File.regular?(&1) and File.read!(&1) =~ context.inbox.socket))
+        refute checkout_mentions?(context.harness.root, context.inbox.socket)
 
         for text <- [Jason.encode!(agents(context)), digest(context)] do
           refute text =~ context.inbox.socket

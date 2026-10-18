@@ -124,4 +124,41 @@ defmodule CodeMySpecSpex.TerminalAgentHelpers do
   @doc "The harness looking at a terminal agent's session now (`ClaudeSessions.look/1`)."
   @spec look(String.t()) :: :ok
   defdelegate look(agent_id), to: ClaudeSessions
+
+  @doc "A directory no project serves, removed when the test exits."
+  @spec not_a_checkout() :: String.t()
+  def not_a_checkout do
+    dir = Path.join(System.tmp_dir!(), "not-a-checkout-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(dir) end)
+    dir
+  end
+
+  @doc """
+  Where a session's transcript is written, empty for now: Claude Code's
+  `~/.claude/projects/<cwd>/<session>.jsonl`, in a directory removed on exit.
+  """
+  @spec transcript_for(String.t()) :: String.t()
+  def transcript_for(session_id) do
+    dir = Path.join(System.tmp_dir!(), "tr#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(dir) end)
+    path = Path.join(dir, "#{session_id}.jsonl")
+    File.write!(path, "")
+    path
+  end
+
+  @doc "Claude Code writing one entry to a session's transcript."
+  @spec write_transcript(String.t(), map()) :: :ok
+  def write_transcript(path, entry),
+    do: File.write!(path, Jason.encode!(entry) <> "\n", [:append])
+
+  @doc "Whether any file in the checkout at `root` contains `text`."
+  @spec checkout_mentions?(String.t(), String.t()) :: boolean()
+  def checkout_mentions?(root, text) do
+    root
+    |> Path.join("**/*")
+    |> Path.wildcard(match_dot: true)
+    |> Enum.any?(&(File.regular?(&1) and File.read!(&1) =~ text))
+  end
 end

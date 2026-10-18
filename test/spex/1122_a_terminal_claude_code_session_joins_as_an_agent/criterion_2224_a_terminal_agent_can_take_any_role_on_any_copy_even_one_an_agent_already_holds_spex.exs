@@ -8,16 +8,17 @@ defmodule CodeMySpecSpex.Story1122.Criterion2224Spex do
   import CodeMySpecSpex.TerminalAgentHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpecSpex.HarnessHooks
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.HarnessHooks
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
@@ -65,14 +66,13 @@ defmodule CodeMySpecSpex.Story1122.Criterion2224Spex do
             frame
           )
 
-        result =
-          if reply.isError, do: {:error, response_text(reply)}, else: {:ok, response_text(reply)}
+        result = {reply.isError, response_text(reply)}
 
         {:ok, Map.put(context, :started, result)}
       end
 
       then_ "it is still refused, naming the Alloy agent there", context do
-        assert {:error, refusal} = context.started
+        assert {true, refusal} = context.started
         assert refusal =~ "already has a coding agent"
         assert refusal =~ context.coder
         {:ok, context}

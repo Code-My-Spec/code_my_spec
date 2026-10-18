@@ -14,12 +14,13 @@ defmodule CodeMySpecSpex.Story1123.Criterion2244ContinuousSpex do
   import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1]
 
   alias CodeMySpec.ToolLibrary
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 

@@ -7,14 +7,15 @@ defmodule CodeMySpecSpex.Story1122.Criterion2226Spex do
 
   import CodeMySpecSpex.TerminalAgentHelpers
 
-  alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpecSpex.HarnessHooks
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 

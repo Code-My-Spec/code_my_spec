@@ -9,12 +9,13 @@ defmodule CodeMySpecSpex.Story1124.Criterion2251Spex do
 
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     :ok
   end
 
@@ -29,11 +30,7 @@ defmodule CodeMySpecSpex.Story1124.Criterion2251Spex do
         context = HarnessHooks.ensure_live_harness(context)
         inbox = open_inbox()
         session = session_id()
-        dir = Path.join(System.tmp_dir!(), "tr#{System.unique_integer([:positive])}")
-        File.mkdir_p!(dir)
-        on_exit(fn -> File.rm_rf!(dir) end)
-        transcript = Path.join(dir, "#{session}.jsonl")
-        File.write!(transcript, "")
+        transcript = transcript_for(session)
 
         started =
           start_session_on_socket(context, session, inbox.socket, transcript: transcript)
@@ -51,9 +48,9 @@ defmodule CodeMySpecSpex.Story1124.Criterion2251Spex do
         look(context.agent_id)
         eventually(fn -> assert digest(context) =~ "has not finished" end)
 
-        File.write!(
+        write_transcript(
           context.transcript,
-          Jason.encode!(%{
+          %{
             "type" => "assistant",
             "message" => %{
               "id" => "msg_1",
@@ -61,7 +58,7 @@ defmodule CodeMySpecSpex.Story1124.Criterion2251Spex do
               "usage" => %{"input_tokens" => 1200, "output_tokens" => 340},
               "content" => [%{"type" => "text", "text" => "Splitting the reservations context."}]
             }
-          }) <> "\n"
+          }
         )
 
         look(context.agent_id)
