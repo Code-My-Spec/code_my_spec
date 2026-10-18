@@ -289,4 +289,35 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
            `qa_journey_wallaby` and was handed it straight back (7169d3cf).
            """
   end
+
+  # Issue f4bb8cff: a tap-out leaves the task blocked, not cancelled, so it
+  # must not land in the same "claimed and cancelled" bucket as an outright
+  # drop. Criterion 2162 requires it settle as anything but declined.
+  test "tapping out of the claimed work does not decline it", ctx do
+    assert admitted?(ctx.scope, reload(ctx.scope, ctx.agent))
+    %{subject_key: key} = latest_offer(ctx.agent)
+    [type, id, name] = String.split(key, ":", parts: 3)
+
+    tapped =
+      Map.merge(on_entity(ctx.scope, type, id), %{
+        status: :blocked,
+        requirement_name: name,
+        started_at: DateTime.utc_now(),
+        blocked_at: DateTime.utc_now(),
+        blocker_type: :tap_out,
+        blocked_reason: "I should not be the one to do this"
+      })
+
+    turn_ended(ctx.scope, ctx.agent, [tapped])
+
+    refute match?(%{status: :declined}, latest_offer(ctx.agent)),
+           "a tap-out settled the offer as declined; only reject_offer may decline it"
+
+    refute match?(%{held?: true}, Offers.standing(ctx.agent.id)[key]),
+           """
+           A tap-out held the offered work back from the agent that tapped out
+           of it. It should stay available to resume once main resolves the
+           tap-out, same as any other claimed, still-blocked task.
+           """
+  end
 end

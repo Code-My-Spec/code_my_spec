@@ -863,11 +863,12 @@ defmodule CodeMySpec.Agents.Offers do
     tasks = tasks_on(agent, offer.subject_key)
 
     cond do
-      tapped = Enum.find(tasks, &tapped_out_since?(&1, offer.inserted_at)) ->
-        %{status: :declined, reason: tapped.blocked_reason}
-
       # Claimed and cancelled is declined, or the claim would reset the ladder
-      # and the agent could take and drop the same work forever.
+      # and the agent could take and drop the same work forever. A tap-out
+      # (criterion 2162) leaves the task blocked rather than cancelled, so it
+      # never reaches this branch -- it settles as claimed below, same as any
+      # other started task, and stays open on the agent until main resolves
+      # the tap-out.
       Enum.any?(tasks, &cancelled_since?(&1, offer.inserted_at)) ->
         %{status: :declined, reason: "claimed and cancelled"}
 
@@ -1009,11 +1010,6 @@ defmodule CodeMySpec.Agents.Offers do
     do: DateTime.compare(at, since) != :lt
 
   defp started_since?(_task, _since), do: false
-
-  defp tapped_out_since?(%{blocker_type: :tap_out, blocked_at: %DateTime{} = at}, since),
-    do: DateTime.compare(at, since) != :lt
-
-  defp tapped_out_since?(_task, _since), do: false
 
   defp resumed_since?(%{status: :active}, _since), do: true
 
