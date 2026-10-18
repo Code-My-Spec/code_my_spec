@@ -12,8 +12,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion1877Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -55,8 +56,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion1877Spex do
           assigns: %{current_scope: context.main_scope, agent_id: context.main.id}
         }
 
-        {:reply, response, _frame} = ListAgentWork.execute(%{}, frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         listing = response_text(response)
         entries = String.split(listing, "Agent: ")
 

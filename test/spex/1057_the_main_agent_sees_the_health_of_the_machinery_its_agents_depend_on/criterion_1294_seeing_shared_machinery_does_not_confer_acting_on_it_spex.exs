@@ -37,7 +37,6 @@ defmodule CodeMySpecSpex.Story1057.Criterion3326Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -84,20 +83,21 @@ defmodule CodeMySpecSpex.Story1057.Criterion3326Spex do
       when_ "it tries to act on that fault", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(
+        response =
+          ToolLibrary.run(
+            "restart_agent",
             %{
               agent_id: context.their_copy_id,
               reason: "the shared harness is serving no tools to anybody"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it cannot", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                """
                The main agent acted on machinery it was shown only so it could
                stop blaming its own agents.

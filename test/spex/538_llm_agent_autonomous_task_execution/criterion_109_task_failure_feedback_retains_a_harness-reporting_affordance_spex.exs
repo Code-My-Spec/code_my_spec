@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story538.Criterion1501Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -172,10 +171,14 @@ defmodule CodeMySpecSpex.Story538.Criterion1501Spex do
 
       then_ "the latest menu identifies the failed task and offers framework issue reporting",
             context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id, limit: 1}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id, limit: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         text = response_text(conversation)
         assert text =~ context.task_id
         assert text =~ ~r/missing|not.*found/i

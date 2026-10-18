@@ -32,7 +32,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -96,9 +95,15 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
 
       then_ "the question is still waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
 
-        refute response.isError, inspect(response)
+        response =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), inspect(response)
 
         assert response_text(response) =~
                  "Should the migration run before or after the swap?",

@@ -22,7 +22,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
+  alias CodeMySpec.Agents.Tools.AgentWorkResponses, as: AgentWorkMapper
   alias CodeMySpec.Notifications
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher

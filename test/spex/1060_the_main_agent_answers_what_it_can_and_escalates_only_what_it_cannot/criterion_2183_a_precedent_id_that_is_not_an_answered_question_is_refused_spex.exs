@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2183Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -64,22 +62,23 @@ defmodule CodeMySpecSpex.Story1060.Criterion2183Spex do
       when_ "the main agent cites a precedent id that answers nothing real", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AnswerNotification.execute(
+        response =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer: "Yes, per an earlier decision",
               basis: "precedent",
               precedent_id: Ecto.UUID.generate()
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it is refused", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                """
                A precedent id naming nothing real was accepted as grounds for an
                answer.
@@ -93,7 +92,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2183Spex do
 
       then_ "and the question goes to the user", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(listing) =~ ~r/waiting on the user/i,
                """

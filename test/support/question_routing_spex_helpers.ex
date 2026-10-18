@@ -23,9 +23,6 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
 
   @doc "The frame a tool call from this scope is made in."
@@ -96,7 +93,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   @doc "What the main agent sees waiting for it."
   @spec open_questions(map()) :: String.t()
   def open_questions(context),
-    do: ListNotifications |> call(%{}, context) |> response_text()
+    do: "list_notifications" |> call(%{}, context) |> response_text()
 
   @doc """
   Only the part of the listing that is the main agent's to act on.
@@ -158,23 +155,24 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   end
 
   @doc "The main agent answers from what the project records."
-  @spec main_answers(map(), String.t(), String.t()) :: struct()
+  @spec main_answers(map(), String.t(), String.t()) :: CodeMySpec.Tools.Tool.result()
   def main_answers(context, question_id, answer) do
     call(
-      AnswerNotification,
+      "answer_notification",
       %{notification_id: question_id, answer: answer, basis: "record"},
       context
     )
   end
 
   @doc "The main agent hands one up, saying why it is the user's call."
-  @spec main_escalates(map(), String.t(), String.t(), String.t() | nil) :: struct()
+  @spec main_escalates(map(), String.t(), String.t(), String.t() | nil) ::
+          CodeMySpec.Tools.Tool.result()
   def main_escalates(context, question_id, reason, as \\ nil) do
     params =
       %{question_id: question_id, reason: reason}
       |> then(&if as, do: Map.put(&1, :as, as), else: &1)
 
-    call(EscalateQuestion, params, context)
+    call("escalate_question", params, context)
   end
 
   @doc """
@@ -230,9 +228,9 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   def user_answers(context, question_id, label),
     do: Fixtures.answer_question(context.scope, question_id, label)
 
-  defp call(tool, params, context) do
-    {:reply, reply, _frame} = tool.execute(params, frame(context))
-    reply
+  defp call(name, params, context) do
+    frame = frame(context)
+    ToolLibrary.run(name, params, Map.put(frame.assigns, :scope, frame.assigns[:current_scope]))
   end
 
   # The main agent these criteria name has to be on duty to hold a question:

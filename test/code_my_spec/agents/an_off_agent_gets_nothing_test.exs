@@ -23,7 +23,6 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpec.Repo
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -178,10 +177,14 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     test "the main agent's restart_agent refuses it, naming who and why", ctx do
       off(ctx)
 
-      {:reply, response, _} =
-        RestartAgent.execute(%{agent_id: ctx.agent.id, reason: "it is stopped"}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "restart_agent",
+          %{agent_id: ctx.agent.id, reason: "it is stopped"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text(response) =~ @refusal
       assert Agent.off?(Repo.get(Agent, ctx.agent.id))
     end

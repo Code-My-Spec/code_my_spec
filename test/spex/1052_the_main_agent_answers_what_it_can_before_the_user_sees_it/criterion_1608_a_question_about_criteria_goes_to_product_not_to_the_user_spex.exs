@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -100,7 +98,16 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
       end
 
       then_ "it is waiting on product", context do
-        {:reply, listing, _} = ListNotifications.execute(%{}, context.product_frame)
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
 
         assert response_text(listing) =~ context.question_id,
                "product was not handed the question about its own criteria:\n#{response_text(listing)}"
@@ -109,13 +116,18 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
       end
 
       then_ "and product's answer reaches the coder", context do
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{notification_id: context.question_id, answer: "Yes, full refund within 30 days."},
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute answered.isError, response_text(answered)
+        assert match?({:ok, _}, answered), response_text(answered)
 
         checked =
           ToolLibrary.run(

@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -46,8 +45,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
         assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ task.id
         assert response_text(tasks) =~ "[active]"
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame)
-        refute inbox.isError, response_text(inbox)
+
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
 
         {:ok,
          Map.merge(context, %{
@@ -107,8 +113,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
         assert response_text(tasks) == context.tasks_before
         refute response_text(tasks) =~ "[blocked]"
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.frame)
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(inbox) == context.inbox_before
         refute response_text(inbox) =~ "Which refund policy should I implement?"
 

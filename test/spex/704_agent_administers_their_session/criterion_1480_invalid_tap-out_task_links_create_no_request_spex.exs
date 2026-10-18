@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -71,10 +70,20 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
             )
           )
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
         assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
         assert match?({:ok, _}, other_tasks), response_text(other_tasks)
-        refute inbox.isError, response_text(inbox)
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(caller_tasks) =~ context.active_task_id
         assert response_text(caller_tasks) =~ context.completed_task_id
         assert response_text(other_tasks) =~ context.other_task_id
@@ -130,10 +139,20 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
             )
           )
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
         assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
         assert match?({:ok, _}, other_tasks), response_text(other_tasks)
-        refute inbox.isError, response_text(inbox)
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(caller_tasks) == context.caller_before
         assert response_text(other_tasks) == context.other_before
         assert response_text(inbox) == context.inbox_before
@@ -180,10 +199,20 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
             )
           )
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
         assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
         assert match?({:ok, _}, other_tasks), response_text(other_tasks)
-        refute inbox.isError, response_text(inbox)
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(caller_tasks) =~ context.active_task_id
         assert response_text(caller_tasks) =~ context.completed_task_id
         assert response_text(other_tasks) =~ context.other_task_id
@@ -239,10 +268,20 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
             )
           )
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
         assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
         assert match?({:ok, _}, other_tasks), response_text(other_tasks)
-        refute inbox.isError, response_text(inbox)
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(caller_tasks) == context.caller_before
         assert response_text(other_tasks) == context.other_before
         assert response_text(inbox) == context.inbox_before
@@ -289,10 +328,20 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
             )
           )
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
         assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
         assert match?({:ok, _}, other_tasks), response_text(other_tasks)
-        refute inbox.isError, response_text(inbox)
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(caller_tasks) =~ context.active_task_id
         assert response_text(caller_tasks) =~ context.completed_task_id
         assert response_text(other_tasks) =~ context.other_task_id
@@ -348,10 +397,20 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
             )
           )
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
         assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
         assert match?({:ok, _}, other_tasks), response_text(other_tasks)
-        refute inbox.isError, response_text(inbox)
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(caller_tasks) == context.caller_before
         assert response_text(other_tasks) == context.other_before
         assert response_text(inbox) == context.inbox_before

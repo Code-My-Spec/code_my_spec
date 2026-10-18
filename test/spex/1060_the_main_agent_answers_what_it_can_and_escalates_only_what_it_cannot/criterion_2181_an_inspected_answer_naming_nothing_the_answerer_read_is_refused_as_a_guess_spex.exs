@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2181Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -68,22 +66,27 @@ defmodule CodeMySpecSpex.Story1060.Criterion2181Spex do
       end
 
       when_ "the main agent answers with basis inspected, citing a file it never read", context do
-        {:reply, response, _frame} =
-          AnswerNotification.execute(
+        response =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer: "4004 — the usual dev port",
               basis: "inspected",
               citation: "config/dev.exs"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it is refused as a guess, naming the missing citation", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                """
                A citation naming a file the main agent never read this session was
                accepted as if it had been inspected.
@@ -107,7 +110,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2181Spex do
       then_ "and the question stays open, reaching the user rather than being answered wrongly",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(listing) =~ ~r/waiting on the user/i,
                """

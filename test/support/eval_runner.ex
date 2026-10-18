@@ -35,7 +35,6 @@ defmodule CodeMySpec.Support.EvalRunner do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
@@ -930,16 +929,13 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp put_in_loop(agent_id, world, criterion) do
-    case SetAgentContinuous.execute(
-           %{agent_id: agent_id, continuous: true},
-           frame(world)
-         ) do
-      {:reply, %{isError: true} = r, _} ->
-        {:error, {:continuous, text(r)}}
+    params = %{agent_id: agent_id, continuous: true}
 
-      {:reply, r, _} ->
-        said = text(r)
+    case tool_library().run("set_agent_continuous", params, %{scope: world.scope}) do
+      {:error, said} ->
+        {:error, {:continuous, said}}
 
+      {:ok, said} ->
         cond do
           not (said =~ "Nothing was requested") -> :ok
           # For a criterion measuring an idle agent, being sent nothing is the
@@ -1025,8 +1021,6 @@ defmodule CodeMySpec.Support.EvalRunner do
   defp frame(world) do
     %Frame{assigns: %{current_scope: world.scope}}
   end
-
-  defp text({_status, text}) when is_binary(text), do: text
 
   defp text(response) do
     response

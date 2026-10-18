@@ -21,8 +21,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -93,8 +91,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
       when_ "the main agent cites the earlier answer as precedent", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AnswerNotification.execute(
+        response =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer:
@@ -103,14 +102,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
               basis: "precedent",
               precedent_id: context.earlier
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it is accepted, with no requirement that the wording match", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                """
                A precedent stating a general rule was refused against a
                differently-worded question, as if citing it required the exact
@@ -144,7 +143,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
 
       then_ "and the user is not asked", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(listing) =~ ~r/waiting on the user/i,
                """

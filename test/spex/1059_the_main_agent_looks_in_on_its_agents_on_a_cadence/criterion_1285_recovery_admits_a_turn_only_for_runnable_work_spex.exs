@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -59,10 +57,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
           assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: coding.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: coding.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -74,8 +76,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
       end
 
       when_ "the recovery check inspects the existing fleet", context do
-        {:reply, response, _} = CheckIn.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         HeldProvider.await_request()
         {:ok, context}
@@ -98,10 +106,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
           assert response_text(tasks) == "No tasks."
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.coding_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.coding_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.coding_conversation
         {:ok, context}
       end

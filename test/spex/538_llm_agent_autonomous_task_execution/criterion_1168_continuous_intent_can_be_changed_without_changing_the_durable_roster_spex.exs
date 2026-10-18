@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -174,10 +173,14 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
 
       when_ "the main agent enables continuous for both agents", context do
         for id <- [context.coding_id, context.qa_id] do
-          {:reply, response, _} =
-            SetAgentContinuous.execute(%{agent_id: id, continuous: true}, frame(context))
+          response =
+            ToolLibrary.run(
+              "set_agent_continuous",
+              %{agent_id: id, continuous: true},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
 
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         HeldProvider.await_request()
@@ -202,10 +205,14 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
 
       when_ "the main agent disables continuous while QA is still in its turn", context do
         for id <- [context.coding_id, context.qa_id] do
-          {:reply, response, _} =
-            SetAgentContinuous.execute(%{agent_id: id, continuous: false}, frame(context))
+          response =
+            ToolLibrary.run(
+              "set_agent_continuous",
+              %{agent_id: id, continuous: false},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
 
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         {:ok, context}

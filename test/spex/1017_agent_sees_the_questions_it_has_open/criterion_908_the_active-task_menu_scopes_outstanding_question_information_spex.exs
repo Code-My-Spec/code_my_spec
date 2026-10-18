@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -121,10 +120,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
 
-        {:reply, before_menu, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id, limit: 1}, frame(context))
+        before_menu =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id, limit: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute before_menu.isError, response_text(before_menu)
+        assert match?({:ok, _}, before_menu), response_text(before_menu)
 
         {:ok,
          Map.merge(context, %{
@@ -143,10 +146,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
       then_ "a new menu offers disposition of the active task despite the open question",
             context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id, limit: 1}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id, limit: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         text = response_text(conversation)
         assert text != context.conversation_before
         assert text =~ context.active_task_id

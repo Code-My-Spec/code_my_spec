@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -166,10 +165,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
 
   # The product's entry in list_agent_work, from its id to the next agent's.
   defp product_line(context) do
-    {:reply, work, _} =
-      ListAgentWork.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+    work =
+      ToolLibrary.run("list_agent_work", %{}, %{scope: context.scope})
 
-    refute work.isError, response_text(work)
+    assert match?({:ok, _}, work), response_text(work)
     text = response_text(work)
     [_, entry] = String.split(text, context.product_id, parts: 2)
     entry

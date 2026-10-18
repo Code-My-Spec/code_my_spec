@@ -15,13 +15,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
@@ -82,13 +83,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
       when_ "the agent is restarted", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, restarted, _frame} =
-          RestartAgent.execute(
+        restarted =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.agent.id, reason: "stuck on a stale read"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute restarted.isError, inspect(restarted)
+        assert match?({:ok, _}, restarted), inspect(restarted)
         {:ok, context}
       end
 

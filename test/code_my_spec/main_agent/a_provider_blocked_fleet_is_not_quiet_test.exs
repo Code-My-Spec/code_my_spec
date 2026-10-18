@@ -9,7 +9,7 @@ defmodule CodeMySpec.Agents.Main.AProviderBlockedFleetIsNotQuietTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Agents.Main.{AgentWork, CheckInReport, Digest, Machinery}
-  alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
+  alias CodeMySpec.Agents.Tools.AgentWorkResponses, as: AgentWorkMapper
 
   @refusal "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to " <>
              "purchase more credits or try again at Sep 30th, 2026 11:20 PM."

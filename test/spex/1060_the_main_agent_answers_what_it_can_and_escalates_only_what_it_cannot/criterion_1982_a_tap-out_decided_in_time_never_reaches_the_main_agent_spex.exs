@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1982Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -68,7 +67,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion1982Spex do
       then_ "the main agent is given no turn for it, and it is not listed as waiting on main",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(listing) =~ context.permission_id,
                """

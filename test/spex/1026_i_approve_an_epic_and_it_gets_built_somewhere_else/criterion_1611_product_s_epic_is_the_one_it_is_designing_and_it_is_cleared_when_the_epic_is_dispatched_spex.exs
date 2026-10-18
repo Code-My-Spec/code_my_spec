@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story964.Criterion1611Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.EpicHelpers
   alias CodeMySpecSpex.Fixtures
@@ -105,8 +104,8 @@ defmodule CodeMySpecSpex.Story964.Criterion1611Spex do
   end
 
   defp work(context) do
-    {:reply, response, _} =
-      ListAgentWork.execute(%{}, %Frame{assigns: %{current_scope: context.main_scope}})
+    response =
+      ToolLibrary.run("list_agent_work", %{}, %{scope: context.main_scope})
 
     response_text(response)
   end

@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.OfferHelpers do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOffers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -24,11 +23,18 @@ defmodule CodeMySpecSpex.OfferHelpers do
   @spec listing(map(), map()) :: String.t()
   def listing(context, filters \\ %{}) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = ListOffers.execute(filters, frame)
 
-    if response.isError,
-      do: raise("list_offers refused: " <> response_text(response)),
-      else: response_text(response)
+    response =
+      ToolLibrary.run(
+        "list_offers",
+        filters,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    case response do
+      {:ok, text} -> text
+      {:error, text} -> raise("list_offers refused: " <> text)
+    end
   end
 
   @doc """

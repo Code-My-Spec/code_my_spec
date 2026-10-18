@@ -17,8 +17,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2073Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -62,7 +60,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2073Spex do
 
       then_ "it reaches the main agent's own waiting work", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(listing) =~ context.permission_id,
                """
@@ -120,16 +124,17 @@ defmodule CodeMySpecSpex.Story1060.Criterion2073Spex do
       when_ "the main agent escalates it to the user", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, escalated, _frame} =
-          EscalateQuestion.execute(
+        escalated =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.permission_id,
               reason: "only the user can say whether this feature should be built at all"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute escalated.isError, inspect(escalated)
+        assert match?({:ok, _}, escalated), inspect(escalated)
         {:ok, context}
       end
 

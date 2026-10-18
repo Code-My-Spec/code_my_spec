@@ -13,8 +13,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion2123Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -63,22 +61,36 @@ defmodule CodeMySpecSpex.Story1052.Criterion2123Spex do
       end
 
       when_ "main hands it sideways to product instead of answering it", context do
-        {:reply, reply, _frame} =
-          EscalateQuestion.execute(
+        reply =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.question_id,
               to: "product",
               reason: "This is a product call, not a factual one."
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, Map.put(context, :hand_reply, reply)}
       end
 
       then_ "it is product's to answer now", context do
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, context.product_frame)
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
 
         assert response_text(listing) =~ "Needs your attention" and
                  response_text(listing) =~ context.question_id,

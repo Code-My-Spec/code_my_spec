@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -81,10 +80,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
             assert {:ok, _} = Machine.start_agent(agent.id, copy.copy, base_url: base_url)
             on_exit(fn -> Machine.stop_agent(agent.id) end)
 
-            {:reply, conversation, _} =
-              ReadAgentConversation.execute(%{agent_id: agent.id}, frame(copy))
+            conversation =
+              ToolLibrary.run(
+                "read_agent_conversation",
+                %{agent_id: agent.id},
+                Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
+              )
 
-            refute conversation.isError, response_text(conversation)
+            assert match?({:ok, _}, conversation), response_text(conversation)
             {agent.id, response_text(conversation)}
           end)
 
@@ -108,10 +111,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
         assert {:ok, %{busy?: true}} = Machine.status(context.coding_id)
 
         for {agent, copy} <- context.agents, agent.id != context.coding_id do
-          {:reply, conversation, _} =
-            ReadAgentConversation.execute(%{agent_id: agent.id}, frame(copy))
+          conversation =
+            ToolLibrary.run(
+              "read_agent_conversation",
+              %{agent_id: agent.id},
+              Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
+            )
 
-          refute conversation.isError, response_text(conversation)
+          assert match?({:ok, _}, conversation), response_text(conversation)
           assert response_text(conversation) == context.conversations[agent.id]
           assert {:ok, %{busy?: false}} = Machine.status(agent.id)
         end

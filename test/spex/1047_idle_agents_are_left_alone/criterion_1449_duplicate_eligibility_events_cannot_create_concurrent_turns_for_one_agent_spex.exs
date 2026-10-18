@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -68,16 +67,17 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
         1..2
         |> Task.async_stream(
           fn _ ->
-            SetAgentContinuous.execute(
+            ToolLibrary.run(
+              "set_agent_continuous",
               %{agent_id: context.agent_id, continuous: true},
-              frame(context)
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
             )
           end,
           max_concurrency: 2,
           timeout: 10_000
         )
-        |> Enum.each(fn {:ok, {:reply, response, _}} ->
-          refute response.isError, response_text(response)
+        |> Enum.each(fn {:ok, response} ->
+          assert match?({:ok, _}, response), response_text(response)
         end)
 
         HeldProvider.await_request()

@@ -11,7 +11,6 @@ defmodule CodeMySpecSpex.Story704.Criterion3585Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -31,8 +30,15 @@ defmodule CodeMySpecSpex.Story704.Criterion3585Spex do
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         {main, task} = Fixtures.agent_task_fixture(context.scope, main)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: main.id}}
-        {:reply, cadence, _} = Cadence.execute(%{seconds: 1200}, frame)
-        refute cadence.isError, response_text(cadence)
+
+        cadence =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 1200},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, cadence), response_text(cadence)
         assert response_text(cadence) =~ "interval: every 1200s"
         assert response_text(cadence) =~ "woken: yes"
 
@@ -59,8 +65,14 @@ defmodule CodeMySpecSpex.Story704.Criterion3585Spex do
       end
 
       then_ "cadence policy and continuous intent are unchanged", context do
-        {:reply, cadence, _} = Cadence.execute(%{}, context.frame)
-        refute cadence.isError, response_text(cadence)
+        cadence =
+          ToolLibrary.run(
+            "cadence",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, cadence), response_text(cadence)
         assert response_text(cadence) == context.cadence_before
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")

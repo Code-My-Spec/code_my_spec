@@ -13,8 +13,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,8 +37,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(main.id)
-        {:reply, conversation, _} = ReadAgentConversation.execute(%{agent_id: main.id}, frame)
-        refute conversation.isError, response_text(conversation)
+
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: main.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, conversation), response_text(conversation)
         :ok = Fixtures.break_digest_source(context.scope)
 
         {:ok,
@@ -53,7 +58,13 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
       end
 
       when_ "recovery tries to assemble the digest", context do
-        {:reply, _response, _} = CheckIn.execute(%{}, context.frame)
+        _response =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
         {:ok, context}
       end
 
@@ -88,10 +99,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
         assert Machine.running() == context.running_ids
         assert HeldProvider.seen() == []
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.main_id}, context.frame)
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.main_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
 
         tasks =

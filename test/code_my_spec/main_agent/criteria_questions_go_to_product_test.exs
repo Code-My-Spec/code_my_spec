@@ -20,8 +20,6 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.Notifications
   alias CodeMySpec.TaskOwner
   alias CodeMySpecTest.AgentPresence
@@ -128,17 +126,32 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
       product = agent(ctx.scope, ctx.copy, :product)
       request = ask(ctx, %{about: "criteria"})
 
-      {:reply, listing, _} = ListNotifications.execute(%{}, frame(ctx, product))
+      listing =
+        ToolLibrary.run(
+          "list_notifications",
+          %{},
+          Map.put(
+            frame(ctx, product).assigns,
+            :scope,
+            frame(ctx, product).assigns[:current_scope]
+          )
+        )
+
       assert text(listing) =~ "Needs your attention"
       assert text(listing) =~ request.id
 
-      {:reply, response, _} =
-        AnswerNotification.execute(
+      response =
+        ToolLibrary.run(
+          "answer_notification",
           %{notification_id: request.id, answer: "Criterion 944 is rewritten; keep the fix."},
-          frame(ctx, product)
+          Map.put(
+            frame(ctx, product).assigns,
+            :scope,
+            frame(ctx, product).assigns[:current_scope]
+          )
         )
 
-      refute response.isError, text(response)
+      assert match?({:ok, _}, response), text(response)
       answered = Notifications.get_question_request(request.id)
       assert answered.status == "answered"
       assert answered.answered_by == "product_agent"
@@ -151,7 +164,15 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
       product = agent(ctx.scope, ctx.copy, :product)
       request = ask(ctx, %{about: "criteria"})
 
-      {:ok, rows} = ListNotifications.script_result(%{}, frame(ctx, product))
+      frame = frame(ctx, product)
+
+      {:ok, rows} =
+        ToolLibrary.data(
+          "list_notifications",
+          %{},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
       row = Enum.find(rows, &(&1["id"] == request.id))
 
       assert row["questions"] == ["Revert the fix or rewrite criterion 944?"]
@@ -160,7 +181,17 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
     test "product with nothing routed to it is told so", ctx do
       product = agent(ctx.scope, ctx.copy, :product)
 
-      {:reply, listing, _} = ListNotifications.execute(%{}, frame(ctx, product))
+      listing =
+        ToolLibrary.run(
+          "list_notifications",
+          %{},
+          Map.put(
+            frame(ctx, product).assigns,
+            :scope,
+            frame(ctx, product).assigns[:current_scope]
+          )
+        )
+
       assert text(listing) =~ "Nothing is waiting on you"
     end
 
@@ -169,13 +200,18 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
       product = agent(ctx.scope, ctx.copy, :product)
       request = ask(ctx)
 
-      {:reply, response, _} =
-        AnswerNotification.execute(
+      response =
+        ToolLibrary.run(
+          "answer_notification",
           %{notification_id: request.id, answer: "do it"},
-          frame(ctx, product)
+          Map.put(
+            frame(ctx, product).assigns,
+            :scope,
+            frame(ctx, product).assigns[:current_scope]
+          )
         )
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert Notifications.get_question_request(request.id).status == "pending"
     end
 
@@ -202,17 +238,22 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
     test "is answered, attributed to main, and its task released", ctx do
       issue = issue_fixture(ctx.scope, %{title: "criterion 944 rewritten by product"})
 
-      {:reply, response, _} =
-        AnswerNotification.execute(
+      response =
+        ToolLibrary.run(
+          "answer_notification",
           %{
             notification_id: ctx.request.id,
             answer: "Moot: #{issue.title} — keep the fix.",
             basis: "record"
           },
-          frame(ctx, ctx.main)
+          Map.put(
+            frame(ctx, ctx.main).assigns,
+            :scope,
+            frame(ctx, ctx.main).assigns[:current_scope]
+          )
         )
 
-      refute response.isError, text(response)
+      assert match?({:ok, _}, response), text(response)
       answered = Notifications.get_question_request(ctx.request.id)
       assert answered.status == "answered"
       assert answered.answered_by == "main_agent"
@@ -220,13 +261,18 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
     end
 
     test "an answer that does not stand up leaves the user's question as it was", ctx do
-      {:reply, response, _} =
-        AnswerNotification.execute(
+      response =
+        ToolLibrary.run(
+          "answer_notification",
           %{notification_id: ctx.request.id, answer: "just guess", basis: "record"},
-          frame(ctx, ctx.main)
+          Map.put(
+            frame(ctx, ctx.main).assigns,
+            :scope,
+            frame(ctx, ctx.main).assigns[:current_scope]
+          )
         )
 
-      assert response.isError
+      assert match?({:error, _}, response)
       still = Notifications.get_question_request(ctx.request.id)
       assert still.status == "pending"
       assert still.escalation_reason == "a product call"

@@ -12,7 +12,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion2075Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -63,11 +62,11 @@ defmodule CodeMySpecSpex.Story1052.Criterion2075Spex do
       end
 
       then_ "it reaches the product agent, never the user", context do
-        {:reply, listing, _frame} =
-          ListNotifications.execute(
-            %{},
-            %Frame{assigns: %{current_scope: context.scope, agent_id: context.product_id}}
-          )
+        listing =
+          ToolLibrary.run("list_notifications", %{}, %{
+            scope: context.scope,
+            agent_id: context.product_id
+          })
 
         assert response_text(listing) =~ context.question_id,
                """

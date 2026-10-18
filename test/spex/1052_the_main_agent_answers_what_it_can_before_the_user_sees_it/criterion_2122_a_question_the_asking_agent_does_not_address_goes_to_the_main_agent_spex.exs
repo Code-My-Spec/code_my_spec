@@ -12,7 +12,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion2122Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -65,11 +64,11 @@ defmodule CodeMySpecSpex.Story1052.Criterion2122Spex do
       end
 
       then_ "it lands with the main agent", context do
-        {:reply, listing, _frame} =
-          ListNotifications.execute(
-            %{},
-            %Frame{assigns: %{current_scope: context.scope, agent_id: context.main_id}}
-          )
+        listing =
+          ToolLibrary.run("list_notifications", %{}, %{
+            scope: context.scope,
+            agent_id: context.main_id
+          })
 
         assert response_text(listing) =~ context.question_id,
                """

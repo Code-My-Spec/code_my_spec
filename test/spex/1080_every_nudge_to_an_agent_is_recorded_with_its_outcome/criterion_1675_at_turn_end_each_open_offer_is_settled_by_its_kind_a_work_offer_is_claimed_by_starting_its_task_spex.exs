@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -289,14 +288,33 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
         on_exit(fn -> Machine.stop_agent(main.id) end)
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _, _} = Cadence.execute(%{seconds: 30}, frame)
+
+        _ =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 30},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         :ok = Fixtures.start_recovery_timer(context.scope)
         changed_at = DateTime.utc_now()
-        {:reply, _, _} = Cadence.execute(%{seconds: 1}, frame)
+
+        _ =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 1},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         Fixtures.await_recovery_check(
           fn ->
-            {:reply, report, _} = Cadence.execute(%{}, frame)
+            report =
+              ToolLibrary.run(
+                "cadence",
+                %{},
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
+
             response_text(report)
           end,
           changed_at

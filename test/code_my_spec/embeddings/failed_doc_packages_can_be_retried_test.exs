@@ -8,13 +8,14 @@ defmodule CodeMySpec.Embeddings.FailedDocPackagesCanBeRetriedTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.DocPackage
   alias CodeMySpec.Embeddings.Serving
-  alias CodeMySpec.McpServers.MainAgent.Tools.ResetDocPackages
 
   defp marker!(package, status, error) do
     Repo.insert!(%DocPackage{
@@ -56,10 +57,14 @@ defmodule CodeMySpec.Embeddings.FailedDocPackagesCanBeRetriedTest do
   test "the main agent's tool says how many it reset" do
     frame = %Frame{assigns: %{current_scope: full_scope_fixture()}}
 
-    {:reply, response, _} = ResetDocPackages.execute(%{except: ["chatterbox"]}, frame)
+    response =
+      ToolLibrary.run(
+        "reset_doc_packages",
+        %{except: ["chatterbox"]},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
-    refute response.isError
-    assert [%{"text" => text}] = response.content
+    assert {:ok, text} = response
     assert text =~ "Reset 2 failed doc package(s)"
   end
 end

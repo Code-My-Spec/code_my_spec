@@ -22,10 +22,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Main.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -67,20 +63,33 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
 
       when_ "the main agent handles its waiting work", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, digest, _frame} = CheckIn.execute(%{}, frame)
-        refute digest.isError, inspect(digest)
 
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+        digest =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, decided, _frame} =
-          AnswerNotification.execute(
+        assert match?({:ok, _}, digest), inspect(digest)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        decided =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.permission_id,
               decision: "deny",
               answer:
                 "the component this task would have built was already removed; nothing left to do"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context |> Map.put(:decided, decided) |> Map.put(:listing, listing)}
@@ -103,7 +112,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
       end
 
       then_ "it approves or denies the tap-out, with its reason", context do
-        refute context.decided.isError,
+        assert match?({:ok, _}, context.decided),
                """
                The main agent could not decide its own aged tap-out.
 
@@ -123,8 +132,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
         # that task lands. `eventually/1` is the same wait every other
         # out-of-band-arrival criterion already uses for exactly this shape.
         eventually(fn ->
-          {:reply, response, _frame} =
-            ReadAgentConversation.execute(%{agent_id: context.agent.id}, frame)
+          response =
+            ToolLibrary.run(
+              "read_agent_conversation",
+              %{agent_id: context.agent.id},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
 
           text = response_text(response)
 

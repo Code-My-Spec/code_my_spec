@@ -15,9 +15,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -103,16 +100,36 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
 
         for _ <- 1..2 do
-          {:reply, checked, _} = CheckIn.execute(%{}, context.main_frame)
-          refute checked.isError, response_text(checked)
+          checked =
+            ToolLibrary.run(
+              "check_in",
+              %{},
+              Map.put(
+                context.main_frame.assigns,
+                :scope,
+                context.main_frame.assigns[:current_scope]
+              )
+            )
+
+          assert match?({:ok, _}, checked), response_text(checked)
         end
 
         {:ok, Map.put(context, :question_id, question_id)}
       end
 
       then_ "the question remains visible but autonomous execution stays off", context do
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.main_frame)
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(inbox) =~ context.question_id
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='false']")
@@ -166,8 +183,18 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
         # would have made the premise false while the eligible work sat in
         # main's inbox the whole time. `Work.held_questions/2` admits a turn on
         # exactly what this listing shows.
-        {:reply, waiting, _} = ListNotifications.execute(%{}, context.main_frame)
-        refute waiting.isError, response_text(waiting)
+        waiting =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, waiting), response_text(waiting)
 
         assert response_text(waiting) =~ context.question_id,
                "the premise is eligible work still waiting on main, and the " <>
@@ -175,13 +202,18 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
 
         HeldProvider.hold()
 
-        {:reply, enabled, _} =
-          SetAgentContinuous.execute(
+        enabled =
+          ToolLibrary.run(
+            "set_agent_continuous",
             %{agent_id: context.main_id, continuous: true},
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute enabled.isError, response_text(enabled)
+        assert match?({:ok, _}, enabled), response_text(enabled)
         {:ok, context}
       end
 

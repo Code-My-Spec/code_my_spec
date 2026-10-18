@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -180,10 +179,14 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
 
       then_ "the latest stop feedback identifies the active task and its repeated failure",
             context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id, limit: 1}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id, limit: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         text = response_text(conversation)
         assert text =~ context.task_id
         # The menu's own sentence, not a paraphrase of it. `5.*fail` matched
@@ -233,10 +236,14 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
       end
 
       then_ "the changed feedback is not described as the earlier repeated failure", context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id, limit: 1}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id, limit: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) =~ context.task_id
 
         refute response_text(conversation) =~ ~r/the same feedback has repeated/i
@@ -295,10 +302,14 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
 
       then_ "the pass leaves no stale repetition warning or replacement task and continuous remains enabled",
             context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id, limit: 1}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id, limit: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         # The menu's sentence, as above: `5.*fail` matched
         # `Criterion 108005 (Failure path)` on 2026-09-27.

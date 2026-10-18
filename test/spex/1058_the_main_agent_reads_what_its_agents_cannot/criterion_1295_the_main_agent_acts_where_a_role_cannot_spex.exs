@@ -40,12 +40,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadyStoriesWithoutEpic
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -106,7 +107,12 @@ defmodule CodeMySpecSpex.Story1058.Criterion3327Spex do
       then_ "the work is actually done", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, orphans, _frame} = ReadyStoriesWithoutEpic.execute(%{}, frame)
+        orphans =
+          ToolLibrary.run(
+            "ready_stories_without_epic",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(orphans) =~ "Dunning emails go out",
                """

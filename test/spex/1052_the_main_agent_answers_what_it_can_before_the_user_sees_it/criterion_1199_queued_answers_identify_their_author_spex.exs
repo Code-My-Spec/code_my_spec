@@ -14,8 +14,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -70,10 +68,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id}, main_frame)
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -89,17 +91,22 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
 
       when_ "main answers the technical question and the user answers the product decision",
             context do
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.technical_id,
               answer: context.recorded_answer,
               basis: "record"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute answered.isError, response_text(answered)
+        assert match?({:ok, _}, answered), response_text(answered)
         {:ok, view, _} = live(context.conn, "/app/questions/#{context.product_id}")
 
         view
@@ -144,10 +151,18 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
         assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert HeldProvider.seen() == []
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, context.main_frame)
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         {:ok, context}
       end

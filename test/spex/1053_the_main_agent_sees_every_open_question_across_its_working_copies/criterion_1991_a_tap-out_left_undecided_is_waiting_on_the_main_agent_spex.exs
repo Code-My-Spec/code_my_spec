@@ -24,7 +24,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Agents.Main.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -81,8 +80,18 @@ defmodule CodeMySpecSpex.Story1053.Criterion1991Spex do
       end
 
       when_ "the main agent looks at what is waiting", context do
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.main_frame)
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         {:ok, Map.put(context, :listing, response_text(inbox))}
       end
 

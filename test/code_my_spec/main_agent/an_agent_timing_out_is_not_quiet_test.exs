@@ -12,7 +12,7 @@ defmodule CodeMySpec.Agents.Main.AnAgentTimingOutIsNotQuietTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.{AgentWork, CheckInReport, Digest, Machinery}
-  alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
+  alias CodeMySpec.Agents.Tools.AgentWorkResponses, as: AgentWorkMapper
   alias CodeMySpecTest.AgentPresence
 
   @timeout "claude exec timed out after 180000ms"

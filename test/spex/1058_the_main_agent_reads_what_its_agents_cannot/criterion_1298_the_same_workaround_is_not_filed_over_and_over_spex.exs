@@ -52,7 +52,6 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -183,15 +182,16 @@ defmodule CodeMySpecSpex.Story1058.Criterion3330Spex do
 
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, _answered, _frame} =
-      AnswerNotification.execute(
+    _answered =
+      ToolLibrary.run(
+        "answer_notification",
         %{
           notification_id: Fixtures.question_id_from(response_text(asked)),
           answer: "Dunning emails go out",
           basis: "record",
           worked_around: @gap
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     :ok

@@ -13,9 +13,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -65,15 +62,25 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
             assert match?({:ok, _}, tasks), response_text(tasks)
             assert response_text(tasks) == "No tasks."
 
-            {:reply, conversation, _} =
-              ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
+            conversation =
+              ToolLibrary.run(
+                "read_agent_conversation",
+                %{agent_id: agent.id},
+                Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+              )
 
-            refute conversation.isError, response_text(conversation)
+            assert match?({:ok, _}, conversation), response_text(conversation)
             %{agent: agent, frame: agent_frame, conversation: response_text(conversation)}
           end)
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame(context))
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
 
         {:ok,
          Map.merge(context, %{
@@ -85,8 +92,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
 
       when_ "three recovery checks inspect the unchanged fleet", context do
         for _ <- 1..3 do
-          {:reply, response, _} = CheckIn.execute(%{}, frame(context))
-          refute response.isError, response_text(response)
+          response =
+            ToolLibrary.run(
+              "check_in",
+              %{},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         {:ok, context}
@@ -111,10 +124,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
           assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
 
-          {:reply, conversation, _} =
-            ReadAgentConversation.execute(%{agent_id: snapshot.agent.id}, frame(context))
+          conversation =
+            ToolLibrary.run(
+              "read_agent_conversation",
+              %{agent_id: snapshot.agent.id},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
 
-          refute conversation.isError, response_text(conversation)
+          assert match?({:ok, _}, conversation), response_text(conversation)
           assert response_text(conversation) == snapshot.conversation
 
           {:ok, view, _} =
@@ -123,8 +140,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
           assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")
         end
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame(context))
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(inbox) == context.inbox_before
         {:ok, context}
       end

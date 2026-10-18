@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -138,8 +137,19 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
 
       then_ "the harness can end the turn without answering the question", context do
         :ok = Fixtures.end_turn(context.scope, context.agent_id, @end_turn_opts)
-        {:reply, work, _} = ListAgentWork.execute(%{}, context.agent_frame)
-        refute work.isError, response_text(work)
+
+        work =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, work), response_text(work)
         assert response_text(work) =~ context.agent_id
         assert response_text(work) =~ "in flight: nothing"
         {:ok, context}

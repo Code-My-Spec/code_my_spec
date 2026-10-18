@@ -1,0 +1,224 @@
+defmodule CodeMySpec.Agents.Tools.AgentWorkResponses do
+  @moduledoc """
+  How the fleet is written out for the main agent to read.
+
+  ## Every line is a fact, and the reader draws the conclusion
+
+  Criterion 3275. There is no status word anywhere in this module, deliberately,
+  and the two that look like one are not: "nothing to do" is the graph's answer
+  about a role's queue, and "cannot work" is a machine that answered "I can run
+  nothing" when asked what it can run.
+
+  What is missing is the tempting part — `stalled`, `stuck`, `healthy`. Those
+  would be computed from a silence threshold, which calls a streaming agent dead
+  and a tapped-out one broken, and once printed the parts they came from are
+  gone. So this prints how long ago, and lets the reader decide what that means.
+
+  ## Absences are printed
+
+  Every agent gets a `last said`, an `in flight` and a `problems` line whether
+  or not there is anything to say, because "none" and "not checked" are
+  different answers that render identically as nothing — criterion 3300. An
+  absence that cannot be told from an omission is not information.
+  """
+
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.Main.AgentWork
+
+  @doc "Every agent on the project, with what it holds."
+  @spec listing([AgentWork.t()], [Agent.t()]) :: CodeMySpec.Tools.Tool.result()
+  def listing(work, off \\ [])
+
+  def listing([], off) do
+    {:ok,
+     """
+     No agents are running on this project.
+
+     Nothing is being worked on, which is a different thing from nothing being
+     left to do — `get_next_requirement` says whether there is work waiting.
+     #{off_text(off)}\
+     """}
+  end
+
+  def listing(work, off),
+    do: {:ok, text(work) <> off_text(off)}
+
+  @doc """
+  Agents somebody turned off. An off seat reads as an empty one to staff unless
+  it says otherwise (39af5611).
+  """
+  @spec off_text([Agent.t()]) :: String.t()
+  def off_text([]), do: ""
+
+  def off_text(off) do
+    "\n#{length(off)} agent(s) off — leave them off; only `turn_on_agent` brings one back.\n\n" <>
+      Enum.map_join(off, "\n", fn agent ->
+        """
+        Agent: #{agent.id}
+          role: #{agent.role}
+          working copy: #{agent.working_copy_id} #{agent.working_copy}
+          #{Agent.describe_off(agent)}
+        """
+      end)
+  end
+
+  @doc """
+  The same body as prose, for a caller composing a larger message.
+
+  Shared rather than re-rendered so the check-in and the tool cannot drift into
+  describing the same fleet two ways — which is how a reader learns to trust one
+  of them and not the other.
+  """
+  @spec text([AgentWork.t()]) :: String.t()
+  def text([]), do: "agents: none running on this project."
+
+  def text(work) do
+    "#{length(work)} agent(s) running.\n\n" <> Enum.map_join(work, "\n", &entry/1)
+  end
+
+  @doc "Why the fleet could not be read."
+  @spec error(term()) :: CodeMySpec.Tools.Tool.result()
+  def error(reason) do
+    {:error, "Could not read the agents: #{inspect(reason)}"}
+  end
+
+  defp entry(%AgentWork{} = work) do
+    """
+    Agent: #{work.agent_id}
+      role: #{work.role}
+      working copy: #{work.working_copy_id}#{root(work)}#{designing(work)}
+      Assignment: #{assignment(work)}
+      #{holding(work)}
+      last said: #{moment(work.last_said_at)}
+      in flight: #{in_flight(work)}
+      recent turns: #{AgentWork.turn_timeouts(work) || "none timed out"}
+      blocked on: #{blocked(work)}
+      #{problems(work)}
+    """
+  end
+
+  defp root(%AgentWork{working_copy_root: nil}), do: ""
+  defp root(%AgentWork{working_copy_root: root}), do: " #{root}"
+
+  # Product's epic before dispatch; main is the one who dispatches it.
+  defp designing(%AgentWork{designing: nil}), do: ""
+  defp designing(%AgentWork{designing: name}), do: "\n  designing: #{name}"
+
+  # Story 1091: which issue, if any, the team on this copy is bound to.
+  # Printed unconditionally, same reasoning as every other line here
+  # (criterion 3300) — "none" and "not an issue team" both read as this.
+  defp assignment(%AgentWork{issue_id: nil}), do: "none"
+  defp assignment(%AgentWork{issue_id: id}), do: id
+
+  # What the agent has in hand, and the two kinds of nothing.
+  #
+  # "Cannot work" is checked before "nothing to do" because a machine that can
+  # run nothing has no queue worth reporting: the graph might well hold work for
+  # its role, and saying so would send the main agent to wonder why it is not
+  # being done.
+  defp holding(%AgentWork{task_name: nil} = work) do
+    cond do
+      AgentWork.toolless?(work) ->
+        "cannot work: its machine reports no tools, so every tool call it makes will fail"
+
+      work.team_free? ->
+        "waiting for main assignment: the team is free and nothing is assigned yet"
+
+      work.idle? ->
+        "nothing to do: the graph holds no work for its role"
+
+      true ->
+        AgentWork.unclaimed_work(work)
+    end
+  end
+
+  defp holding(%AgentWork{} = work) do
+    """
+    task: #{work.task_name}#{task_state(work)}#{story(work)}
+      task opened: #{moment(work.task_started_at)}#{beside_blocked(work)}\
+    """
+  end
+
+  # A blocked task holds only itself, so the queue beside it still counts.
+  defp beside_blocked(%AgentWork{task_status: :blocked, idle?: false} = work),
+    do: "\n  " <> AgentWork.unclaimed_work(work)
+
+  defp beside_blocked(%AgentWork{}), do: ""
+
+  # A blocked attempt is still the work the agent is on, and saying only its
+  # name would read as an agent that is working when it is waiting. The line
+  # below says what it is waiting for.
+  defp task_state(%AgentWork{task_status: :blocked}), do: " [blocked]"
+  defp task_state(%AgentWork{}), do: ""
+
+  defp story(%AgentWork{story_title: nil}), do: ""
+  defp story(%AgentWork{story_title: title}), do: ~s( — "#{title}")
+
+  # Always printed, and as a duration as well as a moment: how long a turn has
+  # been running is what separates a long turn from a wedged one, and the
+  # criterion is explicit that the main agent makes that call rather than
+  # reading it here.
+  defp in_flight(%AgentWork{turn_started_at: nil}), do: "nothing — no turn is open"
+
+  defp in_flight(%AgentWork{turn_started_at: at}),
+    do: "a turn opened #{moment(at)} and has not finished"
+
+  # The provider refusing comes first: while it does, nothing else can move.
+  defp blocked(%AgentWork{} = work) do
+    case provider_block(work) ++ tapped(work) ++ Enum.map(work.blocked_reasons, &quoted/1) do
+      [] -> "nothing"
+      blocks -> Enum.join(blocks, "; ")
+    end
+  end
+
+  defp provider_block(work),
+    do: if(AgentWork.provider_blocked?(work), do: [AgentWork.provider_block(work)], else: [])
+
+  defp tapped(%AgentWork{tapped_out?: true}), do: [tapped_out()]
+  defp tapped(%AgentWork{}), do: []
+
+  defp tapped_out,
+    do: "tapped out — it asked to leave the loop and a person has not answered yet"
+
+  defp quoted(text), do: ~s(an unanswered question: "#{text}")
+
+  # The findings themselves, not a count. "3 problems" against an agent is the
+  # same errand one step later: the main agent still has to go and find out
+  # whether they block the task it holds.
+  defp problems(%AgentWork{problems: []}), do: "problems on this copy: none — it is clean"
+
+  defp problems(%AgentWork{problems: found}) do
+    lines =
+      found
+      |> Enum.take(10)
+      |> Enum.map_join("\n    ", fn problem ->
+        "[#{problem.source}] #{problem.file_path}:#{problem.line} #{headline(problem.message)}"
+      end)
+
+    "problems on this copy: #{length(found)}\n    #{lines}#{more(found)}"
+  end
+
+  # One line per finding. A failure message can carry a whole rendered page, and
+  # on metric_flow (2026-09-27) one filled the 24,000-character answer cap by
+  # itself, so the main agent's listing ended after its own entry and never
+  # showed the coding and product agents. `list_problems` has the full text.
+  @headline_limit 160
+
+  defp headline(message) do
+    line = (message || "") |> String.split("\n", parts: 2) |> hd() |> String.trim()
+
+    if String.length(line) > @headline_limit,
+      do: String.slice(line, 0, @headline_limit) <> "…",
+      else: line
+  end
+
+  # Named rather than silently dropped: a truncated list that does not say it is
+  # truncated reads as the whole set.
+  defp more(found) when length(found) > 10,
+    do: "\n    …and #{length(found) - 10} more — `list_problems` has the rest"
+
+  defp more(_found), do: ""
+
+  defp moment(nil), do: "never"
+  defp moment(at), do: DateTime.to_iso8601(at)
+end

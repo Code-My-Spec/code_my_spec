@@ -37,7 +37,6 @@ defmodule CodeMySpecSpex.Story1057.Criterion3321Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -75,17 +74,18 @@ defmodule CodeMySpecSpex.Story1057.Criterion3321Spex do
       when_ "the main agent acts", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(
+        response =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.agent.id, reason: "it stopped answering its own turn"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it restarts the agent", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                """
                A fault the main agent could have fixed was refused instead.
 

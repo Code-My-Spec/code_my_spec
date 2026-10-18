@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -93,13 +92,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion3220Spex do
         old_id = Fixtures.question_id_from(response_text(asked))
         earlier_answer = "Allow refunds on working copy #{context.scope.active_working_copy_id}"
 
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{notification_id: old_id, answer: earlier_answer, basis: "record"},
-            main_frame
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
           )
 
-        refute answered.isError, response_text(answered)
+        assert match?({:ok, _}, answered), response_text(answered)
 
         resumed =
           ToolLibrary.run(

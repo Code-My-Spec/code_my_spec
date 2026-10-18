@@ -44,7 +44,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -95,8 +94,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
       when_ "the main agent passes it up", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EscalateQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.question_id,
               reason: "only the user can say what should happen to a customer's invoices",
@@ -104,10 +104,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
                 "When someone deletes a customer, should their invoices go too, or should " <>
                   "we refuse to delete a customer who still has any?"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, context}
       end

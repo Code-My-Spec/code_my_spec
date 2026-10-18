@@ -47,8 +47,6 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -339,12 +337,16 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec request_turn(map(), String.t()) :: String.t()
   def request_turn(context, agent_id) do
-    {:reply, response, _} =
-      SetAgentContinuous.execute(%{agent_id: agent_id, continuous: true}, frame(context))
+    response =
+      ToolLibrary.run(
+        "set_agent_continuous",
+        %{agent_id: agent_id, continuous: true},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
 
     said = text(response)
 
-    refute response.isError,
+    assert match?({:ok, _}, response),
            """
            The agent could not be put in the loop, so it never took a turn and
            this run measures nothing about its conduct.
@@ -518,10 +520,14 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec conversation(map(), String.t()) :: String.t()
   def conversation(context, agent_id) do
-    {:reply, response, _} =
-      ReadAgentConversation.execute(%{agent_id: agent_id, limit: 100}, frame(context))
+    response =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: agent_id, limit: 100},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
 
-    refute response.isError,
+    assert match?({:ok, _}, response),
            """
            The agent's conversation could not be read, so nothing here is
            evidence about what it called.

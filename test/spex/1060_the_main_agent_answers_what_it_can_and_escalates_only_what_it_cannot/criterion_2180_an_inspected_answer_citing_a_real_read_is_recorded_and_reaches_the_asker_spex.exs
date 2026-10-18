@@ -24,8 +24,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Conversations
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -94,22 +92,27 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
       end
 
       when_ "the main agent answers with basis inspected, citing the file it read", context do
-        {:reply, answered, _frame} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer: "4004 — set explicitly in config/dev.exs",
               basis: "inspected",
               citation: "config/dev.exs"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :answered, answered)}
       end
 
       then_ "it is recorded and reaches the asker", context do
-        refute context.answered.isError,
+        assert match?({:ok, _}, context.answered),
                """
                An answer citing a file the main agent actually read this session was
                refused as unrecorded.
@@ -142,7 +145,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
 
       then_ "and the user is not asked", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(listing) =~ ~r/waiting on the user/i,
                """

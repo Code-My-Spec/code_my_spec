@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -330,17 +329,22 @@ defmodule CodeMySpecSpex.Story1052.Criterion3216Spex do
 
       when_ "the main agent answers the original question through its supported surface",
             context do
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.original.question_id,
               answer: context.answer,
               basis: "record"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute answered.isError, response_text(answered)
+        assert match?({:ok, _}, answered), response_text(answered)
 
         {:ok, context}
       end

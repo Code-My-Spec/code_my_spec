@@ -53,7 +53,6 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -164,15 +163,16 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
     question_id = Fixtures.question_id_from(response_text(asked))
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, _answered, _frame} =
-      AnswerNotification.execute(
+    _answered =
+      ToolLibrary.run(
+        "answer_notification",
         %{
           notification_id: question_id,
           answer: "Dunning emails go out",
           basis: "record",
           worked_around: "no tool exposes story-to-epic membership"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     :ok

@@ -11,7 +11,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1882Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -138,8 +137,19 @@ defmodule CodeMySpecSpex.Story1091.Criterion1882Spex do
 
       then_ "both members of team B are bound to the issue and team A is free", context do
         assert match?({:ok, _}, context.reassignment), response_text(context.reassignment)
-        {:reply, response, _} = ListAgentWork.execute(%{}, context.main_frame)
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         entries = response |> response_text() |> String.split("Agent: ")
 
         for agent <- context.team_b do

@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -71,8 +70,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
       when_ "the main agent cannot settle it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EscalateQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.question_id,
               reason:
@@ -80,10 +80,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
               as:
                 "Archived invoices are left out of the export. Is that a bug to fix, or how it should work?"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, context}
       end

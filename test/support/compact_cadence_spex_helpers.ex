@@ -5,7 +5,6 @@ defmodule CodeMySpecSpex.CompactCadenceHelpers do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpecSpex.Fixtures
 
   def frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
@@ -19,8 +18,14 @@ defmodule CodeMySpecSpex.CompactCadenceHelpers do
   end
 
   def report(context) do
-    {:reply, result, _} = CheckIn.execute(%{}, frame(context))
-    refute result.isError, response_text(result)
+    result =
+      ToolLibrary.run(
+        "check_in",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, result), response_text(result)
     Map.put(context, :report, response_text(result))
   end
 
@@ -36,11 +41,5 @@ defmodule CodeMySpecSpex.CompactCadenceHelpers do
       {:ok, text} -> text
       {:error, text} -> flunk("#{name} refused: #{text}")
     end
-  end
-
-  def call(context, tool, params) do
-    {:reply, result, _} = tool.execute(params, frame(context))
-    refute result.isError, response_text(result)
-    response_text(result)
   end
 end

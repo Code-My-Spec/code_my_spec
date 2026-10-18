@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
   the user's view of the same thing; it belongs on the notifications LiveView
   and is written that way.
 
-  `CodeMySpec.McpServers.MainAgent.Tools.ListNotifications` is a new tool in a
+  `CodeMySpec.Agents.Tools.ListNotifications` is a new tool in a
   new server. Two existing ones were considered and rejected:
 
     * `Tasks.Tools.ListUserQuestions` answers "what have **I** asked", scoped to
@@ -51,7 +51,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -107,9 +106,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
       when_ "the main agent looks at what is waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :listing, response_text(response))}
       end

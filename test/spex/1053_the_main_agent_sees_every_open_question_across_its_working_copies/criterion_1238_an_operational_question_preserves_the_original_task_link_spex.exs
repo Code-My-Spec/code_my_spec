@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -123,23 +121,38 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
         assert match?({:ok, _}, nested), response_text(nested)
         nested_id = Fixtures.question_id_from(response_text(nested))
 
-        {:reply, escalated, _} =
-          EscalateQuestion.execute(
+        escalated =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: nested_id,
               reason: "The customer account determines the credentials for #{original_id}"
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute escalated.isError, response_text(escalated)
+        assert match?({:ok, _}, escalated), response_text(escalated)
         {:ok, Map.merge(context, %{original_id: original_id, nested_id: nested_id})}
       end
 
       then_ "the nested question waits on the user and the original retains its owner and task",
             context do
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.main_frame)
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(inbox) =~ context.original_id
         assert response_text(inbox) =~ context.nested_id
         assert response_text(inbox) =~ ~r/waiting on the user/i

@@ -49,8 +49,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -100,21 +98,22 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
       when_ "the main agent handles the question", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AnswerNotification.execute(
+        response =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer: "Later — nothing in the roadmap puts it before the exporter",
               basis: "record"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it does not decide on the user's behalf", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                """
                The main agent decided what to build.
 
@@ -138,7 +137,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
 
       then_ "and the question reaches the user", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(listing) =~ ~r/waiting on the user/i,
                """

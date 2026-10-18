@@ -20,9 +20,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1984Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -81,26 +78,31 @@ defmodule CodeMySpecSpex.Story1060.Criterion1984Spex do
         # copy, rather than asking the QA agent to stop and look again.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, read, _frame} =
-          ReadAgentConversation.execute(%{agent_id: context.qa_agent.id}, frame)
+        read =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.qa_agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute read.isError, inspect(read)
+        assert match?({:ok, _}, read), inspect(read)
 
-        {:reply, answered, _frame} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer: "Your copy /tmp/spex-1984's app is serving the current HEAD commit.",
               basis: "record"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :answered, answered)}
       end
 
       then_ "it looks the answer up itself and answers the QA agent", context do
-        refute context.answered.isError, inspect(context.answered)
+        assert match?({:ok, _}, context.answered), inspect(context.answered)
 
         frame = %Frame{
           assigns: %{current_scope: context.scope, agent_id: context.qa_agent.id}
@@ -127,7 +129,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion1984Spex do
 
       then_ "without involving the user", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(listing) =~ ~r/waiting on the user/i,
                """

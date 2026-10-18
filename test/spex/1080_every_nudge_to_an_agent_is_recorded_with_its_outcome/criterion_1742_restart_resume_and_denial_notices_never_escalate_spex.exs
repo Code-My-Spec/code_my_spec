@@ -12,8 +12,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1742Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -49,17 +47,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1742Spex do
       end
 
       when_ "the request is denied, and the coder ends that turn doing nothing", context do
-        {:reply, reply, _} =
-          AnswerNotification.execute(
+        reply =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.request,
               decision: "deny",
               answer: "There is work: take it."
             },
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         id = context.coder
         assert_receive {:work_turn_requested, ^id, _ref, denial}, 2_000
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)

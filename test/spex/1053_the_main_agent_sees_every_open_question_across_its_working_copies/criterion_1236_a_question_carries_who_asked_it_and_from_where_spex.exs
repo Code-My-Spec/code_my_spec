@@ -33,7 +33,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3266Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -88,9 +87,15 @@ defmodule CodeMySpecSpex.Story1053.Criterion3266Spex do
 
       then_ "it names that agent, its checkout, and this project", context do
         frame = %Frame{assigns: %{current_scope: context.here.scope}}
-        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
 
-        refute response.isError, inspect(response)
+        response =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), inspect(response)
         listing = response_text(response)
 
         assert listing =~ "Which branch should this land on?",

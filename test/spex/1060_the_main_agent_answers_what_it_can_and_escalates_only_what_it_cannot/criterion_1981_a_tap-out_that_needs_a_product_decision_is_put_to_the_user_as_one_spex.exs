@@ -20,9 +20,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Main.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -68,25 +65,33 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
 
       when_ "the main agent handles the aged tap-out", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, digest, _frame} = CheckIn.execute(%{}, frame)
-        refute digest.isError, inspect(digest)
 
-        {:reply, escalated, _frame} =
-          EscalateQuestion.execute(
+        digest =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, digest), inspect(digest)
+
+        escalated =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.permission_id,
               reason: "only the user can say whether this feature should be built at all",
               as:
                 "This task would add a feature nobody asked for instead of fixing the bug. Build it anyway?"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :escalated, escalated)}
       end
 
       then_ "it does not decide it", context do
-        refute context.escalated.isError,
+        assert match?({:ok, _}, context.escalated),
                """
                The main agent could not send its own aged tap-out up to the user.
 
@@ -100,7 +105,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
       then_ "the user is shown what approving or denying changes, and it waits on them, not on main",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = response_text(listing)
 

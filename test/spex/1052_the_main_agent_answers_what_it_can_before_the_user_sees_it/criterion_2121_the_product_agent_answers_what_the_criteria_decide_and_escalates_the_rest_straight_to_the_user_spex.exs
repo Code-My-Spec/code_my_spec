@@ -12,8 +12,6 @@ defmodule CodeMySpecSpex.Story1052.Criterion2121Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -61,16 +59,21 @@ defmodule CodeMySpecSpex.Story1052.Criterion2121Spex do
       end
 
       when_ "product escalates it to the user, since the criteria leave it open", context do
-        {:reply, reply, _frame} =
-          EscalateQuestion.execute(
+        reply =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.question_id,
               reason: "The criteria never mention international refunds."
             },
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, Map.put(context, :escalate_reply, reply)}
       end
 
@@ -88,7 +91,16 @@ defmodule CodeMySpecSpex.Story1052.Criterion2121Spex do
       end
 
       then_ "and it still shows in product's own listing, now waiting on the user", context do
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, context.product_frame)
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
 
         assert response_text(listing) =~ "Waiting on the user" and
                  response_text(listing) =~ context.question_id,

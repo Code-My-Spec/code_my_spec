@@ -18,8 +18,6 @@ defmodule CodeMySpec.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOfferedTest d
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.WorkingCopies
@@ -128,14 +126,31 @@ defmodule CodeMySpec.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOfferedTest d
     request = Notifications.get_pending_tap_out_request(ctx.agent.id, task_id)
     main = %Frame{assigns: %{current_scope: ctx.scope}}
 
-    {:reply, listed, _} = ListNotifications.execute(%{}, main)
+    listed =
+      ToolLibrary.run(
+        "list_notifications",
+        %{},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
+
     assert text(listed) =~ request.id
 
-    {:reply, decided, _} =
-      AnswerNotification.execute(%{notification_id: request.id, decision: "allow"}, main)
+    decided =
+      ToolLibrary.run(
+        "answer_notification",
+        %{notification_id: request.id, decision: "allow"},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
 
-    refute decided.isError, text(decided)
-    {:reply, after_, _} = ListNotifications.execute(%{}, main)
+    assert match?({:ok, _}, decided), text(decided)
+
+    after_ =
+      ToolLibrary.run(
+        "list_notifications",
+        %{},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
+
     refute text(after_) =~ request.id
   end
 

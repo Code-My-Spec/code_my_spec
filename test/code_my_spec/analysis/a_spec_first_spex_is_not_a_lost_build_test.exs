@@ -6,7 +6,7 @@ defmodule CodeMySpec.Analysis.ASpecFirstSpexIsNotALostBuildTest do
   The real payload from `phx-new-generator`, 2026-09-15: a spex scenario for
   story 1013 (the main agent reading its own agents' conversations, written
   spec-first) called an MCP tool that had not been built yet,
-  `CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation`. The removed
+  `CodeMySpec.Agents.Tools.ReadAgentConversation`. The removed
   `lost_build?/1` heuristic read "module ... is not available" as proof a
   build raced this run and failed the whole thing, discarding every
   diagnostic in it. The module had not disappeared mid-run — it had never
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Analysis.ASpecFirstSpexIsNotALostBuildTest do
           "spex" => "criterion_x",
           "scenario" => "the main agent reads a running agent's conversation",
           "message" =>
-            "** (UndefinedFunctionError) function CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation.execute/2 is undefined (module CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation is not available)"
+            "** (UndefinedFunctionError) function CodeMySpec.Agents.Tools.ReadAgentConversation.execute/2 is undefined (module CodeMySpec.Agents.Tools.ReadAgentConversation is not available)"
         }
       ]
     }

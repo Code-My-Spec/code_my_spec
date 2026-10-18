@@ -19,7 +19,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1672Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -91,17 +90,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1672Spex do
       end
 
       when_ "main denies it", context do
-        {:reply, reply, _} =
-          AnswerNotification.execute(
+        reply =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.blocker,
               decision: "deny",
               answer: "It is yours: carry on."
             },
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, Map.put(context, :sent, turn_prompt(context))}
       end
 

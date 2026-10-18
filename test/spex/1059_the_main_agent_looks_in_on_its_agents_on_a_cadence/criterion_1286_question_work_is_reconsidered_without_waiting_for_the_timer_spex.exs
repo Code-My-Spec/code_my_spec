@@ -14,8 +14,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -89,8 +87,18 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
       end
 
       then_ "the question is durably visible and a turn has arrived without a tick", context do
-        {:reply, inbox, _} = ListNotifications.execute(%{}, context.main_frame)
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(inbox) =~ context.question_id
         assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
         assert length(HeldProvider.seen()) == 1
@@ -98,8 +106,18 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
       end
 
       when_ "recovery runs while the admitted turn is still in flight", context do
-        {:reply, response, _} = CheckIn.execute(%{}, context.main_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         {:ok, context}
       end
 

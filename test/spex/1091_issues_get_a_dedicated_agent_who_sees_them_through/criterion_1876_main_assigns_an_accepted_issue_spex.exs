@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1876Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -77,8 +76,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1876Spex do
         assert match?({:ok, _}, context.assignment_response),
                response_text(context.assignment_response)
 
-        {:reply, response, _frame} = ListAgentWork.execute(%{}, context.main_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         entries = response |> response_text() |> String.split("Agent: ")
 
         for agent <- context.team do

@@ -33,7 +33,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3261Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -93,9 +92,15 @@ defmodule CodeMySpecSpex.Story1053.Criterion3261Spex do
         [first | _] = context.copies
 
         frame = %Frame{assigns: %{current_scope: first.scope}}
-        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
 
-        refute response.isError, inspect(response)
+        response =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :listing, response_text(response))}
       end

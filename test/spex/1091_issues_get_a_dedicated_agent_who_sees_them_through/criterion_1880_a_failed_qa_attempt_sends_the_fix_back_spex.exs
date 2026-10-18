@@ -12,8 +12,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -213,8 +211,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
       end
 
       then_ "both teammates remain bound to the same issue on their copy", context do
-        {:reply, response, _} = ListAgentWork.execute(%{}, context.main_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         entries = response |> response_text() |> String.split("Agent: ")
 
         for agent <- context.team do

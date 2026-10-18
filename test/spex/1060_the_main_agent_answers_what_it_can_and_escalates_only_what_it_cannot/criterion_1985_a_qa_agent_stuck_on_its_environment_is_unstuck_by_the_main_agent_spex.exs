@@ -22,9 +22,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -81,20 +78,25 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
       when_ "the main agent handles the question", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, read, _frame} =
-          ReadAgentConversation.execute(%{agent_id: context.qa_agent.id}, frame)
+        read =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.qa_agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute read.isError, inspect(read)
+        assert match?({:ok, _}, read), inspect(read)
 
-        {:reply, answered, _frame} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer:
                 "Restarted /tmp/spex-1985's app — it is serving your copy's current commit.",
               basis: "record"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :answered, answered)}
@@ -102,7 +104,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
 
       then_ "it restarts the copy's app itself and answers that it is serving the copy's commit",
             context do
-        refute context.answered.isError, inspect(context.answered)
+        assert match?({:ok, _}, context.answered), inspect(context.answered)
 
         frame = %Frame{
           assigns: %{current_scope: context.scope, agent_id: context.qa_agent.id}
@@ -129,7 +131,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
 
       then_ "and the user is not asked", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(listing) =~ ~r/waiting on the user/i,
                """

@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3269Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -142,13 +140,18 @@ defmodule CodeMySpecSpex.Story1053.Criterion3269Spex do
         assert match?({:ok, _}, nested), response_text(nested)
         nested_id = Fixtures.question_id_from(response_text(nested))
 
-        {:reply, escalated, _} =
-          EscalateQuestion.execute(
+        escalated =
+          ToolLibrary.run(
+            "escalate_question",
             %{question_id: nested_id, reason: "The deployment policy is the user's decision"},
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute escalated.isError, response_text(escalated)
+        assert match?({:ok, _}, escalated), response_text(escalated)
         {:ok, view, _} = live(context.conn, "/app/questions/#{nested_id}")
 
         view
@@ -191,18 +194,23 @@ defmodule CodeMySpecSpex.Story1053.Criterion3269Spex do
       end
 
       when_ "main explicitly answers the original using the user's decision", context do
-        {:reply, answered, _} =
-          AnswerNotification.execute(
+        answered =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.original.question_id,
               answer: "Use the existing deployment policy",
               basis: "precedent",
               precedent_id: context.nested_id
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute answered.isError, response_text(answered)
+        assert match?({:ok, _}, answered), response_text(answered)
         {:ok, context}
       end
 

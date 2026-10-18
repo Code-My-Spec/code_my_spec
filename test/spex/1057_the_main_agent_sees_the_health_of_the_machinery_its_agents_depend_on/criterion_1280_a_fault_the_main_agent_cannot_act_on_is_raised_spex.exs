@@ -37,8 +37,6 @@ defmodule CodeMySpecSpex.Story1057.Criterion3312Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -72,9 +70,15 @@ defmodule CodeMySpecSpex.Story1057.Criterion3312Spex do
 
       when_ "the main agent finds it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, report, _frame} = CheckMachinery.execute(%{}, frame)
 
-        refute report.isError, inspect(report)
+        report =
+          ToolLibrary.run(
+            "check_machinery",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, report), inspect(report)
 
         {:ok, Map.put(context, :report, response_text(report))}
       end
@@ -113,13 +117,14 @@ defmodule CodeMySpecSpex.Story1057.Criterion3312Spex do
         [agent | _] = context.agents
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(
+        response =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: agent.id, reason: "its machine reports no tools"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        assert response.isError,
+        assert match?({:error, _}, response),
                """
                The main agent restarted an agent for a fault that is underneath
                it.
